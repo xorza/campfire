@@ -5,6 +5,7 @@ use campfire_sim::{Capability, Command, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_target::ActionTarget;
+use crate::items::item_id::ItemId;
 
 /// An order to one unit: the body of an `orders` command. Players, bots and AI issue the same
 /// orders; an order to a group is one command per unit.
@@ -25,6 +26,12 @@ pub enum Action {
     Slot { slot: u8, target: ActionTarget },
     /// Learn the next rank of the action in `slot`, for a point.
     Learn { slot: u8 },
+    /// Buy one `item` at the mode's shop.
+    Buy { item: ItemId },
+    /// Sell the stack in inventory slot `slot` at the mode's shop.
+    Sell { slot: u8 },
+    /// Swap inventory slots `from` and `to`.
+    Swap { from: u8, to: u8 },
 }
 
 impl Order {

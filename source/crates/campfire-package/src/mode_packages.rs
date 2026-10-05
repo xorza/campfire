@@ -40,7 +40,7 @@ pub struct ModePackages {
     pub(crate) manifest: ModeManifest,
     pub(crate) data: ModeData,
     pub(crate) map: MapData,
-    /// The mode's actions, modifiers and unit types.
+    /// The mode's actions, modifiers, unit types and item types.
     pub(crate) content: PackageContent,
     /// In the order of their names in the mode's manifest.
     pub(crate) dependencies: Vec<Dependent>,
@@ -130,7 +130,7 @@ impl ModePackages {
         &self.data
     }
 
-    /// The mode's actions, modifiers and unit types.
+    /// The mode's actions, modifiers, unit types and item types.
     pub const fn content(&self) -> &PackageContent {
         &self.content
     }

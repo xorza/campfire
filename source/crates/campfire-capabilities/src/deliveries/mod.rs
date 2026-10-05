@@ -7,6 +7,7 @@ use campfire_script::rhai::Dynamic;
 use campfire_sim::{EntityIndex, SimSet, SimTick};
 
 use crate::actions::action_book::ActionBook;
+use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::CombatSet;
 use crate::deliveries::delivered::{Delivered, Reach};
@@ -140,7 +141,7 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 hook,
                 &mut ctx.frame(),
                 ctx.view(),
-                reach.unit(),
+                reach.unit().map_or(ActionTarget::None, ActionTarget::Unit),
             );
             if let Err(error) = queued {
                 batch.record(Some(by.source), hook, error);

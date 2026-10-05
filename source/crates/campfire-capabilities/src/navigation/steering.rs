@@ -175,6 +175,7 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
+    use crate::navigation::terrain::Terrain;
     use crate::values::bounds::Bounds;
     use crate::values::grid::Grid;
 
@@ -204,7 +205,7 @@ mod tests {
         );
         let cells = Grid::new(quarter, bounds.unwrap()).unwrap();
         let mut planner = RoutePlanner::new(&cells);
-        let grid = PathingGrid::new(cells, vec![walker]);
+        let grid = PathingGrid::new(cells, vec![walker], &Terrain::default());
         let statics = BodyIndex::new(wide);
         let mut ids = IdAllocator::default();
         let (id, unit) = (ids.allocate(), ids.allocate());

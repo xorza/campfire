@@ -40,7 +40,8 @@ impl ActionsApi {
         .data(
             DataTable::Effect,
             &[
-                "damage", "heal", "restore", "modifier", "xp", "purge", "launch", "move", "to",
+                "damage", "heal", "restore", "modifier", "xp", "purge", "launch", "move", "spawn",
+                "to",
             ],
             &PlannedEffect::ALL.map(PlannedEffect::name),
         );

@@ -425,6 +425,7 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
     world.entity_mut(entity).insert(ForcedMove::Dash {
         to: DashTo::Point(to),
         step,
+        delivers: None,
     });
     let mut frames = 0;
     while !dashing(local.client(0)) {

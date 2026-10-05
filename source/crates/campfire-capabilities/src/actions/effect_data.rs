@@ -40,6 +40,12 @@ pub enum Effecting {
     },
     /// `move = { to, speed }` or `move = { from, distance, ms }`: a forced move.
     Move(MoveData),
+    /// `spawn = { unit_type, duration_ms }`: a unit of the mode's type `unit_type` where the
+    /// effect applies, despawning `duration_ms` after it spawns when that is given.
+    Spawn {
+        unit_type: DeclaredName,
+        duration_ms: Option<Number>,
+    },
     /// An effect the design names that the release does not run yet; the load refuses it.
     Planned(PlannedEffect),
 }
@@ -61,7 +67,6 @@ pub enum MoveData {
 /// The effects the design names that the release does not run yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlannedEffect {
-    Spawn,
     Loot,
     Noise,
 }
@@ -178,6 +183,13 @@ impl MoveFields {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct SpawnFields {
+    unit_type: DeclaredName,
+    duration_ms: Option<Number>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct LaunchFields {
     area: DeclaredName,
     #[serde(default)]
@@ -196,7 +208,9 @@ impl Effecting {
             | Effecting::Restore { amount, .. }
             | Effecting::Xp { amount, .. }
             | Effecting::Move(MoveData::Dash { speed: amount, .. }) => [Some(amount), None],
-            Effecting::Modifier { duration_ms, .. } => [duration_ms.as_ref(), None],
+            Effecting::Modifier { duration_ms, .. } | Effecting::Spawn { duration_ms, .. } => {
+                [duration_ms.as_ref(), None]
+            }
             Effecting::Move(MoveData::KnockBack { distance, ms, .. }) => [Some(distance), Some(ms)],
             Effecting::Purge { .. } | Effecting::Launch { .. } | Effecting::Planned(_) => {
                 [None, None]
@@ -224,16 +238,11 @@ impl Effecting {
 }
 
 impl PlannedEffect {
-    pub const ALL: [PlannedEffect; 3] = [
-        PlannedEffect::Spawn,
-        PlannedEffect::Loot,
-        PlannedEffect::Noise,
-    ];
+    pub const ALL: [PlannedEffect; 2] = [PlannedEffect::Loot, PlannedEffect::Noise];
 
     /// The effect's key in data.
     pub const fn name(self) -> &'static str {
         match self {
-            PlannedEffect::Spawn => "spawn",
             PlannedEffect::Loot => "loot",
             PlannedEffect::Noise => "noise",
         }
@@ -252,7 +261,7 @@ impl<'de> Deserialize<'de> for EffectData {
             modifier: Option<ModifierFields>,
             xp: Option<XpFields>,
             purge: Option<PurgeFields>,
-            spawn: Option<IgnoredAny>,
+            spawn: Option<SpawnFields>,
             launch: Option<LaunchFields>,
             #[serde(rename = "move")]
             moves: Option<MoveFields>,
@@ -262,7 +271,6 @@ impl<'de> Deserialize<'de> for EffectData {
         }
         let fields = Fields::deserialize(deserializer)?;
         let planned = [
-            (fields.spawn.is_some(), PlannedEffect::Spawn),
             (fields.loot.is_some(), PlannedEffect::Loot),
             (fields.noise.is_some(), PlannedEffect::Noise),
         ];
@@ -307,10 +315,21 @@ impl<'de> Deserialize<'de> for EffectData {
             }
             moves => moves.flatten().map(Effecting::Move),
         };
-        let mut effects = [damage, heal, restore, modifier, xp, purge, launch, moves]
-            .into_iter()
-            .flatten()
-            .chain(planned);
+        let spawn = fields.spawn.map(
+            |SpawnFields {
+                 unit_type,
+                 duration_ms,
+             }| Effecting::Spawn {
+                unit_type,
+                duration_ms,
+            },
+        );
+        let mut effects = [
+            damage, heal, restore, modifier, xp, purge, launch, moves, spawn,
+        ]
+        .into_iter()
+        .flatten()
+        .chain(planned);
         let (Some(does), None) = (effects.next(), effects.next()) else {
             return Err(D::Error::custom("exactly one effect"));
         };

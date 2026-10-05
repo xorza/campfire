@@ -15,6 +15,8 @@ use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
 use crate::combat::combat_api::CombatApi;
 use crate::deliveries::deliveries_api::DeliveriesApi;
+use crate::items::Items;
+use crate::items::items_api::ItemsApi;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_api::ModeApi;
 use crate::navigation::Navigation;
@@ -120,11 +122,11 @@ const CAPABILITIES: [Row; Capability::ALL.len()] = [
     )
     .registering(OrdersApi::register),
     row(Capability::Production, Production::install, &[]).registering(ProductionApi::register),
+    row(Capability::Items, Items::install, &[Capability::Stats]).registering(ItemsApi::register),
     planned(Capability::Character),
     planned(Capability::Hitboxes),
     planned(Capability::Physics),
     planned(Capability::World),
-    planned(Capability::Items),
     planned(Capability::Quests),
     planned(Capability::Interaction),
     planned(Capability::Mode).registering(ModeApi::register),

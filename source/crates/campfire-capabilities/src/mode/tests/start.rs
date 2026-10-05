@@ -22,7 +22,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         Some(PathId::new(0))
     );
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
-    let vision = *game.sim.world.resource::<VisionGrid>();
+    let vision = game.sim.world.resource::<VisionGrid>();
     let grid = Grid::new(Num::int(1), map().bounds).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
     assert_eq!(*game.sim.world.resource::<Bounds>(), map().bounds);
@@ -145,7 +145,8 @@ fn a_map_with_vision_holds_at_most_64_teams() {
             })
             .collect()
     };
-    let resolve = |count| ModeMap::resolve(&files.map, &teams(count), &[], |_| None).err();
+    let rules = NavigationRules::default();
+    let resolve = |count| ModeMap::resolve(&files.map, &teams(count), &[], &rules, |_| None).err();
     assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
     assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
 }

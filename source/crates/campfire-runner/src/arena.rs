@@ -54,8 +54,9 @@ impl Arena {
         &mut self.world
     }
 
-    /// Gives the match the map's vision grid, for `teams` teams, as the mode's install does: from
-    /// the next Vision stage, each team sees what its units and its reveals show it.
+    /// Gives the match the map's vision grid and its brush, for `teams` teams, as the mode's
+    /// install does: from the next Vision stage, each team sees what its units and its reveals show
+    /// it.
     pub fn load_vision(&mut self, teams: usize) {
         let grid = self
             .packages
@@ -63,7 +64,12 @@ impl Arena {
             .grid()
             .unwrap_or_else(|error| panic!("{error}"));
         let grid = grid.expect("the map has a vision grid");
-        Vision::load_grid(&mut self.world, grid, teams);
+        let brush = self
+            .packages
+            .map()
+            .brush()
+            .unwrap_or_else(|error| panic!("{error}"));
+        Vision::load_grid(&mut self.world, grid, &brush, teams);
     }
 
     /// The place among the match's packages of the package `name`.

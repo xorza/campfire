@@ -3,6 +3,7 @@ use std::num::NonZeroU8;
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
+use crate::actions::slot_kind::SlotKind;
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
 use crate::mode::error::UnitKitError;
@@ -20,8 +21,9 @@ use crate::vision::vision_data::VisionData;
 
 /// What a new unit of a type starts with, in ticks at the match's rate: its pools, full at their
 /// maxima at level 1, whether it stays when it dies, when it has a `combat` section, how far it
-/// walks a tick, how far it sees, its body, the tracks it gains experience on, and the most
-/// trains its queue holds, when it has a `production` section.
+/// walks a tick, how far it sees, its body, the tracks it gains experience on, the most trains
+/// its queue holds, when it has a `production` section, and its inventory's slots and slot kind,
+/// when it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
     pub pools: Option<Pools>,
@@ -31,10 +33,19 @@ pub struct UnitKit {
     pub body: Option<Body>,
     pub tracks: TrackSet,
     pub queue: Option<NonZeroU8>,
+    pub inventory: Option<InventorySpec>,
+}
+
+/// An inventory as a unit type gives it: how many slots, and the slot kind their actions fill.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InventorySpec {
+    pub slots: NonZeroU8,
+    pub kind: SlotKind,
 }
 
 /// What a unit type's file gives its kit: its `combat` section, its pools, each with the stat of
-/// its maximum, its `vision` section, its body, its tracks and its `production` section.
+/// its maximum, its `vision` section, its body, its tracks, its `production` section and its
+/// inventory.
 #[derive(Debug, Clone)]
 pub(crate) struct KitSections<'a, P> {
     pub(crate) combat: Option<&'a CombatData>,
@@ -43,6 +54,7 @@ pub(crate) struct KitSections<'a, P> {
     pub(crate) body: Option<Body>,
     pub(crate) tracks: TrackSet,
     pub(crate) production: Option<&'a ProductionData>,
+    pub(crate) inventory: Option<InventorySpec>,
 }
 
 impl UnitKit {
@@ -65,6 +77,7 @@ impl UnitKit {
             body,
             tracks,
             production,
+            inventory,
         } = sections;
         let values = book.base_values(unit_type, 1);
         let given = |stat: &Stat| {
@@ -103,6 +116,7 @@ impl UnitKit {
             body,
             tracks,
             queue: production.map(|production| production.queue),
+            inventory,
         })
     }
 }

@@ -1,16 +1,18 @@
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{NonSendMut, ResMut};
+use bevy_ecs::system::{Commands, NonSendMut, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::{EntityIndex, Position, SimSet, StateRegistry, TickRate};
+use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StateRegistry, TickRate};
 
 use crate::scripts::ctx::Ctx;
 use crate::scripts::draws::Draws;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
+use crate::units::lifespan::Lifespan;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
@@ -39,6 +41,7 @@ pub(crate) mod filter;
 pub(crate) mod forced_move;
 pub(crate) mod hit_handle;
 pub(crate) mod layer;
+pub(crate) mod lifespan;
 pub(crate) mod living_unit;
 pub(crate) mod modifier_id;
 pub(crate) mod new_unit;
@@ -103,6 +106,7 @@ impl Units {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate);
         registry.register_component::<Body>();
+        registry.register_component::<Lifespan>();
         registry.add_check::<Position>(Units::within_bounds);
         registry.register_component::<Owner>();
         registry.register_component::<SpawnPoint>();
@@ -131,11 +135,12 @@ impl Units {
         world.insert_non_send(host);
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(budgets);
-        schedule.add_systems(
+        schedule.add_systems((
             begin_tick
                 .in_set(SimSet::Inputs)
                 .in_set(UnitsSet::BeginTick),
-        );
+            end_lifespans.in_set(SimSet::Vision),
+        ));
     }
 
     /// Whether every unit stands within the match's bounds, as every system keeps it, and as
@@ -163,6 +168,21 @@ fn begin_tick(
     budgets.begin_tick();
     failures.clear();
     new_states.clear();
+}
+
+/// Despawns each unit whose timed life ends with this tick, at its end, as the dead despawn: it
+/// is seen and sees in this tick's Vision stage for the last time.
+fn end_lifespans(
+    tick: Res<'_, SimTick>,
+    units: Query<'_, '_, (Entity, &Lifespan)>,
+    mut commands: Commands<'_, '_>,
+) {
+    let now = tick.start();
+    for (entity, lifespan) in &units {
+        if lifespan.ends_after(now) {
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 /// Adds a unit's script state to the view's column of it.

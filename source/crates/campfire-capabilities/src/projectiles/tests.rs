@@ -323,6 +323,7 @@ fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
         unit: dasher,
         to: DashTo::Point(at(6, 1)),
         step: Num::from_bits(1 << (Num::FRAC_BITS - 1)),
+        delivers: None,
     };
     for effect in [blink, dash] {
         effect.apply(&mut volley.sim.world, &mut Frame::default(), now);
@@ -468,7 +469,7 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     ]);
     let world = &mut volley.sim.world;
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
-    Vision::load_grid(world, Grid::new(Num::ONE, bounds).unwrap(), 2);
+    Vision::load_grid(world, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
     world
         .resource_mut::<ByType<Sight>>()

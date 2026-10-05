@@ -45,6 +45,12 @@ fn on_unit_died(ctx, unit, killer, assisters) {
         ctx.end(ctx.enemy_team(unit.team));
         return;
     }
+    if unit.has_tag("ward") {
+        if killer != () && killer.is_avatar {
+            ctx.add_resource(killer.owner, "gold", unit.params.gold);
+        }
+        return;
+    }
     share_xp(ctx, unit);
     if unit.is_avatar {
         hero_died(ctx, unit, killer, assisters);
@@ -141,6 +147,9 @@ fn source_stat(d, name) {
 }
 
 fn calc_damage(ctx, d) {
+    if d.target.has_tag("ward") {
+        return num(1);
+    }
     let amount = d.amount * (1 + source_stat(d, "damage_dealt_pct"));
     if d.roll != () && d.roll < source_stat(d, "crit_chance") {
         amount *= 2;

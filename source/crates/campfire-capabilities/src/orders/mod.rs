@@ -1,10 +1,9 @@
-use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Has, QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_script::{ScriptError, ScriptId};
 use campfire_sim::{
@@ -19,6 +18,11 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::range::Range;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
+use crate::items::ItemsSet;
+use crate::items::inventory::Inventory;
+use crate::items::item_book::ItemBook;
+use crate::items::item_id::ItemId;
+use crate::items::shop::Shop;
 use crate::navigation::destination::Destination;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
@@ -32,6 +36,7 @@ use crate::orders::next_think::NextThink;
 use crate::orders::order::{Action, Order};
 use crate::orders::resetting::Resetting;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
+use crate::players::player_resources::PlayerResources;
 use crate::progression::points::Points;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
@@ -74,10 +79,11 @@ pub(crate) enum OrdersSet {
 pub struct Orders;
 
 impl Orders {
-    /// Adds orders to a match: in Inputs, orders become current and ranks are learned; in Think,
-    /// the resets whose units arrived end, then the units due this tick think; in Act, before
-    /// combat starts attacks, units walk their paths and chase their targets. It builds on the core `Units` installs, on
-    /// combat and on navigation. Without the core's scripts, as on a client, no unit thinks.
+    /// Adds orders to a match: in Inputs, orders become current, ranks are learned and, on the
+    /// server, items trade; in Think, the resets whose units arrived end, then the units due this
+    /// tick think; in Act, before combat starts attacks, units walk their paths and chase their
+    /// targets. It builds on the core `Units` installs, on combat and on navigation. Without the
+    /// core's scripts, as on a client, no unit thinks.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.init_resource::<PlayerOrders>();
         schedule.add_systems((
@@ -94,6 +100,7 @@ impl Orders {
         ));
         schedule.configure_sets((
             ActionsSet::HoldAtInputs.after(OrdersSet::Orders),
+            ItemsSet::HoldAtInputs.after(OrdersSet::Orders),
             OrdersSet::Orders.after(AbilitiesSet::Toggles),
         ));
         registry.register_component::<NextThink>();
@@ -102,7 +109,13 @@ impl Orders {
             return;
         }
         world.insert_resource(ByType::<Ai>::default());
-        schedule.add_systems((end_dead_resets, think).chain().in_set(SimSet::Think));
+        schedule.add_systems((
+            trade_items
+                .in_set(SimSet::Inputs)
+                .in_set(OrdersSet::Orders)
+                .after(learn_ranks),
+            (end_dead_resets, think).chain().in_set(SimSet::Think),
+        ));
     }
 
     /// The think period of `data` at `rate`, a tick at the least, for a script that defines
@@ -194,12 +207,15 @@ fn check_player_orders(
             Action::Slot { slot, target } => {
                 let kind = slots
                     .and_then(|slots| slots.slot(slot))
-                    .and_then(|held| book.get(held.action))
+                    .and_then(|held| book.get(held.action?))
                     .map(|action| action.kind.kind());
                 matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
                     .then_some(UnitOrder::Slot { slot, target })
             }
-            Action::Learn { .. } => None,
+            Action::Learn { .. }
+            | Action::Buy { .. }
+            | Action::Sell { .. }
+            | Action::Swap { .. } => None,
         };
         let entity = index.get(order.unit).expect("a unit the index named");
         checked.0.extend(checked_order.map(|order| (entity, order)));
@@ -269,6 +285,94 @@ fn learn_ranks(
         }
         points.spend();
         slots.learn(slot);
+    }
+}
+
+/// Applies each buy, sale and swap the tick's inputs give, in input order, so a later one in the
+/// tick sees what an earlier one changed: to a unit its player controls that carries an
+/// inventory, dead or not. A buy of an item the shop sells, and a sale, need the unit dead or in a
+/// shop of its team; a buy pays its price, which the player affords, and needs room for the item
+/// once the components it gives up left; a sale gives back the shop's share of the stack's cost.
+/// A swap swaps two of the unit's slots anywhere. Each slot whose item type changes holds its new
+/// item's action, or none, afresh; a swapped slot keeps its action's cooldown. An order that
+/// fails a check is dropped: a client can send anything. A client predicts no trade, as its
+/// resources and slots come from the server.
+fn trade_items(
+    (inputs, index): (Res<'_, TickInputs>, Res<'_, EntityIndex>),
+    (book, shop, resources): (
+        Option<Res<'_, ItemBook>>,
+        Option<Res<'_, Shop>>,
+        Option<ResMut<'_, PlayerResources>>,
+    ),
+    mut units: Query<
+        '_,
+        '_,
+        (
+            &Owner,
+            &Team,
+            &Position,
+            &mut Inventory,
+            Option<&mut ActionSlots>,
+            Has<Dead>,
+        ),
+    >,
+    (mut given_up, mut before): (Local<'_, Vec<u32>>, Local<'_, Vec<Option<ItemId>>>),
+) {
+    let (Some(book), Some(mut resources)) = (book, resources) else {
+        return;
+    };
+    for command in inputs.commands(Order::CAPABILITY) {
+        let Some(Order { unit, action }) = Order::decode(command.body) else {
+            continue;
+        };
+        let Some(Ok((owner, &team, &pos, mut inventory, mut slots, dead))) =
+            index.get(unit).map(|entity| units.get_mut(entity))
+        else {
+            continue;
+        };
+        if owner.slot() != command.slot {
+            continue;
+        }
+        inventory.note(&mut before);
+        let shop = shop
+            .as_deref()
+            .filter(|shop| dead || shop.serves(team, pos));
+        match (action, shop) {
+            (Action::Swap { from, to }, _) => {
+                inventory.swap_with(from, to, slots.as_deref_mut());
+                continue;
+            }
+            (Action::Buy { item }, Some(shop)) if shop.sells(item) => {
+                let Some(price) = inventory.purchase(&book, item, shop.resource, &mut given_up)
+                else {
+                    continue;
+                };
+                if resources.amount(command.slot, shop.resource) < price {
+                    continue;
+                }
+                resources
+                    .add(command.slot, shop.resource, -price)
+                    .expect("a price the player affords takes nothing below zero");
+                inventory.complete(&book, item, &given_up);
+            }
+            (Action::Sell { slot }, Some(shop)) => {
+                let Some(carried) = inventory.take(slot) else {
+                    continue;
+                };
+                let cost = book
+                    .get(carried.item)
+                    .expect("a carried item is in the book")
+                    .cost_in(shop.resource);
+                let refund = shop.refund(cost, carried.count.get());
+                if resources.add(command.slot, shop.resource, refund).is_none() {
+                    inventory.restore(slot, carried);
+                }
+            }
+            _ => continue,
+        }
+        if let Some(slots) = slots.as_deref_mut() {
+            inventory.follow(&book, slots, &before);
+        }
     }
 }
 
@@ -383,10 +487,10 @@ fn think(
     });
 }
 
-/// Sends each path walker with no attack target, on its path, to the waypoint it walks to, and on
-/// to the next once the waypoint is within its body, or it stands on the waypoint with no body:
-/// walkers that push each other never stand on one point. A walker that chased a target walks back
-/// to where it left its path.
+/// Sends each path walker with no attack target and no cast walking in range, on its path, to the
+/// waypoint it walks to, and on to the next once the waypoint is within its body, or it stands on
+/// the waypoint with no body: walkers that push each other never stand on one point. A walker that
+/// chased a target walks back to where it left its path.
 fn follow_paths(
     paths: Res<'_, Paths>,
     mut walkers: Query<
@@ -405,7 +509,8 @@ fn follow_paths(
     >,
 ) {
     for (&position, path, mut walker, slots, mut destination, route, body) in &mut walkers {
-        if walker.left() || slots.is_some_and(|slots| slots.attack_target().is_some()) {
+        let busy = |slots: &ActionSlots| slots.attack_target().is_some() || slots.approaching();
+        if walker.left() || slots.is_some_and(busy) {
             continue;
         }
         let path = path.get();
@@ -414,13 +519,14 @@ fn follow_paths(
             walker.advance();
             waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
         }
-        walk_to(&mut destination, route, waypoint);
+        Destination::walk_to(&mut destination, route, waypoint);
     }
 }
 
 /// Walks each unit that can move to its attack target while out of the range of the weapon it
-/// attacks it with, and stops it in range or in its windup. A unit whose target is gone, dead, no
-/// longer an enemy or one no weapon of it selects drops it and stops.
+/// attacks it with, and stops it in range or in its windup; a cast that walks in range walks the
+/// unit instead. A unit whose target is gone, dead, no longer an enemy or one no weapon of it
+/// selects drops it and stops.
 fn chase(
     book: Res<'_, ActionBook>,
     targets: Targets<'_, '_>,
@@ -442,7 +548,7 @@ fn chase(
         let Some(target) = slots.attack_target() else {
             continue;
         };
-        if slots.attacking().is_some() {
+        if slots.attacking().is_some() || slots.approaching() {
             continue;
         }
         let aimed = targets.enemy(team, target).and_then(|unit| {
@@ -453,30 +559,15 @@ fn chase(
         match aimed {
             None => {
                 slots.set_attack_target(None);
-                walk_to(&mut destination, route, None);
+                Destination::walk_to(&mut destination, route, None);
             }
             Some((unit, Range::Meters(range)))
                 if !targets.reaches(position, Body::radius_of(body), range, &unit) =>
             {
-                walk_to(&mut destination, route, Some(unit.pos));
+                Destination::walk_to(&mut destination, route, Some(unit.pos));
             }
-            Some(_) => walk_to(&mut destination, route, None),
+            Some(_) => Destination::walk_to(&mut destination, route, None),
         }
-    }
-}
-
-/// Sets where a unit walks, leaving a destination that does not change untouched: a write marks
-/// it changed, and an avatar's destination replicates. A unit whose `route` arrived short of
-/// `target` stays where it stands, with no destination, until the static bodies change.
-fn walk_to(
-    destination: &mut Mut<'_, Destination>,
-    route: Option<&Route>,
-    target: Option<Position>,
-) {
-    let arrived =
-        target.is_some_and(|target| route.is_some_and(|route| route.arrived_short_of(target)));
-    if !arrived {
-        destination.set_if_neq(Destination::to(target));
     }
 }
 

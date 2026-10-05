@@ -94,7 +94,7 @@ impl NavigationApi {
     }
 
     fn dash(ctx: &Ctx, unit: &Unit, to: DashTo, speed: Num) -> Checked<()> {
-        let dash = NavigationEffect::dash(ctx.view(), unit.id, to, speed);
+        let dash = NavigationEffect::dash(ctx.view(), &ctx.frame(), unit.id, to, speed);
         ctx.queue(dash.map_err(ApiError::fail)?)
     }
 

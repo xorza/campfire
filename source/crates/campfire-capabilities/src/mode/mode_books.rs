@@ -5,6 +5,7 @@ use bevy_ecs::world::World;
 use crate::actions::actions_column::ActionsColumn;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_bindings::CombatBindings;
+use crate::items::shop::Shop;
 use crate::mode::mode_data::ModeData;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::UnitTypeSetup;
@@ -20,7 +21,7 @@ use crate::values::declared_name::DeclaredName;
 
 /// The books of the mode's own rules: its stats, at the match's rate, under its move speed cap;
 /// its pools; its tags' effects and each unit type's own tags; what its combat reads; its slot
-/// kinds; and the names of its damage kinds and of its players' resources, by id.
+/// kinds; the names of its damage kinds and of its players' resources, by id; and its shop.
 #[derive(Debug)]
 pub struct ModeBooks {
     pub(crate) stats: StatBook,
@@ -33,6 +34,8 @@ pub struct ModeBooks {
     pub(crate) damage_kinds: Arc<[DeclaredName]>,
     pub(crate) resources: Arc<[DeclaredName]>,
     pub(crate) map: ModeMap,
+    /// Its shop, when it has one.
+    pub(crate) shop: Option<Shop>,
 }
 
 impl ModeBooks {
@@ -52,6 +55,7 @@ impl ModeBooks {
             damage_kinds,
             resources,
             map,
+            shop,
         } = self;
         world
             .non_send::<View>()
@@ -66,11 +70,14 @@ impl ModeBooks {
         world.insert_resource(tags);
         ActionsColumn::share_kinds(world.non_send::<View>(), slot_kinds.clone());
         world.insert_resource(slot_kinds);
+        if let Some(shop) = shop {
+            world.insert_resource(shop);
+        }
         map
     }
 
-    /// The books of `data`, which the package load checked, for `unit_types`, the mode's unit
-    /// types that stand, with the stat book `stats` and the resolved `map`. Each unit type is
+    /// The books of `data`, which the package load checked, for `unit_types`, the mode's unit types
+    /// that stand, with the stat book `stats`, the resolved `map` and its `shop`. Each unit type is
     /// tagged with the name of the layer it moves on, among `types`, when the mode names its
     /// layers.
     pub(crate) fn build(
@@ -79,6 +86,7 @@ impl ModeBooks {
         types: &mut UnitTypes,
         stats: StatBook,
         map: ModeMap,
+        shop: Option<Shop>,
     ) -> ModeBooks {
         let life = data.combat.life_pool(&data.pools).map(LifePool);
         let layers = &data.navigation.layers;
@@ -101,6 +109,7 @@ impl ModeBooks {
             damage_kinds: data.combat.damage_kinds.as_slice().into(),
             resources: data.resources.as_slice().into(),
             map,
+            shop,
         }
     }
 }

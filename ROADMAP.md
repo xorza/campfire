@@ -12,9 +12,7 @@ The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashe
 - Forced movement: dash, knock back, teleport ([Navigation](docs/design/04-capabilities/navigation.md#forced-movement)).
 - The core's planned script names: `ctx.pick` and `ctx.chance` from the secret stream, and the vector operators `*`, `+` and `-` ([Script API reference](docs/design/08-script-api-reference.md)).
 - Terrain in the map: the cells each layer's map blocks, which routes go round and the pathing grid holds, for walls and the jungle ([Navigation](docs/design/04-capabilities/navigation.md#data)); brush that blocks sight from outside it ([Vision](docs/design/04-capabilities/vision.md#grid-fog-of-war)).
-- The package load refuses a planned name, once no reference package uses one: design 08 accepts a planned name at load, so a package that uses one loads, and the name does nothing, as the 3v3's tags block `use` before items run.
 - Items for the MOBA: inventory, equipment, the shop, item actions and passives ([Items](docs/design/04-capabilities/items.md)).
-- The 3v3 scenario's players cast the abilities they learn, beside the attacks, spells, towers and camps of stage 4's scenario.
 
 Done when every mechanic design 07 lists runs from the reference heroes' and spells' packages, and none uses a planned name.
 
@@ -29,7 +27,7 @@ Done when a LAN match whose server is killed restores and ends, its log verifyin
 
 ### 7. Genre proofs: RTS and campaign
 
-- Summons: the `spawn` effect, unit types in packages other than the mode, and a timed life ([Effects](docs/design/04-capabilities/actions.md#effects)).
+- Summons: the `spawn` effect of an avatar's or a loadout's action, and unit types in packages other than the mode ([Effects](docs/design/04-capabilities/actions.md#effects)).
 - First cuts: `production` (build, gather; the train's cancel, refund, rally points, requirements and supply), region events, `quests` objectives, carry and campaigns, save converters.
 - The RTS skirmish and the RTS mission ([Genre proofs](docs/design/04-capabilities/genres.md#genre-proofs)).
 

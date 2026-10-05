@@ -4,6 +4,7 @@ pools = ["health", "mana"]
 tracks = ["level"]
 passive = "withering_touch"
 slots = { basic = ["grasping_wraps", "dread", "lash_out"], ultimate = ["tomb_bind"], weapon = ["attack"] }
+inventory = { slots = 6, kind = "item" }
 
 [combat]
 

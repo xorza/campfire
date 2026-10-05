@@ -1,20 +1,29 @@
 use bevy_ecs::bundle::Bundle;
+use std::num::{NonZeroU8, NonZeroU32};
+
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Command, TickInput};
+use serde::Deserialize;
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
-use crate::actions::action_slots::{InProgress, SlotAim};
+use crate::actions::action_slots::{InProgress, OrderPhase, SlotAim};
 use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
+use crate::items::inventory::Carried;
+use crate::items::item_book::ItemSpec;
+use crate::items::shop::ShopPlace;
 use crate::navigation::Navigation;
 use crate::navigation::path_walker::PathEnd;
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
+use crate::players::resource_amount::ResourceAmount;
+use crate::players::resource_id::ResourceId;
 use crate::scripts::error::ApiError;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
@@ -27,9 +36,12 @@ use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
+use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::package_path::PackagePath;
+use crate::values::region::Region;
 use crate::values::scalar::Scalar;
+use crate::values::share::Share;
 
 const ONE: i64 = 1 << 24;
 /// The reference 3v3's creep and tower AI as they were when these tests were written: the
@@ -397,7 +409,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
             slot: 1,
             target: ActionTarget::None,
         },
-        started: None,
+        phase: OrderPhase::Ordered,
     };
     for (at, order) in [(0, None), (7, None), (1, Some(train_order))] {
         game.tick(&[(0, &slot(at))]);
@@ -942,6 +954,7 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     Navigation::load_pathing(
         &mut game.sim.world,
         Grid::new(Num::ONE, bounds).unwrap(),
+        &Terrain::default(),
         vec![ground],
     );
     for z in 0..3 {
@@ -1173,4 +1186,210 @@ fn every_orders_type_is_state_and_restores() {
     game.sim.restore_into(&mut restored.sim);
     assert_eq!(restored.destination(fighter), Some(at(0, 0, 3)));
     assert!(restored.sim.try_get::<Resetting>(still).is_some());
+}
+
+/// A blade of 300 gold, an edge of 1000 built from two blades, a potion of 50, three to a slot,
+/// and a charm of 125 the shop does not sell; and team 0's shop from (−5, −5) to (5, 5), which
+/// gives 70% back on a sale.
+fn shop_match() -> Match {
+    let mut game = Match::with_items();
+    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let item = |cost: i64, components: &[u32], stack: u32| ItemSpec {
+        cost: vec![ResourceAmount {
+            resource: gold,
+            amount: cost,
+        }],
+        components: components.iter().map(|&at| ItemId::nth(at)).collect(),
+        stack: NonZeroU32::new(stack).unwrap(),
+        uses: None,
+        modifiers: Vec::new(),
+        action: None,
+    };
+    let book = ItemBook::new(vec![
+        item(300, &[], 1),
+        item(1000, &[0, 0], 1),
+        item(50, &[], 3),
+        item(125, &[], 1),
+    ]);
+    let share = Share::deserialize(toml::Value::String("0.7".to_owned())).unwrap();
+    let region = Region::new([Num::int(-5); 2], [Num::int(5); 2]);
+    let places = vec![ShopPlace {
+        team: Team::new(0),
+        region,
+    }];
+    let sells = [0, 1, 2].map(ItemId::nth).to_vec();
+    game.sim.world.insert_resource(book);
+    game.sim
+        .world
+        .insert_resource(Shop::new(sells, gold, places, share));
+    let mut resources = PlayerResources::new(2, 1);
+    resources.add(PlayerSlot::new(0), gold, 2000).unwrap();
+    game.sim.world.insert_resource(resources);
+    game
+}
+
+impl Match {
+    /// A match with all four capabilities and items.
+    fn with_items() -> Match {
+        let scripts = ScriptBudgets::new(ScriptLimits::ROOMY, 2);
+        let declared = [
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Navigation,
+            Capability::Orders,
+            Capability::Items,
+        ];
+        Match {
+            sim: TestMatch::server(&declared, scripts),
+        }
+    }
+
+    /// Player 0's gold.
+    fn gold(&self) -> i64 {
+        let resources = self.sim.world.resource::<PlayerResources>();
+        resources.amount(
+            PlayerSlot::new(0),
+            ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap(),
+        )
+    }
+
+    /// The items of `unit`'s inventory, slot by slot, each by its book's index and its count.
+    fn carried(&self, unit: StableId) -> Vec<Option<(usize, u32)>> {
+        let inventory = self.sim.try_get::<Inventory>(unit).unwrap();
+        let carried = |slot: &Option<Carried>| {
+            slot.map(|carried| (carried.item.index(), carried.count.get()))
+        };
+        inventory.slots().iter().map(carried).collect()
+    }
+}
+
+/// Player `slot`'s orders of `actions` to `unit`.
+fn trades(unit: StableId, actions: &[Action]) -> Vec<u8> {
+    let orders: Vec<Order> = actions
+        .iter()
+        .map(|&action| Order { unit, action })
+        .collect();
+    Order::payload(&orders)
+}
+
+const fn buy(item: u32) -> Action {
+    Action::Buy {
+        item: ItemId::nth(item),
+    }
+}
+
+#[test]
+fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
+    let mut game = shop_match();
+    let three = NonZeroU8::new(3).unwrap();
+    let hero = game.sim.spawn(
+        at(0, 0, 0),
+        (
+            Owner::new(PlayerSlot::new(0)),
+            Team::new(0),
+            Inventory::new(three, SlotKind::new(0)),
+        ),
+    );
+    let step = |game: &mut Match, actions: &[Action]| game.tick(&[(0, &trades(hero, actions))]);
+    // Two blades, 300 each, from 2000: 1400.
+    step(&mut game, &[buy(0), buy(0)]);
+    assert_eq!(
+        (game.gold(), game.carried(hero)),
+        (1400, vec![Some((0, 1)), Some((0, 1)), None])
+    );
+    // The edge gives both blades up: 1000 − 300 − 300 = 400, and takes the first slot they left.
+    step(&mut game, &[buy(1)]);
+    assert_eq!(
+        (game.gold(), game.carried(hero)),
+        (1000, vec![Some((1, 1)), None, None])
+    );
+    // Three potions stack in the first empty slot, 50 each; a fourth needs the last slot.
+    step(&mut game, &[buy(2), buy(2), buy(2), buy(2)]);
+    let full = vec![Some((1, 1)), Some((2, 3)), Some((2, 1))];
+    assert_eq!((game.gold(), game.carried(hero)), (800, full.clone()));
+    // No room for a blade, and the charm is not sold: both dropped.
+    step(&mut game, &[buy(0), buy(3)]);
+    assert_eq!((game.gold(), game.carried(hero)), (800, full));
+    // Three potions sell for 70% of 150, 105; a swap moves the edge; it sells for 700.
+    step(
+        &mut game,
+        &[Action::Sell { slot: 1 }, Action::Swap { from: 0, to: 2 }],
+    );
+    assert_eq!(
+        (game.gold(), game.carried(hero)),
+        (905, vec![Some((2, 1)), None, Some((1, 1))])
+    );
+    step(
+        &mut game,
+        &[Action::Sell { slot: 2 }, Action::Sell { slot: 1 }],
+    );
+    assert_eq!(
+        (game.gold(), game.carried(hero)),
+        (1605, vec![Some((2, 1)), None, None])
+    );
+
+    // Out of its shop, it neither buys nor sells, but swaps; the other player's orders and those
+    // past its gold are dropped; dead, it buys and sells anywhere.
+    *game.sim.get_mut::<Position>(hero) = at(10, 0, 0);
+    step(
+        &mut game,
+        &[
+            buy(2),
+            Action::Sell { slot: 0 },
+            Action::Swap { from: 0, to: 1 },
+        ],
+    );
+    assert_eq!(
+        (game.gold(), game.carried(hero)),
+        (1605, vec![None, Some((2, 1)), None])
+    );
+    game.tick(&[(1, &trades(hero, &[buy(2)]))]);
+    assert_eq!(game.gold(), 1605);
+    game.sim.insert(hero, Dead);
+    step(&mut game, &[buy(0), buy(0), buy(0), buy(0), buy(0), buy(0)]);
+    // 1605 buys a blade into slot 0 and a potion's stack in slot 1 has no room for a blade, so
+    // the next blade takes slot 2; then 1005 left, and slots are full: the rest are dropped.
+    assert_eq!(
+        (game.gold(), game.carried(hero)),
+        (1005, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
+    );
+    // An edge from the two blades costs 400 of 1005; one more edge past the gold left is dropped.
+    let mut resources = game.sim.world.resource_mut::<PlayerResources>();
+    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    resources.add(PlayerSlot::new(0), gold, -1000).unwrap();
+    step(&mut game, &[buy(1)]);
+    assert_eq!(
+        (game.gold(), game.carried(hero)),
+        (5, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
+    );
+    game.sim
+        .world
+        .resource_mut::<PlayerResources>()
+        .add(PlayerSlot::new(0), gold, 395)
+        .unwrap();
+    step(&mut game, &[buy(1)]);
+    assert_eq!(
+        (game.gold(), game.carried(hero)),
+        (0, vec![Some((1, 1)), Some((2, 1)), None])
+    );
+
+    // A unit of another team in the shop's region is out of a shop of its own.
+    let other = game.sim.spawn(
+        at(0, 0, 0),
+        (
+            Owner::new(PlayerSlot::new(0)),
+            Team::new(1),
+            Inventory::new(three, SlotKind::new(0)),
+        ),
+    );
+    game.sim
+        .world
+        .resource_mut::<PlayerResources>()
+        .add(PlayerSlot::new(0), gold, 300)
+        .unwrap();
+    game.tick(&[(0, &trades(other, &[buy(0)]))]);
+    assert_eq!(
+        (game.gold(), game.carried(other)),
+        (300, vec![None, None, None])
+    );
 }

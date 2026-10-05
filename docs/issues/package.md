@@ -10,4 +10,3 @@ Design: [Modules](../design/02-engine-core.md#modules), `package`. Rules: [Issue
 
 ## Ready
 
-- **Plan: N1.** Every name the [script API reference](../design/08-script-api-reference.md) lists as planned loads and does nothing: a call or a field fails when a script uses it, and a hook never runs. The 3v3's stun tags block `use`, which no item runs yet.

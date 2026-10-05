@@ -1,5 +1,6 @@
 # Two lanes, west and east, from the north base at z = -60 to the south base at z = 60, and the
-# jungle between them. Points are [x, z] in meters on the ground plane.
+# jungle between them, walled off from each lane's corners. Points are [x, z] in meters on the
+# ground plane.
 
 # The map runs from x = −48 to 48 and z = −68 to 68, and sight reveals 1 m cells over it.
 [bounds]
@@ -9,9 +10,29 @@ max = [48, 68]
 [grid]
 cell = "1.0"
 
+# Brush on the outer side of each lane's middle: only a unit in it sees who stands there.
+[[grid.brush]]
+points = [[-47, -6], [-43, -6], [-43, 6], [-47, 6]]
+
+[[grid.brush]]
+points = [[43, -6], [47, -6], [47, 6], [43, 6]]
+
 # Units plan their routes over half-meter cells.
 [navigation]
 cell = "0.5"
+
+# Walls between each lane's corner and the jungle, the same on every side.
+[[navigation.walls]]
+points = [[-34, -32], [-31, -32], [-31, -23], [-34, -23]]
+
+[[navigation.walls]]
+points = [[31, -32], [34, -32], [34, -23], [31, -23]]
+
+[[navigation.walls]]
+points = [[-34, 23], [-31, 23], [-31, 32], [-34, 32]]
+
+[[navigation.walls]]
+points = [[31, 23], [34, 23], [34, 32], [31, 32]]
 
 [[paths]]
 name = "west"
@@ -117,6 +138,19 @@ unit_type = "tower"
 team = "south"
 path = "east"
 pos = [42, 16]
+
+# Each base's shop: a region of its team's round its spawn.
+[[markers]]
+name = "north_shop"
+tags = ["shop"]
+team = "north"
+region = { min = [-8, -68], max = [8, -56] }
+
+[[markers]]
+name = "south_shop"
+tags = ["shop"]
+team = "south"
+region = { min = [-8, 56], max = [8, 68] }
 
 [[markers]]
 name = "camp1"

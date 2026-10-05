@@ -21,7 +21,7 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::frame::Frame;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
-use crate::units::forced_move::{DashTo, ForcedMove};
+use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove};
 use crate::units::script_view::View;
 use crate::values::bounds::Bounds;
 
@@ -29,11 +29,12 @@ use crate::values::bounds::Bounds;
 /// in place of any under way, or a teleport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NavigationEffect {
-    /// A dash of `step` a tick to `to`.
+    /// A dash of `step` a tick to `to`, the delivery `delivers` when it is one.
     Dash {
         unit: StableId,
         to: DashTo,
         step: Num,
+        delivers: Option<DashDelivery>,
     },
     /// A knock back `distance` away from `from` over `ticks`.
     KnockBack {
@@ -50,9 +51,11 @@ pub(crate) enum NavigationEffect {
 
 impl NavigationEffect {
     /// A dash of `unit`, which walks, to `to` at `speed` meters a second, which `view` sees: a
-    /// step a tick of `speed` over the tick rate, rounded once, more than 0.
+    /// step a tick of `speed` over the tick rate, rounded once, more than 0. A call that delivers
+    /// an instant action, its `on_resolve`, makes the dash that delivery, as `frame` says.
     pub(crate) fn dash(
         view: &View,
+        frame: &Frame,
         unit: StableId,
         to: DashTo,
         speed: Num,
@@ -63,7 +66,12 @@ impl NavigationEffect {
             .checked_div_int(hz)
             .filter(|&step| step > Num::ZERO)
             .ok_or(ApiError::NotASpeed)?;
-        Ok(NavigationEffect::Dash { unit, to, step })
+        Ok(NavigationEffect::Dash {
+            unit,
+            to,
+            step,
+            delivers: frame.dash_delivers(),
+        })
     }
 
     /// A knock back of `unit`, which walks, `distance` away from `from`, more than 0 and within
@@ -116,7 +124,7 @@ impl NavigationEffect {
         };
         let effect = match does {
             Does::Dash { to, speed } => other(to).and_then(|to| {
-                NavigationEffect::dash(view, unit, DashTo::Unit(to), speed.number(frame))
+                NavigationEffect::dash(view, frame, unit, DashTo::Unit(to), speed.number(frame))
             }),
             Does::KnockBack { from, distance, ms } => other(from).and_then(|from| {
                 let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
@@ -154,7 +162,9 @@ impl Effect for NavigationEffect {
             return;
         }
         let forced = match self {
-            NavigationEffect::Dash { to, step, .. } => ForcedMove::Dash { to, step },
+            NavigationEffect::Dash {
+                to, step, delivers, ..
+            } => ForcedMove::Dash { to, step, delivers },
             NavigationEffect::KnockBack {
                 from,
                 distance,

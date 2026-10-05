@@ -1,5 +1,7 @@
 use std::ops::Range;
 
+use crate::vision::brush_map::Hidden;
+
 /// The cells each vision group sees, and those its detectors see, as bitmaps kept between ticks:
 /// a tick clears only the words the tick before set, so it costs what the units see, not the
 /// map's size times the groups. A group has a detection bitmap only once a unit of it detects.
@@ -42,19 +44,30 @@ impl SightMaps {
         self.set_detected.clear();
     }
 
-    /// Reveals `cells`, a run that is not empty, to `group`, and to its detection too when
-    /// `detects`.
-    pub(crate) fn reveal(&mut self, group: usize, cells: Range<usize>, detects: bool) {
+    /// Reveals `cells`, a run that is not empty, but those `hidden` holds, to `group`, and to its
+    /// detection too when `detects`.
+    pub(crate) fn reveal(
+        &mut self,
+        group: usize,
+        cells: Range<usize>,
+        detects: bool,
+        hidden: Option<Hidden<'_>>,
+    ) {
         let run = group * self.words;
-        set_bits(
-            &mut self.revealed,
-            &mut self.set_revealed,
+        let bitmap = Bitmap {
+            words: &mut self.revealed,
+            set: &mut self.set_revealed,
             run,
-            cells.clone(),
-        );
+        };
+        bitmap.set(cells.clone(), hidden);
         if detects {
             let run = self.detection_slot(group) * self.words;
-            set_bits(&mut self.detected, &mut self.set_detected, run, cells);
+            let bitmap = Bitmap {
+                words: &mut self.detected,
+                set: &mut self.set_detected,
+                run,
+            };
+            bitmap.set(cells, hidden);
         }
     }
 
@@ -84,21 +97,37 @@ impl SightMaps {
     }
 }
 
-/// Sets the bits of `cells`, a run that is not empty, in the bitmap at `run` of `words`, and
-/// notes each word it sets in `set`.
-fn set_bits(words: &mut [u64], set: &mut Vec<usize>, run: usize, cells: Range<usize>) {
-    debug_assert!(!cells.is_empty());
-    let (first, last) = (run + cells.start / 64, run + (cells.end - 1) / 64);
-    let from = u64::MAX << (cells.start % 64);
-    let to = u64::MAX >> (63 - (cells.end - 1) % 64);
-    if first == last {
-        words[first] |= from & to;
-    } else {
-        words[first] |= from;
-        words[first + 1..last].fill(u64::MAX);
-        words[last] |= to;
+/// One bitmap of the bitmaps `words`, at `run`, and the words of them a tick set.
+#[derive(Debug)]
+struct Bitmap<'a> {
+    words: &'a mut [u64],
+    set: &'a mut Vec<usize>,
+    run: usize,
+}
+
+impl Bitmap<'_> {
+    /// Sets the bits of `cells`, a run that is not empty, but those `hidden` holds, and notes each
+    /// word it sets.
+    fn set(self, cells: Range<usize>, hidden: Option<Hidden<'_>>) {
+        debug_assert!(!cells.is_empty());
+        let (first, last) = (cells.start / 64, (cells.end - 1) / 64);
+        let from = u64::MAX << (cells.start % 64);
+        let to = u64::MAX >> (63 - (cells.end - 1) % 64);
+        for word in first..=last {
+            let mut bits = u64::MAX;
+            if word == first {
+                bits &= from;
+            }
+            if word == last {
+                bits &= to;
+            }
+            if let Some(hidden) = hidden {
+                bits &= !hidden.word(word);
+            }
+            self.words[self.run + word] |= bits;
+        }
+        self.set.extend(self.run + first..=self.run + last);
     }
-    set.extend(first..=last);
 }
 
 #[cfg(test)]

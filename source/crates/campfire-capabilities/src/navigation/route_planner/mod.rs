@@ -20,10 +20,11 @@ use crate::values::grid::Grid;
 /// to the open cell nearest it, and a goal no route reaches to the nearest cell the walker reaches,
 /// which the clearance's regions find before the search; a short route, which they do not serve,
 /// ends on the reached cell nearest it. The route then keeps only the cells where the straight line
-/// from the waypoint before would overlap a body, tested exactly. The buffers stay between routes,
-/// and a route touches only the cells it reaches. Its work, long routes and short, counts against
-/// one limit a tick, as many units as the grid has cells: a cell expanded, a cell scanned for the
-/// nearest one, a line tested against the bodies.
+/// from the waypoint before would overlap a body or touch a cell the walls block, each tested
+/// exactly. The buffers stay between routes, and a route touches only the cells it reaches. Its
+/// work, long routes and short, counts against one limit a tick, as many units as the grid has
+/// cells: a cell expanded, a cell scanned for the nearest one, a line tested against the bodies,
+/// and a cell a line's test against the walls visits.
 #[derive(Resource, Debug)]
 pub(crate) struct RoutePlanner {
     /// The route each cell was last reached in, as twice its number, plus one once expanded.
@@ -133,11 +134,19 @@ impl Window {
 }
 
 impl Walkable<'_> {
-    /// Whether a body blocks a walker along `segment`: a static one, or a short route's blocker.
+    /// Whether something blocks a walker along `segment`: a static body, a cell the walls block it
+    /// from, or a short route's blocker.
     pub(crate) fn blocks(&self, segment: Segment) -> bool {
+        self.blocks_counting(segment, &mut 0)
+    }
+
+    /// Whether something blocks a walker along `segment`, as `blocks` says; each cell the walls'
+    /// test visits adds to `work`.
+    fn blocks_counting(&self, segment: Segment, work: &mut u32) -> bool {
         let walker = self.clearance.walker();
         let radius = walker.radius;
         self.statics.blocks(segment, walker)
+            || self.clearance.walled(segment, work)
             || self.short.is_some_and(|short| {
                 let reach = |body: &IndexedBody| radius + body.radius;
                 short
@@ -211,7 +220,7 @@ impl RoutePlanner {
         let goal = grid.clamp(goal);
         self.mark_blockers(walkable);
         let mut work = 1;
-        let clear = !walkable.blocks(Segment::new(goal, goal));
+        let clear = !walkable.blocks_counting(Segment::new(goal, goal), &mut work);
         let from = grid.nearest_cell(start);
         // A short route stays in its window, where the regions, made over the whole grid, do not
         // tell what it reaches; a start with no open cell beside it reaches nothing they hold.
@@ -300,8 +309,8 @@ impl RoutePlanner {
     }
 
     /// Writes into `waypoints` the route's cells from `start` to `last`, at its height, keeping
-    /// only those where the straight line on from the waypoint before would overlap a body; the
-    /// lines it tested.
+    /// only those where the straight line on from the waypoint before would be blocked; its work,
+    /// a line tested and each cell the walls' test visited.
     fn smooth(
         &self,
         walkable: Walkable<'_>,
@@ -322,7 +331,7 @@ impl RoutePlanner {
             let mut next = anchor - 1;
             while next > 0 && {
                 tests += 1;
-                !walkable.blocks(Segment::new(from, point(next - 1)))
+                !walkable.blocks_counting(Segment::new(from, point(next - 1)), &mut tests)
             } {
                 next -= 1;
             }

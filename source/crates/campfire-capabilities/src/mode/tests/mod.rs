@@ -25,7 +25,9 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::error::ModeError;
-use crate::mode::map_data::{GridData, MapData, MapPoint, MarkerData, PathData, PlacedUnitData};
+use crate::mode::map_data::{
+    GridData, MapData, MapNavigationData, MapPoint, MarkerData, PathData, PlacedUnitData,
+};
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
@@ -326,6 +328,7 @@ fn grunt() -> UnitKit {
         body: None,
         tracks: TrackSet::default(),
         queue: None,
+        inventory: None,
     }
 }
 
@@ -356,9 +359,11 @@ fn map() -> MapData {
     MapData {
         grid: Some(GridData {
             cell: Scalar::Int(1),
+            brush: Vec::new(),
         }),
-        navigation: Some(GridData {
+        navigation: Some(MapNavigationData {
             cell: Scalar::Int(1),
+            walls: Vec::new(),
         }),
         paths: vec![PathData {
             name: DeclaredName::new("mid").unwrap(),
@@ -569,6 +574,7 @@ fn mode_files() -> ModeFiles {
             }],
             tags: BTreeMap::new(),
             tracks: tracks(),
+            shop: None,
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),
@@ -738,9 +744,18 @@ impl Game {
             let stats = StatBook::new(&files.data.stats, [], Num::int(10));
             let relations = &files.data.relations;
             let unit_type = |name: &str| view.unit_type_named(name);
-            let map = ModeMap::resolve(&files.map, &files.teams, relations, unit_type).unwrap();
+            let rules = &files.data.navigation;
+            let map =
+                ModeMap::resolve(&files.map, &files.teams, relations, rules, unit_type).unwrap();
             let unit_types = &setup.units.unit_types;
-            ModeBooks::build(&files.data, unit_types, &mut view.types_mut(), stats, map)
+            ModeBooks::build(
+                &files.data,
+                unit_types,
+                &mut view.types_mut(),
+                stats,
+                map,
+                None,
+            )
         };
         sim.install(|world, schedule, registry| {
             Mode::install(world, schedule, registry, setup, books);

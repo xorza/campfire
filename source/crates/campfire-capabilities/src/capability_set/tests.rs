@@ -153,7 +153,7 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 
 /// The layer of each module of the crate, lowest first: a module imports from its own layer
 /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-const LAYERS: [(&str, u8); 19] = [
+const LAYERS: [(&str, u8); 20] = [
     ("values", 0),
     ("units", 1),
     ("scripts", 1),
@@ -169,6 +169,7 @@ const LAYERS: [(&str, u8); 19] = [
     ("vision", 5),
     ("progression", 5),
     ("production", 5),
+    ("items", 5),
     ("orders", 6),
     ("mode", 7),
     ("capability_set", 8),
@@ -276,7 +277,7 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// call, which resolves the names it is given once, or in the load, which resolves the
 /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
 /// when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 66] = [
+const LOOKUPS: [(&str, &str); 67] = [
     // The load.
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "cost_target_named"),
@@ -301,6 +302,7 @@ const LOOKUPS: [(&str, &str); 66] = [
     ("actions/actions_column.rs", "named"),
     ("combat/combat_api.rs", "damage_kind_named"),
     ("combat/combat_api.rs", "pool_named"),
+    ("mode/map_data.rs", "layer_named"),
     ("mode/marker.rs", "named"),
     ("mode/mod.rs", "input_type_named"),
     ("mode/mode_api.rs", "kind_named"),
@@ -385,7 +387,7 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
 
 /// The state types of the core, then those each capability adds to the ones it builds on, in
 /// name order: each its own.
-const STATE: [(Option<Capability>, &[&str]); 11] = [
+const STATE: [(Option<Capability>, &[&str]); 12] = [
     (
         None,
         &[
@@ -395,6 +397,7 @@ const STATE: [(Option<Capability>, &[&str]); 11] = [
             "sim.position",
             "sim.tick",
             "units.body",
+            "units.lifespan",
             "units.owner",
             "units.relations",
             "units.spawn_point",
@@ -455,6 +458,7 @@ const STATE: [(Option<Capability>, &[&str]); 11] = [
     (Some(Abilities), &[]),
     (Some(Orders), &["orders.next_think", "orders.resetting"]),
     (Some(Capability::Production), &["production.train_queue"]),
+    (Some(Capability::Items), &["items.inventory"]),
 ];
 
 #[test]

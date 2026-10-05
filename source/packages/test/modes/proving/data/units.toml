@@ -39,7 +39,7 @@ params = { xp = 0 }
 pools = ["health"]
 stats = { health = { base = 800 } }
 combat = {}
-slots = { build = ["train_guard"] }
+slots = { build = ["train_guard"], watch = ["post_ward"] }
 production = { queue = 2 }
 vision = { sight_range = "5.0" }
 collision = { radius = "0.8" }
@@ -53,6 +53,11 @@ stats = { health = { base = 400 } }
 combat = {}
 vision = { sight_range = "3.0" }
 collision = { radius = "1.0" }
+
+# A ward: hidden, it sees 4 m round it, and nothing strikes it.
+[units.ward]
+tags = ["ward", "stealthed"]
+vision = { sight_range = "4.0" }
 
 [units.tower_bolt]
 projectile = { speed = "12", homing = true }

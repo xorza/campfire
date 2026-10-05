@@ -3,25 +3,25 @@ use std::{iter, slice};
 
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
-    CollisionData, CombatRules, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting,
-    EngineTag, EnumRecord, FilterData, Hook, MemberKind, ModifierData, ModifierProblem, MoveData,
-    NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits, Range,
-    RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace,
-    UnitTypeData, UnitTypeFile,
+    CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
+    Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, ModifierData,
+    ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
+    ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Status,
+    Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::{
-    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem, Place,
-    ScriptProblem,
+    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, ItemProblem, Limit, LoadError,
+    LoadProblem, Place, ScriptProblem,
 };
 use crate::mode_packages::ModePackages;
 use crate::modifier_ways::{ModifierWays, Way};
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
-use crate::script_facts::{EnumString, ScriptFacts, ScriptName};
+use crate::script_facts::{EnumString, Function, ScriptFacts, ScriptName};
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
@@ -45,10 +45,20 @@ pub(crate) struct LoadCheck<'a> {
     state_fields: BTreeSet<&'a str>,
 }
 
+/// What the action whose effects a check reads may name: its package's unit types, and whether
+/// the package is the mode, whose actions may spawn the mode's unit types.
+#[derive(Debug, Clone, Copy)]
+struct EffectScope<'u> {
+    units: &'u BTreeMap<DeclaredName, UnitTypeFile>,
+    mode: bool,
+}
+
 /// The facts one package's checks share.
 #[derive(Debug)]
 struct PackageNames<'a> {
     package: &'a Package,
+    /// Whether it is the mode package, whose actions may spawn the mode's unit types.
+    mode: bool,
     /// What data says of each script it names.
     scripts: BTreeMap<&'a PackagePath, ScriptUse<'a>>,
     modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
@@ -112,6 +122,7 @@ impl<'a> LoadCheck<'a> {
             state_fields: LoadCheck::state_fields(packages),
         };
         check.mode().map_err(fail)?;
+        check.planned_data().map_err(fail)?;
         check.loadout()?;
         for (view, dependent) in packages.packages().skip(1).zip(&packages.dependencies) {
             check
@@ -200,7 +211,7 @@ impl<'a> LoadCheck<'a> {
         };
         packages
             .map
-            .check_walkable(&walkers, body_of)
+            .check_walkable(&walkers, &packages.data.navigation, body_of)
             .map_err(LoadProblem::Map)
     }
 
@@ -231,6 +242,7 @@ impl<'a> LoadCheck<'a> {
         }
         self.slot_kinds()?;
         self.choices()?;
+        self.items()?;
         for (name, unit_type) in units {
             let at = Place::UnitType(name.clone());
             self.unit_type(unit_type, &at, &content.actions, &content.modifiers)?;
@@ -255,7 +267,8 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::NoPathingGrid);
         }
-        let mut names = PackageNames::new(&packages.mode, &content.modifiers, &content.actions);
+        let mut names =
+            PackageNames::new(&packages.mode, true, &content.modifiers, &content.actions);
         let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
         names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
         for unit_type in units.values() {
@@ -302,6 +315,9 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         let package = &dependent.package;
         let content = &dependent.content;
+        if !content.items.is_empty() {
+            return Err(LoadProblem::Item(ItemProblem::OutsideMode));
+        }
         let (actions, modifiers) = (&content.actions, &content.modifiers);
         let slotted = match &dependent.kind {
             DependentKind::Avatar(avatar) => {
@@ -343,7 +359,7 @@ impl<'a> LoadCheck<'a> {
         }
         let loadout_ranks = self.packages.data.loadout_ranks();
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
-        let mut names = PackageNames::new(package, modifiers, actions);
+        let mut names = PackageNames::new(package, false, modifiers, actions);
         self.actions(actions, &content.units, ranks, &mut names)?;
         let ways = self.packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, actions, ranks)?;
@@ -375,7 +391,11 @@ impl<'a> LoadCheck<'a> {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
             self.ranked(id, ability, ranks(id.as_str()))?;
-            self.effects(id, ability, units)?;
+            let scope = EffectScope {
+                units,
+                mode: names.mode,
+            };
+            self.effects(id, ability, scope)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
                     DeliveryData::Projectile { .. } => Capability::Projectiles,
@@ -589,25 +609,9 @@ impl<'a> LoadCheck<'a> {
                 return Err(misuse(found.clone()));
             }
             for function in &facts.functions {
-                let hook = Hook::named(&function.name);
-                if hook.is_none()
-                    && Hook::PREFIXES
-                        .iter()
-                        .any(|prefix| function.name.starts_with(prefix))
-                {
-                    return Err(fail(ScriptProblem::UnknownHook(function.name.clone())));
-                }
-                let Some(hook) = hook else {
+                let Some(hook) = self.hook(function, roles).map_err(fail)? else {
                     continue;
                 };
-                if !roles.contains(&hook.role()) || hook.params() != function.params {
-                    return Err(fail(ScriptProblem::UnknownHook(function.name.clone())));
-                }
-                if !function.ctx_first {
-                    return Err(misuse(CtxMisuse::HookParam {
-                        function: function.name.clone(),
-                    }));
-                }
                 if let Some(capability) = hook.capability() {
                     self.require(capability, &at)?;
                 }
@@ -620,14 +624,15 @@ impl<'a> LoadCheck<'a> {
                 let Some(member) = member else {
                     return Err(fail(ScriptProblem::UnknownCtx(used.name.clone())));
                 };
+                if member.status == Status::Planned {
+                    return Err(fail(ScriptProblem::Planned(used.name.clone())));
+                }
                 if let Some(capability) = member.capability {
                     self.require(capability, &at)?;
                 }
             }
             for used in &facts.members {
-                if !self.member_known(facts, &used.name, used.kind) {
-                    return Err(fail(ScriptProblem::UnknownMember(used.name.clone())));
-                }
+                self.member(facts, &used.name, used.kind).map_err(fail)?;
             }
             self.enums(facts).map_err(fail)?;
             if let Some(name) = facts
@@ -710,24 +715,72 @@ impl<'a> LoadCheck<'a> {
         fields
     }
 
-    /// Whether a field or method `name` that a script with `facts` reads on a value is one some
-    /// handle has, one the engine has of its own, a key of the script's object maps, or one of
-    /// its functions, called as a method.
-    fn member_known(&self, facts: &ScriptFacts, name: &str, kind: MemberKind) -> bool {
-        let handle = self.api.members().iter().any(|member| {
+    /// The hook `function` defines, if its name is a hook's: one of `roles` that runs, with the
+    /// hook's parameters, and `ctx` first. A name with a hook's prefix that names none fails.
+    fn hook(
+        &self,
+        function: &Function,
+        roles: &BTreeSet<ScriptRole>,
+    ) -> Result<Option<Hook>, ScriptProblem> {
+        let name = &function.name;
+        let Some(hook) = Hook::named(name) else {
+            if Hook::PREFIXES.iter().any(|prefix| name.starts_with(prefix)) {
+                return Err(ScriptProblem::UnknownHook(name.clone()));
+            }
+            return Ok(None);
+        };
+        if !roles.contains(&hook.role()) || hook.params() != function.params {
+            return Err(ScriptProblem::UnknownHook(name.clone()));
+        }
+        let planned = self
+            .api
+            .hooks()
+            .iter()
+            .any(|held| held.hook == hook && held.status == Status::Planned);
+        if planned {
+            return Err(ScriptProblem::Planned(name.clone()));
+        }
+        if !function.ctx_first {
+            return Err(ScriptProblem::CtxMisuse(CtxMisuse::HookParam {
+                function: name.clone(),
+            }));
+        }
+        Ok(Some(hook))
+    }
+
+    /// A script may read or call `name`, of `kind`, on a value other than `ctx`: a handle's field
+    /// or method that runs, one the engine has of its own, a key of the script's object maps or
+    /// one of its functions. A name only a planned handle member has is planned.
+    fn member(
+        &self,
+        facts: &ScriptFacts,
+        name: &str,
+        kind: MemberKind,
+    ) -> Result<(), ScriptProblem> {
+        let own = match kind {
+            MemberKind::Field => {
+                self.api.builtin(&format!("get${name}"))
+                    || facts.map_keys.iter().any(|key| key == name)
+            }
+            _ => {
+                self.api.builtin(name)
+                    || facts.functions.iter().any(|function| function.name == name)
+            }
+        };
+        if own {
+            return Ok(());
+        }
+        let mut problem = ScriptProblem::UnknownMember(name.to_owned());
+        let handles = self.api.members().iter().filter(|member| {
             member.owner != ApiOwner::Ctx && member.name == name && member.kind == kind
         });
-        handle
-            || match kind {
-                MemberKind::Field => {
-                    self.api.builtin(&format!("get${name}"))
-                        || facts.map_keys.iter().any(|key| key == name)
-                }
-                _ => {
-                    self.api.builtin(name)
-                        || facts.functions.iter().any(|function| function.name == name)
-                }
+        for member in handles {
+            if member.status != Status::Planned {
+                return Ok(());
             }
+            problem = ScriptProblem::Planned(name.to_owned());
+        }
+        Err(problem)
     }
 
     /// A name a script at `at` gives an argument of a name kind is one of its kind that the match
@@ -787,7 +840,11 @@ impl<'a> LoadCheck<'a> {
                 packages.content.units.contains_key(name)
                     || packages.avatar_names().any(|avatar| avatar == name)
             }
-            NameKind::Param | NameKind::Cost | NameKind::Layer | NameKind::Message => {
+            NameKind::Param
+            | NameKind::Cost
+            | NameKind::Layer
+            | NameKind::Message
+            | NameKind::Item => {
                 unreachable!("no argument of the script API is a {}", named.kind)
             }
         };
@@ -914,7 +971,7 @@ impl<'a> LoadCheck<'a> {
         &self,
         id: &DeclaredName,
         action: &ActionData,
-        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        scope: EffectScope<'_>,
     ) -> Result<(), LoadProblem> {
         for (list, effects) in action.effect_lists() {
             let delivers = action.delivery.is_some() || action.kind == ActionKind::Attack;
@@ -929,7 +986,57 @@ impl<'a> LoadCheck<'a> {
                 Hook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
                 _ => list == Hook::OnHit,
             };
-            self.effect_list(id, action, units, list, effects, reaches)?;
+            self.effect_list(id, action, scope, list, effects, reaches)?;
+        }
+        Ok(())
+    }
+
+    /// A forced move `moves` of `action`, at `at`, in a list that reaches a unit when `reaches`:
+    /// its other unit one the list reaches, and a knock back's time whole milliseconds; `fail`
+    /// makes the problem of the effect's list.
+    fn forced_move(
+        &self,
+        action: &ActionData,
+        moves: &MoveData,
+        reaches: bool,
+        at: &Place,
+        fail: impl Fn(EffectProblem) -> LoadProblem,
+    ) -> Result<(), LoadProblem> {
+        self.require(Capability::Navigation, at)?;
+        let (other, ms) = match moves {
+            MoveData::Dash { to, .. } => (to, None),
+            MoveData::KnockBack { from, ms, .. } => (from, Some(ms)),
+        };
+        if *other == EffectTo::Reached && !reaches {
+            return Err(fail(EffectProblem::NoUnit));
+        }
+        if ms.is_some_and(|ms| !whole_ms(action, ms)) {
+            return Err(fail(EffectProblem::Duration));
+        }
+        Ok(())
+    }
+
+    /// A spawn of `unit_type` for `duration_ms` by `action`, at `at`, of the mode when `mode`:
+    /// only the mode's actions spawn, a unit type of the mode's that stands, for whole
+    /// milliseconds; `fail` makes the problem of the effect's list.
+    fn spawn(
+        &self,
+        action: &ActionData,
+        unit_type: &DeclaredName,
+        duration_ms: Option<&Number>,
+        mode: bool,
+        at: &Place,
+        fail: impl Fn(EffectProblem) -> LoadProblem,
+    ) -> Result<(), LoadProblem> {
+        if !mode {
+            return Err(fail(EffectProblem::Summon));
+        }
+        let units = &self.packages.content.units;
+        if units.get(unit_type).is_none_or(UnitTypeFile::delivers) {
+            return Err(unknown(at, unit_type, NameKind::UnitType));
+        }
+        if duration_ms.is_some_and(|duration| !whole_ms(action, duration)) {
+            return Err(fail(EffectProblem::Duration));
         }
         Ok(())
     }
@@ -944,7 +1051,7 @@ impl<'a> LoadCheck<'a> {
         &self,
         id: &DeclaredName,
         action: &ActionData,
-        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        scope: EffectScope<'_>,
         list: Hook,
         effects: &[EffectData],
         reaches: bool,
@@ -956,8 +1063,12 @@ impl<'a> LoadCheck<'a> {
             list,
             problem,
         };
+        // An `on_resolve` aimed at a point reaches no unit, and a spawn there takes the point.
+        let aims_point = list == Hook::OnResolve
+            && matches!(action.targeting, Targeting::Point | Targeting::Direction);
         for effect in effects {
-            if effect.to == EffectTo::Reached && !reaches {
+            let placed = aims_point && matches!(effect.does, Effecting::Spawn { .. });
+            if effect.to == EffectTo::Reached && !reaches && !placed {
                 return Err(fail(EffectProblem::NoUnit));
             }
             let unknown = |of, name: &DeclaredName| LoadProblem::Unknown {
@@ -1003,26 +1114,15 @@ impl<'a> LoadCheck<'a> {
                         return Err(unknown(NameKind::Tag, tag));
                     }
                 }
-                Effecting::Move(moves) => {
-                    self.require(Capability::Navigation, &at)?;
-                    let (other, ms) = match moves {
-                        MoveData::Dash { to, .. } => (to, None),
-                        MoveData::KnockBack { from, ms, .. } => (from, Some(ms)),
-                    };
-                    if *other == EffectTo::Reached && !reaches {
-                        return Err(fail(EffectProblem::NoUnit));
-                    }
-                    if ms.is_some_and(|ms| !whole_ms(action, ms)) {
-                        return Err(fail(EffectProblem::Duration));
-                    }
-                }
+                Effecting::Move(moves) => self.forced_move(action, moves, reaches, &at, fail)?,
                 Effecting::Launch {
                     area,
                     on_hit,
                     on_end,
                 } => {
                     self.require(Capability::Areas, &at)?;
-                    let unit_type = units
+                    let unit_type = scope
+                        .units
                         .get(area)
                         .ok_or_else(|| unknown(NameKind::UnitType, area))?;
                     if unit_type.area.is_none() {
@@ -1031,9 +1131,20 @@ impl<'a> LoadCheck<'a> {
                             unit_type: area.clone(),
                         }));
                     }
-                    self.effect_list(id, action, units, Hook::OnHit, on_hit, true)?;
-                    self.effect_list(id, action, units, Hook::OnEnd, on_end, false)?;
+                    self.effect_list(id, action, scope, Hook::OnHit, on_hit, true)?;
+                    self.effect_list(id, action, scope, Hook::OnEnd, on_end, false)?;
                 }
+                Effecting::Spawn {
+                    unit_type,
+                    duration_ms,
+                } => self.spawn(
+                    action,
+                    unit_type,
+                    duration_ms.as_ref(),
+                    scope.mode,
+                    &at,
+                    fail,
+                )?,
             }
             for number in effect.does.numbers() {
                 number_holds(action, number).map_err(fail)?;
@@ -1153,6 +1264,7 @@ impl<'a> LoadCheck<'a> {
             (unit_type.production.is_some(), Capability::Production),
             (unit_type.projectile.is_some(), Capability::Projectiles),
             (unit_type.area.is_some(), Capability::Areas),
+            (unit_type.inventory.is_some(), Capability::Items),
         ];
         for (used, capability) in sections {
             if used {
@@ -1223,6 +1335,7 @@ impl<'a> LoadCheck<'a> {
                 }
             }
         }
+        self.inventory(unit_type, at)?;
         if let Some(passive) = &unit_type.passive {
             modifier_exists(modifiers, passive.as_str(), at)?;
         }
@@ -1237,6 +1350,232 @@ impl<'a> LoadCheck<'a> {
                 at: at.clone(),
                 name: track.to_string(),
             });
+        }
+        Ok(())
+    }
+
+    /// The inventory of a unit type at `at`, if it has one: it fills a slot kind the mode declares,
+    /// of one rank, as an item's action has, and its slots and the type's own are no more than a
+    /// unit holds.
+    fn inventory(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
+        let Some(inventory) = &unit_type.inventory else {
+            return Ok(());
+        };
+        let kinds = &self.packages.data.slots;
+        let kind = kinds.named(inventory.kind.as_str()).ok_or_else(|| {
+            LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
+                at: at.clone(),
+                kind: inventory.kind.to_string(),
+            })
+        })?;
+        if kinds.ranks(kind) != 1 {
+            return Err(LoadProblem::Item(ItemProblem::RankedInventory {
+                at: at.clone(),
+                kind: inventory.kind.clone(),
+            }));
+        }
+        let own: usize = unit_type.slots.values().map(Vec::len).sum();
+        if own + usize::from(inventory.slots.get()) > ActionSlots::LIMIT {
+            return Err(LoadProblem::Item(ItemProblem::TooManySlots(at.clone())));
+        }
+        Ok(())
+    }
+
+    /// The mode's item types and its shop: an item costs in the mode's player resources, at
+    /// least what its components cost in each, is built from items of the mode and never from
+    /// itself, and names modifiers of the mode, none another's passive, and an action of the
+    /// mode; no unit type or choice fills an inventory's slot kind; and the shop holds. Either
+    /// needs `items`.
+    fn items(&self) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let (data, content) = (&packages.data, &packages.content);
+        let items = &content.items;
+        for (id, item) in items {
+            let at = Place::Item(id.clone());
+            self.require(Capability::Items, &at)?;
+            let resource =
+                |name: &&DeclaredName| ResourceId::named(&data.resources, name.as_str()).is_none();
+            if let Some(name) = item.cost.keys().find(resource) {
+                return Err(unknown(&at, name, NameKind::Resource));
+            }
+            if let Some(name) = item
+                .components
+                .iter()
+                .find(|name| !items.contains_key(*name))
+            {
+                return Err(unknown(&at, name, NameKind::Item));
+            }
+            let modifiers = &content.modifiers;
+            if let Some(name) = item
+                .modifiers
+                .iter()
+                .find(|name| !modifiers.contains_key(*name))
+            {
+                return Err(unknown(&at, name, NameKind::Modifier));
+            }
+            if let Some(action) = item
+                .action
+                .as_ref()
+                .filter(|action| !content.actions.contains_key(*action))
+            {
+                return Err(unknown(&at, action, NameKind::Ability));
+            }
+        }
+        let mode_passives = content.units.iter().filter_map(|(name, unit_type)| {
+            Some((Place::UnitType(name.clone()), unit_type.passive.as_ref()?))
+        });
+        for (owner, modifier) in mode_passives.chain(action_passives(&content.actions)) {
+            let held = items
+                .iter()
+                .find(|(_, item)| item.modifiers.contains(modifier));
+            if let Some((item, _)) = held {
+                return Err(LoadProblem::SharedPassive {
+                    modifier: modifier.clone(),
+                    owners: [owner, Place::Item(item.clone())],
+                });
+            }
+        }
+        self.inventory_kinds()?;
+        if let Some(looped) = component_loop(items) {
+            return Err(LoadProblem::Item(ItemProblem::ComponentLoop(
+                looped.clone(),
+            )));
+        }
+        for (id, item) in items {
+            let mut parts: BTreeMap<&DeclaredName, u64> = BTreeMap::new();
+            for component in &item.components {
+                for (resource, &amount) in &items[component].cost {
+                    *parts.entry(resource).or_default() += u64::from(amount);
+                }
+            }
+            let covers = |(resource, parts): (&&DeclaredName, &u64)| {
+                u64::from(item.cost.get(*resource).copied().unwrap_or(0)) >= *parts
+            };
+            if !parts.iter().all(covers) {
+                return Err(LoadProblem::Item(ItemProblem::CheaperThanComponents(
+                    id.clone(),
+                )));
+            }
+        }
+        self.shop()
+    }
+
+    /// The mode's shop: it sells the mode's items, each costing only in the one player resource
+    /// it takes, at a tag of the map's markers, each marker of which has a region and a team it
+    /// serves.
+    fn shop(&self) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let (data, items) = (&packages.data, &packages.content.items);
+        let Some(shop) = &data.shop else {
+            return Ok(());
+        };
+        let at = Place::Shop;
+        self.require(Capability::Items, &at)?;
+        if let Some(name) = shop.items.iter().find(|name| !items.contains_key(*name)) {
+            return Err(unknown(&at, name, NameKind::Item));
+        }
+        if ResourceId::named(&data.resources, shop.resource.as_str()).is_none() {
+            return Err(unknown(&at, &shop.resource, NameKind::Resource));
+        }
+        let markers = &packages.map.markers;
+        let shops = markers
+            .iter()
+            .filter(|marker| marker.tags.contains(&shop.at));
+        let mut places = 0;
+        for marker in shops {
+            if marker.region.is_none() || marker.team.is_none() {
+                let marker = marker.name.clone();
+                return Err(LoadProblem::Item(ItemProblem::ShopMarker(marker)));
+            }
+            places += 1;
+        }
+        if places == 0 {
+            return Err(unknown(&at, &shop.at, NameKind::MarkerTag));
+        }
+        let other = |item: &&DeclaredName| {
+            items[*item]
+                .cost
+                .keys()
+                .any(|resource| *resource != shop.resource)
+        };
+        if let Some(item) = shop.items.iter().find(other) {
+            return Err(LoadProblem::Item(ItemProblem::ShopResource(item.clone())));
+        }
+        Ok(())
+    }
+
+    /// No unit type, the mode's or an avatar, and no choice puts actions in a slot kind whose
+    /// slots an inventory fills: those slots are the items'.
+    fn inventory_kinds(&self) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let typed =
+            packages
+                .content
+                .units
+                .iter()
+                .map(|(name, unit_type)| (Place::UnitType(name.clone()), unit_type))
+                .chain(packages.dependencies.iter().filter_map(
+                    |dependent| match &dependent.kind {
+                        DependentKind::Avatar(avatar) => Some((
+                            Place::Avatar(dependent.package.header.name.clone()),
+                            &avatar.unit,
+                        )),
+                        DependentKind::Loadout => None,
+                    },
+                ));
+        let typed: Vec<(Place, &UnitTypeFile)> = typed.collect();
+        let kinds: BTreeSet<&DeclaredName> = typed
+            .iter()
+            .filter_map(|(_, unit_type)| Some(&unit_type.inventory.as_ref()?.kind))
+            .collect();
+        for (at, unit_type) in &typed {
+            if let Some(kind) = unit_type.slots.keys().find(|kind| kinds.contains(kind)) {
+                return Err(LoadProblem::Item(ItemProblem::InventoryKindSlotted {
+                    at: at.clone(),
+                    kind: kind.clone(),
+                }));
+            }
+        }
+        for (name, choice) in &packages.data.choices {
+            if let Some(kind) = choice.slot.as_ref().filter(|kind| kinds.contains(kind)) {
+                return Err(LoadProblem::Item(ItemProblem::InventoryKindSlotted {
+                    at: Place::Choice(name.clone()),
+                    kind: kind.clone(),
+                }));
+            }
+        }
+        Ok(())
+    }
+
+    /// No data gives a field design 08 plans: the mode's `state_version`, or a projectile type's
+    /// `gravity` in any package. An action's planned effects fail the action's own checks.
+    fn planned_data(&self) -> Result<(), LoadProblem> {
+        let planned = |table: DataTable, field: &str| {
+            self.api.data().iter().any(|held| {
+                held.table == table && held.name == field && held.status == Status::Planned
+            })
+        };
+        let packages = self.packages;
+        if packages.data.state_version.is_some() && planned(DataTable::Mode, "state_version") {
+            return Err(LoadProblem::Planned {
+                field: "state_version",
+                at: Place::Mode,
+            });
+        }
+        let units = packages
+            .packages()
+            .flat_map(|view| view.content.units.iter());
+        for (name, unit_type) in units {
+            let falls = unit_type
+                .projectile
+                .as_ref()
+                .is_some_and(|projectile| projectile.gravity.is_some());
+            if falls && planned(DataTable::Projectile, "gravity") {
+                return Err(LoadProblem::Planned {
+                    field: "gravity",
+                    at: Place::UnitType(name.clone()),
+                });
+            }
         }
         Ok(())
     }
@@ -1434,11 +1773,13 @@ impl<'a> LoadCheck<'a> {
 impl<'a> PackageNames<'a> {
     const fn new(
         package: &'a Package,
+        mode: bool,
         modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
         actions: &'a BTreeMap<DeclaredName, ActionData>,
     ) -> PackageNames<'a> {
         PackageNames {
             package,
+            mode,
             scripts: BTreeMap::new(),
             modifiers,
             actions,
@@ -1651,4 +1992,48 @@ fn delivery_holds(
 /// Whether `names` holds `name`.
 fn declares<'n>(mut names: impl Iterator<Item = &'n DeclaredName>, name: &str) -> bool {
     names.any(|declared| declared.as_str() == name)
+}
+
+/// The problem of `name`, of `of`, unknown at `at`.
+fn unknown(at: &Place, name: &DeclaredName, of: NameKind) -> LoadProblem {
+    LoadProblem::Unknown {
+        at: at.clone(),
+        name: name.to_string(),
+        of,
+    }
+}
+
+/// An item of `items` built, through its components, from itself, if one is: the first a walk of
+/// each item's components in id order meets again on its own path.
+fn component_loop(items: &BTreeMap<DeclaredName, ItemData>) -> Option<&DeclaredName> {
+    /// Where the walk is with an item: not met, on the path, or done with every item it is built
+    /// from.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Mark {
+        Open,
+        OnPath,
+        Done,
+    }
+    fn walk<'i>(
+        id: &'i DeclaredName,
+        items: &'i BTreeMap<DeclaredName, ItemData>,
+        marks: &mut BTreeMap<&'i DeclaredName, Mark>,
+    ) -> Option<&'i DeclaredName> {
+        match marks.get(id).copied().unwrap_or(Mark::Open) {
+            Mark::OnPath => return Some(id),
+            Mark::Done => return None,
+            Mark::Open => {}
+        }
+        marks.insert(id, Mark::OnPath);
+        let components = items.get(id).map_or(&[][..], |item| &item.components[..]);
+        for component in components {
+            if let Some(looped) = walk(component, items, marks) {
+                return Some(looped);
+            }
+        }
+        marks.insert(id, Mark::Done);
+        None
+    }
+    let mut marks = BTreeMap::new();
+    items.keys().find_map(|id| walk(id, items, &mut marks))
 }

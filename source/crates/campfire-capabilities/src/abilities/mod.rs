@@ -22,7 +22,7 @@ use crate::units::action_id::ActionId;
 
 use crate::actions::action_data::TogglePer;
 use crate::actions::action_slots::{
-    ActionCall, ActionSlot, ActionSlots, ChannelStep, InProgress, SlotAim,
+    ActionCall, ActionSlot, ActionSlots, ChannelCall, ChannelStep, InProgress, OrderPhase, SlotAim,
 };
 use crate::values::action_start::ActionStart;
 
@@ -30,13 +30,18 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
 use crate::areas::Areas;
 use crate::combat::CombatSet;
+use crate::items::inventory::Inventory;
+use crate::items::item_book::ItemBook;
+use crate::navigation::destination::Destination;
+use crate::navigation::route::Route;
 
 use crate::actions::targets::Targets;
+use crate::deliveries::Deliveries;
 use crate::deliveries::delivering::Delivering;
 use crate::players::player_resources::PlayerResources;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
-use crate::units::forced_move::ForcedMove;
+use crate::units::forced_move::{DashDelivery, ForcedMove};
 
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
@@ -92,7 +97,7 @@ impl Abilities {
         slots
             .channeling()
             .and_then(|slot| slots.slot(slot))
-            .and_then(|slot| book.get(slot.action)?.channel_rule(slot.rank))
+            .and_then(|slot| book.get(slot.action?)?.channel_rule(slot.rank))
             .map_or(Ticks::ZERO, |rule| rule.tick)
     }
 
@@ -104,10 +109,12 @@ impl Abilities {
 
     /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
     /// before the tick's projectiles launch, due casts resolve: the delivery, the cost, the
-    /// cooldown and the script's effects apply together, or none of them. A cast resolves in the
+    /// cooldown and the script's effects apply together, or none of them. A dash an instant cast
+    /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
     /// only cools down, as the server's does.
     pub fn install(world: &mut World, schedule: &mut Schedule, _: &mut StateRegistry) {
+        Deliveries::install(world, schedule);
         schedule.add_systems(start_casts.in_set(SimSet::Act).in_set(ActionsSet::Start));
         if !world.contains_non_send::<Ctx>() {
             schedule.add_systems(
@@ -175,7 +182,12 @@ fn run_channels(
 fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
     let unit = world.entity(entity);
     let forced = unit.contains::<ForcedMove>();
-    let blocked = ForcedMove::blocks(unit.get::<UnitTags>(), forced, Block::Cast);
+    let slots = unit.get::<ActionSlots>();
+    let channel = slots.and_then(|slots| slots.slot(slots.channeling()?));
+    let group = channel.map_or(Block::Cast, |slot| {
+        Inventory::group(unit.get::<Inventory>(), slot.kind)
+    });
+    let blocked = ForcedMove::blocks(unit.get::<UnitTags>(), forced, group);
     world.resource_scope(|world, book: Mut<'_, ActionBook>| {
         let mut slots = world
             .get_mut::<ActionSlots>(entity)
@@ -185,37 +197,34 @@ fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
     })
 }
 
-/// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, at its action's rank, as
-/// the action started, with the unit and, for `on_interrupt`, the target, when the action's script
-/// defines it; a failed call applies nothing, and is recorded.
+/// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, of its action at its rank,
+/// as the action started, with the unit and, for `on_interrupt`, the target, when the action's
+/// script defines it; a failed call applies nothing, and is recorded.
 fn channel_call(
     batch: &mut ScriptBatch<'_>,
     ctx: &Ctx,
     now: Tick,
     caster: StableId,
     entity: Entity,
-    call: ActionCall,
+    call: ChannelCall,
     hook: Hook,
 ) {
-    let ActionCall { aim, start } = call;
+    let ChannelCall {
+        call: ActionCall { aim, start },
+        action: id,
+        rank,
+    } = call;
     let world = batch.world();
-    let unit = world.entity(entity);
-    let slot = unit
-        .get::<ActionSlots>()
-        .and_then(|slots| slots.slot(aim.slot))
-        .expect("a channel's slot");
-    let owner = unit.get::<Owner>().map(|owner| owner.slot());
+    let owner = world.get::<Owner>(entity).map(|owner| owner.slot());
     let book = world.resource::<ActionBook>();
-    let action = book
-        .get(slot.action)
-        .expect("a slot's action is in the book");
+    let action = book.get(id).expect("a channel's action is in the book");
     let (Some(script), Some(handle)) = (action.hook(hook), ctx.view().unit(caster)) else {
         return;
     };
     let package = action.package;
     let start = CallStart {
         start: Some(start),
-        ..CallStart::cast(slot.action, slot.rank, caster, package)
+        ..CallStart::cast(id, rank, caster, package)
     };
     let begun = ctx.frame().begin(world, start);
     let outcome = begun.and_then(|()| {
@@ -268,6 +277,7 @@ fn run_toggles(
             &mut ActionSlots,
             Option<&mut Pools>,
             Option<&UnitTags>,
+            Option<&Inventory>,
             Has<Dead>,
         ),
     >,
@@ -275,23 +285,23 @@ fn run_toggles(
 ) {
     let now = tick.start();
     let second = Abilities::second(*rate);
-    for (mut slots, mut pools, tags, dead) in &mut units {
+    for (mut slots, mut pools, tags, inventory, dead) in &mut units {
         on.clear();
         on.extend(
             (0..)
                 .zip(slots.iter())
                 .filter(|(_, slot)| slot.toggle.is_some()),
         );
-        let stops = dead || UnitTags::effects_of(tags).blocks(Block::Cast);
         for &(at, slot) in &*on {
-            if stops {
+            let group = Inventory::group(inventory, slot.kind);
+            if dead || UnitTags::effects_of(tags).blocks(group) {
                 slots.toggle_off(at);
                 continue;
             }
             let next = slot.toggle.expect("a toggle that is on");
-            let toggle = book
-                .get(slot.action)
-                .and_then(|action| action.toggle_rule(slot.rank))
+            let toggle = slot
+                .action
+                .and_then(|action| book.get(action)?.toggle_rule(slot.rank))
                 .expect("a toggle that is on has its rule");
             if toggle.per != TogglePer::Second || next > now {
                 continue;
@@ -308,9 +318,11 @@ fn run_toggles(
 }
 
 /// Starts each cast a unit was ordered, in Act: one that passes its checks, its target within
-/// range, starts, or for a charged action starts to charge, and any other is dropped. A unit its
-/// tags keep from casting keeps its order: a cast it started goes back to it, and a charge ends,
-/// spending nothing. A charge its order released, or that is full, resolves.
+/// range, starts, or for a charged action starts to charge; one whose target is beyond range, of a
+/// unit that walks, walks in range first, its walk in place of any other, and stops there to start;
+/// any other is dropped, and stops the walk it took. A unit its tags or a forced move keep from
+/// casting keeps its order, and stands: a cast it started or walked in range for goes back to it,
+/// and a charge ends, spending nothing. A charge its order released, or that is full, resolves.
 fn start_casts(
     tick: Res<'_, SimTick>,
     book: Res<'_, ActionBook>,
@@ -328,14 +340,37 @@ fn start_casts(
             Option<&Body>,
             Option<&UnitTags>,
             Has<ForcedMove>,
+            Option<&mut Destination>,
+            Option<&Route>,
+            Option<&Inventory>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pools, owner, body, tags, forced) in &mut units {
-        let blocked = ForcedMove::blocks(tags, forced, Block::Cast);
-        if let Some(InProgress::Charge { .. }) = slots.in_progress() {
+    for (
+        &position,
+        &team,
+        mut slots,
+        pools,
+        owner,
+        body,
+        tags,
+        forced,
+        mut destination,
+        route,
+        inventory,
+    ) in &mut units
+    {
+        let Some(underway) = slots.in_progress() else {
+            continue;
+        };
+        let kind = slots
+            .slot(underway.slot())
+            .expect("a slot the unit has")
+            .kind;
+        let blocked = ForcedMove::blocks(tags, forced, Inventory::group(inventory, kind));
+        if let InProgress::Charge { .. } = underway {
             if blocked {
                 slots.interrupt();
             } else {
@@ -343,25 +378,30 @@ fn start_casts(
             }
             continue;
         }
-        let Some(InProgress::Order { aim, started }) = slots.in_progress() else {
+        let Some(InProgress::Order { aim, phase }) = slots.in_progress() else {
             continue;
         };
         let slot = slots
             .slot(aim.slot)
             .expect("an order of a slot the unit has");
-        let action = book
-            .get(slot.action)
-            .expect("a slot's action is in the book");
+        let approached = phase == OrderPhase::Approaching;
+        // An item sold in the tick of its order leaves its slot with no action to start.
+        let Some(id) = slot.action else {
+            drop_cast(&mut slots, destination.as_mut(), route, approached);
+            continue;
+        };
+        let action = book.get(id).expect("a slot's action is in the book");
         if action.kind.kind() != ActionKind::Cast {
             continue;
         }
         if blocked {
-            if started.is_some() {
-                slots.interrupt();
+            if approached {
+                walk(destination.as_mut(), route, None);
             }
+            slots.interrupt();
             continue;
         }
-        if started.is_some() {
+        if let OrderPhase::Started(_) = phase {
             continue;
         }
         if slot.toggle.is_some() {
@@ -379,28 +419,54 @@ fn start_casts(
         };
         let attitude = |other| targets.attitude(team, other);
         let radius = Body::radius_of(body);
-        let started = book
+        let checked = book
             .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
             .map(|mut checked| {
                 checked.clamp(position, radius, &targets);
                 checked
-            })
-            .filter(|checked| checked.in_range(position, radius, &targets))
-            .map(|checked| (checked.values, checked.target));
-        match started {
-            Some((values, target)) => {
-                if let Some(most) = values.charge {
-                    slots.charge(target, position, now, now.after(most));
-                } else {
-                    let start = ActionStart {
-                        origin: position,
-                        charge: None,
-                    };
-                    slots.start(now.after(values.windup), target, start);
+            });
+        let Some(checked) = checked else {
+            drop_cast(&mut slots, destination.as_mut(), route, approached);
+            continue;
+        };
+        if !checked.in_range(position, radius, &targets) {
+            match (destination.is_some(), checked.aimed_at(&targets)) {
+                (true, Some(to)) => {
+                    walk(destination.as_mut(), route, Some(to));
+                    slots.approach();
                 }
+                _ => slots.stop(),
             }
-            None => slots.stop(),
+            continue;
         }
+        if approached {
+            walk(destination.as_mut(), route, None);
+        }
+        slots.begin(&checked, position, now);
+    }
+}
+
+/// Drops the cast ordered in `slots`, and stops the walk it took when it `approached`.
+fn drop_cast(
+    slots: &mut ActionSlots,
+    destination: Option<&mut Mut<'_, Destination>>,
+    route: Option<&Route>,
+    approached: bool,
+) {
+    if approached {
+        walk(destination, route, None);
+    }
+    slots.stop();
+}
+
+/// Walks the unit of `destination`, one that walks, to `to`, or stops it.
+fn walk(
+    destination: Option<&mut Mut<'_, Destination>>,
+    route: Option<&Route>,
+    to: Option<Position>,
+) {
+    if let Some(destination) = destination {
+        Destination::walk_to(destination, route, to);
     }
 }
 
@@ -428,7 +494,11 @@ fn resolve_casts(
     due.retain(|&Keyed { entity, .. }| {
         let unit = world.entity(entity);
         let forced = unit.contains::<ForcedMove>();
-        let can_cast = !ForcedMove::blocks(unit.get::<UnitTags>(), forced, Block::Cast);
+        let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
+        let due = slots.in_progress().expect("a due cast is under way");
+        let kind = slots.slot(due.slot()).expect("a cast's slot").kind;
+        let group = Inventory::group(unit.get::<Inventory>(), kind);
+        let can_cast = !ForcedMove::blocks(unit.get::<UnitTags>(), forced, group);
         if !can_cast {
             world
                 .get_mut::<ActionSlots>(entity)
@@ -467,13 +537,14 @@ fn predict_casts(
             Option<&Owner>,
             Option<&UnitTags>,
             Has<ForcedMove>,
+            Option<&Inventory>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
     let second = Abilities::second(*rate);
-    for (&team, mut slots, pools, owner, tags, forced) in &mut casters {
+    for (&team, mut slots, pools, owner, tags, forced, inventory) in &mut casters {
         let Some(ActionCall {
             aim: casting,
             start,
@@ -483,7 +554,8 @@ fn predict_casts(
         else {
             continue;
         };
-        if ForcedMove::blocks(tags, forced, Block::Cast) {
+        let kind = slots.slot(casting.slot).expect("a cast's slot").kind;
+        if ForcedMove::blocks(tags, forced, Inventory::group(inventory, kind)) {
             slots.interrupt();
             continue;
         }
@@ -569,7 +641,8 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
 }
 
 /// Applies a cast that ran: its delivery's launches, then the effects it queued in `frame` and
-/// its handle writes, its cost and its cooldown.
+/// its handle writes, its cost and its cooldown, and of an item's action, a use of its
+/// consumable.
 fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Prepared) {
     let from = *world.get::<Position>(entity).expect("a caster stands");
     let by = Delivering {
@@ -606,6 +679,15 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots")
         .spend(prepared.slot, now, prepared.cooldown, prepared.charges);
+    if world.contains_resource::<ItemBook>() {
+        world.resource_scope(|world, book: Mut<'_, ItemBook>| {
+            let mut caster = world.entity_mut(entity);
+            let carried = caster.get_components_mut::<(&mut Inventory, &mut ActionSlots)>();
+            if let Ok((mut inventory, mut slots)) = carried {
+                inventory.spend_use(&book, &mut slots, prepared.slot);
+            }
+        });
+    }
     if prepared.toggles {
         let second = Abilities::second(*world.resource::<TickRate>());
         world
@@ -615,8 +697,9 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
     }
 }
 
-/// The cast of `entity` checked again, and its params at its rank put in the frame; `None` when
-/// it no longer passes its checks, or its caster is no unit the view read.
+/// The cast of `entity` checked again, and its params at its rank put in the frame, with its
+/// delivery for a dash it starts when it delivers at once; `None` when it no longer passes its
+/// checks, or its caster is no unit the view read.
 fn prepare(
     world: &World,
     ctx: &Ctx,
@@ -657,6 +740,16 @@ fn prepare(
         world,
         CallStart {
             start: Some(start),
+            dash_delivers: checked
+                .action
+                .delivery
+                .is_none()
+                .then_some(DashDelivery::new(
+                    caster.id,
+                    checked.id,
+                    checked.rank,
+                    Some(start),
+                )),
             ..CallStart::cast(checked.id, checked.rank, caster.id, package)
         },
     )?;
@@ -698,7 +791,7 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
         Hook::OnResolve,
         &mut ctx.frame(),
         ctx.view(),
-        prepared.aim.unit(),
+        prepared.aim,
     )?;
     let Some(script) = prepared.on_resolve else {
         return Ok(());

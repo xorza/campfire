@@ -10,7 +10,9 @@ use crate::mode::placed_unit::{PlacedPath, PlacedUnit};
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::Navigation;
+use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::paths::Paths;
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
@@ -20,6 +22,8 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::name_list::NameList;
+use crate::values::polygon::Polygon;
+use crate::values::region::Region;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
@@ -32,6 +36,8 @@ pub struct ModeMap {
     pub(crate) placed: Vec<PlacedUnit>,
     pub(crate) markers: Vec<MarkerSpec>,
     pub(crate) grid: Option<Grid>,
+    /// The areas of the vision grid's brush, in the map's order.
+    pub(crate) brush: Vec<Polygon>,
 }
 
 /// What a client's prediction takes of the map as a match does, and no script reads: its metric,
@@ -42,15 +48,18 @@ pub(crate) struct MapGround {
     bounds: Bounds,
     relations: Relations,
     pathing: Option<Grid>,
+    /// The cells the walls block on the pathing grid; none without it.
+    terrain: Terrain,
 }
 
-/// A marker of the map, names resolved: its name, its tags, its point and its team if it names
-/// them, and its params.
+/// A marker of the map, names resolved: its name, its tags, its point, its region and its team
+/// if it names them, and its params.
 #[derive(Debug, Clone)]
 pub(crate) struct MarkerSpec {
     pub(crate) name: Box<str>,
     pub(crate) tags: NameList,
     pub(crate) pos: Option<Position>,
+    pub(crate) region: Option<Region>,
     pub(crate) team: Option<Team>,
     pub(crate) params: BTreeMap<DeclaredName, ModeParam>,
 }
@@ -74,14 +83,16 @@ impl ModeMap {
     /// mode does not have: teams that share a name or more than `Team::LIMIT`, or more than
     /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
     /// mode lacks, or of a pair named before; and in the map, grids that make no grid of its
-    /// bounds, a path with no waypoint or another's name, a placed unit of a type, team or path it
-    /// lacks, or that walks from an end of no path, a marker of another's name, a team it lacks, or
-    /// with a point and a region or a region outside the bounds, and any point that does not fit
-    /// its metric or its bounds.
+    /// bounds, a wall on a layer of no name `rules` declares, a wall or a brush with points that
+    /// make no simple polygon, a path with no waypoint or another's name, a placed unit of a type,
+    /// team or path it lacks, or that walks from an end of no path, a marker of another's name, a
+    /// team it lacks, or with a point and a region or a region outside the bounds, and any point
+    /// that does not fit its metric or its bounds.
     pub(crate) fn resolve(
         map: &MapData,
         teams: &[TeamManifest],
         relations: &[RelationData],
+        rules: &NavigationRules,
         unit_type: impl Fn(&str) -> Option<UnitType>,
     ) -> Result<ModeMap, ModeError> {
         ModeMap::check_teams(teams)?;
@@ -104,15 +115,14 @@ impl ModeMap {
             resolved.set(pair[0], pair[1], relation.relation, relation.vision);
         }
         let grid = map.grid()?;
+        let brush = map.brush()?;
         if grid.is_some() && teams.len() > VisionGrid::MAX_TEAMS {
             return Err(ModeError::TooManyVisionTeams);
         }
         let pathing = map.pathing()?;
-        let point = |point: &MapPoint| match point.position() {
-            _ if !point.fits(map.metric) => Err(ModeError::PointShape),
-            Some(pos) if map.bounds.contains(pos) => Ok(pos),
-            _ => Err(ModeError::OutOfBounds),
-        };
+        let walls = map.walls(rules)?;
+        let terrain = pathing.map_or_else(Terrain::default, |grid| Terrain::new(&grid, &walls));
+        let point = |point: &MapPoint| map.point(point);
         let mut points = Vec::with_capacity(map.paths.len());
         for (at, path) in map.paths.iter().enumerate() {
             if map.paths[..at].iter().any(|other| other.name == path.name) {
@@ -146,6 +156,31 @@ impl ModeMap {
                 pos: point(&unit.pos)?,
             });
         }
+        let markers = ModeMap::markers(map, team)?;
+        Ok(ModeMap {
+            ground: MapGround {
+                metric: map.metric,
+                bounds: map.bounds,
+                relations: resolved,
+                pathing,
+                terrain,
+            },
+            paths,
+            placed,
+            markers,
+            grid,
+            brush,
+        })
+    }
+
+    /// The markers of `map`, each with its team as `team` resolves it; an error for two of one
+    /// name, a team the mode lacks, or a region that is no box within the bounds or beside a
+    /// point.
+    fn markers(
+        map: &MapData,
+        team: impl Fn(&DeclaredName) -> Result<Team, ModeError>,
+    ) -> Result<Vec<MarkerSpec>, ModeError> {
+        let point = |point: &MapPoint| map.point(point);
         let mut markers = Vec::with_capacity(map.markers.len());
         for (at, marker) in map.markers.iter().enumerate() {
             if map.markers[..at]
@@ -154,32 +189,32 @@ impl ModeMap {
             {
                 return Err(ModeError::RepeatedName(marker.name.clone()));
             }
-            let marker_team = marker.team.as_ref().map(team).transpose()?;
+            let marker_team = marker.team.as_ref().map(&team).transpose()?;
             if let Some(region) = marker.region
                 && (marker.pos.is_some() || !region.holds(map.metric, map.bounds))
             {
                 return Err(ModeError::Region(marker.name.clone()));
             }
+            let region = marker.region.map(|region| {
+                let [min, max] = [region.min, region.max].map(|corner| {
+                    let at = corner
+                        .position()
+                        .expect("the region holds within the bounds")
+                        .get();
+                    [at.x, at.z]
+                });
+                Region::new(min, max)
+            });
             markers.push(MarkerSpec {
                 name: marker.name.as_str().into(),
                 tags: marker.tags.iter().map(DeclaredName::as_str).collect(),
                 pos: marker.pos.as_ref().map(point).transpose()?,
+                region,
                 team: marker_team,
                 params: marker.params.clone(),
             });
         }
-        Ok(ModeMap {
-            ground: MapGround {
-                metric: map.metric,
-                bounds: map.bounds,
-                relations: resolved,
-                pathing,
-            },
-            paths,
-            placed,
-            markers,
-            grid,
-        })
+        Ok(markers)
     }
 }
 
@@ -191,12 +226,13 @@ impl MapGround {
             bounds,
             relations,
             pathing,
+            terrain,
         } = self;
         world.insert_resource(metric);
         world.insert_resource(bounds);
         world.insert_resource(relations);
         if let Some(pathing) = pathing {
-            Navigation::load_pathing(world, pathing, walkers);
+            Navigation::load_pathing(world, pathing, &terrain, walkers);
         }
     }
 }

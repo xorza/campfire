@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer};
 
 use crate::areas::area_data::AreaData;
 use crate::combat::combat_data::CombatData;
+use crate::items::inventory_data::InventoryData;
 use crate::orders::ai_data::AiData;
 use crate::production::production_data::ProductionData;
 use crate::projectiles::projectile_data::ProjectileData;
@@ -39,6 +40,8 @@ pub struct UnitTypeFile {
     pub projectile: Option<ProjectileData>,
     /// It is an area type: actions deliver its units.
     pub area: Option<AreaData>,
+    /// The slots it carries items in.
+    pub inventory: Option<InventoryData>,
 }
 
 impl UnitTypeFile {
@@ -74,6 +77,7 @@ impl UnitTypeFile {
             production,
             projectile,
             area,
+            inventory,
         } = self;
         projectile.is_some() != area.is_some()
             && pools.is_empty()
@@ -85,6 +89,7 @@ impl UnitTypeFile {
             && collision.is_none()
             && tracks.is_empty()
             && production.is_none()
+            && inventory.is_none()
     }
 }
 
@@ -115,6 +120,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             production: Option<ProductionData>,
             projectile: Option<ProjectileData>,
             area: Option<AreaData>,
+            inventory: Option<InventoryData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         Ok(UnitTypeFile {
@@ -135,6 +141,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             production: fields.production,
             projectile: fields.projectile,
             area: fields.area,
+            inventory: fields.inventory,
         })
     }
 }

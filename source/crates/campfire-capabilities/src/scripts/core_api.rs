@@ -52,7 +52,10 @@ impl CoreApi {
             TagEffect::Blocks(Block::Move),
             Status::Runs(ApiVersion::FIRST),
         )
-        .tag_effect(TagEffect::Blocks(Block::Use), Status::Planned);
+        .tag_effect(
+            TagEffect::Blocks(Block::Use),
+            Status::Runs(ApiVersion::FIRST),
+        );
         api.ty::<Params>("Params")
             .index(|params: &mut Params, name: ImmutableString| params.get(&name));
     }

@@ -265,6 +265,74 @@ pub enum LoadProblem {
         path: PackagePath,
         problem: LocaleProblem,
     },
+    /// The mode's item types, its shop or an inventory.
+    Item(ItemProblem),
+    /// The data at `at` gives `field`, which design 08 plans and the release does not read yet.
+    Planned { field: &'static str, at: Place },
+}
+
+/// What is wrong with the mode's item types, its shop or an inventory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ItemProblem {
+    /// A package other than the mode holds item types, which no shop or inventory names.
+    OutsideMode,
+    /// The item is built, through its components, from itself.
+    ComponentLoop(DeclaredName),
+    /// An inventory at `at` fills a slot kind with ranks, while an item's action has one.
+    RankedInventory { at: Place, kind: DeclaredName },
+    /// A unit type at `at` holds more slots, its own and its inventory's, than a unit holds.
+    TooManySlots(Place),
+    /// The item costs less, in some resource, than the components it is built from.
+    CheaperThanComponents(DeclaredName),
+    /// The shop sells the item, which costs in a resource the shop does not take.
+    ShopResource(DeclaredName),
+    /// The marker has the shop's tag, and no region or no team to serve.
+    ShopMarker(DeclaredName),
+    /// A unit type or a choice at `at` puts actions in `kind`, whose slots an inventory fills.
+    InventoryKindSlotted { at: Place, kind: DeclaredName },
+}
+
+impl fmt::Display for ItemProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ItemProblem::OutsideMode => f.write_str("only the mode package holds item types"),
+            ItemProblem::ComponentLoop(item) => {
+                write!(f, "item {item} is built from itself through its components")
+            }
+            ItemProblem::RankedInventory { at, kind } => {
+                write!(
+                    f,
+                    "{at}: its inventory fills {kind}, a slot kind with ranks"
+                )
+            }
+            ItemProblem::CheaperThanComponents(item) => {
+                write!(f, "item {item} costs less than its components")
+            }
+            ItemProblem::ShopResource(item) => {
+                write!(
+                    f,
+                    "the shop sells item {item}, which costs in another resource"
+                )
+            }
+            ItemProblem::ShopMarker(marker) => {
+                write!(
+                    f,
+                    "marker {marker} has the shop's tag, and no region or no team"
+                )
+            }
+            ItemProblem::InventoryKindSlotted { at, kind } => {
+                write!(
+                    f,
+                    "{at}: puts actions in {kind}, whose slots an inventory fills"
+                )
+            }
+            ItemProblem::TooManySlots(at) => write!(
+                f,
+                "{at}: more than {} slots with its inventory",
+                ActionSlots::LIMIT
+            ),
+        }
+    }
 }
 
 /// What is wrong with a file of human text.
@@ -311,6 +379,9 @@ pub enum ScriptProblem {
     /// It uses `ctx` other than design 08's convention allows, so the load checks cannot see
     /// every use of it.
     CtxMisuse(CtxMisuse),
+    /// It uses or defines a name design 08 plans, a `ctx` name, a field or method of a handle, or
+    /// a hook, which the release does not run yet.
+    Planned(String),
 }
 
 /// What is wrong with an effect of an action's list.
@@ -325,6 +396,9 @@ pub enum EffectProblem {
     NoUnit,
     /// A number below zero, at some rank.
     Negative,
+    /// A spawn in an avatar's or a loadout's action, whose package holds no unit type to spawn
+    /// until summons come.
+    Summon,
     /// A number past what a sim number holds, at some rank.
     Overflow,
     /// A modifier's duration that is not a whole number of milliseconds within a `u32` at each
@@ -347,6 +421,9 @@ impl fmt::Display for EffectProblem {
                 f.write_str("an effect to the unit reached, where the list reaches none")
             }
             EffectProblem::Negative => f.write_str("a number below zero"),
+            EffectProblem::Summon => f.write_str(
+                "spawns a unit from an avatar's or a loadout's action, which waits for summons",
+            ),
             EffectProblem::Overflow => f.write_str("a number past a sim number"),
             EffectProblem::Duration => f.write_str(
                 "a duration that is no whole number of milliseconds within a u32 at each rank",
@@ -362,7 +439,8 @@ pub enum DeliveryProblem {
     /// catch its target.
     NotFaster(Place),
     /// A unit type at `at` with a `projectile` or an `area` section has both, or a section of a
-    /// unit that stands but `vision`; a dependency's unit type is no delivery type; or an avatar is one.
+    /// unit that stands but `vision`; a dependency's unit type is no delivery type; or an avatar is
+    /// one.
     NotDelivery(Place),
     /// An action's `delivery` names a unit type of its package with no section of its kind.
     WrongSection {
@@ -480,6 +558,12 @@ pub enum Place {
     Resources,
     /// The mode's slot kinds.
     SlotKinds,
+    /// The mode's item type of that id.
+    Item(DeclaredName),
+    /// The mode's `[shop]`.
+    Shop,
+    /// The mode's `data/mode.toml`.
+    Mode,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -564,6 +648,9 @@ impl fmt::Display for Place {
             Place::Loadouts => f.write_str("the mode's loadouts"),
             Place::Resources => f.write_str("the mode's resources and pools"),
             Place::SlotKinds => f.write_str("the mode's slot kinds"),
+            Place::Item(id) => write!(f, "item {id}"),
+            Place::Shop => f.write_str("the mode's [shop]"),
+            Place::Mode => f.write_str("the mode's data/mode.toml"),
         }
     }
 }
@@ -596,6 +683,9 @@ impl fmt::Display for ScriptProblem {
                 f.write_str("makes a function pointer: a closure, an anonymous function or Fn")
             }
             ScriptProblem::CtxMisuse(misuse) => write!(f, "{misuse}"),
+            ScriptProblem::Planned(name) => {
+                write!(f, "{name} is planned, and the release does not run it yet")
+            }
         }
     }
 }
@@ -791,6 +881,13 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
             LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
+            LoadProblem::Item(problem) => write!(f, "{problem}"),
+            LoadProblem::Planned { field, at } => {
+                write!(
+                    f,
+                    "{at}: {field} is planned, and the release does not read it yet"
+                )
+            }
             LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Ai { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Action { action, error } => write!(f, "action \"{action}\": {error}"),

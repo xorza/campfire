@@ -33,6 +33,8 @@ enum ProvingPlan {
     AttackBoulder,
     /// The player's barracks of that place, by stable id, trains a guard.
     Train { barracks: usize },
+    /// The player's barracks of that place posts a ward at a point.
+    Ward { barracks: usize, x: i64, z: i64 },
 }
 
 /// Where a scripted cast aims.
@@ -58,7 +60,9 @@ enum Aim {
 ///   the sage's orb and nova.
 /// - North's barracks compete again once the income of tick 100 comes.
 /// - The lancer breaks the boulder, a static body near the lane.
-const SCRIPT: [Scripted<ProvingPlan>; 17] = [
+/// - North's east barracks posts a ward by the south's barracks, which no unit of north sees
+///   otherwise.
+const SCRIPT: [Scripted<ProvingPlan>; 18] = [
     order(2, 0, ProvingPlan::Train { barracks: 0 }),
     order(2, 0, ProvingPlan::Train { barracks: 1 }),
     order(2, 1, ProvingPlan::Train { barracks: 0 }),
@@ -76,6 +80,15 @@ const SCRIPT: [Scripted<ProvingPlan>; 17] = [
     cast(200, 0, 0, Aim::EnemyHeroPoint),
     cast(260, 1, 0, Aim::EnemyHero),
     cast(260, 0, 1, Aim::Point { x: -4, z: -1 }),
+    order(
+        300,
+        0,
+        ProvingPlan::Ward {
+            barracks: 1,
+            x: 12,
+            z: 9,
+        },
+    ),
 ];
 
 const fn order(stamp: u64, slot: u32, plan: ProvingPlan) -> Scripted<ProvingPlan> {
@@ -138,6 +151,13 @@ impl Plan for ProvingPlan {
                 Action::Slot {
                     slot: 0,
                     target: ActionTarget::None,
+                },
+            ),
+            ProvingPlan::Ward { barracks: at, x, z } => (
+                barracks(units, slot)[at],
+                Action::Slot {
+                    slot: 1,
+                    target: ActionTarget::Point(ground(Num::int(x), Num::int(z))),
                 },
             ),
             ProvingPlan::Cast { slot, at } => {

@@ -5,7 +5,7 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
 use campfire_script::rhai::Array;
-use campfire_sim::{Capability, SimComponent, SimTick, SnapshotError, StableId};
+use campfire_sim::{Capability, SimComponent, SnapshotError, StableId};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;

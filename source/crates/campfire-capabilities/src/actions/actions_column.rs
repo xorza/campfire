@@ -41,7 +41,7 @@ struct ActionsRow {
 /// how many ranks the ability has, and the filter of the units it may attack when it is a weapon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlotRow {
-    pub(crate) action: ActionId,
+    pub(crate) action: Option<ActionId>,
     pub(crate) rank: u8,
     pub(crate) ranks: u8,
     pub(crate) weapon: Option<Filter>,
@@ -79,14 +79,16 @@ impl ActionsColumn {
             range
         });
         self.slots.extend(slots.iter().map(|slot| {
-            let action = book
-                .get(slot.action)
-                .expect("a slot's action is in the book");
+            let action = slot
+                .action
+                .map(|action| book.get(action).expect("a slot's action is in the book"));
             SlotRow {
                 action: slot.action,
                 rank: slot.rank,
-                ranks: u8::try_from(action.ranks.len()).expect("an action has few ranks"),
-                weapon: action.weapon_filter(),
+                ranks: action.map_or(0, |action| {
+                    u8::try_from(action.ranks.len()).expect("an action has few ranks")
+                }),
+                weapon: action.and_then(Action::weapon_filter),
             }
         }));
         let end = u32::try_from(self.slots.len()).expect("slots fit u32");
@@ -136,7 +138,7 @@ impl ActionsColumn {
     /// Whether the unit in row `row` holds action `id` in a slot.
     pub(crate) fn holds(view: &View, row: usize, id: ActionId) -> bool {
         ActionsColumn::read(view, |column| {
-            column.run(row).iter().any(|slot| slot.action == id)
+            column.run(row).iter().any(|slot| slot.action == Some(id))
         })
     }
 

@@ -23,9 +23,12 @@ pub enum DataTable {
     Collision,
     Ai,
     Tag,
+    Item,
+    Inventory,
+    Shop,
 }
 impl DataTable {
-    pub const ALL: [DataTable; 22] = [
+    pub const ALL: [DataTable; 25] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -48,6 +51,9 @@ impl DataTable {
         DataTable::Collision,
         DataTable::Ai,
         DataTable::Tag,
+        DataTable::Item,
+        DataTable::Inventory,
+        DataTable::Shop,
     ];
 
     /// The table as the reference titles it.
@@ -75,6 +81,9 @@ impl DataTable {
             DataTable::Collision => "A unit type's `collision`",
             DataTable::Ai => "A unit type's `orders`",
             DataTable::Tag => "A tag's effects, `[tags.<name>]`",
+            DataTable::Item => "An item type, `[items.<id>]`",
+            DataTable::Inventory => "A unit type's `inventory`",
+            DataTable::Shop => "The mode's `[shop]`",
         }
     }
 }

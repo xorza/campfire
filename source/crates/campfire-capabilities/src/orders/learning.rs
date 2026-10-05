@@ -22,14 +22,16 @@ impl Learning<'_> {
         if self.kinds.first_rank(held.kind) != 0 {
             return None;
         }
-        let ranks = self.action(held).ranks.len();
+        let ranks = self.action(held)?.ranks.len();
         Some(u8::try_from(ranks).expect("an action has few ranks"))
     }
 
     /// Whether a unit with `points` at `level` may learn the next rank of the action in `held`: it
     /// has a point, the action a rank above, and the unit the level its kind gives that rank.
     pub fn learnable(&self, held: ActionSlot, points: Points, level: Level) -> bool {
-        let action = self.action(held);
+        let Some(action) = self.action(held) else {
+            return false;
+        };
         let next = held
             .rank
             .checked_add(1)
@@ -41,9 +43,13 @@ impl Learning<'_> {
                     .is_none_or(|needed| needed <= level)
             })
     }
-    fn action(&self, held: ActionSlot) -> &Action {
-        self.book
-            .get(held.action)
-            .expect("a slot's action is in the book")
+    /// The action in `held`; none in an inventory slot that holds no action.
+    fn action(&self, held: ActionSlot) -> Option<&Action> {
+        let action = held.action?;
+        Some(
+            self.book
+                .get(action)
+                .expect("a slot's action is in the book"),
+        )
     }
 }

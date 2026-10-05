@@ -5,9 +5,10 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionDataField, ActionError, ActionField, ActionKind, AiError, DeclaredName, EffectData,
-    EffectTo, Effecting, EngineEnum, EngineTag, Hook, MapProblem, ModeError, ModifierProblem,
-    NameKind, Number, ParamProblem, PlannedEffect, Scalar, SyncTo, UnitKitError,
+    ActionDataField, ActionError, ActionField, ActionKind, AiError, CapabilitySet, DeclaredName,
+    EffectData, EffectTo, Effecting, EngineEnum, EngineTag, Hook, MapProblem, ModeError,
+    ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, Scalar, Status, SyncTo,
+    UnitKitError,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
@@ -71,8 +72,7 @@ const MODE_SCRIPT: &str = "modes/3v3/scripts/mode.rhai";
 /// A train of a melee creep, which the mode's data does not hold, put before its first action.
 const RECRUIT: &str = "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\n\n[actions.melee_creep_attack]";
 /// The manifest's capabilities with `production`.
-const PRODUCTION: Edit<'static> =
-    Edit::Replace(r#""progression"]"#, r#""progression", "production"]"#);
+const PRODUCTION: Edit<'static> = Edit::Replace(r#""items"]"#, r#""items", "production"]"#);
 
 /// Whether `problem` is Rime's Slow's `slow` param failing for `kind` by `way`.
 fn slow_fails(problem: &LoadProblem, way: Option<&Way>, kind: ParamProblem) -> bool {
@@ -280,13 +280,13 @@ fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
 
 #[test]
 fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
-    // The 3v3 names 24 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 7 more of its unit
-    // types', and `slowed`, which modifiers grant. The engine has 3, so 229 layers, each a
-    // tag, fill the 256 a match holds, and 230 are past it.
+    // The 3v3 names 25 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 8 more of its unit
+    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 3, so 228
+    // layers, each a tag, fill the 256 a match holds, and 229 are past it.
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = ModePackages::from_package_dir(&edited([])).unwrap();
-    assert_eq!(tags(&packages), 24);
-    let [(path, layers)] = <[_; 1]>::try_from(layers(229)).unwrap();
+    assert_eq!(tags(&packages), 25);
+    let [(path, layers)] = <[_; 1]>::try_from(layers(228)).unwrap();
     let edit = Edit::Set(&path, &layers);
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
     assert_eq!(tags(&packages), 253);
@@ -296,7 +296,7 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
         "[tags.projectile]\nhidden = true\n\n[tags.stunned]",
     );
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
-    assert_eq!(tags(&packages), 24);
+    assert_eq!(tags(&packages), 25);
 }
 
 /// `count` navigation layers, each a tag: the edit by path that declares them.
@@ -327,10 +327,10 @@ struct LimitCase {
 #[test]
 fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
     let cases = [
-        // The 3v3's 24 tags and the engine's 3 leave 229 of the 256 a match holds for layers.
+        // The 3v3's 25 tags and the engine's 3 leave 228 of the 256 a match holds for layers.
         LimitCase {
             more: layers,
-            allowed: 229,
+            allowed: 228,
             limit: Limit::Tags,
         },
         // `level` and 31 more fill the 32 tracks a unit holds.
@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 232] = [
+static FLAWS: [Flaw; 241] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -399,7 +399,7 @@ static FLAWS: [Flaw; 232] = [
     ),
     flaw(
         MANIFEST,
-        Edit::Replace(r#", "vision", "progression"]"#, r#", "progression"]"#),
+        Edit::Replace(r#", "vision", "progression""#, r#", "progression""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Vision, at: Place::UnitType(name) } if name == "caster_creep"),
     ),
@@ -407,7 +407,7 @@ static FLAWS: [Flaw; 232] = [
     // unit type lists one the mode declares.
     flaw(
         MANIFEST,
-        Edit::Replace(r#", "progression"]"#, "]"),
+        Edit::Replace(r#", "progression", "items"]"#, r#", "items"]"#),
         MODE,
         |problem| {
             matches!(
@@ -765,11 +765,37 @@ static FLAWS: [Flaw; 232] = [
         "hero-cinder",
         |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
     ),
+    // An avatar's action spawns nothing until summons come; a mode's spawns a unit type of the
+    // mode's that stands, for a whole number of milliseconds; loot is planned.
     flaw(
         RIME,
         Edit::Replace(SLOWS, r#"{ spawn = { unit_type = "frost_arrow" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Spawn) } if action == "fan_of_frost"),
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Summon } if action == "fan_of_frost"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(SLOWS, r#"{ loot = { table = "chest", level = 1 } },"#),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Loot) } if action == "fan_of_frost"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Set(
+            "actions.tower_attack.on_hit",
+            r#"[{ spawn = { unit_type = "caster_creep_bolt" } }]"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "caster_creep_bolt"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Set(
+            "actions.tower_attack.on_hit",
+            r#"[{ spawn = { unit_type = "melee_creep", duration_ms = "1.5" } }]"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Duration } if action == "tower_attack"),
     ),
     // A move is a dash's `to` and `speed`, or a knock back's `from`, `distance` and whole `ms`;
     // its other unit, as its own, is one its list reaches.
@@ -1313,6 +1339,69 @@ static FLAWS: [Flaw; 232] = [
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "order_reset"),
+    ),
+    // Names design 08 plans: a `ctx` method and field, a handle's field, a hook and data fields.
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "fn on_match_start(ctx) {",
+            "fn on_match_start(ctx) {\n    ctx.save();",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "save"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "fn on_match_start(ctx) {",
+            "fn on_match_start(ctx) {\n    let carried = ctx.carry;",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "carry"),
+    ),
+    flaw(
+        CHAIN_FIRE,
+        Edit::Replace(
+            "if hit.delivery.state",
+            "if hit.part == () && hit.delivery.state",
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "part"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "fn on_match_start(ctx) {",
+            "fn on_player_join(ctx, player) {}\n\nfn on_match_start(ctx) {",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "on_player_join"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "resources = [\"gold\"]",
+            "resources = [\"gold\"]\nstate_version = 1",
+        ),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Planned {
+                    field: "state_version",
+                    at: Place::Mode
+                }
+            )
+        },
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(
+            "speed = \"12\", homing = true",
+            "speed = \"12\", homing = true, gravity = \"9.8\"",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Planned { field: "gravity", at: Place::UnitType(name) } if name == "tower_bolt"),
     ),
     flaw(
         LASH_OUT,
@@ -2030,17 +2119,17 @@ static FLAWS: [Flaw; 232] = [
     ),
     Flaw {
         file: MAP,
-        edit: Edit::Remove("markers.2.pos"),
+        edit: Edit::Remove("markers.4.pos"),
         also: &[(
             MAP,
-            Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -70] }"),
+            Edit::Set("markers.4.region", "{ min = [-20, -14], max = [-16, -70] }"),
         )],
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
     },
     flaw(
         MAP,
-        Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -10] }"),
+        Edit::Set("markers.4.region", "{ min = [-20, -14], max = [-16, -10] }"),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
     ),
@@ -2058,7 +2147,7 @@ static FLAWS: [Flaw; 232] = [
     ),
     flaw(
         MAP,
-        Edit::Set("markers.3.name", r#""camp1""#),
+        Edit::Set("markers.5.name", r#""camp1""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedName(name)) if name == "camp1"),
     ),
@@ -2285,10 +2374,10 @@ static FLAWS: [Flaw; 232] = [
         MODE_DATA,
         Edit::Replace(
             "[modifiers.warden_blessing]\n",
-            "[modifiers.warden_blessing]\naffects = \"allies:ward\"\n",
+            "[modifiers.warden_blessing]\naffects = \"allies:totem\"\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "allies:ward"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "allies:totem"),
     ),
     // A relation names two of the mode's teams, a pair once.
     flaw(
@@ -2311,9 +2400,9 @@ static FLAWS: [Flaw; 232] = [
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",
-        Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:ward""#),
+        Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:totem""#),
         "hero-kensho",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "enemies:ward"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "enemies:totem"),
     ),
     // A second spells package with a spell the first holds.
     Flaw {
@@ -2385,6 +2474,23 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
     assert!(
         matches!(*error.problem, LoadProblem::TooMany(Limit::DamageKinds)),
         "{error}"
+    );
+
+    // The flaws hold each data field and tag effect the release plans: `loot` and `noise` as
+    // an action's effects, the others as fields.
+    let api = CapabilitySet::script_api();
+    let mut planned: Vec<_> = api
+        .data()
+        .iter()
+        .filter(|field| field.status == Status::Planned)
+        .map(|field| field.name)
+        .collect();
+    planned.sort_unstable();
+    assert_eq!(planned, ["gravity", "loot", "noise", "state_version"]);
+    assert!(
+        api.tag_effects()
+            .iter()
+            .all(|held| held.status != Status::Planned)
     );
 
     // A hero is no mode.

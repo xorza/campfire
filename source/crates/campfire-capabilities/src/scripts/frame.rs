@@ -11,6 +11,7 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
+use crate::units::forced_move::DashDelivery;
 use crate::units::modifier_id::ModifierId;
 use crate::values::action_start::ActionStart;
 use crate::values::hit::Hit;
@@ -38,6 +39,8 @@ pub(crate) struct Frame {
     hit: Option<Hit>,
     /// How its action started.
     start: Option<ActionStart>,
+    /// The delivery a dash it starts carries: an instant action's own, in its `on_resolve`.
+    dash_delivers: Option<DashDelivery>,
     /// Whether it is a pure hook's, whose `ctx` only reads.
     pub(crate) pure: bool,
     /// The stable ids as the call takes them for the units it creates, and whether it took one.
@@ -83,6 +86,10 @@ impl Frame {
 
     pub(crate) const fn start(&self) -> Option<ActionStart> {
         self.start
+    }
+
+    pub(crate) const fn dash_delivers(&self) -> Option<DashDelivery> {
+        self.dash_delivers
     }
 
     /// Adds `part`, which every call readies, and which applies what a call wrote to it.
@@ -161,6 +168,7 @@ impl Frame {
             depth,
             hit,
             start: action_start,
+            dash_delivers,
         } = start;
         self.role = Some(role);
         self.acting = acting;
@@ -171,6 +179,7 @@ impl Frame {
         self.depth = depth;
         self.hit = hit;
         self.start = action_start;
+        self.dash_delivers = dash_delivers;
         self.pure = false;
         self.effects.clear();
         self.parts.begin(world, &start)

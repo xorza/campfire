@@ -5,8 +5,10 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::units::action_id::ActionId;
 use crate::units::block::Block;
 use crate::units::unit_tags::UnitTags;
+use crate::values::action_start::ActionStart;
 
 /// A forced move under way, a dash or a knock back, which moves its unit in the Move stage in
 /// place of its own step. While one moves it, a unit takes no step and starts no action, and the
@@ -14,8 +16,13 @@ use crate::units::unit_tags::UnitTags;
 /// here, as `Dead` is, for the capabilities below navigation to read.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ForcedMove {
-    /// A dash of `step` a tick on the ground plane, more than 0, to `to`.
-    Dash { to: DashTo, step: Num },
+    /// A dash of `step` a tick on the ground plane, more than 0, to `to`; the delivery of the
+    /// action that started it, when it is one.
+    Dash {
+        to: DashTo,
+        step: Num,
+        delivers: Option<DashDelivery>,
+    },
     /// A knock back to `to`, which it reaches in `left` ticks more, at least one: each tick it
     /// goes the share of the way left that one of those ticks is.
     KnockBack { to: Vec3, left: u64 },
@@ -27,6 +34,46 @@ pub enum ForcedMove {
 pub enum DashTo {
     Point(Position),
     Unit(StableId),
+}
+
+/// A dash that delivers the instant action `action` of `source` at `rank`, started as `start`
+/// says, as that action's `on_resolve` started it: its `on_end` runs as the dash ends. With it,
+/// the meters the dash went so far.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DashDelivery {
+    pub(crate) source: StableId,
+    pub(crate) action: ActionId,
+    pub(crate) rank: u8,
+    pub(crate) start: Option<ActionStart>,
+    pub(crate) dashed: Num,
+}
+
+impl DashDelivery {
+    /// The delivery of `action` of `source` at `rank`, started as `start` says, before the dash
+    /// went anywhere.
+    pub(crate) const fn new(
+        source: StableId,
+        action: ActionId,
+        rank: u8,
+        start: Option<ActionStart>,
+    ) -> DashDelivery {
+        DashDelivery {
+            source,
+            action,
+            rank,
+            start,
+            dashed: Num::ZERO,
+        }
+    }
+
+    /// Adds the way of a step from `from` to `to`. A dash goes at most a step a tick, so only a
+    /// match far past any session's length reaches the end of a number, where it stays.
+    pub(crate) fn went(&mut self, from: Position, to: Position) {
+        self.dashed = self
+            .dashed
+            .checked_add(from.get().distance(to.get()))
+            .unwrap_or(Num::MAX);
+    }
 }
 
 /// Where a tick of a forced move aims on the unit's ground plane, and how near it stops: a dash's

@@ -25,6 +25,7 @@ mod books;
 mod capability_set;
 mod combat;
 mod deliveries;
+mod items;
 mod mode;
 mod navigation;
 mod orders;
@@ -40,7 +41,7 @@ mod vision;
 
 pub use abilities::Abilities;
 pub use actions::Actions;
-pub use actions::action_data::{ActionData, RangeField, Targeting};
+pub use actions::action_data::{ActionData, RangeField, Targeting, Toggle};
 pub use actions::action_data_field::ActionDataField;
 pub use actions::action_kind::ActionKind;
 pub use actions::action_slots::{ActionSlot, ActionSlots};
@@ -86,7 +87,13 @@ pub use scripts::state_decl::synced_state_decl::SyncTo;
 
 pub use mode::team_manifest::TeamManifest;
 
-pub use mode::unit_kit::UnitKit;
+pub use items::Items;
+pub use items::inventory::{Carried, Inventory};
+pub use items::inventory_data::InventoryData;
+pub use items::item_data::ItemData;
+pub use items::item_id::ItemId;
+pub use items::shop_data::ShopData;
+pub use mode::unit_kit::{InventorySpec, UnitKit};
 pub use navigation::Navigation;
 pub use navigation::destination::Destination;
 pub use navigation::error::MapProblem;
@@ -122,11 +129,16 @@ pub use scripts::hook::Hook;
 pub use scripts::name_kind::NameKind;
 pub use scripts::script_role::ScriptRole;
 pub use values::engine_enum::EngineEnum;
+pub use values::polygon::Polygon;
+pub use values::polygon::error::PolygonError;
+pub use values::share::Share;
 
 pub use scripts::script_api::{MemberKind, ScriptApi};
 
 pub use scripts::script_api::api_owner::ApiOwner;
+pub use scripts::script_api::data_table::DataTable;
 pub use scripts::script_api::enum_record::EnumRecord;
+pub use scripts::script_api::status::Status;
 
 pub use scripts::script_api::member_spec::{EnumArgs, NameArgs};
 pub use scripts::script_book::ScriptBook;
@@ -158,6 +170,7 @@ pub use units::dead::Dead;
 pub use units::engine_tag::EngineTag;
 pub use units::forced_move::{DashTo, ForcedMove};
 pub use units::layer::Layer;
+pub use units::lifespan::Lifespan;
 pub use units::modifier_id::ModifierId;
 pub use units::owner::Owner;
 

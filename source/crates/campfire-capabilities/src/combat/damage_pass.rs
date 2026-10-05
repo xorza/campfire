@@ -7,6 +7,7 @@ use campfire_sim::{EntityIndex, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
@@ -57,10 +58,9 @@ impl DamagePass {
     /// Applies the tick's damage and heals in the queue's order, with the units as the pass began:
     /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
     /// `on_hit` list, then its combat events, whose damage joins the end of the queue, and whose
-    /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has
-    /// one.
-    /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal of a
-    /// unit at zero life.
+    /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has one.
+    /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal
+    /// of a unit at zero life.
     pub(crate) fn run(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
@@ -185,7 +185,7 @@ impl DamagePass {
         let queued = {
             let mut frame = ctx.frame();
             frame.begin(world, start).and_then(|()| {
-                let target = Some(damage.target);
+                let target = ActionTarget::Unit(damage.target);
                 let lists = ListsOf::Action(weapon);
                 EffectLists::queue(world, lists, Hook::OnHit, &mut frame, ctx.view(), target)
             })
@@ -364,7 +364,7 @@ impl DamagePass {
                 let book = world.resource::<ActionBook>();
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
                     let slot = slots.slot(book.weapon_for(slots, None)?)?;
-                    let weapon = book.get(slot.action)?.kind.weapon()?;
+                    let weapon = book.get(slot.action?)?.kind.weapon()?;
                     Some((slot, weapon))
                 });
                 let Some((slot, weapon)) = first else {
@@ -372,7 +372,7 @@ impl DamagePass {
                 };
                 let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
                 let hit = Damage {
-                    ability: Some(slot.action),
+                    ability: slot.action,
                     ..damage(
                         target,
                         weapon.damage(stats),

@@ -12,6 +12,9 @@ use campfire_sim::{
 };
 
 use crate::actions::effect_queues::EffectQueues;
+use crate::deliveries::Deliveries;
+use crate::deliveries::delivered::{Delivered, Reach};
+use crate::deliveries::delivering::Delivering;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
@@ -28,18 +31,20 @@ use crate::navigation::route_planner::{RoutePlanner, Waiting, Walkable};
 use crate::navigation::segment::Segment;
 use crate::navigation::static_changes::StaticChanges;
 use crate::navigation::steering::{Steered, Steering};
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::stats::move_step::MoveStep;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
-use crate::units::forced_move::{DashTo, ForcedMove, Goal};
+use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove, Goal};
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
 use crate::units::unit_tags::UnitTags;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
+use crate::values::hit::Hit;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -63,7 +68,9 @@ pub(crate) mod route_planner;
 pub(crate) mod segment;
 pub(crate) mod static_changes;
 pub(crate) mod steering;
+pub(crate) mod terrain;
 pub(crate) mod walker;
+pub(crate) mod wall;
 
 /// The systems of `navigation`, for the systems of other capabilities to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -133,14 +140,19 @@ impl Navigation {
         registry.register_component::<ForcedMove>();
     }
 
-    /// Gives the match the map's pathing grid over `cells`, for the kinds of `walkers`, a static
-    /// index for the widest of them, and a planner of routes on the grid; the static bodies fill
-    /// the grid and the index from the first tick on.
-    pub fn load_pathing(world: &mut World, cells: Grid, walkers: Vec<Walker>) {
+    /// Gives the match the map's pathing grid over `cells`, with the cells `terrain`'s walls
+    /// block, for the kinds of `walkers`, a static index for the widest of them, and a planner of
+    /// routes on the grid; the static bodies fill the grid and the index from the first tick on.
+    pub(crate) fn load_pathing(
+        world: &mut World,
+        cells: Grid,
+        terrain: &Terrain,
+        walkers: Vec<Walker>,
+    ) {
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&cells));
-        world.insert_resource(PathingGrid::new(cells, walkers));
+        world.insert_resource(PathingGrid::new(cells, walkers, terrain));
     }
 }
 
@@ -189,10 +201,11 @@ fn fill_row((path, walks): ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>
 
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route
 /// there, unless its route reaches its goal and the walker may go straight on from the waypoint
-/// before the last to the new one, as a chaser after a target that moved: then only the last
-/// waypoint moves. After the static bodies changed, a walker whose way along its route a static
-/// body of its layer blocks asks for its route again; after they lost a body, so does one whose
-/// route ends short of its goal, and one that arrived short of it walks there again. A walker
+/// before the last to the new one, past every static body and every cell the walls block it from,
+/// as a chaser after a target that moved: then only the last waypoint moves. After the static
+/// bodies changed, a walker whose way along its route a static body of its layer blocks asks for
+/// its route again; after they lost a body, so does one whose route ends short of its goal, and
+/// one that arrived short of it walks there again. A walker
 /// with no destination forgets its route, unless it arrived short. With no pathing grid, as in a
 /// match with no map, no static body blocks a route. Each walker checks its route only when the
 /// static bodies changed since the tick before, against the bodies put in, which `changes`
@@ -250,8 +263,18 @@ fn route_units(
                     [] => None,
                 };
                 let straight = from.filter(|_| route.reached() && route.asked().is_none());
+                let blocks = |from| {
+                    grid.as_ref().is_some_and(|grid| {
+                        let walkable = Walkable {
+                            clearance: grid.clearance(walker),
+                            statics: &statics,
+                            short: None,
+                        };
+                        walkable.blocks(Segment::new(from, goal))
+                    })
+                };
                 if let Some(from) = straight
-                    && !(planned && statics.blocks(Segment::new(from, goal), walker))
+                    && !blocks(from)
                 {
                     route.move_goal(goal);
                 } else {
@@ -566,7 +589,8 @@ fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, forced: boo
 /// Moves each unit a forced move moves, by stable id, once the units walked, so a dash at a unit
 /// follows its place of this tick, at the unit's own height. A step whose way a static body of the
 /// unit's layer blocks is not taken, and one past the bounds stops on them; either ends the move.
-/// A unit whose move ended walks its route again from there.
+/// A unit whose move ended walks its route again from there, and a dash that delivers an action
+/// queues that action's end, its hooks to run in Hit.
 fn force_units(
     (tick, bounds, statics, index): (
         Res<'_, SimTick>,
@@ -574,6 +598,7 @@ fn force_units(
         Res<'_, BodyIndex>,
         Res<'_, EntityIndex>,
     ),
+    mut deliveries: Option<ResMut<'_, Deliveries>>,
     mut units: ParamSet<
         '_,
         '_,
@@ -642,8 +667,22 @@ fn force_units(
         let mut moving = units.p1();
         let (_, _, mut position, mut under_way, _) =
             moving.get_mut(entity).expect("a unit in the order");
-        if !blocked {
-            position.set_if_neq(to);
+        let stands = if blocked { at } else { to };
+        position.set_if_neq(stands);
+        if let ForcedMove::Dash {
+            to: dash_to,
+            delivers: Some(delivery),
+            ..
+        } = &mut forced
+        {
+            delivery.went(at, stands);
+            if ends {
+                deliveries
+                    .as_deref_mut()
+                    .expect("a dash that delivers an action runs in a match with abilities")
+                    .delivered
+                    .push(dash_end(*delivery, *dash_to, at, stands));
+            }
         }
         if ends {
             commands.entity(entity).remove::<ForcedMove>();
@@ -653,6 +692,40 @@ fn force_units(
         } else {
             under_way.set_if_neq(forced);
         }
+    }
+}
+
+/// The end of a dash to `to` that delivers `delivery`, whose last step went from `from` to
+/// `stands`: a hit with no delivery unit, the dash's unit as its target, its place where it
+/// stands, its distance the way the dash went, and its direction the last step's.
+fn dash_end(delivery: DashDelivery, to: DashTo, from: Position, stands: Position) -> Delivered {
+    let DashDelivery {
+        source,
+        action,
+        rank,
+        start,
+        dashed,
+    } = delivery;
+    let target = match to {
+        DashTo::Unit(target) => Some(target),
+        DashTo::Point(_) => None,
+    };
+    Delivered {
+        by: Delivering {
+            source,
+            action,
+            rank,
+            start,
+            launch: None,
+        },
+        reach: Reach::End,
+        hit: Hit {
+            delivery: None,
+            target,
+            pos: stands,
+            distance: dashed,
+            direction: from.ground_offset(stands).normalized(),
+        },
     }
 }
 

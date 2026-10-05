@@ -3,13 +3,15 @@ use std::ops::Range;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{Capability, StableId, TickRate};
+use campfire_sim::{Capability, TickRate};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_data::ActionData;
+use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
 use crate::actions::effect_names::EffectNames;
 use crate::actions::effect_queues::EffectQueues;
+use crate::actions::spawn_effect::SpawnEffect;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
@@ -19,6 +21,7 @@ use crate::stats::stats_call::StatsCall;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
+use crate::units::spawner::SpawnAt;
 use crate::units::tag::Tag;
 use crate::units::track_id::TrackId;
 use crate::units::unit_type::UnitType;
@@ -96,6 +99,11 @@ pub(crate) enum Does {
         from: EffectTo,
         distance: Amount,
         ms: Amount,
+    },
+    /// A unit of the mode's type `unit_type`, despawning `duration_ms` after it spawns when given.
+    Spawn {
+        unit_type: UnitType,
+        duration_ms: Option<Amount>,
     },
 }
 
@@ -187,6 +195,13 @@ impl EffectLists {
                 distance: Amount::of(distance, names),
                 ms: Amount::of(ms, names),
             },
+            Effecting::Spawn {
+                unit_type,
+                duration_ms,
+            } => Does::Spawn {
+                unit_type: names.standing_type(unit_type),
+                duration_ms: duration_ms.as_ref().map(|ms| Amount::of(ms, names)),
+            },
             Effecting::Planned(_) => unreachable!("the load refuses a planned effect"),
         }
     }
@@ -221,8 +236,9 @@ impl EffectLists {
     }
 
     /// Queues the list of `of` that runs before its `hook` in `frame`, a call of its action at
-    /// its rank, which `world` runs: each effect to `reached`, the unit the list reached, or to
-    /// the acting unit. A modifier and a purge queue here, as `stats` is below the action
+    /// its rank, which `world` runs: each effect to the unit `reached`, what the list reached, or
+    /// to the acting unit; a spawn where that unit stands, or at the point `reached` is. A
+    /// modifier, a purge and a spawn queue here, as `stats` and the core are below the action
     /// pipeline; every other effect queues as its capability registered, which can fail the
     /// call, as experience to a unit without the track fails `ctx.add_xp`.
     pub(crate) fn queue(
@@ -231,7 +247,7 @@ impl EffectLists {
         hook: Hook,
         frame: &mut Frame,
         view: &View,
-        reached: Option<StableId>,
+        reached: ActionTarget,
     ) -> Result<(), CallError> {
         let list = world.resource::<EffectLists>().of(of, hook);
         if list.is_empty() {
@@ -240,23 +256,57 @@ impl EffectLists {
         let rate = *world.resource::<TickRate>();
         let queues = world.resource::<EffectQueues>();
         let acting = frame.acting();
+        let reached_unit = reached.unit();
+        let duration = |ms: Amount, frame: &Frame| {
+            // Whole, as the load checked, so the floor is exact.
+            let ms = ms.number(frame).floor();
+            let ms = u64::try_from(ms).expect("the load checked a duration not negative");
+            rate.duration(ms)
+                .expect("the load checked a duration within reach")
+        };
         for &listed in list {
+            if let Does::Spawn {
+                unit_type,
+                duration_ms,
+            } = listed.does
+            {
+                let source = acting.and_then(|id| view.row(id));
+                let source = source.expect("an action's list runs for its acting unit");
+                let pos = match (listed.to, reached) {
+                    (EffectTo::Source, _) => source.pos,
+                    (EffectTo::Reached, ActionTarget::Point(at)) => at,
+                    (EffectTo::Reached, ActionTarget::Unit(id)) => {
+                        view.row(id)
+                            .expect("a list reaches a unit the view holds")
+                            .pos
+                    }
+                    (EffectTo::Reached, ActionTarget::None) => {
+                        unreachable!("the load lets a spawn reach no place only from the source")
+                    }
+                };
+                let at = SpawnAt {
+                    id: frame.take_id(),
+                    unit_type,
+                    team: source.team,
+                    pos,
+                };
+                let life = duration_ms.map(|ms| duration(ms, frame));
+                frame.effects.push(SpawnEffect {
+                    at,
+                    owner: source.owner,
+                    life,
+                });
+                continue;
+            }
             let unit = match listed.to {
                 EffectTo::Reached => {
-                    reached.expect("the load lets only an effect to the source reach no unit")
+                    reached_unit.expect("the load lets only an effect to the source reach no unit")
                 }
                 EffectTo::Source => acting.expect("an action's list runs for its acting unit"),
             };
             match listed.does {
                 Does::Modifier { id, duration_ms } => {
-                    let duration = duration_ms.map(|ms| {
-                        // Whole, as the load checked, so the floor is exact.
-                        let ms = ms.number(frame).floor();
-                        let ms =
-                            u64::try_from(ms).expect("the load checked a duration not negative");
-                        rate.duration(ms)
-                            .expect("the load checked a duration within reach")
-                    });
+                    let duration = duration_ms.map(|ms| duration(ms, frame));
                     frame.effects.push(ModifierEffect::Add {
                         target: unit,
                         id,
@@ -266,7 +316,7 @@ impl EffectLists {
                 Does::Purge { tag } => frame
                     .effects
                     .push(ModifierEffect::Purge { carrier: unit, tag }),
-                does => queues.of(does.capability())(does, unit, reached, frame, view)?,
+                does => queues.of(does.capability())(does, unit, reached_unit, frame, view)?,
             }
         }
         Ok(())
@@ -282,6 +332,7 @@ impl Does {
             Does::Xp { .. } => Capability::Progression,
             Does::Launch { .. } => Capability::Areas,
             Does::Dash { .. } | Does::KnockBack { .. } => Capability::Navigation,
+            Does::Spawn { .. } => panic!("a spawn queues in the action pipeline"),
         }
     }
 }
@@ -415,6 +466,13 @@ pub(crate) mod internals {
                 .types_mut()
                 .named(scope, name.as_str())
                 .expect("the load checked a launch's area type")
+        }
+
+        fn standing_type(&self, name: &DeclaredName) -> UnitType {
+            self.view
+                .types_mut()
+                .named(TypeScope::Mode, name.as_str())
+                .expect("the load checked a spawn's unit type")
         }
     }
 }
