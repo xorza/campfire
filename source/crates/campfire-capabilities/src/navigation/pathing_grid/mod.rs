@@ -149,6 +149,14 @@ impl PathingGrid {
         })
     }
 
+    /// The cells `walker` may stand in, when it is one of the mode's kinds of walker.
+    pub(crate) fn serving(&self, walker: Walker) -> Option<Clearance<'_>> {
+        self.walkers
+            .binary_search(&walker)
+            .is_ok()
+            .then(|| self.clearance(walker))
+    }
+
     /// The cells `walker`, one of the mode's kinds of walker, may stand in.
     pub(crate) fn clearance(&self, walker: Walker) -> Clearance<'_> {
         let at = self
@@ -238,6 +246,16 @@ impl Clearance<'_> {
                 *work += 1;
                 walled[cell / 64] & 1 << (cell % 64) != 0
             };
+            self.grid.touches(segment.start(), segment.end(), blocked)
+        })
+    }
+
+    /// Whether the step `segment` touches a cell the walls block the walker from, exactly, but the
+    /// cell it starts in: a walker collision pushed into a wall's margin may still step out.
+    pub(crate) fn walls_block_step(&self, segment: Segment) -> bool {
+        self.walled.is_some_and(|walled| {
+            let start = self.grid.nearest_cell(segment.start());
+            let blocked = |cell: usize| cell != start && walled[cell / 64] & 1 << (cell % 64) != 0;
             self.grid.touches(segment.start(), segment.end(), blocked)
         })
     }

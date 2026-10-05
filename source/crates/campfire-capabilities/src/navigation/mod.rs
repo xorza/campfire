@@ -588,9 +588,11 @@ fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, forced: boo
 
 /// Moves each unit a forced move moves, by stable id, once the units walked, so a dash at a unit
 /// follows its place of this tick, at the unit's own height. A step whose way a static body of the
-/// unit's layer blocks is not taken, and one past the bounds stops on them; either ends the move.
-/// A unit whose move ended walks its route again from there, and a dash that delivers an action
-/// queues that action's end, its hooks to run in Hit.
+/// unit's layer blocks is not taken, nor a knock back's whose way the walls block, but in the cell
+/// it starts in; one past the bounds stops on them; either ends the move. A dash crosses walls,
+/// and one that ends where its walker may not stand goes to the nearest cell it may, as a teleport
+/// does. A unit whose move ended walks its route again from there, and a dash that delivers an
+/// action queues that action's end there, its hooks to run in Hit.
 fn force_units(
     (tick, bounds, statics, index): (
         Res<'_, SimTick>,
@@ -598,6 +600,7 @@ fn force_units(
         Res<'_, BodyIndex>,
         Res<'_, EntityIndex>,
     ),
+    (grid, planner): (Option<Res<'_, PathingGrid>>, Option<Res<'_, RoutePlanner>>),
     mut deliveries: Option<ResMut<'_, Deliveries>>,
     mut units: ParamSet<
         '_,
@@ -662,13 +665,28 @@ fn force_units(
         let advanced = forced.advance(at.get(), goal);
         let to = bounds.ground_point([advanced.at.x, advanced.at.z], at);
         let past = to.get() != advanced.at;
-        let blocked = statics.blocks(Segment::new(at, to), walker);
+        let clearance = grid.as_deref().and_then(|grid| grid.serving(walker));
+        let step = Segment::new(at, to);
+        let knocked = matches!(forced, ForcedMove::KnockBack { .. });
+        let walled = knocked && clearance.is_some_and(|clearance| clearance.walls_block_step(step));
+        let blocked = statics.blocks(step, walker) || walled;
         let ends = advanced.ends || past || blocked;
+        let stands = if blocked { at } else { to };
+        let place = match (clearance, planner.as_deref()) {
+            (Some(clearance), Some(planner)) if ends && !knocked => {
+                let walkable = Walkable {
+                    clearance,
+                    statics: &statics,
+                    short: None,
+                };
+                planner.stand_at(walkable, stands).unwrap_or(stands)
+            }
+            _ => stands,
+        };
         let mut moving = units.p1();
         let (_, _, mut position, mut under_way, _) =
             moving.get_mut(entity).expect("a unit in the order");
-        let stands = if blocked { at } else { to };
-        position.set_if_neq(stands);
+        position.set_if_neq(place);
         if let ForcedMove::Dash {
             to: dash_to,
             delivers: Some(delivery),
@@ -681,7 +699,12 @@ fn force_units(
                     .as_deref_mut()
                     .expect("a dash that delivers an action runs in a match with abilities")
                     .delivered
-                    .push(dash_end(*delivery, *dash_to, at, stands));
+                    .push(dash_end(
+                        *delivery,
+                        *dash_to,
+                        Segment::new(at, stands),
+                        place,
+                    ));
             }
         }
         if ends {
@@ -695,10 +718,10 @@ fn force_units(
     }
 }
 
-/// The end of a dash to `to` that delivers `delivery`, whose last step went from `from` to
-/// `stands`: a hit with no delivery unit, the dash's unit as its target, its place where it
-/// stands, its distance the way the dash went, and its direction the last step's.
-fn dash_end(delivery: DashDelivery, to: DashTo, from: Position, stands: Position) -> Delivered {
+/// The end of a dash to `to` that delivers `delivery`, whose last step was `step`, and whose unit
+/// then stands at `place`: a hit with no delivery unit, the dash's unit as its target, its place
+/// `place`, its distance the way the dash's steps went, and its direction the last step's.
+fn dash_end(delivery: DashDelivery, to: DashTo, step: Segment, place: Position) -> Delivered {
     let DashDelivery {
         source,
         action,
@@ -722,9 +745,9 @@ fn dash_end(delivery: DashDelivery, to: DashTo, from: Position, stands: Position
         hit: Hit {
             delivery: None,
             target,
-            pos: stands,
+            pos: place,
             distance: dashed,
-            direction: from.ground_offset(stands).normalized(),
+            direction: step.start().ground_offset(step.end()).normalized(),
         },
     }
 }

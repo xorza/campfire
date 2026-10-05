@@ -2,12 +2,6 @@
 
 The concrete steps of the current stages of the [roadmap](ROADMAP.md), in order, open items only: remove a step when it is done, and a section when it is empty. Each step ends with the check chain passing for the crates it touches, and a stop for review. A later stage's steps come here when it starts, after its design step ([Workflow](AGENTS.md#workflow)).
 
-## Stage 5: MOBA mechanics
-
-The walls the 3v3 gained, met by forced movement: the last step of the stage.
-
-1. **W1. Forced moves and walls** (navigation, [Forced movement](docs/design/04-capabilities/navigation.md#forced-movement)): a knock back stops before the walls, as it stops before a static body, the cell its step starts in not counted; a dash crosses them and, if it ends in a cell its walker may not stand in, goes to the nearest one where it may, as a teleport does. Tests: a knock back into a wall stops at the exact step, and one that starts in the wall's margin can move away from it; a dash across a wall ends beyond it; a dash whose goal is inside a wall ends on the nearest open cell's center, and its delivery's hit is there.
-
 ## Stage 6: Sessions
 
 The design is [Sessions](docs/design/10-sessions.md): a journal that makes the log durable, crash restore, slots and their controllers, reconnects and late joins, server bots, receipts, checkpoints by a copy of the changed state, saves and loads, and the local server. Each step updates the design documents it changes: design 05's log format and inputs, design 02's lifecycle, design 08 and its generated reference for each name it makes run.

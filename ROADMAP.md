@@ -6,16 +6,6 @@ The stages to 1.0, in order, open items only: remove an item when it is done, an
 
 The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashed match restored; the game model proven on a tiny mode of every target genre. Players use local Nostr key files; no relays, listings, launcher or payments.
 
-### 5. MOBA mechanics
-
-- Action values and bookkeeping; channels, toggles and `ctx.reveal` ([Actions](docs/design/04-capabilities/actions.md)).
-- Forced movement: dash, knock back, teleport ([Navigation](docs/design/04-capabilities/navigation.md#forced-movement)).
-- The core's planned script names: `ctx.pick` and `ctx.chance` from the secret stream, and the vector operators `*`, `+` and `-` ([Script API reference](docs/design/08-script-api-reference.md)).
-- Terrain in the map: the cells each layer's map blocks, which routes go round and the pathing grid holds, for walls and the jungle ([Navigation](docs/design/04-capabilities/navigation.md#data)); brush that blocks sight from outside it ([Vision](docs/design/04-capabilities/vision.md#grid-fog-of-war)).
-- Items for the MOBA: inventory, equipment, the shop, item actions and passives ([Items](docs/design/04-capabilities/items.md)).
-
-Done when every mechanic design 07 lists runs from the reference heroes' and spells' packages, and none uses a planned name.
-
 ### 6. Sessions
 
 - Checkpoints, crash restore within the restore window, reconnect with the same session key, late join, receipts.
