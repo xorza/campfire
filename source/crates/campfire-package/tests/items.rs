@@ -4,7 +4,6 @@
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_capabilities::{DeclaredName, NameKind, UnitTypeFile};
-use campfire_math::Num;
 use campfire_package::{
     ChoiceProblem, ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef,
     Place,
@@ -16,9 +15,26 @@ use crate::moba::{Edit, edited};
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
+const MAP: &str = "modes/3v3/map/map.toml";
+
+/// A shop in each base: a region of the team's, the map's third and fourth markers.
+const SHOPS: &str = r#"[[markers]]
+name = "north_shop"
+tags = ["shop"]
+team = "north"
+region = { min = [-8, -68], max = [8, -56] }
+
+[[markers]]
+name = "south_shop"
+tags = ["shop"]
+team = "south"
+region = { min = [-8, 56], max = [8, 68] }
+
+[[markers]]
+name = "camp1""#;
 
 /// A potion of five to a slot that heals as it is drunk, a blade, and an edge built from the
-/// blade, sold at the teams' spawns for gold, half back on a sale.
+/// blade, sold at the teams' shops for gold, half back on a sale.
 const ITEMS: &str = r#"[items.potion]
 cost = { gold = 50 }
 stack = 5
@@ -40,7 +56,7 @@ on_resolve = [{ heal = { amount = 50 }, to = "source" }]
 [shop]
 items = ["potion", "blade", "edge"]
 resource = "gold"
-at = "spawn"
+at = "shop"
 sell_share = "0.5"
 
 [actions.warden_attack]"#;
@@ -61,6 +77,7 @@ fn with_items(more: &[(&'static str, Edit<'static>)]) -> Result<ModePackages, Lo
             ),
         ),
         (MODE_DATA, Edit::Replace("[actions.warden_attack]", ITEMS)),
+        (MAP, Edit::Replace("[[markers]]\nname = \"camp1\"", SHOPS)),
         (
             HUSK,
             Edit::Replace(
@@ -95,11 +112,8 @@ fn items_read_as_their_data_holds_them() {
     assert_eq!(edge.modifiers, [name("warden_blessing")]);
     let shop = packages.data().shop.as_ref().unwrap();
     assert_eq!(shop.items, [name("potion"), name("blade"), name("edge")]);
-    assert_eq!(
-        (shop.resource.as_str(), shop.at.as_str()),
-        ("gold", "spawn")
-    );
-    assert_eq!(shop.sell_share, Num::HALF);
+    assert_eq!((shop.resource.as_str(), shop.at.as_str()), ("gold", "shop"));
+    assert_eq!(shop.sell_share.of(300), 150);
     // A unit type's inventory, as Husk's reads.
     let unit: UnitTypeFile = toml::from_str("inventory = { slots = 6, kind = \"item\" }").unwrap();
     let inventory = unit.inventory.unwrap();
@@ -133,7 +147,7 @@ fn item(id: &str) -> Place {
     Place::Item(name(id))
 }
 
-const FLAWS: [Flaw; 16] = [
+const FLAWS: [Flaw; 19] = [
     // An item costs in the mode's player resources.
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("items.blade.cost", "{ silver = 300 }"))],
@@ -164,6 +178,12 @@ const FLAWS: [Flaw; 16] = [
         )],
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "blade"),
+    },
+    // An item costs at least what its components cost.
+    Flaw {
+        edits: &[(MODE_DATA, Edit::Set("items.edge.cost", "{ gold = 299 }"))],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::CheaperThanComponents(item)) if item == "edge"),
     },
     // A stack and uses of at least one.
     Flaw {
@@ -220,6 +240,24 @@ const FLAWS: [Flaw; 16] = [
         package: MODE,
         refused: |problem| unknown(problem, &Place::Shop, NameKind::MarkerTag, "base"),
     },
+    // An item the shop sells costs only in the shop's resource; each of its markers has a region
+    // and a team.
+    Flaw {
+        edits: &[
+            (MODE_DATA, Edit::Set("resources", r#"["gold", "silver"]"#)),
+            (
+                MODE_DATA,
+                Edit::Set("items.potion.cost", "{ gold = 50, silver = 1 }"),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopResource(item)) if item == "potion"),
+    },
+    Flaw {
+        edits: &[(MAP, Edit::Remove("markers.2.region"))],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopMarker(marker)) if marker == "north_shop"),
+    },
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("shop.sell_share", r#""1.5""#))],
         package: MODE,
@@ -227,7 +265,7 @@ const FLAWS: [Flaw; 16] = [
             unread(
                 problem,
                 "data/mode.toml",
-                "a sell share is a number from 0 to 1",
+                "a share is 0, 1, or a decimal from 0 to 1",
             )
         },
     },

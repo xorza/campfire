@@ -1278,10 +1278,11 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's item types and its shop: an item costs in the mode's player resources, is
-    /// built from items of the mode and never from itself, and names modifiers and an action of
-    /// the mode; the shop sells the mode's items, for one of its player resources, at a tag of the
-    /// map's markers. Either needs `items`.
+    /// The mode's item types and its shop: an item costs in the mode's player resources, at
+    /// least what its components cost in each, is built from items of the mode and never from
+    /// itself, and names modifiers and an action of the mode; the shop sells the mode's items,
+    /// each costing only in the one player resource it takes, at a tag of the map's markers, each
+    /// marker of which has a region and a team it serves. Either needs `items`.
     fn items(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let (data, content) = (&packages.data, &packages.content);
@@ -1327,6 +1328,22 @@ impl<'a> LoadCheck<'a> {
                 looped.clone(),
             )));
         }
+        for (id, item) in items {
+            let mut parts: BTreeMap<&DeclaredName, u64> = BTreeMap::new();
+            for component in &item.components {
+                for (resource, &amount) in &items[component].cost {
+                    *parts.entry(resource).or_default() += u64::from(amount);
+                }
+            }
+            let covers = |(resource, parts): (&&DeclaredName, &u64)| {
+                u64::from(item.cost.get(*resource).copied().unwrap_or(0)) >= *parts
+            };
+            if !parts.iter().all(covers) {
+                return Err(LoadProblem::Item(ItemProblem::CheaperThanComponents(
+                    id.clone(),
+                )));
+            }
+        }
         let Some(shop) = &data.shop else {
             return Ok(());
         };
@@ -1338,9 +1355,29 @@ impl<'a> LoadCheck<'a> {
         if ResourceId::named(&data.resources, shop.resource.as_str()).is_none() {
             return Err(unknown(&at, &shop.resource, NameKind::Resource));
         }
-        let tagged = packages.map.markers.iter().flat_map(|marker| &marker.tags);
-        if !tagged.into_iter().any(|tag| *tag == shop.at) {
+        let markers = &packages.map.markers;
+        let shops = markers
+            .iter()
+            .filter(|marker| marker.tags.contains(&shop.at));
+        let mut places = 0;
+        for marker in shops {
+            if marker.region.is_none() || marker.team.is_none() {
+                let marker = marker.name.clone();
+                return Err(LoadProblem::Item(ItemProblem::ShopMarker(marker)));
+            }
+            places += 1;
+        }
+        if places == 0 {
             return Err(unknown(&at, &shop.at, NameKind::MarkerTag));
+        }
+        let other = |item: &&DeclaredName| {
+            items[*item]
+                .cost
+                .keys()
+                .any(|resource| *resource != shop.resource)
+        };
+        if let Some(item) = shop.items.iter().find(other) {
+            return Err(LoadProblem::Item(ItemProblem::ShopResource(item.clone())));
         }
         Ok(())
     }

@@ -14,11 +14,18 @@ use crate::books::type_place::TypePlace;
 use crate::books::unit_type_file::UnitTypeFile;
 use crate::books::{BookParts, Books};
 use crate::combat::on_death::OnDeath;
+use crate::items::item_book::{ItemBook, ItemSpec};
+use crate::items::item_data::ItemData;
+use crate::items::item_id::ItemId;
+use crate::items::shop::{Shop, ShopPlace};
+use crate::items::shop_data::ShopData;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::{SlotAction, UnitTypeSetup};
-use crate::mode::unit_kit::{KitSections, UnitKit};
+use crate::mode::unit_kit::{InventorySpec, KitSections, UnitKit};
 use crate::orders::ai::Ai;
+use crate::players::resource_amount::ResourceAmount;
+use crate::players::resource_id::ResourceId;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -135,6 +142,7 @@ impl<'a> BookBuilder<'a> {
                 BookKind::Mode => {
                     let ranks = self.slotted_ranks(units.values());
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
+                    self.books.items = self.item_book(index, package, &actions);
                     for (name, file) in units {
                         if file.delivers() {
                             self.delivery(index, name, file)?;
@@ -182,14 +190,82 @@ impl<'a> BookBuilder<'a> {
             standing,
         )
         .map_err(BookError::Mode)?;
+        let items = &input.packages[0].content.items;
+        let shop = data
+            .shop
+            .as_ref()
+            .map(|shop| BookBuilder::shop(shop, items, &data.resources, &map));
         let mode = ModeBooks::build(
             input.data,
             &parts.units.unit_types,
             &mut parts.types,
             stats,
             map,
+            shop,
         );
         Ok(Books { parts, mode })
+    }
+
+    /// The item book of the mode package `package`, at `index`, its actions `actions`.
+    fn item_book(
+        &self,
+        index: u16,
+        package: &BookPackage<'_>,
+        actions: &BTreeMap<&str, ActionId>,
+    ) -> ItemBook {
+        let items = &package.content.items;
+        let id = |name: &DeclaredName| {
+            let at = items.keys().position(|other| other == name).expect(CHECKED);
+            ItemId::nth(u32::try_from(at).expect("a mode's item count fits u32"))
+        };
+        let resources = &self.input.data.resources;
+        let specs = items.values().map(|item| ItemSpec {
+            cost: item
+                .cost
+                .iter()
+                .map(|(resource, &amount)| ResourceAmount {
+                    resource: ResourceId::named(resources, resource.as_str()).expect(CHECKED),
+                    amount: i64::from(amount),
+                })
+                .collect(),
+            components: item.components.iter().map(id).collect(),
+            stack: item.stack,
+            uses: item.uses,
+            modifiers: item
+                .modifiers
+                .iter()
+                .map(|modifier| {
+                    let modifiers = &self.books.modifiers;
+                    modifiers.named(index, modifier.as_str()).expect(CHECKED)
+                })
+                .collect(),
+            action: item.action.as_ref().map(|action| actions[action.as_str()]),
+        });
+        ItemBook::new(specs.collect())
+    }
+
+    /// The mode's shop of `data`, selling `items` by id, for one of `resources`, at the regions of
+    /// `map`'s markers with its tag, each for the marker's team.
+    fn shop(
+        data: &ShopData,
+        items: &BTreeMap<DeclaredName, ItemData>,
+        resources: &[DeclaredName],
+        map: &ModeMap,
+    ) -> Shop {
+        let sells = data.items.iter().map(|name| {
+            let at = items.keys().position(|other| other == name).expect(CHECKED);
+            ItemId::nth(u32::try_from(at).expect("a mode's item count fits u32"))
+        });
+        let places = map
+            .markers
+            .iter()
+            .filter(|marker| marker.tags.named(data.at.as_str()).is_some())
+            .map(|marker| ShopPlace {
+                team: marker.team.expect(CHECKED),
+                region: marker.region.expect(CHECKED),
+            });
+        let resource = ResourceId::named(resources, data.resource.as_str()).expect(CHECKED);
+        Shop::new(sells.collect(), resource, places.collect(), data.sell_share)
     }
 
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`
@@ -393,6 +469,10 @@ impl<'a> BookBuilder<'a> {
             body: data.navigation.body(file.collision.as_ref()),
             tracks,
             production: file.production.as_ref(),
+            inventory: file.inventory.as_ref().map(|inventory| InventorySpec {
+                slots: inventory.slots,
+                kind: data.slots.named(inventory.kind.as_str()).expect(CHECKED),
+            }),
         };
         let kit =
             UnitKit::new(&self.stats, unit_type, sections, self.life, rate).map_err(|error| {

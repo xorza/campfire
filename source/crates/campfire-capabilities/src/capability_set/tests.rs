@@ -457,7 +457,7 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
     (Some(Abilities), &[]),
     (Some(Orders), &["orders.next_think", "orders.resetting"]),
     (Some(Capability::Production), &["production.train_queue"]),
-    (Some(Capability::Items), &[]),
+    (Some(Capability::Items), &["items.inventory"]),
 ];
 
 #[test]

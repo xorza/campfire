@@ -23,6 +23,7 @@ use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::name_list::NameList;
 use crate::values::polygon::Polygon;
+use crate::values::region::Region;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
@@ -51,13 +52,14 @@ pub(crate) struct MapGround {
     terrain: Terrain,
 }
 
-/// A marker of the map, names resolved: its name, its tags, its point and its team if it names
-/// them, and its params.
+/// A marker of the map, names resolved: its name, its tags, its point, its region and its team
+/// if it names them, and its params.
 #[derive(Debug, Clone)]
 pub(crate) struct MarkerSpec {
     pub(crate) name: Box<str>,
     pub(crate) tags: NameList,
     pub(crate) pos: Option<Position>,
+    pub(crate) region: Option<Region>,
     pub(crate) team: Option<Team>,
     pub(crate) params: BTreeMap<DeclaredName, ModeParam>,
 }
@@ -154,28 +156,7 @@ impl ModeMap {
                 pos: point(&unit.pos)?,
             });
         }
-        let mut markers = Vec::with_capacity(map.markers.len());
-        for (at, marker) in map.markers.iter().enumerate() {
-            if map.markers[..at]
-                .iter()
-                .any(|other| other.name == marker.name)
-            {
-                return Err(ModeError::RepeatedName(marker.name.clone()));
-            }
-            let marker_team = marker.team.as_ref().map(team).transpose()?;
-            if let Some(region) = marker.region
-                && (marker.pos.is_some() || !region.holds(map.metric, map.bounds))
-            {
-                return Err(ModeError::Region(marker.name.clone()));
-            }
-            markers.push(MarkerSpec {
-                name: marker.name.as_str().into(),
-                tags: marker.tags.iter().map(DeclaredName::as_str).collect(),
-                pos: marker.pos.as_ref().map(point).transpose()?,
-                team: marker_team,
-                params: marker.params.clone(),
-            });
-        }
+        let markers = ModeMap::markers(map, team)?;
         Ok(ModeMap {
             ground: MapGround {
                 metric: map.metric,
@@ -190,6 +171,50 @@ impl ModeMap {
             grid,
             brush,
         })
+    }
+
+    /// The markers of `map`, each with its team as `team` resolves it; an error for two of one
+    /// name, a team the mode lacks, or a region that is no box within the bounds or beside a
+    /// point.
+    fn markers(
+        map: &MapData,
+        team: impl Fn(&DeclaredName) -> Result<Team, ModeError>,
+    ) -> Result<Vec<MarkerSpec>, ModeError> {
+        let point = |point: &MapPoint| map.point(point);
+        let mut markers = Vec::with_capacity(map.markers.len());
+        for (at, marker) in map.markers.iter().enumerate() {
+            if map.markers[..at]
+                .iter()
+                .any(|other| other.name == marker.name)
+            {
+                return Err(ModeError::RepeatedName(marker.name.clone()));
+            }
+            let marker_team = marker.team.as_ref().map(&team).transpose()?;
+            if let Some(region) = marker.region
+                && (marker.pos.is_some() || !region.holds(map.metric, map.bounds))
+            {
+                return Err(ModeError::Region(marker.name.clone()));
+            }
+            let region = marker.region.map(|region| {
+                let [min, max] = [region.min, region.max].map(|corner| {
+                    let at = corner
+                        .position()
+                        .expect("the region holds within the bounds")
+                        .get();
+                    [at.x, at.z]
+                });
+                Region::new(min, max)
+            });
+            markers.push(MarkerSpec {
+                name: marker.name.as_str().into(),
+                tags: marker.tags.iter().map(DeclaredName::as_str).collect(),
+                pos: marker.pos.as_ref().map(point).transpose()?,
+                region,
+                team: marker_team,
+                params: marker.params.clone(),
+            });
+        }
+        Ok(markers)
     }
 }
 

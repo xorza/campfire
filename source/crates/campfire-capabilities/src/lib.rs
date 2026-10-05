@@ -88,10 +88,12 @@ pub use scripts::state_decl::synced_state_decl::SyncTo;
 pub use mode::team_manifest::TeamManifest;
 
 pub use items::Items;
+pub use items::inventory::{Carried, Inventory};
 pub use items::inventory_data::InventoryData;
 pub use items::item_data::ItemData;
+pub use items::item_id::ItemId;
 pub use items::shop_data::ShopData;
-pub use mode::unit_kit::UnitKit;
+pub use mode::unit_kit::{InventorySpec, UnitKit};
 pub use navigation::Navigation;
 pub use navigation::destination::Destination;
 pub use navigation::error::MapProblem;
@@ -129,6 +131,7 @@ pub use scripts::script_role::ScriptRole;
 pub use values::engine_enum::EngineEnum;
 pub use values::polygon::Polygon;
 pub use values::polygon::error::PolygonError;
+pub use values::share::Share;
 
 pub use scripts::script_api::{MemberKind, ScriptApi};
 

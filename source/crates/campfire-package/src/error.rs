@@ -280,6 +280,12 @@ pub enum ItemProblem {
     RankedInventory { at: Place, kind: DeclaredName },
     /// A unit type at `at` holds more slots, its own and its inventory's, than a unit holds.
     TooManySlots(Place),
+    /// The item costs less, in some resource, than the components it is built from.
+    CheaperThanComponents(DeclaredName),
+    /// The shop sells the item, which costs in a resource the shop does not take.
+    ShopResource(DeclaredName),
+    /// The marker has the shop's tag, and no region or no team to serve.
+    ShopMarker(DeclaredName),
 }
 
 impl fmt::Display for ItemProblem {
@@ -293,6 +299,21 @@ impl fmt::Display for ItemProblem {
                 write!(
                     f,
                     "{at}: its inventory fills {kind}, a slot kind with ranks"
+                )
+            }
+            ItemProblem::CheaperThanComponents(item) => {
+                write!(f, "item {item} costs less than its components")
+            }
+            ItemProblem::ShopResource(item) => {
+                write!(
+                    f,
+                    "the shop sells item {item}, which costs in another resource"
+                )
+            }
+            ItemProblem::ShopMarker(marker) => {
+                write!(
+                    f,
+                    "marker {marker} has the shop's tag, and no region or no team"
                 )
             }
             ItemProblem::TooManySlots(at) => write!(

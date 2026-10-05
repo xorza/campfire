@@ -328,6 +328,7 @@ fn grunt() -> UnitKit {
         body: None,
         tracks: TrackSet::default(),
         queue: None,
+        inventory: None,
     }
 }
 
@@ -747,7 +748,14 @@ impl Game {
             let map =
                 ModeMap::resolve(&files.map, &files.teams, relations, rules, unit_type).unwrap();
             let unit_types = &setup.units.unit_types;
-            ModeBooks::build(&files.data, unit_types, &mut view.types_mut(), stats, map)
+            ModeBooks::build(
+                &files.data,
+                unit_types,
+                &mut view.types_mut(),
+                stats,
+                map,
+                None,
+            )
         };
         sim.install(|world, schedule, registry| {
             Mode::install(world, schedule, registry, setup, books);

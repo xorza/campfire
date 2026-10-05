@@ -10,3 +10,5 @@ Design: [Modules](../design/02-engine-core.md#modules), `net`. Rules: [Issue log
 
 ## Ready
 
+- **Stage 10.** No unit's inventory replicates: a client sees no item its units carry, where design 04's items send a unit's own inventory to its owner ([Items](../design/04-capabilities/items.md#network)).
+

@@ -11,6 +11,7 @@ use campfire_sim::{EntityIndex, StableId};
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::items::inventory::Inventory;
 use crate::mode::choice_book::ChoiceBook;
 use crate::mode::game_map::GameMap;
 use crate::mode::group_unit::GroupUnit;
@@ -216,6 +217,9 @@ impl ModeBook {
         }
         if kit.queue.is_some() {
             unit.insert(TrainQueue::default());
+        }
+        if let Some(inventory) = kit.inventory {
+            unit.insert(Inventory::new(inventory.slots));
         }
         let actions = self.actions(unit_type);
         if !actions.is_empty() {

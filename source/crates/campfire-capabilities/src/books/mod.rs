@@ -11,6 +11,7 @@ use crate::areas::area_spec::AreaSpec;
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_input::BookInput;
 use crate::books::error::BookError;
+use crate::items::item_book::ItemBook;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_units::ModeUnits;
@@ -66,6 +67,8 @@ pub(crate) struct BookParts {
     /// The sights of the delivery types with a `vision` section.
     sights: ByType<Sight>,
     producers: ByType<ProductionData>,
+    /// The mode's item types.
+    items: ItemBook,
     units: ModeUnits,
 }
 
@@ -113,6 +116,7 @@ impl Books {
         replace(world, parts.areas);
         replace(world, parts.sights);
         replace(world, parts.producers);
+        replace(world, parts.items);
         ModeInputs {
             units: parts.units,
             books: mode,
