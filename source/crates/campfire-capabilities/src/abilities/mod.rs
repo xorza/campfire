@@ -793,7 +793,7 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
         Hook::OnResolve,
         &mut ctx.frame(),
         ctx.view(),
-        prepared.aim.unit(),
+        prepared.aim,
     )?;
     let Some(script) = prepared.on_resolve else {
         return Ok(());

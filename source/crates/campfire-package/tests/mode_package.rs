@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 232] = [
+static FLAWS: [Flaw; 235] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -765,11 +765,37 @@ static FLAWS: [Flaw; 232] = [
         "hero-cinder",
         |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
     ),
+    // An avatar's action spawns nothing until summons come; a mode's spawns a unit type of the
+    // mode's that stands, for a whole number of milliseconds; loot is planned.
     flaw(
         RIME,
         Edit::Replace(SLOWS, r#"{ spawn = { unit_type = "frost_arrow" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Spawn) } if action == "fan_of_frost"),
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Summon } if action == "fan_of_frost"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(SLOWS, r#"{ loot = { table = "chest", level = 1 } },"#),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Loot) } if action == "fan_of_frost"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Set(
+            "actions.tower_attack.on_hit",
+            r#"[{ spawn = { unit_type = "caster_creep_bolt" } }]"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "caster_creep_bolt"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Set(
+            "actions.tower_attack.on_hit",
+            r#"[{ spawn = { unit_type = "melee_creep", duration_ms = "1.5" } }]"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Duration } if action == "tower_attack"),
     ),
     // A move is a dash's `to` and `speed`, or a knock back's `from`, `distance` and whole `ms`;
     // its other unit, as its own, is one its list reaches.

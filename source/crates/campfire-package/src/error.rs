@@ -391,6 +391,9 @@ pub enum EffectProblem {
     NoUnit,
     /// A number below zero, at some rank.
     Negative,
+    /// A spawn in an avatar's or a loadout's action, whose package holds no unit type to spawn
+    /// until summons come.
+    Summon,
     /// A number past what a sim number holds, at some rank.
     Overflow,
     /// A modifier's duration that is not a whole number of milliseconds within a `u32` at each
@@ -413,6 +416,9 @@ impl fmt::Display for EffectProblem {
                 f.write_str("an effect to the unit reached, where the list reaches none")
             }
             EffectProblem::Negative => f.write_str("a number below zero"),
+            EffectProblem::Summon => f.write_str(
+                "spawns a unit from an avatar's or a loadout's action, which waits for summons",
+            ),
             EffectProblem::Overflow => f.write_str("a number past a sim number"),
             EffectProblem::Duration => f.write_str(
                 "a duration that is no whole number of milliseconds within a u32 at each rank",

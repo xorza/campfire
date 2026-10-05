@@ -653,4 +653,10 @@ impl EffectNames for BuildNames<'_> {
     fn delivery_type(&self, name: &DeclaredName) -> UnitType {
         self.unit_type(self.package, name)
     }
+
+    fn standing_type(&self, name: &DeclaredName) -> UnitType {
+        self.types
+            .named(TypeScope::Mode, name.as_str())
+            .expect(CHECKED)
+    }
 }

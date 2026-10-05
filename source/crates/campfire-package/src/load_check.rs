@@ -45,10 +45,20 @@ pub(crate) struct LoadCheck<'a> {
     state_fields: BTreeSet<&'a str>,
 }
 
+/// What the action whose effects a check reads may name: its package's unit types, and whether
+/// the package is the mode, whose actions may spawn the mode's unit types.
+#[derive(Debug, Clone, Copy)]
+struct EffectScope<'u> {
+    units: &'u BTreeMap<DeclaredName, UnitTypeFile>,
+    mode: bool,
+}
+
 /// The facts one package's checks share.
 #[derive(Debug)]
 struct PackageNames<'a> {
     package: &'a Package,
+    /// Whether it is the mode package, whose actions may spawn the mode's unit types.
+    mode: bool,
     /// What data says of each script it names.
     scripts: BTreeMap<&'a PackagePath, ScriptUse<'a>>,
     modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
@@ -256,7 +266,8 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::NoPathingGrid);
         }
-        let mut names = PackageNames::new(&packages.mode, &content.modifiers, &content.actions);
+        let mut names =
+            PackageNames::new(&packages.mode, true, &content.modifiers, &content.actions);
         let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
         names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
         for unit_type in units.values() {
@@ -347,7 +358,7 @@ impl<'a> LoadCheck<'a> {
         }
         let loadout_ranks = self.packages.data.loadout_ranks();
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
-        let mut names = PackageNames::new(package, modifiers, actions);
+        let mut names = PackageNames::new(package, false, modifiers, actions);
         self.actions(actions, &content.units, ranks, &mut names)?;
         let ways = self.packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, actions, ranks)?;
@@ -379,7 +390,11 @@ impl<'a> LoadCheck<'a> {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
             self.ranked(id, ability, ranks(id.as_str()))?;
-            self.effects(id, ability, units)?;
+            let scope = EffectScope {
+                units,
+                mode: names.mode,
+            };
+            self.effects(id, ability, scope)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
                     DeliveryData::Projectile { .. } => Capability::Projectiles,
@@ -922,7 +937,7 @@ impl<'a> LoadCheck<'a> {
         &self,
         id: &DeclaredName,
         action: &ActionData,
-        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        scope: EffectScope<'_>,
     ) -> Result<(), LoadProblem> {
         for (list, effects) in action.effect_lists() {
             let delivers = action.delivery.is_some() || action.kind == ActionKind::Attack;
@@ -937,7 +952,57 @@ impl<'a> LoadCheck<'a> {
                 Hook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
                 _ => list == Hook::OnHit,
             };
-            self.effect_list(id, action, units, list, effects, reaches)?;
+            self.effect_list(id, action, scope, list, effects, reaches)?;
+        }
+        Ok(())
+    }
+
+    /// A forced move `moves` of `action`, at `at`, in a list that reaches a unit when `reaches`:
+    /// its other unit one the list reaches, and a knock back's time whole milliseconds; `fail`
+    /// makes the problem of the effect's list.
+    fn forced_move(
+        &self,
+        action: &ActionData,
+        moves: &MoveData,
+        reaches: bool,
+        at: &Place,
+        fail: impl Fn(EffectProblem) -> LoadProblem,
+    ) -> Result<(), LoadProblem> {
+        self.require(Capability::Navigation, at)?;
+        let (other, ms) = match moves {
+            MoveData::Dash { to, .. } => (to, None),
+            MoveData::KnockBack { from, ms, .. } => (from, Some(ms)),
+        };
+        if *other == EffectTo::Reached && !reaches {
+            return Err(fail(EffectProblem::NoUnit));
+        }
+        if ms.is_some_and(|ms| !whole_ms(action, ms)) {
+            return Err(fail(EffectProblem::Duration));
+        }
+        Ok(())
+    }
+
+    /// A spawn of `unit_type` for `duration_ms` by `action`, at `at`, of the mode when `mode`:
+    /// only the mode's actions spawn, a unit type of the mode's that stands, for whole
+    /// milliseconds; `fail` makes the problem of the effect's list.
+    fn spawn(
+        &self,
+        action: &ActionData,
+        unit_type: &DeclaredName,
+        duration_ms: Option<&Number>,
+        mode: bool,
+        at: &Place,
+        fail: impl Fn(EffectProblem) -> LoadProblem,
+    ) -> Result<(), LoadProblem> {
+        if !mode {
+            return Err(fail(EffectProblem::Summon));
+        }
+        let units = &self.packages.content.units;
+        if units.get(unit_type).is_none_or(UnitTypeFile::delivers) {
+            return Err(unknown(at, unit_type, NameKind::UnitType));
+        }
+        if duration_ms.is_some_and(|duration| !whole_ms(action, duration)) {
+            return Err(fail(EffectProblem::Duration));
         }
         Ok(())
     }
@@ -952,7 +1017,7 @@ impl<'a> LoadCheck<'a> {
         &self,
         id: &DeclaredName,
         action: &ActionData,
-        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        scope: EffectScope<'_>,
         list: Hook,
         effects: &[EffectData],
         reaches: bool,
@@ -964,8 +1029,12 @@ impl<'a> LoadCheck<'a> {
             list,
             problem,
         };
+        // An `on_resolve` aimed at a point reaches no unit, and a spawn there takes the point.
+        let aims_point = list == Hook::OnResolve
+            && matches!(action.targeting, Targeting::Point | Targeting::Direction);
         for effect in effects {
-            if effect.to == EffectTo::Reached && !reaches {
+            let placed = aims_point && matches!(effect.does, Effecting::Spawn { .. });
+            if effect.to == EffectTo::Reached && !reaches && !placed {
                 return Err(fail(EffectProblem::NoUnit));
             }
             let unknown = |of, name: &DeclaredName| LoadProblem::Unknown {
@@ -1011,26 +1080,15 @@ impl<'a> LoadCheck<'a> {
                         return Err(unknown(NameKind::Tag, tag));
                     }
                 }
-                Effecting::Move(moves) => {
-                    self.require(Capability::Navigation, &at)?;
-                    let (other, ms) = match moves {
-                        MoveData::Dash { to, .. } => (to, None),
-                        MoveData::KnockBack { from, ms, .. } => (from, Some(ms)),
-                    };
-                    if *other == EffectTo::Reached && !reaches {
-                        return Err(fail(EffectProblem::NoUnit));
-                    }
-                    if ms.is_some_and(|ms| !whole_ms(action, ms)) {
-                        return Err(fail(EffectProblem::Duration));
-                    }
-                }
+                Effecting::Move(moves) => self.forced_move(action, moves, reaches, &at, fail)?,
                 Effecting::Launch {
                     area,
                     on_hit,
                     on_end,
                 } => {
                     self.require(Capability::Areas, &at)?;
-                    let unit_type = units
+                    let unit_type = scope
+                        .units
                         .get(area)
                         .ok_or_else(|| unknown(NameKind::UnitType, area))?;
                     if unit_type.area.is_none() {
@@ -1039,9 +1097,20 @@ impl<'a> LoadCheck<'a> {
                             unit_type: area.clone(),
                         }));
                     }
-                    self.effect_list(id, action, units, Hook::OnHit, on_hit, true)?;
-                    self.effect_list(id, action, units, Hook::OnEnd, on_end, false)?;
+                    self.effect_list(id, action, scope, Hook::OnHit, on_hit, true)?;
+                    self.effect_list(id, action, scope, Hook::OnEnd, on_end, false)?;
                 }
+                Effecting::Spawn {
+                    unit_type,
+                    duration_ms,
+                } => self.spawn(
+                    action,
+                    unit_type,
+                    duration_ms.as_ref(),
+                    scope.mode,
+                    &at,
+                    fail,
+                )?,
             }
             for number in effect.does.numbers() {
                 number_holds(action, number).map_err(fail)?;
@@ -1637,11 +1706,13 @@ impl<'a> LoadCheck<'a> {
 impl<'a> PackageNames<'a> {
     const fn new(
         package: &'a Package,
+        mode: bool,
         modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
         actions: &'a BTreeMap<DeclaredName, ActionData>,
     ) -> PackageNames<'a> {
         PackageNames {
             package,
+            mode,
             scripts: BTreeMap::new(),
             modifiers,
             actions,

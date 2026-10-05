@@ -3,11 +3,13 @@
 
 use bevy_ecs::component::Component;
 use campfire_capabilities::{
-    Area, Dead, Experience, Level, Modifiers, Owner, Projectile, ScriptFailures, Team, TrainQueue,
+    Area, Dead, Experience, Level, Lifespan, Modifiers, Owner, Projectile, ScriptFailures, SeenBy,
+    Team, TeamSet, TrainQueue,
 };
+use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{FixedMatch, Golden, ProvingMatch, RestoreTarget};
-use campfire_sim::EntityIndex;
 use campfire_sim::internals::Draws;
+use campfire_sim::{EntityIndex, Position};
 
 /// What the match showed over its ticks.
 #[derive(Debug, Default)]
@@ -19,6 +21,10 @@ struct Seen {
     /// The units of each player that are neither hero, barracks, projectile nor area, after the
     /// first trains end.
     trained: [usize; 2],
+    /// The ticks the ward stood after, with its place and the teams that saw it; and the ticks
+    /// after which north saw south's barracks.
+    ward: Vec<(u64, Position, TeamSet)>,
+    barracks_watched: Vec<u64>,
 }
 
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
@@ -34,6 +40,18 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
                 .is_some_and(|m| *m != Modifiers::default())
         {
             seen.modified_heroes += 1;
+        }
+        if unit.contains::<Lifespan>() {
+            let place = *unit.get::<Position>().unwrap();
+            seen.ward
+                .push((tick, place, unit.get::<SeenBy>().unwrap().get()));
+        }
+        let north = Team::new(0);
+        if unit.contains::<TrainQueue>()
+            && unit.get::<Team>() == Some(&Team::new(1))
+            && unit.get::<SeenBy>().unwrap().get().contains(north)
+        {
+            seen.barracks_watched.push(tick);
         }
         if tick == 40
             && let Some(owner) = unit.get::<Owner>()
@@ -94,6 +112,23 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         boulder.is_none_or(|(_, entity)| world.entity(entity).contains::<Dead>()),
         "the boulder stands"
     );
+    // A ward: north's barracks posts it at (12, 9) in tick 300, its order's, and its 2000 ms are
+    // 40 ticks at 20 a second, 300 to 339: it despawns as tick 339 ends, so the state after each
+    // of ticks 300 to 338 holds it. It is stealthed, so only north sees it, though south's
+    // barracks sees its cell; and it sees 4 m: the barracks' cell center, (14.5, 7.5), is √8.5 ≈
+    // 2.92 m off, so north sees the barracks in the Vision stages of ticks 300 to 339, and no unit
+    // of north sees it otherwise.
+    let ticks: Vec<u64> = seen.ward.iter().map(|&(tick, ..)| tick).collect();
+    assert_eq!(ticks, (300..=338).collect::<Vec<_>>());
+    let at = Position::new(Vec3::new(Num::int(12), Num::ZERO, Num::int(9))).unwrap();
+    let north_alone =
+        |teams: TeamSet| (0..3).all(|team| teams.contains(Team::new(team)) == (team == 0));
+    assert!(
+        seen.ward
+            .iter()
+            .all(|&(_, place, teams)| place == at && north_alone(teams))
+    );
+    assert_eq!(seen.barracks_watched, (300..=339).collect::<Vec<_>>());
 }
 
 /// A component no system reads, which moves the unit that carries it to another archetype.

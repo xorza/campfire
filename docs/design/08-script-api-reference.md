@@ -342,8 +342,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `purge` | since 1.0 |
 | `launch` | since 1.0 |
 | `move` | since 1.0 |
+| `spawn` | since 1.0 |
 | `to` | since 1.0 |
-| `spawn` | planned |
 | `loot` | planned |
 | `noise` | planned |
 

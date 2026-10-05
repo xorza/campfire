@@ -7,6 +7,7 @@ use campfire_sim::{EntityIndex, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
@@ -185,7 +186,7 @@ impl DamagePass {
         let queued = {
             let mut frame = ctx.frame();
             frame.begin(world, start).and_then(|()| {
-                let target = Some(damage.target);
+                let target = ActionTarget::Unit(damage.target);
                 let lists = ListsOf::Action(weapon);
                 EffectLists::queue(world, lists, Hook::OnHit, &mut frame, ctx.view(), target)
             })

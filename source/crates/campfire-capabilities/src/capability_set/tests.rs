@@ -397,6 +397,7 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
             "sim.position",
             "sim.tick",
             "units.body",
+            "units.lifespan",
             "units.owner",
             "units.relations",
             "units.spawn_point",

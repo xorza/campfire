@@ -29,7 +29,7 @@ Done when a LAN match whose server is killed restores and ends, its log verifyin
 
 ### 7. Genre proofs: RTS and campaign
 
-- Summons: the `spawn` effect, unit types in packages other than the mode, and a timed life ([Effects](docs/design/04-capabilities/actions.md#effects)).
+- Summons: the `spawn` effect of an avatar's or a loadout's action, and unit types in packages other than the mode ([Effects](docs/design/04-capabilities/actions.md#effects)).
 - First cuts: `production` (build, gather; the train's cancel, refund, rally points, requirements and supply), region events, `quests` objectives, carry and campaigns, save converters.
 - The RTS skirmish and the RTS mission ([Genre proofs](docs/design/04-capabilities/genres.md#genre-proofs)).
 

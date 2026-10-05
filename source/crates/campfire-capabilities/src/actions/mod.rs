@@ -56,6 +56,7 @@ pub(crate) mod range;
 pub(crate) mod rank_values;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kinds;
+pub(crate) mod spawn_effect;
 pub(crate) mod targets;
 pub(crate) mod weapon;
 

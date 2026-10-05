@@ -6,7 +6,6 @@ The concrete steps of the current stages of the [roadmap](ROADMAP.md), in order,
 
 Every mechanic design 07 lists, run from the reference packages, in the order each needs the one before: the core's draws and vectors, the actions over time, reveals, forced movement, terrain and brush, items, the 3v3 scenario that casts them all, and last the load that refuses a planned name, once no reference package uses one. Each step runs a name or field the reference lists as planned, and marks it as running.
 
-19. **I4. Wards** (actions): the `spawn` effect of a mode package's action, with `duration_ms`. Tests: a sight ward spawns at its aim, hidden, sees, and despawns at its time; an avatar package's `spawn` still fails the load.
 20. **I5. The 3v3's items** (reference MOBA): potions, the two wards, the elixir, and a few items with components and actives, in the mode's package; the heroes' inventories and the shop at each base. Tests: the package loads, and the item checks hold.
 21. **S1. The 3v3 casts** (runner): the scripted 3v3's players learn and cast each hero's abilities and use the spells, and buy, use and sell items, beside stage 4's scenario; the match test checks each mechanic by its computed numbers. The 3v3 golden is blessed.
 22. **N1. Planned names refused** (package, [One source](docs/design/08-script-api.md#one-source)): the load refuses a planned name in a script, a planned data field and a planned hook, with the name and where it stands. Tests: one flaw each; every reference package loads.

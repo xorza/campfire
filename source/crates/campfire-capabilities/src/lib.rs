@@ -168,6 +168,7 @@ pub use units::dead::Dead;
 pub use units::engine_tag::EngineTag;
 pub use units::forced_move::{DashTo, ForcedMove};
 pub use units::layer::Layer;
+pub use units::lifespan::Lifespan;
 pub use units::modifier_id::ModifierId;
 pub use units::owner::Owner;
 
