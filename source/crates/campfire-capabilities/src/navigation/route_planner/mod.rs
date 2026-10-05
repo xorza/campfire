@@ -21,11 +21,10 @@ use crate::values::grid::Grid;
 /// which the clearance's regions find before the search; a short route, which they do not serve,
 /// ends on the reached cell nearest it. The route then keeps only the cells where the straight line
 /// from the waypoint before would overlap a body or touch a cell the walls block, each tested
-/// exactly. The buffers stay between routes,
-/// and a route touches only the cells it reaches. Its work, long routes and short, counts against
-/// one limit a tick, as many units as the grid has cells: a cell expanded, a cell scanned for the
-/// nearest one, a line tested against the bodies, and a cell a line's test against the walls
-/// visits.
+/// exactly. The buffers stay between routes, and a route touches only the cells it reaches. Its
+/// work, long routes and short, counts against one limit a tick, as many units as the grid has
+/// cells: a cell expanded, a cell scanned for the nearest one, a line tested against the bodies,
+/// and a cell a line's test against the walls visits.
 #[derive(Resource, Debug)]
 pub(crate) struct RoutePlanner {
     /// The route each cell was last reached in, as twice its number, plus one once expanded.

@@ -58,10 +58,9 @@ impl DamagePass {
     /// Applies the tick's damage and heals in the queue's order, with the units as the pass began:
     /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
     /// `on_hit` list, then its combat events, whose damage joins the end of the queue, and whose
-    /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has
-    /// one.
-    /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal of a
-    /// unit at zero life.
+    /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has one.
+    /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal
+    /// of a unit at zero life.
     pub(crate) fn run(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);

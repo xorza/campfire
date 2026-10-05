@@ -202,9 +202,10 @@ fn fill_row((path, walks): ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route
 /// there, unless its route reaches its goal and the walker may go straight on from the waypoint
 /// before the last to the new one, past every static body and every cell the walls block it from,
-/// as a chaser after a target that moved: then only the last waypoint moves. After the static bodies changed, a walker whose way along its route a static
-/// body of its layer blocks asks for its route again; after they lost a body, so does one whose
-/// route ends short of its goal, and one that arrived short of it walks there again. A walker
+/// as a chaser after a target that moved: then only the last waypoint moves. After the static
+/// bodies changed, a walker whose way along its route a static body of its layer blocks asks for
+/// its route again; after they lost a body, so does one whose route ends short of its goal, and
+/// one that arrived short of it walks there again. A walker
 /// with no destination forgets its route, unless it arrived short. With no pathing grid, as in a
 /// match with no map, no static body blocks a route. Each walker checks its route only when the
 /// static bodies changed since the tick before, against the bodies put in, which `changes`

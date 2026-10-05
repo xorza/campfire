@@ -3,7 +3,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, Position, TickInput, TickInputs};
+use campfire_sim::{Capability, Position, SimComponent, TickInput, TickInputs};
 use serde::Deserialize;
 
 use super::*;
@@ -17,6 +17,7 @@ use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::items::inventory::Carried;
 use crate::items::item_book::ItemSpec;
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
@@ -205,7 +206,7 @@ impl Carrier {
     /// Each slot's item type and count, then its action and the tick it is ready.
     fn carried(&self) -> Vec<Option<(usize, u32)>> {
         let inventory = self.sim.get::<Inventory>(self.unit);
-        let carried = |slot: &Option<inventory::Carried>| {
+        let carried = |slot: &Option<Carried>| {
             slot.map(|carried| (carried.item.index(), carried.count.get()))
         };
         inventory.slots().iter().map(carried).collect()
@@ -251,6 +252,25 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     carrier.order(&[buy(POTION), buy(POTION)]);
     assert_eq!(carrier.carried(), [Some((0, 2)), None, None]);
     assert_eq!(carrier.actions(), [drink, None, None]);
+    // A restored inventory holds stacks its book allows: a potion of its one use, two at most to
+    // a slot, and a flash with no uses.
+    let restored = |item: u32, count: u32, uses: Option<u32>| {
+        let mut inventory = Inventory::new(NonZeroU8::new(1).unwrap(), SlotKind::new(0));
+        let stack = Carried {
+            item: ItemId::nth(item),
+            count: NonZeroU32::new(count).unwrap(),
+            uses: uses.map(|uses| NonZeroU32::new(uses).unwrap()),
+        };
+        inventory.restore(0, stack);
+        let world = &carrier.sim.world;
+        inventory.check(world, carrier.sim.entity(carrier.unit))
+    };
+    assert!(restored(POTION, 2, Some(1)) && restored(FLASH, 1, None));
+    assert!(!restored(POTION, 3, Some(1)));
+    assert!(!restored(POTION, 1, Some(2)));
+    assert!(!restored(POTION, 1, None));
+    assert!(!restored(FLASH, 1, Some(1)));
+    assert!(!restored(9, 1, None));
     // One resolves as its order comes, and heals 50 of the 200 lost: one potion left.
     carrier.order(&[cast(0)]);
     assert_eq!(

@@ -483,8 +483,9 @@ fn assert_camp(run: &Run) {
     assert_eq!(gained, [zero, zero, zero, share, share, zero]);
 }
 
-/// The players' gold at the skirmish's end: the income, first blood and its assist, the wolf's bounty, and
-/// the bounty of each creep of the first wave a hero felled, by its kind, `melee` or a caster's.
+/// The players' gold at the skirmish's end: the income, first blood and its assist, the wolf's
+/// bounty, and the bounty of each creep of the first wave a hero felled, by its kind, `melee` or a
+/// caster's.
 fn assert_gold(run: &Run, melee: UnitType) {
     // A creep a hero fells pays its player 20 for a melee creep, the first three of a group, and
     // 15 for a caster: Cinder fells a caster and a melee creep of the south's west group, 35, and

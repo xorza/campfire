@@ -93,11 +93,12 @@ fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
     fill.column::<SightColumn>().push(seen_by);
 }
 
-/// Reveals the cells each living unit with a sight sees to its vision group, but the cells of
-/// every brush other than the one it stands in, and those each such unit whose tags detect sees to
-/// its group's detection, and each reveal under way its cells, brush included, to its team's group, then gives each unit the teams that see it: its own group's, and those of
-/// each group whose cells hold it, or, for a unit its tags hide, whose detection does. The groups
-/// follow the relations as they change.
+/// Reveals the cells each living unit with a sight sees to its vision group, but the cells of every
+/// brush other than the one it stands in, and those each such unit whose tags detect sees to its
+/// group's detection, and each reveal under way its cells, brush included, to its team's group,
+/// then gives each unit the teams that see it: its own group's, and those of each group whose cells
+/// hold it, or, for a unit its tags hide, whose detection does. The groups follow the relations as
+/// they change.
 fn see(
     (grid, relations, tick): (
         Option<Res<'_, VisionGrid>>,

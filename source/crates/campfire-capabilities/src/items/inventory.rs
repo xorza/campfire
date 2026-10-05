@@ -158,15 +158,6 @@ impl Inventory {
         *slot = Some(carried);
     }
 
-    /// Swaps two slots, empty or not; `false` when either is no slot.
-    fn swap(&mut self, from: u8, to: u8) -> bool {
-        let (from, to) = (usize::from(from), usize::from(to));
-        if from.max(to) >= self.slots.len() {
-            return false;
-        }
-        self.slots.swap(from, to);
-        true
-    }
     /// Notes in `items` each slot's item type, none for an empty slot, for `follow` to compare.
     pub(crate) fn note(&self, items: &mut Vec<Option<ItemId>>) {
         items.clear();
@@ -228,29 +219,35 @@ impl Inventory {
         }
     }
 
-    /// Swaps slots `from` and `to`, and their action slots in `slots`, the carrier's, each
-    /// keeping its cooldown; `false` when either is no slot.
-    pub(crate) fn swap_with(&mut self, from: u8, to: u8, slots: Option<&mut ActionSlots>) -> bool {
-        if !self.swap(from, to) {
-            return false;
+    /// Swaps slots `from` and `to`, empty or not, and their action slots in `slots`, the
+    /// carrier's, each keeping its cooldown; nothing when either is no slot.
+    pub(crate) fn swap_with(&mut self, from: u8, to: u8, slots: Option<&mut ActionSlots>) {
+        if usize::from(from.max(to)) >= self.slots.len() {
+            return;
         }
+        self.slots.swap(usize::from(from), usize::from(to));
         if let Some(slots) = slots {
             let first = slots.first_of(self.kind);
             slots.swap(first + from, first + to);
         }
-        true
     }
 }
 
 impl SimComponent for Inventory {
     const NAME: &'static str = "items.inventory";
 
-    // Each stack is of an item type the book holds, and no larger than its type's.
+    // Each stack is of an item type the book holds, no larger than its type's, and with uses left
+    // only for a consumable, no more than its type's.
     fn check(&self, world: &World, _: Entity) -> bool {
         let book = world.resource::<ItemBook>();
         self.slots.iter().flatten().all(|carried| {
-            book.get(carried.item)
-                .is_some_and(|spec| carried.count <= spec.stack)
+            book.get(carried.item).is_some_and(|spec| {
+                let uses = match (carried.uses, spec.uses) {
+                    (Some(left), Some(most)) => left <= most,
+                    (left, most) => left.is_none() && most.is_none(),
+                };
+                carried.count <= spec.stack && uses
+            })
         })
     }
 }

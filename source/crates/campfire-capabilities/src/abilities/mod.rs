@@ -22,7 +22,7 @@ use crate::units::action_id::ActionId;
 
 use crate::actions::action_data::TogglePer;
 use crate::actions::action_slots::{
-    ActionCall, ActionSlot, ActionSlots, ChannelStep, InProgress, OrderPhase, SlotAim,
+    ActionCall, ActionSlot, ActionSlots, ChannelCall, ChannelStep, InProgress, OrderPhase, SlotAim,
 };
 use crate::values::action_start::ActionStart;
 
@@ -197,36 +197,34 @@ fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
     })
 }
 
-/// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, at its action's rank, as
-/// the action started, with the unit and, for `on_interrupt`, the target, when the action's script
-/// defines it; a failed call applies nothing, and is recorded.
+/// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, of its action at its rank,
+/// as the action started, with the unit and, for `on_interrupt`, the target, when the action's
+/// script defines it; a failed call applies nothing, and is recorded.
 fn channel_call(
     batch: &mut ScriptBatch<'_>,
     ctx: &Ctx,
     now: Tick,
     caster: StableId,
     entity: Entity,
-    call: ActionCall,
+    call: ChannelCall,
     hook: Hook,
 ) {
-    let ActionCall { aim, start } = call;
+    let ChannelCall {
+        call: ActionCall { aim, start },
+        action: id,
+        rank,
+    } = call;
     let world = batch.world();
-    let unit = world.entity(entity);
-    let slot = unit
-        .get::<ActionSlots>()
-        .and_then(|slots| slots.slot(aim.slot))
-        .expect("a channel's slot");
-    let owner = unit.get::<Owner>().map(|owner| owner.slot());
+    let owner = world.get::<Owner>(entity).map(|owner| owner.slot());
     let book = world.resource::<ActionBook>();
-    let id = slot.action.expect("a channel's slot holds its action");
-    let action = book.get(id).expect("a slot's action is in the book");
+    let action = book.get(id).expect("a channel's action is in the book");
     let (Some(script), Some(handle)) = (action.hook(hook), ctx.view().unit(caster)) else {
         return;
     };
     let package = action.package;
     let start = CallStart {
         start: Some(start),
-        ..CallStart::cast(id, slot.rank, caster, package)
+        ..CallStart::cast(id, rank, caster, package)
     };
     let begun = ctx.frame().begin(world, start);
     let outcome = begun.and_then(|()| {

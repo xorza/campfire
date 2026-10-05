@@ -64,16 +64,18 @@ impl Polygon {
     /// Calls `mark` with each cell of `grid` whose center the polygon holds, in order; the
     /// polygon lies within the grid's bounds.
     pub(crate) fn cells(&self, grid: &Grid, mut mark: impl FnMut(usize)) {
-        let low = [0, 1].map(|axis| self.points.iter().map(|point| point[axis]).min());
-        let high = [0, 1].map(|axis| self.points.iter().map(|point| point[axis]).max());
-        let [Some(low_x), Some(low_z)] = low else {
-            unreachable!("a polygon has points")
-        };
-        let [Some(high_x), Some(high_z)] = high else {
-            unreachable!("a polygon has points")
-        };
-        let columns = grid.index(0, low_x)..=grid.index(0, high_x);
-        let rows = grid.index(1, low_z)..=grid.index(1, high_z);
+        let first = self.points[0];
+        let (low, high) = self
+            .points
+            .iter()
+            .fold((first, first), |(low, high), point| {
+                (
+                    [0, 1].map(|axis| low[axis].min(point[axis])),
+                    [0, 1].map(|axis| high[axis].max(point[axis])),
+                )
+            });
+        let columns = grid.index(0, low[0])..=grid.index(0, high[0]);
+        let rows = grid.index(1, low[1])..=grid.index(1, high[1]);
         for row in rows {
             for column in columns.clone() {
                 let cell = row * grid.columns() + column;

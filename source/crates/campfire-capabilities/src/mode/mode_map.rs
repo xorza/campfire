@@ -84,10 +84,10 @@ impl ModeMap {
     /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
     /// mode lacks, or of a pair named before; and in the map, grids that make no grid of its
     /// bounds, a wall on a layer of no name `rules` declares, a wall or a brush with points that
-    /// make no simple polygon, a path with no waypoint or another's name, a placed unit of a type, team or path it
-    /// lacks, or that walks from an end of no path, a marker of another's name, a team it lacks, or
-    /// with a point and a region or a region outside the bounds, and any point that does not fit
-    /// its metric or its bounds.
+    /// make no simple polygon, a path with no waypoint or another's name, a placed unit of a type,
+    /// team or path it lacks, or that walks from an end of no path, a marker of another's name, a
+    /// team it lacks, or with a point and a region or a region outside the bounds, and any point
+    /// that does not fit its metric or its bounds.
     pub(crate) fn resolve(
         map: &MapData,
         teams: &[TeamManifest],

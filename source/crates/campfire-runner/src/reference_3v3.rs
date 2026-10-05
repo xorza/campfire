@@ -105,7 +105,8 @@ const POSTS: [(i64, i64); 6] = [(-38, -8), (38, -8), (-36, -8), (-38, 8), (-36, 
 /// each north hero 6 m north of the south hero it faces.
 const ARENA: [(i64, i64); 6] = [(-2, -26), (0, -26), (2, -26), (-2, -20), (0, -20), (2, -20)];
 /// The ticks the heroes farm in, every `FARM_EVERY` ticks from `FARM`, and learn in, every
-/// `LEARN_EVERY` from `LEARN`: never in a farm's tick, as a player sends at most four inputs a tick.
+/// `LEARN_EVERY` from `LEARN`: never in a farm's tick, as a player sends at most four inputs a
+/// tick.
 const FARM: u64 = 3200;
 const FARM_EVERY: usize = 40;
 const LEARN: u64 = 3220;
@@ -114,8 +115,8 @@ const LEARN_EVERY: usize = 200;
 const RECALL: u64 = 13_400;
 
 /// The orders of the 3v3's scripted players after the pick, to the farm. Players 0 to 2 hold
-/// Cinder, Gale and Husk, north; 3 to 5 Kensho, Rime and Veil, south. At 20 ticks a second the heroes spawn in
-/// tick 1199 and the first waves meet in tick 2803.
+/// Cinder, Gale and Husk, north; 3 to 5 Kensho, Rime and Veil, south. At 20 ticks a second the
+/// heroes spawn in tick 1199 and the first waves meet in tick 2803.
 /// - A skirmish: Husk casts haste; Cinder and Gale fell Rime in the middle as she strikes Gale,
 ///   and Gale casts mend. Cinder walks into the range of the south's west outer tower, Husk
 ///   strikes Kensho beside it, which turns the tower on him, and he falls to it.

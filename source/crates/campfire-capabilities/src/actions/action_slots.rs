@@ -25,7 +25,7 @@ pub struct ActionSlots {
     underway: Option<InProgress>,
     attack_target: Option<StableId>,
     /// A channel an order, a stop or an interrupt cut, whose `on_interrupt` has yet to run.
-    interrupted: Option<ActionCall>,
+    interrupted: Option<ChannelCall>,
 }
 
 /// One slot: the action, none in an inventory slot whose item has none, its kind, its rank, 0
@@ -141,8 +141,17 @@ pub(crate) struct Started {
 /// now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChannelStep {
-    pub(crate) interrupted: Option<ActionCall>,
-    pub(crate) ticked: Option<ActionCall>,
+    pub(crate) interrupted: Option<ChannelCall>,
+    pub(crate) ticked: Option<ChannelCall>,
+}
+
+/// A call of a channel: the call, and the action and rank its slot held as the channel ran, which
+/// a cut channel keeps once an item leaves its slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ChannelCall {
+    pub(crate) call: ActionCall,
+    pub(crate) action: ActionId,
+    pub(crate) rank: u8,
 }
 
 /// A call of a started action: the action and its target, and how the action started.
@@ -278,7 +287,7 @@ impl ActionSlots {
             moved(underway.slot_mut());
         }
         if let Some(cut) = &mut self.interrupted {
-            moved(&mut cut.aim.slot);
+            moved(&mut cut.call.aim.slot);
         }
     }
 
@@ -291,14 +300,14 @@ impl ActionSlots {
     /// Puts `action`, or none, in `slot` afresh: ready at once, with no charges and no toggle on,
     /// as a slot an item fills or leaves; what is under way from the slot stops, a channel cut.
     pub(crate) fn fill(&mut self, slot: u8, action: Option<ActionId>) {
-        let held = &mut self.slots[usize::from(slot)];
-        *held = ActionSlot::ready(action, held.kind, held.rank);
         if self
             .underway
             .is_some_and(|underway| underway.slot() == slot)
         {
             self.stop();
         }
+        let held = &mut self.slots[usize::from(slot)];
+        *held = ActionSlot::ready(action, held.kind, held.rank);
     }
 
     /// Swaps slots `a` and `b`, each keeping its cooldown, charges and toggle; what is under way
@@ -316,7 +325,7 @@ impl ActionSlots {
             follow(underway.slot_mut());
         }
         if let Some(cut) = &mut self.interrupted {
-            follow(&mut cut.aim.slot);
+            follow(&mut cut.call.aim.slot);
         }
     }
 
@@ -339,7 +348,7 @@ impl ActionSlots {
 
     /// Orders the action in `slot` at `target`, in place of any other action not resolved yet;
     /// an action in `slot` that charges is released instead.
-    pub(crate) const fn order(&mut self, slot: u8, target: ActionTarget) {
+    pub(crate) fn order(&mut self, slot: u8, target: ActionTarget) {
         if let Some(InProgress::Charge { aim, released, .. }) = &mut self.underway
             && aim.slot == slot
         {
@@ -482,8 +491,9 @@ impl ActionSlots {
     }
 
     /// Stops what is under way and spends nothing: a cast, started or walking in range, goes back
-    /// to its order, which starts it again from its check; an attack starts again from the attack target when it may.
-    pub(crate) const fn interrupt(&mut self) {
+    /// to its order, which starts it again from its check; an attack starts again from the attack
+    /// target when it may.
+    pub(crate) fn interrupt(&mut self) {
         self.cut_channel();
         match &mut self.underway {
             Some(InProgress::Attack { .. } | InProgress::Charge { .. }) => self.underway = None,
@@ -493,17 +503,27 @@ impl ActionSlots {
     }
 
     /// Ends what is under way, resolved or not; a channel is cut.
-    pub(crate) const fn stop(&mut self) {
+    pub(crate) fn stop(&mut self) {
         self.cut_channel();
         self.underway = None;
     }
 
     /// Cuts a channel under way, for its `on_interrupt` to run: a new order of the unit does, and
     /// so do a stop and an interrupt.
-    pub(crate) const fn cut_channel(&mut self) {
+    pub(crate) fn cut_channel(&mut self) {
         if let Some(InProgress::Channel { aim, start, .. }) = self.underway {
             self.underway = None;
-            self.interrupted = Some(ActionCall { aim, start });
+            self.interrupted = Some(self.channel_call(ActionCall { aim, start }));
+        }
+    }
+
+    /// `call` of the channel in its slot, at the action and rank the slot holds.
+    fn channel_call(&self, call: ActionCall) -> ChannelCall {
+        let slot = self.slots[usize::from(call.aim.slot)];
+        ChannelCall {
+            call,
+            action: slot.action.expect("a channel's slot holds its action"),
+            rank: slot.rank,
         }
     }
 
@@ -533,8 +553,8 @@ impl ActionSlots {
     }
 
     /// Runs the channel at `now`, `tick` the time between its ticks: one `blocked` from casting is
-    /// cut; one due ticks, and the next comes `tick` later; one at its end ends whole. What it gives
-    /// back are the hooks to run: a cut channel's, since the last step, and a tick's.
+    /// cut; one due ticks, and the next comes `tick` later; one at its end ends whole. What it
+    /// gives back are the hooks to run: a cut channel's, since the last step, and a tick's.
     pub(crate) fn step_channel(&mut self, now: Tick, blocked: bool, tick: Ticks) -> ChannelStep {
         if blocked {
             self.cut_channel();
@@ -552,7 +572,7 @@ impl ActionSlots {
                 ticked: None,
             };
         };
-        let ticked = (next <= now).then_some(ActionCall { aim, start });
+        let ticked = (next <= now).then(|| self.channel_call(ActionCall { aim, start }));
         if ends <= now {
             self.underway = None;
         } else if ticked.is_some() {
@@ -775,7 +795,8 @@ impl SimComponent for ActionSlots {
                 (action.kind.kind() == ActionKind::Attack) == attacks && attack
             })
         });
-        // A channel only of an action with one, at a rank it has, and a cut one of a slot it has.
+        // A channel only of an action with one, at a rank it has, and a cut one as well, of a slot
+        // it has.
         let channel = match self.underway {
             Some(InProgress::Channel {
                 aim, next, ends, ..
@@ -788,9 +809,12 @@ impl SimComponent for ActionSlots {
             }
             _ => true,
         };
-        let interrupted = self
-            .interrupted
-            .is_none_or(|cut| usize::from(cut.aim.slot) < self.slots.len());
+        let interrupted = self.interrupted.is_none_or(|cut| {
+            let rule = book
+                .get(cut.action)
+                .and_then(|action| action.channel_rule(cut.rank));
+            usize::from(cut.call.aim.slot) < self.slots.len() && rule.is_some()
+        });
         // A toggle on only for an action with one, at a rank it has.
         let toggles = self.slots.iter().all(|slot| {
             slot.toggle.is_none_or(|next| {

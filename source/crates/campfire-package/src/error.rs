@@ -439,7 +439,8 @@ pub enum DeliveryProblem {
     /// catch its target.
     NotFaster(Place),
     /// A unit type at `at` with a `projectile` or an `area` section has both, or a section of a
-    /// unit that stands but `vision`; a dependency's unit type is no delivery type; or an avatar is one.
+    /// unit that stands but `vision`; a dependency's unit type is no delivery type; or an avatar is
+    /// one.
     NotDelivery(Place),
     /// An action's `delivery` names a unit type of its package with no section of its kind.
     WrongSection {

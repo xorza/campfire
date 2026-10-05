@@ -54,9 +54,9 @@ impl Arena {
         &mut self.world
     }
 
-    /// Gives the match the map's vision grid and its brush, for `teams` teams, as the mode's install
-    /// does: from
-    /// the next Vision stage, each team sees what its units and its reveals show it.
+    /// Gives the match the map's vision grid and its brush, for `teams` teams, as the mode's
+    /// install does: from the next Vision stage, each team sees what its units and its reveals show
+    /// it.
     pub fn load_vision(&mut self, teams: usize) {
         let grid = self
             .packages

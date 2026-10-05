@@ -76,8 +76,8 @@ impl ModeBooks {
         map
     }
 
-    /// The books of `data`, which the package load checked, for `unit_types`, the mode's unit
-    /// types that stand, with the stat book `stats`, the resolved `map` and its `shop`. Each unit type is
+    /// The books of `data`, which the package load checked, for `unit_types`, the mode's unit types
+    /// that stand, with the stat book `stats`, the resolved `map` and its `shop`. Each unit type is
     /// tagged with the name of the layer it moves on, among `types`, when the mode names its
     /// layers.
     pub(crate) fn build(

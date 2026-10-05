@@ -1272,7 +1272,8 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
 }
 
 #[test]
-fn a_channel_ticks_from_the_tick_after_its_cast_and_an_order_a_stun_or_death_cuts_it() {
+fn a_channel_ticks_from_the_tick_after_its_cast_and_an_order_a_stun_a_death_or_its_slot_emptied_cuts_it()
+ {
     // Drain: a channel of 300 ms, 9 ticks at 30 a second, that ticks each 100 ms, 3 ticks, and
     // holds Ward, a shield of 100. Each tick strikes the enemies within 5 m for 10; a cut one
     // strikes its target for 7.
@@ -1360,6 +1361,12 @@ fn on_interrupt(ctx, caster, target) {
     });
     let late = [500, 500, 500, 490, 490, 483, 483, 483, 483, 483, 483, 483];
     assert_eq!(health(&killed), late);
+    // A slot emptied in tick 5, as an item sold empties its own, cuts it as an order does: its
+    // `on_interrupt` is the action it channeled, which the slot no longer holds.
+    let emptied = run(&mut game, 80, &|game, caster| {
+        game.sim.get_mut::<ActionSlots>(caster).fill(0, None);
+    });
+    assert_eq!(health(&emptied), cut);
 }
 
 #[test]

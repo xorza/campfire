@@ -140,12 +140,12 @@ fn hold_charges(
     }
 }
 
-/// Keeps each unit's passives and holds as its slots stand: the passive of each action with a
-/// rank, and with `passive_while_ready` off cooldown, and the `hold` of each action whose toggle
-/// is on or whose channel runs, each from the unit itself at the action's rank, applied again when the rank changes;
-/// and none other. It runs as each tick starts, after the casts resolve and the attacks strike,
-/// and after the mode's calls, which learn ranks. A passive's or a hold's params are the match's
-/// param book's.
+/// Keeps each unit's passives and holds as its slots stand: the passive of each action with a rank,
+/// and with `passive_while_ready` off cooldown, and the `hold` of each action whose toggle is on or
+/// whose channel runs, each from the unit itself at the action's rank, applied again when the rank
+/// changes; and none other. It runs as each tick starts, after the casts resolve and the attacks
+/// strike, and after the mode's calls, which learn ranks. A passive's or a hold's params are the
+/// match's param book's.
 fn hold_passives(
     actions: Res<'_, ActionBook>,
     book: Option<Res<'_, ModifierBook>>,

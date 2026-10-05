@@ -80,10 +80,10 @@ pub struct Orders;
 
 impl Orders {
     /// Adds orders to a match: in Inputs, orders become current, ranks are learned and, on the
-    /// server, items trade; in Think,
-    /// the resets whose units arrived end, then the units due this tick think; in Act, before
-    /// combat starts attacks, units walk their paths and chase their targets. It builds on the core `Units` installs, on
-    /// combat and on navigation. Without the core's scripts, as on a client, no unit thinks.
+    /// server, items trade; in Think, the resets whose units arrived end, then the units due this
+    /// tick think; in Act, before combat starts attacks, units walk their paths and chase their
+    /// targets. It builds on the core `Units` installs, on combat and on navigation. Without the
+    /// core's scripts, as on a client, no unit thinks.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.init_resource::<PlayerOrders>();
         schedule.add_systems((
@@ -294,9 +294,9 @@ fn learn_ranks(
 /// shop of its team; a buy pays its price, which the player affords, and needs room for the item
 /// once the components it gives up left; a sale gives back the shop's share of the stack's cost.
 /// A swap swaps two of the unit's slots anywhere. Each slot whose item type changes holds its new
-/// item's action, or none, afresh; a swapped slot keeps its action's cooldown. An order that fails a check is dropped: a client
-/// can send anything. A client predicts no trade, as its resources and slots come from the
-/// server.
+/// item's action, or none, afresh; a swapped slot keeps its action's cooldown. An order that
+/// fails a check is dropped: a client can send anything. A client predicts no trade, as its
+/// resources and slots come from the server.
 fn trade_items(
     (inputs, index): (Res<'_, TickInputs>, Res<'_, EntityIndex>),
     (book, shop, resources): (
@@ -488,10 +488,9 @@ fn think(
 }
 
 /// Sends each path walker with no attack target and no cast walking in range, on its path, to the
-/// waypoint it walks to, and on
-/// to the next once the waypoint is within its body, or it stands on the waypoint with no body:
-/// walkers that push each other never stand on one point. A walker that chased a target walks back
-/// to where it left its path.
+/// waypoint it walks to, and on to the next once the waypoint is within its body, or it stands on
+/// the waypoint with no body: walkers that push each other never stand on one point. A walker that
+/// chased a target walks back to where it left its path.
 fn follow_paths(
     paths: Res<'_, Paths>,
     mut walkers: Query<
@@ -526,8 +525,8 @@ fn follow_paths(
 
 /// Walks each unit that can move to its attack target while out of the range of the weapon it
 /// attacks it with, and stops it in range or in its windup; a cast that walks in range walks the
-/// unit instead. A unit whose target is gone, dead, no
-/// longer an enemy or one no weapon of it selects drops it and stops.
+/// unit instead. A unit whose target is gone, dead, no longer an enemy or one no weapon of it
+/// selects drops it and stops.
 fn chase(
     book: Res<'_, ActionBook>,
     targets: Targets<'_, '_>,
