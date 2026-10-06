@@ -8,7 +8,7 @@ use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
 use clap::Parser;
 
-use crate::args::error::ArgsError;
+use crate::args::error::ServerBotError;
 
 pub(crate) mod error;
 
@@ -39,7 +39,11 @@ pub(crate) enum Server {
 
 /// Joins a session on a server, or plays a mode alone on a local server.
 #[derive(Debug, Parser)]
-#[command(version)]
+#[command(
+    version,
+    override_usage = "campfire-client [OPTIONS] <MODE> <ADDRESS> <CERTIFICATE> <SERVER_KEY> <TICK_HZ>\n       \
+                      campfire-client --local --data <DIRECTORY> [OPTIONS] <MODE>"
+)]
 pub(crate) struct CommandLine {
     /// Plays the orders file's script as a bot, with no window
     #[arg(long, value_name = "ORDERS FILE")]
@@ -57,62 +61,63 @@ pub(crate) struct CommandLine {
     #[arg(
         long = "server-bot",
         value_name = "SLOT=ORDERS FILE",
-        requires = "local"
+        requires = "local",
+        value_parser = CommandLine::server_bot
     )]
     server_bots: Vec<SlotBotFile>,
     /// The mode's package directory
     mode: PathBuf,
+    #[command(flatten)]
+    remote: Option<Remote>,
+}
+
+/// A server elsewhere, as its listing gives it: required unless `--local` is given, and refused
+/// with it.
+#[derive(Debug, clap::Args)]
+#[group(conflicts_with = "local")]
+struct Remote {
     /// The server's address, as its listing gives it
-    #[arg(required_unless_present = "local", conflicts_with = "local")]
-    address: Option<SocketAddr>,
+    address: SocketAddr,
     /// The hash of the server's TLS certificate, in hex
-    #[arg(required_unless_present = "local", conflicts_with = "local")]
-    certificate: Option<CertificateHash>,
+    certificate: CertificateHash,
     /// The server's public key, in hex
-    #[arg(required_unless_present = "local", conflicts_with = "local")]
-    server_key: Option<XOnlyPublicKey>,
+    server_key: XOnlyPublicKey,
     /// The session's ticks a second
-    #[arg(required_unless_present = "local", conflicts_with = "local")]
-    tick_hz: Option<NonZeroU32>,
+    tick_hz: NonZeroU32,
 }
 
 impl Args {
-    /// What the command line clap read as `line` names; an error for a flaw clap cannot state.
-    pub(crate) fn of(line: CommandLine) -> Result<Args, ArgsError> {
-        let server = if line.local {
-            if line
-                .server_bots
-                .iter()
-                .any(|bot| bot.slot == PlayerSlot::new(0))
-            {
-                return Err(ArgsError::BotInClientSlot);
-            }
-            Server::Local {
+    /// What the command line clap read as `line` names.
+    pub(crate) fn of(line: CommandLine) -> Args {
+        let server = match line.remote {
+            Some(remote) => Server::Remote {
+                address: remote.address,
+                certificate: remote.certificate,
+                key: remote.server_key,
+                tick_hz: remote.tick_hz,
+            },
+            None => Server::Local {
                 bots: line.server_bots,
-            }
-        } else {
-            let (Some(address), Some(certificate), Some(key), Some(tick_hz)) = (
-                line.address,
-                line.certificate,
-                line.server_key,
-                line.tick_hz,
-            ) else {
-                unreachable!("clap requires a remote server's four arguments without --local");
-            };
-            Server::Remote {
-                address,
-                certificate,
-                key,
-                tick_hz,
-            }
+            },
         };
-        Ok(Args {
+        Args {
             bot: line.bot,
             key: line.key,
             data: line.data,
             mode: line.mode,
             server,
-        })
+        }
+    }
+}
+
+impl CommandLine {
+    /// The server bot `text` names; an error for a bot in slot 0, which the client plays.
+    fn server_bot(text: &str) -> Result<SlotBotFile, ServerBotError> {
+        let bot: SlotBotFile = text.parse().map_err(ServerBotError::File)?;
+        if bot.slot == PlayerSlot::new(0) {
+            return Err(ServerBotError::ClientSlot);
+        }
+        Ok(bot)
     }
 }
 

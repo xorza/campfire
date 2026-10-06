@@ -76,16 +76,9 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let line = match Logging::command_line(env::args_os()) {
-        Ok(line) => line,
+    let args = match Logging::command_line(env::args_os()) {
+        Ok(line) => Args::of(line),
         Err(status) => return ExitCode::from(status),
-    };
-    let args = match Args::of(line) {
-        Ok(args) => args,
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the command line is refused");
-            return ExitCode::from(ExitStatus::Usage);
-        }
     };
     let packages = match load_mode(&args) {
         Ok(packages) => Arc::new(packages),

@@ -12,7 +12,7 @@ fn line(args: &[&str]) -> Result<CommandLine, clap::Error> {
     CommandLine::try_parse_from(["campfire-client"].iter().chain(args).map(OsString::from))
 }
 
-fn read(args: &[&str]) -> Result<Args, ArgsError> {
+fn read(args: &[&str]) -> Args {
     Args::of(line(args).unwrap())
 }
 
@@ -46,8 +46,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         &certificate,
         key,
         "30",
-    ])
-    .unwrap();
+    ]);
     assert_eq!((remote.key, remote.mode), (Some("k".into()), "mode".into()));
     assert!(matches!(
         remote.server,
@@ -65,8 +64,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         "d",
         "--server-bot",
         "2=b.toml",
-    ])
-    .unwrap();
+    ]);
     assert_eq!(local.data, Some("d".into()));
     let Server::Local { bots } = local.server else {
         panic!("a local server");
@@ -76,10 +74,6 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         .map(|bot| (bot.slot.get(), bot.path))
         .collect();
     assert_eq!(bots, [(1, "a.toml".into()), (2, "b.toml".into())]);
-    assert!(matches!(
-        read(&["--local", "--data", "d", "--server-bot", "0=a.toml", "mode"]),
-        Err(ArgsError::BotInClientSlot)
-    ));
 
     for (args, kind) in [
         (&["--local", "mode"][..], ErrorKind::MissingRequiredArgument),
@@ -126,11 +120,20 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
 #[test]
 fn a_value_its_parser_refuses_gives_that_parsers_error_and_the_help_is_no_refusal() {
     let (key, certificate) = (KEY, certificate());
-    let bot = invalid(&["--local", "--data", "d", "--server-bot", "a.toml", "mode"]);
+    let bot = |text: &str| {
+        let error = invalid(&["--local", "--data", "d", "--server-bot", text, "mode"]);
+        error
+            .source()
+            .and_then(|error| error.downcast_ref())
+            .cloned()
+    };
     assert_eq!(
-        bot.source().and_then(|error| error.downcast_ref()),
-        Some(&SlotBotFileError::NotPair("a.toml".to_owned()))
+        bot("a.toml"),
+        Some(ServerBotError::File(SlotBotFileError::NotPair(
+            "a.toml".to_owned()
+        )))
     );
+    assert_eq!(bot("0=a.toml"), Some(ServerBotError::ClientSlot));
     let wrong_certificate = invalid(&["mode", "10.0.0.2:4433", "03", key, "30"]);
     assert_eq!(
         wrong_certificate
