@@ -9,7 +9,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 use std::path::{Path, PathBuf};
 
 use bevy_app::AppExit;
-use campfire_common::{StateHash, Tick};
+use campfire_common::{ExitStatus, StateHash, Tick};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     CheckpointFailed, SeedsRanOut, ServerDir, ServerExit, SessionDir, SimServer, TickHashes,
@@ -208,7 +208,7 @@ fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     // The fault reaches `Faults`, a snapshot's, which ends the server.
     let world = local.server_mut().world_mut();
     SimServer::settle_checkpoint(world);
-    let code = NonZeroU8::new(ServerExit::STORAGE_FAILED).unwrap();
+    let code = NonZeroU8::new(ExitStatus::Storage.code()).unwrap();
     assert_eq!(ServerExit::due(world, false), Some(AppExit::Error(code)));
     assert_eq!(ServerExit::due(world, false), None);
     assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);

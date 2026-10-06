@@ -24,6 +24,7 @@ use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 use std::time::SystemTime;
 
+use campfire_common::ExitStatus;
 use campfire_log::Logging;
 use campfire_net::{
     ClientDir, InputLogged, LinkLost, Listening, OrderScript, ServerDir, SessionWritten,
@@ -82,14 +83,14 @@ fn main() -> ExitCode {
     .start();
     let Some(mode) = Mode::parse(env::args_os().skip(1)) else {
         error!("usage: campfire-lan-check [<run root>] | verify <run directory>");
-        return ExitCode::from(2);
+        return ExitCode::from(ExitStatus::Usage);
     };
     let dir = match &mode {
         Mode::Play { root } => match RunDir::create(root, SystemTime::now()) {
             Ok(run) => run.path().to_owned(),
             Err(error) => {
                 error!(%error, "the LAN check did not run");
-                return ExitCode::FAILURE;
+                return ExitCode::from(ExitStatus::Failure);
             }
         },
         Mode::Verify { dir } => dir.clone(),
@@ -107,7 +108,7 @@ fn report(result: Result<Verdict, CheckError>, dir: &Path) -> ExitCode {
         Ok(verdict) => verdict,
         Err(error) => {
             error!(%error, dir = %dir.display(), "the LAN check did not run");
-            return ExitCode::FAILURE;
+            return ExitCode::from(ExitStatus::Failure);
         }
     };
     let mut failures = 0;
@@ -117,10 +118,10 @@ fn report(result: Result<Verdict, CheckError>, dir: &Path) -> ExitCode {
     }
     if failures == 0 {
         info!(dir = %dir.display(), "the LAN check passed");
-        ExitCode::SUCCESS
+        ExitCode::from(ExitStatus::Success)
     } else {
         error!(failures, dir = %dir.display(), "the LAN check failed");
-        ExitCode::FAILURE
+        ExitCode::from(ExitStatus::Failure)
     }
 }
 

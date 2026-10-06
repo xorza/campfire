@@ -1,3 +1,6 @@
+use std::io;
+use std::path::PathBuf;
+
 use thiserror::Error;
 use toml::de::Error as TomlError;
 
@@ -18,4 +21,21 @@ pub enum OrderScriptError {
     /// The script ends at `end`, before its last order.
     #[error("the script ends at tick {end}, before its last order")]
     EndsEarly { end: u64 },
+}
+
+/// Why an order script's file does not give a script.
+#[derive(Debug, Error)]
+pub enum OrderScriptReadError {
+    #[error("{}: {error}", .path.display())]
+    Read {
+        path: PathBuf,
+        #[source]
+        error: io::Error,
+    },
+    #[error("{}: {error}", .path.display())]
+    Script {
+        path: PathBuf,
+        #[source]
+        error: OrderScriptError,
+    },
 }

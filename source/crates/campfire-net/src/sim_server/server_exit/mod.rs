@@ -17,14 +17,9 @@ use crate::sim_server::session_dir::SessionDir;
 pub struct ServerExit;
 
 impl ServerExit {
-    /// The exit code of a server whose journal or checkpoint's snapshot failed, which keeps no
-    /// record past it: sysexits' `EX_IOERR`, an error in I/O on a file. A dedicated server's
-    /// supervisor then starts it again, which restores the session.
-    pub const STORAGE_FAILED: u8 = 74;
-
     /// How the server of the session in `world` exits in this frame, when it does: as `Faults`
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
-    /// `STORAGE_FAILED`; before the match started, at once when `stop` asks it to. Once the match
+    /// `ExitStatus::Storage`; before the match started, at once when `stop` asks it to. Once the match
     /// started, when `stop` asks it to or every player left, it ends the session, as the mode
     /// ended the match or aborted; it then publishes the log in its `ServerDir`, and exits, with
     /// an error when the log is not written, as the session it holds is lost.

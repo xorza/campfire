@@ -1,8 +1,8 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
-use campfire_protocol::Nsec;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
+use campfire_protocol::secp256k1::Keypair;
+use campfire_protocol::{Nsec, RandomKey};
 use campfire_store::{SecretFile, SecretReadError};
 
 use crate::sim_server::key_file::error::KeyFileError;
@@ -32,13 +32,7 @@ impl KeyFile {
             Err(KeyFileError::Read(SecretReadError::Read(error)))
                 if error.kind() == ErrorKind::NotFound =>
             {
-                let key = loop {
-                    let mut secret = [0; 32];
-                    fill(&mut secret);
-                    if let Ok(secret) = SecretKey::from_byte_array(&secret) {
-                        break Keypair::from_secret_key(&Secp256k1::new(), &secret);
-                    }
-                };
+                let key = RandomKey::generate(fill);
                 KeyFile::write(path, &key)?;
                 Ok(key)
             }

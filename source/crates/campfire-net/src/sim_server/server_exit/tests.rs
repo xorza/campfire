@@ -1,6 +1,7 @@
 use std::io;
 use std::num::{NonZeroU8, NonZeroU32};
 
+use campfire_common::ExitStatus;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
 use campfire_runner::{InputRules, SessionRules};
@@ -53,7 +54,7 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
     log.keep_journal(Box::new(journal));
     // Dropped, the log's journal waits for its writer, which stopped at the failed sync.
     drop(log);
-    let code = NonZeroU8::new(ServerExit::STORAGE_FAILED).unwrap();
+    let code = NonZeroU8::new(ExitStatus::Storage.code()).unwrap();
     assert_eq!(
         ServerExit::due(&mut world, false),
         Some(AppExit::Error(code))

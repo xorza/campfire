@@ -8,6 +8,7 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod bytes32;
+mod exit_status;
 mod fingerprint;
 mod player_slot;
 mod segment_seed;
@@ -16,6 +17,7 @@ mod tick;
 
 pub use crate::bytes32::Bytes32;
 pub use crate::bytes32::error::NotHex;
+pub use crate::exit_status::ExitStatus;
 pub use crate::fingerprint::Fingerprint;
 pub use crate::player_slot::PlayerSlot;
 pub use crate::segment_seed::SegmentSeed;

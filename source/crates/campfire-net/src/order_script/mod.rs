@@ -1,9 +1,12 @@
+use std::fs;
+use std::path::Path;
+
 use campfire_capabilities::{Action, ActionTarget, InputValue, ModeInput, Scalar};
 use campfire_common::Tick;
 use campfire_sim::StableId;
 use serde::Deserialize;
 
-use crate::order_script::error::OrderScriptError;
+use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 
 pub(crate) mod error;
 
@@ -63,6 +66,19 @@ impl ScriptedInput {
 }
 
 impl OrderScript {
+    /// The script in the file at `path`; an error for a file that does not read, and for text
+    /// `parse` refuses.
+    pub fn read(path: &Path) -> Result<OrderScript, OrderScriptReadError> {
+        let text = fs::read_to_string(path).map_err(|error| OrderScriptReadError::Read {
+            path: path.to_owned(),
+            error,
+        })?;
+        OrderScript::parse(&text).map_err(|error| OrderScriptReadError::Script {
+            path: path.to_owned(),
+            error,
+        })
+    }
+
     /// The script `text` holds; an error when it is not TOML of this shape, when an order names
     /// no action or two, or a target without a cast, when a coordinate is past what a sim number
     /// holds, when the ticks of its orders or of its inputs do not grow, or when the script ends

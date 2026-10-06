@@ -18,7 +18,9 @@ mod match_start;
 mod net_protocol;
 mod offer;
 mod order_script;
+mod os;
 mod pace;
+mod process_exit;
 mod save_command;
 mod session_times;
 mod sim_client;
@@ -33,7 +35,9 @@ pub use crate::sim_client::join_state::error::ReceiptRefusal;
 
 pub use crate::sim_client::join_state::error::TermsMismatch;
 
-pub use crate::order_script::error::OrderScriptError;
+pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
+pub use crate::os::Os;
+pub use crate::process_exit::ProcessExit;
 
 pub use crate::sim_server::error::JoinError;
 
@@ -101,6 +105,8 @@ pub use crate::sim_server::session_dir::error::{
 pub use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
 pub use crate::sim_server::session_dir::{RestoredSession, SessionDir, SessionFiles};
 pub use crate::sim_server::session_journal::SessionJournal;
+pub use crate::sim_server::slot_bot_file::SlotBotFile;
+pub use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 pub use crate::sim_server::tick_hashes::TickHashes;
 
 #[cfg(feature = "bench")]

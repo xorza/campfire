@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use campfire_common::StateHash;
+use campfire_common::{ExitStatus, StateHash};
 use campfire_log::{LogEvent, Logging};
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
@@ -30,7 +30,7 @@ fn main() -> ExitCode {
             "usage: campfire-verifier <packages directory> <session log file> \
              [<snapshots directory>]"
         );
-        return ExitCode::from(2);
+        return ExitCode::from(ExitStatus::Usage);
     };
     let path = Path::new(&path);
     match verify(
@@ -44,11 +44,11 @@ fn main() -> ExitCode {
                 hash,
             }
             .log();
-            ExitCode::SUCCESS
+            ExitCode::from(ExitStatus::Success)
         }
         Err(error) => {
             error!(file = %path.display(), %error, "the log does not verify");
-            ExitCode::FAILURE
+            ExitCode::from(ExitStatus::Failure)
         }
     }
 }

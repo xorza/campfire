@@ -1,11 +1,11 @@
 use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
+use campfire_common::ExitStatus;
 
 use crate::faults::fault::{Fault, FaultPolicy};
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_server::journal_watch::JournalWatch;
-use crate::sim_server::server_exit::ServerExit;
 
 pub(crate) mod fault;
 
@@ -45,7 +45,7 @@ impl Faults {
             fault.log();
             match fault.source().policy() {
                 FaultPolicy::EndServer => {
-                    exit = Some(AppExit::from_code(ServerExit::STORAGE_FAILED));
+                    exit = Some(AppExit::from_code(ExitStatus::Storage.code()));
                 }
                 FaultPolicy::Log => {}
             }

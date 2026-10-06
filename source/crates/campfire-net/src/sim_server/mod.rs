@@ -80,6 +80,7 @@ pub(crate) mod server_setup;
 pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
+pub(crate) mod slot_bot_file;
 pub(crate) mod tick_hashes;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
