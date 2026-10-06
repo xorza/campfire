@@ -4,6 +4,8 @@ Design: [Modules](../design/02-engine-core.md#modules), `runner`. Rules: [Issue 
 
 ## Decide
 
+- The worst cases, `server_tick/worst_3v3` and `worst_3v3_checkpointed`, measure only a match's first tick, 3.9 ms to 4.5 ms against about 1.3 ms for the next: the sim schedule's first build and the pathing grid's first labels. No checkpoint copies in tick 0, so the checkpointed case cannot show the copy's cost, which design 10's Cost line reads from it. The options are in [PLAN_QUESTIONS.md](../../PLAN_QUESTIONS.md#the-worst-cases).
+
 
 ## Research
 
@@ -11,5 +13,4 @@ Design: [Modules](../design/02-engine-core.md#modules), `runner`. Rules: [Issue 
 
 ## Ready
 
-- **Plan: B11.** The mean cases, `server_tick/mean_3v3` and `server_stage/mean_3v3_<stage>`, measure each sample over a stretch of ticks that criterion sizes, carried on from the last sample's match, so each sample covers a different part of a match: the ten of one run gave 75.8 µs to 245.5 µs a tick, and the median moved from 155.8 µs to 171.3 µs between two runs of the same tick. Their ids say the mean of a match, and design 13 says the stage means add up to less than the tick's, which no two separate runs of these cases show.
 

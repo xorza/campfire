@@ -2,10 +2,9 @@ use std::cell::LazyCell;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use campfire_common::Tick;
 use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, StateDelta};
-use criterion::Criterion;
+use criterion::{Criterion, Throughput};
 
 use crate::harness::fixed_match::FixedMatch;
 use crate::harness::reference_3v3::Reference3v3;
@@ -25,39 +24,19 @@ pub(crate) fn server(c: &mut Criterion) {
     server_stage(c, &reference);
 }
 
-/// A tick of the reference 3v3 as its packages hold it: the mean over a match of `TICKS` ticks,
-/// and the worst tick of each such match, with no checkpoint and with the main thread's part of
-/// a checkpoint every `CHECKPOINT_EVERY` ticks, the copy of the state that changed. A rollback
+/// A tick of the reference 3v3 as its packages hold it: the worst tick of a match of `TICKS`
+/// ticks, with no checkpoint and with the main thread's part of a checkpoint every
+/// `CHECKPOINT_EVERY` ticks, the copy of the state that changed; and the mean tick of such a
+/// match, `mean_3v3`, a whole match each iteration, its throughput the ticks. A rollback
 /// re-simulates whole ticks, so it costs its depth times these.
 fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
     let mut group = c.benchmark_group("server_tick");
     group.sample_size(10);
-    let mut fixed = None;
-    group.bench_function("mean_3v3", |b| {
-        let fixed = fixed.get_or_insert_with(|| reference.start());
-        b.iter_custom(|ticks| {
-            let mut spent = Duration::ZERO;
-            for _ in 0..ticks {
-                if fixed.runner().log().next_tick() == Tick::new(TICKS) {
-                    *fixed = reference.start();
-                }
-                spent += timed_tick(fixed.runner_mut());
-            }
-            spent
-        });
-    });
     group.bench_function("worst_3v3", |b| {
         b.iter_custom(|matches| {
-            let mut worst_sum = Duration::ZERO;
-            for _ in 0..matches {
-                let mut fixed = reference.start();
-                let worst = (0..TICKS)
-                    .map(|_| timed_tick(fixed.runner_mut()))
-                    .max()
-                    .expect("a match of `TICKS` ticks");
-                worst_sum += worst;
-            }
-            worst_sum
+            (0..matches)
+                .map(|_| MatchCost::of(&mut reference.start(), timed_tick).worst)
+                .sum()
         });
     });
     group.bench_function("worst_3v3_checkpointed", |b| {
@@ -66,72 +45,84 @@ fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
             let mut worst_sum = Duration::ZERO;
             for _ in 0..matches {
                 let mut fixed = reference.start();
-                let runner = fixed.runner_mut();
-                Session::track(runner.world_mut(), &mut delta);
-                let worst = (1..=TICKS)
-                    .map(|tick| {
-                        let start = Instant::now();
-                        runner.run_tick();
-                        if tick % CHECKPOINT_EVERY == 0 {
-                            Session::changes(runner.world_mut(), &mut delta);
-                        }
-                        let spent = start.elapsed();
-                        black_box(&delta);
-                        spent
-                    })
-                    .max()
-                    .expect("a match of `TICKS` ticks");
-                worst_sum += worst;
+                Session::track(fixed.runner_mut().world_mut(), &mut delta);
+                let mut tick = 0;
+                let cost = MatchCost::of(&mut fixed, |runner| {
+                    tick += 1;
+                    let start = Instant::now();
+                    runner.run_tick();
+                    if tick % CHECKPOINT_EVERY == 0 {
+                        Session::changes(runner.world_mut(), &mut delta);
+                    }
+                    let spent = start.elapsed();
+                    black_box(&delta);
+                    spent
+                });
+                worst_sum += cost.worst;
             }
             worst_sum
+        });
+    });
+    group.throughput(Throughput::Elements(TICKS));
+    group.bench_function("mean_3v3", |b| {
+        b.iter_custom(|matches| {
+            (0..matches)
+                .map(|_| MatchCost::of(&mut reference.start(), timed_tick).total)
+                .sum()
         });
     });
     group.finish();
 }
 
 /// Each stage of a tick of the reference 3v3, as `StageClock`'s probes time it in the match: its
-/// mean over a match of `TICKS` ticks, `mean_3v3_<stage>`, and its worst in each such match,
-/// `worst_3v3_<stage>`. The stages' means add up to `server_tick/mean_3v3` less the session
-/// log's part of a tick, which runs outside them.
+/// worst in a match of `TICKS` ticks, `worst_3v3_<stage>`, and its mean tick in such a match,
+/// `mean_3v3_<stage>`, a whole match each iteration, its throughput the ticks. The stages'
+/// means add up to `server_tick/mean_3v3` less the parts of a tick that run outside them: the
+/// session log's, the tick's start and end, and `SimEdge::Start`.
 fn server_stage(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
     let id = |statistic: &str, stage: SimSet| {
         format!("{statistic}_3v3_{}", format!("{stage:?}").to_lowercase())
     };
     let mut group = c.benchmark_group("server_stage");
     group.sample_size(10);
-    let mut fixed = None;
-    for stage in SimSet::ALL {
-        group.bench_function(id("mean", stage), |b| {
-            let fixed = fixed.get_or_insert_with(|| clocked(reference));
-            b.iter_custom(|ticks| {
-                let mut spent = Duration::ZERO;
-                for _ in 0..ticks {
-                    if fixed.runner().log().next_tick() == Tick::new(TICKS) {
-                        *fixed = clocked(reference);
-                    }
-                    spent += stage_tick(fixed.runner_mut(), stage);
-                }
-                spent
-            });
-        });
-    }
+    let stage_match =
+        |stage: SimSet| MatchCost::of(&mut clocked(reference), |runner| stage_tick(runner, stage));
     for stage in SimSet::ALL {
         group.bench_function(id("worst", stage), |b| {
-            b.iter_custom(|matches| {
-                let mut worst_sum = Duration::ZERO;
-                for _ in 0..matches {
-                    let mut fixed = clocked(reference);
-                    let worst = (0..TICKS)
-                        .map(|_| stage_tick(fixed.runner_mut(), stage))
-                        .max()
-                        .expect("a match of `TICKS` ticks");
-                    worst_sum += worst;
-                }
-                worst_sum
-            });
+            b.iter_custom(|matches| (0..matches).map(|_| stage_match(stage).worst).sum());
+        });
+    }
+    group.throughput(Throughput::Elements(TICKS));
+    for stage in SimSet::ALL {
+        group.bench_function(id("mean", stage), |b| {
+            b.iter_custom(|matches| (0..matches).map(|_| stage_match(stage).total).sum());
         });
     }
     group.finish();
+}
+
+/// What a match of `TICKS` ticks cost, by the time `tick` gives for each of its ticks: in all,
+/// and its worst tick.
+#[derive(Debug, Clone, Copy)]
+struct MatchCost {
+    total: Duration,
+    worst: Duration,
+}
+
+impl MatchCost {
+    /// Plays `fixed` for `TICKS` ticks, each by `tick`, which runs it and gives its time.
+    fn of(fixed: &mut FixedMatch, mut tick: impl FnMut(&mut Runner) -> Duration) -> MatchCost {
+        let mut cost = MatchCost {
+            total: Duration::ZERO,
+            worst: Duration::ZERO,
+        };
+        for _ in 0..TICKS {
+            let spent = tick(fixed.runner_mut());
+            cost.total += spent;
+            cost.worst = cost.worst.max(spent);
+        }
+        cost
+    }
 }
 
 /// A new match of `reference`, with `StageClock`'s probes in its schedule.
