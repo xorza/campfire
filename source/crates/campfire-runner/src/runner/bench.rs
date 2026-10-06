@@ -20,12 +20,12 @@ const CHECKPOINT_EVERY: u64 = 100;
 /// and the worst tick of each such match, with no checkpoint and with the main thread's part of
 /// a checkpoint every `CHECKPOINT_EVERY` ticks, the copy of the state that changed. A rollback
 /// re-simulates whole ticks, so it costs its depth times these.
-pub(crate) fn tick_3v3(c: &mut Criterion) {
+pub(crate) fn server_tick(c: &mut Criterion) {
     let reference = LazyCell::new(Reference3v3::load);
-    let mut group = c.benchmark_group("tick_3v3");
+    let mut group = c.benchmark_group("server_tick");
     group.sample_size(10);
     let mut fixed = None;
-    group.bench_function("mean", |b| {
+    group.bench_function("mean_3v3", |b| {
         let fixed = fixed.get_or_insert_with(|| reference.start());
         b.iter_custom(|ticks| {
             let mut spent = Duration::ZERO;
@@ -38,7 +38,7 @@ pub(crate) fn tick_3v3(c: &mut Criterion) {
             spent
         });
     });
-    group.bench_function("worst_of_a_match", |b| {
+    group.bench_function("worst_3v3", |b| {
         b.iter_custom(|matches| {
             let mut worst_sum = Duration::ZERO;
             for _ in 0..matches {
@@ -52,7 +52,7 @@ pub(crate) fn tick_3v3(c: &mut Criterion) {
             worst_sum
         });
     });
-    group.bench_function("worst_of_a_match_checkpointed", |b| {
+    group.bench_function("worst_3v3_checkpointed", |b| {
         let mut delta = StateDelta::default();
         b.iter_custom(|matches| {
             let mut worst_sum = Duration::ZERO;

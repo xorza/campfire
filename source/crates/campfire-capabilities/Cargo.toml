@@ -25,6 +25,10 @@ thiserror.workspace = true
 campfire-log = { workspace = true, features = ["internals"] }
 toml.workspace = true
 
+# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
+[lib]
+bench = false
+
 [[bench]]
 name = "capabilities"
 harness = false

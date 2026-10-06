@@ -21,6 +21,10 @@ serde.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 
+# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
+[lib]
+bench = false
+
 [[bench]]
 name = "protocol"
 harness = false

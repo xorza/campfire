@@ -20,6 +20,10 @@ thiserror.workspace = true
 postcard.workspace = true
 proptest.workspace = true
 
+# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
+[lib]
+bench = false
+
 [[bench]]
 name = "math"
 harness = false

@@ -15,16 +15,19 @@ const LEG_FRAMES: u64 = 40;
 /// The ticks of the measured match.
 const MATCH_TICKS: u64 = 600;
 
-/// One frame of a server and a predicting client while the avatar walks, rolling back only on a
-/// misprediction (none happen) and on every confirmed update: the difference is the cost of the
-/// rollbacks, each 4 ticks deep, as far as the client runs ahead. A delayed link would make them
-/// deeper, but it would measure the harness: Lightyear resends every unacked reliable message
-/// after its wall-clock round trip, which a step of the manual clock hardly takes.
-pub(crate) fn rollback(c: &mut Criterion) {
-    let mut group = c.benchmark_group("rollback");
+/// A predicting client's frame, one tick, and only the client's: while its avatar walks, rolling
+/// back only on a misprediction (none happen), `walk`, and on every confirmed update,
+/// `walk_rollback`, whose difference is the cost of the rollbacks, each 4 ticks deep, as far as
+/// the client runs ahead; and either client's worst frame in each 1v1 of the lane mode, as the
+/// match scenario plays it, `worst_1v1`, where the rollback of each avatar's death falls. A
+/// delayed link would make the rollbacks deeper, but it would measure the harness: Lightyear
+/// resends every unacked reliable message after its wall-clock round trip, which a step of the
+/// manual clock hardly takes.
+pub(crate) fn client_frame(c: &mut Criterion) {
+    let mut group = c.benchmark_group("client_frame");
     for (name, mode) in [
-        ("frame_without_rollback", RollbackMode::Check),
-        ("frame_with_rollback", RollbackMode::Always),
+        ("walk", RollbackMode::Check),
+        ("walk_rollback", RollbackMode::Always),
     ] {
         let mut local = None;
         let mut frame: u64 = 0;
@@ -35,36 +38,38 @@ pub(crate) fn rollback(c: &mut Criterion) {
                 local.start_match();
                 local
             });
-            b.iter(|| {
-                if frame.is_multiple_of(LEG_FRAMES) {
-                    let z = if frame.is_multiple_of(2 * LEG_FRAMES) {
-                        5
-                    } else {
-                        -5
-                    };
-                    local.order(
-                        0,
-                        Action::Move {
-                            x: Num::ZERO,
-                            z: Num::from_int(z).expect("a small integer"),
-                        },
-                    );
+            b.iter_custom(|frames| {
+                let mut spent = Duration::ZERO;
+                for _ in 0..frames {
+                    if frame.is_multiple_of(LEG_FRAMES) {
+                        let z = if frame.is_multiple_of(2 * LEG_FRAMES) {
+                            5
+                        } else {
+                            -5
+                        };
+                        local.order(
+                            0,
+                            Action::Move {
+                                x: Num::ZERO,
+                                z: Num::from_int(z).expect("a small integer"),
+                            },
+                        );
+                    }
+                    let start = Instant::now();
+                    local.client_frame(0);
+                    spent += start.elapsed();
+                    for _ in 0..local.setup().server_frames {
+                        local.server_frame();
+                    }
+                    frame += 1;
                 }
-                local.step();
-                frame += 1;
                 black_box(&*local);
+                spent
             });
         });
     }
-    group.finish();
-}
-
-/// The worst frame of either client in each 1v1 of the lane mode, as the match scenario plays
-/// it: the rollback of each avatar's death falls in it.
-pub(crate) fn worst_client_frame(c: &mut Criterion) {
-    let mut group = c.benchmark_group("match_1v1");
     group.sample_size(10);
-    group.bench_function("worst_client_frame", |b| {
+    group.bench_function("worst_1v1", |b| {
         b.iter_custom(|matches| {
             let mut worst_sum = Duration::ZERO;
             for _ in 0..matches {

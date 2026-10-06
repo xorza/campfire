@@ -3,10 +3,8 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
-use crate::num::bench::split_mix;
+use crate::num::bench::{COUNT, split_mix};
 use crate::vec3::Vec3;
-
-const COUNT: usize = 4096;
 
 /// Deterministic points within ±1000 m.
 fn points(seed: u64) -> Vec<Vec3> {
@@ -17,6 +15,8 @@ fn points(seed: u64) -> Vec<Vec3> {
         .collect()
 }
 
+/// `Vec3`'s operations, each over `COUNT` pairs of points within ±1000 m: the dot product, the
+/// distance, the range test, the unit vector and the turn about the vertical.
 pub(crate) fn vec3(c: &mut Criterion) {
     let a = points(1);
     let b = points(2);

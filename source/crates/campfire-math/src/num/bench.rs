@@ -4,7 +4,8 @@ use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
 
-const COUNT: usize = 4096;
+/// The inputs of each primitive case, each iteration's.
+pub(crate) const COUNT: usize = 4096;
 
 /// Deterministic inputs spread over `[−span, span)` in raw bits.
 fn spread(seed: u64, span: i64) -> Vec<Num> {
@@ -26,6 +27,9 @@ pub(crate) fn split_mix(seed: u64) -> impl FnMut() -> u64 {
     }
 }
 
+/// `Num`'s arithmetic and its functions, each over `COUNT` inputs: products and quotients of
+/// values within ±1000, roots, the sine and cosine of angles within ±8 and of huge ones, and
+/// `atan2`, also of points near an axis.
 pub(crate) fn num(c: &mut Criterion) {
     let one = Num::ONE.to_bits();
     let small = spread(1, 1000 * one);
