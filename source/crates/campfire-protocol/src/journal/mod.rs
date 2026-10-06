@@ -62,6 +62,23 @@ impl Journal {
         Ok(Journal::start(file))
     }
 
+    /// The journal at `path`, cut to its first `whole` bytes, the tag and the frames a read found
+    /// whole, so a torn tail is gone before the next record, and open to append.
+    pub fn reopen(path: &Path, whole: u64) -> Result<Journal, JournalError> {
+        let file = OpenOptions::new()
+            .write(true)
+            .open(path)
+            .map_err(JournalError::Open)?;
+        file.set_len(whole).map_err(JournalError::Cut)?;
+        file.sync_all().map_err(JournalError::Cut)?;
+        drop(file);
+        let file = OpenOptions::new()
+            .append(true)
+            .open(path)
+            .map_err(JournalError::Open)?;
+        Ok(Journal::start(file))
+    }
+
     /// A journal that appends to `file`, which holds the tag and every record before.
     pub fn start<F: JournalFile>(file: F) -> Journal {
         let shared = Arc::new(Shared {

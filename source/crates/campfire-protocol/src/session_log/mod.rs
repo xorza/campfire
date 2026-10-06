@@ -482,6 +482,14 @@ impl SessionLog {
         }
     }
 
+    /// The slots a player controls now, in order.
+    pub fn player_slots(&self) -> impl Iterator<Item = PlayerSlot> {
+        (0..)
+            .zip(&self.slots)
+            .filter(|(_, slot)| matches!(slot.control, Control::Player { .. }))
+            .map(|(slot, _)| PlayerSlot::new(slot))
+    }
+
     /// Every change of a slot's controller logged so far, in the order logged.
     pub fn changes(&self) -> &[SlotChange] {
         &self.changes
@@ -1243,6 +1251,13 @@ impl SessionLog {
                 put(out, result);
             });
         }
+        self.journal = Some(journal);
+    }
+
+    /// Keeps `journal`, which holds every record the log took, as the log was rebuilt from it:
+    /// from then on each record the log takes goes to it as it takes it.
+    pub fn resume_journal(&mut self, journal: Journal) {
+        assert!(self.journal.is_none(), "a log keeps one journal");
         self.journal = Some(journal);
     }
 

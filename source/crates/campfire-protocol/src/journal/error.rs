@@ -11,6 +11,8 @@ pub enum JournalError {
     /// The new journal's tag was not written durably.
     Create(DurableError),
     Open(io::Error),
+    /// The journal was not cut to its whole frames, or the cut not synced.
+    Cut(io::Error),
     /// The bytes do not start with the journal's tag.
     NotJournal,
 }
@@ -20,6 +22,7 @@ impl fmt::Display for JournalError {
         match self {
             JournalError::Create(error) => write!(f, "could not make the journal: {error}"),
             JournalError::Open(error) => write!(f, "could not open the journal: {error}"),
+            JournalError::Cut(error) => write!(f, "could not cut the journal's torn tail: {error}"),
             JournalError::NotJournal => f.write_str("not a journal"),
         }
     }
@@ -29,7 +32,7 @@ impl Error for JournalError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             JournalError::Create(error) => Some(error),
-            JournalError::Open(error) => Some(error),
+            JournalError::Open(error) | JournalError::Cut(error) => Some(error),
             JournalError::NotJournal => None,
         }
     }

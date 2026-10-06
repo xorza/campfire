@@ -168,4 +168,19 @@ fn a_new_journal_on_disk_holds_its_tag_and_then_its_records() {
         JournalFrames::new(b"campfire/journal/v0"),
         Err(JournalError::NotJournal)
     ));
+
+    // A crash tore a frame: reopened at the end of the whole ones, the journal cuts the tear and
+    // goes on after them.
+    let mut torn = bytes.clone();
+    torn.extend_from_slice(&[7, 0, 0, 0, b'h', b'a']);
+    fs::write(&path, &torn).unwrap();
+    let (_, whole) = read(&torn).unwrap();
+    assert_eq!(whole, bytes.len());
+    let journal = Journal::reopen(&path, u64::try_from(whole).unwrap()).unwrap();
+    journal.append(|out| out.extend_from_slice(b"after"));
+    drop(journal);
+    let reopened = fs::read(&path).unwrap();
+    let mut records = RECORDS.to_vec();
+    records.push(b"after");
+    assert_eq!(read(&reopened), Some((records, reopened.len())));
 }

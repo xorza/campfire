@@ -16,7 +16,8 @@ use campfire_capabilities::{
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, Journal, ServerSeeds, SessionLog};
+use campfire_protocol::secp256k1::{Keypair, Secp256k1};
+use campfire_protocol::{Applied, Journal, ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StableId, TickRate};
 use lightyear::core::tick::TickDuration;
@@ -38,6 +39,7 @@ use crate::lobby::Lobby;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
+use crate::session_dir::RestoredSession;
 use crate::session_journal::SessionJournal;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
@@ -142,23 +144,7 @@ impl SimServer {
             log.header().players().count(),
             "one client per player"
         );
-        assert_eq!(
-            world.resource::<TickDuration>().0,
-            TickRate::new(log.header().terms.tick_hz).length(),
-            "the server ticks at the session's rate"
-        );
-        let tick = TickRate::new(log.header().terms.tick_hz).length();
-        let burst = log
-            .header()
-            .terms
-            .max_input_delay
-            .get()
-            .saturating_sub(1)
-            .max(1);
-        let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");
-        world
-            .resource_mut::<Time<Virtual>>()
-            .set_max_delta(tick * burst);
+        SimServer::bound_frames(world, &log.header().terms);
         Session::start(world, log, seeds, packages)?;
         if let Some(journal) = journal {
             world.insert_resource(SessionJournal(journal.watch()));
@@ -184,6 +170,75 @@ impl SimServer {
                 });
         }
         Ok(())
+    }
+}
+
+impl SimServer {
+    /// Restores the match of `restored`, a session a crash or a failed journal ended, of the mode
+    /// `packages` holds: replays its log from tick 0 to the tick the server stopped before,
+    /// keeping each tick's state hash while the world holds `TickHashes`; logs `Disconnected`
+    /// for each slot a player controls, which `server_key` signs, its auxiliary randomness from
+    /// `entropy`; and runs the match on from the next fixed tick, so the ticks the stop lost take
+    /// no time in the sim. The journal goes on from its last record, and `SessionJournal` watches
+    /// it. No client is linked: the players come back as they join again.
+    pub fn restore_match(
+        world: &mut World,
+        restored: RestoredSession,
+        packages: &ModePackages,
+        server_key: &Keypair,
+        entropy: fn(&mut [u8; 32]),
+    ) -> Result<(), StartError> {
+        let RestoredSession {
+            private,
+            log,
+            journal,
+            ..
+        } = restored;
+        SimServer::bound_frames(world, &log.header().terms);
+        let ticks = log.next_tick();
+        Session::start(world, log.rewound(), private.seed_chain.seeds(), packages)?;
+        world.insert_resource(SessionJournal(journal.watch()));
+        world.resource_mut::<Session>().resume_journal(journal);
+        while world.resource::<Session>().log().next_tick() < ticks {
+            Session::run_tick(world);
+            if world.contains_resource::<TickHashes>() {
+                record_hash(world);
+            }
+        }
+        let secp = Secp256k1::new();
+        let mut session = world.resource_mut::<Session>();
+        let slots: Vec<PlayerSlot> = session.log().player_slots().collect();
+        for slot in slots {
+            let input = ServerInput::Disconnected { slot };
+            let place = session.log().next_place();
+            let mut aux = [0; 32];
+            entropy(&mut aux);
+            let signature = input.sign(&secp, server_key, session.log().session_id(), place, &aux);
+            session
+                .record_server(input, &signature)
+                .expect("the server's own input holds");
+        }
+        let next = session.log().next_tick();
+        let start = world.resource::<LocalTimeline>().tick() + 1;
+        world.insert_resource(MatchClock::resumed(start, next));
+        world.insert_resource(FrameStart(next));
+        Ok(())
+    }
+
+    /// Bounds the server's frames for a session of `terms`: a frame advances its clock by the
+    /// ticks of the max input delay less one at most, a tick at least.
+    fn bound_frames(world: &mut World, terms: &SessionTerms) {
+        let tick = TickRate::new(terms.tick_hz).length();
+        assert_eq!(
+            world.resource::<TickDuration>().0,
+            tick,
+            "the server ticks at the session's rate"
+        );
+        let burst = terms.max_input_delay.get().saturating_sub(1).max(1);
+        let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");
+        world
+            .resource_mut::<Time<Virtual>>()
+            .set_max_delta(tick * burst);
     }
 }
 

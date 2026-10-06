@@ -222,6 +222,12 @@ impl Session {
         self.log.keep_journal(journal);
     }
 
+    /// Keeps `journal`, which holds every record of the session's log; see
+    /// `SessionLog::resume_journal`.
+    pub fn resume_journal(&mut self, journal: Journal) {
+        self.log.resume_journal(journal);
+    }
+
     /// The checkpoint record of the boundary before the next tick, which starts the segment after
     /// the log's last, its snapshot of `world` written into `snapshot`, which is cleared first;
     /// none when the seed chain has no segment after the last.

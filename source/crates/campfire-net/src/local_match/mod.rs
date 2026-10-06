@@ -1,5 +1,8 @@
+use std::mem;
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
 use bevy_ecs::entity::Entity;
@@ -13,7 +16,7 @@ use campfire_capabilities::{Action, Body, MoveStep, Order, Owner, Team};
 use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
-use campfire_protocol::{CertificateHash, SeedChain};
+use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
 use campfire_runner::InputRules;
 use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
@@ -32,6 +35,7 @@ use crate::local_match::link_model::LinkModel;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
+use crate::session_dir::SessionDir;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::join_state::JoinState;
 use crate::sim_client::server_pin::ServerPin;
@@ -115,6 +119,8 @@ pub struct LocalMatch {
     links: Vec<Entity>,
     setup: MatchSetup,
     packages: Arc<ModePackages>,
+    /// The server's data directory, where it keeps its session, once a test gives it one.
+    data: Option<PathBuf>,
     /// Last, so it drops after the apps and sees what they log as they drop.
     log: LogCheck,
 }
@@ -148,26 +154,7 @@ impl LocalMatch {
         let tick_hz = packages.manifest().tick_hz.default();
         let tick = TickRate::new(tick_hz).length();
 
-        let mut server = App::new();
-        server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-        server.add_plugins(ServerPlugins {
-            tick_duration: tick,
-        });
-        server.add_plugins((NetProtocol, SimServer));
-        server.init_resource::<TickHashes>();
-        let frame = tick / setup.server_frames;
-        assert_eq!(
-            frame * setup.server_frames,
-            tick,
-            "the frames make a whole tick"
-        );
-        server.insert_resource(TimeUpdateStrategy::ManualDuration(frame));
-        server.add_observer(
-            |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
-                commands.entity(added.entity).insert(ReplicationSender);
-            },
-        );
-        pass_through_delay_lines(&mut server);
+        let mut server = LocalMatch::server_app(&setup, tick);
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server_entity = server.world_mut().spawn((RawServer, Linked)).id();
 
@@ -217,6 +204,7 @@ impl LocalMatch {
             links,
             setup,
             packages,
+            data: None,
             log,
         };
         for _ in 0..CONNECT_FRAMES {
@@ -239,6 +227,84 @@ impl LocalMatch {
         panic!("the clients did not connect and sync in {CONNECT_FRAMES} frames");
     }
 
+    /// The server's app, its frames `setup.server_frames` a tick of `tick`, before any link.
+    fn server_app(setup: &MatchSetup, tick: Duration) -> App {
+        let mut server = App::new();
+        server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+        server.add_plugins(ServerPlugins {
+            tick_duration: tick,
+        });
+        server.add_plugins((NetProtocol, SimServer));
+        server.init_resource::<TickHashes>();
+        let frame = tick / setup.server_frames;
+        assert_eq!(
+            frame * setup.server_frames,
+            tick,
+            "the frames make a whole tick"
+        );
+        server.insert_resource(TimeUpdateStrategy::ManualDuration(frame));
+        server.add_observer(
+            |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
+                commands.entity(added.entity).insert(ReplicationSender);
+            },
+        );
+        pass_through_delay_lines(&mut server);
+        server
+    }
+
+    /// The server's key pair, which signs what it logs.
+    pub fn server_keypair() -> Keypair {
+        server_keypair()
+    }
+
+    /// Gives the server the data directory `dir`, where the session `start_match` opens keeps its
+    /// directory, private record and journal.
+    pub fn keep_data(&mut self, dir: PathBuf) {
+        assert!(
+            !self.server.world().contains_resource::<MatchClock>(),
+            "a server keeps its data from before the match"
+        );
+        self.data = Some(dir);
+    }
+
+    /// Ends the server, as a crash after its journal's last sync does; its links to the clients
+    /// end with it, and the clients run no more.
+    pub fn stop_server(&mut self) {
+        drop(mem::replace(&mut self.server, App::new()));
+        self.clients.clear();
+        self.links.clear();
+    }
+
+    /// Ends the server, then starts a new one on its data directory, which restores the session
+    /// its journal holds; see `SimServer::restore_match`. No client links to it.
+    pub fn restart_server(&mut self) {
+        self.stop_server();
+        let data = self.data.as_ref().expect("a server with a data directory");
+        let dir = SessionDir::find(data)
+            .unwrap_or_else(|error| panic!("{error}"))
+            .expect("a session the stop ended");
+        let session = dir
+            .restore()
+            .unwrap_or_else(|error| panic!("{error}"))
+            .expect("a session whose match started");
+        let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
+        let mut server = LocalMatch::server_app(&self.setup, tick);
+        server.world_mut().spawn((RawServer, Linked));
+        server.finish();
+        server.cleanup();
+        run_in_order(&mut server);
+        server.update();
+        SimServer::restore_match(
+            server.world_mut(),
+            session,
+            &self.packages,
+            &server_keypair(),
+            |bytes| bytes.fill(6),
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        self.server = server;
+    }
+
     /// Opens the session for every client, and steps until each joined, every end runs the
     /// match, and each client holds its player's avatar; see `Lobby`. The players take slots in the
     /// order their joins arrive. A client runs match ticks from the match start's message, and
@@ -246,7 +312,7 @@ impl LocalMatch {
     /// arrives first varies with how Lightyear packs and resends them, by the wall clock.
     pub fn start_match(&mut self) {
         let packages = lane_mode();
-        let lobby = Lobby::new(LobbySetup {
+        let mut lobby = Lobby::new(LobbySetup {
             tick_hz: packages.manifest().tick_hz.default(),
             packages,
             server_key: server_key(),
@@ -258,6 +324,17 @@ impl LocalMatch {
             entropy: |bytes| bytes.fill(5),
         })
         .expect("the lane mode runs at its default rate");
+        if let Some(data) = &self.data {
+            let private = SessionPrivate {
+                seed_chain: self.setup.seed_chain,
+                terms: lobby.terms().clone(),
+            };
+            let dir = SessionDir::create(data, &private).unwrap_or_else(|error| panic!("{error}"));
+            let journal = dir
+                .start_journal()
+                .unwrap_or_else(|error| panic!("{error}"));
+            lobby.keep_journal(journal);
+        }
         self.server.world_mut().insert_resource(lobby);
         for _ in 0..CONNECT_FRAMES {
             let playing = |client: &App| client.world().resource::<JoinState>().clock().is_some();
@@ -551,9 +628,13 @@ pub(crate) fn keypair(secret: u8) -> Keypair {
     Keypair::from_secret_key(&Secp256k1::new(), &secret)
 }
 
-/// The server's key, the x of a point on the curve.
+/// The server's key pair, which signs what it logs.
+pub(crate) fn server_keypair() -> Keypair {
+    keypair(41)
+}
+
 pub(crate) fn server_key() -> XOnlyPublicKey {
-    XOnlyPublicKey::from_byte_array(&[8; 32]).expect("[8; 32] is the x of a point")
+    server_keypair().x_only_public_key().0
 }
 
 fn lane_mode() -> ModePackages {

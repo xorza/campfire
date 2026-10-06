@@ -10,4 +10,4 @@ Options:
 2. **Add `aeronet_webtransport` instead,** which re-exports `wtransport`. The same code, through one more layer of re-export.
 3. **Make a new certificate at each start.** No dependency, but a restored server then has a new certificate hash, and the clients that pinned the old one cannot reconnect: crash restore works only for clients started again with the new hash.
 
-Blocked: K2. The LAN check's restore scenario in X1 needs it; every other step goes ahead, as in-process tests link with no TLS.
+Blocked: K2. Crash restore (R1) runs, with a new certificate at each start until K2 keeps one; the LAN check's restore scenario in X1 needs it; every other step goes ahead, as in-process tests link with no TLS.

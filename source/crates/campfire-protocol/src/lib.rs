@@ -61,6 +61,7 @@ pub use session_log::error::{
 };
 pub use session_log::{Applied, SessionHeader, SessionLog};
 pub use session_private::SessionPrivate;
+pub use session_private::error::SessionPrivateError;
 pub use session_result::{Outcome, SessionResult};
 pub use session_terms::SessionTerms;
 pub use signature::Signature;

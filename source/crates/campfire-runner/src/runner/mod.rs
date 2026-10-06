@@ -63,6 +63,11 @@ impl Runner {
         self.world.resource_mut::<Session>().keep_journal(journal);
     }
 
+    /// See `Session::resume_journal`.
+    pub fn resume_journal(&mut self, journal: Journal) {
+        self.world.resource_mut::<Session>().resume_journal(journal);
+    }
+
     /// See `Session::checkpoint`.
     pub fn checkpoint(&self, snapshot: &mut Vec<u8>) -> Option<Checkpoint> {
         self.world
