@@ -98,10 +98,10 @@ pub struct MatchSetup {
     pub takeover: Option<&'static str>,
 }
 
-/// What one step cost each end: the worst of the clients' frames, and the worst of the server's.
-#[derive(Debug, Clone, Copy, Default)]
+/// What a step cost each end: each client's frame, by client, and the server's worst frame.
+#[derive(Debug, Clone, Default)]
 pub(crate) struct StepCost {
-    pub(crate) client: Duration,
+    pub(crate) clients: Vec<Duration>,
     pub(crate) server: Duration,
 }
 
@@ -187,6 +187,8 @@ pub struct InProcessMatch {
     data: Option<PathBuf>,
     /// The pause and the speed every end follows.
     pace: Arc<Pace>,
+    /// What the last step cost each end, kept from step to step.
+    step_cost: StepCost,
     /// Last, so it drops after the apps and sees what they log as they drop.
     log: LogCheck,
 }
@@ -248,6 +250,7 @@ impl InProcessMatch {
             packages,
             data: None,
             pace,
+            step_cost: StepCost::default(),
             log,
         };
         for player in 0..setup.players {
@@ -571,23 +574,25 @@ impl InProcessMatch {
         self.timed_step();
     }
 
-    /// `step`, which gives what each end's frames cost.
-    pub(crate) fn timed_step(&mut self) -> StepCost {
-        let mut cost = StepCost::default();
+    /// `step`, which keeps what each end's frames cost in `step_cost`.
+    pub(crate) fn timed_step(&mut self) {
+        let mut cost = mem::take(&mut self.step_cost);
+        cost.clients.clear();
         for client in 0..self.clients.len() {
             let start = Instant::now();
             self.client_frame(client);
-            cost.client = cost.client.max(start.elapsed());
+            cost.clients.push(start.elapsed());
         }
+        cost.server = Duration::ZERO;
         for _ in 0..self.setup.server_frames {
             let start = Instant::now();
             self.server_frame();
             cost.server = cost.server.max(start.elapsed());
         }
+        self.step_cost = cost;
         if SimServer::reload_wanted(self.server.world()) {
             self.restart_server();
         }
-        cost
     }
 
     /// `ticks` frames of each client alone, then one frame of the server as long as their ticks:
@@ -846,9 +851,10 @@ pub(crate) mod bench {
     use std::env;
     use std::process;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
 
     use campfire_capabilities::Action;
-    use campfire_math::Num;
+    use campfire_math::{Num, Vec3};
     use campfire_store::DurableFile;
     use lightyear::prelude::RollbackMode;
 
@@ -865,20 +871,33 @@ pub(crate) mod bench {
     static DATA_DIRS: AtomicU64 = AtomicU64::new(0);
 
     impl StepCost {
-        /// Each end's worse of `self` and `other`.
-        fn worst(self, other: StepCost) -> StepCost {
-            StepCost {
-                client: self.client.max(other.client),
-                server: self.server.max(other.server),
-            }
+        /// Clears it, for `add` and `keep_worst` to fill.
+        pub(crate) fn clear(&mut self) {
+            self.clients.clear();
+            self.server = Duration::ZERO;
         }
 
-        /// Each end's sum of `self` and `other`.
-        fn sum(self, other: StepCost) -> StepCost {
-            StepCost {
-                client: self.client + other.client,
-                server: self.server + other.server,
+        /// Adds each end's cost in `step` to its own.
+        fn add(&mut self, step: &StepCost) {
+            self.clients.resize(step.clients.len(), Duration::ZERO);
+            for (own, &spent) in self.clients.iter_mut().zip(&step.clients) {
+                *own += spent;
             }
+            self.server += step.server;
+        }
+
+        /// Keeps each end's worse of its own and its cost in `step`.
+        fn keep_worst(&mut self, step: &StepCost) {
+            self.clients.resize(step.clients.len(), Duration::ZERO);
+            for (own, &spent) in self.clients.iter_mut().zip(&step.clients) {
+                *own = (*own).max(spent);
+            }
+            self.server = self.server.max(step.server);
+        }
+
+        /// The worst of the clients' costs.
+        pub(crate) fn worst_client(&self) -> Duration {
+            self.clients.iter().copied().max().unwrap_or_default()
         }
     }
 
@@ -891,29 +910,34 @@ pub(crate) mod bench {
             local
         }
 
-        /// `steps` frames of a walk from frame `*frame` on, which it advances: the avatar's order
-        /// to the other target every `LEG_FRAMES` frames, and each end's frames' cost in total.
-        pub(crate) fn walk_steps(&mut self, frame: &mut u64, steps: u64) -> StepCost {
-            let mut cost = StepCost::default();
+        /// `steps` frames of a walk from frame `*frame` on, which it advances: every
+        /// `LEG_FRAMES` frames, each client's avatar ordered to the target 5 m on the other side
+        /// of its point in `around`, along z; each end's frames' cost added to `spent`.
+        pub(crate) fn walk_steps(
+            &mut self,
+            frame: &mut u64,
+            steps: u64,
+            around: &[Vec3],
+            spent: &mut StepCost,
+        ) {
+            debug_assert_eq!(around.len(), self.clients.len());
             for _ in 0..steps {
                 if frame.is_multiple_of(LEG_FRAMES) {
-                    let z = if frame.is_multiple_of(2 * LEG_FRAMES) {
+                    let side = if frame.is_multiple_of(2 * LEG_FRAMES) {
                         5
                     } else {
                         -5
                     };
-                    self.order(
-                        0,
-                        Action::Move {
-                            x: Num::ZERO,
-                            z: Num::from_int(z).expect("a small integer"),
-                        },
-                    );
+                    let side = Num::from_int(side).expect("a small integer");
+                    for (client, point) in around.iter().enumerate() {
+                        let (x, z) = (point.x, point.z + side);
+                        self.order(client, Action::Move { x, z });
+                    }
                 }
-                cost = cost.sum(self.timed_step());
+                self.timed_step();
+                spent.add(&self.step_cost);
                 *frame += 1;
             }
-            cost
         }
 
         /// Each end's worst step of `MATCH_TICKS` ticks of the lane 1v1, as the match scenario
@@ -933,12 +957,42 @@ pub(crate) mod bench {
             local.keep_data(dir.clone());
             local.start_match();
             local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
-            let worst = (0..MATCH_TICKS)
-                .map(|_| local.timed_step())
-                .fold(StepCost::default(), StepCost::worst);
+            let mut worst = StepCost::default();
+            for _ in 0..MATCH_TICKS {
+                local.timed_step();
+                worst.keep_worst(&local.step_cost);
+            }
             drop(local);
             DurableFile::remove_dir(&dir).expect("the bench's own data directory");
             worst
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn a_step_cost_adds_and_keeps_the_worst_of_each_end() {
+            let micros = Duration::from_micros;
+            let step = |clients: &[u64], server: u64| StepCost {
+                clients: clients.iter().map(|&each| micros(each)).collect(),
+                server: micros(server),
+            };
+            let steps = [step(&[3, 9], 5), step(&[7, 2], 4)];
+            let (mut total, mut worst) = (StepCost::default(), StepCost::default());
+            for each in &steps {
+                total.add(each);
+                worst.keep_worst(each);
+            }
+            // Each end on its own: client 0 took 3 and 7, client 1 9 and 2, the server 5 and 4.
+            assert_eq!(total.clients, [micros(10), micros(11)]);
+            assert_eq!(total.server, micros(9));
+            assert_eq!(worst.clients, [micros(7), micros(9)]);
+            assert_eq!(worst.server, micros(5));
+            assert_eq!(worst.worst_client(), micros(9));
+            total.clear();
+            assert_eq!((total.clients.len(), total.server), (0, Duration::ZERO));
         }
     }
 }

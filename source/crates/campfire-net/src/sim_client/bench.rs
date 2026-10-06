@@ -1,9 +1,10 @@
 use std::hint::black_box;
 
+use campfire_math::Vec3;
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
-use crate::harness::in_process_match::InProcessMatch;
+use crate::harness::in_process_match::{InProcessMatch, StepCost};
 
 /// A predicting client's frame, one tick, and only the client's: while its avatar walks, rolling
 /// back only on a misprediction (none happen), `walk`, and on every confirmed update,
@@ -20,12 +21,14 @@ pub(crate) fn client_frame(c: &mut Criterion) {
     ] {
         let mut local = None;
         let mut frame: u64 = 0;
+        let mut spent = StepCost::default();
         group.bench_function(name, |b| {
             let local = local.get_or_insert_with(|| InProcessMatch::walking(mode));
             b.iter_custom(|frames| {
-                let spent = local.walk_steps(&mut frame, frames).client;
+                spent.clear();
+                local.walk_steps(&mut frame, frames, &[Vec3::ZERO], &mut spent);
                 black_box(&*local);
-                spent
+                spent.clients[0]
             });
         });
     }
@@ -33,7 +36,7 @@ pub(crate) fn client_frame(c: &mut Criterion) {
     group.bench_function("worst_1v1", |b| {
         b.iter_custom(|matches| {
             (0..matches)
-                .map(|_| InProcessMatch::worst_1v1().client)
+                .map(|_| InProcessMatch::worst_1v1().worst_client())
                 .sum()
         });
     });
