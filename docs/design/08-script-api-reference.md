@@ -34,6 +34,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `learn` | `(avatar, slot)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
 | `nearest_visible` | `(of, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none |
+| `offers` | `(choice)`, `choice` a choice | mode | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, or the loadout entries by id |
 | `order_attack` | `(unit, target)` | AI | orders | since 1.0 | `unit` attacks `target`, a living enemy that one of its weapons selects |
 | `order_follow_path` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks its path again |
 | `order_move` | `(unit, pos)` | AI | orders | since 1.0 | `unit` drops its target and walks to `pos`, within the map, off its path |
@@ -41,7 +42,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `origin` | read | action | abilities | since 1.0 | where the action's unit stood as it started |
 | `p` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
-| `players` | read | mode | core | since 1.0 | how many players the session has |
+| `players` | read | mode | core | since 1.0 | how many slots the session has, whatever controls each |
 | `projectile` | `(from, direction) or (from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick |
 | `range` | read | action | abilities | since 1.0 | the ability's range at its rank in meters, `()` for a global one |
 | `reduce_cooldown` | `(unit, id, ms)`, `id` a ability | every role | abilities | since 1.0 | takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package |
@@ -50,7 +51,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `respawn` | `(unit, ms)` | mode | combat | since 1.0 | brings back `unit`, dead and of a type that stays, `ms` from the call |
 | `restore` | `(unit, pool, amount)`, `pool` a pool | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | action, modifier, AI | vision | since 1.0 | shows the acting unit's vision group the cells within `radius` of `pos` for `ms`, from this tick's Vision stage; no hidden unit |
-| `save` | `()` | mode | core | planned | asks for a save at the end of the tick |
+| `save` | `()` | mode | core | since 1.0 | asks for a save at the end of the tick |
 | `set_relation` | `(a, b, relation)`, `a` a team, `b` a team, `relation` a `Relation` | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, their vision as it was |
 | `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path, `from` a `PathEnd` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from` of `path`, walking it from there |
 | `spawn_unit` | `(type, team, pos) or (type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` and its `.state` |
@@ -204,8 +205,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_match_start(ctx)` | mode | core | since 1.0 |
 | `on_mode_input(ctx, player, name, value)` | mode | core | since 1.0 |
 | `on_timer(ctx, name, data)` | mode | core | since 1.0 |
-| `on_player_join(ctx, player)` | mode | core | planned |
-| `on_player_leave(ctx, player)` | mode | core | planned |
+| `on_player_join(ctx, player)` | mode | core | since 1.0 |
+| `on_player_leave(ctx, player)` | mode | core | since 1.0 |
 | `on_unit_died(ctx, unit, killer, assisters)` | mode | combat | since 1.0 |
 | `calc_damage(ctx, d)` | mode | combat | since 1.0 |
 | `calc_heal(ctx, h)` | mode | combat | since 1.0 |
@@ -251,6 +252,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `resources` | since 1.0 |
 | `relations` | since 1.0 |
 | `tags` | since 1.0 |
+| `players` | since 1.0 |
+| `saves` | since 1.0 |
 | `state_version` | planned |
 
 ### The mode's `[combat]`
@@ -300,6 +303,21 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `teams` | since 1.0 |
 | `relation` | since 1.0 |
 | `vision` | since 1.0 |
+
+### The mode's `[players]`
+
+| Field | Status |
+| --- | --- |
+| `late_join` | since 1.0 |
+| `bot_takeover` | since 1.0 |
+| `leaver` | since 1.0 |
+
+### The mode's `[saves]`
+
+| Field | Status |
+| --- | --- |
+| `by` | since 1.0 |
+| `autosave_ms` | since 1.0 |
 
 ### An action, `[actions.<id>]`
 

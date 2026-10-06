@@ -1,51 +1,65 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy_app::{App, FixedUpdate, Plugin, Update};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::Add;
+use bevy_ecs::lifecycle::{Add, Insert};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::not;
-use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
+use bevy_ecs::schedule::common_conditions::{not, resource_exists};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
+use bevy_time::{Real, Time};
 use campfire_capabilities::{Dead, MatchEnd, Order, Owner, Relations};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::PlayerInput;
-use campfire_protocol::secp256k1::Keypair;
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
+use campfire_protocol::{PlayerInput, SignedReceipt};
 use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
 };
 use lightyear::prelude::client::{InputDelayConfig, InputTimelineConfig};
 use lightyear::prelude::{
-    Client, Disconnect, LocalTimeline, MessageReceiver, MessageSender, Predicted,
-    PredictionManager, Replicated, SyncConfig, is_in_rollback,
+    Client, Connect, Disconnect, LocalTimeline, MessageReceiver, MessageSender, Predicted,
+    PredictionManager, Replicated, SyncConfig, UnlinkReason, Unlinked, is_in_rollback,
 };
 use tracing::{debug, info};
 
+use crate::events::input_dropped::InputDropped;
+use crate::events::inputs_discarded::InputsDiscarded;
+use crate::events::link_lost::LinkLost;
 use crate::events::match_started::MatchStarted;
 use crate::events::order_dropped::OrderDropped;
 use crate::events::orders_sent::OrdersSent;
+use crate::events::receipt_refused::ReceiptRefused;
+use crate::events::receipt_unsaved::ReceiptUnsaved;
 use crate::events::session_refused::SessionRefused;
 use crate::input_message::InputMessage;
 use crate::join::Join;
+use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::net_protocol::{InputChannel, JoinChannel};
 use crate::offer::Offer;
+use crate::order_script::ScriptedInput;
+use crate::save_command::SaveCommand;
 use crate::sim_client::bot_script::BotScript;
-use crate::sim_client::join_state::JoinState;
+use crate::sim_client::join_state::{JoinState, LinkLoss, Retry, Started};
+use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
+use crate::superseded::Superseded;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod bot_script;
+pub(crate) mod chain_history;
 pub(crate) mod join_state;
+pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
 pub(crate) mod signer;
@@ -64,21 +78,67 @@ pub struct SimClient {
     /// This session's key, which the delegation lets sign the player's inputs.
     pub session_key: Keypair,
     pub server: ServerPin,
+    /// Whether the server runs on a thread of the client's process, the only one that loads a
+    /// save.
+    pub local: bool,
     /// The packages of the mode it plays, which must run at the listing's rate.
     pub packages: Arc<ModePackages>,
     /// Unix seconds: when the delegation is made, and so when it expires.
     pub clock: fn() -> u64,
     /// Fills a seed contribution or BIP-340's auxiliary randomness with random bytes.
     pub entropy: fn(&mut [u8; 32]),
+    /// The client's data directory, where it writes the newest receipt of its session, as
+    /// `receipts/<session id>.receipt`; none writes none.
+    pub data: Option<PathBuf>,
 }
 
-/// Orders the player gave, sent in the next fixed tick.
+/// The context that checks receipts' signatures.
+#[derive(Debug)]
+struct Verifier(Secp256k1<VerifyOnly>);
+
+impl Default for Verifier {
+    fn default() -> Verifier {
+        Verifier(Secp256k1::verification_only())
+    }
+}
+
+/// The player's wish to leave the match: the client tells the server once, and then tries its
+/// link no more. The server logs the leave at once, and ends the link.
+#[derive(Resource, Debug)]
+pub struct LeaveRequest;
+
+/// The player's save commands, which a local server takes, sent while the client plays.
 #[derive(Resource, Debug, Default)]
-pub struct PendingOrders(Vec<Order>);
+pub struct PendingSaves(Vec<SaveCommand>);
+
+impl PendingSaves {
+    pub fn push(&mut self, command: SaveCommand) {
+        self.0.push(command);
+    }
+}
+
+/// Orders the player gave, and mode inputs a bot script gives, sent in the next fixed tick.
+#[derive(Resource, Debug, Default)]
+pub struct PendingOrders(Vec<Pending>);
+
+/// One pending input.
+#[derive(Debug)]
+enum Pending {
+    Order(Order),
+    Input(ScriptedInput),
+}
 
 impl PendingOrders {
     pub fn push(&mut self, order: Order) {
-        self.0.push(order);
+        self.0.push(Pending::Order(order));
+    }
+
+    fn push_input(&mut self, input: ScriptedInput) {
+        self.0.push(Pending::Input(input));
+    }
+
+    fn clear(&mut self) {
+        self.0.clear();
     }
 }
 
@@ -105,10 +165,14 @@ impl Plugin for SimClient {
         world.insert_resource(JoinState::new(
             self.main_key,
             self.server,
+            self.local,
             SessionRules::of(packages),
             self.clock,
         ));
         world.init_resource::<SentInputs>();
+        if let Some(data) = &self.data {
+            world.insert_resource(ReceiptWriter::start(data.clone()));
+        }
         // Prediction covers all the latency, with no input delay: an input goes out stamped with
         // the tick the client predicts it in, which Lightyear keeps ahead of the server's present
         // tick by half the round trip and its margins, so the input arrives before the server
@@ -119,11 +183,18 @@ impl Plugin for SimClient {
             InputDelayConfig::no_input_delay(),
         ));
         app.init_resource::<PendingOrders>();
+        app.init_resource::<PendingSaves>();
+        app.add_observer(lose_link);
         app.add_systems(
             Update,
             (
+                retry_link,
+                send_leave.run_if(resource_exists::<LeaveRequest>),
+                send_saves,
                 answer_offer,
+                receive_superseded,
                 receive_match_start,
+                receive_receipt,
                 receive_relations,
                 receive_match_end,
                 report_deaths,
@@ -144,7 +215,7 @@ impl Plugin for SimClient {
 fn answer_offer(
     mut receivers: Query<'_, '_, &mut MessageReceiver<Offer>, With<Client>>,
     mut sender: Single<'_, '_, (Entity, &mut MessageSender<Join>), With<Client>>,
-    signer: Res<'_, Signer>,
+    mut signer: ResMut<'_, Signer>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
@@ -152,7 +223,7 @@ fn answer_offer(
     for mut receiver in &mut receivers {
         for offer in receiver.receive() {
             let session = offer.terms.session_id();
-            match state.answer(&offer, &signer) {
+            match state.answer(&offer, &mut signer) {
                 None => {}
                 Some(Ok(join)) => {
                     sender.send::<JoinChannel>(join);
@@ -171,20 +242,174 @@ fn answer_offer(
     }
 }
 
+/// Plays the match the server's start names, for a client that answered; see
+/// `JoinState::start`. A client whose chain the server rewrote ends its link.
 fn receive_match_start(
-    mut receivers: Query<'_, '_, &mut MessageReceiver<MatchStart>, With<Client>>,
+    mut receivers: Query<'_, '_, (Entity, &mut MessageReceiver<MatchStart>), With<Client>>,
+    mut state: ResMut<'_, JoinState>,
+    mut commands: Commands<'_, '_>,
+) {
+    for (client, mut receiver) in &mut receivers {
+        for start in receiver.receive() {
+            match state.start(start) {
+                Started::No => {}
+                Started::Playing { discarded } => {
+                    MatchStarted {
+                        slot: start.slot,
+                        start_tick: start.start_tick,
+                    }
+                    .log();
+                    if discarded > 0 {
+                        InputsDiscarded {
+                            slot: start.slot,
+                            count: discarded,
+                        }
+                        .log();
+                    }
+                }
+                Started::Rewritten => {
+                    LinkLost {
+                        reason: "the server's copy of the player's chain is not theirs".to_owned(),
+                    }
+                    .log();
+                    commands.trigger(Disconnect { entity: client });
+                }
+            }
+        }
+    }
+}
+
+/// Notes a link that failed: a client that knows the server's times drops the inputs it sent and
+/// the orders it holds, and tries again; one that does not stops. Lightyear despawns the units
+/// the link replicated.
+fn lose_link(
+    unlinked: On<'_, '_, Insert, Unlinked>,
+    clients: Query<'_, '_, &Unlinked, With<Client>>,
+    time: Res<'_, Time<Real>>,
+    signer: Res<'_, Signer>,
+    mut state: ResMut<'_, JoinState>,
+    mut sent: ResMut<'_, SentInputs>,
+    mut pending: ResMut<'_, PendingOrders>,
+) {
+    let Ok(Unlinked { reason }) = clients.get(unlinked.entity) else {
+        return;
+    };
+    if matches!(reason, UnlinkReason::Initial) {
+        return;
+    }
+    match state.lose(time.elapsed(), signer.random()) {
+        LinkLoss::Rejoining => {
+            info!(%reason, "the link to the server failed; trying again");
+            sent.clear();
+            pending.clear();
+        }
+        LinkLoss::Stopped(_) => LinkLost {
+            reason: reason.to_string(),
+        }
+        .log(),
+        LinkLoss::Nothing => {}
+    }
+}
+
+/// Keeps each receipt the client accepts, and hands it to the data directory's writer, when the
+/// client keeps one.
+fn receive_receipt(
+    mut receivers: Query<'_, '_, &mut MessageReceiver<SignedReceipt>, With<Client>>,
+    mut state: ResMut<'_, JoinState>,
+    writer: Option<Res<'_, ReceiptWriter>>,
+    verifier: Local<'_, Verifier>,
+) {
+    for mut receiver in &mut receivers {
+        for receipt in receiver.receive() {
+            if let Err(refusal) = state.take_receipt(&receipt, &verifier.0) {
+                ReceiptRefused {
+                    reason: refusal.to_string(),
+                }
+                .log();
+                continue;
+            }
+            if let Some(writer) = &writer {
+                writer.give(receipt);
+            }
+        }
+    }
+    let Some(writer) = writer else {
+        return;
+    };
+    for error in writer.failures() {
+        ReceiptUnsaved {
+            error: error.to_string(),
+        }
+        .log();
+    }
+}
+
+/// Stops a client whose slot a newer login of its player took.
+fn receive_superseded(
+    mut receivers: Query<'_, '_, &mut MessageReceiver<Superseded>, With<Client>>,
     mut state: ResMut<'_, JoinState>,
 ) {
     for mut receiver in &mut receivers {
-        for start in receiver.receive() {
-            if state.start(start) {
-                MatchStarted {
-                    slot: start.slot,
-                    start_tick: start.start_tick,
-                }
-                .log();
+        if receiver.receive().count() > 0 {
+            state.supersede();
+            LinkLost {
+                reason: "a newer login of the player took the slot".to_owned(),
             }
+            .log();
         }
+    }
+}
+
+/// Sends the player's save commands, while the client plays.
+fn send_saves(
+    mut sender: Single<'_, '_, &mut MessageSender<SaveCommand>, With<Client>>,
+    state: Res<'_, JoinState>,
+    mut pending: ResMut<'_, PendingSaves>,
+) {
+    if state.clock().is_none() {
+        return;
+    }
+    for command in pending.0.drain(..) {
+        sender.send::<JoinChannel>(command);
+    }
+}
+
+/// Tells the server that the player leaves, once, and stops the client's tries.
+fn send_leave(
+    mut sender: Single<'_, '_, &mut MessageSender<LeaveMatch>, With<Client>>,
+    mut state: ResMut<'_, JoinState>,
+) {
+    if state.left() {
+        return;
+    }
+    info!("leaving the match");
+    sender.send::<JoinChannel>(LeaveMatch);
+    state.leave();
+}
+
+/// Connects again a client that tries its link again, once its wait passed, while its link is
+/// down; stops once the server's grace period and restore window passed.
+fn retry_link(
+    client: Single<'_, '_, (Entity, Has<Unlinked>), With<Client>>,
+    time: Res<'_, Time<Real>>,
+    signer: Res<'_, Signer>,
+    mut state: ResMut<'_, JoinState>,
+    mut commands: Commands<'_, '_>,
+) {
+    let (entity, unlinked) = *client;
+    if !state.rejoining() || !unlinked {
+        return;
+    }
+    match state.retry(time.elapsed(), signer.random()) {
+        Retry::Wait => {}
+        Retry::Connect => {
+            info!("connecting to the server again");
+            commands.trigger(Connect { entity });
+        }
+        Retry::GiveUp => LinkLost {
+            reason: "the server's grace period and restore window passed".to_owned(),
+        }
+        .log(),
     }
 }
 
@@ -275,24 +500,45 @@ fn send_orders(
         .rollback_policy
         .effective_max_rollback_ticks(&timeline_config);
     sent.prune(Tick::new(stamp.get().saturating_sub(u64::from(reach))));
-    if let (Some(mut bot), Ok(&unit)) = (bot, avatar.single()) {
-        for scripted in bot.due(stamp) {
-            pending.push(Order {
-                unit,
-                action: scripted.action,
-            });
+    if let Some(mut bot) = bot {
+        let due = bot.due(stamp);
+        for input in due.inputs {
+            pending.push_input(input.clone());
+        }
+        if let Ok(&unit) = avatar.single() {
+            for scripted in due.orders {
+                pending.push(Order {
+                    unit,
+                    action: scripted.action,
+                });
+            }
         }
     }
-    let session = playing.session;
+    let session = playing.member.session;
     let first = sent.len();
     let stamped = pending.0.len().min(session.max_inputs as usize);
-    for order in pending.0.drain(..stamped) {
-        if !sent.push(stamp, &order, session.max_payload_len) {
-            OrderDropped {
-                unit: order.unit,
-                action: format!("{:?}", order.action),
+    for pending in pending.0.drain(..stamped) {
+        match pending {
+            Pending::Order(order) => {
+                let kept = sent.push(stamp, session.max_payload_len, |body, out| {
+                    order.write_payload(body, out);
+                });
+                if !kept {
+                    OrderDropped {
+                        unit: order.unit,
+                        action: format!("{:?}", order.action),
+                    }
+                    .log();
+                }
             }
-            .log();
+            Pending::Input(input) => {
+                let kept = sent.push(stamp, session.max_payload_len, |_, out| {
+                    input.write_payload(out);
+                });
+                if !kept {
+                    InputDropped { name: input.name }.log();
+                }
+            }
         }
     }
     let payloads = sent.since(first);
@@ -305,7 +551,7 @@ fn send_orders(
     }
     .log();
     for payload in payloads.clone() {
-        playing.chain.extend(stamp, payload);
+        playing.extend(stamp, payload);
     }
     let slot = playing.chain.slot();
     let inputs = payloads.map(|payload| PlayerInput {
@@ -321,7 +567,7 @@ fn send_orders(
 /// rollback, Lightyear has wound its timeline back, so the sim follows.
 fn run_predicted_tick(world: &mut World) {
     let tick = world.resource::<LocalTimeline>().tick();
-    let JoinState::Playing(playing) = world.resource::<JoinState>() else {
+    let Some(playing) = world.resource::<JoinState>().playing() else {
         return;
     };
     let slot = playing.chain.slot();

@@ -1,4 +1,4 @@
-use secp256k1::{Keypair, Secp256k1, Signing, Verification, schnorr};
+use secp256k1::{Keypair, Secp256k1, Signing, Verification};
 use serde::{Deserialize, Serialize};
 
 use crate::connect::certificate_hash::CertificateHash;
@@ -35,9 +35,7 @@ impl ConnectChallenge {
         certificate: &CertificateHash,
         aux: &[u8; 32],
     ) -> Signature {
-        let message = self.answer_message(certificate);
-        let signature = secp.sign_schnorr_with_aux_rand(&message, session_key, aux);
-        Signature::from_bytes(signature.to_byte_array())
+        Signature::sign(secp, session_key, &self.answer_message(certificate), aux)
     }
 
     /// Checks a joining player's `answer` with `delegation`, at `now` in Unix seconds: the
@@ -59,13 +57,14 @@ impl ConnectChallenge {
         if now >= granted.expiration {
             return Err(ConnectError::Expired);
         }
-        secp.verify_schnorr(
-            &schnorr::Signature::from_byte_array(answer.to_bytes()),
-            &self.answer_message(certificate),
+        if !answer.verifies(
+            secp,
             &granted.session_key,
-        )
-        .ok()
-        .ok_or(ConnectError::BadAnswer)
+            &self.answer_message(certificate),
+        ) {
+            return Err(ConnectError::BadAnswer);
+        }
+        Ok(())
     }
 
     /// `domain ‖ challenge ‖ certificate hash`.

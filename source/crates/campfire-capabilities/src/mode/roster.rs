@@ -39,6 +39,15 @@ impl Roster {
         offer.index() < count
     }
 
+    /// The ids of `offers`, in order.
+    pub(crate) fn ids(&self, offers: Offers) -> impl Iterator<Item = &str> {
+        let count = match offers {
+            Offers::Avatars => self.avatars.len(),
+            Offers::Loadout => self.loadout.len(),
+        };
+        (0..count).map(move |at| self.id(offers, Offer::new(at)))
+    }
+
     /// The id of `offer` among `offers`.
     pub(crate) fn id(&self, offers: Offers, offer: Offer) -> &str {
         match offers {

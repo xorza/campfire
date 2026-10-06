@@ -8,12 +8,12 @@ use campfire_capabilities::{
     Action, ActionSlots, Deaths, Experience, Hook, Level, Order, PathWalker, Points,
     ScriptFailures, Team, TrackId,
 };
-use campfire_common::Tick;
+use campfire_common::{StateHash, Tick};
 use campfire_math::Num;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_runner::ScriptCallFailed;
-use campfire_runner::internals::{FixedMatch, FixedSession, Golden, MatchUnits};
-use campfire_sim::{EntityIndex, StableId, StateHash};
+use campfire_runner::internals::{CopyCheck, FixedMatch, FixedSession, Golden, MatchUnits};
+use campfire_sim::{EntityIndex, StableId};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
 /// its ultimate, its points, its experience and its level.
@@ -58,8 +58,9 @@ fn the_lane_match_plays_to_its_golden_record() {
     let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/lane"))
         .unwrap_or_else(|error| panic!("{error}"));
     let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
-    let mut golden = Golden::new(session.packages(), session.players());
+    let mut golden = Golden::new(session.packages(), session.slots());
     let mut fixed = session.start();
+    let mut copy = CopyCheck::new(fixed.runner_mut());
     let walker = MatchUnits::of(&fixed).hero(0);
     // The first wave's creeps of the east, which spawn in tick 0, walk to the walker and strike
     // it as they meet; the west's strike the runner, so the walker alone fells these.
@@ -85,6 +86,7 @@ fn the_lane_match_plays_to_its_golden_record() {
         }
         fixed.runner_mut().run_tick();
         golden.record(fixed.runner());
+        copy.check(fixed.runner_mut());
         if tick == 0 {
             east = MatchUnits::of(&fixed)
                 .all()

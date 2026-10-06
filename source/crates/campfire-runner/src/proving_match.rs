@@ -1,18 +1,22 @@
 use std::num::NonZeroU32;
 
 use campfire_capabilities::{Action, ActionTarget, Order, Team, TrainQueue};
+use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir};
+use campfire_protocol::{AfterLeave, LeaveReason, ServerInput, SlotPlan};
 use campfire_sim::{Position, StableId};
 
 use crate::fixed_match::FixedMatch;
 use crate::fixed_session::FixedSession;
+use crate::input_rules::InputRules;
 use crate::match_units::MatchUnits;
 use crate::scripted::{Plan, Scripted};
 
 /// The proving mode of `packages/test`: a small match that uses every capability the release
-/// runs, played by two scripted players. It is owned by the tests, so no balance change of the
-/// reference content moves it.
+/// runs, played by two scripted players, the second of whom joins slot 1, open at the start,
+/// before tick `JOIN`, and leaves it, reserved, before tick `LEAVE`. It is owned by the tests, so
+/// no balance change of the reference content moves it.
 #[derive(Debug)]
 pub struct ProvingMatch {
     session: FixedSession,
@@ -104,12 +108,17 @@ impl ProvingMatch {
     pub const PLAYERS: u32 = 2;
     /// The ticks a test plays: 30 s at 20 a second.
     pub const TICKS: u64 = 600;
+    /// The tick player 1 joins in, before their first order, and the one they leave in, after
+    /// their last.
+    pub const JOIN: u64 = 1;
+    pub const LEAVE: u64 = 400;
 
     pub fn load() -> ProvingMatch {
         let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/proving"))
             .unwrap_or_else(|error| panic!("{error}"));
+        let plan = vec![SlotPlan::Player, SlotPlan::Open];
         ProvingMatch {
-            session: FixedSession::new(packages, TICK_HZ, ProvingMatch::PLAYERS),
+            session: FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan),
         }
     }
 
@@ -122,8 +131,22 @@ impl ProvingMatch {
         self.session.start()
     }
 
-    /// Runs tick `tick` of `fixed`: first sends the scripted inputs stamped for it, then runs it.
+    /// Runs tick `tick` of `fixed`: first logs player 1's join or leave in its tick, and sends the
+    /// scripted inputs stamped for it, then runs it.
     pub fn play_tick(fixed: &mut FixedMatch, tick: u64) {
+        let refused = |error| panic!("tick {tick}: {error}");
+        match tick {
+            ProvingMatch::JOIN => fixed.join(1).unwrap_or_else(refused),
+            ProvingMatch::LEAVE => {
+                let leave = ServerInput::Leave {
+                    slot: PlayerSlot::new(1),
+                    reason: LeaveReason::Asked,
+                    becomes: AfterLeave::Reserve,
+                };
+                fixed.serve(leave).unwrap_or_else(refused);
+            }
+            _ => {}
+        }
         Scripted::play_tick(&SCRIPT, fixed, tick);
     }
 }

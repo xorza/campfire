@@ -58,12 +58,13 @@ impl ModeApi {
             .hook(Hook::OnUnitDied, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::CalcDamage, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::CalcHeal, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnPlayerJoin, Status::Planned)
-            .hook(Hook::OnPlayerLeave, Status::Planned)
+            .hook(Hook::OnPlayerJoin, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnPlayerLeave, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnGenerate, Status::Planned)
-            .plan(
+            .bind(
                 MemberSpec::call("save", "()", "asks for a save at the end of the tick")
                     .roles(RoleSet::MODE),
+                |ctx: &mut Ctx| ctx.queue(ModeEffect::Save),
             )
             .plan(
                 MemberSpec::value(
@@ -98,10 +99,18 @@ impl ModeApi {
                     "resources",
                     "relations",
                     "tags",
+                    "players",
+                    "saves",
                 ],
                 &["state_version"],
             )
-            .data(DataTable::Relation, &["teams", "relation", "vision"], &[]);
+            .data(DataTable::Relation, &["teams", "relation", "vision"], &[])
+            .data(
+                DataTable::Players,
+                &["late_join", "bot_takeover", "leaver"],
+                &[],
+            )
+            .data(DataTable::Saves, &["by", "autosave_ms"], &[]);
     }
 
     /// What every role reads of the mode: the teams, the map, the avatars, the units of a tag,
@@ -120,7 +129,11 @@ impl ModeApi {
             },
         )
         .bind(
-            MemberSpec::value("players", "how many players the session has").roles(RoleSet::MODE),
+            MemberSpec::value(
+                "players",
+                "how many slots the session has, whatever controls each",
+            )
+            .roles(RoleSet::MODE),
             |ctx: &mut Ctx| -> Checked<INT> {
                 Ok(INT::from(ModeBook::of_or_fail(ctx)?.teams.players()))
             },
@@ -250,6 +263,16 @@ impl ModeApi {
             |ctx: &mut Ctx, player: INT, choice: &str, value: &str| {
                 ModeApi::available(ctx, player, choice, value)
             },
+        )
+        .bind(
+            mode(
+                "offers",
+                "(choice)",
+                "the values `choice` offers, in order: the avatars in the order of the mode's \
+                 dependencies, or the loadout entries by id",
+            )
+            .name(0, NameKind::Choice),
+            |ctx: &mut Ctx, choice: &str| ModeApi::offers(ctx, choice),
         );
     }
 
@@ -529,6 +552,18 @@ impl ModeApi {
                 let offer = offer.expect("a chosen choice has every value");
                 Dynamic::from(ImmutableString::from(book.roster.id(choice.offers, offer)))
             })
+            .collect())
+    }
+
+    /// The values `choice` offers, in order.
+    fn offers(ctx: &Ctx, choice: &str) -> Checked<Array> {
+        ctx.require(RoleSet::MODE)?;
+        let book = ModeBook::of_or_fail(ctx)?;
+        let choice = ModeApi::choice(ctx, choice)?;
+        Ok(book
+            .roster
+            .ids(choice.offers)
+            .map(|id| Dynamic::from(ImmutableString::from(id)))
             .collect())
     }
 

@@ -1,7 +1,6 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_capabilities::Order;
 use campfire_common::Tick;
 
 /// The inputs the player sent, by stamp, to predict with again after a rollback: from the oldest
@@ -42,15 +41,20 @@ impl SentInputs {
             .map(|input| &self.payloads[input.payload.clone()])
     }
 
-    /// Keeps `order` as an input stamped `stamp`; `false`, keeping nothing, when its payload
-    /// passes `max_payload_len`.
-    pub(crate) fn push(&mut self, stamp: Tick, order: &Order, max_payload_len: u32) -> bool {
+    /// Keeps the payload `write` appends, with a body buffer it may use, as an input stamped
+    /// `stamp`; `false`, keeping nothing, when the payload passes `max_payload_len`.
+    pub(crate) fn push(
+        &mut self,
+        stamp: Tick,
+        max_payload_len: u32,
+        write: impl FnOnce(&mut Vec<u8>, &mut Vec<u8>),
+    ) -> bool {
         debug_assert!(
             self.inputs.last().is_none_or(|last| last.stamp <= stamp),
             "stamps never decrease"
         );
         let start = self.payloads.len();
-        order.write_payload(&mut self.body, &mut self.payloads);
+        write(&mut self.body, &mut self.payloads);
         if self.payloads.len() - start > max_payload_len as usize {
             self.payloads.truncate(start);
             return false;
@@ -60,6 +64,12 @@ impl SentInputs {
             payload: start..self.payloads.len(),
         });
         true
+    }
+
+    /// Drops every input, as a client whose link failed does.
+    pub(crate) fn clear(&mut self) {
+        self.inputs.clear();
+        self.payloads.clear();
     }
 
     /// Drops the inputs stamped before `oldest`, which no rollback replays.

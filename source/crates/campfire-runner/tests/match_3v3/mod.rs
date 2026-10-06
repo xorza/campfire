@@ -19,7 +19,9 @@ use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::SessionLog;
 use campfire_runner::Runner;
-use campfire_runner::internals::{FixedMatch, Golden, HashTrail, MatchUnits, Reference3v3};
+use campfire_runner::internals::{
+    CopyCheck, FixedMatch, Golden, HashTrail, MatchUnits, Reference3v3,
+};
 use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, StableId, TickRate};
 
@@ -160,6 +162,7 @@ fn units(runner: &Runner) -> Vec<Unit> {
 /// then plays as the reference's script says.
 fn run(reference: &Reference3v3) -> Run {
     let mut fixed = reference.start();
+    let mut copy = CopyCheck::new(fixed.runner_mut());
     let runner = fixed.runner();
     // A timer fires in the tick its time ends in. The pick's, set in tick 0, ends in the tick
     // before its count of ticks; the first wave's, set then, its own count later.
@@ -175,6 +178,7 @@ fn run(reference: &Reference3v3) -> Run {
     let mut showcase = Showcase::default();
     for tick in 0..TICKS {
         reference.play_tick(&mut fixed, tick);
+        copy.check(fixed.runner_mut());
         let runner = fixed.runner();
         trail.record(runner.world());
         golden.record_hashed(runner, trail.last());
@@ -563,7 +567,7 @@ pub(crate) fn assert_replays(reference: &Reference3v3, runner: &Runner, trail: &
     let decoded = SessionLog::decode(&file).unwrap();
     let mut replay = Runner::new(
         decoded.rewound(),
-        Reference3v3::seed(),
+        Reference3v3::seeds(),
         reference.packages(),
     )
     .unwrap();

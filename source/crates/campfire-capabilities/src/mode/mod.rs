@@ -13,7 +13,7 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_script::ScriptError;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{
-    EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickInputs, TickRate,
+    EntityIndex, IdAllocator, SimSet, SimTick, SlotEventKind, StateRegistry, TickInputs, TickRate,
 };
 
 use crate::abilities::AbilitiesSet;
@@ -39,8 +39,10 @@ use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_state::ModeState;
 use crate::mode::placed_unit::PlacedPath;
+use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
+use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
 use crate::navigation::NavigationSet;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
@@ -85,11 +87,15 @@ pub(crate) mod mode_state;
 pub(crate) mod mode_units;
 pub(crate) mod offer;
 pub(crate) mod placed_unit;
+pub(crate) mod players_data;
 pub(crate) mod relation_data;
 pub(crate) mod roster;
+pub(crate) mod save_asked;
+pub(crate) mod saves_data;
 pub(crate) mod team_manifest;
 pub(crate) mod timers;
 pub(crate) mod unanswered_deaths;
+pub(crate) mod unanswered_slot_events;
 pub(crate) mod unit_kit;
 
 /// The mode of a match: the core's rules above the capabilities. Every match installs it after
@@ -100,8 +106,9 @@ pub struct Mode;
 impl Mode {
     /// Adds the mode of `setup`, whose books the book builder built, to a match whose capabilities
     /// are installed and whose unit types, abilities and AI are loaded: in Inputs, the players'
-    /// mode inputs run `on_mode_input`; in Mode, the trains whose time ended spawn, due timers run
-    /// `on_timer`, the tick's deaths run `on_unit_died`, and the levels reached run `on_level_up`.
+    /// mode inputs run `on_mode_input`; in Mode, the trains whose time ended spawn, the tick's
+    /// joins and leaves run `on_player_join` and `on_player_leave`, due timers run `on_timer`, the
+    /// tick's deaths run `on_unit_died`, and the levels reached run `on_level_up`.
     /// The map's ground, paths and grid become the match's, and the mode's `[combat]` and
     /// `calc_damage` combat's.
     pub fn install(
@@ -147,6 +154,7 @@ impl Mode {
         world.insert_resource(PlayerResources::new(players, resource_count));
         world.insert_resource(Timers::default());
         world.insert_resource(UnansweredDeaths::default());
+        world.insert_resource(UnansweredSlotEvents::default());
         let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
@@ -179,7 +187,7 @@ impl Mode {
                 .before(OrdersSet::Orders)
                 .before(AbilitiesSet::Toggles)
                 .before(ActionsSet::HoldAtInputs),
-            (run_timers, unit_deaths, level_ups)
+            (slot_events, run_timers, unit_deaths, level_ups)
                 .chain()
                 .in_set(SimSet::Mode)
                 .after(ProductionSet::Finish),
@@ -190,6 +198,13 @@ impl Mode {
         registry.register_resource::<PlayerResources>();
         registry.register_resource::<Timers>();
         registry.register_resource::<UnansweredDeaths>();
+        registry.register_resource::<UnansweredSlotEvents>();
+    }
+
+    /// The boundary the mode in `world` last asked for a save at, by `ctx.save()`, by the tick
+    /// it comes before.
+    pub fn save_asked(world: &World) -> Option<Tick> {
+        world.get_resource::<SaveAsked>().map(|asked| asked.at())
     }
 
     /// The team of player `slot` in the match in `world`; `None` before the mode installs, or for
@@ -245,6 +260,8 @@ impl Mode {
                     .resource_mut::<Relations>()
                     .set_attitude(a, b, attitude);
             }
+            // A call's `now` is the end of its tick.
+            ModeEffect::Save => world.insert_resource(SaveAsked::new(now)),
         }
     }
 
@@ -350,6 +367,52 @@ fn mode_inputs(
 struct Input {
     slot: PlayerSlot,
     body: Range<usize>,
+}
+
+/// Runs `on_player_join` for each player who took a slot in this tick, and `on_player_leave` for
+/// each who left one, after those that wait from earlier ticks, in the order the log took them,
+/// from the mode pool. One whose call finds the pool spent waits, with those after it, for a
+/// later tick.
+fn slot_events(world: &mut World) {
+    world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredSlotEvents>| {
+        // A write marks the state changed, so a tick with no event writes nothing.
+        let events = world.resource::<TickInputs>().slot_events();
+        if !events.is_empty() {
+            unanswered.0.extend_from_slice(events);
+        }
+        if unanswered.0.is_empty() {
+            return;
+        }
+        let ctx = world.non_send::<Ctx>().clone();
+        let hooks = ModeBook::of(&ctx)
+            .expect("a match with a mode")
+            .schema
+            .hooks;
+        let now = world.resource::<SimTick>().end();
+        let answered = Calls::batch(world, &ctx, now, |call| {
+            let mut answered = 0;
+            for event in &unanswered.0 {
+                let hook = match event.kind {
+                    SlotEventKind::Joined => Hook::OnPlayerJoin,
+                    SlotEventKind::Left => Hook::OnPlayerLeave,
+                };
+                if hooks.contains(hook) {
+                    let args = (call.ctx.clone(), INT::from(event.slot.get()));
+                    match call.run(Pool::Mode, hook, args) {
+                        Ok(()) => {}
+                        Err(ScriptError::TickBudget) => break,
+                        Err(error) => {
+                            let error = CallError::from_script(error);
+                            call.batch.record(None, hook, error);
+                        }
+                    }
+                }
+                answered += 1;
+            }
+            answered
+        });
+        unanswered.0.drain(..answered);
+    });
 }
 
 /// Runs `on_timer` for each timer due in this tick's Mode stage, earliest first, from the mode

@@ -59,6 +59,8 @@ pub(crate) enum ModeEffect {
         b: Team,
         attitude: Attitude,
     },
+    /// A save, at the end of the tick.
+    Save,
 }
 
 /// By the match's mode.

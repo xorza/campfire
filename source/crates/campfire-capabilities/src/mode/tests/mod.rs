@@ -6,7 +6,9 @@ use bevy_ecs::query::With;
 use campfire_common::Ticks;
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost, ScriptId};
-use campfire_sim::{Capability, Position, SimComponent, SimResource, StableId, TickInput};
+use campfire_sim::{
+    Capability, Position, SimComponent, SimResource, SlotEvent, SlotEventKind, StableId, TickInput,
+};
 
 use super::*;
 use crate::actions::Actions;
@@ -33,7 +35,9 @@ use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::offer::Offer;
+use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
+use crate::mode::saves_data::SavesData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::destination::Destination;
@@ -575,6 +579,8 @@ fn mode_files() -> ModeFiles {
             tags: BTreeMap::new(),
             tracks: tracks(),
             shop: None,
+            players: PlayersData::default(),
+            saves: SavesData::default(),
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),
@@ -774,6 +780,16 @@ impl Game {
                 slot: PlayerSlot::new(*slot),
                 payload: &payload,
             });
+        }
+        self.sim.step();
+    }
+
+    /// Runs a tick in which the session logged `events`, each a player's join or leave.
+    fn tick_slots(&mut self, events: &[(u32, SlotEventKind)]) {
+        for &(slot, kind) in events {
+            let slot = PlayerSlot::new(slot);
+            let mut inputs = self.sim.world.resource_mut::<TickInputs>();
+            inputs.push_slot_event(SlotEvent { slot, kind });
         }
         self.sim.step();
     }

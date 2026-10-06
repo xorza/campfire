@@ -1,7 +1,9 @@
+use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey, schnorr};
 use serde::{Deserialize, Serialize};
 
-/// A session key's BIP-340 signature, `R.x ‖ s`: over a player's chain head, or over a connect
-/// challenge. Kept as its two halves because serde encodes arrays of at most 32 elements.
+/// A BIP-340 signature, `R.x ‖ s`: a session key's over a player's chain head or a connect
+/// challenge, or the server key's over a server input, a checkpoint, a result or a receipt. Kept
+/// as its two halves because serde encodes arrays of at most 32 elements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Signature {
     r: [u8; 32],
@@ -9,6 +11,28 @@ pub struct Signature {
 }
 
 impl Signature {
+    /// `key`'s BIP-340 signature over `message`, with the auxiliary randomness `aux`.
+    pub(crate) fn sign<C: Signing>(
+        secp: &Secp256k1<C>,
+        key: &Keypair,
+        message: &[u8],
+        aux: &[u8; 32],
+    ) -> Signature {
+        let signature = secp.sign_schnorr_with_aux_rand(message, key, aux);
+        Signature::from_bytes(signature.to_byte_array())
+    }
+
+    /// Whether this is `key`'s signature over `message`.
+    pub(crate) fn verifies<C: Verification>(
+        self,
+        secp: &Secp256k1<C>,
+        key: &XOnlyPublicKey,
+        message: &[u8],
+    ) -> bool {
+        let signature = schnorr::Signature::from_byte_array(self.to_bytes());
+        secp.verify_schnorr(&signature, message, key).is_ok()
+    }
+
     pub const fn from_bytes(bytes: [u8; 64]) -> Signature {
         let (r, s) = bytes.split_at(32);
         let mut signature = Signature {

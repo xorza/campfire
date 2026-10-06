@@ -13,7 +13,6 @@ use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
-use crate::navigation::segment::Segment;
 use crate::navigation::walker::Walker;
 use crate::projectiles::projectile::Projectile;
 use crate::scripts::effects::Effect;
@@ -216,14 +215,10 @@ fn teleport(world: &mut World, entity: Entity, unit: StableId, to: Position, now
             statics: world.resource::<BodyIndex>(),
             short: None,
         };
-        if walkable.blocks(Segment::new(place, place)) {
-            let planner = world.resource::<RoutePlanner>();
-            let mut work = 0;
-            let Some(cell) = planner.nearest_open(walkable, place, &mut work) else {
-                return;
-            };
-            place = walkable.clearance.grid().center(cell, place.get().y);
-        }
+        let Some(open) = world.resource::<RoutePlanner>().stand_at(walkable, place) else {
+            return;
+        };
+        place = open;
     }
     let mut moved = world.entity_mut(entity);
     *moved.get_mut::<Position>().expect("a unit has a place") = place;

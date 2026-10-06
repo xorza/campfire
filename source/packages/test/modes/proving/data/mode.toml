@@ -26,6 +26,18 @@ hidden = true
 level = true
 levels = [100, 300, 600]
 
+# A player joins slot 1, open at the start, and leaves it later; the hooks keep who did.
+[players]
+late_join = true
+
+# The mode saves as the first wave comes, at the end of tick 0, and every 12 s.
+[saves]
+autosave_ms = 12000
+
+[state]
+joined = { type = "int", default = -1 }
+left = { type = "int", default = -1 }
+
 [params]
 wave_ms = 8000
 income_ms = 5000

@@ -226,6 +226,9 @@ pub enum LoadProblem {
     /// A unit type at `at` has the life pool but no `combat` section, so it could reach zero
     /// life and never die.
     CombatMissing(Place),
+    /// The mode's `[players]` lets a new player take a bot's slot but no open one: taking a bot's
+    /// slot is a late join, which `late_join` allows.
+    BotTakeoverWithoutLateJoin,
     /// A projectile or an area type, or what delivers or makes one.
     Delivery(DeliveryProblem),
     /// An effect of the action's list, the one before `list`.
@@ -880,6 +883,9 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Choice(problem) => write!(f, "{problem}"),
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
+            LoadProblem::BotTakeoverWithoutLateJoin => {
+                f.write_str("the mode's [players]: bot_takeover without late_join")
+            }
             LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::Item(problem) => write!(f, "{problem}"),
             LoadProblem::Planned { field, at } => {

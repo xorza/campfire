@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 241] = [
+static FLAWS: [Flaw; 242] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1340,15 +1340,22 @@ static FLAWS: [Flaw; 241] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "order_reset"),
     ),
+    // Taking a bot's slot is a late join.
+    flaw(
+        MODE_DATA,
+        Edit::Replace("late_join = true", "late_join = false"),
+        MODE,
+        |problem| matches!(problem, LoadProblem::BotTakeoverWithoutLateJoin),
+    ),
     // Names design 08 plans: a `ctx` method and field, a handle's field, a hook and data fields.
     flaw(
         MODE_SCRIPT,
         Edit::Replace(
             "fn on_match_start(ctx) {",
-            "fn on_match_start(ctx) {\n    ctx.save();",
+            "fn on_match_start(ctx) {\n    ctx.generate(\"north\");",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "save"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "generate"),
     ),
     flaw(
         MODE_SCRIPT,
@@ -1372,10 +1379,10 @@ static FLAWS: [Flaw; 241] = [
         MODE_SCRIPT,
         Edit::Replace(
             "fn on_match_start(ctx) {",
-            "fn on_player_join(ctx, player) {}\n\nfn on_match_start(ctx) {",
+            "fn on_generate(ctx, region) {}\n\nfn on_match_start(ctx) {",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "on_player_join"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "on_generate"),
     ),
     flaw(
         MODE_DATA,

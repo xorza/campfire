@@ -9,6 +9,7 @@ campfire-common.workspace = true
 campfire-log.workspace = true
 campfire-net.workspace = true
 campfire-package = { workspace = true, features = ["internals"] }
+campfire-protocol.workspace = true
 campfire-sim.workspace = true
 campfire-verifier.workspace = true
 
@@ -17,8 +18,6 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-campfire-protocol.workspace = true
-
 tempfile.workspace = true
 
 [lints]

@@ -1,18 +1,21 @@
-use campfire_common::Tick;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_log::internals::LogCheck;
 use campfire_protocol::secp256k1::Secp256k1;
-use campfire_protocol::{Applied, InputChain, SessionId};
+use campfire_protocol::{
+    Applied, Checkpoint, InputChain, ServerInput, SessionResult, SessionTerms,
+};
 
+use crate::error::ServerInputRefused;
 use crate::fixed_session::FixedSession;
 use crate::runner::Runner;
 
-/// A match of a `FixedSession`, and each player's input chain, so a test sends inputs as a
-/// player's client would.
+/// A match of a `FixedSession`, and the input chain of each slot's player, so a test sends inputs
+/// as a player's client would, and server inputs as its server would.
 #[derive(Debug)]
 pub struct FixedMatch {
     runner: Runner,
     chains: Vec<InputChain>,
-    session_id: SessionId,
+    terms: SessionTerms,
     applied: Vec<Applied>,
     /// Last, so it drops after the runner and sees what the match logs as it drops.
     log: LogCheck,
@@ -22,13 +25,13 @@ impl FixedMatch {
     pub(crate) const fn new(
         runner: Runner,
         chains: Vec<InputChain>,
-        session_id: SessionId,
+        terms: SessionTerms,
         log: LogCheck,
     ) -> FixedMatch {
         FixedMatch {
             runner,
             chains,
-            session_id,
+            terms,
             applied: Vec::new(),
             log,
         }
@@ -42,7 +45,7 @@ impl FixedMatch {
         let signature = chain.sign(
             &Secp256k1::new(),
             &FixedSession::session_key(slot),
-            self.session_id,
+            self.terms.session_id(),
             &FixedSession::AUX,
         );
         self.runner
@@ -52,6 +55,59 @@ impl FixedMatch {
             panic!("a packet of one input applies once");
         };
         applied
+    }
+
+    /// Logs `input` before the next tick, signed by the server at the place it takes.
+    pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefused> {
+        let place = self.runner.log().next_place();
+        let signature = FixedSession::server_signature(&input, self.terms.session_id(), place);
+        self.runner.record_server(input, &signature)
+    }
+
+    /// Logs player `slot`'s join of their slot, with the delegation the session would start them
+    /// with; once it is logged, the player sends on a chain started again.
+    pub fn join(&mut self, slot: u32) -> Result<(), ServerInputRefused> {
+        let delegation = FixedSession::delegation(&self.terms, slot);
+        self.serve(ServerInput::Join {
+            slot: PlayerSlot::new(slot),
+            delegation,
+        })?;
+        self.chains[usize::try_from(slot).unwrap()] = FixedSession::chain(&self.terms, slot);
+        Ok(())
+    }
+
+    /// Checkpoints the match at the boundary before the next tick, as its server would, its
+    /// snapshot written into `snapshot`; the record, signed and logged.
+    pub fn checkpoint(&mut self, snapshot: &mut Vec<u8>) -> Checkpoint {
+        self.runner
+            .begin_checkpoint()
+            .unwrap_or_else(|error| panic!("the match's own checkpoint: {error}"));
+        let record = self
+            .runner
+            .checkpoint(snapshot)
+            .expect("a fixed session's chain holds the segment");
+        let signature = FixedSession::checkpoint_signature(&record, self.terms.session_id());
+        self.runner
+            .record_checkpoint(record.clone(), &signature)
+            .unwrap_or_else(|error| panic!("the match's own checkpoint: {error}"));
+        record
+    }
+
+    /// Ends the session before the next tick, as the mode ended the match or aborted when it did
+    /// not, and publishes its log; the result, signed and logged.
+    pub fn end(&mut self) -> SessionResult {
+        let result = self.runner.result();
+        let signature = FixedSession::result_signature(&result, self.terms.session_id());
+        self.runner
+            .record_result(result, &signature)
+            .unwrap_or_else(|error| panic!("the match's own result: {error}"));
+        self.runner.reveal_seed();
+        result
+    }
+
+    /// The match's runner, its keys and chains dropped, as a load leaves them behind.
+    pub fn into_runner(self) -> Runner {
+        self.runner
     }
 
     pub const fn runner(&self) -> &Runner {

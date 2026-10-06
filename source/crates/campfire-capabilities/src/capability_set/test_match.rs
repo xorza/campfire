@@ -13,7 +13,7 @@ use campfire_script::rhai::Dynamic;
 use campfire_script::{Budget, ScriptHost};
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimSet, SimTick, SimUpdate, StableId,
-    StateRegistry, TickRate, TypeHash,
+    StateCopy, StateRegistry, TickRate, TypeHash,
 };
 
 use crate::capability_set::CapabilitySet;
@@ -198,6 +198,26 @@ impl TestMatch {
 
     pub(crate) fn step(&mut self) {
         self.world.run_schedule(SimUpdate);
+    }
+
+    /// Brings `copy`, a copy of the match's state, up to the match, and checks that every state
+    /// type of it hashes as the match's own.
+    pub(crate) fn check_copy(&mut self, copy: &mut StateCopy) {
+        copy.follow(&self.registry, &mut self.world);
+        let (mut copied, mut own) = (Vec::new(), Vec::new());
+        self.registry.hash_by_type(copy.world(), &mut copied);
+        self.registry.hash_by_type(&self.world, &mut own);
+        let differ: Vec<&str> = copied
+            .iter()
+            .zip(&own)
+            .filter(|(copied, own)| copied.hash != own.hash)
+            .map(|(copied, _)| copied.name)
+            .collect();
+        assert!(
+            differ.is_empty(),
+            "the copy differs before tick {}: {differ:?}",
+            self.now().get()
+        );
     }
 
     /// `probe(ctx, of)` in `source`, run on the units as they are now.

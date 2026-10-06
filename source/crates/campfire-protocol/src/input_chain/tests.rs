@@ -1,4 +1,4 @@
-use secp256k1::SecretKey;
+use secp256k1::{SecretKey, schnorr};
 
 use super::*;
 

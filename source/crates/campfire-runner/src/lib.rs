@@ -5,6 +5,8 @@
 
 #[cfg(feature = "internals")]
 mod arena;
+#[cfg(feature = "internals")]
+mod copy_check;
 mod error;
 #[cfg(feature = "internals")]
 mod fixed_match;
@@ -30,8 +32,12 @@ mod script_call_failed;
 mod scripted;
 mod session;
 mod session_rules;
+mod slot_rules;
 
-pub use error::{StartError, TermsError};
+pub use error::{
+    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, SlotRuleError,
+    StartError, TermsError,
+};
 pub use input_rules::InputRules;
 pub use runner::Runner;
 pub use script_call_failed::ScriptCallFailed;
@@ -46,6 +52,7 @@ pub mod bench {
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::arena::Arena;
+    pub use crate::copy_check::CopyCheck;
     pub use crate::fixed_match::FixedMatch;
     pub use crate::fixed_session::FixedSession;
     pub use crate::golden::Golden;

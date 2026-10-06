@@ -20,7 +20,11 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         max_payload_len: 7,
         max_inputs_per_tick: 2,
     };
-    let terms = |hz| rules.terms(key, commitment, NonZeroU32::new(hz).unwrap(), inputs);
+    let plan = vec![SlotPlan::Player, SlotPlan::Bot, SlotPlan::Open];
+    let terms = |hz| {
+        let hz = NonZeroU32::new(hz).unwrap();
+        rules.terms(key, commitment, hz, inputs, plan.clone())
+    };
     for hz in [19, 61] {
         assert_eq!(
             terms(hz),
@@ -43,11 +47,16 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             release: RELEASE.to_owned(),
             mode: packages.fingerprint(),
             dependencies,
+            slots: plan.clone(),
         }
     );
     assert!(fixed.dependencies.len() > 1, "the swap below reorders them");
 
-    let changes: [(Change, TermsError); 4] = [
+    // The 3v3's teams have 6 slots: a session plays 1 to 6 of them.
+    let slots = |slots: u64| TermsError::Slots { slots, most: 6 };
+    let changes: [(Change, TermsError); 6] = [
+        (|terms| terms.slots.clear(), slots(0)),
+        (|terms| terms.slots = vec![SlotPlan::Open; 7], slots(7)),
         (
             |terms| terms.release = "0.0.9".to_owned(),
             TermsError::OtherRelease("0.0.9".to_owned()),

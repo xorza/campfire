@@ -104,17 +104,47 @@ fn share_xp(ctx, unit) {
     }
 }
 
-// Each player who chose a hero gets it at their team's spawn, with the spells they chose.
+// A player who joins in the play phase with no hero gets the hero they chose, or the first one
+// no player holds. A player who takes a bot's slot keeps the bot's hero.
+fn on_player_join(ctx, player) {
+    if ctx.state.phase != "play" || has_hero(ctx, player) {
+        return;
+    }
+    if ctx.chosen(player, "hero").is_empty() {
+        for hero in ctx.offers("hero") {
+            if ctx.available(player, "hero", hero) {
+                ctx.choose(player, "hero", hero);
+                break;
+            }
+        }
+    }
+    spawn_hero(ctx, player);
+}
+
 fn spawn_heroes(ctx) {
     for player in 0..ctx.players {
-        let hero = ctx.chosen(player, "hero");
-        if hero.is_empty() {
-            continue;
-        }
-        let team = ctx.team_of(player);
-        let unit = ctx.spawn_unit(hero[0], team, spawn_marker(ctx, team).pos, player);
-        ctx.grant(unit, "spell", ctx.chosen(player, "spells"));
+        spawn_hero(ctx, player);
     }
+}
+
+// A player who chose a hero gets it at their team's spawn, with the spells they chose.
+fn spawn_hero(ctx, player) {
+    let hero = ctx.chosen(player, "hero");
+    if hero.is_empty() {
+        return;
+    }
+    let team = ctx.team_of(player);
+    let unit = ctx.spawn_unit(hero[0], team, spawn_marker(ctx, team).pos, player);
+    ctx.grant(unit, "spell", ctx.chosen(player, "spells"));
+}
+
+fn has_hero(ctx, player) {
+    for hero in ctx.avatars() {
+        if hero.owner == player {
+            return true;
+        }
+    }
+    false
 }
 
 // The end of the lanes `team`'s creeps walk from, as its spawn marker names it.

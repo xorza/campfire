@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly, XOnlyPublicKey};
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, SignOnly, XOnlyPublicKey};
 use campfire_protocol::{
     CertificateHash, ConnectChallenge, Delegation, DelegationTerms, InputChain, SessionId,
     Signature,
@@ -22,6 +22,16 @@ impl Signer {
             secp: Secp256k1::signing_only(),
             entropy,
         }
+    }
+
+    /// Takes a new session key, from fresh randomness, as a player renews their delegation.
+    pub(crate) fn renew(&mut self) {
+        let secp = Secp256k1::new();
+        self.key = loop {
+            if let Ok(secret) = SecretKey::from_byte_array(&self.random()) {
+                break Keypair::from_secret_key(&secp, &secret);
+            }
+        };
     }
 
     pub(crate) fn random(&self) -> [u8; 32] {

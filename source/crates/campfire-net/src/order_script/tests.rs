@@ -99,3 +99,51 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
         );
     }
 }
+
+#[test]
+fn a_script_reads_its_mode_inputs_in_tick_order_or_its_flaw() {
+    let script = OrderScript::parse(
+        "end = 20\n[[input]]\ntick = 0\nname = \"hero\"\nvalue = \"hero-x\"\n\
+         [[input]]\ntick = 0\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
+    )
+    .unwrap();
+    assert_eq!(
+        script.inputs(),
+        [
+            ScriptedInput {
+                tick: Tick::new(0),
+                name: "hero".to_owned(),
+                value: ScriptedValue::Text("hero-x".to_owned()),
+            },
+            ScriptedInput {
+                tick: Tick::new(0),
+                name: "spells".to_owned(),
+                value: ScriptedValue::List(vec!["haste".to_owned(), "mend".to_owned()]),
+            },
+        ]
+    );
+    assert_eq!(script.orders(), []);
+    let flaw = |text: &str| OrderScript::parse(text).unwrap_err();
+    assert_eq!(
+        flaw(
+            "[[input]]\ntick = 5\nname = \"a\"\nvalue = \"x\"\n\
+              [[input]]\ntick = 4\nname = \"a\"\nvalue = \"x\"\n"
+        ),
+        OrderScriptError::Unordered { tick: 4 }
+    );
+    assert_eq!(
+        flaw("end = 3\n[[input]]\ntick = 4\nname = \"a\"\nvalue = \"x\"\n"),
+        OrderScriptError::EndsEarly { end: 3 }
+    );
+    // A value of another shape, and a field the entry does not know.
+    for flawed in [
+        "[[input]]\ntick = 4\nname = \"a\"\nvalue = 3\n",
+        "[[input]]\ntick = 4\nname = \"a\"\nvalue = \"x\"\nmove = [1, 1]\n",
+        "[[input]]\ntick = 4\nvalue = \"x\"\n",
+    ] {
+        assert!(
+            matches!(flaw(flawed), OrderScriptError::Toml(_)),
+            "{flawed}"
+        );
+    }
+}

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::server_seed::SeedCommitment;
 use crate::session_id::SessionId;
+use crate::slot_plan::SlotPlan;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
 const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v1";
@@ -41,13 +42,15 @@ pub struct SessionTerms {
     pub mode: Fingerprint,
     /// The fingerprints of the mode's dependencies, in the order of their names in its manifest.
     pub dependencies: Vec<Fingerprint>,
+    /// How the server opens each slot the session plays, by slot.
+    pub slots: Vec<SlotPlan>,
 }
 
 impl SessionTerms {
     /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max
     /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
-    /// ‖ mode fingerprint ‖ u64 dependency count ‖ dependency fingerprints)`, integers
-    /// little-endian.
+    /// ‖ mode fingerprint ‖ u64 dependency count ‖ dependency fingerprints ‖ u64 slot count ‖ u8
+    /// per slot, its plan's code)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
         let mut hasher = Hasher::new();
         hasher
@@ -65,6 +68,10 @@ impl SessionTerms {
             .update(&len(self.dependencies.len()).to_le_bytes());
         for dependency in &self.dependencies {
             hasher.update(dependency.as_bytes());
+        }
+        hasher.update(&len(self.slots.len()).to_le_bytes());
+        for plan in &self.slots {
+            hasher.update(&[plan.code()]);
         }
         SessionId::new(*hasher.finalize().as_bytes())
     }

@@ -1,6 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
+use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use serde::{Deserialize, Serialize};
 
@@ -168,15 +169,6 @@ fn build_order_does_not_matter() {
         registry.hash(&shuffled_world())
     );
     assert_eq!(snapshot(&plain_world()), snapshot(&shuffled_world()));
-    // A hash writes as its 32 bytes in lowercase hex, two digits each, leading zeros kept, and
-    // reads back from that spelling only.
-    let mut bytes = [0; 32];
-    bytes[0] = 0x0a;
-    bytes[31] = 0xff;
-    let written = StateHash(Bytes32::new(bytes)).to_string();
-    assert_eq!(written, format!("0a{}ff", "00".repeat(30)));
-    assert_eq!(written.parse(), Ok(StateHash(Bytes32::new(bytes))));
-    assert_eq!(written.to_uppercase().parse::<StateHash>(), Err(NotHex));
 }
 
 #[test]
@@ -228,10 +220,10 @@ fn a_digest_is_blake3_over_its_domain_and_its_bytes() {
     let mut hasher = Hasher::new();
     hasher.update(b"campfire/digest/v1").update(b"abc");
     assert_eq!(
-        StateHash::of(b"abc").as_bytes(),
+        StateRegistry::digest(b"abc").as_bytes(),
         hasher.finalize().as_bytes()
     );
-    assert_ne!(StateHash::of(b""), registry().hash(&varied_world()));
+    assert_ne!(StateRegistry::digest(b""), registry().hash(&varied_world()));
 }
 
 #[test]
@@ -451,4 +443,222 @@ fn duplicate_names_are_refused() {
 fn restore_refuses_a_populated_world() {
     let mut world = plain_world();
     let _outcome = registry().restore(&snapshot(&plain_world()), &mut world);
+}
+
+/// A section of a delta that holds bytes: its type's name and its bytes.
+type Section = (&'static str, Vec<u8>);
+
+/// The sections of `delta` that hold bytes, by type name, in the registry's order.
+fn sections(registry: &StateRegistry, delta: &StateDelta) -> Vec<Section> {
+    (0..delta.sections())
+        .filter(|&at| !delta.section(at).is_empty())
+        .map(|at| (registry.entries[at].name, delta.section(at).to_vec()))
+        .collect()
+}
+
+/// A world's state and a copy of it that follows by deltas.
+#[derive(Debug)]
+struct Following {
+    registry: StateRegistry,
+    world: World,
+    copy: World,
+    delta: StateDelta,
+}
+
+impl Following {
+    fn new(registry: StateRegistry, world: World) -> Following {
+        let mut following = Following {
+            registry,
+            world,
+            copy: World::new(),
+            delta: StateDelta::default(),
+        };
+        following.copy.init_resource::<EntityIndex>();
+        following
+            .registry
+            .track(&mut following.world, &mut following.delta);
+        following
+            .registry
+            .apply(&following.delta, &mut following.copy);
+        following
+    }
+
+    /// Changes the world by `change`, copies what changed, and checks that the copy's state is
+    /// the world's; the delta's lost and gained ids, and its sections that hold bytes.
+    fn step(
+        &mut self,
+        change: impl FnOnce(&mut World),
+    ) -> (Vec<StableId>, Vec<StableId>, Vec<Section>) {
+        change(&mut self.world);
+        self.registry.changes(&mut self.world, &mut self.delta);
+        self.registry.apply(&self.delta, &mut self.copy);
+        assert_eq!(self.by_type(&self.copy), self.by_type(&self.world));
+        (
+            self.delta.lost.clone(),
+            self.delta.gained.clone(),
+            sections(&self.registry, &self.delta),
+        )
+    }
+
+    fn by_type(&self, world: &World) -> Vec<TypeHash> {
+        let mut per_type = Vec::new();
+        self.registry.hash_by_type(world, &mut per_type);
+        per_type
+    }
+}
+
+fn entity(world: &World, id: StableId) -> Entity {
+    world.resource::<EntityIndex>().get(id).unwrap()
+}
+
+#[test]
+fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
+    let mut following = Following::new(registry(), plain_world());
+    let (first, second) = (StableId::new(0), StableId::new(1));
+    assert_eq!(by_type(&following.copy), by_type(&following.world));
+    // No tick resource: each delta holds its absence, `None`, a 0 byte.
+    let absent = ("sim.tick", vec![0]);
+    let allocator = |world: &World| {
+        (
+            "sim.id_allocator",
+            encoded(&[Some(world.resource::<IdAllocator>())]),
+        )
+    };
+
+    // Nothing changed: nothing but the absent tick.
+    assert_eq!(
+        following.step(|_| {}),
+        (vec![], vec![], vec![absent.clone()])
+    );
+
+    // One value changed: that value alone.
+    let changed = following.step(|world| {
+        world.get_mut::<Health>(entity(world, first)).unwrap().0 = Num::from_int(11).unwrap();
+    });
+    let health_11 = ("test.health", encoded(&[(first, Some(health(11)))]));
+    assert_eq!(changed, (vec![], vec![], vec![absent.clone(), health_11]));
+
+    // A new entity: its id, the allocator, and each of its values.
+    let third = StableId::new(2);
+    let spawned = following.step(|world| {
+        let id = allocate(world);
+        world.spawn((id, health(30)));
+    });
+    let health_30 = ("test.health", encoded(&[(third, Some(health(30)))]));
+    assert_eq!(
+        spawned,
+        (
+            vec![],
+            vec![third],
+            vec![allocator(&following.world), absent.clone(), health_30]
+        )
+    );
+
+    // A removed component, and a despawned entity: its id alone, as its removals go with it.
+    let removed = following.step(|world| {
+        world.entity_mut(entity(world, first)).remove::<Position>();
+        world.despawn(entity(world, second));
+    });
+    let unplaced = ("test.position", encoded(&[(first, None::<Position>)]));
+    assert_eq!(
+        removed,
+        (vec![second], vec![], vec![absent.clone(), unplaced])
+    );
+
+    // An entity spawned and despawned between two copies, and a component removed and put back:
+    // the allocator, and the value put back.
+    let back = following.step(|world| {
+        let id = allocate(world);
+        let gone = world.spawn((id, health(40))).id();
+        world.despawn(gone);
+        let third = entity(world, third);
+        world.entity_mut(third).remove::<Health>();
+        world.entity_mut(third).insert(health(31));
+    });
+    let health_31 = ("test.health", encoded(&[(third, Some(health(31)))]));
+    assert_eq!(
+        back,
+        (
+            vec![],
+            vec![],
+            vec![allocator(&following.world), absent.clone(), health_31]
+        )
+    );
+
+    // An entity given another stable id: the old id lost, the new one gained with every value.
+    let fifth = StableId::new(4);
+    let renamed = following.step(|world| {
+        let id = allocate(world);
+        world.entity_mut(entity(world, third)).insert(id);
+    });
+    let moved = ("test.health", encoded(&[(fifth, Some(health(31)))]));
+    assert_eq!(
+        renamed,
+        (
+            vec![third],
+            vec![fifth],
+            vec![allocator(&following.world), absent.clone(), moved]
+        )
+    );
+
+    // A resource inserted, then removed.
+    let tick = SimTick::new(Tick::new(5));
+    let inserted = following.step(|world| world.insert_resource(tick));
+    let present = ("sim.tick", encoded(&[Some(tick)]));
+    assert_eq!(inserted, (vec![], vec![], vec![present]));
+    let gone = following.step(|world| {
+        world.remove_resource::<SimTick>();
+    });
+    assert_eq!(gone, (vec![], vec![], vec![absent]));
+}
+
+/// Stands for a state component that requires another, as a unit's modifiers require their
+/// clocks.
+#[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
+#[require(Clock)]
+struct Timed(u32);
+
+#[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize)]
+struct Clock(u32);
+
+impl SimComponent for Timed {
+    const NAME: &'static str = "test.timed";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
+}
+
+impl SimComponent for Clock {
+    const NAME: &'static str = "test.clock";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_copy_keeps_a_required_component_removed_before_its_requirer_changes() {
+    let mut registry = StateRegistry::new();
+    registry.register_component::<Timed>();
+    registry.register_component::<Clock>();
+    let mut world = new_world();
+    let id = allocate(&mut world);
+    world.spawn((id, Timed(1)));
+    let mut following = Following::new(registry, world);
+    following.step(|world| {
+        world.entity_mut(entity(world, id)).remove::<Clock>();
+    });
+    // The changed value alone: no removal of the clock, which an insert would have put back.
+    let (_, _, sections) = following.step(|world| {
+        world.get_mut::<Timed>(entity(world, id)).unwrap().0 = 2;
+    });
+    let timed = ("test.timed", encoded(&[(id, Some(Timed(2)))]));
+    assert_eq!(sections, [("sim.tick", vec![0]), timed]);
+    assert!(
+        following
+            .copy
+            .get::<Clock>(entity(&following.copy, id))
+            .is_none()
+    );
 }

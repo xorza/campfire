@@ -12,6 +12,10 @@ fn on_match_start(ctx) {
     ctx.timer("first_wave", 1, false, ());
 }
 
+fn on_mode_input(ctx, player, name, value) {
+    ctx.state.picked = value;
+}
+
 fn on_timer(ctx, name, data) {
     for lane in ctx.map.paths {
         for team in ctx.teams {

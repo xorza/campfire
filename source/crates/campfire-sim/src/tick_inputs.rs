@@ -6,16 +6,20 @@ use campfire_common::PlayerSlot;
 
 use crate::capability::Capability;
 use crate::command::Command;
+use crate::slot_event::SlotEvent;
 
-/// The player inputs applied in the running tick. The runner fills it from the session log before
-/// each tick, and the schedule empties it when the tick ends, so no tick sees another's inputs.
-/// It is not state: the log holds the inputs. Each input's commands are read once, as it comes.
+/// The inputs applied in the running tick: the players' inputs, and the changes of who controls
+/// a slot. The runner fills it from the session log before each tick, and the schedule empties
+/// it when the tick ends, so no tick sees another's inputs. It is not state: the log holds the
+/// inputs. Each input's commands are read once, as it comes.
 #[derive(Resource, Debug, Default)]
 pub struct TickInputs {
     inputs: Vec<Entry>,
     payloads: Vec<u8>,
     /// The commands of the inputs, in order: none of an input whose payload has a flaw.
     commands: Vec<Stored>,
+    /// The slot events, in the order the log took them.
+    slot_events: Vec<SlotEvent>,
 }
 
 /// A command of a player's input, as the capability it goes to reads it.
@@ -82,6 +86,15 @@ impl TickInputs {
         })
     }
 
+    pub fn push_slot_event(&mut self, event: SlotEvent) {
+        self.slot_events.push(event);
+    }
+
+    /// The slot events in the order they were pushed.
+    pub fn slot_events(&self) -> &[SlotEvent] {
+        &self.slot_events
+    }
+
     /// The inputs in the order they were pushed.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = TickInput<'_>> {
         self.inputs.iter().map(|entry| TickInput {
@@ -94,12 +107,14 @@ impl TickInputs {
         self.inputs.clear();
         self.payloads.clear();
         self.commands.clear();
+        self.slot_events.clear();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::slot_event::SlotEventKind;
 
     /// The slot and the body of each command to `capability` that `inputs` holds.
     fn read(inputs: &TickInputs, capability: Capability) -> Vec<(u32, &[u8])> {
@@ -136,7 +151,14 @@ mod tests {
         );
         assert_eq!(read(&inputs, Capability::Mode), [(1, &b"m"[..])]);
         assert_eq!(inputs.iter().len(), 3);
+        let joined = SlotEvent {
+            slot: PlayerSlot::new(2),
+            kind: SlotEventKind::Joined,
+        };
+        inputs.push_slot_event(joined);
+        assert_eq!(inputs.slot_events(), [joined]);
         inputs.clear();
         assert_eq!(read(&inputs, Capability::Orders), []);
+        assert_eq!(inputs.slot_events(), []);
     }
 }

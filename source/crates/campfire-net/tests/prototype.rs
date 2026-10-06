@@ -137,7 +137,7 @@ fn server_and_replay_agree_on_every_tick() {
         let mut file = Vec::new();
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
-        let seed = decoded.revealed_seed().unwrap();
+        let seed = decoded.revealed_seeds().unwrap();
         let mut replay = Runner::new(decoded.rewound(), seed, local.packages()).unwrap();
         let mut replayed = HashTrail::default();
         for _ in live.totals() {
@@ -178,11 +178,11 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     let refused = |local: &LocalMatch| {
         let link = local.server().world().entity(link);
         (
-            link.get::<PlayerLink>().unwrap().refused(),
+            link.get::<PlayerLink>().map(|player| player.refused()),
             link.contains::<Connected>(),
         )
     };
-    assert_eq!(refused(&local), (false, true));
+    assert_eq!(refused(&local), (Some(false), true));
 
     // A message whose signature the player's session key did not make, stamped for the next tick
     // so that only its signature is wrong: the server refuses it, and ends the link.
@@ -201,9 +201,10 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         .single_mut(world)
         .unwrap()
         .send::<InputChannel>(forged);
-    // A perfect link carries it in the step it is sent.
+    // A perfect link carries it in the step it is sent. The ended link carries the slot no more,
+    // and its player's grace period runs.
     local.step();
-    assert_eq!(refused(&local), (true, false));
+    assert_eq!(refused(&local), (None, false));
     assert_eq!(
         local.log().take::<InputMessageRefused>(),
         [InputMessageRefused {

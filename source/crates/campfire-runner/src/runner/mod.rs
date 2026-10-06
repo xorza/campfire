@@ -1,10 +1,16 @@
 use bevy_ecs::world::World;
+use campfire_common::StateHash;
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, InputError, PlayerInput, ServerSeed, SessionLog, Signature};
-use campfire_sim::StateHash;
+use campfire_protocol::{
+    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal, Outcome,
+    PlayerInput, ResultError, ServerInput, ServerSeeds, SessionLog, SessionResult, Signature,
+};
+use campfire_sim::StateCopy;
 
-use crate::error::StartError;
-use crate::session::Session;
+use crate::error::{
+    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
+};
+use crate::session::{Session, SessionParts};
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.
 #[derive(Debug)]
@@ -16,12 +22,43 @@ impl Runner {
     /// See `Session::start`.
     pub fn new(
         log: SessionLog,
-        server_seed: ServerSeed,
+        seeds: ServerSeeds,
         packages: &ModePackages,
     ) -> Result<Runner, StartError> {
         let mut world = World::new();
-        Session::start(&mut world, log, server_seed, packages)?;
+        Session::start(&mut world, log, seeds, packages)?;
         Ok(Runner { world })
+    }
+
+    /// See `Session::resume`.
+    pub fn resume(
+        log: SessionLog,
+        seeds: ServerSeeds,
+        packages: &ModePackages,
+        segment: u32,
+        snapshot: &[u8],
+    ) -> Result<Runner, ResumeError> {
+        let mut world = World::new();
+        Session::resume(&mut world, log, seeds, packages, segment, snapshot)?;
+        Ok(Runner { world })
+    }
+
+    /// Loads the save that starts segment `segment`, whose snapshot is `snapshot`: the log goes
+    /// back to it, as `SessionLog::load` says, and the match of the mode `packages` holds
+    /// resumes from it, as `Session::resume` does.
+    pub fn load(
+        mut self,
+        segment: u32,
+        snapshot: &[u8],
+        packages: &ModePackages,
+    ) -> Result<Runner, ResumeError> {
+        let session = self
+            .world
+            .remove_resource::<Session>()
+            .expect("a runner holds its session");
+        let SessionParts { mut log, seeds } = session.into_parts();
+        log.load(segment).map_err(ResumeError::Load)?;
+        Runner::resume(log.rewound(), seeds, packages, segment, snapshot)
     }
 
     /// See `Session::record`.
@@ -40,8 +77,86 @@ impl Runner {
             .record(inputs, signature, applied)
     }
 
+    /// See `Session::record_server`.
+    pub fn record_server(
+        &mut self,
+        input: ServerInput<'_>,
+        signature: &Signature,
+    ) -> Result<(), ServerInputRefused> {
+        self.world
+            .resource_mut::<Session>()
+            .record_server(input, signature)
+    }
+
     pub fn run_tick(&mut self) {
         Session::run_tick(&mut self.world);
+    }
+
+    /// See `Session::keep_journal`.
+    pub fn keep_journal(&mut self, journal: Journal) {
+        self.world.resource_mut::<Session>().keep_journal(journal);
+    }
+
+    /// See `Session::resume_journal`.
+    pub fn resume_journal(&mut self, journal: Journal) {
+        self.world.resource_mut::<Session>().resume_journal(journal);
+    }
+
+    /// See `Session::save_due`.
+    pub fn save_due(&self) -> bool {
+        self.world.resource::<Session>().save_due(&self.world)
+    }
+
+    /// See `Session::begin_checkpoint`.
+    pub fn begin_checkpoint(&mut self) -> Result<CheckpointBegun, CheckpointBeginError> {
+        self.world.resource_mut::<Session>().begin_checkpoint()
+    }
+
+    /// See `Session::checkpoint`.
+    pub fn checkpoint(&self, snapshot: &mut Vec<u8>) -> Option<Checkpoint> {
+        self.world
+            .resource::<Session>()
+            .checkpoint(&self.world, snapshot)
+    }
+
+    /// See `Session::record_checkpoint`.
+    pub fn record_checkpoint(
+        &mut self,
+        record: Checkpoint,
+        signature: &Signature,
+    ) -> Result<(), CheckpointError> {
+        self.world
+            .resource_mut::<Session>()
+            .record_checkpoint(record, signature)
+    }
+
+    /// The result that ends the session before the next tick, as the mode ended the match or
+    /// aborted when it did not; see `Session::result`.
+    pub fn result(&self) -> SessionResult {
+        self.result_as(Session::outcome(&self.world))
+    }
+
+    /// See `Session::result`.
+    pub fn result_as(&self, outcome: Outcome) -> SessionResult {
+        self.world
+            .resource::<Session>()
+            .result(&self.world, outcome)
+    }
+
+    /// See `Session::record_result`.
+    pub fn record_result(
+        &mut self,
+        result: SessionResult,
+        signature: &Signature,
+    ) -> Result<(), ResultError> {
+        self.world
+            .resource_mut::<Session>()
+            .record_result(result, signature)
+    }
+
+    /// See `Session::check_result`.
+    pub fn check_result(&self) -> Result<(), ResultMismatch> {
+        self.world.resource::<Session>().check_result(&self.world)
     }
 
     pub fn reveal_seed(&mut self) {
@@ -50,6 +165,16 @@ impl Runner {
 
     pub fn state_hash(&self) -> StateHash {
         self.world.resource::<Session>().state_hash(&self.world)
+    }
+
+    /// See `Session::copy_state`.
+    pub fn copy_state(&mut self) -> StateCopy {
+        Session::copy_state(&mut self.world)
+    }
+
+    /// See `Session::follow`.
+    pub fn follow(&mut self, copy: &mut StateCopy) {
+        Session::follow(&mut self.world, copy);
     }
 
     pub fn log(&self) -> &SessionLog {

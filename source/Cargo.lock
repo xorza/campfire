@@ -2137,6 +2137,7 @@ dependencies = [
  "postcard",
  "secp256k1",
  "serde",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -2184,6 +2185,7 @@ dependencies = [
  "getrandom 0.3.4",
  "lightyear",
  "tracing",
+ "wtransport",
 ]
 
 [[package]]

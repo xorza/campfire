@@ -5,9 +5,9 @@ use std::{env, fs};
 use campfire_capabilities::{
     Dead, Deaths, Owner, PlayerResources, Pools, ResourceId, ScriptFailures, Team,
 };
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_package::ModePackages;
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateHash};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
 
 use crate::runner::Runner;
 
@@ -122,7 +122,7 @@ impl Golden {
                 }
             }
         }
-        StateHash::of(bytes)
+        StateRegistry::digest(bytes)
     }
 
     /// Compares the record with the golden file `name` of the runner's tests, or writes the file

@@ -3,8 +3,12 @@ use std::fmt;
 use std::num::NonZeroU32;
 
 use campfire_capabilities::CallError;
+use campfire_common::StateHash;
 use campfire_package::StoreError;
-use campfire_protocol::SeedError;
+use campfire_protocol::{
+    AfterLeave, CheckpointError, LoadError, Outcome, SeedError, ServerInputError, SlotChange,
+};
+use campfire_sim::SnapshotError;
 
 /// Why a session log does not start a match. A published log is untrusted, and so are packages,
 /// so each is an expected failure.
@@ -15,10 +19,10 @@ pub enum StartError {
     Terms(TermsError),
     /// The store does not give the packages the terms name.
     Packages(StoreError),
-    /// More players than the mode's teams have slots.
-    Players {
-        players: u32,
-        slots: u64,
+    /// A change of a slot's controller the mode's `[players]` does not allow.
+    SlotRule {
+        change: SlotChange,
+        error: SlotRuleError,
     },
     /// The mode script's `on_match_start` failed.
     MatchStart(CallError),
@@ -30,12 +34,12 @@ impl fmt::Display for StartError {
             StartError::Seed(error) => write!(f, "{error}"),
             StartError::Terms(error) => write!(f, "{error}"),
             StartError::Packages(error) => write!(f, "{error}"),
-            StartError::Players { players, slots } => {
-                write!(
-                    f,
-                    "{players} players, and the mode's teams have {slots} slots"
-                )
-            }
+            StartError::SlotRule { change, error } => write!(
+                f,
+                "slot {} in tick {}: {error}",
+                change.slot.get(),
+                change.tick
+            ),
             StartError::MatchStart(error) => write!(f, "the mode's start failed: {error}"),
         }
     }
@@ -48,7 +52,79 @@ impl Error for StartError {
             StartError::Terms(error) => Some(error),
             StartError::Packages(error) => Some(error),
             StartError::MatchStart(error) => Some(error),
-            StartError::Players { .. } => None,
+            StartError::SlotRule { error, .. } => Some(error),
+        }
+    }
+}
+
+/// Why a session log and a snapshot do not resume a match from a checkpoint. A restore reads
+/// both from the disk, and a verifier from a published log, so each is an expected failure.
+#[derive(Debug)]
+pub enum ResumeError {
+    Start(StartError),
+    /// The log holds no checkpoint that starts the segment.
+    NoCheckpoint,
+    /// The snapshot is not the one the checkpoint fingerprints.
+    Fingerprint,
+    Snapshot(SnapshotError),
+    /// The snapshot restores to another state hash than the checkpoint's.
+    StateHash,
+    /// The log does not load the save.
+    Load(LoadError),
+}
+
+impl fmt::Display for ResumeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResumeError::Start(error) => write!(f, "{error}"),
+            ResumeError::NoCheckpoint => f.write_str("the log holds no such checkpoint"),
+            ResumeError::Fingerprint => {
+                f.write_str("the snapshot is not the one the checkpoint fingerprints")
+            }
+            ResumeError::Snapshot(error) => write!(f, "the snapshot does not restore: {error}"),
+            ResumeError::StateHash => {
+                f.write_str("the snapshot restores to another state than the checkpoint's")
+            }
+            ResumeError::Load(error) => write!(f, "the save does not load: {error}"),
+        }
+    }
+}
+
+impl Error for ResumeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ResumeError::Start(error) => Some(error),
+            ResumeError::Snapshot(error) => Some(error),
+            ResumeError::Load(error) => Some(error),
+            ResumeError::NoCheckpoint | ResumeError::Fingerprint | ResumeError::StateHash => None,
+        }
+    }
+}
+
+/// Why a session begins no checkpoint at a boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckpointBeginError {
+    /// The seed chain has no segment after the log's last: the session runs out of chain.
+    PastSeeds,
+    Log(CheckpointError),
+}
+
+impl fmt::Display for CheckpointBeginError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CheckpointBeginError::PastSeeds => {
+                f.write_str("the seed chain has no segment after the last")
+            }
+            CheckpointBeginError::Log(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl Error for CheckpointBeginError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            CheckpointBeginError::Log(error) => Some(error),
+            CheckpointBeginError::PastSeeds => None,
         }
     }
 }
@@ -65,6 +141,8 @@ pub enum TermsError {
     OtherDependencies,
     /// The tick rate the terms fix is outside the mode's range.
     TickRate(NonZeroU32),
+    /// The terms plan `slots` slots, none or more than the `most` the mode's teams have.
+    Slots { slots: u64, most: u64 },
 }
 
 impl fmt::Display for TermsError {
@@ -83,8 +161,95 @@ impl fmt::Display for TermsError {
             TermsError::TickRate(hz) => {
                 write!(f, "{hz} ticks a second is outside the mode's range")
             }
+            TermsError::Slots { slots, most } => {
+                write!(f, "{slots} slots, and the mode's teams have {most}")
+            }
         }
     }
 }
 
 impl Error for TermsError {}
+
+/// Why the mode's `[players]` refuses a change of a slot's controller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotRuleError {
+    /// A new player took an open slot, and the mode has no late join.
+    LateJoin,
+    /// A new player took a bot's slot, and the mode has no bot takeover.
+    BotTakeover,
+    /// A left player's slot became `becomes`, and the mode's `leaver` says otherwise.
+    Leaver { becomes: AfterLeave },
+}
+
+impl fmt::Display for SlotRuleError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SlotRuleError::LateJoin => f.write_str("a late join, which the mode does not allow"),
+            SlotRuleError::BotTakeover => {
+                f.write_str("a bot's slot taken over, which the mode does not allow")
+            }
+            SlotRuleError::Leaver { becomes } => {
+                write!(
+                    f,
+                    "a leaver's slot became {becomes:?}, which the mode does not say"
+                )
+            }
+        }
+    }
+}
+
+impl Error for SlotRuleError {}
+
+/// Why a session refused a server input: the log's structure, or the mode's rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerInputRefused {
+    Log(ServerInputError),
+    Rule(SlotRuleError),
+}
+
+impl fmt::Display for ServerInputRefused {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ServerInputRefused::Log(error) => write!(f, "{error}"),
+            ServerInputRefused::Rule(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl Error for ServerInputRefused {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ServerInputRefused::Log(error) => Some(error),
+            ServerInputRefused::Rule(error) => Some(error),
+        }
+    }
+}
+
+/// Why a log's result does not hold for the state its replay ends in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultMismatch {
+    /// The result's state hash is not the replay's.
+    Hash {
+        logged: StateHash,
+        replayed: StateHash,
+    },
+    /// The result is not the outcome the mode ended the match with.
+    Outcome { logged: Outcome, ended: Outcome },
+}
+
+impl fmt::Display for ResultMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResultMismatch::Hash { logged, replayed } => write!(
+                f,
+                "the result's state hash {logged} is not the replay's {replayed}"
+            ),
+            ResultMismatch::Outcome { logged, ended } => write!(
+                f,
+                "the result says {logged:?}, and the match ended as {ended:?}"
+            ),
+        }
+    }
+}
+
+impl Error for ResultMismatch {}

@@ -3,6 +3,7 @@ use campfire_common::Ticks;
 use super::*;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
+use crate::units::action_id::ActionId;
 
 /// Half a meter.
 const HALF: Num = Num::from_bits(ONE / 2);
@@ -216,4 +217,114 @@ fn a_teleport_puts_its_unit_where_it_may_stand_at_once_and_ends_its_move() {
         to: at(9, 0, 1),
     });
     assert_eq!(walk.at(unit), at(4, 0, 1));
+}
+
+#[test]
+fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stand_in() {
+    // Over 1 m cells from (0, 0) to (12, 10), a wall from x = 5 to 7 blocks columns 5 and 6 of
+    // every row. A walker of 0.75 m may not stand in a cell whose center comes closer than that
+    // to the wall's squares: columns 4 and 7 too, their centers 0.5 m off, and nothing past them.
+    let three_quarters = Num::from_bits(3 * ONE / 4);
+    let mut walk = Walk::new();
+    let barrier = Wall {
+        layer: Layer::FIRST,
+        area: Polygon::new(
+            [[5, 0], [7, 0], [7, 10], [5, 10]]
+                .map(|point| point.map(Num::int))
+                .to_vec(),
+        )
+        .unwrap(),
+    };
+    walk.load_walled(
+        Num::ONE,
+        [0, 0],
+        [12, 10],
+        vec![ground(three_quarters)],
+        &[barrier],
+    );
+    walk.sim.world.insert_resource(Deliveries::default());
+    let point = |x: i64, z: i64| Position::new(Vec3::new(HALF * x, Num::ZERO, HALF * z)).unwrap();
+    let unit = |walk: &mut Walk, x: i64, z: i64| {
+        walk.body(point(x, z), None, Some(Num::ONE), three_quarters)
+    };
+    // A knock back of 6 m over 3 ticks along x from (1.5, 3.5): to 3.5, whose cell is open; the
+    // step to 5.5 touches column 4, which the walls block, so it stays on 3.5 and ends.
+    let knocked = unit(&mut walk, 3, 7);
+    walk.apply(NavigationEffect::KnockBack {
+        unit: knocked,
+        from: point(1, 7),
+        distance: Num::int(6),
+        ticks: Ticks::new(3),
+    });
+    // One that stands in column 4 at (4.5, 8.5), as collision might push it, is knocked 2 m away
+    // from the wall in one tick, to 2.5: its step touches its own cell, which does not count, then
+    // columns 3 and 2, open.
+    let margin = unit(&mut walk, 9, 17);
+    walk.apply(NavigationEffect::KnockBack {
+        unit: margin,
+        from: point(11, 17),
+        distance: Num::int(2),
+        ticks: Ticks::new(1),
+    });
+    // A dash of 2 m a tick from (2.5, 5.5) to (10.5, 5.5) crosses the wall: 4.5, 6.5, 8.5, then
+    // 10.5, where it ends in an open cell.
+    let crosser = unit(&mut walk, 5, 11);
+    walk.sim.insert(
+        crosser,
+        ForcedMove::Dash {
+            to: DashTo::Point(point(21, 11)),
+            step: Num::int(2),
+            delivers: None,
+        },
+    );
+    // A dash of 2 m a tick from (2.5, 1.5) to (6, 1.5) ends there in tick 1, in column 6. The
+    // nearest cells it may stand in are columns 3 and 8 of its row, their centers 2.5 m off; the
+    // lower numbered, (3.5, 1.5), takes it. The action it delivers ends there: the way its steps
+    // went, 2 m and 1.5 m, along x.
+    let short = unit(&mut walk, 5, 3);
+    let delivery = DashDelivery::new(short, ActionId::nth(0), 1, None);
+    walk.sim.insert(
+        short,
+        ForcedMove::Dash {
+            to: DashTo::Point(point(12, 3)),
+            step: Num::int(2),
+            delivers: Some(delivery),
+        },
+    );
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        walk.sim.step();
+        let units = [knocked, margin, crosser, short];
+        seen.push((
+            units.map(|id| walk.at(id)),
+            units.map(|id| walk.forced(id).is_some()),
+        ));
+        let ended = &mut walk.sim.world.resource_mut::<Deliveries>().delivered;
+        if let Some(end) = ended.pop() {
+            assert_eq!(end.hit.pos, point(7, 3));
+            assert_eq!(end.hit.distance, Num::from_bits(7 * ONE / 2));
+            assert_eq!(
+                end.hit.direction,
+                Some(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO))
+            );
+            assert_eq!(ended.len(), 0);
+        }
+    }
+    let row = |x: [i64; 4]| {
+        [
+            point(x[0], 7),
+            point(x[1], 17),
+            point(x[2], 11),
+            point(x[3], 3),
+        ]
+    };
+    assert_eq!(
+        seen,
+        [
+            (row([7, 5, 9, 9]), [true, false, true, true]),
+            (row([7, 5, 13, 7]), [false, false, true, false]),
+            (row([7, 5, 17, 7]), [false, false, true, false]),
+            (row([7, 5, 21, 7]), [false, false, false, false]),
+        ]
+    );
 }

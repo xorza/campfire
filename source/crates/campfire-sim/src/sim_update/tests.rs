@@ -7,7 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{ScheduleBuildError, ScheduleBuildWarning, ScheduleConfigs};
 use bevy_ecs::system::{Commands, Query, ScheduleSystem};
 use bevy_ecs::world::CommandQueue;
-use campfire_common::PlayerSlot;
+use campfire_common::{PlayerSlot, StateHash};
 use campfire_log::internals::LogCheck;
 use campfire_log::{Level, LogLine};
 use campfire_math::{Num, RngSource, RngStream};
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::stable_id::StableId;
-use crate::state_registry::{StateHash, StateRegistry};
+use crate::state_registry::StateRegistry;
 use crate::tick_inputs::TickInput;
 
 /// 30 ticks a second: the rate these tests run at, which no game sets.

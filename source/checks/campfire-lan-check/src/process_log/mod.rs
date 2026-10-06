@@ -3,6 +3,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use campfire_log::{LogEvent, LogLine};
+use campfire_net::{InputsDiscarded, OrdersSent};
 
 use crate::error::CheckError;
 use crate::process::Process;
@@ -54,6 +55,38 @@ impl ProcessLog {
 
     pub(crate) fn lines(&self) -> &[LogLine] {
         &self.lines
+    }
+
+    /// The orders a bot's process sent and kept: each `OrdersSent`, less the last inputs each
+    /// `InputsDiscarded` after it drops at a resume, one order an input; an error at the first
+    /// event whose fields do not read.
+    pub(crate) fn kept_orders(&self) -> Result<Vec<OrdersSent>, CheckError> {
+        let failed = |line: usize| {
+            move |error| CheckError::Event {
+                process: self.process,
+                line: line + 1,
+                error,
+            }
+        };
+        let mut kept: Vec<OrdersSent> = Vec::new();
+        for (index, line) in self.lines.iter().enumerate() {
+            if let Some(sent) = line.read::<OrdersSent>() {
+                kept.push(sent.map_err(failed(index))?);
+            } else if let Some(discarded) = line.read::<InputsDiscarded>() {
+                let mut count = discarded.map_err(failed(index))?.count;
+                while let Some(last) = kept.last_mut()
+                    && count > 0
+                {
+                    let dropped = count.min(u64::try_from(last.orders).expect("orders fit u64"));
+                    last.orders -= usize::try_from(dropped).expect("at most its orders");
+                    count -= dropped;
+                    if last.orders == 0 {
+                        kept.pop();
+                    }
+                }
+            }
+        }
+        Ok(kept)
     }
 
     /// Every event of type `E`, in order; an error at the first whose fields do not read.

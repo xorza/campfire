@@ -17,6 +17,13 @@ max = "health"
 [pools.mana]
 max = "mana"
 
+# A player may pick a word, which the mode keeps: what a bot's script sends as a mode input.
+[inputs]
+pick = "string"
+
+[state]
+picked = { type = "string", default = "" }
+
 [params]
 wave_ms = 30000
 # A hero comes back at its spawn this long after it dies.

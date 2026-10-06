@@ -4,6 +4,7 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_net::OrderScriptError;
+use campfire_protocol::LogError;
 
 use crate::process::Process;
 use crate::target_name::TargetName;
@@ -38,6 +39,8 @@ pub(crate) enum CheckError {
         error: serde_json::Error,
     },
     Script(OrderScriptError),
+    /// The session log the server published does not decode.
+    SessionLog(LogError),
 }
 
 impl fmt::Display for CheckError {
@@ -60,6 +63,7 @@ impl fmt::Display for CheckError {
                 error,
             } => write!(f, "line {line} of the log of {process}: {error}"),
             CheckError::Script(error) => write!(f, "a bot's script: {error}"),
+            CheckError::SessionLog(error) => write!(f, "the published session log: {error}"),
         }
     }
 }

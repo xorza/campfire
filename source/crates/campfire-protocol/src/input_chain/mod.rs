@@ -1,6 +1,7 @@
 use blake3::Hasher;
 use campfire_common::{PlayerSlot, Tick};
-use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey, schnorr};
+use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
+use serde::{Deserialize, Serialize};
 
 use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
@@ -16,7 +17,7 @@ const HEAD_MESSAGE_LEN: usize = SIGNATURE_DOMAIN.len() + 32 + 4 + 8 + 32;
 /// A player's input chain: the hash its next input links to, and that input's seq. The player
 /// extends it with each input it sends, and the log extends its own copy with each input it
 /// records, so both reach the same head, which the player's signature covers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputChain {
     slot: PlayerSlot,
     head: InputHash,
@@ -31,6 +32,21 @@ impl InputChain {
             head: root,
             next_seq: 0,
         }
+    }
+
+    /// A chain whose next input is the `next_seq`th, linking to `head`: as the log holds it, for
+    /// a player who takes their chain up again from there.
+    pub const fn resume(slot: PlayerSlot, head: InputHash, next_seq: u64) -> InputChain {
+        InputChain {
+            slot,
+            head,
+            next_seq,
+        }
+    }
+
+    /// How many inputs the chain holds: the seq of its next.
+    pub const fn next_seq(&self) -> u64 {
+        self.next_seq
     }
 
     pub const fn slot(&self) -> PlayerSlot {
@@ -72,9 +88,7 @@ impl InputChain {
         session_id: SessionId,
         aux: &[u8; 32],
     ) -> Signature {
-        let signature =
-            secp.sign_schnorr_with_aux_rand(&self.head_message(session_id), session_key, aux);
-        Signature::from_bytes(signature.to_byte_array())
+        Signature::sign(secp, session_key, &self.head_message(session_id), aux)
     }
 
     /// Whether `signature` is `session_key`'s over the chain head.
@@ -85,12 +99,7 @@ impl InputChain {
         session_id: SessionId,
         signature: &Signature,
     ) -> bool {
-        secp.verify_schnorr(
-            &schnorr::Signature::from_byte_array(signature.to_bytes()),
-            &self.head_message(session_id),
-            session_key,
-        )
-        .is_ok()
+        signature.verifies(secp, session_key, &self.head_message(session_id))
     }
 
     /// `domain ‖ session id ‖ u32 slot ‖ u64 seq ‖ head`, little-endian, where seq is the last
