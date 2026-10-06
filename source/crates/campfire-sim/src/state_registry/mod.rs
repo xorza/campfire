@@ -4,7 +4,7 @@ use bevy_ecs::observer::On;
 use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::{Mut, World};
 use blake3::Hasher;
-use campfire_common::StateHash;
+use campfire_common::{Bytes32, StateHash};
 use serde::de::DeserializeOwned;
 
 use crate::entity_index::EntityIndex;
@@ -95,7 +95,7 @@ enum Pass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeHash {
     pub name: &'static str,
-    pub hash: [u8; 32],
+    pub hash: Bytes32,
 }
 
 /// One type's part of a snapshot, and the bytes after it.
@@ -392,7 +392,7 @@ impl StateRegistry {
             if let Some(per_type) = per_type.as_deref_mut() {
                 per_type.push(TypeHash {
                     name: entry.name,
-                    hash,
+                    hash: Bytes32::new(hash),
                 });
             }
         }

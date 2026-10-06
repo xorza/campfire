@@ -16,6 +16,7 @@ mod nsec;
 mod player_input;
 mod receipt;
 mod seed_chain;
+mod seed_commitment;
 mod server_input;
 mod server_seed;
 mod server_seeds;
@@ -39,7 +40,9 @@ pub use crate::connect::certificate_hash::CertificateHash;
 pub use crate::connect::error::ConnectError;
 pub use crate::controller::Controller;
 
+pub use crate::delegation::delegation_id::DelegationId;
 pub use crate::delegation::error::{DelegationError, ScopeError};
+pub use crate::delegation::seed_contribution::SeedContribution;
 pub use crate::delegation::{Delegation, DelegationTerms};
 pub use crate::input_chain::InputChain;
 pub use crate::input_hash::InputHash;
@@ -52,9 +55,10 @@ pub use crate::player_input::PlayerInput;
 pub use crate::receipt::error::ReceiptFileError;
 pub use crate::receipt::{Receipt, SignedReceipt};
 pub use crate::seed_chain::SeedChain;
+pub use crate::seed_commitment::SeedCommitment;
 pub use crate::server_input::error::ServerInputDecodeError;
 pub use crate::server_input::{AfterLeave, InputPlace, LeaveReason, ServerInput};
-pub use crate::server_seed::{SeedCommitment, ServerSeed};
+pub use crate::server_seed::ServerSeed;
 pub use crate::server_seeds::ServerSeeds;
 pub use crate::session_id::SessionId;
 pub use crate::session_log::SessionLog;
@@ -81,3 +85,6 @@ pub use secp256k1;
 pub mod bench {
     pub use crate::input_chain::bench::chain_head_signature;
 }
+
+#[cfg(test)]
+mod tests;

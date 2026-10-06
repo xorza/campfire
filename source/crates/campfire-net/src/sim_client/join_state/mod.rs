@@ -5,7 +5,8 @@ use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{
-    Delegation, DelegationTerms, InputChain, SessionId, SessionTerms, SignedReceipt,
+    Delegation, DelegationId, DelegationTerms, InputChain, SeedContribution, SessionId,
+    SessionTerms, SignedReceipt,
 };
 use campfire_runner::SessionRules;
 use lightyear::prelude::Tick as NetTick;
@@ -104,7 +105,7 @@ pub(crate) struct Member {
     delegation: Delegation,
     /// The delegation the current one renewed, which signed the inputs before it: a receipt of
     /// them names it.
-    renewed: Option<[u8; 32]>,
+    renewed: Option<DelegationId>,
     times: SessionTimes,
     receipt: Option<SignedReceipt>,
 }
@@ -509,7 +510,7 @@ impl Joining {
             session_key: signer.public_key(),
             server_key: terms.server_key,
             session_id: terms.session_id(),
-            seed_contribution: signer.random(),
+            seed_contribution: SeedContribution::new(signer.random()),
             expiration: now + DELEGATION_LIFETIME,
         };
         signer.delegate(&self.main_key, &granted, now)

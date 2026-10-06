@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::StateHash;
+use campfire_common::{Bytes32, StateHash};
 use campfire_sim::TypeHash;
 
 use crate::session::Session;
@@ -10,7 +10,7 @@ use crate::session::Session;
 pub struct HashTrail {
     /// The state types, in the order of each tick's run of `types`.
     names: Vec<&'static str>,
-    types: Vec<[u8; 32]>,
+    types: Vec<Bytes32>,
     totals: Vec<StateHash>,
     scratch: Vec<TypeHash>,
 }
@@ -115,7 +115,7 @@ mod tests {
             names: vec!["a", "b"],
             types: types
                 .iter()
-                .flat_map(|&[a, b]| [[a; 32], [b; 32]])
+                .flat_map(|&[a, b]| [Bytes32::new([a; 32]), Bytes32::new([b; 32])])
                 .collect(),
             totals: types
                 .iter()

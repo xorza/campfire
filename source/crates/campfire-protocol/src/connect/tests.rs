@@ -5,6 +5,7 @@ use secp256k1::{SecretKey, XOnlyPublicKey};
 
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::ScopeError;
+use crate::delegation::seed_contribution::SeedContribution;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 
@@ -43,7 +44,7 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
         session_key: keypair(2).x_only_public_key().0,
         server_key: terms.server_key,
         session_id: terms.session_id(),
-        seed_contribution: [3; 32],
+        seed_contribution: SeedContribution::new([3; 32]),
         expiration: EXPIRATION,
     };
     change(&mut granted);

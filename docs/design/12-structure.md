@@ -59,7 +59,7 @@ The workspace keeps most of its own rules: no `foo.rs` sits beside a `foo/`, no 
 
 The renames, moves and splits are pure refactors: the tests that cover the code move with it and pass unchanged. What is new has its tests:
 
-- Each 32-byte type, in one table: `Display` gives 64 lowercase hex, `FromStr` reads it back where there is one, and serde encodes the 32 bytes; a secret has no `Display`.
+- Each 32-byte type, in one table: `Display` gives 64 lowercase hex, `FromStr` reads it back where there is one and refuses other text, and serde encodes the 32 bytes; a secret encodes its bytes too, and has no text form to test.
 - `ExitStatus` gives 0, 1, 2 and 74; a failed snapshot still exits with 74.
 - `SlotBotFile` parses `3=bot.toml`, and refuses a missing `=`, a slot that is not a number, and a script that does not read, each with its variant; each binary's `ArgsError` covers a missing value, an unknown flag and a flag given twice; the server takes its flags in any order.
 - The random key skips a secret that is not a valid key: a source whose first 32 bytes are zero gives the key of its next.

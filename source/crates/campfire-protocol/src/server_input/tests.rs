@@ -2,6 +2,7 @@ use secp256k1::SecretKey;
 
 use super::*;
 use crate::delegation::DelegationTerms;
+use crate::delegation::seed_contribution::SeedContribution;
 
 fn keypair(byte: u8) -> Keypair {
     Keypair::from_secret_key(
@@ -16,7 +17,7 @@ fn delegation(main: u8, byte: u8) -> Delegation {
         session_key: keypair(byte).x_only_public_key().0,
         server_key: keypair(41).x_only_public_key().0,
         session_id: SessionId::new([8; 32]),
-        seed_contribution: [6; 32],
+        seed_contribution: SeedContribution::new([6; 32]),
         expiration: 1_700_086_400,
     };
     Delegation::sign(

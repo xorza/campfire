@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// A session's id: the hash of its terms, see `SessionTerms::session_id`. Delegations and
 /// chain-head signatures name it, so neither counts in another session, and both sign the terms.
 /// It writes, and reads back, as 64 lowercase hex digits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SessionId(Bytes32);
 

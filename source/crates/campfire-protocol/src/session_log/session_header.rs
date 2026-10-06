@@ -39,7 +39,7 @@ impl SessionHeader {
             .update(&segment.to_le_bytes())
             .update(server_seed.as_bytes());
         for (_, delegation) in self.players() {
-            hasher.update(&delegation.terms().seed_contribution);
+            hasher.update(delegation.terms().seed_contribution.as_bytes());
         }
         Ok(SegmentSeed::new(*hasher.finalize().as_bytes()))
     }

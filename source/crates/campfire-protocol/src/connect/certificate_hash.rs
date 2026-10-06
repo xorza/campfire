@@ -8,7 +8,7 @@ use campfire_common::{Bytes32, NotHex};
 /// The SHA-256 hash of a server's TLS certificate: the client checks the certificate against it,
 /// and signs it in its connect answer. It reads and writes as 64 lowercase hex digits, as a
 /// listing gives it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct CertificateHash(Bytes32);
 

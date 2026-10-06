@@ -164,7 +164,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     );
     assert_eq!(
         (granted.seed_contribution, granted.expiration),
-        ([6; 32], NOW + 86_400)
+        (SeedContribution::new([6; 32]), NOW + 86_400)
     );
     let check = |certificate| {
         offer.challenge.check(
@@ -384,7 +384,7 @@ fn a_client_refuses_a_receipt_not_signed_over_its_own_chain() {
         ),
         (
             signed(Receipt {
-                delegation: [0; 32],
+                delegation: DelegationId::new([0; 32]),
                 ..receipt
             }),
             ReceiptRefusal::Other,
@@ -523,7 +523,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         ..third
     };
     let stranger = Receipt {
-        delegation: [0; 32],
+        delegation: DelegationId::new([0; 32]),
         ..fourth
     };
     assert_eq!(

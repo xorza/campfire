@@ -3,14 +3,15 @@ use std::fmt;
 use campfire_common::Bytes32;
 use serde::{Deserialize, Serialize};
 
-/// The BLAKE3 hash that links a player's input to the one before it.
+/// A delegation's id: the id of its Nostr event, which a player's first input links to and a
+/// receipt names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct InputHash(Bytes32);
+pub struct DelegationId(Bytes32);
 
-impl InputHash {
-    pub const fn new(bytes: [u8; 32]) -> InputHash {
-        InputHash(Bytes32::new(bytes))
+impl DelegationId {
+    pub const fn new(bytes: [u8; 32]) -> DelegationId {
+        DelegationId(Bytes32::new(bytes))
     }
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
@@ -19,7 +20,7 @@ impl InputHash {
 }
 
 /// In lowercase hex.
-impl fmt::Display for InputHash {
+impl fmt::Display for DelegationId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }

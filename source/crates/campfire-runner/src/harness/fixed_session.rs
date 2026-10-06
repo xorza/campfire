@@ -5,9 +5,9 @@ use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{
-    Checkpoint, Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, ServerInput,
-    ServerSeed, ServerSeeds, SessionHeader, SessionId, SessionLog, SessionResult, SessionTerms,
-    Signature, SlotPlan, SlotStart,
+    Checkpoint, Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, SeedContribution,
+    ServerInput, ServerSeed, ServerSeeds, SessionHeader, SessionId, SessionLog, SessionResult,
+    SessionTerms, Signature, SlotPlan, SlotStart,
 };
 
 use crate::harness::fixed_match::FixedMatch;
@@ -177,7 +177,7 @@ impl FixedSession {
             session_key: FixedSession::session_key(slot).x_only_public_key().0,
             server_key: server_key(),
             session_id: terms.session_id(),
-            seed_contribution: [u8::try_from(slot).unwrap(); 32],
+            seed_contribution: SeedContribution::new([u8::try_from(slot).unwrap(); 32]),
             expiration: NOW + LIFETIME,
         };
         Delegation::sign(

@@ -2,7 +2,8 @@ use std::num::NonZeroU32;
 
 use serde::{Deserialize, Serialize};
 
-use crate::server_seed::{SeedCommitment, ServerSeed};
+use crate::seed_commitment::SeedCommitment;
+use crate::server_seed::ServerSeed;
 use crate::server_seeds::ServerSeeds;
 
 /// Every segment's server seed, fixed when the server opens the session, as a one-way hash chain:

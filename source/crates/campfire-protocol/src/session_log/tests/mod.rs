@@ -7,6 +7,7 @@ use secp256k1::{Keypair, XOnlyPublicKey};
 use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::{DelegationError, ScopeError};
+use crate::delegation::seed_contribution::SeedContribution;
 use crate::input_hash::InputHash;
 use crate::seed_chain::SeedChain;
 use crate::session_log::error::SeedError;
@@ -59,7 +60,7 @@ fn delegation_with(slot: u32, change: impl FnOnce(&mut DelegationTerms)) -> Dele
         session_key: session_key(slot).x_only_public_key().0,
         server_key: server_key(),
         session_id: session_id(),
-        seed_contribution: CONTRIBUTIONS[slot as usize],
+        seed_contribution: SeedContribution::new(CONTRIBUTIONS[slot as usize]),
         expiration: 1_700_086_400,
     };
     change(&mut terms);
@@ -709,7 +710,9 @@ fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
     // Each signed contribution counts in every segment, and so does their slot order.
     let mut changed = header();
     changed.slots[1] = SlotStart::player(delegation_with(1, |terms| {
-        terms.seed_contribution[31] ^= 1;
+        let mut contribution = *terms.seed_contribution.as_bytes();
+        contribution[31] ^= 1;
+        terms.seed_contribution = SeedContribution::new(contribution);
     }));
     let mut swapped = header();
     swapped.slots.swap(0, 1);
@@ -1107,7 +1110,7 @@ fn mixed_delegation(main: u32, key: u32) -> Delegation {
         session_key: session_key(key).x_only_public_key().0,
         server_key: server_key(),
         session_id: mixed_terms().session_id(),
-        seed_contribution: [6; 32],
+        seed_contribution: SeedContribution::new([6; 32]),
         expiration: 1_700_086_400,
     };
     let main_key = Keypair::from_secret_key(&Secp256k1::new(), &secret(11 + main));

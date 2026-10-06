@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 /// A snapshot's identity: the SHA-256 of its bytes, as a Blossom server addresses a blob, so a
 /// snapshot is shared as is. A checkpoint record names its snapshot by it, and the server names
 /// the snapshot's file by it in hex.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SnapshotFingerprint(Bytes32);
 

@@ -7,7 +7,9 @@ use crate::sim_server::server_bots::SlotBot;
 
 use bevy_ecs::system::RunSystemOnce;
 use campfire_protocol::secp256k1::Secp256k1;
-use campfire_protocol::{CertificateHash, ConnectError, DelegationError, DelegationTerms};
+use campfire_protocol::{
+    CertificateHash, ConnectError, DelegationError, DelegationTerms, SeedContribution,
+};
 use lightyear::prelude::{PeerId, RemoteId};
 
 use super::*;
@@ -67,7 +69,7 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
         session_key: InProcessMatch::keypair(2).x_only_public_key().0,
         server_key,
         session_id: lobby.terms().session_id(),
-        seed_contribution: [6; 32],
+        seed_contribution: SeedContribution::new([6; 32]),
         expiration: NOW + 60,
     };
     let delegation = Delegation::sign(&secp, &InProcessMatch::keypair(1), &granted, NOW, &[0; 32]);

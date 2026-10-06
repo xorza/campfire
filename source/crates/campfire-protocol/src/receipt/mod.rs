@@ -2,6 +2,7 @@ use campfire_common::{PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
+use crate::delegation::delegation_id::DelegationId;
 use crate::input_hash::InputHash;
 use crate::receipt::error::ReceiptFileError;
 use crate::session_id::SessionId;
@@ -23,7 +24,7 @@ const MESSAGE_LEN: usize = SIGNATURE_DOMAIN.len() + 32 + 4 + 32 + 8 + 8 + 32;
 pub struct Receipt {
     pub session_id: SessionId,
     pub slot: PlayerSlot,
-    pub delegation: [u8; 32],
+    pub delegation: DelegationId,
     pub tick: Tick,
     pub seq: u64,
     pub head: InputHash,
@@ -66,7 +67,7 @@ impl Receipt {
             SIGNATURE_DOMAIN,
             self.session_id.as_bytes(),
             &self.slot.get().to_le_bytes(),
-            &self.delegation,
+            self.delegation.as_bytes(),
             &self.tick.get().to_le_bytes(),
             &self.seq.to_le_bytes(),
             self.head.as_bytes(),

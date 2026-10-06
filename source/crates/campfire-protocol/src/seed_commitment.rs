@@ -3,14 +3,15 @@ use std::fmt;
 use campfire_common::Bytes32;
 use serde::{Deserialize, Serialize};
 
-/// The BLAKE3 hash that links a player's input to the one before it.
+/// `C(s_0)`, the hash of the first segment's server seed. The terms hold it, so the session id
+/// binds the server to every segment's seed before any player joins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct InputHash(Bytes32);
+pub struct SeedCommitment(Bytes32);
 
-impl InputHash {
-    pub const fn new(bytes: [u8; 32]) -> InputHash {
-        InputHash(Bytes32::new(bytes))
+impl SeedCommitment {
+    pub const fn new(bytes: [u8; 32]) -> SeedCommitment {
+        SeedCommitment(Bytes32::new(bytes))
     }
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
@@ -19,7 +20,7 @@ impl InputHash {
 }
 
 /// In lowercase hex.
-impl fmt::Display for InputHash {
+impl fmt::Display for SeedCommitment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }

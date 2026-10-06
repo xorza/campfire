@@ -4,13 +4,17 @@ use nostr::key::{Keys, SecretKey};
 use nostr::types::Timestamp;
 use secp256k1::{Keypair, Secp256k1, Signing, XOnlyPublicKey};
 
+use crate::delegation::delegation_id::DelegationId;
 use crate::delegation::delegation_tag::DelegationTag;
 use crate::delegation::error::{DelegationError, ScopeError};
+use crate::delegation::seed_contribution::SeedContribution;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
 
+pub(crate) mod delegation_id;
 pub(crate) mod delegation_tag;
 pub(crate) mod error;
+pub(crate) mod seed_contribution;
 
 /// The Nostr kind of a delegation. Ephemeral, so a relay sent one by mistake does not keep it.
 const KIND: u16 = 22_710;
@@ -22,9 +26,7 @@ pub struct DelegationTerms {
     pub session_key: XOnlyPublicKey,
     pub server_key: XOnlyPublicKey,
     pub session_id: SessionId,
-    /// The player's random share of every segment's seed, chosen after the session id fixes
-    /// the server's seed commitment, so no one can choose it with the seed in view.
-    pub seed_contribution: [u8; 32],
+    pub seed_contribution: SeedContribution,
     /// Unix seconds.
     pub expiration: u64,
 }
@@ -35,7 +37,7 @@ pub struct DelegationTerms {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Delegation {
     json: String,
-    id: [u8; 32],
+    id: DelegationId,
     main_key: [u8; 32],
     terms: DelegationTerms,
 }
@@ -66,7 +68,7 @@ impl Delegation {
             ),
             custom(
                 DelegationTag::SeedContribution,
-                Bytes32::new(terms.seed_contribution).to_string(),
+                terms.seed_contribution.to_string(),
             ),
             custom(DelegationTag::Expiration, terms.expiration.to_string()),
         ];
@@ -114,14 +116,19 @@ impl Delegation {
         let session_key = key(DelegationTag::SessionKey)?;
         let server_key = key(DelegationTag::ServerKey)?;
         let session_id = bytes(DelegationTag::SessionId)?;
-        let seed_contribution = bytes(DelegationTag::SeedContribution)?;
+        let seed_contribution = tag(&event, DelegationTag::SeedContribution)?
+            .parse()
+            .ok()
+            .ok_or(DelegationError::MalformedTag(
+                DelegationTag::SeedContribution,
+            ))?;
         let expiration = tag(&event, DelegationTag::Expiration)?
             .parse()
             .ok()
             .ok_or(DelegationError::MalformedTag(DelegationTag::Expiration))?;
         Ok(Delegation {
             json: json.to_owned(),
-            id: event.id.to_bytes(),
+            id: DelegationId::new(event.id.to_bytes()),
             main_key: event.pubkey.to_bytes(),
             terms: DelegationTerms {
                 session_key,
@@ -139,13 +146,13 @@ impl Delegation {
     }
 
     /// The event's id, which a receipt names.
-    pub const fn id(&self) -> &[u8; 32] {
+    pub const fn id(&self) -> &DelegationId {
         &self.id
     }
 
     /// What the player's first input links to: the event id, so the chain covers the delegation.
     pub const fn chain_root(&self) -> InputHash {
-        InputHash::new(self.id)
+        InputHash::new(*self.id.as_bytes())
     }
 
     /// The x-only public key of the player's Nostr identity.

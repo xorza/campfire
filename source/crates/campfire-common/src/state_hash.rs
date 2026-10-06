@@ -8,7 +8,7 @@ use crate::bytes32::error::NotHex;
 
 /// The hash of the whole simulated state, which the sim computes and the session log's
 /// checkpoints and result carry. It writes, and reads back, as 64 lowercase hex digits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct StateHash(Bytes32);
 

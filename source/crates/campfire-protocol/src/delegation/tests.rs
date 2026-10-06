@@ -14,7 +14,7 @@ fn terms() -> DelegationTerms {
         session_key: session.x_only_public_key(&secp).0,
         server_key: XOnlyPublicKey::from_byte_array(&[41; 32]).unwrap(),
         session_id: SessionId::new([31; 32]),
-        seed_contribution: [51; 32],
+        seed_contribution: SeedContribution::new([51; 32]),
         expiration: 1_700_086_400,
     }
 }

@@ -1,3 +1,4 @@
+use crate::delegation::delegation_id::DelegationId;
 use crate::input_hash::InputHash;
 
 /// Where a player's chain stands after an input of theirs whose journal record is durable: the
@@ -5,7 +6,7 @@ use crate::input_hash::InputHash;
 /// it, as a receipt names them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DurableHead {
-    pub delegation: [u8; 32],
+    pub delegation: DelegationId,
     pub seq: u64,
     pub head: InputHash,
 }

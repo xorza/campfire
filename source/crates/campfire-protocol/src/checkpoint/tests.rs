@@ -3,6 +3,7 @@ use secp256k1::SecretKey;
 
 use super::*;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot};
+use crate::delegation::seed_contribution::SeedContribution;
 use crate::delegation::{Delegation, DelegationTerms};
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
@@ -20,7 +21,7 @@ fn delegation() -> Delegation {
         session_key: keypair(21).x_only_public_key().0,
         server_key: keypair(41).x_only_public_key().0,
         session_id: SessionId::new([8; 32]),
-        seed_contribution: [6; 32],
+        seed_contribution: SeedContribution::new([6; 32]),
         expiration: 1_700_086_400,
     };
     Delegation::sign(
