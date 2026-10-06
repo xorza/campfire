@@ -26,6 +26,7 @@ campfire-sim.workspace = true
 bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
 serde.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 
 # The integration tests read the test types `internals` gives, so a plain test run builds them.

@@ -3,7 +3,10 @@ use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{Checkpoint, SeedError, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Runner, Session, StartError};
 
-use crate::error::{ReplayError, SnapshotCheckError};
+use crate::replay::error::ReplayError;
+use crate::replay::error::SnapshotCheckError;
+
+pub(crate) mod error;
 
 /// A published session log replayed in a bare `World`, one tick at a time, with the packages its
 /// terms name, each segment with its own seed. Decoding the log checked every chain link and

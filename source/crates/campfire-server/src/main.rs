@@ -43,12 +43,11 @@ use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportSe
 use lightyear::prelude::{LinkOf, Linked, LocalAddr, ReplicationSender};
 use tracing::{error, info};
 
-use crate::error::OpeningError;
+use crate::opening::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, Restore};
 use crate::server_config::ServerConfig;
 use crate::server_tls::ServerTls;
 
-mod error;
 mod opening;
 mod server_config;
 mod server_tls;

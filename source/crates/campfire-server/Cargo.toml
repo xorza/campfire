@@ -19,6 +19,7 @@ bevy_state.workspace = true
 bevy_time.workspace = true
 getrandom.workspace = true
 lightyear.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 wtransport.workspace = true
 

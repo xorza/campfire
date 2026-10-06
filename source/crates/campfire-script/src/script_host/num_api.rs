@@ -1,7 +1,8 @@
 use campfire_math::Num;
-
-use crate::error::{NumError, Raised};
 use rhai::{Engine, EvalAltResult, INT};
+
+use crate::script_host::error::NumError;
+use crate::script_host::error::Raised;
 
 type Checked<T> = Result<T, Box<EvalAltResult>>;
 type Operator = fn(Num, Num) -> Option<Num>;

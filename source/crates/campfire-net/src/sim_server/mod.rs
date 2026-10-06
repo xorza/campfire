@@ -30,7 +30,6 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info, trace, trace_span};
 
-use crate::error::RestoreMatchError;
 use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
@@ -48,6 +47,7 @@ use crate::pace::PaceSpeed;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
+use crate::sim_server::error::RestoreMatchError;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::offering::{Offering, Superseding};
@@ -65,6 +65,7 @@ pub(crate) mod bot_driver;
 pub(crate) mod checkpoint_thread;
 pub(crate) mod checkpoints;
 pub(crate) mod door;
+pub(crate) mod error;
 pub(crate) mod journal_watch;
 pub(crate) mod key_file;
 pub(crate) mod lobby;

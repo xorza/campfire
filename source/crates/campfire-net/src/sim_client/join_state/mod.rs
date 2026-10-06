@@ -10,15 +10,18 @@ use campfire_protocol::{
 use campfire_runner::SessionRules;
 use lightyear::prelude::Tick as NetTick;
 
-use crate::error::{ReceiptRefusal, TermsMismatch};
 use crate::join::Join;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
 use crate::session_times::SessionTimes;
 use crate::sim_client::chain_history::ChainHistory;
+use crate::sim_client::join_state::error::ReceiptRefusal;
+use crate::sim_client::join_state::error::TermsMismatch;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
+
+pub(crate) mod error;
 
 /// How long a delegation lets the session key sign, in seconds: a day, longer than a LAN match.
 const DELEGATION_LIFETIME: u64 = 86_400;

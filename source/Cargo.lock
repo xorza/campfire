@@ -2013,6 +2013,7 @@ dependencies = [
  "criterion 0.8.2",
  "postcard",
  "serde",
+ "thiserror 2.0.21",
  "toml",
 ]
 
@@ -2058,6 +2059,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -2081,6 +2083,7 @@ dependencies = [
  "postcard",
  "proptest",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2104,6 +2107,7 @@ dependencies = [
  "criterion 0.8.2",
  "lightyear",
  "serde",
+ "thiserror 2.0.21",
  "toml",
  "tracing",
 ]
@@ -2124,6 +2128,7 @@ dependencies = [
  "serde",
  "sha2 0.11.0",
  "tempfile",
+ "thiserror 2.0.21",
  "toml",
  "unic-langid",
 ]
@@ -2140,6 +2145,7 @@ dependencies = [
  "secp256k1",
  "serde",
  "sha2 0.11.0",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2158,6 +2164,7 @@ dependencies = [
  "campfire-sim",
  "criterion 0.8.2",
  "serde",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -2167,6 +2174,7 @@ version = "0.1.0"
 dependencies = [
  "campfire-math",
  "rhai",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -2187,6 +2195,7 @@ dependencies = [
  "campfire-store",
  "getrandom 0.3.4",
  "lightyear",
+ "thiserror 2.0.21",
  "tracing",
  "wtransport",
 ]
@@ -2203,11 +2212,15 @@ dependencies = [
  "criterion 0.8.2",
  "postcard",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "campfire-store"
 version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "campfire-verifier"
@@ -2224,6 +2237,7 @@ dependencies = [
  "campfire-store",
  "serde",
  "tempfile",
+ "thiserror 2.0.21",
  "tracing",
 ]
 

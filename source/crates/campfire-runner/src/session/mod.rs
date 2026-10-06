@@ -15,13 +15,17 @@ use campfire_sim::{
     StateRegistry, TickInput, TickInputs, TickRate,
 };
 
-use crate::error::{
-    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
-};
 use crate::events::script_call_failed::ScriptCallFailed;
 use crate::match_build::MatchBuild;
+use crate::session::error::CheckpointBeginError;
+use crate::session::error::ResultMismatch;
+use crate::session::error::ResumeError;
+use crate::session::error::ServerInputRefused;
+use crate::session::error::StartError;
 use crate::session_rules::SessionRules;
 use crate::slot_rules::SlotRules;
+
+pub(crate) mod error;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
 /// a bare one on a verifier, Lightyear's on a server. The server records inputs as they arrive; a

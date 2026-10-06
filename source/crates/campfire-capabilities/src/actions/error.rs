@@ -1,5 +1,4 @@
-use std::error::Error;
-use std::fmt;
+use thiserror::Error;
 
 /// A capability field of an action that the release runs, which does not give a value of its
 /// kind at a rank: a whole number of milliseconds or of a pool the mode declares, or a range of
@@ -22,18 +21,9 @@ pub enum ActionField {
 
 /// Why an action that passed the package load does not load into a match: what only the
 /// match's tick rate decides.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum ActionError {
     /// A time is too large to count in ticks.
+    #[error("time too large to count in ticks")]
     TimeTooLarge,
 }
-
-impl fmt::Display for ActionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ActionError::TimeTooLarge => f.write_str("time too large to count in ticks"),
-        }
-    }
-}
-
-impl Error for ActionError {}

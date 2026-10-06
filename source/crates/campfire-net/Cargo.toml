@@ -30,6 +30,7 @@ bevy_time.workspace = true
 criterion = { workspace = true, optional = true }
 lightyear.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
 

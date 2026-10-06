@@ -7,9 +7,11 @@ use campfire_protocol::{
 };
 use campfire_sim::StateCopy;
 
-use crate::error::{
-    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
-};
+use crate::session::error::CheckpointBeginError;
+use crate::session::error::ResultMismatch;
+use crate::session::error::ResumeError;
+use crate::session::error::ServerInputRefused;
+use crate::session::error::StartError;
 use crate::session::{Session, SessionParts};
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.

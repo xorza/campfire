@@ -1,7 +1,9 @@
 use campfire_capabilities::{Leaver, PlayersData};
 use campfire_protocol::{AfterLeave, SlotChangeKind, Taken};
 
-use crate::error::SlotRuleError;
+use crate::slot_rules::error::SlotRuleError;
+
+pub(crate) mod error;
 
 /// The mode's rules of who may take a slot, as `[players]` gives them, which every change of a
 /// slot's controller in a session of the mode keeps: the server's as it logs them, and a

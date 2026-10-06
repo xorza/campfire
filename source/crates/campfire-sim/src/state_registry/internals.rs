@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fmt;
 
 use bevy_ecs::world::World;
@@ -8,6 +7,7 @@ use serde::de::{
     self, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
     VariantAccess, Visitor,
 };
+use thiserror::Error;
 
 use crate::entity_index::EntityIndex;
 use crate::sim_state::{SimComponent, SimResource};
@@ -144,16 +144,9 @@ impl Draws {
 }
 
 /// Why a draw does not make a value: a type the state does not hold, or a refusal of its decode.
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("{}", .0)]
 pub struct DrawError(String);
-
-impl fmt::Display for DrawError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl Error for DrawError {}
 
 impl de::Error for DrawError {
     fn custom<T: fmt::Display>(message: T) -> DrawError {

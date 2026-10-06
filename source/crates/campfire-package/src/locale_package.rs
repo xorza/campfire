@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use campfire_capabilities::{ApiVersion, PackagePath};
 
-use crate::error::{LoadError, LoadProblem, LocaleProblem, PackageRef};
+use crate::error::load_problem::LoadProblem;
+use crate::error::locale_problem::LocaleProblem;
+use crate::error::{LoadError, PackageRef};
 use crate::files::manifest::Manifest;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;

@@ -3,10 +3,11 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
-mod error;
 mod events;
 mod replay;
 
-pub use crate::error::{ReplayError, SnapshotCheckError};
+pub use crate::replay::error::ReplayError;
+
 pub use crate::events::verified::Verified;
 pub use crate::replay::Replay;
+pub use crate::replay::error::SnapshotCheckError;

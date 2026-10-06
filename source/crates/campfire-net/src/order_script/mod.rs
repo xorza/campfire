@@ -3,7 +3,9 @@ use campfire_common::Tick;
 use campfire_sim::StableId;
 use serde::Deserialize;
 
-use crate::error::OrderScriptError;
+use crate::order_script::error::OrderScriptError;
+
+pub(crate) mod error;
 
 /// A player's orders for their avatar and their mode inputs, each at a sim tick, in tick order,
 /// and optionally the tick the player leaves after: what a bot plays. It reads from TOML: an

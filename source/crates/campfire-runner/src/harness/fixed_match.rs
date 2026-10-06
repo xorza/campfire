@@ -5,9 +5,9 @@ use campfire_protocol::{
     Applied, Checkpoint, InputChain, ServerInput, SessionResult, SessionTerms,
 };
 
-use crate::error::ServerInputRefused;
 use crate::harness::fixed_session::FixedSession;
 use crate::runner::Runner;
+use crate::session::error::ServerInputRefused;
 
 /// A match of a `FixedSession`, and the input chain of each slot's player, so a test sends inputs
 /// as a player's client would, and server inputs as its server would.

@@ -17,14 +17,17 @@ use campfire_runner::{InputRules, SessionRules};
 use lightyear::prelude::{Connected, LocalTimeline};
 use tracing::info;
 
-use crate::error::{JoinError, LobbyError};
 use crate::events::join_refused::JoinRefused;
 use crate::join::Join;
+use crate::sim_server::error::JoinError;
+use crate::sim_server::lobby::error::LobbyError;
 use crate::sim_server::offering::{JoinLinks, Joined, OfferLinks, Offering, Refused, Superseding};
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::SessionFiles;
 use crate::sim_server::{SessionStart, SimServer};
+
+pub(crate) mod error;
 
 /// A session open for players to join: the server offers each connected client the terms and a
 /// challenge, checks each answer, gives the players slots in the order they joined, and starts

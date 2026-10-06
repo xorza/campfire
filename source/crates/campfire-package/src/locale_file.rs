@@ -5,7 +5,8 @@ use campfire_capabilities::PackagePath;
 use fluent_bundle::FluentResource;
 use fluent_syntax::ast::Entry;
 
-use crate::error::{LoadProblem, LocaleProblem};
+use crate::error::load_problem::LoadProblem;
+use crate::error::locale_problem::LocaleProblem;
 use crate::message_id::MessageId;
 use crate::package_files::PackageFiles;
 

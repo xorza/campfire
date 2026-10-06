@@ -2,7 +2,7 @@ use campfire_math::Num;
 use rhai::INT;
 
 use super::*;
-use crate::error::NumError;
+use crate::script_host::error::NumError;
 
 const PER_CALL: u64 = 1000;
 

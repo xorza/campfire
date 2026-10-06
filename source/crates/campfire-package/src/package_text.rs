@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
+use crate::error::load_problem::LoadProblem;
+use crate::error::locale_problem::LocaleProblem;
 use crate::language::Language;
-
-use crate::error::{LoadProblem, LocaleProblem};
 use crate::locale_file::LocaleFile;
 use crate::package_files::PackageFiles;
 

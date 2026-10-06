@@ -5,7 +5,6 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-mod error;
 mod events;
 mod faults;
 #[cfg(feature = "internals")]
@@ -26,10 +25,18 @@ mod sim_client;
 mod sim_server;
 mod superseded;
 
-pub use crate::error::{
-    JoinError, LobbyError, OrderScriptError, ReceiptRefusal, RestoreMatchError, SaveRefusal,
-    TermsMismatch,
-};
+pub use crate::sim_server::lobby::error::LobbyError;
+
+pub use crate::sim_server::checkpoints::error::SaveRefusal;
+
+pub use crate::sim_client::join_state::error::ReceiptRefusal;
+
+pub use crate::sim_client::join_state::error::TermsMismatch;
+
+pub use crate::order_script::error::OrderScriptError;
+
+pub use crate::sim_server::error::JoinError;
+
 pub use crate::events::avatar_missing::AvatarMissing;
 pub use crate::events::checkpoint_failed::CheckpointFailed;
 pub use crate::events::checkpoint_taken::CheckpointTaken;
@@ -57,6 +64,7 @@ pub use crate::events::session_restored::SessionRestored;
 pub use crate::events::session_written::SessionWritten;
 pub use crate::events::ticks_caught_up::TicksCaughtUp;
 pub use crate::events::time_dropped::TimeDropped;
+pub use crate::sim_server::error::RestoreMatchError;
 
 pub use crate::input_message::InputMessage;
 

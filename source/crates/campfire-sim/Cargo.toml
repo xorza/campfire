@@ -18,6 +18,7 @@ blake3.workspace = true
 criterion = { workspace = true, optional = true }
 postcard.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }

@@ -10,7 +10,6 @@ use campfire_sim::StateDelta;
 use campfire_store::DurableError;
 use lightyear::prelude::MessageReceiver;
 
-use crate::error::SaveRefusal;
 use crate::events::checkpoint_taken::CheckpointTaken;
 use crate::events::save_refused::SaveRefused;
 use crate::events::seeds_ran_out::SeedsRanOut;
@@ -20,9 +19,12 @@ use crate::local::local_session::LocalSession;
 use crate::save_command::SaveCommand;
 use crate::sim_server::SimServer;
 use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned, SignedCheckpoint};
+use crate::sim_server::checkpoints::error::SaveRefusal;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
+
+pub(crate) mod error;
 
 /// How often, in ticks, the main thread sends the state changed to the checkpoint thread when no
 /// checkpoint is due, so what the match records for the next delta stays as small as this many

@@ -16,8 +16,10 @@ use campfire_protocol::{SeedChain, SessionPrivate, SessionTerms};
 use campfire_runner::{InputRules, Session};
 use tracing::error;
 
-use crate::error::OpeningError;
+use crate::opening::error::OpeningError;
 use crate::server_config::ServerConfig;
+
+pub(crate) mod error;
 
 /// What a server starts with: a new session, open to its players, or the session a stop ended,
 /// to restore. A session past the restore window, or one that ended, has its log published

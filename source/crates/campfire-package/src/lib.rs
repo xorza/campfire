@@ -24,10 +24,27 @@ mod package_view;
 mod script_facts;
 mod texts;
 
-pub use crate::error::{
-    ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, ItemProblem, Limit,
-    LoadError, LoadProblem, LocaleProblem, PackageRef, Place, ScriptProblem, StoreError,
-};
+pub use crate::error::{ContentError, LoadError, PackageRef, StoreError};
+
+pub use crate::error::choice_problem::ChoiceProblem;
+
+pub use crate::error::ctx_misuse::CtxMisuse;
+
+pub use crate::error::delivery_problem::DeliveryProblem;
+
+pub use crate::error::effect_problem::EffectProblem;
+
+pub use crate::error::item_problem::ItemProblem;
+
+pub use crate::error::limit::Limit;
+
+pub use crate::error::load_problem::LoadProblem;
+
+pub use crate::error::locale_problem::LocaleProblem;
+
+pub use crate::error::place::Place;
+
+pub use crate::error::script_problem::ScriptProblem;
 pub use crate::files::avatar_data::AvatarData;
 pub use crate::files::tick_range::TickRange;
 

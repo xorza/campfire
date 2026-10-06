@@ -5,7 +5,9 @@ use campfire_capabilities::{
 };
 use campfire_script::rhai::{AST, ASTNode, Expr, FnCallExpr, Stmt};
 
-use crate::error::{CtxMisuse, LoadProblem, Place};
+use crate::error::ctx_misuse::CtxMisuse;
+use crate::error::load_problem::LoadProblem;
+use crate::error::place::Place;
 
 /// The variable every script API call goes through, by design 08's convention.
 const CTX: &str = "ctx";

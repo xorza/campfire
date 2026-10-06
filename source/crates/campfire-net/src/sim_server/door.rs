@@ -15,13 +15,13 @@ use lightyear::prelude::{
 };
 use tracing::info;
 
-use crate::error::JoinError;
 use crate::events::join_refused::JoinRefused;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
 use crate::match_clock::MatchClock;
 use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
+use crate::sim_server::error::JoinError;
 use crate::sim_server::offering::{
     JoinLink, Joined, OfferLinks, Offering, Refused, Superseding, Unanswered,
 };

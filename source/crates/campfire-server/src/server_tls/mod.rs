@@ -7,7 +7,9 @@ use campfire_store::DurableFile;
 use wtransport::Identity;
 use wtransport::tls::{Certificate, CertificateChain, PrivateKey};
 
-use crate::error::TlsError;
+use crate::server_tls::error::TlsError;
+
+pub(crate) mod error;
 
 /// How long a new certificate holds, in seconds: the 14 days WebTransport allows a self-signed
 /// one at most.

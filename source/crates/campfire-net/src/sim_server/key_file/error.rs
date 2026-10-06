@@ -1,33 +1,14 @@
-use std::error::Error;
-use std::fmt;
-
 use campfire_protocol::NsecError;
 use campfire_store::{DurableError, SecretReadError};
+use thiserror::Error;
 
 /// Why a key file did not read or write.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum KeyFileError {
-    Read(SecretReadError),
-    NotNsec(NsecError),
-    Write(DurableError),
-}
-
-impl fmt::Display for KeyFileError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            KeyFileError::Read(error) => write!(f, "the key file: {error}"),
-            KeyFileError::NotNsec(error) => write!(f, "the key file: {error}"),
-            KeyFileError::Write(error) => write!(f, "could not write the key file: {error}"),
-        }
-    }
-}
-
-impl Error for KeyFileError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            KeyFileError::Read(error) => Some(error),
-            KeyFileError::NotNsec(error) => Some(error),
-            KeyFileError::Write(error) => Some(error),
-        }
-    }
+    #[error("the key file: {0}")]
+    Read(#[source] SecretReadError),
+    #[error("the key file: {0}")]
+    NotNsec(#[source] NsecError),
+    #[error("could not write the key file: {0}")]
+    Write(#[source] DurableError),
 }
