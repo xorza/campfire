@@ -468,5 +468,9 @@ impl ApiMember {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test writes the script API reference it generates from the registry"
+)]
 #[cfg(test)]
 mod tests;

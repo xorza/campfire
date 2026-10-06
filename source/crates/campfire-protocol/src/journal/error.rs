@@ -1,42 +1,19 @@
 use std::error::Error;
 use std::fmt;
-use std::io;
 
-use crate::durable_file::error::DurableError;
 use crate::session_log::error::LogError;
 
-/// Why a journal did not open.
-#[derive(Debug)]
-pub enum JournalError {
-    /// The new journal's tag was not written durably.
-    Create(DurableError),
-    Open(io::Error),
-    /// The journal was not cut to its whole frames, or the cut not synced.
-    Cut(io::Error),
-    /// The bytes do not start with the journal's tag.
-    NotJournal,
-}
+/// The bytes do not start with the journal's tag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotJournal;
 
-impl fmt::Display for JournalError {
+impl fmt::Display for NotJournal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            JournalError::Create(error) => write!(f, "could not make the journal: {error}"),
-            JournalError::Open(error) => write!(f, "could not open the journal: {error}"),
-            JournalError::Cut(error) => write!(f, "could not cut the journal's torn tail: {error}"),
-            JournalError::NotJournal => f.write_str("not a journal"),
-        }
+        f.write_str("not a journal")
     }
 }
 
-impl Error for JournalError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            JournalError::Create(error) => Some(error),
-            JournalError::Open(error) | JournalError::Cut(error) => Some(error),
-            JournalError::NotJournal => None,
-        }
-    }
-}
+impl Error for NotJournal {}
 
 /// Why a journal's records do not rebuild a log. The server writes only records its log took, so
 /// each is a fault of the journal's bytes, past the checks of its frames.

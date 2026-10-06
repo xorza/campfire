@@ -33,7 +33,7 @@ Three gaps of today's code the design closes:
 
 ## The store crate
 
-- **Durable files.** `DurableFile`, moved from `protocol`: a whole file written to a temporary file beside its name, synced, renamed over it, and its directory synced on Unix; a new directory synced into its parent. The temporary file is always made new, a stale one removed first, so it has the mode the write gives it. Each step's failure is its own error, never retried ([D9](10-sessions.md#decisions)).
+- **Durable files.** `DurableFile`, moved from `protocol`: a whole file written to a temporary file beside its name, synced, renamed over it, and its directory synced on Unix; a new directory synced into its parent, and a directory removed with all it holds, its parent synced. The temporary file is always made new, a stale one removed first, so it has the mode the write gives it. Each step's failure is its own error, never retried ([D9](10-sessions.md#decisions)).
 - **Secret files.** `SecretFile`: bytes only their owner may read, mode 0600 on Unix; a read checks the mode of the file it opened, and refuses one others may read, as OpenSSH does; a write is durable. The key file is `protocol`'s NIP-19 text in a `SecretFile`.
 - **Data directories.** `DataDir`: made, its owner's only on Unix, and locked by the exclusive lock on its `lock` file, held until dropped; a second holder is refused. It gives the paths in it.
 - **Workers.** `Worker`, and on it `AppendWriter` (the journal's writer thread as it is now, over an `AppendFile`, a file or a test's stand-in, with the cut of a torn tail and the reopen), `Exchange` (the checkpoint thread's channel pair and spare buffer, for any job) and `LatestWriter` (the receipt writer's slot). An append, a send and a give take a lock and copy, and never wait for the disk. Each holds persistent buffers, so a steady state allocates nothing per record or per frame.
@@ -41,7 +41,7 @@ Three gaps of today's code the design closes:
 
 ## Protocol without IO
 
-- **Sink.** `SessionLog::keep_journal` and `resume_journal` take a `Box<dyn RecordSink + Send + Sync>`; `runner` passes it through, as it passes the journal now. For each record, the log calls the sink with a function that frames the record into the buffer the sink passes, so the bytes go once, straight into the writer's buffer, as they do now.
+- **Sink.** `SessionLog::keep_journal` and `resume_journal` take a `Box<dyn RecordSink>`; `runner` passes it through, as it passes the journal now. For each record, the log calls the sink with a function that frames the record into the buffer the sink passes, so the bytes go once, straight into the writer's buffer, as they do now.
 - **Durable heads.** The log counts the records it wrote into its sink from the one it was given; `SessionLog::advance_durable` takes how many of them are durable from its caller, which reads it from the `AppendWriter`. The receipts' rules do not change ([Receipts](10-sessions.md#receipts)).
 - **Reading back.** `JournalFrames` and `SessionLog::from_journal` stay in `protocol`, as they parse bytes; cutting the file to its whole frames and reopening it to append move to `store`.
 
@@ -56,12 +56,14 @@ Three gaps of today's code the design closes:
 
 ## Structural rules
 
-Two rules join design 02's table, each with its test:
+Two rules join design 02's table. Clippy enforces each at compile time: `source/clippy.toml` lists their functions under `disallowed-methods`, and a call of one fails the check chain, which runs Clippy with `-D warnings`. A lint resolves the path a call names, so an alias or a re-export does not hide it, as a scan of the source text would let it. The list applies to the whole workspace, as Clippy takes one configuration for each crate and merges none, so the code the rules allow says so with `#[expect(clippy::disallowed_methods, reason = "…")]`, which fails once nothing it covers calls one: `store`, which owns the rules, for the whole crate; a test, for its `#[cfg(test)]` module or its integration test's crate; and any other call, at the call, with its reason.
 
 | Rule | Enforced by |
 | --- | --- |
-| The deterministic core writes no file and starts no thread: `common`, `math`, `sim`, `script`, `capabilities`, `package`, `protocol` and `runner`, but their tests and their `internals`. | A scan of each core crate's sources for the file system's writes, syncs, renames and removals, and for threads, which lists each file it exempts |
-| Every thread starts through `store`'s `Worker`. | A scan of the workspace's sources for `std::thread`, outside `store` and tests |
+| Only `store` writes a file: no other crate writes, syncs, renames or removes a file, or makes a directory, but tests, the log crate's file of JSON lines, the LAN check's run directory, and a test's golden file in `runner`'s `internals`. So the deterministic core, `common`, `math`, `sim`, `script`, `capabilities`, `package`, `protocol` and `runner`, writes no file. | `disallowed-methods`: `std::fs::write`, `copy`, `rename`, `hard_link`, `remove_file`, `remove_dir`, `remove_dir_all`, `create_dir`, `create_dir_all`, `set_permissions`, `DirBuilder::new`, `File::create`, `File::create_new`, `File::options`, `File::set_len`, `File::sync_all`, `File::sync_data`, `File::set_permissions`, `OpenOptions::new` |
+| Every thread starts through `store`'s `Worker`, but in tests. | `disallowed-methods`: `std::thread::spawn`, `std::thread::scope`, `std::thread::Builder::spawn`, `std::thread::Builder::spawn_scoped` |
+
+A test beside the manifest test of `common` checks that `clippy.toml` lists each of these paths, and that no source allows the lint, turns it off in a `cfg_attr` or through a group that holds it, `clippy::style` or `clippy::all`, or expects it for a crate or a module other than as above.
 
 ## Tests
 

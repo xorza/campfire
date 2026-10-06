@@ -1,9 +1,11 @@
 use std::error::Error;
+use std::ffi::OsString;
 use std::fmt;
 use std::io;
 
-use campfire_protocol::{DurableError, JournalError, JournalReplayError, SessionPrivateError};
+use campfire_protocol::{JournalReplayError, NotJournal, SessionPrivateError};
 use campfire_runner::StartError;
+use campfire_store::{AppendOpenError, DurableError};
 
 /// Why a server's data directory does not say which session to restore.
 #[derive(Debug)]
@@ -11,6 +13,8 @@ pub enum FindError {
     Read(io::Error),
     /// More than one session has no published log: a server runs one session at a time.
     Several,
+    /// An entry of the sessions' directory is named by no session id.
+    Stray(OsString),
 }
 
 impl fmt::Display for FindError {
@@ -18,6 +22,13 @@ impl fmt::Display for FindError {
         match self {
             FindError::Read(error) => write!(f, "could not read the sessions: {error}"),
             FindError::Several => f.write_str("more than one session has no published log"),
+            FindError::Stray(name) => {
+                write!(
+                    f,
+                    "{} names no session in the sessions' directory",
+                    name.display()
+                )
+            }
         }
     }
 }
@@ -26,7 +37,7 @@ impl Error for FindError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             FindError::Read(error) => Some(error),
-            FindError::Several => None,
+            FindError::Several | FindError::Stray(_) => None,
         }
     }
 }
@@ -38,7 +49,8 @@ pub enum RestoreError {
     Private(SessionPrivateError),
     /// The session runs on another engine release than this one, which restores it.
     OtherRelease(String),
-    Journal(JournalError),
+    NotJournal(NotJournal),
+    Journal(AppendOpenError),
     Replay(JournalReplayError),
 }
 
@@ -53,7 +65,8 @@ impl fmt::Display for RestoreError {
                     "the session runs on release {release}, which restores it"
                 )
             }
-            RestoreError::Journal(error) => write!(f, "{error}"),
+            RestoreError::NotJournal(error) => write!(f, "the journal file: {error}"),
+            RestoreError::Journal(error) => write!(f, "the journal: {error}"),
             RestoreError::Replay(error) => write!(f, "{error}"),
         }
     }
@@ -65,6 +78,7 @@ impl Error for RestoreError {
             RestoreError::Read(error) => Some(error),
             RestoreError::Private(error) => Some(error),
             RestoreError::OtherRelease(_) => None,
+            RestoreError::NotJournal(error) => Some(error),
             RestoreError::Journal(error) => Some(error),
             RestoreError::Replay(error) => Some(error),
         }
@@ -106,7 +120,7 @@ pub enum WaitingError {
     Find(FindError),
     Restore(RestoreError),
     /// The directory of a session whose match never started did not go.
-    Remove(io::Error),
+    Remove(DurableError),
 }
 
 impl fmt::Display for WaitingError {

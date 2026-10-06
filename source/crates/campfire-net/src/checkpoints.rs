@@ -1,14 +1,13 @@
-use std::path::{Path, PathBuf};
-
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::SaveBy;
 use campfire_common::{Tick, Ticks};
 use campfire_log::LogEvent;
-use campfire_protocol::{CheckpointBegun, CheckpointError, DurableError, Outcome};
+use campfire_protocol::{CheckpointBegun, CheckpointError, Outcome};
 use campfire_runner::{CheckpointBeginError, Session};
 use campfire_sim::StateDelta;
+use campfire_store::DurableError;
 use lightyear::prelude::MessageReceiver;
 
 use crate::checkpoint_thread::{CheckpointThread, Returned, SignedCheckpoint};
@@ -16,9 +15,12 @@ use crate::error::SaveRefusal;
 use crate::events::checkpoint_taken::CheckpointTaken;
 use crate::events::save_refused::SaveRefused;
 use crate::events::seeds_ran_out::SeedsRanOut;
+use crate::faults::Faults;
+use crate::faults::fault::Fault;
 use crate::local_session::LocalSession;
 use crate::save_command::SaveCommand;
 use crate::server_signer::ServerSigner;
+use crate::session_dir::snapshots::Snapshots;
 use crate::sim_server::{PlayerLink, SimServer};
 
 /// How often, in ticks, the main thread sends the state changed to the checkpoint thread when no
@@ -38,15 +40,13 @@ pub(crate) struct Checkpoints {
     thread: CheckpointThread,
     /// The boundary the last delta was made at.
     sent: Tick,
-    /// The failure of a snapshot's write, once one failed.
-    failure: Option<DurableError>,
 }
 
 impl Checkpoints {
     /// Starts the checkpoints of the session in `world`, before the next tick runs: the thread's
     /// copy of the state starts as a full copy of the state now, and the snapshots go to
     /// `snapshots`.
-    pub(crate) fn start(world: &mut World, snapshots: PathBuf, signer: ServerSigner) {
+    pub(crate) fn start(world: &mut World, snapshots: Snapshots, signer: ServerSigner) {
         let mut base = StateDelta::default();
         Session::track(world, &mut base);
         let session = world.resource::<Session>();
@@ -62,7 +62,6 @@ impl Checkpoints {
             plan: Vec::new(),
             thread,
             sent,
-            failure: None,
         });
     }
 
@@ -91,7 +90,9 @@ impl Checkpoints {
             return;
         }
         if let Err(error) = Checkpoints::settle(world) {
-            world.resource_mut::<Checkpoints>().failure = Some(error);
+            world
+                .resource_mut::<Faults>()
+                .report(Fault::Snapshot(error));
             return;
         }
         match world.resource_mut::<Session>().begin_checkpoint() {
@@ -107,21 +108,22 @@ impl Checkpoints {
         }
     }
 
-    /// Logs the record of the checkpoint the thread finished, when it did.
+    /// Logs the record of the checkpoint the thread finished, when it did; reports its fault
+    /// when its snapshot was not written.
     pub(crate) fn finish(world: &mut World) {
-        let returned = world.resource_mut::<Checkpoints>().thread.done(false);
-        Checkpoints::record(world, returned);
+        let returned = world.resource_mut::<Checkpoints>().thread.take();
+        if let Err(error) = Checkpoints::record(world, returned) {
+            world
+                .resource_mut::<Faults>()
+                .report(Fault::Snapshot(error));
+        }
     }
 
     /// Waits for the delta on the thread, and logs the record of its checkpoint; an error when
     /// its snapshot was not written.
     pub(crate) fn settle(world: &mut World) -> Result<(), DurableError> {
-        let returned = world.resource_mut::<Checkpoints>().thread.done(true);
-        Checkpoints::record(world, returned);
-        match world.resource_mut::<Checkpoints>().failure.take() {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
+        let returned = world.resource_mut::<Checkpoints>().thread.wait();
+        Checkpoints::record(world, returned)
     }
 
     /// Takes the save commands of the seated players: on a local server, a save makes a
@@ -165,7 +167,9 @@ impl Checkpoints {
             }
             SaveCommand::LoadLatest => {
                 if let Err(error) = Checkpoints::settle(world) {
-                    world.resource_mut::<Checkpoints>().failure = Some(error);
+                    world
+                        .resource_mut::<Faults>()
+                        .report(Fault::Snapshot(error));
                     return Ok(());
                 }
                 let latest = world.resource::<Session>().log().checkpoints().last();
@@ -176,17 +180,12 @@ impl Checkpoints {
         Ok(())
     }
 
-    /// The failure of a snapshot's write, once one failed, given once.
-    pub(crate) fn take_failure(&mut self) -> Option<DurableError> {
-        self.failure.take()
-    }
-
     /// Takes the checkpoint begun at the boundary before the next tick again, on the main thread,
     /// as a restore does once its replay reaches it: writes its snapshot into `snapshots`, and
     /// logs its record, which `signer` signs. Nothing when no checkpoint begun starts there.
     pub(crate) fn take_again(
         world: &mut World,
-        snapshots: &Path,
+        snapshots: &Snapshots,
         signer: &ServerSigner,
     ) -> Result<(), DurableError> {
         let session = world.resource::<Session>();
@@ -202,7 +201,7 @@ impl Checkpoints {
         let record = session
             .checkpoint(world, &mut snapshot)
             .expect("a checkpoint begun");
-        CheckpointThread::write_snapshot(snapshots, &snapshot)?;
+        snapshots.write(&snapshot)?;
         let signature = signer.sign_checkpoint(&record, session.log().session_id());
         Checkpoints::log(world, SignedCheckpoint { record, signature });
         Ok(())
@@ -220,13 +219,16 @@ impl Checkpoints {
         });
     }
 
-    fn record(world: &mut World, returned: Option<Returned>) {
+    /// Logs the record `returned` brings, when it brings one; an error when its snapshot was
+    /// not written.
+    fn record(world: &mut World, returned: Option<Returned>) -> Result<(), DurableError> {
         match returned {
-            None | Some(Returned::Applied) => {}
-            Some(Returned::Taken(signed)) => Checkpoints::log(world, signed),
-            Some(Returned::Failed(error)) => {
-                world.resource_mut::<Checkpoints>().failure = Some(error);
+            None | Some(Returned::Applied) => Ok(()),
+            Some(Returned::Taken(signed)) => {
+                Checkpoints::log(world, signed);
+                Ok(())
             }
+            Some(Returned::Failed(error)) => Err(error),
         }
     }
 

@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy_app::{App, FixedUpdate, Plugin, Update};
@@ -29,6 +28,7 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info};
 
+use crate::client_data::ClientData;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::LinkLost;
@@ -36,8 +36,8 @@ use crate::events::match_started::MatchStarted;
 use crate::events::order_dropped::OrderDropped;
 use crate::events::orders_sent::OrdersSent;
 use crate::events::receipt_refused::ReceiptRefused;
-use crate::events::receipt_unsaved::ReceiptUnsaved;
 use crate::events::session_refused::SessionRefused;
+use crate::faults::Faults;
 use crate::input_message::InputMessage;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
@@ -87,9 +87,9 @@ pub struct SimClient {
     pub clock: fn() -> u64,
     /// Fills a seed contribution or BIP-340's auxiliary randomness with random bytes.
     pub entropy: fn(&mut [u8; 32]),
-    /// The client's data directory, where it writes the newest receipt of its session, as
-    /// `receipts/<session id>.receipt`; none writes none.
-    pub data: Option<PathBuf>,
+    /// The client's data directory, held locked, where it writes the newest receipt of its
+    /// session; none writes none.
+    pub data: Option<Arc<ClientData>>,
 }
 
 /// The context that checks receipts' signatures.
@@ -171,7 +171,7 @@ impl Plugin for SimClient {
         ));
         world.init_resource::<SentInputs>();
         if let Some(data) = &self.data {
-            world.insert_resource(ReceiptWriter::start(data.clone()));
+            world.insert_resource(ReceiptWriter::start(Arc::clone(data)));
         }
         // Prediction covers all the latency, with no input delay: an input goes out stamped with
         // the tick the client predicts it in, which Lightyear keeps ahead of the server's present
@@ -184,6 +184,7 @@ impl Plugin for SimClient {
         ));
         app.init_resource::<PendingOrders>();
         app.init_resource::<PendingSaves>();
+        app.init_resource::<Faults>();
         app.add_observer(lose_link);
         app.add_systems(
             Update,
@@ -195,6 +196,7 @@ impl Plugin for SimClient {
                 receive_superseded,
                 receive_match_start,
                 receive_receipt,
+                Faults::watch,
                 receive_relations,
                 receive_match_end,
                 report_deaths,
@@ -332,15 +334,6 @@ fn receive_receipt(
                 writer.give(receipt);
             }
         }
-    }
-    let Some(writer) = writer else {
-        return;
-    };
-    for error in writer.failures() {
-        ReceiptUnsaved {
-            error: error.to_string(),
-        }
-        .log();
     }
 }
 

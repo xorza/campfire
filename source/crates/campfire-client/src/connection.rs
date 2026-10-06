@@ -6,7 +6,7 @@ use std::time::Duration;
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use campfire_net::{
-    LocalPace, LocalRelink, LocalServer, LocalServerSetup, Pace, ServerPin, SlotBot,
+    ClientData, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Pace, ServerPin, SlotBot,
 };
 use campfire_package::ModePackages;
 use lightyear::prelude::client::WebTransportClientIo;
@@ -24,10 +24,12 @@ pub(crate) enum Connection {
 }
 
 impl Connection {
-    /// The server `args` names; a local one starts, of the mode `packages` holds, following
-    /// `pace`. The exit code when a local server does not start.
+    /// The server `args` names; a local one starts, of the mode `packages` holds, its data in
+    /// the client's data directory `data`, following `pace`. The exit code when a local server
+    /// does not start.
     pub(crate) fn open(
         args: &Args,
+        data: Option<&ClientData>,
         packages: &Arc<ModePackages>,
         pace: &Arc<Pace>,
     ) -> Result<Connection, ExitCode> {
@@ -46,7 +48,7 @@ impl Connection {
                 address,
             }),
             Server::Local { bots } => {
-                Connection::start_local(args, packages, bots, pace).map(Connection::Local)
+                Connection::start_local(data, packages, bots, pace).map(Connection::Local)
             }
         }
     }
@@ -91,11 +93,11 @@ impl Connection {
         }
     }
 
-    /// Starts the local server of the mode `packages` holds, its data in `server` under the
-    /// client's data directory, its bots those of `bots`, following `pace`; the exit code when
-    /// it does not start.
+    /// Starts the local server of the mode `packages` holds, its data in the client's data
+    /// directory `data`, its bots those of `bots`, following `pace`; the exit code when it does
+    /// not start.
     fn start_local(
-        args: &Args,
+        data: Option<&ClientData>,
         packages: &Arc<ModePackages>,
         bots: &[BotFile],
         pace: &Arc<Pace>,
@@ -108,11 +110,7 @@ impl Connection {
             })?;
             slots.push(SlotBot::new(bot.slot, script));
         }
-        let data = args
-            .data
-            .as_ref()
-            .expect("--local has --data")
-            .join("server");
+        let data = data.expect("--local has --data").local_server_dir();
         LocalServer::start(LocalServerSetup {
             packages: Arc::clone(packages),
             data,

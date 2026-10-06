@@ -1,8 +1,9 @@
 use std::fs;
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use campfire_protocol::{CertificateHash, DurableFile};
+use campfire_protocol::CertificateHash;
+use campfire_store::DurableFile;
 use wtransport::Identity;
 use wtransport::tls::{Certificate, CertificateChain, PrivateKey};
 
@@ -29,12 +30,11 @@ pub(crate) struct ServerTls {
 }
 
 impl ServerTls {
-    /// The identity the data directory `data` keeps, at Unix second `now`; a new one, written,
-    /// when it keeps none, or when its certificate expires within `RENEW_WITHIN` and no session
+    /// The identity the file at `path` keeps, at Unix second `now`; a new one, written, when it
+    /// keeps none, or when its certificate expires within `RENEW_WITHIN` and no session
     /// restores, as `restoring` says. An error when the file does not read or is not written.
-    pub(crate) fn open(data: &Path, now: u64, restoring: bool) -> Result<ServerTls, TlsError> {
-        let path = ServerTls::path(data);
-        match fs::read(&path) {
+    pub(crate) fn open(path: &Path, now: u64, restoring: bool) -> Result<ServerTls, TlsError> {
+        match fs::read(path) {
             Ok(bytes) => {
                 let kept = ServerTls::decode(bytes)?;
                 if restoring || kept.expires.saturating_sub(now) > RENEW_WITHIN {
@@ -48,7 +48,7 @@ impl ServerTls {
             identity: Identity::self_signed(["localhost"]).expect("a fixed name is a valid SAN"),
             expires: now + LIFETIME,
         };
-        DurableFile::write(&path, &made.encode()).map_err(TlsError::Write)?;
+        DurableFile::write(path, &made.encode()).map_err(TlsError::Write)?;
         Ok(made)
     }
 
@@ -60,10 +60,6 @@ impl ServerTls {
 
     pub(crate) fn into_identity(self) -> Identity {
         self.identity
-    }
-
-    fn path(data: &Path) -> PathBuf {
-        data.join("tls")
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -101,6 +97,10 @@ impl ServerTls {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test makes and removes the files of its fixtures"
+)]
 #[cfg(test)]
 mod tests {
     use std::{env, process};
@@ -114,7 +114,8 @@ mod tests {
         let data = env::temp_dir().join(format!("campfire-server-tls-{}", process::id()));
         drop(fs::remove_dir_all(&data));
         fs::create_dir_all(&data).unwrap();
-        let open = |now, restoring| ServerTls::open(&data, now, restoring).unwrap();
+        let path = data.join("tls");
+        let open = |now, restoring| ServerTls::open(&path, now, restoring).unwrap();
 
         // A first start makes the certificate, 14 days long; a second start a day later keeps it.
         let first = open(NOW, false);
@@ -132,12 +133,11 @@ mod tests {
         assert_eq!(open(renewal, false).certificate(), renewed.certificate());
 
         // A file cut short, or whose certificate does not parse, is refused.
-        let path = ServerTls::path(&data);
         let whole = fs::read(&path).unwrap();
         for cut in [0, EXPIRES_BYTES + 2, EXPIRES_BYTES + LEN_BYTES + 10] {
             fs::write(&path, &whole[..cut]).unwrap();
             assert!(matches!(
-                ServerTls::open(&data, NOW, true),
+                ServerTls::open(&path, NOW, true),
                 Err(TlsError::Truncated)
             ));
         }
@@ -145,7 +145,7 @@ mod tests {
         flawed[EXPIRES_BYTES + LEN_BYTES] ^= 0xFF;
         fs::write(&path, &flawed).unwrap();
         assert!(matches!(
-            ServerTls::open(&data, NOW, true),
+            ServerTls::open(&path, NOW, true),
             Err(TlsError::Certificate(_))
         ));
         fs::remove_dir_all(&data).unwrap();

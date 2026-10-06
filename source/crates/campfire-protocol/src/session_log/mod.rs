@@ -19,6 +19,7 @@ use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::journal::Journal;
 use crate::journal::error::JournalReplayError;
+use crate::journal::record_sink::RecordSink;
 use crate::player_input::PlayerInput;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::server_input::{AfterLeave, InputPlace, LeaveReason, ServerInput};
@@ -374,8 +375,17 @@ impl Spill {
 }
 
 impl SegmentStart {
+    /// Writes the begin of the checkpoint that starts segment `segment`, and its record once it
+    /// has one, into `journal`.
+    fn journal_whole(&self, journal: &mut Journal, segment: u32) {
+        self.journal_begun(journal, segment);
+        if let Some(logged) = &self.checkpoint {
+            logged.journal(journal);
+        }
+    }
+
     /// Writes the begin of the checkpoint that starts segment `segment` into `journal`.
-    fn journal_begun(&self, journal: &Journal, segment: u32) {
+    fn journal_begun(&self, journal: &mut Journal, segment: u32) {
         journal.append(|out| {
             out.push(JOURNAL_CHECKPOINT_BEGUN);
             put(out, &segment);
@@ -386,7 +396,7 @@ impl SegmentStart {
 
 impl LoggedCheckpoint {
     /// Writes the record into `journal`, as the checkpoint is done.
-    fn journal(&self, journal: &Journal) {
+    fn journal(&self, journal: &mut Journal) {
         journal.append(|out| {
             out.push(JOURNAL_CHECKPOINT_DONE);
             self.record.encode(out);
@@ -728,7 +738,7 @@ impl SessionLog {
         self.journal_last_entry();
         if let Some(journal) = &self.journal {
             self.journaled.push_back(Journaled {
-                record: journal.appended() - 1,
+                record: journal.written() - 1,
                 slot,
                 head: DurableHead {
                     delegation: *self.delegations[delegation as usize].id(),
@@ -953,7 +963,7 @@ impl SessionLog {
             checkpoint: None,
         };
         let number = offset(self.segments.len());
-        if let Some(journal) = &self.journal {
+        if let Some(journal) = &mut self.journal {
             segment.journal_begun(journal, number);
         }
         self.segments.push(segment);
@@ -993,7 +1003,7 @@ impl SessionLog {
             record,
             signature: *signature,
         };
-        if let Some(journal) = &self.journal {
+        if let Some(journal) = &mut self.journal {
             logged.journal(journal);
         }
         let segment = usize::try_from(begun.segment).expect("segments fit usize");
@@ -1063,7 +1073,7 @@ impl SessionLog {
             result,
             signature: *signature,
         };
-        if let Some(journal) = &self.journal {
+        if let Some(journal) = &mut self.journal {
             journal.append(|out| {
                 out.push(JOURNAL_RESULT);
                 put(out, &logged);
@@ -1092,7 +1102,7 @@ impl SessionLog {
     fn seal(&mut self) {
         let tick = self.next_tick();
         if self.to_replay.is_empty()
-            && let Some(journal) = &self.journal
+            && let Some(journal) = &mut self.journal
         {
             journal.append(|out| out.push(JOURNAL_SEALED));
         }
@@ -1230,7 +1240,7 @@ impl SessionLog {
         self.encode_through(at, &mut bytes);
         let mut loaded = SessionLog::decode_within(&bytes, self.position_bound)
             .expect("the log's own past decodes");
-        if let Some(journal) = self.journal.take() {
+        if let Some(mut journal) = self.journal.take() {
             journal.append(|out| {
                 out.push(JOURNAL_LOADED);
                 put(out, &segment);
@@ -1552,43 +1562,39 @@ impl SessionLog {
         Ok(())
     }
 
-    /// Keeps `journal`, a new one, and writes into it the records of what the log holds: the
-    /// header, then each entry, each sealed tick, each checkpoint and the result, as the log took
-    /// them; from then on each record the log takes goes to it as it takes it.
-    pub fn keep_journal(&mut self, journal: Journal) {
+    /// Keeps `sink` as its journal, a new one, and writes into it the records of what the log
+    /// holds: the header, then each entry, each sealed tick, each checkpoint and the result, as
+    /// the log took them; from then on each record the log takes goes to it as it takes it.
+    pub fn keep_journal(&mut self, sink: Box<dyn RecordSink>) {
         assert!(self.journal.is_none(), "a log keeps one journal");
         debug_assert!(
             self.to_replay.is_empty(),
             "a log that replays keeps no journal"
         );
+        let mut journal = Journal::new(sink);
         journal.append(|out| {
             out.push(JOURNAL_HEADER);
             self.put_header(out);
         });
         let mut start = 0;
         let mut segments = (1..).zip(self.segments.iter().skip(1)).peekable();
-        let journal_segment = |(number, segment): (u32, &SegmentStart)| {
-            segment.journal_begun(&journal, number);
-            if let Some(logged) = &segment.checkpoint {
-                logged.journal(&journal);
-            }
-        };
         for (tick, &end) in (0..).zip(&self.tick_ends) {
-            if let Some(segment) = segments.next_if(|(_, segment)| segment.tick == Tick::new(tick))
+            if let Some((number, segment)) =
+                segments.next_if(|(_, segment)| segment.tick == Tick::new(tick))
             {
-                journal_segment(segment);
+                segment.journal_whole(&mut journal, number);
             }
             for at in start..end {
-                self.journal_entry(&journal, at);
+                self.journal_entry(&mut journal, at);
             }
             journal.append(|out| out.push(JOURNAL_SEALED));
             start = end;
         }
-        if let Some(segment) = segments.next() {
-            journal_segment(segment);
+        if let Some((number, segment)) = segments.next() {
+            segment.journal_whole(&mut journal, number);
         }
         for at in start..offset(self.entries.len()) {
-            self.journal_entry(&journal, at);
+            self.journal_entry(&mut journal, at);
         }
         if let Some(result) = &self.result {
             journal.append(|out| {
@@ -1599,13 +1605,13 @@ impl SessionLog {
         self.journal = Some(journal);
     }
 
-    /// Keeps `journal`, which holds every record the log took, as the log was rebuilt from it:
-    /// from then on each record the log takes goes to it as it takes it. Every chain whose head
-    /// its player's current delegation signed stands durably where the log holds it, as the
-    /// journal was read back from the disk.
-    pub fn resume_journal(&mut self, journal: Journal) {
+    /// Keeps `sink` as its journal, which holds every record the log took, as the log was
+    /// rebuilt from it: from then on each record the log takes goes to it as it takes it. Every
+    /// chain whose head its player's current delegation signed stands durably where the log
+    /// holds it, as the journal was read back from the disk.
+    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>) {
         assert!(self.journal.is_none(), "a log keeps one journal");
-        self.journal = Some(journal);
+        self.journal = Some(Journal::new(sink));
         for (durable, held) in self.durable.iter_mut().zip(&self.slots) {
             let Control::Player { delegation, chain } = held.control else {
                 continue;
@@ -1622,12 +1628,15 @@ impl SessionLog {
         }
     }
 
-    /// Notes where each player's chain stands in the records the journal synced so far.
-    pub fn advance_durable(&mut self) {
-        let Some(journal) = &self.journal else {
-            return;
-        };
-        let durable = journal.watch().durable();
+    /// Notes where each player's chain stands once the first `durable` records the log wrote
+    /// into its journal's sink are synced, as the sink's writer counts them.
+    pub fn advance_durable(&mut self, durable: u64) {
+        debug_assert!(
+            self.journal
+                .as_ref()
+                .is_some_and(|journal| durable <= journal.written()),
+            "durable records are records the log wrote into its journal"
+        );
         while let Some(journaled) = self.journaled.front()
             && journaled.record < durable
         {
@@ -1643,20 +1652,16 @@ impl SessionLog {
         self.durable.get(slot.index()).copied().flatten()
     }
 
-    /// The journal the log writes to, once it keeps one.
-    pub const fn journal(&self) -> Option<&Journal> {
-        self.journal.as_ref()
-    }
-
     /// Writes the entry the log took last into its journal, when it keeps one.
-    fn journal_last_entry(&self) {
-        if let Some(journal) = &self.journal {
-            self.journal_entry(journal, offset(self.entries.len() - 1));
+    fn journal_last_entry(&mut self) {
+        if let Some(mut journal) = self.journal.take() {
+            self.journal_entry(&mut journal, offset(self.entries.len() - 1));
+            self.journal = Some(journal);
         }
     }
 
     /// Writes the entry `at` into `journal`.
-    fn journal_entry(&self, journal: &Journal, at: u32) {
+    fn journal_entry(&self, journal: &mut Journal, at: u32) {
         journal.append(|out| match self.entries[at as usize] {
             Entry::Packet(packet) => {
                 out.push(JOURNAL_PACKET);

@@ -17,7 +17,7 @@ flowchart TB
     subgraph services["Services"]
         net
         content:::planned
-        store:::planned
+        store
         identity:::planned
         ownership:::planned
         payments:::planned
@@ -38,6 +38,7 @@ flowchart TB
     verifier --> runner
     lancheck --> verifier
     lancheck --> net
+    server --> store
     net --> store
     runner --> package
     runner --> protocol
@@ -61,7 +62,7 @@ Each layer uses the layers below it.
 | --- | --- | --- |
 | `common` | built | The vocabulary that crates which do not depend on each other share: the player slot, ticks, segment seed and 32-byte values written as hex, and a package's fingerprint |
 | `math` | built | Fixed-point numbers, 3D vectors, trig, exact 256-bit products, counter-based RNG |
-| `protocol` | built | The open protocol: signatures, session key delegations, the connection's handshake, input chains, the seed chain and the session log ([Protocol Spec](05-protocol-spec.md)) |
+| `protocol` | built | The open protocol: signatures, session key delegations, the connection's handshake, input chains, the seed chain and the session log, with no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | built | The Rhai host: compiles scripts, and runs each call under its limits; the script API itself is in `capabilities` ([Script API](08-script-api.md)) |
 | `capabilities` | built | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
@@ -72,7 +73,7 @@ Each layer uses the layers below it.
 | `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | built | Lightyear over QUIC (WebTransport): handshake, replication; internal |
 | `log` | built | The binaries' log output: text on standard error, and JSON lines into a file; the events a tool reads back from those lines |
-| `store` | planned | Durable and secret files, data directories and their locks, and the worker threads that write them, each with its failure ([Storage and workers](11-storage.md)) |
+| `store` | built | Durable and secret files, data directories and their locks, and the worker threads that write them, each with its failure ([Storage and workers](11-storage.md)) |
 | `launcher` | planned | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | built | Bevy app: rendering, input, UI, audio, prediction |
 | `content` | planned | Package signatures, pinning, cache, Blossom fetch |
@@ -87,7 +88,7 @@ A module is built when the workspace has its crate, `campfire-<module>` in `sour
 
 `lan-check` is a check, not an engine crate: it lives in `source/checks/`, apart from `source/crates/`, and nothing depends on it. Each crate's folder has its package's name, `campfire-` and the module: `source/crates/campfire-math/`, `source/checks/campfire-lan-check/`.
 
-Dependencies: `server` and `client` → `net` → `runner`; `verifier` → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `log` depends on no engine crate; the binaries, `net`, `runner` and `verifier` use it, and the tests of `sim` and `capabilities` use its internals. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
+Dependencies: `server` and `client` → `net` → `runner`; `server` and `net` → `store`; `verifier` → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `store` depends on no engine crate, and no crate of the deterministic core depends on it. `log` depends on no engine crate; the binaries, `net`, `runner` and `verifier` use it, and the tests of `sim` and `capabilities` use its internals. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
 
 Outside the engine crates: the reference MOBA and bots. The tests of `package` and `runner`, and `lan-check`, use them as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 
@@ -106,6 +107,7 @@ These rules keep the code's structure from drifting. Each has a test that fails 
 | Restored state is checked like package data: a restore gives an error for every flaw, never a panic, and what it accepts plays on without one. Its times and counts stay within what a match makes: the tick, every time and every count are at most 2⁶², which no match reaches, so no sum of two overflows; every period is at least a tick; and every relation a system takes between two restored values, or between one and the books, holds, as the start of an attack under way, its resolve less its windup, is no sooner than tick 0. | Every state type's check, a required method of the state traits, which the compiler proves; the snapshot fuzz, which flips each byte of a proving match's snapshot, restores it, and plays five ticks on what restores; the structured fuzz, which puts into that snapshot values of each state type its decode accepts, the edges of every number among them, and does the same; a restore test at the limits of each state type's times and counts |
 | Each rule of a network session has one owner on each side, and a client that follows the rules is never refused. | The net scenarios under load |
 | `common` depends on no crate but `serde`. | The manifest test of `common` |
+| Only `store` writes a file or starts a thread ([Storage and workers](11-storage.md#structural-rules)): the deterministic core writes no file and starts no thread. | `disallowed-methods` in `clippy.toml`, which fails the check chain at compile time; the storage rules test of `common`, which checks the list and where code expects the lint |
 
 **Books.** A match's books are built by one pure function of its packages and a tick rate, with no world: the unit types and their tags, the tracks, the modifiers and the actions with their params and effect lists, the AIs, and the projectile and area specs. The package load calls it at the fastest rate the manifest allows, where a time counts the most ticks, so what the books cannot hold fails the load; a match calls it at its own rate and puts what it gives in place. The order of every id is the order the builder loads in: the tags, the tracks, every package's modifiers, then each package's actions and unit types, the mode's first. A script is named by its place in the order a match compiles them, and the hooks it defines come from what the load read of it, so no book needs a script host.
 

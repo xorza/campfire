@@ -1,9 +1,7 @@
 use blake3::Hasher;
 
-use crate::journal::error::JournalError;
+use crate::journal::error::NotJournal;
 
-/// Starts every journal and states its version, so other bytes are refused at once.
-pub(crate) const JOURNAL_TAG: &[u8] = b"campfire/journal/v1";
 /// Starts the hash of every frame, so no other BLAKE3 use can produce one.
 const FRAME_DOMAIN: &[u8] = b"campfire/journal-frame/v1";
 /// The longest record a frame holds: a longer length is a torn or corrupted frame.
@@ -23,14 +21,17 @@ pub struct JournalFrames<'a> {
 }
 
 impl<'a> JournalFrames<'a> {
+    /// Starts every journal and states its version, so other bytes are refused at once.
+    pub const TAG: &'static [u8] = b"campfire/journal/v1";
+
     /// The frames of `bytes`; an error when they do not start with the journal's tag.
-    pub fn new(bytes: &'a [u8]) -> Result<JournalFrames<'a>, JournalError> {
-        if !bytes.starts_with(JOURNAL_TAG) {
-            return Err(JournalError::NotJournal);
+    pub fn new(bytes: &'a [u8]) -> Result<JournalFrames<'a>, NotJournal> {
+        if !bytes.starts_with(JournalFrames::TAG) {
+            return Err(NotJournal);
         }
         Ok(JournalFrames {
             bytes,
-            at: JOURNAL_TAG.len(),
+            at: JournalFrames::TAG.len(),
         })
     }
 

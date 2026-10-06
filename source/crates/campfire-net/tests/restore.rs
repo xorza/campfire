@@ -6,7 +6,7 @@ use std::fs;
 
 use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{RestoreError, SessionDir, TickHashes};
+use campfire_net::{RestoreError, ServerData, SessionDir, TickHashes};
 use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Runner, Session};
 
@@ -65,13 +65,15 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
         .session_id();
     local.stop_server();
 
-    // The private record names another release: the restore refuses it, naming the release.
+    // The private record, at the path Stage 6 names, names another release: the restore refuses
+    // it, naming the release.
+    let stopped = ServerData::open(&data.0).unwrap();
     let path = data.0.join("sessions").join(id.to_string()).join("private");
     let ours = fs::read(&path).unwrap();
     let mut private = SessionPrivate::decode(&ours).unwrap();
     private.terms.release = "0.0.9".to_owned();
     fs::write(&path, private.encode()).unwrap();
-    let dir = SessionDir::find(&data.0).unwrap().unwrap();
+    let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let refused = dir.restore().err();
     assert!(
         matches!(&refused, Some(RestoreError::OtherRelease(release)) if release == "0.0.9"),
@@ -84,9 +86,9 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
     let session = dir.restore().unwrap().unwrap();
     let key = LocalMatch::server_keypair();
     let file = session
-        .abort(&data.0, local.packages(), key, |aux| aux.fill(6))
+        .abort(&stopped, local.packages(), key, |aux| aux.fill(6))
         .unwrap();
-    assert!(SessionDir::find(&data.0).unwrap().is_none());
+    assert!(SessionDir::find(&stopped).unwrap().is_none());
     let log = SessionLog::decode(&fs::read(&file).unwrap()).unwrap();
     let result = *log.result().unwrap();
     assert_eq!(

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use campfire_net::OrderScriptError;
 use campfire_protocol::LogError;
+use campfire_store::DataDirError;
 
 use crate::process::Process;
 use crate::target_name::TargetName;
@@ -38,6 +39,11 @@ pub(crate) enum CheckError {
         line: usize,
         error: serde_json::Error,
     },
+    /// A host's data directory does not open.
+    Data {
+        path: PathBuf,
+        error: DataDirError,
+    },
     Script(OrderScriptError),
     /// The session log the server published does not decode.
     SessionLog(LogError),
@@ -62,6 +68,7 @@ impl fmt::Display for CheckError {
                 line,
                 error,
             } => write!(f, "line {line} of the log of {process}: {error}"),
+            CheckError::Data { path, error } => write!(f, "{}: {error}", path.display()),
             CheckError::Script(error) => write!(f, "a bot's script: {error}"),
             CheckError::SessionLog(error) => write!(f, "the published session log: {error}"),
         }

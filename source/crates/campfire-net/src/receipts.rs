@@ -8,6 +8,7 @@ use campfire_protocol::{DurableHead, Receipt, SessionId, SignedReceipt};
 use campfire_runner::Session;
 use lightyear::prelude::MessageSender;
 
+use crate::journal_watch::JournalWatch;
 use crate::net_protocol::MatchChannel;
 use crate::seats::Seats;
 use crate::server_signer::ServerSigner;
@@ -39,6 +40,7 @@ impl Receipts {
         time: Res<'_, Time<Real>>,
         mut receipts: ResMut<'_, Receipts>,
         mut session: ResMut<'_, Session>,
+        journal: Option<Res<'_, JournalWatch>>,
         signer: Res<'_, ServerSigner>,
         seats: Res<'_, Seats>,
         mut links: Query<'_, '_, &mut MessageSender<SignedReceipt>>,
@@ -48,7 +50,9 @@ impl Receipts {
             return;
         }
         receipts.next = now + INTERVAL;
-        session.advance_durable();
+        if let Some(journal) = journal {
+            session.advance_durable(journal.0.durable());
+        }
         let log = session.log();
         for (slot, seat) in seats.iter() {
             let (Some(link), Some(head)) = (seat.link, log.durable_head(slot)) else {

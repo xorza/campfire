@@ -36,10 +36,10 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_log::Logging;
-use campfire_net::{NetProtocol, OrderScript, Pace, SimClient};
+use campfire_net::{ClientData, KeyFile, NetProtocol, OrderScript, Pace, SimClient};
 use campfire_package::ModePackages;
+use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
-use campfire_protocol::{CertificateHash, KeyFile};
 use campfire_runner::SessionRules;
 use campfire_sim::TickRate;
 use lightyear::prelude::client::{ClientPlugins, RawClient};
@@ -141,8 +141,18 @@ fn main() -> ExitCode {
         Ok(key) => key,
         Err(code) => return code,
     };
+    let data = match &args.data {
+        None => None,
+        Some(path) => match ClientData::open(path) {
+            Ok(data) => Some(Arc::new(data)),
+            Err(error) => {
+                error!(data = %path.display(), %error, "the data directory does not open");
+                return ExitCode::FAILURE;
+            }
+        },
+    };
     let pace = Arc::new(Pace::default());
-    let mut connection = match Connection::open(&args, &packages, &pace) {
+    let mut connection = match Connection::open(&args, data.as_deref(), &packages, &pace) {
         Ok(connection) => connection,
         Err(code) => return code,
     };
@@ -168,7 +178,7 @@ fn main() -> ExitCode {
             packages,
             clock: unix_now,
             entropy: fill,
-            data: args.data.clone(),
+            data,
         },
     ));
     app.insert_resource(PredictionManager::default());

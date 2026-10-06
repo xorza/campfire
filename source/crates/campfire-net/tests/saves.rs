@@ -12,8 +12,8 @@ use campfire_capabilities::{SaveBy, SavesData};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
 use campfire_net::{
-    InputsDiscarded, JoinState, PendingSaves, SaveCommand, SaveRefused, SessionDir, SimServer,
-    Speed,
+    InputsDiscarded, JoinState, PendingSaves, SaveCommand, SaveRefused, ServerData, SessionDir,
+    SimServer, Speed,
 };
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
 use campfire_runner::{InputRules, Runner, Session};
@@ -96,7 +96,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     for _ in 0..10 {
         local.step();
     }
-    SimServer::settle_checkpoint(local.server_mut().world_mut()).unwrap();
+    SimServer::settle_checkpoint(local.server_mut().world_mut());
     let save = log(&local).checkpoints().next().unwrap().clone();
     assert_eq!(save.segment, 1);
     for _ in 0..30 {
@@ -148,7 +148,8 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
 
     // The published log holds the segment before the save and the one after it, and verifies.
     SimServer::end_session(local.server_mut().world_mut(), Outcome::Aborted).unwrap();
-    let file = SessionDir::publish(&data.0, log(&local)).unwrap();
+    let file =
+        SessionDir::publish(local.server().world().resource::<ServerData>(), log(&local)).unwrap();
     let published = SessionLog::decode(&fs::read(file).unwrap()).unwrap();
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&save]);
     let ticks = published.next_tick();
@@ -175,7 +176,7 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
     for _ in 0..40 {
         local.step();
     }
-    SimServer::settle_checkpoint(local.server_mut().world_mut()).unwrap();
+    SimServer::settle_checkpoint(local.server_mut().world_mut());
     let save = log(&local).checkpoints().next().unwrap().clone();
     assert_eq!((save.segment, save.tick), (1, Tick::new(30)));
     let id = log(&local).session_id();
@@ -202,7 +203,7 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
     // written again.
     local.restart_server();
     assert_eq!(local.next_tick(End::Server), 30);
-    SimServer::settle_checkpoint(local.server_mut().world_mut()).unwrap();
+    SimServer::settle_checkpoint(local.server_mut().world_mut());
     assert_eq!(log(&local).checkpoint_at(save.tick), Some(&save));
     assert!(snapshot.exists());
 }

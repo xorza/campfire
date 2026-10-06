@@ -1,15 +1,19 @@
 //! Checkpoints on a server that keeps its data: taken on their thread at the boundaries due, a
 //! restore builds the match from the latest one with a record and replays from there, takes a
 //! checkpoint begun with no record again, and the published log verifies with its snapshots; a
-//! checkpoint past the seed chain's last segment ends the session aborted.
+//! checkpoint past the seed chain's last segment ends the session aborted, and one whose
+//! snapshot is not written ends the server.
 
 use std::fs;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU8, NonZeroU32};
 use std::path::{Path, PathBuf};
 
+use bevy_app::AppExit;
 use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{SeedsRanOut, SessionDir, SimServer, TickHashes};
+use campfire_net::{
+    CheckpointFailed, SeedsRanOut, ServerData, ServerExit, SessionDir, SimServer, TickHashes,
+};
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Runner, Session};
@@ -36,7 +40,7 @@ fn checkpointed(data: &Scratch) -> (LocalMatch, Vec<StateHash>) {
         for _ in 0..steps {
             local.step();
         }
-        SimServer::settle_checkpoint(local.server_mut().world_mut()).unwrap();
+        SimServer::settle_checkpoint(local.server_mut().world_mut());
     }
     assert_eq!(log(&local).checkpoints().count(), 2);
     let hashes = local
@@ -64,9 +68,10 @@ fn snapshots(data: &Scratch, local: &LocalMatch) -> PathBuf {
 /// Ends the session aborted, publishes its log, and checks it as a verifier does with the
 /// snapshots in `snapshots`: each snapshot is the one its checkpoint fingerprints and restores to
 /// its state hash, and the replay from tick 0 meets each checkpoint's hash and the result.
-fn verifies(local: &mut LocalMatch, data: &Scratch, snapshots: &Path) {
+fn verifies(local: &mut LocalMatch, snapshots: &Path) {
     SimServer::end_session(local.server_mut().world_mut(), Outcome::Aborted).unwrap();
-    let file = SessionDir::publish(&data.0, log(local)).unwrap();
+    let file =
+        SessionDir::publish(local.server().world().resource::<ServerData>(), log(local)).unwrap();
     let published = SessionLog::decode(&fs::read(file).unwrap()).unwrap();
     let packages: &ModePackages = local.packages();
     for record in published.checkpoints() {
@@ -103,7 +108,7 @@ fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_sn
         local.step();
     }
     let snapshots = snapshots(&data, &local);
-    verifies(&mut local, &data, &snapshots);
+    verifies(&mut local, &snapshots);
 }
 
 #[test]
@@ -115,8 +120,10 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
     let id = log(&local).session_id();
     local.stop_server();
 
-    // A crash between the second checkpoint's begin and its record: the journal ends before
-    // the record, and the snapshot is gone.
+    // A crash while the second checkpoint's snapshot was on its thread: the journal holds the
+    // ticks the server ran after its begin, and no record, and the snapshot is gone. The record
+    // came in its own time, by the disk's: its frame alone goes, so the ticks after the begin
+    // stay whatever frame it came in.
     let journal = data.0.join("sessions").join(id.to_string()).join("journal");
     let bytes = fs::read(&journal).unwrap();
     let mut frames = JournalFrames::new(&bytes).unwrap();
@@ -127,18 +134,21 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
             break;
         };
         if record[0] == 4 {
-            done.push(start);
+            done.push(start..frames.whole());
         }
     }
     assert_eq!(done.len(), 2);
-    fs::write(&journal, &bytes[..done[1]]).unwrap();
+    let without = [&bytes[..done[1].start], &bytes[done[1].end..]].concat();
+    fs::write(&journal, without).unwrap();
     let file = snapshots.join(second.snapshot.to_string());
     fs::remove_file(&file).unwrap();
 
     // The restore builds the match from the first checkpoint, replays to the cut, and takes the
     // second again as its replay passes tick 160: the same record, its snapshot written again.
-    let dir = SessionDir::find(&data.0).unwrap().unwrap();
+    let stopped = ServerData::open(&data.0).unwrap();
+    let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let cut = dir.restore().unwrap().unwrap().log.next_tick();
+    drop(stopped);
     assert!(cut > Tick::new(160), "{cut}");
     local.restart_server();
     let world = local.server().world();
@@ -150,7 +160,7 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
         (second.state_hash, second.snapshot, &second.carry)
     );
     assert!(file.exists());
-    verifies(&mut local, &data, &snapshots);
+    verifies(&mut local, &snapshots);
 }
 
 #[test]
@@ -176,4 +186,29 @@ fn a_checkpoint_past_the_seed_chain_ends_the_session_aborted() {
             tick: Tick::new(30)
         }]
     );
+}
+
+#[test]
+fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
+    // A file holds the place of the session's snapshots' directory, so the snapshot of the
+    // checkpoint before tick 30 is not written, on every OS.
+    let data = Scratch::new("checkpoint-fault");
+    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    local.keep_data(data.0.clone());
+    local.start_match();
+    let place = snapshots(&data, &local);
+    fs::write(&place, b"").unwrap();
+    SimServer::request_checkpoint(local.server_mut().world_mut(), Tick::new(30));
+    for _ in 0..40 {
+        local.step();
+    }
+    // The fault reaches `Faults`, a snapshot's, which ends the server.
+    let world = local.server_mut().world_mut();
+    SimServer::settle_checkpoint(world);
+    let code = NonZeroU8::new(ServerExit::STORAGE_FAILED).unwrap();
+    assert_eq!(ServerExit::due(world, false), Some(AppExit::Error(code)));
+    assert_eq!(ServerExit::due(world, false), None);
+    assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);
+    assert_eq!(local.log().take::<CheckpointFailed>().len(), 1);
+    assert!(place.is_file());
 }

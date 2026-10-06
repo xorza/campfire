@@ -1,10 +1,9 @@
 use std::fmt;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
@@ -14,7 +13,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::Commands;
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_common::PlayerSlot;
@@ -23,12 +22,13 @@ use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
 use campfire_runner::InputRules;
 use campfire_sim::TickRate;
+use campfire_store::Worker;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::{RawServer, ServerPlugins};
 use lightyear::prelude::{Link, LinkOf, Linked, PeerAddr, ReplicationSender};
 use tracing::error;
 
-use crate::data_dir::DataDir;
+use crate::key_file::KeyFile;
 use crate::lobby::{Lobby, LobbySetup};
 use crate::local_pace::LocalPace;
 use crate::local_server::error::LocalServerError;
@@ -36,6 +36,7 @@ use crate::local_session::LocalSession;
 use crate::net_protocol::NetProtocol;
 use crate::pace::Pace;
 use crate::server_bots::{ServerBots, SlotBot};
+use crate::server_data::ServerData;
 use crate::server_exit::ServerExit;
 use crate::server_setup::ServerSetup;
 use crate::session_dir::{RestoredSession, SessionDir};
@@ -60,11 +61,12 @@ const FRAME: Duration = Duration::from_millis(2);
 /// match or aborted, publishes its log, and its thread ends. Both ends follow the setup's pace.
 pub struct LocalServer {
     stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
     pin: ServerPin,
     /// The client's end of the link, until the client takes it.
     link: Option<CrossbeamIo>,
     relinks: Relinks,
+    /// Dropped after the server's `Drop` asks it to stop.
+    _worker: Worker,
 }
 
 /// The client's end of the new link a local server makes once it starts again after a load,
@@ -120,13 +122,6 @@ pub struct LocalServerSetup {
 #[derive(Resource, Debug)]
 struct Stop(Arc<AtomicBool>);
 
-/// The local server's data directory, which its app keeps locked, and where the logs go.
-#[derive(Resource, Debug)]
-struct Data {
-    path: PathBuf,
-    _dir: DataDir,
-}
-
 impl LocalServer {
     /// Opens the local server's data directory and session, and starts its thread. An error when
     /// the directory does not open, a session an earlier start left does not end, or the new
@@ -140,9 +135,10 @@ impl LocalServer {
             clock,
             entropy,
         } = setup;
-        let dir = DataDir::open(&data, entropy).map_err(LocalServerError::Data)?;
-        let key = dir.key;
-        LocalServer::end_earlier(&data, &packages, key, entropy)?;
+        let dir = ServerData::open(&data).map_err(LocalServerError::Data)?;
+        let key =
+            KeyFile::read_or_create(&dir.key_file(), entropy).map_err(LocalServerError::Key)?;
+        LocalServer::end_earlier(&dir, &packages, key, entropy)?;
         let server = ServerSetup {
             key,
             certificate: CERTIFICATE,
@@ -178,7 +174,7 @@ impl LocalServer {
             seed_chain,
             terms: lobby.terms().clone(),
         };
-        let session = SessionDir::create(&data, &private).map_err(LocalServerError::NewSession)?;
+        let session = SessionDir::create(&dir, &private).map_err(LocalServerError::NewSession)?;
         lobby.keep_files(session.start().map_err(LocalServerError::NewJournal)?);
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let stop = Arc::new(AtomicBool::new(false));
@@ -194,17 +190,13 @@ impl LocalServer {
             restart: Arc::new(AtomicBool::new(false)),
             relinks: relinks.clone(),
         };
-        let thread = thread::Builder::new()
-            .name("local server".to_owned())
-            .spawn(move || {
-                let mut app = runs.app(server_io, dir);
-                app.insert_resource(lobby);
-                runs.run(app);
-            })
-            .expect("the OS starts a thread");
+        let worker = Worker::start("local server", move || {
+            let mut app = runs.app(server_io, dir);
+            app.insert_resource(lobby);
+            runs.run(app);
+        });
         Ok(LocalServer {
             stop,
-            thread: Some(thread),
             pin: ServerPin {
                 key: key.x_only_public_key().0,
                 certificate: CERTIFICATE,
@@ -212,6 +204,7 @@ impl LocalServer {
             },
             link: Some(client_io),
             relinks,
+            _worker: worker,
         })
     }
 
@@ -233,7 +226,7 @@ impl LocalServer {
     /// Ends aborted a session an earlier start left under `data`, of the mode `packages` holds,
     /// and publishes its log; removes one whose match never started.
     fn end_earlier(
-        data: &Path,
+        data: &ServerData,
         packages: &ModePackages,
         key: Keypair,
         entropy: fn(&mut [u8; 32]),
@@ -271,9 +264,7 @@ impl LocalServer {
             return;
         }
         let stop = world.resource::<Stop>().0.load(Ordering::Relaxed);
-        let exit = world
-            .resource_scope(|world, data: Mut<'_, Data>| ServerExit::due(world, &data.path, stop));
-        if let Some(exit) = exit {
+        if let Some(exit) = ServerExit::due(world, stop) {
             world.write_message(exit);
         }
     }
@@ -292,9 +283,6 @@ impl fmt::Debug for LocalServer {
 impl Drop for LocalServer {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
-            thread.join().expect("the local server does not panic");
-        }
     }
 }
 
@@ -323,8 +311,8 @@ impl Runs {
     /// A new app, which restores the session from the data directory in its first frame, the
     /// client's end of its new link given to the client.
     fn restored(&self) -> Result<App, LocalServerError> {
-        let dir = DataDir::open(&self.data, self.server.entropy).map_err(LocalServerError::Data)?;
-        let session = SessionDir::waiting(&self.data).map_err(LocalServerError::Waiting)?;
+        let dir = ServerData::open(&self.data).map_err(LocalServerError::Data)?;
+        let session = SessionDir::waiting(&dir).map_err(LocalServerError::Waiting)?;
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let mut app = self.app(server_io, dir);
         app.insert_resource(PendingRestore {
@@ -339,7 +327,7 @@ impl Runs {
 
     /// An app of the server: its plugins, its end of the link `link`, and its data directory
     /// `dir`, which it holds locked.
-    fn app(&self, link: CrossbeamIo, dir: DataDir) -> App {
+    fn app(&self, link: CrossbeamIo, dir: ServerData) -> App {
         let mut app = App::new();
         app.add_plugins((
             TaskPoolPlugin::default(),
@@ -364,10 +352,7 @@ impl Runs {
             },
         );
         app.insert_resource(LocalSession);
-        app.insert_resource(Data {
-            path: self.data.clone(),
-            _dir: dir,
-        });
+        app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
         app.insert_resource(Restart(Arc::clone(&self.restart)));
         app.add_systems(

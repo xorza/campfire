@@ -46,6 +46,10 @@ impl Logging {
             .with_ansi(io::stderr().is_terminal())
             .with_filter(terminal_filter.filter);
         let path = env::var_os("CAMPFIRE_LOG");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "tracing writes the file of JSON lines as it logs, outside the store's workers"
+        )]
         let (file, failed) = match path.as_ref().map(File::create).transpose() {
             Ok(file) => (file, None),
             Err(error) => (None, Some(error)),

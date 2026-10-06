@@ -20,11 +20,10 @@ use campfire_capabilities::{
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::{
-    Applied, DurableError, Journal, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms,
-};
+use campfire_protocol::{Applied, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StableId, TickRate};
+use campfire_store::DurableError;
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LinkSystems, LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget,
@@ -43,7 +42,10 @@ use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
 use crate::events::unit_died::UnitDied;
+use crate::faults::Faults;
+use crate::faults::fault::Fault;
 use crate::input_message::InputMessage;
+use crate::journal_watch::JournalWatch;
 use crate::lobby::Lobby;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
@@ -109,6 +111,7 @@ impl TickHashes {
 
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
+        app.init_resource::<Faults>();
         app.add_systems(
             Update,
             (
@@ -139,6 +142,10 @@ impl Plugin for SimServer {
         app.add_systems(
             Update,
             Checkpoints::finish.run_if(resource_exists::<Checkpoints>),
+        );
+        app.add_systems(
+            Update,
+            JournalWatch::warn_slow.run_if(resource_exists::<JournalWatch>),
         );
         app.add_systems(
             Update,
@@ -208,7 +215,7 @@ impl SimServer {
     /// start tick. The server's bots play their slots.
     /// From the first tick on, every unit replicates to the clients whose team sees it, and the
     /// owner's client predicts it, but a projectile or an area. With its files, the log goes into
-    /// the journal as the server logs it, `SessionJournal` watches it, and the server takes the
+    /// the journal as the server logs it, `JournalWatch` watches it, and the server takes the
     /// checkpoints due. The door takes the joins from then on.
     pub(crate) fn start_match(
         world: &mut World,
@@ -275,7 +282,7 @@ impl SimServer {
     /// begins there. It logs `Disconnected` for each slot a player controls, whose grace
     /// period runs from then, and runs the match on from the next fixed tick, so the ticks the
     /// stop lost take no time in the sim. The journal goes on from its last record, and
-    /// `SessionJournal` watches it. No client is linked: the players come back through the door.
+    /// `JournalWatch` watches it. No client is linked: the players come back through the door.
     pub fn restore_match(
         world: &mut World,
         restored: RestoredSession,
@@ -299,16 +306,18 @@ impl SimServer {
             .last()
             .map(|record| (record.segment, record.snapshot));
         if let Some((segment, fingerprint)) = latest {
-            let snapshot = fs::read(snapshots.join(fingerprint.to_string()))
-                .map_err(RestoreMatchError::ReadSnapshot)?;
+            let snapshot =
+                fs::read(snapshots.file(fingerprint)).map_err(RestoreMatchError::ReadSnapshot)?;
             Session::resume(world, log.rewound(), seeds, packages, segment, &snapshot)
                 .map_err(RestoreMatchError::Resume)?;
         } else {
             Session::start(world, log.rewound(), seeds, packages)
                 .map_err(RestoreMatchError::Start)?;
         }
-        world.insert_resource(SessionJournal(journal.watch()));
-        world.resource_mut::<Session>().resume_journal(journal);
+        world.insert_resource(JournalWatch(journal.watch()));
+        world
+            .resource_mut::<Session>()
+            .resume_journal(Box::new(journal));
         let signer = ServerSigner::new(server.key, server.entropy);
         loop {
             Checkpoints::take_again(world, &snapshots, &signer)
@@ -397,9 +406,13 @@ impl SimServer {
     }
 
     /// Waits for the checkpoint on its thread in the session in `world`, whose server keeps its
-    /// files, and logs its record; an error when its snapshot was not written.
-    pub fn settle_checkpoint(world: &mut World) -> Result<(), DurableError> {
-        Checkpoints::settle(world)
+    /// files, and logs its record; reports the fault when its snapshot was not written.
+    pub fn settle_checkpoint(world: &mut World) {
+        if let Err(error) = Checkpoints::settle(world) {
+            world
+                .resource_mut::<Faults>()
+                .report(Fault::Snapshot(error));
+        }
     }
 
     /// Makes a checkpoint due at the boundary before `tick` in the session in `world`, whose
@@ -408,25 +421,19 @@ impl SimServer {
         world.resource_mut::<Checkpoints>().request(tick);
     }
 
-    /// The failure of a checkpoint's snapshot write, once one failed, given once: the server
-    /// exits, as on a failed journal.
-    pub fn checkpoint_failure(world: &mut World) -> Option<DurableError> {
-        world
-            .get_resource_mut::<Checkpoints>()
-            .and_then(|mut checkpoints| checkpoints.take_failure())
-    }
-
     /// Opens the door of the session of `terms` on the server of `server`, which signs what it
     /// logs; with a `journal`, the log goes into it from now on.
     fn open_door(
         world: &mut World,
         terms: SessionTerms,
         server: &ServerSetup,
-        journal: Option<Journal>,
+        journal: Option<SessionJournal>,
     ) {
         if let Some(journal) = journal {
-            world.insert_resource(SessionJournal(journal.watch()));
-            world.resource_mut::<Session>().keep_journal(journal);
+            world.insert_resource(JournalWatch(journal.watch()));
+            world
+                .resource_mut::<Session>()
+                .keep_journal(Box::new(journal));
         }
         world.insert_resource(ServerSigner::new(server.key, server.entropy));
         world.insert_resource(Door::new(Offering::new(terms, server)));

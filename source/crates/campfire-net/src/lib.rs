@@ -8,12 +8,15 @@
 mod bot_driver;
 mod checkpoint_thread;
 mod checkpoints;
-mod data_dir;
+mod client_data;
 mod door;
 mod error;
 mod events;
+mod faults;
 mod input_message;
 mod join;
+mod journal_watch;
+mod key_file;
 mod leave_match;
 mod lobby;
 #[cfg(feature = "internals")]
@@ -33,6 +36,7 @@ mod receipts;
 mod save_command;
 mod seats;
 mod server_bots;
+mod server_data;
 mod server_exit;
 mod server_setup;
 mod server_signer;
@@ -71,6 +75,7 @@ pub use events::session_aborted::SessionAborted;
 pub use events::session_refused::SessionRefused;
 pub use events::session_restored::SessionRestored;
 pub use events::session_written::SessionWritten;
+pub use events::slow_sync::SlowSync;
 pub use events::ticks_caught_up::TicksCaughtUp;
 pub use events::time_dropped::TimeDropped;
 
@@ -87,13 +92,17 @@ pub use save_command::SaveCommand;
 
 pub use net_protocol::{InputChannel, NetProtocol};
 
-pub use data_dir::DataDir;
-pub use data_dir::error::DataDirError;
+pub use client_data::ClientData;
+pub use journal_watch::JournalWatch;
+pub use key_file::KeyFile;
+pub use key_file::error::KeyFileError;
 pub use order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
 pub use server_bots::{ServerBots, SlotBot};
+pub use server_data::ServerData;
 pub use server_exit::ServerExit;
 pub use server_setup::ServerSetup;
 pub use session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
+pub use session_dir::snapshots::Snapshots;
 pub use session_dir::{RestoredSession, SessionDir, SessionFiles};
 pub use session_journal::SessionJournal;
 pub use session_times::SessionTimes;

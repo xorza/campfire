@@ -8,9 +8,10 @@ pub(crate) mod error;
 
 /// A file written whole or not at all, which a crash leaves either as it was or as written: the
 /// bytes go to a temporary file beside it, which is synced and renamed over its name, and on Unix
-/// the directory is synced too, so the new name survives a crash as well as the bytes. On Unix
-/// the file is its owner's only, mode 0600. Windows syncs no directory, and its rename is the
-/// last step.
+/// the directory is synced too, so the new name survives a crash as well as the bytes. The
+/// temporary file is always made new, a stale one a crash left removed first, so on Unix the
+/// file is its owner's only, mode 0600, whatever mode the stale one had. Windows syncs no
+/// directory, and its rename is the last step.
 #[derive(Debug)]
 pub struct DurableFile;
 
@@ -23,6 +24,11 @@ impl DurableFile {
         let mut temporary = name.to_owned();
         temporary.push(".part");
         let temporary = directory.join(temporary);
+        match fs::remove_file(&temporary) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(DurableError::RemoveStale(error)),
+        }
         let mut file = DurableFile::create(&temporary).map_err(DurableError::Create)?;
         file.write_all(bytes).map_err(DurableError::Write)?;
         file.sync_all().map_err(DurableError::Sync)?;
@@ -50,10 +56,19 @@ impl DurableFile {
         DurableFile::sync_directory(parent).map_err(DurableError::SyncDirectory)
     }
 
-    /// A new file at `path`, emptied if it is there, its owner's only on Unix.
+    /// Removes the directory `path` and all it holds, and syncs its parent, so it does not come
+    /// back after a crash.
+    pub fn remove_dir(path: &Path) -> Result<(), DurableError> {
+        let parent = path.parent().ok_or(DurableError::NoName)?;
+        fs::remove_dir_all(path).map_err(DurableError::Remove)?;
+        DurableFile::sync_directory(parent).map_err(DurableError::SyncDirectory)
+    }
+
+    /// A new file at `path`, its owner's only on Unix; an error when there is a file, whose mode
+    /// would stay what it was.
     fn create(path: &Path) -> io::Result<File> {
         let mut options = OpenOptions::new();
-        options.write(true).create(true).truncate(true);
+        options.write(true).create_new(true);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;

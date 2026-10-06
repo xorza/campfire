@@ -1,6 +1,6 @@
 use super::*;
 use crate::journal::journal_frames::JournalFrames;
-use crate::journal::tests::MemoryFile;
+use crate::journal::tests::MemorySink;
 
 /// The checkpoint record of the segment after `log`'s last, at its next tick, carrying its own
 /// state, with a state hash and a snapshot fingerprint of `byte`.
@@ -271,8 +271,8 @@ fn revealing_an_earlier_segments_seed_is_a_bug() {
 fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     // A save at tick 2, segment 1, then tick 2 runs y, and player 0 sends z for tick 3.
     let mut log = two_ticks();
-    let file = MemoryFile::new();
-    log.keep_journal(Journal::start(file.clone()));
+    let file = MemorySink::new();
+    log.keep_journal(file.boxed());
     let record = checkpoint(&log, 3);
     log.begin_checkpoint().unwrap();
     log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
@@ -295,8 +295,28 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     assert_eq!((log.next_tick(), log.segment()), (Tick::new(2), 1));
     assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));
     assert_eq!(log.carry(), record.carry);
-    drop(log);
     let journal = file.bytes();
+
+    // The log counts its journal's records on past the load: z again, in the record after the
+    // load's, is durable once the records through it are.
+    let written = JournalFrames::new(&journal).unwrap().count();
+    let written = u64::try_from(written).unwrap();
+    resent(0, &[&[(3, b"z")]], 0)[0]
+        .submit(&mut log, &mut applied)
+        .unwrap();
+    let slot = PlayerSlot::new(0);
+    log.advance_durable(written);
+    assert_eq!(log.durable_head(slot), None);
+    log.advance_durable(written + 1);
+    let Some(Controller::Player { chain, .. }) = log.controller(slot) else {
+        panic!("player 0 controls slot 0");
+    };
+    assert_eq!(
+        log.durable_head(slot).map(|head| (head.seq, head.head)),
+        Some((chain.next_seq() - 1, chain.head()))
+    );
+    drop(log);
+
     let records: Vec<&[u8]> = JournalFrames::new(&journal).unwrap().collect();
     assert_eq!(records.last().map(|record| record[0]), Some(7));
     let rebuilt = SessionLog::from_journal(records).unwrap();

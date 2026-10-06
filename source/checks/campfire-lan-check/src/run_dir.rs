@@ -14,6 +14,10 @@ pub(crate) struct RunDir {
 impl RunDir {
     /// Creates the directory of a run that started at `start` below `root`, and `root` if it
     /// does not exist; an error if the directory exists.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the LAN check writes its run directory, which a run of it reads and keeps"
+    )]
     pub(crate) fn create(root: &Path, start: SystemTime) -> Result<RunDir, CheckError> {
         let path = root.join(RunDir::name(start));
         let file = |at: &Path| {
@@ -66,6 +70,10 @@ impl RunDir {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test makes and removes the files of its fixtures"
+)]
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
