@@ -1,3 +1,7 @@
+use bevy_ecs::resource::Resource;
+use bevy_ecs::system::ResMut;
+use campfire_sim::{SimEdge, SimUpdate};
+
 use super::*;
 
 #[test]
@@ -105,8 +109,12 @@ fn on_mode_input(ctx, player, name, value) {
     assert!(game.sim.world.get_entity(tower).is_err());
 }
 
+/// The ticks a pass between two stages ran in, one count each pass.
+#[derive(Resource, Debug, Default)]
+struct GapRuns(u32);
+
 #[test]
-fn a_match_ends_once_and_then_no_stage_runs() {
+fn a_match_ends_once_and_then_no_stage_and_no_pass_between_them_runs() {
     // A timer counts every tick; inputs end the match.
     let script = r#"
 fn on_match_start(ctx) {
@@ -139,9 +147,21 @@ fn on_mode_input(ctx, player, name, value) {
     assert!(!game.sim.world.contains_resource::<MatchEnd>());
     assert_eq!(game.field("count"), StateValue::Int(2));
 
+    // A pass in each gap between stages counts its runs: the gap before the first stage and
+    // the one after each of the nine.
+    game.sim.world.init_resource::<GapRuns>();
+    game.sim.world.schedule_scope(SimUpdate, |_, schedule| {
+        let count = |mut runs: ResMut<'_, GapRuns>| runs.0 += 1;
+        schedule.add_systems(count.in_set(SimEdge::Start));
+        for stage in SimSet::ALL {
+            schedule.add_systems(count.in_set(SimEdge::After(stage)));
+        }
+    });
+
     // Team b wins in the Inputs stage of tick 2, so no later stage of tick 2 runs: a's grunt,
-    // 1, sent 5 m away, stands where it is, and the timer counts no more. In tick 3 nothing
-    // runs, the input to end again included.
+    // 1, sent 5 m away, stands where it is, and the timer counts no more. Of the gaps, only the
+    // one before Inputs runs in tick 2. In tick 3 nothing runs, the input to end again
+    // included.
     let grunt = game.entity(1);
     let mut destination = game.sim.world.get_mut::<Destination>(grunt).unwrap();
     destination.set(Some(at(5, 0)));
@@ -155,6 +175,16 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(game.units(), before);
     assert_eq!(game.field("count"), StateValue::Int(2));
     assert_eq!(game.sim.world.resource::<SimTick>().start(), Tick::new(4));
+    assert_eq!(game.sim.world.resource::<GapRuns>().0, 1);
+
+    // The grunt walks, so `keep_in_bounds`, in the gap after Collide, would clamp it back into
+    // the bounds; past the end it stays where it is put.
+    assert!(game.sim.world.entity(grunt).contains::<MoveStep>());
+    let away = at(10_000, 0);
+    *game.sim.world.get_mut::<Position>(grunt).unwrap() = away;
+    game.tick(&[]);
+    assert_eq!(game.sim.world.get::<Position>(grunt), Some(&away));
+    assert_eq!(game.sim.world.resource::<GapRuns>().0, 1);
 
     // `end(())` is a draw.
     let mut game = Game::new(script, ScriptLimits::ROOMY);
