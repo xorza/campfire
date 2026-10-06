@@ -251,6 +251,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `resources` | since 1.0 |
 | `relations` | since 1.0 |
 | `tags` | since 1.0 |
+| `players` | since 1.0 |
 | `state_version` | planned |
 
 ### The mode's `[combat]`
@@ -300,6 +301,14 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `teams` | since 1.0 |
 | `relation` | since 1.0 |
 | `vision` | since 1.0 |
+
+### The mode's `[players]`
+
+| Field | Status |
+| --- | --- |
+| `late_join` | since 1.0 |
+| `bot_takeover` | since 1.0 |
+| `leaver` | since 1.0 |
 
 ### An action, `[actions.<id>]`
 

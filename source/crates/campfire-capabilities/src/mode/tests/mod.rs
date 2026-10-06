@@ -33,6 +33,7 @@ use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::offer::Offer;
+use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
@@ -575,6 +576,7 @@ fn mode_files() -> ModeFiles {
             tags: BTreeMap::new(),
             tracks: tracks(),
             shop: None,
+            players: PlayersData::default(),
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),

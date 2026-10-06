@@ -8,6 +8,7 @@ use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_rules::CombatRules;
 use crate::items::shop_data::ShopData;
 use crate::mode::choice_data::ChoiceData;
+use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::players::resource_id::ResourceId;
@@ -67,6 +68,9 @@ pub struct ModeData {
     pub tracks: BTreeMap<DeclaredName, TrackData>,
     /// Where its units buy and sell items.
     pub shop: Option<ShopData>,
+    /// Who may take a slot once the match started.
+    #[serde(default)]
+    pub players: PlayersData,
 }
 
 impl ModeData {

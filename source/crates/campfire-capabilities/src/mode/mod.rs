@@ -85,6 +85,7 @@ pub(crate) mod mode_state;
 pub(crate) mod mode_units;
 pub(crate) mod offer;
 pub(crate) mod placed_unit;
+pub(crate) mod players_data;
 pub(crate) mod relation_data;
 pub(crate) mod roster;
 pub(crate) mod team_manifest;

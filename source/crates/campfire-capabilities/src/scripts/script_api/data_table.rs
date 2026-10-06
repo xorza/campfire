@@ -8,6 +8,7 @@ pub enum DataTable {
     Choice,
     Leech,
     Relation,
+    Players,
     Action,
     Effect,
     Delivery,
@@ -28,7 +29,7 @@ pub enum DataTable {
     Shop,
 }
 impl DataTable {
-    pub const ALL: [DataTable; 25] = [
+    pub const ALL: [DataTable; 26] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -36,6 +37,7 @@ impl DataTable {
         DataTable::Choice,
         DataTable::Leech,
         DataTable::Relation,
+        DataTable::Players,
         DataTable::Action,
         DataTable::Effect,
         DataTable::Delivery,
@@ -66,6 +68,7 @@ impl DataTable {
             DataTable::Choice => "A choice, `[choices.<name>]`",
             DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Relation => "A pair of teams, `[[relations]]`",
+            DataTable::Players => "The mode's `[players]`",
             DataTable::Action => "An action, `[actions.<id>]`",
             DataTable::Effect => "An effect of an action's `on_resolve`, `on_hit` or `on_end`",
             DataTable::Delivery => "An action's `delivery`",

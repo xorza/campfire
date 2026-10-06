@@ -232,6 +232,9 @@ impl<'a> LoadCheck<'a> {
                 return Err(LoadProblem::Repeated { at, name });
             }
         }
+        if data.players.bot_takeover && !data.players.late_join {
+            return Err(LoadProblem::BotTakeoverWithoutLateJoin);
+        }
         self.damage_kinds()?;
         self.pools_and_resources()?;
         self.layers()?;

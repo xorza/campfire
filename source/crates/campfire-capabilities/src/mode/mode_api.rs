@@ -98,10 +98,16 @@ impl ModeApi {
                     "resources",
                     "relations",
                     "tags",
+                    "players",
                 ],
                 &["state_version"],
             )
-            .data(DataTable::Relation, &["teams", "relation", "vision"], &[]);
+            .data(DataTable::Relation, &["teams", "relation", "vision"], &[])
+            .data(
+                DataTable::Players,
+                &["late_join", "bot_takeover", "leaver"],
+                &[],
+            );
     }
 
     /// What every role reads of the mode: the teams, the map, the avatars, the units of a tag,
