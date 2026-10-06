@@ -28,6 +28,7 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info};
 
+use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::LinkLost;
 use crate::events::match_started::MatchStarted;
@@ -40,6 +41,7 @@ use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::net_protocol::{InputChannel, JoinChannel};
 use crate::offer::Offer;
+use crate::order_script::ScriptedInput;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::join_state::{JoinState, LinkLoss, Retry, Started};
 use crate::sim_client::sent_inputs::SentInputs;
@@ -83,13 +85,24 @@ pub struct SimClient {
 #[derive(Resource, Debug)]
 pub struct LeaveRequest;
 
-/// Orders the player gave, sent in the next fixed tick.
+/// Orders the player gave, and mode inputs a bot script gives, sent in the next fixed tick.
 #[derive(Resource, Debug, Default)]
-pub struct PendingOrders(Vec<Order>);
+pub struct PendingOrders(Vec<Pending>);
+
+/// One pending input.
+#[derive(Debug)]
+enum Pending {
+    Order(Order),
+    Input(ScriptedInput),
+}
 
 impl PendingOrders {
     pub fn push(&mut self, order: Order) {
-        self.0.push(order);
+        self.0.push(Pending::Order(order));
+    }
+
+    fn push_input(&mut self, input: ScriptedInput) {
+        self.0.push(Pending::Input(input));
     }
 
     fn clear(&mut self) {
@@ -401,24 +414,45 @@ fn send_orders(
         .rollback_policy
         .effective_max_rollback_ticks(&timeline_config);
     sent.prune(Tick::new(stamp.get().saturating_sub(u64::from(reach))));
-    if let (Some(mut bot), Ok(&unit)) = (bot, avatar.single()) {
-        for scripted in bot.due(stamp) {
-            pending.push(Order {
-                unit,
-                action: scripted.action,
-            });
+    if let Some(mut bot) = bot {
+        let due = bot.due(stamp);
+        for input in due.inputs {
+            pending.push_input(input.clone());
+        }
+        if let Ok(&unit) = avatar.single() {
+            for scripted in due.orders {
+                pending.push(Order {
+                    unit,
+                    action: scripted.action,
+                });
+            }
         }
     }
     let session = playing.session;
     let first = sent.len();
     let stamped = pending.0.len().min(session.max_inputs as usize);
-    for order in pending.0.drain(..stamped) {
-        if !sent.push(stamp, &order, session.max_payload_len) {
-            OrderDropped {
-                unit: order.unit,
-                action: format!("{:?}", order.action),
+    for pending in pending.0.drain(..stamped) {
+        match pending {
+            Pending::Order(order) => {
+                let kept = sent.push(stamp, session.max_payload_len, |body, out| {
+                    order.write_payload(body, out);
+                });
+                if !kept {
+                    OrderDropped {
+                        unit: order.unit,
+                        action: format!("{:?}", order.action),
+                    }
+                    .log();
+                }
             }
-            .log();
+            Pending::Input(input) => {
+                let kept = sent.push(stamp, session.max_payload_len, |_, out| {
+                    input.write_payload(out);
+                });
+                if !kept {
+                    InputDropped { name: input.name }.log();
+                }
+            }
         }
     }
     let payloads = sent.since(first);

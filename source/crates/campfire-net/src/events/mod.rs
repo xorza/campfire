@@ -1,5 +1,7 @@
 //! The events a tool reads back from the JSON logs of the server and the client.
 
+pub(crate) mod avatar_missing;
+pub(crate) mod input_dropped;
 pub(crate) mod input_logged;
 pub(crate) mod input_message_refused;
 pub(crate) mod input_message_unfit;

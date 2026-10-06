@@ -5,6 +5,7 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
+mod bot_driver;
 mod door;
 mod error;
 mod events;
@@ -21,6 +22,7 @@ mod offer;
 mod offering;
 mod order_script;
 mod seats;
+mod server_bots;
 mod server_setup;
 mod server_signer;
 mod session_dir;
@@ -31,6 +33,8 @@ mod sim_server;
 mod superseded;
 
 pub use error::{JoinError, OrderScriptError, TermsMismatch};
+pub use events::avatar_missing::AvatarMissing;
+pub use events::input_dropped::InputDropped;
 pub use events::input_logged::InputLogged;
 pub use events::input_message_refused::InputMessageRefused;
 pub use events::input_message_unfit::InputMessageUnfit;
@@ -57,7 +61,8 @@ pub use match_clock::MatchClock;
 
 pub use net_protocol::{InputChannel, NetProtocol};
 
-pub use order_script::OrderScript;
+pub use order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
+pub use server_bots::{ServerBots, SlotBot};
 pub use server_setup::ServerSetup;
 pub use session_dir::error::{AbortError, FindError, RestoreError};
 pub use session_dir::{RestoredSession, SessionDir};

@@ -1,6 +1,6 @@
 use std::array;
 
-use campfire_capabilities::Action;
+use campfire_capabilities::{Action, Order};
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
 
@@ -22,8 +22,13 @@ fn the_inputs_keep_their_stamps_and_payloads_from_the_oldest_on() {
     // bytes, the unit, variant 1 and the target.
     let payload = |unit: u8| [1, 5, 3, unit, 1, unit];
     let mut sent = SentInputs::default();
+    let push = |sent: &mut SentInputs, stamp, order: &Order| {
+        sent.push(Tick::new(stamp), 6, |body, out| {
+            order.write_payload(body, out);
+        })
+    };
     for (stamp, unit) in [(1, 0), (1, 1), (2, 2), (4, 3)] {
-        assert!(sent.push(Tick::new(stamp), &attack(units[unit]), 6));
+        assert!(push(&mut sent, stamp, &attack(units[unit])));
     }
     // A coordinate of `i64::MAX` is a 10-byte varint, so the payload passes 6 bytes.
     let far = Order {
@@ -33,7 +38,9 @@ fn the_inputs_keep_their_stamps_and_payloads_from_the_oldest_on() {
             z: Num::from_bits(0),
         },
     };
-    assert!(!sent.push(Tick::new(4), &far, 6));
+    assert!(!push(&mut sent, 4, &far));
+    // Dropped wholly: the four payloads before it alone stay.
+    assert_eq!(sent.payloads.len(), 4 * 6);
     let none: [[u8; 6]; 0] = [];
     assert_eq!(at(&sent, 1), [payload(0), payload(1)]);
     assert_eq!(at(&sent, 3), none);
@@ -49,5 +56,8 @@ fn the_inputs_keep_their_stamps_and_payloads_from_the_oldest_on() {
     assert_eq!(at(&sent, 2), [payload(2)]);
     assert_eq!(at(&sent, 4), [payload(3)]);
     sent.prune(Tick::new(5));
+    assert_eq!((sent.len(), sent.payloads.len()), (0, 0));
+    assert!(push(&mut sent, 6, &attack(units[1])));
+    sent.clear();
     assert_eq!((sent.len(), sent.payloads.len()), (0, 0));
 }

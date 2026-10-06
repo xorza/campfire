@@ -7,8 +7,8 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
 use campfire_net::{
-    Lobby, LobbySetup, RestoredSession, ServerSetup, SessionAborted, SessionDir, SessionRestored,
-    SimServer,
+    Lobby, LobbySetup, RestoredSession, ServerBots, ServerSetup, SessionAborted, SessionDir,
+    SessionRestored, SimServer,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::{SeedChain, SessionPrivate, SessionTerms};
@@ -32,6 +32,7 @@ pub(crate) enum Opening {
 pub(crate) struct Restore {
     session: RestoredSession,
     packages: ModePackages,
+    bots: ServerBots,
 }
 
 /// What `Opening::of` needs.
@@ -40,6 +41,7 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) data: &'a Path,
     pub(crate) packages: ModePackages,
     pub(crate) server: ServerSetup,
+    pub(crate) bots: ServerBots,
     pub(crate) segments: NonZeroU32,
 }
 
@@ -52,6 +54,7 @@ impl Opening {
             return Ok(Opening::Restored(Box::new(Restore {
                 session,
                 packages: setup.packages,
+                bots: setup.bots,
             })));
         }
         Opening::open(setup).map(|lobby| Opening::New(Box::new(lobby)))
@@ -99,14 +102,15 @@ impl Opening {
         let mut seed = [0; 32];
         (setup.server.entropy)(&mut seed);
         let seed_chain = SeedChain::new(seed, setup.segments);
-        let players = usize::try_from(setup.packages.manifest().slots()).expect("slots fit usize");
+        let slots = usize::try_from(setup.packages.manifest().slots()).expect("slots fit usize");
         let tick_hz = setup.packages.manifest().tick_hz.default();
         let mut lobby = Lobby::new(LobbySetup {
             packages: setup.packages,
             seed_chain,
             tick_hz,
             inputs: InputRules::LAN,
-            players,
+            slots,
+            bots: setup.bots,
             server: setup.server,
         })
         .expect("a mode runs at its default rate");
@@ -125,12 +129,16 @@ impl Restore {
     /// Restores the session in `world`'s server, its log's bytes from the first frame on; see
     /// `SimServer::restore_match`. An error, logged, ends the app.
     pub(crate) fn run(world: &mut World) {
-        let Restore { session, packages } = world
+        let Restore {
+            session,
+            packages,
+            bots,
+        } = world
             .remove_resource::<Restore>()
             .expect("a restore runs while one waits");
         let id = session.log.session_id();
         let server = world.resource::<ServerConfig>().0;
-        match SimServer::restore_match(world, session, &packages, &server) {
+        match SimServer::restore_match(world, session, &packages, &server, bots) {
             Ok(()) => {
                 let tick = world.resource::<Session>().log().next_tick();
                 SessionRestored { session: id, tick }.log();

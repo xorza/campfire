@@ -13,6 +13,7 @@
 
 use std::env;
 use std::ffi::OsString;
+use std::fs;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
@@ -32,8 +33,8 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, Listening, MatchClock, NetProtocol, ServerSetup, SessionDir, SessionJournal,
-    SessionTimes, SessionWritten, SimServer,
+    JournalFailed, Listening, MatchClock, NetProtocol, OrderScript, ServerBots, ServerSetup,
+    SessionDir, SessionJournal, SessionTimes, SessionWritten, SimServer, SlotBot,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
@@ -63,7 +64,8 @@ const JOURNAL_FAILED: u8 = 74;
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
 const USAGE: &str = "usage: campfire-server --data <data directory> [--restore-window <seconds>] \
-                     [--grace <seconds>] <mode package directory> <address, as 0.0.0.0:4433>";
+                     [--grace <seconds>] [--bot <slot>=<orders file>]... [--takeover <orders \
+                     file>] <mode package directory> <address, as 0.0.0.0:4433>";
 
 /// How often the app loop runs: often enough that no fixed tick waits long for its frame.
 const FRAME: Duration = Duration::from_millis(2);
@@ -81,18 +83,27 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let Args {
-        data,
-        times,
-        mode,
-        address,
-    } = match Args::parse(env::args_os().skip(1)) {
+    let args = match Args::parse(env::args_os().skip(1)) {
         Ok(args) => args,
         Err(problem) => {
             error!(%problem, USAGE);
             return ExitCode::from(2);
         }
     };
+    let bots = match args.server_bots() {
+        Ok(bots) => bots,
+        Err(problem) => {
+            error!(%problem, "a bot's orders do not read");
+            return ExitCode::from(2);
+        }
+    };
+    let Args {
+        data,
+        times,
+        mode,
+        address,
+        ..
+    } = args;
     let data_dir = match DataDir::open(&data, fill) {
         Ok(data_dir) => data_dir,
         Err(error) => {
@@ -121,6 +132,7 @@ fn main() -> ExitCode {
         data: &data,
         packages,
         server,
+        bots,
         segments: SEGMENTS,
     });
     let opening = match opening {
@@ -250,8 +262,17 @@ fn announce(
 struct Args {
     data: PathBuf,
     times: SessionTimes,
+    bots: Vec<BotFile>,
+    takeover: Option<PathBuf>,
     mode: PathBuf,
     address: SocketAddr,
+}
+
+/// The index of a slot the server's bot plays, and the order file of its script.
+#[derive(Debug)]
+struct BotFile {
+    slot: u32,
+    path: PathBuf,
 }
 
 impl Args {
@@ -263,35 +284,78 @@ impl Args {
         if flag != "--data" {
             return Err(format!("{}: not --data", flag.display()));
         }
-        let mut times = SessionTimes::DEFAULT;
-        while let Some(flag) = args.next_if(|arg| arg == "--restore-window" || arg == "--grace") {
-            let seconds = args
+        let mut parsed = Args {
+            data: PathBuf::from(data),
+            times: SessionTimes::DEFAULT,
+            bots: Vec::new(),
+            takeover: None,
+            mode: PathBuf::new(),
+            address: SocketAddr::from(([0, 0, 0, 0], 0)),
+        };
+        while let Some(flag) =
+            args.next_if(|arg| arg.to_str().is_some_and(|arg| arg.starts_with("--")))
+        {
+            let value = args
                 .next()
-                .ok_or_else(|| format!("{}: no seconds", flag.display()))?;
-            let seconds = seconds
-                .to_str()
-                .and_then(|text| text.parse().ok())
-                .map(Duration::from_secs)
-                .ok_or_else(|| format!("{}: not a whole number of seconds", seconds.display()))?;
-            if flag == "--grace" {
-                times.grace = seconds;
-            } else {
-                times.restore_window = seconds;
+                .ok_or_else(|| format!("{}: no value", flag.display()))?;
+            match flag.to_str() {
+                Some("--grace") => parsed.times.grace = Args::seconds(&value)?,
+                Some("--restore-window") => parsed.times.restore_window = Args::seconds(&value)?,
+                Some("--bot") => parsed.bots.push(Args::bot(&value)?),
+                Some("--takeover") => parsed.takeover = Some(PathBuf::from(value)),
+                _ => return Err(format!("{}: no such flag", flag.display())),
             }
         }
         let (Some(mode), Some(address), None) = (args.next(), args.next(), args.next()) else {
             return Err("the mode and the address are needed, and nothing after".to_owned());
         };
-        let address = address
+        parsed.mode = PathBuf::from(mode);
+        parsed.address = address
             .to_str()
             .and_then(|text| text.parse::<SocketAddr>().ok())
             .ok_or_else(|| format!("{}: not a socket address", address.display()))?;
-        Ok(Args {
-            data: PathBuf::from(data),
-            times,
-            mode: PathBuf::from(mode),
-            address,
+        Ok(parsed)
+    }
+
+    fn seconds(value: &OsString) -> Result<Duration, String> {
+        value
+            .to_str()
+            .and_then(|text| text.parse().ok())
+            .map(Duration::from_secs)
+            .ok_or_else(|| format!("{}: not a whole number of seconds", value.display()))
+    }
+
+    /// A bot's slot and file, as `<slot>=<file>`.
+    fn bot(value: &OsString) -> Result<BotFile, String> {
+        let text = value
+            .to_str()
+            .ok_or_else(|| format!("{}: not text", value.display()))?;
+        let (slot, path) = text
+            .split_once('=')
+            .ok_or_else(|| format!("{text}: not <slot>=<orders file>"))?;
+        let slot = slot
+            .parse()
+            .map_err(|error| format!("{slot}: not a slot number: {error}"))?;
+        Ok(BotFile {
+            slot,
+            path: PathBuf::from(path),
         })
+    }
+
+    /// The server's bots, their scripts read from their files; an error naming a file that does
+    /// not read.
+    fn server_bots(&self) -> Result<ServerBots, String> {
+        let read = |path: &Path| {
+            let text =
+                fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+            OrderScript::parse(&text).map_err(|error| format!("{}: {error}", path.display()))
+        };
+        let mut slots = Vec::with_capacity(self.bots.len());
+        for bot in &self.bots {
+            slots.push(SlotBot::new(bot.slot, read(&bot.path)?));
+        }
+        let takeover = self.takeover.as_deref().map(read).transpose()?;
+        Ok(ServerBots { slots, takeover })
     }
 }
 
@@ -399,6 +463,53 @@ mod tests {
 
         fn sync(&mut self) -> io::Result<()> {
             Err(io::Error::other("sync failed"))
+        }
+    }
+
+    #[test]
+    fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
+        let parse = |args: &[&str]| Args::parse(args.iter().map(OsString::from));
+        let args = parse(&[
+            "--data",
+            "d",
+            "--bot",
+            "1=bot.toml",
+            "--grace",
+            "5",
+            "--takeover",
+            "takeover.toml",
+            "--restore-window",
+            "9",
+            "mode",
+            "0.0.0.0:4433",
+        ])
+        .unwrap();
+        assert_eq!(args.data, PathBuf::from("d"));
+        assert_eq!(
+            (args.times.grace, args.times.restore_window),
+            (Duration::from_secs(5), Duration::from_secs(9))
+        );
+        assert_eq!(
+            args.bots
+                .iter()
+                .map(|bot| (bot.slot, bot.path.clone()))
+                .collect::<Vec<_>>(),
+            [(1, PathBuf::from("bot.toml"))]
+        );
+        assert_eq!(args.takeover, Some(PathBuf::from("takeover.toml")));
+        assert_eq!(args.mode, PathBuf::from("mode"));
+        // The defaults, with no flag.
+        let plain = parse(&["--data", "d", "mode", "0.0.0.0:4433"]).unwrap();
+        assert_eq!(plain.times, SessionTimes::DEFAULT);
+        assert!(plain.bots.is_empty() && plain.takeover.is_none());
+        for flawed in [
+            &["--data", "d", "--grace", "soon", "mode", "0.0.0.0:4433"][..],
+            &["--data", "d", "--bot", "1", "mode", "0.0.0.0:4433"],
+            &["--data", "d", "--bot", "x=bot.toml", "mode", "0.0.0.0:4433"],
+            &["--data", "d", "--fast", "1", "mode", "0.0.0.0:4433"],
+            &["--data", "d", "mode"],
+        ] {
+            assert!(parse(flawed).is_err(), "{flawed:?}");
         }
     }
 

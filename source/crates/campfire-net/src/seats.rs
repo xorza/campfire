@@ -17,11 +17,11 @@ pub(crate) struct Seat {
 }
 
 impl Seats {
-    /// The seats of `slots` slots, `links` seated in the first, by slot, and the rest empty.
-    pub(crate) fn new(slots: u32, links: &[Entity]) -> Seats {
+    /// The seats of `slots` slots, each link of `links` seated in its slot, and the rest empty.
+    pub(crate) fn new(slots: u32, links: &[(PlayerSlot, Entity)]) -> Seats {
         let mut seats = vec![Seat::default(); slots as usize];
-        for (seat, &link) in seats.iter_mut().zip(links) {
-            seat.link = Some(link);
+        for &(slot, link) in links {
+            seats[slot.index()].link = Some(link);
         }
         Seats(seats)
     }

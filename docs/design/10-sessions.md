@@ -72,8 +72,8 @@ A delegation in a `Join` or a `Renew` must name the session, the server and a se
 
 ## Server bots
 
-- **Host.** The server takes the bot slots of its plan, each with an order file, and an order file for the slots that become bots after a leaver; a slot with none idles.
-- **Driver.** Before each tick, for each bot slot, the driver gives the orders and mode inputs its script has for that tick, as payloads in the client's encoding; the server signs each as a `Bot` input and logs it before the tick runs. An order script gains `[[input]]` entries, `{ tick, name, value }`, for mode inputs such as a hero pick.
+- **Host.** The server takes the bot slots of its plan, `--bot <slot>=<orders file>` each, and an order file for the slots that become bots after a leaver, `--takeover <orders file>`, whose ticks count from the tick the slot became a bot's; a bot slot with none idles. A restored server takes the same files, and its bots go on from the tick it runs on from.
+- **Driver.** Before each tick, for each bot slot, the driver gives the mode inputs, then the orders, its script has for that tick, an order for the slot's avatar, as payloads in the client's encoding; the server signs each as a `Bot` input and logs it before the tick runs. A tick takes at most the session's max inputs of a slot, and the rest wait for the next; an order for a slot with no avatar is dropped and logged. A slot a player takes is played no more. An order script gains `[[input]]` entries, `{ tick, name, value }`, for mode inputs such as a hero pick, which a client bot sends too.
 
 ## Receipts
 

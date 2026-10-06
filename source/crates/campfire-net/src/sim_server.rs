@@ -28,6 +28,7 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info, trace, trace_span};
 
+use crate::bot_driver::BotDriver;
 use crate::door::Door;
 use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
@@ -43,6 +44,7 @@ use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
 use crate::offering::{Offering, Superseding};
 use crate::seats::Seats;
+use crate::server_bots::ServerBots;
 use crate::server_setup::ServerSetup;
 use crate::server_signer::ServerSigner;
 use crate::session_dir::RestoredSession;
@@ -133,6 +135,7 @@ impl Plugin for SimServer {
         app.add_systems(
             FixedUpdate,
             (
+                BotDriver::drive,
                 run_sim_tick,
                 record_hash.run_if(resource_exists::<TickHashes>),
                 show_units,
@@ -155,6 +158,7 @@ pub(crate) struct SessionStart<'a> {
     pub(crate) packages: &'a ModePackages,
     pub(crate) journal: Option<Journal>,
     pub(crate) server: &'a ServerSetup,
+    pub(crate) bots: ServerBots,
 }
 
 impl SimServer {
@@ -162,7 +166,8 @@ impl SimServer {
     /// each segment drawing from its seed. From then on a frame advances the server's clock by
     /// the ticks of the max input delay less one at most, a tick at least, so a burst after a
     /// stall makes no on-time input late; a longer frame's time past that is dropped, and logged.
-    /// `clients` are the links of the players, by slot; each learns its slot and the start tick.
+    /// `clients` are the links of the players, each with its slot; each learns its slot and the
+    /// start tick. The server's bots play their slots.
     /// From the first tick on, every unit replicates to the clients whose team sees it, and the
     /// owner's client predicts it, but a projectile or an area. With a journal, the log goes into
     /// it as the server logs it, and `SessionJournal` watches it. The door takes the joins from
@@ -170,7 +175,7 @@ impl SimServer {
     pub(crate) fn start_match(
         world: &mut World,
         start: SessionStart<'_>,
-        clients: &[Entity],
+        clients: &[(PlayerSlot, Entity)],
     ) -> Result<(), StartError> {
         let SessionStart {
             log,
@@ -178,6 +183,7 @@ impl SimServer {
             packages,
             journal,
             server,
+            bots,
         } = start;
         assert_eq!(
             clients.len(),
@@ -194,7 +200,8 @@ impl SimServer {
         world.insert_resource(MatchClock::new(start));
         let next = world.resource::<Session>().log().next_tick();
         world.insert_resource(FrameStart(next));
-        for (slot, &client) in (0..).map(PlayerSlot::new).zip(clients) {
+        world.insert_resource(BotDriver::new(bots, next));
+        for &(slot, client) in clients {
             let team = Mode::team_of(world, slot).expect("every player has a team");
             world.entity_mut(client).insert(PlayerLink::new(slot, team));
             world
@@ -222,6 +229,7 @@ impl SimServer {
         restored: RestoredSession,
         packages: &ModePackages,
         server: &ServerSetup,
+        bots: ServerBots,
     ) -> Result<(), StartError> {
         let RestoredSession {
             private,
@@ -258,6 +266,7 @@ impl SimServer {
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::resumed(start, next));
         world.insert_resource(FrameStart(next));
+        world.insert_resource(BotDriver::new(bots, next));
         Ok(())
     }
 

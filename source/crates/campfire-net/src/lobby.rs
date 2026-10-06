@@ -5,6 +5,7 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use campfire_common::PlayerSlot;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{
@@ -19,6 +20,7 @@ use crate::error::JoinError;
 use crate::events::join_refused::JoinRefused;
 use crate::join::Join;
 use crate::offering::{JoinLinks, Joined, OfferLinks, Offering, Refused, Superseding};
+use crate::server_bots::ServerBots;
 use crate::server_setup::ServerSetup;
 use crate::sim_server::{SessionStart, SimServer};
 
@@ -31,7 +33,9 @@ pub struct Lobby {
     offering: Offering,
     seed_chain: SeedChain,
     packages: ModePackages,
+    /// How many slots players take: every slot but the bots'.
     players: usize,
+    bots: ServerBots,
     setup: ServerSetup,
     /// The links that joined, by slot, with their delegations.
     joined: Vec<(Entity, Delegation)>,
@@ -47,7 +51,10 @@ pub struct LobbySetup {
     /// Ticks a second, which the mode's range must hold.
     pub tick_hz: NonZeroU32,
     pub inputs: InputRules,
-    pub players: usize,
+    /// How many slots the session plays.
+    pub slots: usize,
+    /// The bots the server plays: their slots are the bots', the rest the players'.
+    pub bots: ServerBots,
     pub server: ServerSetup,
 }
 
@@ -60,22 +67,32 @@ impl Lobby {
             seed_chain,
             tick_hz,
             inputs,
-            players,
+            slots,
+            bots,
             server,
         } = setup;
+        let mut plan = vec![SlotPlan::Player; slots];
+        for bot in &bots.slots {
+            plan[bot.slot.index()] = SlotPlan::Bot;
+        }
+        let players = plan
+            .iter()
+            .filter(|&&plan| plan == SlotPlan::Player)
+            .count();
         assert!(players > 0, "a session has a player");
         let terms = SessionRules::of(&packages).terms(
             server.key.x_only_public_key().0,
             seed_chain.commitment(),
             tick_hz,
             inputs,
-            vec![SlotPlan::Player; players],
+            plan,
         )?;
         Ok(Lobby {
             offering: Offering::new(terms, &server),
             seed_chain,
             packages,
             players,
+            bots,
             setup: server,
             joined: Vec::with_capacity(players),
             journal: None,
@@ -154,11 +171,22 @@ impl Lobby {
             return;
         }
         let lobby = world.remove_resource::<Lobby>().expect("the lobby is open");
-        let (links, players): (Vec<Entity>, Vec<Delegation>) = lobby.joined.into_iter().unzip();
-        let header = SessionHeader {
-            terms: lobby.offering.terms.clone(),
-            slots: players.into_iter().map(SlotStart::player).collect(),
-        };
+        let terms = lobby.offering.terms.clone();
+        let mut joined = lobby.joined.into_iter();
+        let mut links = Vec::with_capacity(lobby.players);
+        let mut slots = Vec::with_capacity(terms.slots.len());
+        for (slot, plan) in (0..).map(PlayerSlot::new).zip(&terms.slots) {
+            slots.push(match plan {
+                SlotPlan::Player => {
+                    let (link, delegation) = joined.next().expect("a player for each slot");
+                    links.push((slot, link));
+                    SlotStart::player(delegation)
+                }
+                SlotPlan::Bot => SlotStart::Bot,
+                SlotPlan::Open => SlotStart::Open,
+            });
+        }
+        let header = SessionHeader { terms, slots };
         let session = header.terms.session_id();
         let log = SessionLog::new(header).expect("every delegation names this session");
         info!(%session, players = links.len(), "every slot is taken; the match starts");
@@ -169,6 +197,7 @@ impl Lobby {
             packages: &lobby.packages,
             journal: lobby.journal,
             server: &lobby.setup,
+            bots: lobby.bots,
         };
         SimServer::start_match(world, start, &links)
             .expect("the lobby's terms come from its own packages");
@@ -244,7 +273,8 @@ mod tests {
             seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
             tick_hz: NonZeroU32::new(30).unwrap(),
             inputs: InputRules::LAN,
-            players: 2,
+            slots: 2,
+            bots: ServerBots::default(),
             server: ServerSetup {
                 key: local_match::server_keypair(),
                 certificate: CertificateHash::new([3; 32]),

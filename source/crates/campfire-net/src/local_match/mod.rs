@@ -15,6 +15,7 @@ use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Body, Leaver, MoveStep, Order, Owner, PlayersData, Team};
+use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
@@ -37,6 +38,7 @@ use crate::local_match::link_model::LinkModel;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
+use crate::server_bots::{ServerBots, SlotBot};
 use crate::server_setup::ServerSetup;
 use crate::session_dir::SessionDir;
 use crate::session_times::SessionTimes;
@@ -82,6 +84,10 @@ pub struct MatchSetup {
     pub times: SessionTimes,
     /// The lane mode's `[players]`.
     pub rules: PlayersData,
+    /// The script of the server's bot in the slot after the players', when it plays one.
+    pub bot: Option<&'static str>,
+    /// The script of the server's bot in a slot its player left, when it plays one.
+    pub takeover: Option<&'static str>,
 }
 
 /// An app of a match: the server's, or a client's.
@@ -110,6 +116,8 @@ impl MatchSetup {
             seed_chain,
             times: SessionTimes::DEFAULT,
             rules: PlayersData::DEFAULT,
+            bot: None,
+            takeover: None,
         }
     }
 
@@ -124,6 +132,8 @@ impl MatchSetup {
             seed_chain,
             times: SessionTimes::DEFAULT,
             rules: PlayersData::DEFAULT,
+            bot: None,
+            takeover: None,
         }
     }
 }
@@ -342,6 +352,19 @@ impl LocalMatch {
         }
     }
 
+    /// The bots of the setup: its bot in the slot after the players', and its takeover bot.
+    fn server_bots(&self) -> ServerBots {
+        let script = |text| OrderScript::parse(text).expect("a test's bot script reads");
+        let slots = self.setup.bot.map(|text| SlotBot {
+            slot: PlayerSlot::new(u32::try_from(self.setup.players).expect("a small count")),
+            script: script(text),
+        });
+        ServerBots {
+            slots: slots.into_iter().collect(),
+            takeover: self.setup.takeover.map(script),
+        }
+    }
+
     /// Gives the server the data directory `dir`, where the session `start_match` opens keeps its
     /// directory, private record and journal.
     pub fn keep_data(&mut self, dir: PathBuf) {
@@ -390,6 +413,7 @@ impl LocalMatch {
             session,
             &self.packages,
             &self.server_setup(),
+            self.server_bots(),
         )
         .unwrap_or_else(|error| panic!("{error}"));
         self.server = server;
@@ -410,7 +434,8 @@ impl LocalMatch {
             packages,
             seed_chain: self.setup.seed_chain,
             inputs: InputRules::LAN,
-            players: self.setup.players,
+            slots: self.setup.players + usize::from(self.setup.bot.is_some()),
+            bots: self.server_bots(),
             server: self.server_setup(),
         })
         .expect("the lane mode runs at its default rate");
