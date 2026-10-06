@@ -855,11 +855,16 @@ pub(crate) mod bench {
 
     use campfire_capabilities::Action;
     use campfire_math::{Num, Vec3};
+    use campfire_package::{ModePackages, PackageDir};
+    use campfire_sim::{EntityIndex, Position};
     use campfire_store::DurableFile;
     use lightyear::prelude::RollbackMode;
 
     use crate::harness::in_process_match::link_model::LinkModel;
-    use crate::harness::in_process_match::{InProcessMatch, MatchSetup, StepCost};
+    use crate::harness::in_process_match::{
+        CONNECT_FRAMES, End, InProcessMatch, MatchSetup, StepCost,
+    };
+    use crate::order_script::OrderScript;
 
     /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
     /// order every 40 frames keeps the avatar walking and the server sending updates.
@@ -869,6 +874,32 @@ pub(crate) mod bench {
 
     /// The data directories the benches of this process made, each a new one.
     static DATA_DIRS: AtomicU64 = AtomicU64::new(0);
+
+    /// How each player's client of the walking 3v3 rolls back: only on a misprediction, on
+    /// every confirmed update, and never.
+    const ROLLBACKS_3V3: [RollbackMode; 3] = [
+        RollbackMode::Check,
+        RollbackMode::Always,
+        RollbackMode::Disabled,
+    ];
+    /// The reference 3v3's first wave at its 30 Hz: 60 s of pick, then 60 s.
+    const FIRST_WAVE_3V3: u64 = 3600;
+    /// The pick of each slot of the reference 3v3, the players' then the bots': a hero each,
+    /// none twice, in tick 1, and the two spells in tick 2, as `Reference3v3`'s slots pick.
+    static PICKS_3V3: [&str; 6] = [
+        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-cinder\"\n\
+         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
+        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-gale\"\n\
+         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
+        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-husk\"\n\
+         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
+        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-kensho\"\n\
+         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
+        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-rime\"\n\
+         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
+        "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-veil\"\n\
+         [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
+    ];
 
     impl StepCost {
         /// Clears it, for `add` and `keep_worst` to fill.
@@ -908,6 +939,41 @@ pub(crate) mod bench {
                 InProcessMatch::new(MatchSetup::solo(rollback, 1, InProcessMatch::SEED_CHAIN));
             local.start_match();
             local
+        }
+
+        /// The reference 3v3 at its default rate, a server frame a tick, with a player in each
+        /// of the first slots, whose clients roll back as `ROLLBACKS_3V3` says, and the
+        /// server's bots in the others, every slot picking as `PICKS_3V3` says; played to its
+        /// first wave, each client holding its hero, for `walk_steps`.
+        pub(crate) fn walking_3v3() -> InProcessMatch {
+            let players = ROLLBACKS_3V3.len();
+            let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
+            setup.players = players;
+            setup.rollbacks[..players].copy_from_slice(&ROLLBACKS_3V3);
+            setup.bots = &PICKS_3V3[players..];
+            let packages = ModePackages::from_dir(&PackageDir::workspace("moba/modes/3v3"))
+                .expect("the reference 3v3 loads");
+            let mut local = InProcessMatch::of_mode(setup, packages);
+            local.open_match();
+            for (client, pick) in PICKS_3V3[..players].iter().enumerate() {
+                local.play(client, OrderScript::parse(pick).expect("a pick reads"));
+            }
+            while local.next_tick(End::Server) < FIRST_WAVE_3V3 {
+                local.step();
+            }
+            local.await_avatars(CONNECT_FRAMES);
+            local
+        }
+
+        /// Where each client's avatar stands on the server, by client, into `places`.
+        pub(crate) fn avatar_places(&self, places: &mut Vec<Vec3>) {
+            places.clear();
+            let world = self.server.world();
+            for client in 0..self.clients.len() {
+                let avatar = world.resource::<EntityIndex>().get(self.avatar(client));
+                let at = world.get::<Position>(avatar.expect("the avatar exists"));
+                places.push(at.expect("an avatar has a place").get());
+            }
         }
 
         /// `steps` frames of a walk from frame `*frame` on, which it advances: every
