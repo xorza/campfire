@@ -17,10 +17,10 @@ pub enum Density {
 
 impl Density {
     /// Both, for a kernel whose cost grows with how close its units stand.
-    pub(crate) const ALL: [Density; 2] = [Density::Crowded, Density::Spread];
+    pub const ALL: [Density; 2] = [Density::Crowded, Density::Spread];
 
     /// The case's name.
-    pub(crate) const fn name(self) -> &'static str {
+    pub const fn name(self) -> &'static str {
         match self {
             Density::Crowded => "crowded",
             Density::Spread => "spread",
@@ -59,7 +59,7 @@ impl KernelScene {
     }
 
     /// A draw below `bound`.
-    pub(crate) fn below(&mut self, bound: u64) -> u64 {
+    pub fn below(&mut self, bound: u64) -> u64 {
         self.rng.below(bound)
     }
 

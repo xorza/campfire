@@ -45,7 +45,7 @@ pub use crate::tick_inputs::{PlayerCommand, TickInput, TickInputs};
 pub use crate::tick_rate::TickRate;
 pub use crate::unpredicted::Unpredicted;
 
-#[cfg(feature = "internals")]
+#[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::sim_update::stage_clock::StageClock;
     pub use crate::state_registry::internals::Draws;
