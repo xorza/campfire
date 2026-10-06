@@ -4,7 +4,7 @@ use bevy_ecs::observer::On;
 use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::{Mut, World};
 use blake3::Hasher;
-use campfire_common::StateHash;
+use campfire_common::{Bytes32, StateHash};
 use serde::de::DeserializeOwned;
 
 use crate::entity_index::EntityIndex;
@@ -16,7 +16,7 @@ use crate::stable_id::StableId;
 use crate::state_changes::{Removal, StateChanges};
 use crate::state_registry::error::SnapshotError;
 use crate::state_registry::state_delta::StateDelta;
-use crate::state_registry::writer::{Sink, write};
+use crate::state_registry::writer::{Sink, Writer};
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -69,7 +69,7 @@ struct Entry {
     /// world's `StateChanges`.
     watch: fn(&mut World, u16),
     #[cfg(any(test, feature = "internals"))]
-    scramble: fn(&mut World, &mut internals::Draws) -> bool,
+    scramble: fn(&mut internals::Draws, &mut World) -> bool,
 }
 
 /// What a type's copy takes: the world's change tick at the last copy, none for a first copy of
@@ -95,7 +95,7 @@ enum Pass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeHash {
     pub name: &'static str,
-    pub hash: [u8; 32],
+    pub hash: Bytes32,
 }
 
 /// One type's part of a snapshot, and the bytes after it.
@@ -156,7 +156,7 @@ impl StateRegistry {
             apply: apply_component::<C>,
             watch: watch_component::<C>,
             #[cfg(any(test, feature = "internals"))]
-            scramble: internals::scramble_component::<C>,
+            scramble: internals::Draws::scramble_component::<C>,
         });
     }
 
@@ -184,7 +184,7 @@ impl StateRegistry {
             apply: apply_resource::<R>,
             watch: |_, _| {},
             #[cfg(any(test, feature = "internals"))]
-            scramble: internals::scramble_resource::<R>,
+            scramble: internals::Draws::scramble_resource::<R>,
         });
     }
 
@@ -392,7 +392,7 @@ impl StateRegistry {
             if let Some(per_type) = per_type.as_deref_mut() {
                 per_type.push(TypeHash {
                     name: entry.name,
-                    hash,
+                    hash: Bytes32::new(hash),
                 });
             }
         }
@@ -450,7 +450,7 @@ fn take<T: DeserializeOwned>(bytes: &[u8]) -> Result<Taken<'_, T>, SnapshotError
 
 fn encode_entities(world: &World, sink: &mut dyn Sink) {
     for (id, _) in world.resource::<EntityIndex>().iter() {
-        write(sink, &id);
+        Writer::write(sink, &id);
     }
 }
 
@@ -471,7 +471,7 @@ fn decode_entities(world: &mut World, mut body: &[u8]) -> Result<(), SnapshotErr
 fn encode_component<C: SimComponent>(world: &World, sink: &mut dyn Sink) {
     for (id, entity) in world.resource::<EntityIndex>().iter() {
         if let Some(component) = world.get::<C>(entity) {
-            write(sink, &(id, component));
+            Writer::write(sink, &(id, component));
         }
     }
 }
@@ -502,7 +502,7 @@ fn decode_component<C: SimComponent>(
 
 /// A missing resource encodes differently from an empty one: the value goes in as an `Option`.
 fn encode_resource<R: SimResource>(world: &World, sink: &mut dyn Sink) {
-    write(sink, &world.get_resource::<R>());
+    Writer::write(sink, &world.get_resource::<R>());
 }
 
 fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(), SnapshotError> {
@@ -524,7 +524,7 @@ fn copy_component<C: SimComponent>(world: &mut World, copying: &Copying<'_>, out
             .since
             .is_none_or(|since| value.last_changed().is_newer_than(since, copying.now));
         if changed || copying.gained.binary_search(&id).is_ok() {
-            write(out, &(id, Some(&*value)));
+            Writer::write(out, &(id, Some(&*value)));
         }
     }
     let index = world.resource::<EntityIndex>();
@@ -532,7 +532,7 @@ fn copy_component<C: SimComponent>(world: &mut World, copying: &Copying<'_>, out
         if let Some(entity) = index.get(id)
             && !world.entity(entity).contains::<C>()
         {
-            write(out, &(id, None::<&C>));
+            Writer::write(out, &(id, None::<&C>));
         }
     }
 }
@@ -579,13 +579,13 @@ fn watch_component<C: SimComponent>(world: &mut World, entry: u16) {
 
 fn copy_resource<R: SimResource>(world: &mut World, copying: &Copying<'_>, out: &mut Vec<u8>) {
     match world.get_resource_ref::<R>() {
-        None => write(out, &None::<&R>),
+        None => Writer::write(out, &None::<&R>),
         Some(value)
             if copying
                 .since
                 .is_none_or(|since| value.last_changed().is_newer_than(since, copying.now)) =>
         {
-            write(out, &Some(&*value));
+            Writer::write(out, &Some(&*value));
         }
         Some(_) => {}
     }

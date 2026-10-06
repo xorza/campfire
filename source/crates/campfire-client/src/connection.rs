@@ -5,15 +5,18 @@ use std::time::Duration;
 
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
+use campfire_common::ExitStatus;
+use campfire_log::ErrorReport;
 use campfire_net::{
-    ClientData, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Pace, ServerPin, SlotBot,
+    ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Os, Pace, ServerPin,
+    SlotBotFile,
 };
 use campfire_package::ModePackages;
 use lightyear::prelude::client::WebTransportClientIo;
 use lightyear::prelude::{LocalAddr, PeerAddr};
 use tracing::error;
 
-use crate::{Args, BotFile, Server};
+use crate::args::{Args, Server};
 
 /// The server the client plays on, once it is open: a remote one, by its pin and its address, or
 /// a local one, running. Dropped, a local server ends the session and publishes its log.
@@ -29,7 +32,7 @@ impl Connection {
     /// does not start.
     pub(crate) fn open(
         args: &Args,
-        data: Option<&ClientData>,
+        data: Option<&ClientDir>,
         packages: &Arc<ModePackages>,
         pace: &Arc<Pace>,
     ) -> Result<Connection, ExitCode> {
@@ -97,31 +100,31 @@ impl Connection {
     /// directory `data`, its bots those of `bots`, following `pace`; the exit code when it does
     /// not start.
     fn start_local(
-        data: Option<&ClientData>,
+        data: Option<&ClientDir>,
         packages: &Arc<ModePackages>,
-        bots: &[BotFile],
+        bots: &[SlotBotFile],
         pace: &Arc<Pace>,
     ) -> Result<LocalServer, ExitCode> {
-        let mut slots = Vec::with_capacity(bots.len());
-        for bot in bots {
-            let script = crate::read_script(&bot.path).map_err(|problem| {
-                error!(%problem, "a server bot's orders file does not read");
-                ExitCode::FAILURE
+        let slots = bots
+            .iter()
+            .map(SlotBotFile::read)
+            .collect::<Result<_, _>>()
+            .map_err(|error| {
+                error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
+                ExitCode::from(ExitStatus::Failure)
             })?;
-            slots.push(SlotBot::new(bot.slot, script));
-        }
         let data = data.expect("--local has --data").local_server_dir();
         LocalServer::start(LocalServerSetup {
             packages: Arc::clone(packages),
             data,
             bots: slots,
             pace: Arc::clone(pace),
-            clock: crate::unix_now,
-            entropy: crate::fill,
+            clock: Os::unix_now,
+            entropy: Os::fill,
         })
         .map_err(|error| {
-            error!(%error, "the local server does not start");
-            ExitCode::FAILURE
+            error!(error = %ErrorReport::of(&error), "the local server does not start");
+            ExitCode::from(ExitStatus::Failure)
         })
     }
 }

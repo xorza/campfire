@@ -1,13 +1,13 @@
 use std::borrow::Borrow;
-use std::fmt;
 
+use derive_more::Display;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 /// The id of a message of a package's human text, as Fluent names one: a letter, then letters,
 /// digits, `-` and `_`. Data names a message by it, and the package's `locale/` files give its
 /// text.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MessageId(Box<str>);
 
 impl MessageId {
@@ -28,12 +28,6 @@ impl MessageId {
 impl Borrow<str> for MessageId {
     fn borrow(&self) -> &str {
         &self.0
-    }
-}
-
-impl fmt::Display for MessageId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
     }
 }
 

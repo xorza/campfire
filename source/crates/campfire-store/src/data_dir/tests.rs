@@ -1,14 +1,16 @@
 use std::fs;
 
+use tempfile::TempDir;
+
 use super::*;
-use crate::durable_file::tests::ScratchDir;
+
 #[cfg(unix)]
 use crate::durable_file::tests::mode;
 
 #[test]
 fn a_data_directory_is_made_its_owners_only_and_holds_one_holder() {
-    let scratch = ScratchDir::new("data-dir");
-    let path = scratch.0.join("nested").join("data");
+    let scratch = TempDir::new().unwrap();
+    let path = scratch.path().join("nested").join("data");
     let first = DataDir::open(&path).unwrap();
     assert_eq!(first.path(), path);
     #[cfg(unix)]
@@ -20,7 +22,7 @@ fn a_data_directory_is_made_its_owners_only_and_holds_one_holder() {
     assert!(matches!(DataDir::open(&path), Err(DataDirError::Locked)));
     drop(again);
     // A file in its place is no directory.
-    let file = scratch.0.join("file");
+    let file = scratch.path().join("file");
     fs::write(&file, b"").unwrap();
     assert!(matches!(DataDir::open(&file), Err(DataDirError::Create(_))));
 }

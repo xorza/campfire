@@ -36,8 +36,8 @@ use crate::stats::applier::Applier;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::ModifierClocks;
-use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::stats_effect::StatsEffect;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
@@ -239,7 +239,7 @@ impl ModeBook {
                 rank: 1,
                 hold: Some(Hold::Passive),
             };
-            let add = ModifierEffect::Add {
+            let add = StatsEffect::Add {
                 target: id,
                 id: passive,
                 duration: None,

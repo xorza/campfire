@@ -13,11 +13,11 @@ use crate::actions::effect_queues::EffectQueues;
 use crate::areas::area::Area;
 
 use crate::actions::targets::Targets;
-use crate::areas::area_effect::AreaEffect;
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_spec::{AreaSpec, Inside};
+use crate::areas::areas_effect::AreasEffect;
 use crate::combat::CombatSet;
-use crate::deliveries::delivered::{Delivered, Reach};
+use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::{Deliveries, DeliverySet};
@@ -34,10 +34,10 @@ use crate::values::hit::Hit;
 
 pub(crate) mod area;
 pub(crate) mod area_data;
-pub(crate) mod area_effect;
 pub(crate) mod area_launches;
 pub(crate) mod area_spec;
 pub(crate) mod areas_api;
+pub(crate) mod areas_effect;
 
 /// The `areas` capability: area units, which actions deliver. It builds on combat, which a match
 /// installs too.
@@ -56,7 +56,7 @@ impl Areas {
         world.insert_resource(ByType::<AreaSpec>::default());
         world
             .resource_mut::<EffectQueues>()
-            .register(Capability::Areas, AreaEffect::queue_listed);
+            .register(Capability::Areas, AreasEffect::queue_listed);
         schedule.add_systems((
             trigger.in_set(DeliverySet::Trigger),
             land.in_set(SimSet::Hit)
@@ -75,7 +75,7 @@ impl Areas {
 
     /// Applies `effect`: an area that lands this tick, at the point of the map's bounds nearest
     /// where it says.
-    fn apply(world: &mut World, effect: AreaEffect) {
+    fn apply(world: &mut World, effect: AreasEffect) {
         let at = Bounds::of(world).clamp(effect.at);
         Areas::push(world, effect.by, effect.unit_type, at, None, effect.id);
     }
@@ -169,12 +169,12 @@ fn trigger(
                 }
             });
             reached.sort_unstable();
-            let hits = reached.iter().map(|&unit| delivered(Reach::Hit(unit)));
+            let hits = reached.iter().map(|&unit| delivered(Reached::Hit(unit)));
             deliveries.delivered.extend(hits);
             area.trigger();
         }
         if area.triggers_at().is_none() && area.ends_at() <= now {
-            deliveries.delivered.push(delivered(Reach::End));
+            deliveries.delivered.push(delivered(Reached::End));
             deliveries.ended.push(entity);
         }
     }

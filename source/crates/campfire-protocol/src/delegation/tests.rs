@@ -1,20 +1,18 @@
 use super::*;
+use crate::harness::test_key::TestKey;
 
 const CREATED_AT: u64 = 1_700_000_000;
 
 fn main_key() -> Keypair {
-    let secret = secp256k1::SecretKey::from_byte_array(&[11; 32]).unwrap();
-    Keypair::from_secret_key(&Secp256k1::new(), &secret)
+    TestKey::of(11)
 }
 
 fn terms() -> DelegationTerms {
-    let secp = Secp256k1::new();
-    let session = secp256k1::SecretKey::from_byte_array(&[21; 32]).unwrap();
     DelegationTerms {
-        session_key: session.x_only_public_key(&secp).0,
+        session_key: TestKey::of(21).x_only_public_key().0,
         server_key: XOnlyPublicKey::from_byte_array(&[41; 32]).unwrap(),
         session_id: SessionId::new([31; 32]),
-        seed_contribution: [51; 32],
+        seed_contribution: SeedContribution::new([51; 32]),
         expiration: 1_700_086_400,
     }
 }

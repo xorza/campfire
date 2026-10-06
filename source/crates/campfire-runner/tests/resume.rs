@@ -6,6 +6,7 @@ use std::num::NonZeroU32;
 
 use campfire_capabilities::{Dead, Deaths};
 use campfire_common::{StateHash, Tick};
+use campfire_log::ErrorReport;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
 use campfire_runner::internals::{FixedMatch, FixedSession, ProvingMatch, Reference3v3};
@@ -95,7 +96,9 @@ impl Checkpointed {
             let segment = checkpoint + 1;
             let mut runner =
                 Runner::resume(log, FixedSession::seeds(), packages, segment, snapshot)
-                    .unwrap_or_else(|error| panic!("segment {segment}: {error}"));
+                    .unwrap_or_else(|error| {
+                        panic!("segment {segment}: {}", ErrorReport::of(&error))
+                    });
             let start = at[checkpoint as usize];
             let end = at.get(checkpoint as usize + 1).copied().unwrap_or(ticks);
             for tick in start..end {

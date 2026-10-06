@@ -5,7 +5,7 @@ use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Owner, SeenBy, Team};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use campfire_net::internals::{LocalMatch, MatchSetup};
+use campfire_net::internals::{InProcessMatch, MatchSetup};
 use campfire_net::{MatchClock, TickHashes};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
@@ -35,7 +35,7 @@ struct Server {
 
 #[test]
 fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
-    let mut local = LocalMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // Without the per-tick hash from here on, as in production: the ticks and the replication run
     // all the same.
@@ -115,7 +115,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
 }
 
 /// The sim tick of the server message that last updated `unit` on the client.
-fn sent_in(local: &LocalMatch, unit: Entity) -> Tick {
+fn sent_in(local: &InProcessMatch, unit: Entity) -> Tick {
     let client = local.client(0).world();
     let history = client.get::<ConfirmHistory>(unit).unwrap();
     let net_tick = client

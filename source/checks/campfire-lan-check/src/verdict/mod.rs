@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_common::{PlayerSlot, Tick};
-use campfire_log::Level;
+use campfire_log::LogLevel;
 use campfire_net::{
     InputLogged, InputsDiscarded, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten,
     TicksCaughtUp,
@@ -10,9 +10,9 @@ use campfire_verifier::Verified;
 
 use crate::error::CheckError;
 use crate::failure::Failure;
-use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
+use crate::process_outcome::ProcessOutcome;
 use crate::session_kind::SessionKind;
 
 /// What the check found wrong with a LAN match, from the processes' outcomes and logs; nothing
@@ -57,8 +57,8 @@ impl BotEvents {
 
 impl Verdict {
     /// Checks that `process` succeeded, and logged no warning or error.
-    pub(crate) fn process(&mut self, process: Process, outcome: Outcome, log: &ProcessLog) {
-        if outcome != Outcome::Succeeded {
+    pub(crate) fn process(&mut self, process: Process, outcome: ProcessOutcome, log: &ProcessLog) {
+        if outcome != ProcessOutcome::Succeeded {
             self.failures.push(Failure::Ended { process, outcome });
         }
         self.warned(process, log);
@@ -68,7 +68,7 @@ impl Verdict {
     /// the orders' check counts.
     fn warned(&mut self, process: Process, log: &ProcessLog) {
         for line in log.lines() {
-            if line.level >= Level::Warn && line.read::<InputsDiscarded>().is_none() {
+            if line.level >= LogLevel::Warn && line.read::<InputsDiscarded>().is_none() {
                 self.failures.push(Failure::Warned {
                     process,
                     level: line.level,
@@ -81,8 +81,8 @@ impl Verdict {
 
     /// Checks that `process`, which the check stops mid-match, ran until it did, and logged no
     /// warning or error.
-    pub(crate) fn stopped(&mut self, process: Process, outcome: Outcome, log: &ProcessLog) {
-        if outcome != Outcome::Stopped {
+    pub(crate) fn stopped(&mut self, process: Process, outcome: ProcessOutcome, log: &ProcessLog) {
+        if outcome != ProcessOutcome::Stopped {
             self.failures.push(Failure::NotStopped { process, outcome });
         }
         self.warned(process, log);
@@ -90,8 +90,8 @@ impl Verdict {
 
     /// Checks that the impostor bot exited with failure, and logged why its link failed: a client
     /// whose link fails ends, and says why.
-    pub(crate) fn impostor(&mut self, outcome: Outcome, lost: &[LinkLost]) {
-        if !matches!(outcome, Outcome::Failed { .. }) {
+    pub(crate) fn impostor(&mut self, outcome: ProcessOutcome, lost: &[LinkLost]) {
+        if !matches!(outcome, ProcessOutcome::Failed { .. }) {
             self.failures.push(Failure::ImpostorNotRefused { outcome });
         }
         if lost.is_empty() {

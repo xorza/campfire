@@ -1,12 +1,12 @@
 use std::borrow::Borrow;
-use std::fmt;
 
+use derive_more::Display;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 /// A name a mode declares in its data and scripts use, such as a damage kind, a stat or a
 /// resource: a lowercase letter, then lowercase letters, digits and underscores.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeclaredName(Box<str>);
 
 impl DeclaredName {
@@ -33,12 +33,6 @@ impl PartialEq<str> for DeclaredName {
 impl Borrow<str> for DeclaredName {
     fn borrow(&self) -> &str {
         &self.0
-    }
-}
-
-impl fmt::Display for DeclaredName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
     }
 }
 

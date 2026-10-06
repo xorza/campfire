@@ -23,8 +23,8 @@ use crate::projectiles::flights::{Aloft, Flights};
 use crate::projectiles::launches::{Launch, LaunchPayload, Launches};
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 
-use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::projectiles::projectile_spec::ProjectileSpec;
+use crate::projectiles::projectiles_effect::{ProjectilesEffect, Toward};
 use crate::projectiles::struck_units::StruckUnits;
 use crate::stats::pools::Pools;
 use crate::units::body_grid::BodyGrid;
@@ -39,9 +39,9 @@ pub(crate) mod flights;
 pub(crate) mod launches;
 pub(crate) mod projectile;
 pub(crate) mod projectile_data;
-pub(crate) mod projectile_effect;
 pub(crate) mod projectile_spec;
 pub(crate) mod projectiles_api;
+pub(crate) mod projectiles_effect;
 pub(crate) mod struck_units;
 
 /// The `projectiles` capability: projectile units, which ranged attacks fire and actions
@@ -69,7 +69,7 @@ impl Projectiles {
 
     /// Applies `effect`: a launch this tick, its own cast, from the point of the map's bounds
     /// nearest where it says. A direction of no length launches nothing.
-    fn apply(world: &mut World, effect: ProjectileEffect) {
+    fn apply(world: &mut World, effect: ProjectilesEffect) {
         let from = Bounds::of(world).clamp(effect.from);
         let flight = match effect.toward {
             Toward::Unit(target) => Flight::Homing {

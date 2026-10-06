@@ -5,7 +5,9 @@ use std::sync::Arc;
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::{FluentError, FluentResource};
 
-use crate::error::{LoadError, LoadProblem, LocaleProblem};
+use crate::error::LoadError;
+use crate::error::load_problem::LoadProblem;
+use crate::error::locale_problem::LocaleProblem;
 use crate::language::Language;
 use crate::locale_package::LocalePackage;
 use crate::message_id::MessageId;

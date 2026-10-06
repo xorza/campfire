@@ -1,59 +1,52 @@
-use std::fmt;
+use derive_more::Display;
 
 /// What a name in data or in a script names, as the load checks it: a call's argument the
 /// registry marks as a name of this kind, or a name a data file gives.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NameKind {
+    #[display("param")]
     Param,
+    #[display("modifier")]
     Modifier,
+    #[display("stat")]
     Stat,
+    #[display("pool")]
     Pool,
     /// A pool or a player resource, which a cost takes from.
+    #[display("pool or player resource")]
     Cost,
     /// A tag of the map's markers.
+    #[display("marker with tag")]
     MarkerTag,
+    #[display("player resource")]
     Resource,
+    #[display("layer")]
     Layer,
+    #[display("filter")]
     Filter,
+    #[display("damage kind")]
     DamageKind,
+    #[display("track")]
     Track,
+    #[display("unit type")]
     UnitType,
+    #[display("message")]
     Message,
     /// A tag of the match's units.
+    #[display("tag")]
     Tag,
+    #[display("team")]
     Team,
+    #[display("path")]
     Path,
+    #[display("choice")]
     Choice,
+    #[display("slot kind")]
     SlotKind,
     /// An action of the script's own package.
+    #[display("ability")]
     Ability,
     /// An item type of the mode package.
+    #[display("item type")]
     Item,
-}
-
-impl fmt::Display for NameKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            NameKind::Param => "param",
-            NameKind::Modifier => "modifier",
-            NameKind::Stat => "stat",
-            NameKind::Pool => "pool",
-            NameKind::Cost => "pool or player resource",
-            NameKind::MarkerTag => "marker with tag",
-            NameKind::Resource => "player resource",
-            NameKind::Layer => "layer",
-            NameKind::Filter => "filter",
-            NameKind::DamageKind => "damage kind",
-            NameKind::Track => "track",
-            NameKind::UnitType => "unit type",
-            NameKind::Message => "message",
-            NameKind::Tag => "tag",
-            NameKind::Team => "team",
-            NameKind::Path => "path",
-            NameKind::Choice => "choice",
-            NameKind::SlotKind => "slot kind",
-            NameKind::Item => "item type",
-            NameKind::Ability => "ability",
-        })
-    }
 }

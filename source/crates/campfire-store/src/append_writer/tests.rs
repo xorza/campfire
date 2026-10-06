@@ -3,9 +3,10 @@ use std::io;
 use std::sync::mpsc;
 use std::thread;
 
+use tempfile::TempDir;
+
 use super::*;
 use crate::durable_file::error::DurableError;
-use crate::durable_file::tests::ScratchDir;
 
 /// A file whose appends or syncs fail, as its flags say.
 #[derive(Debug)]
@@ -143,8 +144,8 @@ fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
 
 #[test]
 fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
-    let dir = ScratchDir::new("append");
-    let path = dir.0.join("journal");
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("journal");
     let writer = AppendWriter::create("journal", &path, b"head/").unwrap();
     let watch = writer.watch();
     for record in [&b"first/"[..], b"", b"third/"] {
@@ -167,11 +168,11 @@ fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
     // A file that is not there does not reopen; one in a directory that is not there is not
     // made.
     assert!(matches!(
-        AppendWriter::reopen("journal", &dir.0.join("none"), 0),
+        AppendWriter::reopen("journal", &dir.path().join("none"), 0),
         Err(AppendOpenError::Open(_))
     ));
     assert!(matches!(
-        AppendWriter::create("journal", &dir.0.join("none").join("journal"), b""),
+        AppendWriter::create("journal", &dir.path().join("none").join("journal"), b""),
         Err(AppendOpenError::Create(DurableError::Create(_)))
     ));
 }

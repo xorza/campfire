@@ -13,7 +13,7 @@ use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{Dead, MatchEnd, Order, Owner, Relations};
 use campfire_common::{SegmentSeed, Tick};
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{PlayerInput, SignedReceipt};
@@ -21,14 +21,14 @@ use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
 };
-use lightyear::prelude::client::{InputDelayConfig, InputTimelineConfig};
+use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
 use lightyear::prelude::{
     Client, Connect, Disconnect, LocalTimeline, MessageReceiver, MessageSender, Predicted,
-    PredictionManager, Replicated, SyncConfig, UnlinkReason, Unlinked, is_in_rollback,
+    PredictionManager, Replicated, ReplicationReceiver, SyncConfig, UnlinkReason, Unlinked,
+    is_in_rollback,
 };
 use tracing::{debug, info};
 
-use crate::client_data::ClientData;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::LinkLost;
@@ -42,11 +42,12 @@ use crate::input_message::InputMessage;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
-use crate::net_protocol::{InputChannel, JoinChannel};
+use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
 use crate::offer::Offer;
 use crate::order_script::ScriptedInput;
 use crate::save_command::SaveCommand;
 use crate::sim_client::bot_script::BotScript;
+use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::{JoinState, LinkLoss, Retry, Started};
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
@@ -58,6 +59,7 @@ use crate::superseded::Superseded;
 pub(crate) mod bench;
 pub(crate) mod bot_script;
 pub(crate) mod chain_history;
+pub(crate) mod client_dir;
 pub(crate) mod join_state;
 pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;
@@ -70,7 +72,8 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
 /// Plays a session on a Lightyear client: answers the server's offer with a delegation of a
 /// session key, sends the player's orders as chained inputs, signed once per message with the
 /// session key, and runs the sim in every fixed tick, rollbacks included, with the player's own
-/// inputs, on the units the client predicts.
+/// inputs, on the units the client predicts. It adds Lightyear's client at the server's tick, the
+/// protocol, and the prediction; its app adds its frame loop or clock, and its link.
 #[derive(Debug)]
 pub struct SimClient {
     /// The player's Nostr identity, which signs the delegation.
@@ -89,7 +92,7 @@ pub struct SimClient {
     pub entropy: fn(&mut [u8; 32]),
     /// The client's data directory, held locked, where it writes the newest receipt of its
     /// session; none writes none.
-    pub data: Option<Arc<ClientData>>,
+    pub data: Option<Arc<ClientDir>>,
 }
 
 /// The context that checks receipts' signatures.
@@ -142,10 +145,22 @@ impl PendingOrders {
     }
 }
 
+impl SimClient {
+    /// Spawns the client's entity in `world`, which its link and its connect name.
+    pub fn spawn_client(world: &mut World) -> Entity {
+        world.spawn((Client, RawClient, ReplicationReceiver)).id()
+    }
+}
+
 impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
-        let world = app.world_mut();
         let rate = TickRate::new(self.server.tick_hz);
+        app.add_plugins(ClientPlugins {
+            tick_duration: rate.length(),
+        });
+        app.add_plugins(NetProtocol);
+        app.insert_resource(PredictionManager::default());
+        let world = app.world_mut();
         SimUpdate::prepare(world, PREDICTION_SEED, rate);
         let mut schedule = SimUpdate::schedule();
         // A client hashes no state, so the registry the capabilities fill is not kept.
@@ -231,10 +246,10 @@ fn answer_offer(
                     sender.send::<JoinChannel>(join);
                     info!(%session, "joined the offered session");
                 }
-                Some(Err(mismatch)) => {
+                Some(Err(error)) => {
                     SessionRefused {
                         session,
-                        mismatch: mismatch.to_string(),
+                        mismatch: ErrorReport::of(&error).to_string(),
                     }
                     .log();
                     commands.trigger(Disconnect { entity: client });
@@ -323,9 +338,9 @@ fn receive_receipt(
 ) {
     for mut receiver in &mut receivers {
         for receipt in receiver.receive() {
-            if let Err(refusal) = state.take_receipt(&receipt, &verifier.0) {
+            if let Err(error) = state.take_receipt(&receipt, &verifier.0) {
                 ReceiptRefused {
-                    reason: refusal.to_string(),
+                    reason: ErrorReport::of(&error).to_string(),
                 }
                 .log();
                 continue;

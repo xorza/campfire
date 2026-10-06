@@ -5,7 +5,7 @@ use campfire_sim::StableId;
 
 use crate::actions::effect_lists::Does;
 use crate::progression::Progression;
-use crate::progression::tracks_column::TracksColumn;
+use crate::progression::progression_column::ProgressionColumn;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::frame::Frame;
@@ -36,7 +36,7 @@ impl ProgressionEffect {
         let Does::Xp { track, amount } = does else {
             unreachable!("progression queues only its own listed effects")
         };
-        if !TracksColumn::has(view, unit, track) {
+        if !ProgressionColumn::has(view, unit, track) {
             return Err(CallError::Api(ApiError::NoTrack));
         }
         frame.effects.push(ProgressionEffect::AddXp {

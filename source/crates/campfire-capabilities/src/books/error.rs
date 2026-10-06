@@ -1,5 +1,4 @@
-use std::error::Error;
-use std::fmt;
+use thiserror::Error;
 
 use crate::actions::error::ActionError;
 use crate::books::type_place::TypePlace;
@@ -10,63 +9,47 @@ use crate::values::declared_name::DeclaredName;
 
 /// What the package load did not check and a match's books cannot hold: each in the package at
 /// its place among the match's packages, the mode's 0.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum BookError {
     /// The unit type makes no unit.
+    #[error("{unit_type}")]
     Kit {
         package: u16,
         unit_type: TypePlace,
+        #[source]
         error: UnitKitError,
     },
     /// The unit type's AI does not load.
+    #[error("{unit_type}")]
     Ai {
         package: u16,
         unit_type: TypePlace,
+        #[source]
         error: AiError,
     },
     /// A time of the action does not count in ticks.
+    #[error("action {action}")]
     Action {
         package: u16,
         action: DeclaredName,
+        #[source]
         error: ActionError,
     },
     /// The modifier does not load.
+    #[error("modifier {modifier}")]
     Modifier {
         package: u16,
         modifier: DeclaredName,
+        #[source]
         problem: ModifierProblem,
     },
     /// A time of the area type does not count in ticks.
+    #[error("area type {unit_type}: a time too large to count in ticks")]
     AreaTime {
         package: u16,
         unit_type: DeclaredName,
     },
     /// The mode's teams, relations or map name what the mode does not have.
+    #[error(transparent)]
     Mode(ModeError),
 }
-
-impl fmt::Display for BookError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BookError::Kit {
-                unit_type, error, ..
-            } => write!(f, "{unit_type}: {error}"),
-            BookError::Ai {
-                unit_type, error, ..
-            } => write!(f, "{unit_type}: {error}"),
-            BookError::Action { action, error, .. } => write!(f, "action {action}: {error}"),
-            BookError::Modifier {
-                modifier, problem, ..
-            } => write!(f, "modifier {modifier}: {problem}"),
-            BookError::Mode(error) => write!(f, "{error}"),
-            BookError::AreaTime { unit_type, .. } => {
-                write!(
-                    f,
-                    "area type {unit_type}: a time too large to count in ticks"
-                )
-            }
-        }
-    }
-}
-
-impl Error for BookError {}

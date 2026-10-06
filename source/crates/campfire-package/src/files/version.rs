@@ -1,11 +1,11 @@
-use std::fmt;
-
+use derive_more::Display;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 /// A version as `major.minor.patch`, each a decimal number: a package's version, or the engine
 /// release a package targets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[display("{major}.{minor}.{patch}")]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
@@ -53,12 +53,6 @@ impl Version {
             minor: parts[1],
             patch: parts[2],
         })
-    }
-}
-
-impl fmt::Display for Version {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 

@@ -16,8 +16,8 @@ campfire-runner.workspace = true
 campfire-sim.workspace = true
 
 bevy.workspace = true
-getrandom.workspace = true
 lightyear.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 
 [lints]

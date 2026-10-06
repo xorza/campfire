@@ -11,7 +11,7 @@ use crate::log_event::LogEvent;
 /// message among them.
 #[derive(Debug, Deserialize)]
 pub struct LogLine {
-    pub level: Level,
+    pub level: LogLevel,
     pub target: String,
     pub fields: Value,
 }
@@ -19,7 +19,7 @@ pub struct LogLine {
 /// An event's level, as `tracing` names them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
-pub enum Level {
+pub enum LogLevel {
     Trace,
     Debug,
     Info,

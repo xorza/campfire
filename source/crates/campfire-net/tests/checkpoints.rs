@@ -9,16 +9,15 @@ use std::num::{NonZeroU8, NonZeroU32};
 use std::path::{Path, PathBuf};
 
 use bevy_app::AppExit;
-use campfire_common::{StateHash, Tick};
-use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
+use campfire_common::{ExitStatus, StateHash, Tick};
+use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
-    CheckpointFailed, SeedsRanOut, ServerData, ServerExit, SessionDir, SimServer, TickHashes,
+    CheckpointFailed, SeedsRanOut, ServerDir, ServerExit, SessionDir, SimServer, TickHashes,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Runner, Session};
-
-use crate::Scratch;
+use tempfile::TempDir;
 
 /// The chain of the scenario's sessions, of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
@@ -27,11 +26,11 @@ const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap(
 /// 180 steps with both records logged; with the state hash after each tick the server ran. The
 /// second checkpoint's delta holds the changes from tick 130 on: the server sent those before
 /// it, 100 ticks after the first.
-fn checkpointed(data: &Scratch) -> (LocalMatch, Vec<StateHash>) {
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
-    local.keep_data(data.0.clone());
+fn checkpointed(data: &TempDir) -> (InProcessMatch, Vec<StateHash>) {
+    let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    local.keep_data(data.path().to_owned());
     local.start_match();
-    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     for tick in [30, 160] {
         SimServer::request_checkpoint(local.server_mut().world_mut(), Tick::new(tick));
     }
@@ -52,14 +51,14 @@ fn checkpointed(data: &Scratch) -> (LocalMatch, Vec<StateHash>) {
     (local, hashes)
 }
 
-fn log(local: &LocalMatch) -> &SessionLog {
+fn log(local: &InProcessMatch) -> &SessionLog {
     local.server().world().resource::<Session>().log()
 }
 
 /// The directory the session's snapshots go to.
-fn snapshots(data: &Scratch, local: &LocalMatch) -> PathBuf {
+fn snapshots(data: &TempDir, local: &InProcessMatch) -> PathBuf {
     let id = log(local).session_id();
-    data.0
+    data.path()
         .join("sessions")
         .join(id.to_string())
         .join("snapshots")
@@ -68,10 +67,10 @@ fn snapshots(data: &Scratch, local: &LocalMatch) -> PathBuf {
 /// Ends the session aborted, publishes its log, and checks it as a verifier does with the
 /// snapshots in `snapshots`: each snapshot is the one its checkpoint fingerprints and restores to
 /// its state hash, and the replay from tick 0 meets each checkpoint's hash and the result.
-fn verifies(local: &mut LocalMatch, snapshots: &Path) {
+fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
     SimServer::end_session(local.server_mut().world_mut(), Outcome::Aborted).unwrap();
     let file =
-        SessionDir::publish(local.server().world().resource::<ServerData>(), log(local)).unwrap();
+        SessionDir::publish(local.server().world().resource::<ServerDir>(), log(local)).unwrap();
     let published = SessionLog::decode(&fs::read(file).unwrap()).unwrap();
     let packages: &ModePackages = local.packages();
     for record in published.checkpoints() {
@@ -95,7 +94,7 @@ fn verifies(local: &mut LocalMatch, snapshots: &Path) {
 
 #[test]
 fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_snapshots() {
-    let data = Scratch::new("checkpoints");
+    let data = TempDir::new().unwrap();
     let (mut local, before) = checkpointed(&data);
     let cut = local.next_tick(End::Server);
     local.restart_server();
@@ -113,7 +112,7 @@ fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_sn
 
 #[test]
 fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
-    let data = Scratch::new("checkpoint-cut");
+    let data = TempDir::new().unwrap();
     let (mut local, before) = checkpointed(&data);
     let second = log(&local).checkpoint_at(Tick::new(160)).unwrap().clone();
     let snapshots = snapshots(&data, &local);
@@ -124,7 +123,11 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
     // ticks the server ran after its begin, and no record, and the snapshot is gone. The record
     // came in its own time, by the disk's: its frame alone goes, so the ticks after the begin
     // stay whatever frame it came in.
-    let journal = data.0.join("sessions").join(id.to_string()).join("journal");
+    let journal = data
+        .path()
+        .join("sessions")
+        .join(id.to_string())
+        .join("journal");
     let bytes = fs::read(&journal).unwrap();
     let mut frames = JournalFrames::new(&bytes).unwrap();
     let mut done = Vec::new();
@@ -145,7 +148,7 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
 
     // The restore builds the match from the first checkpoint, replays to the cut, and takes the
     // second again as its replay passes tick 160: the same record, its snapshot written again.
-    let stopped = ServerData::open(&data.0).unwrap();
+    let stopped = ServerDir::open(data.path()).unwrap();
     let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let cut = dir.restore().unwrap().unwrap().log.next_tick();
     drop(stopped);
@@ -166,9 +169,12 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
 #[test]
 fn a_checkpoint_past_the_seed_chain_ends_the_session_aborted() {
     // A chain of one segment: the checkpoint before tick 30 would start a second.
-    let data = Scratch::new("checkpoint-seeds");
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
-    local.keep_data(data.0.clone());
+    let data = TempDir::new().unwrap();
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.keep_data(data.path().to_owned());
     local.start_match();
     SimServer::request_checkpoint(local.server_mut().world_mut(), Tick::new(30));
     for _ in 0..60 {
@@ -192,9 +198,9 @@ fn a_checkpoint_past_the_seed_chain_ends_the_session_aborted() {
 fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     // A file holds the place of the session's snapshots' directory, so the snapshot of the
     // checkpoint before tick 30 is not written, on every OS.
-    let data = Scratch::new("checkpoint-fault");
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
-    local.keep_data(data.0.clone());
+    let data = TempDir::new().unwrap();
+    let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    local.keep_data(data.path().to_owned());
     local.start_match();
     let place = snapshots(&data, &local);
     fs::write(&place, b"").unwrap();
@@ -205,7 +211,7 @@ fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     // The fault reaches `Faults`, a snapshot's, which ends the server.
     let world = local.server_mut().world_mut();
     SimServer::settle_checkpoint(world);
-    let code = NonZeroU8::new(ServerExit::STORAGE_FAILED).unwrap();
+    let code = NonZeroU8::new(ExitStatus::Storage.code()).unwrap();
     assert_eq!(ServerExit::due(world, false), Some(AppExit::Error(code)));
     assert_eq!(ServerExit::due(world, false), None);
     assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);

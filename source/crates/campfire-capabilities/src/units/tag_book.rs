@@ -3,7 +3,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 
 use crate::units::tag::Tag;
-use crate::units::tag_effects::TagEffects;
+use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
@@ -12,7 +12,7 @@ use crate::units::unit_type::UnitType;
 #[derive(Resource, Debug, Default)]
 pub(crate) struct TagBook {
     /// By tag.
-    effects: Vec<TagEffects>,
+    properties: Vec<TagProperties>,
     /// The tags each tag makes its unit immune to, by tag.
     immune: Vec<TagSet>,
     /// The tags that make their unit immune to some: a modifier that grants one is never
@@ -23,19 +23,19 @@ pub(crate) struct TagBook {
 }
 
 impl TagBook {
-    /// The book of `tags`, each tag's effects and immunities by its index, and of each unit
+    /// The book of `tags`, each tag's properties and immunities by its index, and of each unit
     /// type's own tags.
     pub(crate) fn new(
-        tags: impl IntoIterator<Item = (TagEffects, TagSet)>,
+        tags: impl IntoIterator<Item = (TagProperties, TagSet)>,
         types: impl IntoIterator<Item = (UnitType, TagSet)>,
     ) -> TagBook {
         let mut book = TagBook::default();
-        for (effects, immune) in tags {
+        for (properties, immune) in tags {
             if immune != TagSet::default() {
-                let tag = Tag::new(book.effects.len());
+                let tag = Tag::new(book.properties.len());
                 book.granting = book.granting.with(tag);
             }
-            book.effects.push(effects);
+            book.properties.push(properties);
             book.immune.push(immune);
         }
         for (unit_type, tags) in types {
@@ -76,13 +76,15 @@ impl TagBook {
         let tags = granted
             .filter(|&tags| takes_effect(tags))
             .fold(own, TagSet::union);
-        let effects = tags
+        let properties = tags
             .iter()
-            .filter_map(|tag| self.effects.get(tag.index()))
-            .fold(TagEffects::default(), |effects, &of| effects.union(of));
+            .filter_map(|tag| self.properties.get(tag.index()))
+            .fold(TagProperties::default(), |properties, &of| {
+                properties.union(of)
+            });
         UnitTags {
             tags,
-            effects,
+            properties,
             immune,
         }
     }
@@ -126,7 +128,7 @@ mod tests {
     use crate::values::declared_name::DeclaredName;
 
     #[test]
-    fn a_units_tags_take_their_effects_from_the_modes_data() {
+    fn a_units_tags_take_their_properties_from_the_modes_data() {
         let mut types = UnitTypes::default();
         let names = ["stunned", "slowed", "slow_immune", "true_sight"];
         let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name));
@@ -169,10 +171,10 @@ mod tests {
         // Its type's true sight detects; a stun blocks what the data names, and no more.
         let tags = book.unit_tags(tower, [set(&[stunned]), set(&[slowed])].into_iter());
         assert_eq!(tags.tags, set(&[stunned, slowed, sight]));
-        assert!(tags.effects.detects() && !tags.effects.hidden());
+        assert!(tags.properties.detects() && !tags.properties.hidden());
         let blocked: Vec<_> = Block::ALL
             .into_iter()
-            .filter(|&block| tags.effects.blocks(block))
+            .filter(|&block| tags.properties.blocks(block))
             .collect();
         assert_eq!(blocked, stun);
         assert_eq!(tags.immune, TagSet::default());

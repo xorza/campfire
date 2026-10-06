@@ -25,25 +25,25 @@ mod tick_inputs;
 mod tick_rate;
 mod unpredicted;
 
-pub use capability::Capability;
-pub use command::Command;
-pub use entity_index::EntityIndex;
-pub use id_allocator::IdAllocator;
-pub use ordered::{Keyed, Ordered};
-pub use position::Position;
-pub use sim_rng::SimRng;
-pub use sim_state::{SimComponent, SimResource};
-pub use sim_tick::SimTick;
-pub use sim_update::{SimSet, SimUpdate};
-pub use slot_event::{SlotEvent, SlotEventKind};
-pub use stable_id::StableId;
-pub use state_copy::StateCopy;
-pub use state_registry::error::SnapshotError;
-pub use state_registry::state_delta::StateDelta;
-pub use state_registry::{StateRegistry, TypeHash};
-pub use tick_inputs::{PlayerCommand, TickInput, TickInputs};
-pub use tick_rate::TickRate;
-pub use unpredicted::Unpredicted;
+pub use crate::capability::Capability;
+pub use crate::command::Command;
+pub use crate::entity_index::EntityIndex;
+pub use crate::id_allocator::IdAllocator;
+pub use crate::ordered::{Keyed, Ordered};
+pub use crate::position::Position;
+pub use crate::sim_rng::SimRng;
+pub use crate::sim_state::{SimComponent, SimResource};
+pub use crate::sim_tick::SimTick;
+pub use crate::sim_update::{SimSet, SimUpdate};
+pub use crate::slot_event::{SlotEvent, SlotEventKind};
+pub use crate::stable_id::StableId;
+pub use crate::state_copy::StateCopy;
+pub use crate::state_registry::error::SnapshotError;
+pub use crate::state_registry::state_delta::StateDelta;
+pub use crate::state_registry::{StateRegistry, TypeHash};
+pub use crate::tick_inputs::{PlayerCommand, TickInput, TickInputs};
+pub use crate::tick_rate::TickRate;
+pub use crate::unpredicted::Unpredicted;
 
 #[cfg(feature = "internals")]
 pub mod internals {

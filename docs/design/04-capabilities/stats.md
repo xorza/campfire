@@ -6,7 +6,7 @@ How a unit's numbers, pools and tags come from its type, its level and the modif
 
 ## Data
 
-The mode declares, in `data/mode.toml`, its stats, its pools and the effects of its tags:
+The mode declares, in `data/mode.toml`, its stats, its pools and the properties of its tags:
 
 ```toml
 [stats.armor]
@@ -77,9 +77,9 @@ Intervals, shields and the events modifiers hear are part of [Combat](combat.md#
 
 ### Tags
 
-A unit's tags are its type's tags, the tags the engine gives it by its sections (`avatar`, `projectile`, `area`, `item`, and its layer's name), and the tags its modifiers grant, those of 0 stacks and those an immunity suppresses aside. A tag has effects only when the mode declares them in `[tags.<name>]`:
+A unit's tags are its type's tags, the tags the engine gives it by its sections (`avatar`, `projectile`, `area`, `item`, and its layer's name), and the tags its modifiers grant, those of 0 stacks and those an immunity suppresses aside. A tag has properties only when the mode declares them in `[tags.<name>]`:
 
-| Effect | Means | Asked by |
+| Property | Means | Asked by |
 | --- | --- | --- |
 | `blocks = ["move"]` | The unit does not move | The Move stage |
 | `blocks = ["attack"]`, `["cast"]`, `["use"]` | The unit starts no action of that group, and one in its time is interrupted ([Actions](actions.md#kinds)) | The action pipeline, as an action starts and as it delivers |
@@ -91,10 +91,10 @@ A unit's tags are its type's tags, the tags the engine gives it by its sections 
 
 - **One question each.** Each system asks only its own question of the unit's tags, and no system reads modifiers for a tag.
 - **Stopped, not dropped.** A block keeps the order behind what it stops: the destination and route, the attack target, the ordered action. The action runs again when the block ends, as League of Legends buffers input. A windup or a cast time it interrupts starts again from nothing, and an interrupted action spends no cost and no cooldown, as Dota 2's cast point does. An action its checks refuse for another reason is dropped.
-- **Immunity suppresses.** An immunity follows the Gameplay Ability System's application immunity, but holds the modifier instead of refusing it: tags are derived, so the modifier takes effect again when the immunity ends, with no state to restore. A modifier that grants a tag with an `immune` effect is never suppressed itself, so immunities come from the type's tags and those modifiers first, and then suppress the rest; no order of modifiers can change the result.
+- **Immunity suppresses.** An immunity follows the Gameplay Ability System's application immunity, but holds the modifier instead of refusing it: tags are derived, so the modifier takes effect again when the immunity ends, with no state to restore. A modifier that grants a tag with an `immune` property is never suppressed itself, so immunities come from the type's tags and those modifiers first, and then suppress the rest; no order of modifiers can change the result.
 - **Filters** read tags with a sign: `enemies:avatar:!stunned` selects the avatars that may be attacked and are not stunned ([Filters](../08-script-api.md#filters)).
 - **Names.** A tag's name is a declared name: a lowercase letter, then lowercase letters, digits and underscores, so every tag can stand in a filter. The load refuses another name where data gives it.
-- **The engine's tags.** `avatar`, `projectile` and `area` hold the first places among a match's tags, in that order, so the engine finds them without their names. Only the engine gives them: the load refuses a unit type or a modifier that carries one. A filter and the mode's `[tags]` may name them, and give them effects.
+- **The engine's tags.** `avatar`, `projectile` and `area` hold the first places among a match's tags, in that order, so the engine finds them without their names. Only the engine gives them: the load refuses a unit type or a modifier that carries one. A filter and the mode's `[tags]` may name them, and give them properties.
 - A mode declares at most 256 tags together, its types', its modifiers' and the engine's three.
 
 ### Levels

@@ -27,14 +27,14 @@ pub(crate) mod slow_sync;
 /// then ends the worker.
 #[derive(Debug)]
 pub struct AppendWriter {
-    shared: Arc<Shared>,
+    shared: Arc<AppendShared>,
     /// Dropped after the writer's `Drop` closes it.
     _worker: Worker,
 }
 
 /// What the caller and the worker share.
 #[derive(Debug)]
-pub(crate) struct Shared {
+pub(crate) struct AppendShared {
     pending: Mutex<Pending>,
     wake: Condvar,
     durable: AtomicU64,
@@ -96,7 +96,7 @@ impl AppendWriter {
 
     /// A writer whose syncs longer than `slow_after` are slow.
     fn start_slow_after<F: AppendFile>(name: &str, file: F, slow_after: Duration) -> AppendWriter {
-        let shared = Arc::new(Shared {
+        let shared = Arc::new(AppendShared {
             pending: Mutex::new(Pending::default()),
             wake: Condvar::new(),
             durable: AtomicU64::new(0),
@@ -130,7 +130,7 @@ impl AppendWriter {
     }
 }
 
-impl Shared {
+impl AppendShared {
     fn lock(&self) -> MutexGuard<'_, Pending> {
         self.pending
             .lock()

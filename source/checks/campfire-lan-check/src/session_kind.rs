@@ -1,11 +1,12 @@
-use std::fmt;
-
 use crate::process::Process;
+use derive_more::Display;
 
 /// Which session of a run a session log is: the LAN match's, or the local match's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionKind {
+    #[display("the server")]
     Lan,
+    #[display("the local server")]
     Local,
 }
 
@@ -23,16 +24,6 @@ impl SessionKind {
         match self {
             SessionKind::Lan => Process::Verifier,
             SessionKind::Local => Process::LocalVerifier,
-        }
-    }
-}
-
-/// The host of the session, as the subject of a sentence.
-impl fmt::Display for SessionKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SessionKind::Lan => f.write_str("the server"),
-            SessionKind::Local => f.write_str("the local server"),
         }
     }
 }

@@ -19,7 +19,7 @@ use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::units::block::Block;
-use crate::units::tag_effect::TagEffect;
+use crate::units::tag_property::TagProperty;
 
 /// The script API of `abilities`: the values of a cast that design 08 plans, and the
 /// bookkeeping of cooldowns and charges.
@@ -92,8 +92,8 @@ impl AbilitiesApi {
             .name(1, NameKind::Ability),
             |ctx: &mut Ctx, unit: Unit, id: &str| AbilitiesApi::add_charge(ctx, &unit, id),
         );
-        api.tag_effect(
-            TagEffect::Blocks(Block::Cast),
+        api.tag_property(
+            TagProperty::Blocks(Block::Cast),
             Status::Runs(ApiVersion::FIRST),
         )
         .hook(Hook::OnResolve, Status::Runs(ApiVersion::FIRST))

@@ -13,7 +13,7 @@ use campfire_sim::{
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::deliveries::Deliveries;
-use crate::deliveries::delivered::{Delivered, Reach};
+use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
@@ -741,7 +741,7 @@ fn dash_end(delivery: DashDelivery, to: DashTo, step: Segment, place: Position) 
             start,
             launch: None,
         },
-        reach: Reach::End,
+        reach: Reached::End,
         hit: Hit {
             delivery: None,
             target,

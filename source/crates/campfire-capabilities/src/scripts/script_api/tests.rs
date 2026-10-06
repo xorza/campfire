@@ -92,12 +92,16 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     assert!(Hook::ALL.iter().all(|hook| hooks.contains(hook)));
     assert_eq!(hooks.len(), Hook::ALL.len());
     let effects: Vec<_> = api
-        .tag_effects()
+        .tag_properties()
         .iter()
-        .map(|status| status.effect)
+        .map(|status| status.property)
         .collect();
-    assert!(TagEffect::ALL.iter().all(|effect| effects.contains(effect)));
-    assert_eq!(effects.len(), TagEffect::ALL.len());
+    assert!(
+        TagProperty::ALL
+            .iter()
+            .all(|effect| effects.contains(effect))
+    );
+    assert_eq!(effects.len(), TagProperty::ALL.len());
     let damage = api.member(ApiOwner::Ctx, "damage").unwrap();
     assert_eq!(
         (damage.roles, damage.capability, damage.status),

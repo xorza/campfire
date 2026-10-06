@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_protocol::SignedReceipt;
 use campfire_store::{DurableError, DurableFile, LatestWriter};
 
-use crate::client_data::ClientData;
+use crate::sim_client::client_dir::ClientDir;
 
 /// Writes the newest receipt a client keeps to its data directory, on a worker of its own, so no
 /// frame waits for a sync: the main thread hands over each receipt it keeps, which replaces one
@@ -15,7 +15,7 @@ pub(crate) struct ReceiptWriter(LatestWriter<SignedReceipt, DurableError>);
 
 impl ReceiptWriter {
     /// A writer into the data directory `data`, which it holds locked while it runs.
-    pub(crate) fn start(data: Arc<ClientData>) -> ReceiptWriter {
+    pub(crate) fn start(data: Arc<ClientDir>) -> ReceiptWriter {
         ReceiptWriter(LatestWriter::start(
             "receipts",
             move |receipt: &SignedReceipt| {

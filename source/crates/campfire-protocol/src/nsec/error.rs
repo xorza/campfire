@@ -1,30 +1,13 @@
-use std::error::Error;
-use std::fmt;
 use std::str::Utf8Error;
 
 use nostr::error::Error as NostrError;
+use thiserror::Error;
 
 /// Why bytes hold no `nsec`.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum NsecError {
-    NotText(Utf8Error),
-    NotNsec(NostrError),
-}
-
-impl fmt::Display for NsecError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            NsecError::NotText(error) => write!(f, "the key is no text: {error}"),
-            NsecError::NotNsec(error) => write!(f, "the key is no nsec: {error}"),
-        }
-    }
-}
-
-impl Error for NsecError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            NsecError::NotText(error) => Some(error),
-            NsecError::NotNsec(error) => Some(error),
-        }
-    }
+    #[error("the key is no text")]
+    NotText(#[source] Utf8Error),
+    #[error("the key is no nsec")]
+    NotNsec(#[source] NostrError),
 }

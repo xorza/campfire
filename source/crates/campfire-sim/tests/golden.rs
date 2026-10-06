@@ -220,7 +220,7 @@ fn state_section(hasher: &mut Hasher) {
     for type_hash in &per_type {
         hasher
             .update(type_hash.name.as_bytes())
-            .update(&type_hash.hash);
+            .update(type_hash.hash.as_bytes());
     }
 }
 

@@ -4,7 +4,7 @@ use campfire_sim::{Capability, Position};
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::delivery::DeliveryShape;
 use crate::deliveries::delivering::Delivering;
-use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
+use crate::projectiles::projectiles_effect::{ProjectilesEffect, Toward};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
@@ -74,7 +74,7 @@ impl ProjectilesApi {
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
         let id = frame.take_id();
-        frame.effects.push(ProjectileEffect {
+        frame.effects.push(ProjectilesEffect {
             id,
             by: launcher.by,
             unit_type,

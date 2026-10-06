@@ -8,13 +8,13 @@ use campfire_capabilities::{
     Destination, Experience, Leaver, ModeState, Owner, PlayersData, StateValue,
 };
 use campfire_common::PlayerSlot;
-use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
+use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_protocol::{AfterLeave, Controller, ServerInput, SessionLog};
 use campfire_runner::{Runner, Session};
 
 /// Where the server's hero of `slot` walks to.
-fn destination(local: &mut LocalMatch, slot: PlayerSlot) -> Destination {
+fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {
     let world = local.server_mut().world_mut();
     let mut heroes = world.query_filtered::<(&Owner, &Destination), With<Experience>>();
     let (_, destination) = heroes
@@ -25,7 +25,7 @@ fn destination(local: &mut LocalMatch, slot: PlayerSlot) -> Destination {
 }
 
 /// The lane mode's one state field, the word picked.
-fn picked(local: &LocalMatch) -> StateValue {
+fn picked(local: &InProcessMatch) -> StateValue {
     local.server().world().resource::<ModeState>().get()[0].clone()
 }
 
@@ -38,7 +38,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
         "[[input]]\ntick = 5\nname = \"pick\"\nvalue = \"runner\"\n\
          [[order]]\ntick = 10\nmove = [3, 2]\n",
     );
-    let mut local = LocalMatch::new(setup);
+    let mut local = InProcessMatch::new(setup);
     local.start_match();
     let bot = PlayerSlot::new(1);
     let session = local.server().world().resource::<Session>();
@@ -81,7 +81,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
     world.resource::<Session>().log().encode(&mut bytes);
     let live = world.resource::<TickHashes>().get().to_vec();
     let decoded = SessionLog::decode(&bytes).unwrap();
-    let seeds = LocalMatch::SEED_CHAIN.seeds();
+    let seeds = InProcessMatch::SEED_CHAIN.seeds();
     let mut replay = Runner::new(decoded.rewound(), seeds, local.packages()).unwrap();
     let mut replayed = Vec::new();
     for _ in &live {
@@ -95,7 +95,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
 fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
     // Client 1 leaves after a second of grace; its slot becomes a bot's, which walks to (-3, 2)
     // 2 ticks after.
-    let mut setup = MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN);
+    let mut setup = MatchSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN);
     setup.rules = PlayersData {
         late_join: false,
         bot_takeover: false,
@@ -106,12 +106,12 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
         restore_window: Duration::from_secs(1),
     };
     setup.takeover = Some("[[order]]\ntick = 2\nmove = [-3, 2]\n");
-    let mut local = LocalMatch::new(setup);
+    let mut local = InProcessMatch::new(setup);
     local.start_match();
     let world = local.server().world();
     let slot = world.get::<PlayerLink>(local.link(1)).unwrap().slot();
     local.cut_link(1);
-    let left = |local: &LocalMatch| {
+    let left = |local: &InProcessMatch| {
         local.server_inputs().iter().any(|input| {
             matches!(
                 input,

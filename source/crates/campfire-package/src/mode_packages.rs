@@ -14,7 +14,9 @@ use campfire_sim::{Capability, TickRate};
 use crate::avatar_unit::AvatarUnit;
 use crate::dependent::Dependent;
 use crate::dependent::DependentKind;
-use crate::error::{Limit, LoadError, LoadProblem, PackageRef, StoreError};
+use crate::error::limit::Limit;
+use crate::error::load_problem::LoadProblem;
+use crate::error::{LoadError, PackageRef, StoreError};
 use crate::files::manifest::Manifest;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
@@ -168,21 +170,20 @@ impl ModePackages {
             self.manifest.tick_hz.contains(rate.hz()),
             "a session's rate is within the manifest's range"
         );
-        Books::build(&self.book_input(rate))
-            .unwrap_or_else(|error| panic!("the load built the books at the fastest rate: {error}"))
+        Books::build(&self.book_input(rate)).expect("the load built the books at the fastest rate")
     }
 
     /// Compiles every script of its packages by `compile`, in the order a match compiles them,
     /// which must number each at its place, as its book of hooks holds it; the load parsed each
     /// one, so none fails.
-    pub fn compile_scripts<E: fmt::Display>(
+    pub fn compile_scripts<E: fmt::Debug>(
         &self,
         mut compile: impl FnMut(&str) -> Result<ScriptId, E>,
     ) {
         let scripts = self.packages().flat_map(|view| &view.package.scripts);
         for (at, script) in scripts.enumerate() {
             let id = compile(&script.source)
-                .unwrap_or_else(|error| panic!("the load parsed {}: {error}", script.path));
+                .unwrap_or_else(|error| panic!("the load parsed {}: {error:?}", script.path));
             assert_eq!(
                 id,
                 ScriptId::nth(at),

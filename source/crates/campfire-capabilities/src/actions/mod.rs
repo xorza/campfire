@@ -41,6 +41,7 @@ pub(crate) mod action_slots;
 pub(crate) mod action_target;
 pub(crate) mod actions_api;
 pub(crate) mod actions_column;
+pub(crate) mod actions_effect;
 pub(crate) mod cost_target;
 pub(crate) mod delivery;
 pub(crate) mod delivery_data;
@@ -56,7 +57,6 @@ pub(crate) mod range;
 pub(crate) mod rank_values;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kinds;
-pub(crate) mod spawn_effect;
 pub(crate) mod targets;
 pub(crate) mod weapon;
 

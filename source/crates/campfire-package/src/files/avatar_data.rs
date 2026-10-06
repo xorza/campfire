@@ -2,7 +2,7 @@ use campfire_capabilities::{PackageContent, UnitTypeFile};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::files::package_content;
+use crate::files::content_table::ContentTable;
 use crate::message_id::MessageId;
 
 /// An avatar package's `data/avatar.toml`: the name players see, its one unit type, whose
@@ -24,7 +24,7 @@ impl<'de> Deserialize<'de> for AvatarData {
             rest: toml::Table,
         }
         let Fields { name, mut rest } = Fields::deserialize(deserializer)?;
-        let content = package_content::take(&mut rest)?;
+        let content = ContentTable::take(&mut rest)?;
         let unit = UnitTypeFile::deserialize(toml::Value::Table(rest)).map_err(D::Error::custom)?;
         Ok(AvatarData {
             name,

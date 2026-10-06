@@ -20,7 +20,7 @@ use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 
 /// The books of the mode's own rules: its stats, at the match's rate, under its move speed cap;
-/// its pools; its tags' effects and each unit type's own tags; what its combat reads; its slot
+/// its pools; its tags' properties and each unit type's own tags; what its combat reads; its slot
 /// kinds; the names of its damage kinds and of its players' resources, by id; and its shop.
 #[derive(Debug)]
 pub struct ModeBooks {
@@ -40,7 +40,7 @@ pub struct ModeBooks {
 
 impl ModeBooks {
     /// Puts the books in `world`, a match whose capabilities are installed: the stat and pool
-    /// books, the tags' effects, what combat reads, the slot kinds, and the names its scripts
+    /// books, the tags' properties, what combat reads, the slot kinds, and the names its scripts
     /// read. `Mode::install`
     /// calls it, and installs the map it gives back; a test arena calls it alone, for a match
     /// whose mode runs no script and has no map.

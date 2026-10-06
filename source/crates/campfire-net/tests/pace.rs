@@ -3,19 +3,22 @@
 //! clock as long as a session's tick runs two.
 
 use bevy_time::{Fixed, Time};
-use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{JoinState, Speed};
+use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_net::{JoinState, PaceSpeed};
 use campfire_sim::TickRate;
 
 #[test]
 fn a_paused_match_runs_no_tick_and_at_speed_2_runs_two_ticks_a_frame() {
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
     local.start_match();
-    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     for _ in 0..30 {
         local.step();
     }
-    let ticks = |local: &LocalMatch| {
+    let ticks = |local: &InProcessMatch| {
         [End::Server, End::Client(0), End::Client(1)].map(|end| local.next_tick(end))
     };
 
@@ -39,7 +42,7 @@ fn a_paused_match_runs_no_tick_and_at_speed_2_runs_two_ticks_a_frame() {
     // first with the time the fixed clock held over too, as many more as half ticks it holds.
     let tick = TickRate::new(local.packages().manifest().tick_hz.default()).length();
     let held = local.server().world().resource::<Time<Fixed>>().overstep();
-    local.pace().set_speed(Speed::Double);
+    local.pace().set_speed(PaceSpeed::Double);
     let start = local.next_tick(End::Server);
     local.step();
     let first = 2 + u64::try_from(held.as_nanos() / (tick / 2).as_nanos()).unwrap();

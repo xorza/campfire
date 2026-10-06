@@ -9,10 +9,12 @@ use rhai::packages::{
 use rhai::{AST, CallFnOptions, Dynamic, Engine, FuncArgs, Scope};
 use tracing::debug;
 
-use crate::error::ScriptError;
 use crate::script_host::budget::Budget;
+use crate::script_host::error::ScriptError;
+use crate::script_host::num_api::NumApi;
 
 pub(crate) mod budget;
+pub(crate) mod error;
 mod num_api;
 
 /// Rhai hashes function signatures to resolve calls. It seeds the hash per process unless set,
@@ -113,7 +115,7 @@ impl ScriptHost {
             allowed,
             counted,
         };
-        num_api::register(&mut host.engine);
+        NumApi::register(&mut host.engine);
         host
     }
 

@@ -214,9 +214,9 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_level_up(ctx, unit, track, level)` | mode | progression | since 1.0 |
 | `on_generate(ctx, region)` | mode | core | planned |
 
-## Tag effects
+## Tag properties
 
-| Effect | Status |
+| Property | Status |
 | --- | --- |
 | `blocks = ["move"]` | since 1.0 |
 | `blocks = ["use"]` | since 1.0 |
@@ -470,7 +470,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `ai` | since 1.0 |
 | `think_ms` | since 1.0 |
 
-### A tag's effects, `[tags.<name>]`
+### A tag's properties, `[tags.<name>]`
 
 | Field | Status |
 | --- | --- |

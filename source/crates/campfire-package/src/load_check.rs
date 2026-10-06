@@ -13,10 +13,16 @@ use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
 
 use crate::dependent::{Dependent, DependentKind};
-use crate::error::{
-    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, ItemProblem, Limit, LoadError,
-    LoadProblem, Place, ScriptProblem,
-};
+use crate::error::LoadError;
+use crate::error::choice_problem::ChoiceProblem;
+use crate::error::ctx_misuse::CtxMisuse;
+use crate::error::delivery_problem::DeliveryProblem;
+use crate::error::effect_problem::EffectProblem;
+use crate::error::item_problem::ItemProblem;
+use crate::error::limit::Limit;
+use crate::error::load_problem::LoadProblem;
+use crate::error::place::Place;
+use crate::error::script_problem::ScriptProblem;
 use crate::mode_packages::ModePackages;
 use crate::modifier_ways::{ModifierWays, Way};
 use crate::package::Package;

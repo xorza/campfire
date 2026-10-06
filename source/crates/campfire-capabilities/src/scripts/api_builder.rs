@@ -8,7 +8,7 @@ use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::scripts::script_api::{HookStatus, MemberKind, ScriptApi};
-use crate::units::tag_effect::TagEffect;
+use crate::units::tag_property::TagProperty;
 use crate::values::script_enum::ScriptEnum;
 
 /// Rhai's names for a property's getter and setter, and a type's indexer, which its
@@ -111,9 +111,9 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records whether the release honours `effect`, as the code that honours it says.
-    pub(crate) fn tag_effect(&mut self, effect: TagEffect, status: Status) -> &mut Self {
-        self.api.record_tag_effect(effect, status);
+    /// Records whether the release honours `property`, as the code that honours it says.
+    pub(crate) fn tag_property(&mut self, property: TagProperty, status: Status) -> &mut Self {
+        self.api.record_tag_property(property, status);
         self
     }
 

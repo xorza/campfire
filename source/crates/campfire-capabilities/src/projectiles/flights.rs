@@ -5,7 +5,7 @@ use crate::actions::targets::Targets;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
-use crate::deliveries::delivered::{Delivered, Reach};
+use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -247,7 +247,7 @@ impl Flights<'_> {
                     start,
                     launch: None,
                 },
-                reach: Reach::Hit(target),
+                reach: Reached::Hit(target),
                 hit,
             }),
         }
@@ -271,7 +271,7 @@ impl Flights<'_> {
                     start,
                     launch: None,
                 },
-                reach: Reach::End,
+                reach: Reached::End,
                 hit,
             });
         }

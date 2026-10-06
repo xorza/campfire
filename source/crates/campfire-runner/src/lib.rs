@@ -3,46 +3,26 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
+mod events;
 #[cfg(feature = "internals")]
-mod arena;
-#[cfg(feature = "internals")]
-mod copy_check;
-mod error;
-#[cfg(feature = "internals")]
-mod fixed_match;
-#[cfg(feature = "internals")]
-mod fixed_session;
-#[cfg(feature = "internals")]
-mod golden;
-#[cfg(feature = "internals")]
-mod hash_trail;
+mod harness;
 mod input_rules;
 mod match_build;
-#[cfg(feature = "internals")]
-mod match_units;
-#[cfg(feature = "internals")]
-mod proving_match;
-#[cfg(feature = "internals")]
-mod reference_3v3;
-#[cfg(feature = "internals")]
-mod restore_target;
 mod runner;
-mod script_call_failed;
-#[cfg(feature = "internals")]
-mod scripted;
 mod session;
 mod session_rules;
 mod slot_rules;
 
-pub use error::{
-    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, SlotRuleError,
-    StartError, TermsError,
+pub use crate::events::script_call_failed::ScriptCallFailed;
+pub use crate::input_rules::InputRules;
+pub use crate::runner::Runner;
+pub use crate::session::Session;
+pub use crate::session::error::{
+    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
 };
-pub use input_rules::InputRules;
-pub use runner::Runner;
-pub use script_call_failed::ScriptCallFailed;
-pub use session::Session;
-pub use session_rules::SessionRules;
+pub use crate::session_rules::SessionRules;
+pub use crate::session_rules::error::TermsError;
+pub use crate::slot_rules::error::SlotRuleError;
 
 #[cfg(feature = "bench")]
 pub mod bench {
@@ -51,14 +31,14 @@ pub mod bench {
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::arena::Arena;
-    pub use crate::copy_check::CopyCheck;
-    pub use crate::fixed_match::FixedMatch;
-    pub use crate::fixed_session::FixedSession;
-    pub use crate::golden::Golden;
-    pub use crate::hash_trail::{Difference, HashTrail};
-    pub use crate::match_units::MatchUnits;
-    pub use crate::proving_match::ProvingMatch;
-    pub use crate::reference_3v3::Reference3v3;
-    pub use crate::restore_target::RestoreTarget;
+    pub use crate::harness::arena::Arena;
+    pub use crate::harness::copy_check::CopyCheck;
+    pub use crate::harness::fixed_match::FixedMatch;
+    pub use crate::harness::fixed_session::FixedSession;
+    pub use crate::harness::golden::Golden;
+    pub use crate::harness::hash_trail::{Difference, HashTrail};
+    pub use crate::harness::match_units::MatchUnits;
+    pub use crate::harness::proving_match::ProvingMatch;
+    pub use crate::harness::reference_3v3::Reference3v3;
+    pub use crate::harness::restore_target::RestoreTarget;
 }

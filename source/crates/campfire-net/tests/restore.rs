@@ -5,20 +5,23 @@
 use std::fs;
 
 use campfire_common::{StateHash, Tick};
-use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{RestoreError, ServerData, SessionDir, TickHashes};
+use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
+use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Runner, Session};
-
-use crate::Scratch;
+use tempfile::TempDir;
 
 /// The scenario's match, its server's data in `data`, after 90 steps; with the state hash after
 /// each tick the server ran.
-fn played(data: &Scratch) -> (LocalMatch, Vec<StateHash>) {
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
-    local.keep_data(data.0.clone());
+fn played(data: &TempDir) -> (InProcessMatch, Vec<StateHash>) {
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.keep_data(data.path().to_owned());
     local.start_match();
-    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     for _ in 0..90 {
         local.step();
     }
@@ -33,7 +36,7 @@ fn played(data: &Scratch) -> (LocalMatch, Vec<StateHash>) {
 
 #[test]
 fn a_restarted_server_replays_its_log_and_plays_on() {
-    let data = Scratch::new("replay");
+    let data = TempDir::new().unwrap();
     let (mut local, before) = played(&data);
     let cut = local.next_tick(End::Server);
     assert_eq!(before.len(), usize::try_from(cut).unwrap());
@@ -54,7 +57,7 @@ fn a_restarted_server_replays_its_log_and_plays_on() {
 
 #[test]
 fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused() {
-    let data = Scratch::new("abort");
+    let data = TempDir::new().unwrap();
     let (mut local, before) = played(&data);
     let cut = local.next_tick(End::Server);
     let id = local
@@ -67,8 +70,12 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
 
     // The private record, at the path Stage 6 names, names another release: the restore refuses
     // it, naming the release.
-    let stopped = ServerData::open(&data.0).unwrap();
-    let path = data.0.join("sessions").join(id.to_string()).join("private");
+    let stopped = ServerDir::open(data.path()).unwrap();
+    let path = data
+        .path()
+        .join("sessions")
+        .join(id.to_string())
+        .join("private");
     let ours = fs::read(&path).unwrap();
     let mut private = SessionPrivate::decode(&ours).unwrap();
     private.terms.release = "0.0.9".to_owned();
@@ -84,7 +91,7 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
     // at, in the state the server left, and its log, published, replays to every hash.
     fs::write(&path, ours).unwrap();
     let session = dir.restore().unwrap().unwrap();
-    let key = LocalMatch::server_keypair();
+    let key = TestKey::server();
     let file = session
         .abort(&stopped, local.packages(), key, |aux| aux.fill(6))
         .unwrap();

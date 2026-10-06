@@ -1,7 +1,7 @@
 use campfire_sim::{Capability, Position};
 
 use crate::actions::delivery::DeliveryShape;
-use crate::areas::area_effect::AreaEffect;
+use crate::areas::areas_effect::AreasEffect;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
@@ -41,7 +41,7 @@ impl AreasApi {
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
         let id = frame.take_id();
-        frame.effects.push(AreaEffect {
+        frame.effects.push(AreasEffect {
             id: Some(id),
             by: launcher.by,
             unit_type,

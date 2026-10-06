@@ -1,4 +1,4 @@
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_store::{AppendError, DurableError};
 
 use crate::events::checkpoint_failed::CheckpointFailed;
@@ -27,7 +27,7 @@ pub(crate) enum FaultSource {
 /// What a fault does, beyond its log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FaultPolicy {
-    /// The server exits with `ServerExit::STORAGE_FAILED`, as it keeps no record past the fault;
+    /// The server exits with `ExitStatus::Storage`, as it keeps no record past the fault;
     /// its host's supervisor starts it again, which restores the session.
     EndServer,
     /// The fault is logged, and play goes on.
@@ -47,15 +47,15 @@ impl Fault {
     pub(crate) fn log(&self) {
         match self {
             Fault::Journal(error) => JournalFailed {
-                error: error.to_string(),
+                error: ErrorReport::of(error).to_string(),
             }
             .log(),
             Fault::Snapshot(error) => CheckpointFailed {
-                error: error.to_string(),
+                error: ErrorReport::of(error).to_string(),
             }
             .log(),
             Fault::Receipt(error) => ReceiptUnsaved {
-                error: error.to_string(),
+                error: ErrorReport::of(error).to_string(),
             }
             .log(),
         }

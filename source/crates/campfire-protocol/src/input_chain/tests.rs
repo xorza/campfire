@@ -1,6 +1,7 @@
-use secp256k1::{SecretKey, schnorr};
+use secp256k1::schnorr;
 
 use super::*;
+use crate::harness::test_key::TestKey;
 
 fn root(byte: u8) -> InputHash {
     InputHash::new([byte; 32])
@@ -55,9 +56,7 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
     // The session key signs `domain ‖ session id ‖ u32 slot ‖ u64 seq ‖ head`, the seq being
     // the last input's: the signature holds over that message as secp256k1 checks it.
     let secp = Secp256k1::new();
-    let keypair =
-        |byte| Keypair::from_secret_key(&secp, &SecretKey::from_byte_array(&[byte; 32]).unwrap());
-    let (session_key, session) = (keypair(21), SessionId::new([41; 32]));
+    let (session_key, session) = (TestKey::of(21), SessionId::new([41; 32]));
     let mut chain = InputChain::new(PlayerSlot::new(1), root(1));
     chain.extend(Tick::new(0), b"a");
     let signature = chain.sign(&secp, &session_key, session, &[0; 32]);
@@ -76,7 +75,7 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
     // Another session, key or head, and the signature does not hold.
     assert!(chain.signed_by(&secp, &key, session, &signature));
     assert!(!chain.signed_by(&secp, &key, SessionId::new([32; 32]), &signature));
-    let other_key = keypair(22).x_only_public_key().0;
+    let other_key = TestKey::of(22).x_only_public_key().0;
     assert!(!chain.signed_by(&secp, &other_key, session, &signature));
     chain.extend(Tick::new(0), b"b");
     assert!(!chain.signed_by(&secp, &key, session, &signature));

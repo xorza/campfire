@@ -12,13 +12,13 @@ use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
-use crate::units::tag_effect::TagEffect;
+use crate::units::tag_property::TagProperty;
 use crate::units::unit::Unit;
-use crate::vision::reveal_effect::RevealEffect;
-use crate::vision::sight_column::SightColumn;
+use crate::vision::vision_column::VisionColumn;
+use crate::vision::vision_effect::VisionEffect;
 
 /// The script API and data of `vision` beside the queries the view answers: the sight range, the
-/// reveal, and the hidden and detects tag effects.
+/// reveal, and the hidden and detects tag properties.
 #[derive(Debug)]
 pub(crate) struct VisionApi;
 
@@ -44,8 +44,8 @@ impl VisionApi {
                 VisionApi::reveal(ctx, pos, ApiError::num(radius)?, ms)
             },
         )
-        .tag_effect(TagEffect::Hidden, Status::Runs(ApiVersion::FIRST))
-        .tag_effect(TagEffect::Detects, Status::Runs(ApiVersion::FIRST))
+        .tag_property(TagProperty::Hidden, Status::Runs(ApiVersion::FIRST))
+        .tag_property(TagProperty::Detects, Status::Runs(ApiVersion::FIRST))
         .data(DataTable::Vision, &["sight_range"], &[]);
     }
 
@@ -59,7 +59,7 @@ impl VisionApi {
             return Err(ApiError::NegativeRadius.fail().into());
         }
         let ticks = view.lasting(ms).map_err(ApiError::fail)?;
-        ctx.queue(RevealEffect {
+        ctx.queue(VisionEffect {
             team,
             pos,
             radius,
@@ -77,7 +77,7 @@ impl VisionApi {
         )
         .capability(Capability::Vision);
         api.bind(can_see, |unit: &mut Unit, other: Unit| {
-            SightColumn::can_see(unit, &other)
+            VisionColumn::can_see(unit, &other)
         });
         let visible = MemberSpec::call(
             "find_visible",
@@ -89,13 +89,13 @@ impl VisionApi {
         api.bind(
             visible,
             |_: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
-                SightColumn::find(&of, pos, radius, filter)
+                VisionColumn::find(&of, pos, radius, filter)
             },
         )
         .bind(
             visible,
             |_: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
-                SightColumn::find(&of, pos, ApiError::num(radius)?, filter)
+                VisionColumn::find(&of, pos, ApiError::num(radius)?, filter)
             },
         );
         let nearest = MemberSpec::call(
@@ -108,13 +108,13 @@ impl VisionApi {
         api.bind(
             nearest,
             |_: &mut Ctx, of: Unit, radius: Num, filter: &str| {
-                SightColumn::nearest(&of, radius, filter)
+                VisionColumn::nearest(&of, radius, filter)
             },
         )
         .bind(
             nearest,
             |_: &mut Ctx, of: Unit, radius: INT, filter: &str| {
-                SightColumn::nearest(&of, ApiError::num(radius)?, filter)
+                VisionColumn::nearest(&of, ApiError::num(radius)?, filter)
             },
         );
     }

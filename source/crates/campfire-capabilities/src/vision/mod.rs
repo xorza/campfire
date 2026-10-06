@@ -21,20 +21,20 @@ use crate::vision::brush_map::BrushMap;
 use crate::vision::reveals::Reveals;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
-use crate::vision::sight_column::SightColumn;
 use crate::vision::sight_maps::SightMaps;
+use crate::vision::vision_column::VisionColumn;
 use crate::vision::vision_grid::VisionGrid;
 use crate::vision::vision_groups::VisionGroups;
 
 pub(crate) mod brush_map;
-pub(crate) mod reveal_effect;
 pub(crate) mod reveals;
 pub(crate) mod seen_by;
 pub(crate) mod sight;
-pub(crate) mod sight_column;
 pub(crate) mod sight_maps;
 pub(crate) mod vision_api;
+pub(crate) mod vision_column;
 pub(crate) mod vision_data;
+pub(crate) mod vision_effect;
 pub(crate) mod vision_grid;
 pub(crate) mod vision_groups;
 
@@ -51,7 +51,7 @@ impl Vision {
     /// the grid. The sights of the delivery types, which no kit holds, are a book of their own.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
-        view.add_column(SightColumn::default());
+        view.add_column(VisionColumn::default());
         view.add_source::<RowParts>(world, fill_row);
         schedule.add_systems(see.in_set(SimSet::Vision));
         world.insert_resource(ByType::<Sight>::default());
@@ -90,7 +90,7 @@ type RowParts = (Option<&'static SeenBy>, Option<&'static Team>);
 /// Fills a row of the script view with the teams that see the unit.
 fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
     let seen_by = Vision::seen_by(parts, fill.world.resource::<Relations>());
-    fill.column::<SightColumn>().push(seen_by);
+    fill.column::<VisionColumn>().push(seen_by);
 }
 
 /// Reveals the cells each living unit with a sight sees to its vision group, but the cells of every
@@ -131,7 +131,7 @@ fn see(
     maps.begin_tick();
     for (&pos, &team, sight, tags) in &seers {
         let group = groups.of(team);
-        let detects = UnitTags::effects_of(tags).detects();
+        let detects = UnitTags::properties_of(tags).detects();
         let stands = grid
             .grid
             .cell_of(pos)
@@ -153,7 +153,7 @@ fn see(
             .grid
             .cell_of(pos)
             .expect("every unit stands within the bounds, which the grid covers");
-        let hidden = UnitTags::effects_of(tags).hidden();
+        let hidden = UnitTags::properties_of(tags).hidden();
         for group in 0..groups.count() {
             if maps.sees(group, cell, hidden) {
                 teams = teams.union(groups.members(group));

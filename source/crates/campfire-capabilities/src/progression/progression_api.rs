@@ -2,8 +2,8 @@ use campfire_math::Num;
 use campfire_script::rhai::INT;
 use campfire_sim::Capability;
 
+use crate::progression::progression_column::ProgressionColumn;
 use crate::progression::progression_effect::ProgressionEffect;
-use crate::progression::tracks_column::TracksColumn;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
@@ -65,8 +65,8 @@ impl ProgressionApi {
             .name(0, NameKind::Track),
             |unit: &mut Unit, track: &str| {
                 let view = unit.view();
-                let track = TracksColumn::track_named(view, track)?;
-                TracksColumn::xp(view, unit.row_index(), track)
+                let track = ProgressionColumn::track_named(view, track)?;
+                ProgressionColumn::xp(view, unit.row_index(), track)
             },
         )
         .bind(
@@ -78,8 +78,8 @@ impl ProgressionApi {
             .name(0, NameKind::Track),
             |unit: &mut Unit, track: &str| -> Checked<INT> {
                 let view = unit.view();
-                let track = TracksColumn::track_named(view, track)?;
-                let level = TracksColumn::level(view, unit.row_index(), track)?;
+                let track = ProgressionColumn::track_named(view, track)?;
+                let level = ProgressionColumn::level(view, unit.row_index(), track)?;
                 Ok(INT::from(level.get()))
             },
         )
@@ -89,7 +89,7 @@ impl ProgressionApi {
                 "its unspent points, which a unit with the `level` track has",
             ),
             |unit: &mut Unit| -> Checked<INT> {
-                let points = TracksColumn::points(unit.view(), unit.row_index())?;
+                let points = ProgressionColumn::points(unit.view(), unit.row_index())?;
                 Ok(INT::from(points.get()))
             },
         )
@@ -102,11 +102,11 @@ impl ProgressionApi {
     /// Queues `amount`, not negative, of experience on `track` of `unit`, which has it.
     fn add_xp(ctx: &Ctx, unit: &Unit, track: &str, amount: Num) -> Checked<()> {
         let view = ctx.view();
-        let track = TracksColumn::track_named(view, track)?;
+        let track = ProgressionColumn::track_named(view, track)?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeXp.fail().into());
         }
-        if !TracksColumn::has(view, unit.id, track) {
+        if !ProgressionColumn::has(view, unit.id, track) {
             return Err(ApiError::NoTrack.fail().into());
         }
         ctx.queue(ProgressionEffect::AddXp {

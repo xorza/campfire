@@ -8,9 +8,9 @@ use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StateRegistry, TickRate};
 
 use crate::scripts::ctx::Ctx;
-use crate::scripts::draws::Draws;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
+use crate::scripts::scripts_call::ScriptsCall;
 use crate::units::body::Body;
 use crate::units::lifespan::Lifespan;
 use crate::units::new_unit_states::NewUnitStates;
@@ -22,9 +22,9 @@ use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_state_book::UnitStateBook;
-use crate::units::unit_state_call::UnitStateCall;
-use crate::units::unit_state_column::UnitStateColumn;
 use crate::units::unit_type::UnitType;
+use crate::units::units_call::UnitsCall;
+use crate::units::units_column::UnitsColumn;
 use crate::values::bounds::Bounds;
 use crate::values::metric::Metric;
 
@@ -48,7 +48,6 @@ pub(crate) mod new_unit;
 pub(crate) mod new_unit_states;
 pub(crate) mod owner;
 pub(crate) mod path_id;
-pub(crate) mod position_api;
 pub(crate) mod predicting;
 pub(crate) mod relations;
 pub(crate) mod row_fill;
@@ -58,8 +57,8 @@ pub(crate) mod spawner;
 pub(crate) mod tag;
 pub(crate) mod tag_book;
 pub(crate) mod tag_data;
-pub(crate) mod tag_effect;
-pub(crate) mod tag_effects;
+pub(crate) mod tag_properties;
+pub(crate) mod tag_property;
 pub(crate) mod tag_set;
 pub(crate) mod team;
 pub(crate) mod team_set;
@@ -71,12 +70,13 @@ pub(crate) mod unit_row;
 pub(crate) mod unit_state;
 pub(crate) mod unit_state_access;
 pub(crate) mod unit_state_book;
-pub(crate) mod unit_state_call;
-pub(crate) mod unit_state_column;
 pub(crate) mod unit_tags;
 pub(crate) mod unit_type;
 pub(crate) mod unit_type_data;
 pub(crate) mod unit_types;
+pub(crate) mod units_api;
+pub(crate) mod units_call;
+pub(crate) mod units_column;
 pub(crate) mod view_column;
 
 /// The core's systems, for the capabilities above it to order theirs against.
@@ -115,7 +115,7 @@ impl Units {
         registry.register_component::<UnitState>();
         world.insert_resource(UnitStateBook::default());
         world.insert_resource(NewUnitStates::default());
-        view.add_column(UnitStateColumn::default());
+        view.add_column(UnitsColumn::default());
         view.add_source::<Option<&'static UnitState>>(world, fill_state);
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
@@ -125,8 +125,8 @@ impl Units {
             return;
         };
         let ctx = Ctx::new(view.clone());
-        ctx.frame().add_part(UnitStateCall::default());
-        ctx.frame().add_part(Draws::default());
+        ctx.frame().add_part(UnitsCall::default());
+        ctx.frame().add_part(ScriptsCall::default());
         let mut host = ScriptHost::new(budgets.limits().per_call);
         host.engine_mut()
             .set_default_tag(Dynamic::from(ctx.clone()));
@@ -187,7 +187,7 @@ fn end_lifespans(
 
 /// Adds a unit's script state to the view's column of it.
 fn fill_state(state: ROQueryItem<'_, '_, Option<&'static UnitState>>, fill: &mut RowFill<'_>) {
-    fill.column::<UnitStateColumn>().push(state);
+    fill.column::<UnitsColumn>().push(state);
 }
 
 #[cfg(test)]
@@ -202,9 +202,9 @@ pub(crate) mod internals {
     use crate::units::Units;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
-    use crate::units::unit_state_column::UnitStateColumn;
     use crate::units::unit_type::UnitType;
     use crate::units::unit_type_data::UnitTypeData;
+    use crate::units::units_column::UnitsColumn;
     use crate::values::declared_name::DeclaredName;
     use bevy_ecs::world::World;
 
@@ -269,7 +269,7 @@ pub(crate) mod internals {
             let unit_type = view.types_mut().load(scope, name, data);
             view.share_type_names();
             let states = view.types_mut().state_book();
-            UnitStateColumn::share(&view, states.clone());
+            UnitsColumn::share(&view, states.clone());
             world.insert_resource(states);
             unit_type
         }

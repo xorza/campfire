@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use campfire_capabilities::{Action, ActionSlots, Destination, Order, PoolId, Pools, Projectile};
 use campfire_common::{Fingerprint, PlayerSlot, StateHash, Tick, Ticks};
-use campfire_log::LogEvent;
 use campfire_log::internals::LogCheck;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{
@@ -786,7 +786,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         panic!("{refused:?}");
     };
     assert_eq!(
-        refused.to_string(),
+        ErrorReport::of(&refused).to_string(),
         r#"the mode's start failed: script call raised "no start""#
     );
 }

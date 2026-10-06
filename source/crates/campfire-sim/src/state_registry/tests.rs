@@ -414,10 +414,10 @@ fn assert_writer_matches<T: Serialize>(value: &T) {
     let mut expected = Hasher::new();
     expected.update(&bytes);
     let mut actual = Hasher::new();
-    write(&mut actual, value);
+    Writer::write(&mut actual, value);
     assert_eq!(actual.finalize(), expected.finalize());
     let mut written = Vec::new();
-    write(&mut written, value);
+    Writer::write(&mut written, value);
     assert_eq!(written, bytes);
 }
 

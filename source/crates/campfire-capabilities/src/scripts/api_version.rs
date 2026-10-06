@@ -1,12 +1,12 @@
-use std::fmt;
-
+use derive_more::Display;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 /// A version of the package API, the script API and the schemas of the data files together, as
 /// `major.minor`: a name or a field the API adds raises the minor, and one it removes or changes
 /// raises the major.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[display("{major}.{minor}")]
 pub struct ApiVersion {
     pub major: u16,
     pub minor: u16,
@@ -39,12 +39,6 @@ impl ApiVersion {
     /// has, with the same meaning.
     pub const fn loads(self, package: ApiVersion) -> bool {
         package.major == self.major && package.minor <= self.minor
-    }
-}
-
-impl fmt::Display for ApiVersion {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}", self.major, self.minor)
     }
 }
 

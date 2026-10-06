@@ -280,7 +280,7 @@ fn every_order_the_proving_match_relies_on_is_stated() {
     // keeps apart passes the ambiguity check until the systems around it change.
     let proving = ProvingMatch::load();
     let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
-    if let Err(error) = target.build_without_sync_points() {
-        panic!("{error}");
+    if let Err(ambiguity) = target.build_without_sync_points() {
+        panic!("{ambiguity}");
     }
 }

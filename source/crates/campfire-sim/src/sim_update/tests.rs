@@ -9,7 +9,7 @@ use bevy_ecs::system::{Commands, Query, ScheduleSystem};
 use bevy_ecs::world::CommandQueue;
 use campfire_common::{PlayerSlot, StateHash};
 use campfire_log::internals::LogCheck;
-use campfire_log::{Level, LogLine};
+use campfire_log::{LogLevel, LogLine};
 use campfire_math::{Num, RngSource, RngStream};
 use serde::{Deserialize, Serialize};
 
@@ -454,7 +454,7 @@ fn a_warning_of_bevy_fails_the_log_check() {
             line.fields["message"].as_str()
         ),
         (
-            Level::Warn,
+            LogLevel::Warn,
             "bevy_ecs::world::command_queue",
             Some(
                 "CommandQueue has un-applied commands being dropped. Did you forget to call \

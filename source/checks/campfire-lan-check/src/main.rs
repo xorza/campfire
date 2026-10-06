@@ -24,9 +24,10 @@ use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 use std::time::SystemTime;
 
-use campfire_log::Logging;
+use campfire_common::ExitStatus;
+use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    ClientData, InputLogged, LinkLost, Listening, OrderScript, ServerData, SessionWritten,
+    ClientDir, InputLogged, LinkLost, Listening, OrderScript, ServerDir, SessionWritten,
     TicksCaughtUp,
 };
 use campfire_package::PackageDir;
@@ -38,9 +39,9 @@ use crate::binaries::Binaries;
 use crate::error::CheckError;
 use crate::lan_match::{LOCAL_DATA, LanMatch, RESTARTED, SERVER_DATA};
 use crate::mode::Mode;
-use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
+use crate::process_outcome::ProcessOutcome;
 use crate::run_dir::RunDir;
 use crate::session_kind::SessionKind;
 use crate::verdict::{BotEvents, Verdict};
@@ -50,9 +51,9 @@ mod error;
 mod failure;
 mod lan_match;
 mod mode;
-mod outcome;
 mod process;
 mod process_log;
+mod process_outcome;
 mod run_dir;
 mod session_kind;
 mod target_name;
@@ -82,14 +83,14 @@ fn main() -> ExitCode {
     .start();
     let Some(mode) = Mode::parse(env::args_os().skip(1)) else {
         error!("usage: campfire-lan-check [<run root>] | verify <run directory>");
-        return ExitCode::from(2);
+        return ExitCode::from(ExitStatus::Usage);
     };
     let dir = match &mode {
         Mode::Play { root } => match RunDir::create(root, SystemTime::now()) {
             Ok(run) => run.path().to_owned(),
             Err(error) => {
-                error!(%error, "the LAN check did not run");
-                return ExitCode::FAILURE;
+                error!(error = %ErrorReport::of(&error), "the LAN check did not run");
+                return ExitCode::from(ExitStatus::Failure);
             }
         },
         Mode::Verify { dir } => dir.clone(),
@@ -106,8 +107,8 @@ fn report(result: Result<Verdict, CheckError>, dir: &Path) -> ExitCode {
     let verdict = match result {
         Ok(verdict) => verdict,
         Err(error) => {
-            error!(%error, dir = %dir.display(), "the LAN check did not run");
-            return ExitCode::FAILURE;
+            error!(error = %ErrorReport::of(&error), dir = %dir.display(), "the LAN check did not run");
+            return ExitCode::from(ExitStatus::Failure);
         }
     };
     let mut failures = 0;
@@ -117,10 +118,10 @@ fn report(result: Result<Verdict, CheckError>, dir: &Path) -> ExitCode {
     }
     if failures == 0 {
         info!(dir = %dir.display(), "the LAN check passed");
-        ExitCode::SUCCESS
+        ExitCode::from(ExitStatus::Success)
     } else {
         error!(failures, dir = %dir.display(), "the LAN check failed");
-        ExitCode::FAILURE
+        ExitCode::from(ExitStatus::Failure)
     }
 }
 
@@ -217,7 +218,7 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<InputLogged>,
 
 /// The data directory in `dir` of the host of `session`, which ended: the server's, or the local
 /// server's under the client's.
-fn host_data(dir: &Path, session: SessionKind) -> Result<ServerData, CheckError> {
+fn host_data(dir: &Path, session: SessionKind) -> Result<ServerDir, CheckError> {
     let refused = |path: &Path, error| CheckError::Data {
         path: path.to_owned(),
         error,
@@ -226,12 +227,12 @@ fn host_data(dir: &Path, session: SessionKind) -> Result<ServerData, CheckError>
         SessionKind::Lan => dir.join(SERVER_DATA),
         SessionKind::Local => {
             let client = dir.join(LOCAL_DATA);
-            ClientData::open(&client)
+            ClientDir::open(&client)
                 .map_err(|error| refused(&client, error))?
                 .local_server_dir()
         }
     };
-    ServerData::open(&path).map_err(|error| refused(&path, error))
+    ServerDir::open(&path).map_err(|error| refused(&path, error))
 }
 
 /// Verifies the session logs of the matches played in `dir` with this machine's verifier, and
@@ -281,7 +282,7 @@ fn verify(
                     error,
                 })?;
             let log = ProcessLog::read(replayer, &path)?;
-            verdict.process(replayer, Outcome::of(status), &log);
+            verdict.process(replayer, ProcessOutcome::of(status), &log);
             log.first::<Verified>()?
         }
         None => None,

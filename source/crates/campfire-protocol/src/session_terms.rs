@@ -5,7 +5,7 @@ use campfire_common::{Fingerprint, Ticks};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
-use crate::server_seed::SeedCommitment;
+use crate::seed_commitment::SeedCommitment;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 

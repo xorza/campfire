@@ -8,19 +8,21 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod bytes32;
+mod exit_status;
 mod fingerprint;
 mod player_slot;
 mod segment_seed;
 mod state_hash;
 mod tick;
 
-pub use bytes32::Bytes32;
-pub use bytes32::error::NotHex;
-pub use fingerprint::Fingerprint;
-pub use player_slot::PlayerSlot;
-pub use segment_seed::SegmentSeed;
-pub use state_hash::StateHash;
-pub use tick::{Tick, Ticks};
+pub use crate::bytes32::Bytes32;
+pub use crate::bytes32::error::NotHex;
+pub use crate::exit_status::ExitStatus;
+pub use crate::fingerprint::Fingerprint;
+pub use crate::player_slot::PlayerSlot;
+pub use crate::segment_seed::SegmentSeed;
+pub use crate::state_hash::StateHash;
+pub use crate::tick::{Tick, Ticks};
 
 #[cfg(test)]
 mod tests;

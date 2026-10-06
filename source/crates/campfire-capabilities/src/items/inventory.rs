@@ -18,13 +18,13 @@ use crate::units::block::Block;
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Inventory {
     kind: SlotKind,
-    slots: Vec<Option<Carried>>,
+    slots: Vec<Option<ItemStack>>,
 }
 
 /// A stack in a slot: its item type, how many, at least one and at most the type's stack, and
 /// the uses left of a consumable's item on top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Carried {
+pub struct ItemStack {
     pub item: ItemId,
     pub count: NonZeroU32,
     pub uses: Option<NonZeroU32>,
@@ -49,7 +49,7 @@ impl Inventory {
         }
     }
 
-    pub fn slots(&self) -> &[Option<Carried>] {
+    pub fn slots(&self) -> &[Option<ItemStack>] {
         &self.slots
     }
 
@@ -117,7 +117,7 @@ impl Inventory {
                     .expect("a stack below its most");
             }
             None => {
-                *slot = Some(Carried {
+                *slot = Some(ItemStack {
                     item,
                     count: NonZeroU32::MIN,
                     uses: spec.uses,
@@ -147,12 +147,12 @@ impl Inventory {
     }
 
     /// Takes the stack in `slot` out; `None` for no such slot, or an empty one.
-    pub(crate) fn take(&mut self, slot: u8) -> Option<Carried> {
+    pub(crate) fn take(&mut self, slot: u8) -> Option<ItemStack> {
         self.slots.get_mut(usize::from(slot))?.take()
     }
 
     /// Puts `carried` back in `slot`, which a take emptied.
-    pub(crate) fn restore(&mut self, slot: u8, carried: Carried) {
+    pub(crate) fn restore(&mut self, slot: u8, carried: ItemStack) {
         let slot = &mut self.slots[usize::from(slot)];
         debug_assert!(slot.is_none(), "a slot a take emptied");
         *slot = Some(carried);

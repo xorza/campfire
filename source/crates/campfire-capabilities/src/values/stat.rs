@@ -1,15 +1,17 @@
 use std::cmp::Ordering;
-use std::fmt;
 
+use derive_more::Display;
 use serde::{Deserialize, Deserializer};
 
 use crate::values::declared_name::DeclaredName;
 
 /// A stat, as data and `unit.stat(name)` name it: one a capability reads, or one the mode
 /// declares for its own scripts and modifiers.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Stat {
+    #[display("{}", _0.name())]
     Engine(EngineStat),
+    #[display("{_0}")]
     Declared(DeclaredName),
 }
 
@@ -60,15 +62,6 @@ impl Stat {
         match self {
             Stat::Engine(_) => None,
             Stat::Declared(name) => Some(name),
-        }
-    }
-}
-
-impl fmt::Display for Stat {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Stat::Engine(stat) => f.write_str(stat.name()),
-            Stat::Declared(name) => write!(f, "{name}"),
         }
     }
 }

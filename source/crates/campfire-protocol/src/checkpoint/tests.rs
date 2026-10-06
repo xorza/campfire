@@ -1,31 +1,25 @@
 use campfire_common::PlayerSlot;
-use secp256k1::SecretKey;
 
 use super::*;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot};
+use crate::delegation::seed_contribution::SeedContribution;
 use crate::delegation::{Delegation, DelegationTerms};
+use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::session_log::{Spill, StampCount};
 
-fn keypair(byte: u8) -> Keypair {
-    Keypair::from_secret_key(
-        &Secp256k1::new(),
-        &SecretKey::from_byte_array(&[byte; 32]).unwrap(),
-    )
-}
-
 fn delegation() -> Delegation {
     let terms = DelegationTerms {
-        session_key: keypair(21).x_only_public_key().0,
-        server_key: keypair(41).x_only_public_key().0,
+        session_key: TestKey::of(21).x_only_public_key().0,
+        server_key: TestKey::of(41).x_only_public_key().0,
         session_id: SessionId::new([8; 32]),
-        seed_contribution: [6; 32],
+        seed_contribution: SeedContribution::new([6; 32]),
         expiration: 1_700_086_400,
     };
     Delegation::sign(
         &Secp256k1::new(),
-        &keypair(11),
+        &TestKey::of(11),
         &terms,
         1_700_000_000,
         &[0; 32],
@@ -89,11 +83,11 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
 
     let secp = Secp256k1::new();
     let id = SessionId::new([8; 32]);
-    let signature = record.sign(&secp, &keypair(41), id, &[0; 32]);
-    let key = keypair(41).x_only_public_key().0;
+    let signature = record.sign(&secp, &TestKey::of(41), id, &[0; 32]);
+    let key = TestKey::of(41).x_only_public_key().0;
     assert!(record.signed_by(&secp, &key, id, &signature));
     assert!(!record.signed_by(&secp, &key, SessionId::new([9; 32]), &signature));
-    let stranger = keypair(42).x_only_public_key().0;
+    let stranger = TestKey::of(42).x_only_public_key().0;
     assert!(!record.signed_by(&secp, &stranger, id, &signature));
     // A change to any field, the carry's included.
     let changes: [fn(&mut Checkpoint); 5] = [

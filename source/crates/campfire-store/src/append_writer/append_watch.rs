@@ -1,14 +1,14 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crate::append_writer::Shared;
+use crate::append_writer::AppendShared;
 use crate::append_writer::error::AppendError;
 use crate::append_writer::slow_sync::SlowSync;
 
 /// What another part of the program sees of an append writer: how many of its records are
 /// durable, and its failure.
 #[derive(Debug, Clone)]
-pub struct AppendWatch(pub(crate) Arc<Shared>);
+pub struct AppendWatch(pub(crate) Arc<AppendShared>);
 
 impl AppendWatch {
     /// How many records the writer synced.

@@ -26,7 +26,7 @@ use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::tag_book::TagBook;
-use crate::units::tag_effects::TagEffects;
+use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
@@ -319,9 +319,9 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let mut game = stat_match(&[walker]);
     let [sight, slowed, slow_immune] = [0, 1, 2].map(Tag::new);
     let effects = [
-        (TagEffects::default().with_detects(), TagSet::default()),
-        (TagEffects::default(), TagSet::default()),
-        (TagEffects::default(), TagSet::of([slowed])),
+        (TagProperties::default().with_detects(), TagSet::default()),
+        (TagProperties::default(), TagSet::default()),
+        (TagProperties::default(), TagSet::of([slowed])),
     ];
     let own = TagSet::of([sight]);
     game.world
@@ -361,7 +361,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     assert_eq!(step(&game), Num::from_bits(1_398_101));
     let tags = |game: &TestMatch| *game.world.get::<UnitTags>(unit).unwrap();
     assert_eq!(tags(&game).tags, TagSet::of([sight, slowed]));
-    assert!(tags(&game).effects.detects());
+    assert!(tags(&game).properties.detects());
 
     // A pct of 0.25: 5 × 1.25 × 0.5 = 3.125 m/s, 3.125 × 2²⁴ ÷ 30 = 1 747 626.67 bits, to
     // 1 747 627. An untagged cut of 1.5 counts as 1: no step at all.
@@ -688,7 +688,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     let start = || {
         let mut game = stat_match(slice::from_ref(&walker));
         let effects = [(
-            TagEffects::default().with_block(Block::Move),
+            TagProperties::default().with_block(Block::Move),
             TagSet::default(),
         )];
         let book = TagBook::new(effects, [(UnitType::new(0), TagSet::default())]);
@@ -735,7 +735,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         let stats = world.get::<UnitStats>(entity).unwrap();
         assert_eq!(stats.values()[speed.index()], Num::int(2));
         let tags = world.get::<UnitTags>(entity);
-        assert!(UnitTags::effects_of(tags).blocks(Block::Move));
+        assert!(UnitTags::properties_of(tags).blocks(Block::Move));
     }
     assert_eq!(
         game.registry.hash(&game.world),

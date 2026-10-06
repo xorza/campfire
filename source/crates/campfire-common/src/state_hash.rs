@@ -1,6 +1,6 @@
-use std::fmt;
 use std::str::FromStr;
 
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 use crate::bytes32::Bytes32;
@@ -8,7 +8,9 @@ use crate::bytes32::error::NotHex;
 
 /// The hash of the whole simulated state, which the sim computes and the session log's
 /// checkpoints and result carry. It writes, and reads back, as 64 lowercase hex digits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(transparent)]
 pub struct StateHash(Bytes32);
 
@@ -19,12 +21,6 @@ impl StateHash {
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
         self.0.as_bytes()
-    }
-}
-
-impl fmt::Display for StateHash {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
     }
 }
 

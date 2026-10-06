@@ -6,8 +6,8 @@
 use bevy_ecs::world::World;
 use campfire_capabilities::internals;
 use campfire_capabilities::{
-    ActionData, ActionSlot, ActionSlots, Carried, DeclaredName, Inventory, ItemId, Level, Lifespan,
-    ModifierId, Number, Points, PoolId, Pools, Ranked, Scalar, Stats, Team, Toggle,
+    ActionData, ActionSlot, ActionSlots, DeclaredName, Inventory, ItemId, ItemStack, Level,
+    Lifespan, ModifierId, Number, Points, PoolId, Pools, Ranked, Scalar, Stats, Team, Toggle,
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
@@ -55,7 +55,7 @@ struct HeroState {
     points: u32,
     slots: Vec<ActionSlot>,
     pools: Pools,
-    carried: Vec<Option<Carried>>,
+    carried: Vec<Option<ItemStack>>,
     modifiers: Vec<ModifierId>,
     gold: i64,
 }

@@ -318,7 +318,7 @@ const LOOKUPS: [(&str, &str); 67] = [
     ("mode/roster.rs", "named"),
     ("navigation/paths.rs", "named"),
     ("progression/progression_api.rs", "track_named"),
-    ("progression/tracks_column.rs", "named"),
+    ("progression/progression_column.rs", "named"),
     ("scripts/api_builder.rs", "named"),
     ("scripts/ctx.rs", "param_named"),
     ("scripts/call_part.rs", "param_named"),
@@ -340,10 +340,10 @@ const LOOKUPS: [(&str, &str); 67] = [
     ("units/unit.rs", "param_named"),
     ("units/unit.rs", "tag_named"),
     ("units/unit_state_book.rs", "named"),
-    ("units/unit_state_column.rs", "field_named"),
     ("units/unit_types.rs", "get_named"),
     ("units/unit_types.rs", "named"),
     ("units/unit_types.rs", "tag_named"),
+    ("units/units_column.rs", "field_named"),
     ("values/name_table.rs", "named"),
     ("values/name_table.rs", "sorted_named"),
     ("values/stat.rs", "named"),
@@ -351,6 +351,154 @@ const LOOKUPS: [(&str, &str); 67] = [
     // differs by ability.
     ("stats/param_book.rs", "named"),
 ];
+
+/// Each role a module's type may hold, by the trait it implements or, for a script API, by the
+/// `*Api` type that registers members: the suffix of the type's name, and of its file's.
+const ROLES: [(&str, &str, &str); 4] = [
+    ("impl Effect for ", "Effect", "effect"),
+    ("impl ViewColumn for ", "Column", "column"),
+    ("impl CallPart for ", "Call", "call"),
+    ("struct ", "Api", "api"),
+];
+
+/// The types that hold a role but are named for what they are: the orders' effect, which is the
+/// order to a unit, and the core's script API, which spans `units`, `scripts` and `players`.
+const ROLE_EXCEPTIONS: [&str; 2] = ["UnitOrder", "CoreApi"];
+
+/// The types of `code`, the file `file` of the module `module`, that hold a role and are not
+/// named `<Module><Role>` in `<module>_<role>.rs`, as `(file, type)`; a `mod.rs` is named by its
+/// directory.
+fn misnamed_roles(module: &str, file: &str, code: &str) -> Vec<(String, String)> {
+    let pascal: String = module
+        .split('_')
+        .map(|word| word[..1].to_ascii_uppercase() + &word[1..])
+        .collect();
+    let mut misnamed = Vec::new();
+    for (opening, suffix, file_suffix) in ROLES {
+        if suffix == "Api" && !code.contains("fn register(api: &mut ApiBuilder") {
+            continue;
+        }
+        for (at, _) in code.match_indices(opening) {
+            if at > 0 && !code[..at].ends_with(|c: char| c.is_whitespace() || c == ')') {
+                continue;
+            }
+            let rest = &code[at + opening.len()..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(rest.len());
+            let name = &rest[..end];
+            if suffix == "Api" && !name.ends_with("Api") {
+                continue;
+            }
+            let named =
+                name == format!("{pascal}{suffix}") && file == format!("{module}_{file_suffix}");
+            if !named && !ROLE_EXCEPTIONS.contains(&name) {
+                misnamed.push((file.to_owned(), name.to_owned()));
+            }
+        }
+    }
+    misnamed
+}
+
+#[test]
+fn each_role_of_a_module_takes_the_modules_name() {
+    let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+    let mut misnamed = Vec::new();
+    let mut held = [0; ROLES.len()];
+    production(src, &mut |path, code| {
+        let parts: Vec<&str> = path
+            .strip_prefix(src)
+            .unwrap()
+            .iter()
+            .map(|part| part.to_str().unwrap())
+            .collect();
+        let [module, .., _] = parts[..] else {
+            return;
+        };
+        let file = match path.file_stem().unwrap().to_str().unwrap() {
+            "mod" => parts[parts.len() - 2],
+            stem => stem,
+        };
+        misnamed.extend(misnamed_roles(module, file, code));
+        for (held, (opening, ..)) in held.iter_mut().zip(ROLES) {
+            *held += code.matches(opening).count();
+        }
+    });
+    assert_eq!(misnamed, Vec::<(String, String)>::new());
+    // The walk reads each role, so a role it no longer finds fails here, not silently.
+    assert!(held.iter().all(|&count| count > 0), "{held:?}");
+
+    // Each role is found where it is misnamed, a script API only where it registers members,
+    // and the exceptions pass.
+    let api = |name: &str| {
+        format!("struct {name};\nimpl {name} {{ fn register(api: &mut ApiBuilder<'_>) {{}} }}")
+    };
+    let samples = [
+        (
+            "vision",
+            "vision_effect",
+            "impl Effect for VisionEffect {".to_owned(),
+            vec![],
+        ),
+        (
+            "vision",
+            "reveal_effect",
+            "impl Effect for RevealEffect {".to_owned(),
+            vec![("reveal_effect", "RevealEffect")],
+        ),
+        (
+            "vision",
+            "vision_column",
+            "impl ViewColumn for SightColumn {".to_owned(),
+            vec![("vision_column", "SightColumn")],
+        ),
+        (
+            "units",
+            "units_call",
+            "impl CallPart for UnitsCall {".to_owned(),
+            vec![],
+        ),
+        ("units", "units_api", api("UnitsApi"), vec![]),
+        (
+            "units",
+            "units_api",
+            api("PositionApi"),
+            vec![("units_api", "PositionApi")],
+        ),
+        (
+            "units",
+            "position_api",
+            api("UnitsApi"),
+            vec![("position_api", "UnitsApi")],
+        ),
+        ("scripts", "core_api", api("CoreApi"), vec![]),
+        (
+            "scripts",
+            "script_api",
+            "pub struct ScriptApi {".to_owned(),
+            vec![],
+        ),
+        (
+            "orders",
+            "unit_order",
+            "impl Effect for UnitOrder {".to_owned(),
+            vec![],
+        ),
+        (
+            "capability_set",
+            "capability_set",
+            "impl Effect for CapabilitySetEffect {".to_owned(),
+            vec![("capability_set", "CapabilitySetEffect")],
+        ),
+    ];
+    for (module, file, code, expected) in samples {
+        let expected: Vec<(String, String)> = expected
+            .into_iter()
+            .map(|(file, name): (&str, &str)| (file.to_owned(), name.to_owned()))
+            .collect();
+        assert_eq!(misnamed_roles(module, file, &code), expected, "{code}");
+    }
+}
 
 #[test]
 fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {

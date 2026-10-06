@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
     ActionSlots, Area, Body, Dead, Destination, ForcedMove, Level, MatchEnd, ModifierClocks,
@@ -44,6 +46,12 @@ pub(crate) struct JoinChannel;
 /// server. It learns the teams' relations as a script changes them.
 #[derive(Debug)]
 pub struct NetProtocol;
+
+impl NetProtocol {
+    /// How often a headless app's loop runs, a server's or a bot's: often enough that no fixed
+    /// tick waits long for its frame.
+    pub const FRAME: Duration = Duration::from_millis(2);
+}
 
 impl Plugin for NetProtocol {
     fn build(&self, app: &mut App) {

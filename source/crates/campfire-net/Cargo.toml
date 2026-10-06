@@ -9,6 +9,7 @@ autotests = false
 internals = [
     "campfire-log/internals",
     "campfire-package/internals",
+    "campfire-protocol/internals",
 ]
 bench = ["internals", "dep:criterion"]
 
@@ -28,8 +29,10 @@ bevy_ecs.workspace = true
 bevy_state.workspace = true
 bevy_time.workspace = true
 criterion = { workspace = true, optional = true }
+getrandom.workspace = true
 lightyear.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
 
@@ -38,6 +41,8 @@ tracing.workspace = true
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
+
+tempfile.workspace = true
 
 [[test]]
 name = "tests"

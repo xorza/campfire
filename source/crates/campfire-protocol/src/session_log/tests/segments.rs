@@ -105,7 +105,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     assert_eq!(log.segment_starting(Tick::new(1)), None);
     assert_eq!(log.checkpoint_at(Tick::new(2)), None);
     assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
-    log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
+    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
         .unwrap();
     assert_eq!(log.begun_checkpoint(), None);
     assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));
@@ -119,7 +119,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     // The session ends before tick 4. The file holds both segments, the reveal of segment 1's
     // seed and the result, decodes to the same bytes, and replays the same ticks.
     let ended = result(&log, Outcome::Won { team: 1 });
-    let signature = ended.sign(&Secp256k1::new(), &server_keypair(), session_id(), &AUX);
+    let signature = ended.sign(&Secp256k1::new(), &TestKey::server(), session_id(), &AUX);
     log.record_result(ended, &signature).unwrap();
     log.reveal_seed(SEED_CHAIN.seed(1));
     assert_eq!(
@@ -139,7 +139,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
 fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
     let mut log = two_ticks();
     let record = checkpoint(&log, 3);
-    let stranger = Keypair::from_secret_key(&Secp256k1::new(), &secret(42));
+    let stranger = TestKey::of(42);
     let other = |change: fn(&mut Checkpoint)| {
         let mut record = record.clone();
         change(&mut record);
@@ -149,22 +149,22 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
         (record.clone(), stranger, CheckpointError::BadSignature),
         (
             other(|record| record.segment = 2),
-            server_keypair(),
+            TestKey::server(),
             CheckpointError::Segment,
         ),
         (
             other(|record| record.tick = Tick::new(3)),
-            server_keypair(),
+            TestKey::server(),
             CheckpointError::Tick,
         ),
         (
             other(|record| record.carry.pending.clear()),
-            server_keypair(),
+            TestKey::server(),
             CheckpointError::Carry,
         ),
     ];
     // A record with no checkpoint begun, and a second begin before the first's record.
-    let signature = signed_by(&record, &server_keypair());
+    let signature = signed_by(&record, &TestKey::server());
     assert_eq!(
         log.record_checkpoint(record.clone(), &signature),
         Err(CheckpointError::NotBegun)
@@ -177,7 +177,7 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
         assert_eq!(log.checkpoint_at(Tick::new(2)), None);
     }
     // Once taken, a second checkpoint at the same tick would end a segment of no tick.
-    log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
+    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
         .unwrap();
     assert_eq!(log.begin_checkpoint(), Err(CheckpointError::Empty));
 
@@ -193,7 +193,7 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
         tick: Tick::new(1),
         ..ended
     };
-    let signature = early.sign(&secp, &server_keypair(), session_id(), &AUX);
+    let signature = early.sign(&secp, &TestKey::server(), session_id(), &AUX);
     assert_eq!(log.record_result(early, &signature), Err(ResultError::Tick));
     assert_eq!(log.result(), None);
 }
@@ -205,7 +205,7 @@ fn flawed_segments_in_a_log_file_are_refused() {
     let mut log = two_ticks();
     let record = checkpoint(&log, 3);
     log.begin_checkpoint().unwrap();
-    log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
+    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
         .unwrap();
     log.reveal_seed(SEED_CHAIN.seed(1));
     let valid = encoded(&log);
@@ -232,7 +232,7 @@ fn flawed_segments_in_a_log_file_are_refused() {
         .position(|window| window == record_bytes)
         .unwrap();
     let signature_at = record_at + record_bytes.len();
-    let stranger = Keypair::from_secret_key(&Secp256k1::new(), &secret(42));
+    let stranger = TestKey::of(42);
     let other = signed_by(&record, &stranger).to_bytes();
     let resigned = [&valid[..signature_at], &other, &valid[signature_at + 64..]].concat();
     assert_eq!(
@@ -262,7 +262,7 @@ fn revealing_an_earlier_segments_seed_is_a_bug() {
     let mut log = two_ticks();
     let record = checkpoint(&log, 3);
     log.begin_checkpoint().unwrap();
-    log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
+    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
         .unwrap();
     log.reveal_seed(SEED_CHAIN.seed(0));
 }
@@ -275,7 +275,7 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     log.keep_journal(file.boxed());
     let record = checkpoint(&log, 3);
     log.begin_checkpoint().unwrap();
-    log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
+    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
         .unwrap();
     let saved = encoded(&log);
     assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
@@ -286,7 +286,7 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
 
     // Segment 0 starts from no checkpoint, and segment 2 is none of the log's.
     for segment in [0, 2] {
-        assert_eq!(log.load(segment), Err(LoadError::NoCheckpoint));
+        assert_eq!(log.load(segment), Err(LogLoadError::NoCheckpoint));
     }
     // The load of segment 1: the log is the one saved, at tick 2 again, its y due again there
     // and z gone; and the journal rebuilds the log loaded.

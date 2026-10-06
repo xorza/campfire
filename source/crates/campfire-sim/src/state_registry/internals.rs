@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fmt;
 
 use bevy_ecs::world::World;
@@ -8,6 +7,7 @@ use serde::de::{
     self, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
     VariantAccess, Visitor,
 };
+use thiserror::Error;
 
 use crate::entity_index::EntityIndex;
 use crate::sim_state::{SimComponent, SimResource};
@@ -107,19 +107,46 @@ impl Draws {
     fn value<T: for<'de> Deserialize<'de>>(&mut self) -> Option<T> {
         (0..TRIES).find_map(|_| T::deserialize(&mut *self).ok())
     }
-}
 
-/// Why a draw does not make a value: a type the state does not hold, or a refusal of its decode.
-#[derive(Debug)]
-pub struct DrawError(String);
+    /// Puts a drawn value of `C` in place of one entity's, of those that hold one; false when none
+    /// does, or no draw decodes.
+    pub(crate) fn scramble_component<C: SimComponent>(&mut self, world: &mut World) -> bool {
+        let holders: Vec<_> = world
+            .resource::<EntityIndex>()
+            .iter()
+            .map(|(_, entity)| entity)
+            .filter(|&entity| world.get::<C>(entity).is_some())
+            .collect();
+        if holders.is_empty() {
+            return false;
+        }
+        let count = u64::try_from(holders.len()).expect("holders fit u64");
+        let entity = holders[usize::try_from(self.below(count)).expect("a holder's place")];
+        let Some(value) = self.value::<C>() else {
+            return false;
+        };
+        world.entity_mut(entity).insert(value);
+        true
+    }
 
-impl fmt::Display for DrawError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+    /// Puts a drawn value of `R` in place of the match's; false when it has none, or no draw
+    /// decodes.
+    pub(crate) fn scramble_resource<R: SimResource>(&mut self, world: &mut World) -> bool {
+        if !world.contains_resource::<R>() {
+            return false;
+        }
+        let Some(value) = self.value::<R>() else {
+            return false;
+        };
+        world.insert_resource(value);
+        true
     }
 }
 
-impl Error for DrawError {}
+/// Why a draw does not make a value: a type the state does not hold, or a refusal of its decode.
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct DrawError(String);
 
 impl de::Error for DrawError {
     fn custom<T: fmt::Display>(message: T) -> DrawError {
@@ -128,6 +155,7 @@ impl de::Error for DrawError {
 }
 
 /// A list of `left` drawn elements: a sequence, a tuple, a struct's fields or a map's entries.
+#[derive(Debug)]
 struct Drawn<'a> {
     draws: &'a mut Draws,
     left: usize,
@@ -172,6 +200,7 @@ impl<'de> MapAccess<'de> for Drawn<'_> {
 }
 
 /// A drawn variant of an enum of `count` variants.
+#[derive(Debug)]
 struct Variant<'a> {
     draws: &'a mut Draws,
     count: usize,
@@ -399,39 +428,6 @@ impl<'de> Deserializer<'de> for &mut Draws {
     }
 }
 
-/// Puts a drawn value of `C` in place of one entity's, of those that hold one; false when none
-/// does, or no draw decodes.
-pub(crate) fn scramble_component<C: SimComponent>(world: &mut World, draws: &mut Draws) -> bool {
-    let holders: Vec<_> = world
-        .resource::<EntityIndex>()
-        .iter()
-        .map(|(_, entity)| entity)
-        .filter(|&entity| world.get::<C>(entity).is_some())
-        .collect();
-    if holders.is_empty() {
-        return false;
-    }
-    let count = u64::try_from(holders.len()).expect("holders fit u64");
-    let entity = holders[usize::try_from(draws.below(count)).expect("a holder's place")];
-    let Some(value) = draws.value::<C>() else {
-        return false;
-    };
-    world.entity_mut(entity).insert(value);
-    true
-}
-
-/// Puts a drawn value of `R` in place of the match's; false when it has none, or no draw decodes.
-pub(crate) fn scramble_resource<R: SimResource>(world: &mut World, draws: &mut Draws) -> bool {
-    if !world.contains_resource::<R>() {
-        return false;
-    }
-    let Some(value) = draws.value::<R>() else {
-        return false;
-    };
-    world.insert_resource(value);
-    true
-}
-
 impl StateRegistry {
     /// The name of each registered type, in their order.
     pub fn names(&self) -> impl Iterator<Item = &'static str> + '_ {
@@ -446,6 +442,6 @@ impl StateRegistry {
             .iter()
             .find(|entry| entry.name == name)
             .expect("a registered type");
-        (entry.scramble)(world, draws)
+        (entry.scramble)(draws, world)
     }
 }

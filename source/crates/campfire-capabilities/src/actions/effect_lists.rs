@@ -8,16 +8,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::actions::action_data::ActionData;
 use crate::actions::action_target::ActionTarget;
+use crate::actions::actions_effect::ActionsEffect;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
 use crate::actions::effect_names::EffectNames;
 use crate::actions::effect_queues::EffectQueues;
-use crate::actions::spawn_effect::SpawnEffect;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
-use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stats_call::StatsCall;
+use crate::stats::stats_effect::StatsEffect;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
@@ -291,7 +291,7 @@ impl EffectLists {
                     pos,
                 };
                 let life = duration_ms.map(|ms| duration(ms, frame));
-                frame.effects.push(SpawnEffect {
+                frame.effects.push(ActionsEffect {
                     at,
                     owner: source.owner,
                     life,
@@ -307,7 +307,7 @@ impl EffectLists {
             match listed.does {
                 Does::Modifier { id, duration_ms } => {
                     let duration = duration_ms.map(|ms| duration(ms, frame));
-                    frame.effects.push(ModifierEffect::Add {
+                    frame.effects.push(StatsEffect::Add {
                         target: unit,
                         id,
                         duration,
@@ -315,7 +315,7 @@ impl EffectLists {
                 }
                 Does::Purge { tag } => frame
                     .effects
-                    .push(ModifierEffect::Purge { carrier: unit, tag }),
+                    .push(StatsEffect::Purge { carrier: unit, tag }),
                 does => queues.of(does.capability())(does, unit, reached_unit, frame, view)?,
             }
         }
@@ -373,7 +373,7 @@ pub(crate) mod internals {
     use crate::actions::action_data::ActionData;
     use crate::actions::effect_lists::{EffectLists, LaunchId};
     use crate::actions::effect_names::EffectNames;
-    use crate::progression::tracks_column::TracksColumn;
+    use crate::progression::progression_column::ProgressionColumn;
     use crate::stats::Stats;
     use crate::stats::param_book::ParamBook;
     use crate::stats::pool_id::PoolId;
@@ -450,7 +450,7 @@ pub(crate) mod internals {
         }
 
         fn track(&self, name: &DeclaredName) -> TrackId {
-            TracksColumn::track_named(self.view, name.as_str())
+            ProgressionColumn::track_named(self.view, name.as_str())
                 .expect("the load checked an effect's track")
         }
 

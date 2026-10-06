@@ -2,7 +2,8 @@ use campfire_capabilities::{PackageContent, ScriptApi};
 use campfire_script::ScriptHost;
 
 use crate::avatar_unit::AvatarUnit;
-use crate::error::{LoadError, LoadProblem};
+use crate::error::LoadError;
+use crate::error::load_problem::LoadProblem;
 use crate::files::avatar_data::AvatarData;
 use crate::files::manifest::Manifest;
 use crate::package::Package;

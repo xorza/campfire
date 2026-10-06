@@ -1,16 +1,18 @@
+use tempfile::TempDir;
+
 use super::*;
-use crate::durable_file::tests::ScratchDir;
+
 #[cfg(unix)]
 use crate::durable_file::tests::mode;
 
 #[test]
 fn a_secret_file_round_trips_and_refuses_one_others_may_read() {
-    let dir = ScratchDir::new("secret-file");
-    let path = dir.0.join("player.nsec");
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("player.nsec");
     SecretFile::write(&path, b"secret\n").unwrap();
     assert_eq!(SecretFile::read(&path).unwrap(), b"secret\n");
     assert!(matches!(
-        SecretFile::read(&dir.0.join("none.nsec")),
+        SecretFile::read(&dir.path().join("none.nsec")),
         Err(SecretReadError::Read(_))
     ));
     #[cfg(unix)]

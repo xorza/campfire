@@ -106,7 +106,7 @@ fn a_match_passes_when_every_order_lands_in_its_stamp_tick_or_waited_for_a_catch
     );
     verdict.process(
         Process::Server,
-        Outcome::Succeeded,
+        ProcessOutcome::Succeeded,
         &ProcessLog::empty(Process::Server),
     );
     assert_eq!(found(&verdict), []);
@@ -176,7 +176,7 @@ fn a_match_fails_by_each_flaw_it_has() {
     // Neither follows from a verifier that failed but the first; both follow from a server
     // that overran, which alone the verdict names.
     let empty = |process| ProcessLog::empty(process);
-    let failed = Outcome::Failed { code: Some(1) };
+    let failed = ProcessOutcome::Failed { code: Some(1) };
     verdict.process(Process::Verifier, failed, &empty(Process::Verifier));
     let verifier_failed = Failure::Ended {
         process: Process::Verifier,
@@ -185,10 +185,10 @@ fn a_match_fails_by_each_flaw_it_has() {
     assert_eq!(found(&verdict), [no_log, verifier_failed.clone()]);
     // The server that writes the log is the one the check started again.
     let again = Process::ServerAgain;
-    verdict.process(again, Outcome::Overran, &empty(again));
+    verdict.process(again, ProcessOutcome::Overran, &empty(again));
     let server_overran = Failure::Ended {
         process: again,
-        outcome: Outcome::Overran,
+        outcome: ProcessOutcome::Overran,
     };
     assert_eq!(found(&verdict), [verifier_failed, server_overran]);
 }
@@ -197,14 +197,18 @@ fn a_match_fails_by_each_flaw_it_has() {
 fn the_impostor_and_each_process_fail_by_their_own_flaws() {
     // The impostor must exit with failure and say why; one that succeeded or overran, or
     // stayed silent, fails the check.
-    let failed = Outcome::Failed { code: Some(1) };
+    let failed = ProcessOutcome::Failed { code: Some(1) };
     let lost = LinkLost {
         reason: "Transport error: certificate hash mismatch".to_owned(),
     };
     let mut verdict = Verdict::default();
     verdict.impostor(failed, &[lost]);
     assert_eq!(found(&verdict), []);
-    for outcome in [Outcome::Succeeded, Outcome::Overran, Outcome::NotStarted] {
+    for outcome in [
+        ProcessOutcome::Succeeded,
+        ProcessOutcome::Overran,
+        ProcessOutcome::NotStarted,
+    ] {
         let mut verdict = Verdict::default();
         verdict.impostor(outcome, &[]);
         assert_eq!(
@@ -226,17 +230,17 @@ fn the_impostor_and_each_process_fail_by_their_own_flaws() {
     .join("\n");
     let log = ProcessLog::parse(Process::Server, &text).unwrap();
     let mut verdict = Verdict::default();
-    verdict.process(Process::Server, Outcome::Overran, &log);
+    verdict.process(Process::Server, ProcessOutcome::Overran, &log);
     assert_eq!(
         found(&verdict),
         [
             Failure::Ended {
                 process: Process::Server,
-                outcome: Outcome::Overran
+                outcome: ProcessOutcome::Overran
             },
             Failure::Warned {
                 process: Process::Server,
-                level: Level::Warn,
+                level: LogLevel::Warn,
                 target: "campfire_net::lobby".to_owned(),
                 fields: json!({"message": "refused a join"}),
             },
@@ -261,15 +265,15 @@ fn a_bot_the_check_stops_and_starts_again_counts_its_orders_once_across_both() {
         &[stopped, again],
     );
     let empty = ProcessLog::empty(Process::Bot(1));
-    verdict.stopped(Process::Bot(1), Outcome::Stopped, &empty);
+    verdict.stopped(Process::Bot(1), ProcessOutcome::Stopped, &empty);
     assert_eq!(found(&verdict), []);
     // One that ended before the check stopped it fails.
-    verdict.stopped(Process::Bot(1), Outcome::Succeeded, &empty);
+    verdict.stopped(Process::Bot(1), ProcessOutcome::Succeeded, &empty);
     assert_eq!(
         found(&verdict),
         [Failure::NotStopped {
             process: Process::Bot(1),
-            outcome: Outcome::Succeeded
+            outcome: ProcessOutcome::Succeeded
         }]
     );
 
@@ -279,20 +283,20 @@ fn a_bot_the_check_stops_and_starts_again_counts_its_orders_once_across_both() {
     let mut verdict = Verdict::default();
     verdict.hash(local, None, None);
     let empty = ProcessLog::empty(Process::Server);
-    verdict.process(Process::Server, Outcome::Overran, &empty);
+    verdict.process(Process::Server, ProcessOutcome::Overran, &empty);
     let server_overran = Failure::Ended {
         process: Process::Server,
-        outcome: Outcome::Overran,
+        outcome: ProcessOutcome::Overran,
     };
     assert_eq!(
         found(&verdict),
         [Failure::NoLog { session: local }, server_overran.clone()]
     );
     let empty = ProcessLog::empty(Process::Local);
-    verdict.process(Process::Local, Outcome::Overran, &empty);
+    verdict.process(Process::Local, ProcessOutcome::Overran, &empty);
     let local_overran = Failure::Ended {
         process: Process::Local,
-        outcome: Outcome::Overran,
+        outcome: ProcessOutcome::Overran,
     };
     assert_eq!(found(&verdict), [server_overran, local_overran]);
 }

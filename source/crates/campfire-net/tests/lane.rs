@@ -6,13 +6,13 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, MoveStep, Owner, PoolId, Pools, Team};
 use campfire_math::Num;
-use campfire_net::internals::{End, LocalMatch, MatchSetup};
+use campfire_net::internals::{End, InProcessMatch, MatchSetup};
 use campfire_sim::EntityIndex;
 
 /// A match of the lane mode whose one player's walker stands at the map's edge, 8 m off the lane,
 /// out of every creep's and tower's reach, from before the first wave.
-fn quiet_lane() -> LocalMatch {
-    let mut local = LocalMatch::new(MatchSetup::SOLO);
+fn quiet_lane() -> InProcessMatch {
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     local.order(
         0,

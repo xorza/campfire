@@ -1,23 +1,19 @@
 use std::num::NonZeroU32;
 
 use campfire_common::{Fingerprint, NotHex, Ticks};
-use secp256k1::{SecretKey, XOnlyPublicKey};
-
-use crate::delegation::DelegationTerms;
-use crate::delegation::error::ScopeError;
-use crate::seed_chain::SeedChain;
-use crate::session_id::SessionId;
+use secp256k1::XOnlyPublicKey;
 
 use super::*;
+use crate::delegation::DelegationTerms;
+use crate::delegation::error::ScopeError;
+use crate::delegation::seed_contribution::SeedContribution;
+use crate::harness::test_key::TestKey;
+use crate::seed_chain::SeedChain;
+use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 
 const NOW: u64 = 1_700_000_000;
 const EXPIRATION: u64 = NOW + 60;
-
-fn keypair(byte: u8) -> Keypair {
-    let secret = SecretKey::from_byte_array(&[byte; 32]).unwrap();
-    Keypair::from_secret_key(&Secp256k1::new(), &secret)
-}
 
 fn terms() -> SessionTerms {
     SessionTerms {
@@ -40,14 +36,14 @@ fn terms() -> SessionTerms {
 fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
     let terms = terms();
     let mut granted = DelegationTerms {
-        session_key: keypair(2).x_only_public_key().0,
+        session_key: TestKey::of(2).x_only_public_key().0,
         server_key: terms.server_key,
         session_id: terms.session_id(),
-        seed_contribution: [3; 32],
+        seed_contribution: SeedContribution::new([3; 32]),
         expiration: EXPIRATION,
     };
     change(&mut granted);
-    Delegation::sign(&Secp256k1::new(), &keypair(1), &granted, NOW, &[0; 32])
+    Delegation::sign(&Secp256k1::new(), &TestKey::of(1), &granted, NOW, &[0; 32])
 }
 
 #[test]
@@ -55,7 +51,7 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_certificate() {
     let secp = Secp256k1::new();
     let challenge = ConnectChallenge::new([9; 32]);
     let certificate = CertificateHash::new([7; 32]);
-    let answer = challenge.answer(&secp, &keypair(2), &certificate, &[0; 32]);
+    let answer = challenge.answer(&secp, &TestKey::of(2), &certificate, &[0; 32]);
     let good = delegation(|_| {});
     let check = |challenge: ConnectChallenge,
                  certificate: CertificateHash,
@@ -78,7 +74,8 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_certificate() {
     let elsewhere = XOnlyPublicKey::from_byte_array(&[9; 32]).unwrap();
     let other_server = delegation(|granted| granted.server_key = elsewhere);
     let other_session = delegation(|granted| granted.session_id = SessionId::new([1; 32]));
-    let other_key = delegation(|granted| granted.session_key = keypair(3).x_only_public_key().0);
+    let other_key =
+        delegation(|granted| granted.session_key = TestKey::of(3).x_only_public_key().0);
     for (delegation, error) in [
         (&other_server, ConnectError::Scope(ScopeError::OtherServer)),
         (
@@ -94,7 +91,7 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_certificate() {
     }
     // An answer given to another challenge, or over another server's certificate, is refused.
     let relayed =
-        ConnectChallenge::new([10; 32]).answer(&secp, &keypair(2), &certificate, &[0; 32]);
+        ConnectChallenge::new([10; 32]).answer(&secp, &TestKey::of(2), &certificate, &[0; 32]);
     let elsewhere = CertificateHash::new([8; 32]);
     assert_eq!(
         check(challenge, certificate, &good, &relayed, NOW),

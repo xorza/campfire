@@ -5,8 +5,10 @@ use campfire_package::{ModePackages, RELEASE, TickRange};
 use campfire_protocol::secp256k1::XOnlyPublicKey;
 use campfire_protocol::{SeedCommitment, SessionTerms, SlotPlan};
 
-use crate::error::TermsError;
 use crate::input_rules::InputRules;
+use crate::session_rules::error::TermsError;
+
+pub(crate) mod error;
 
 /// What a mode's packages fix of every session that plays them on this engine release: the mode
 /// and its dependencies by their fingerprints, and the tick rates the mode runs at. A server

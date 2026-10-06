@@ -9,14 +9,14 @@ use crate::worker::Worker;
 /// then ends the worker.
 #[derive(Debug)]
 pub struct LatestWriter<T, E> {
-    shared: Arc<Shared<T, E>>,
+    shared: Arc<LatestShared<T, E>>,
     /// Dropped after the writer's `Drop` closes it.
     _worker: Worker,
 }
 
 /// What the caller and the worker share.
 #[derive(Debug)]
-struct Shared<T, E> {
+struct LatestShared<T, E> {
     slot: Mutex<Slot<T, E>>,
     wake: Condvar,
 }
@@ -36,7 +36,7 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
         name: &str,
         mut write: impl FnMut(&T) -> Result<(), E> + Send + 'static,
     ) -> LatestWriter<T, E> {
-        let shared = Arc::new(Shared {
+        let shared = Arc::new(LatestShared {
             slot: Mutex::new(Slot {
                 newest: None,
                 failures: Vec::new(),
@@ -81,7 +81,7 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
     }
 }
 
-impl<T, E> Shared<T, E> {
+impl<T, E> LatestShared<T, E> {
     fn lock(&self) -> MutexGuard<'_, Slot<T, E>> {
         self.slot.lock().expect("no thread panics holding the slot")
     }

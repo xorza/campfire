@@ -3,11 +3,11 @@
 
 pub(crate) mod avatar_data;
 pub(crate) mod backends;
+pub(crate) mod content_table;
 pub(crate) mod dependency;
 pub(crate) mod manifest;
 pub(crate) mod mode_file;
 pub(crate) mod mode_manifest;
-pub(crate) mod package_content;
 pub(crate) mod package_header;
 pub(crate) mod tick_range;
 pub(crate) mod units_data;
