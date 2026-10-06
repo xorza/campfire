@@ -99,3 +99,34 @@ impl Error for AbortError {
         }
     }
 }
+
+/// Why the session a stop left under a data directory does not read back.
+#[derive(Debug)]
+pub enum WaitingError {
+    Find(FindError),
+    Restore(RestoreError),
+    /// The directory of a session whose match never started did not go.
+    Remove(io::Error),
+}
+
+impl fmt::Display for WaitingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WaitingError::Find(error) => write!(f, "{error}"),
+            WaitingError::Restore(error) => write!(f, "the session does not restore: {error}"),
+            WaitingError::Remove(error) => {
+                write!(f, "could not remove a session that never started: {error}")
+            }
+        }
+    }
+}
+
+impl Error for WaitingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            WaitingError::Find(error) => Some(error),
+            WaitingError::Restore(error) => Some(error),
+            WaitingError::Remove(error) => Some(error),
+        }
+    }
+}

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use bevy_ecs::world::{Mut, World};
+use campfire_log::LogEvent;
 use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{
@@ -13,15 +14,17 @@ use campfire_protocol::{
 use campfire_runner::Session;
 
 use crate::checkpoints::Checkpoints;
+use crate::events::session_aborted::SessionAborted;
 use crate::server_signer::ServerSigner;
-use crate::session_dir::error::{AbortError, FindError, RestoreError};
+use crate::session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
 
 pub(crate) mod error;
 
 /// A session's directory under a server's data directory, `sessions/<session id>`: its `private`
 /// record, written once before the first offer, its `journal`, and its checkpoints' `snapshots`.
-/// Each is synced into its parent as it is made, so a crash loses none. Once the session ends, its log goes to the data
-/// directory's `logs`, `<session id>.campfire-log`, which marks it done.
+/// Each is synced into its parent as it is made, so a crash loses none. Once the session ends,
+/// its log goes to the data directory's `logs`, `<session id>.campfire-log`, which marks it
+/// done.
 #[derive(Debug)]
 pub struct SessionDir {
     path: PathBuf,
@@ -100,6 +103,21 @@ impl SessionDir {
         Ok(found)
     }
 
+    /// The session a stop left under `data`, read back, as a server that starts again takes it
+    /// up: none when every session's log is published, and none when its match never started,
+    /// whose directory goes. An error as `find` and `restore` give one, and for a directory that
+    /// does not go.
+    pub fn waiting(data: &Path) -> Result<Option<RestoredSession>, WaitingError> {
+        let Some(dir) = SessionDir::find(data).map_err(WaitingError::Find)? else {
+            return Ok(None);
+        };
+        let session = dir.restore().map_err(WaitingError::Restore)?;
+        if session.is_none() {
+            dir.remove().map_err(WaitingError::Remove)?;
+        }
+        Ok(session)
+    }
+
     /// Reads the session back: its private record, and the log its journal rebuilds, the
     /// journal cut to its whole frames; none when the journal holds no record, as a session
     /// whose match never started has none. An error for a record that does not read, a session
@@ -161,8 +179,8 @@ impl RestoredSession {
     /// ended before the crash: replays the log, of the mode `packages` holds, to the state its
     /// last tick left, taking again a checkpoint begun with no record as it reaches its
     /// boundary; logs an aborted result there, into the journal too; and publishes the log under
-    /// `data`, its seed revealed. `server_key` signs what it logs, with auxiliary randomness from
-    /// `entropy`. The published file's path.
+    /// `data`, its seed revealed, and logs `SessionAborted`. `server_key` signs what it logs, with
+    /// auxiliary randomness from `entropy`. The published file's path.
     pub fn abort(
         self,
         data: &Path,
@@ -197,6 +215,13 @@ impl RestoredSession {
             }
             session.reveal_seed();
         });
-        SessionDir::publish(data, world.resource::<Session>().log()).map_err(AbortError::Publish)
+        let log = world.resource::<Session>().log();
+        let file = SessionDir::publish(data, log).map_err(AbortError::Publish)?;
+        SessionAborted {
+            session: log.session_id(),
+            file: file.clone(),
+        }
+        .log();
+        Ok(file)
     }
 }

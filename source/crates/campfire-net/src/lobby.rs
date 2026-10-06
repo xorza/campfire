@@ -13,11 +13,11 @@ use campfire_protocol::{
     ConnectChallenge, Delegation, SeedChain, SessionHeader, SessionLog, SessionTerms, SlotPlan,
     SlotStart,
 };
-use campfire_runner::{InputRules, SessionRules, TermsError};
+use campfire_runner::{InputRules, SessionRules};
 use lightyear::prelude::{Connected, LocalTimeline};
 use tracing::info;
 
-use crate::error::JoinError;
+use crate::error::{JoinError, LobbyError};
 use crate::events::join_refused::JoinRefused;
 use crate::join::Join;
 use crate::offering::{JoinLinks, Joined, OfferLinks, Offering, Refused, Superseding};
@@ -65,8 +65,10 @@ pub struct LobbySetup {
 
 impl Lobby {
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
-    /// not run at the setup's tick rate.
-    pub fn new(setup: LobbySetup) -> Result<Lobby, TermsError> {
+    /// not run at the setup's tick rate or has not as many slots, when a bot or an open slot
+    /// names a slot the session does not have or one already named, and when no slot is left to
+    /// a player.
+    pub fn new(setup: LobbySetup) -> Result<Lobby, LobbyError> {
         let LobbySetup {
             packages,
             seed_chain,
@@ -78,24 +80,33 @@ impl Lobby {
             server,
         } = setup;
         let mut plan = vec![SlotPlan::Player; slots];
-        for bot in &bots.slots {
-            plan[bot.slot.index()] = SlotPlan::Bot;
-        }
-        for slot in open {
-            plan[slot.index()] = SlotPlan::Open;
+        let named = (bots.slots.iter().map(|bot| (bot.slot, SlotPlan::Bot)))
+            .chain(open.into_iter().map(|slot| (slot, SlotPlan::Open)));
+        for (slot, kind) in named {
+            let at = plan
+                .get_mut(slot.index())
+                .ok_or(LobbyError::NoSuchSlot(slot))?;
+            if *at != SlotPlan::Player {
+                return Err(LobbyError::SlotNamedTwice(slot));
+            }
+            *at = kind;
         }
         let players = plan
             .iter()
             .filter(|&&plan| plan == SlotPlan::Player)
             .count();
-        assert!(players > 0, "a session has a player");
-        let terms = SessionRules::of(&packages).terms(
-            server.key.x_only_public_key().0,
-            seed_chain.commitment(),
-            tick_hz,
-            inputs,
-            plan,
-        )?;
+        if players == 0 {
+            return Err(LobbyError::NoPlayer);
+        }
+        let terms = SessionRules::of(&packages)
+            .terms(
+                server.key.x_only_public_key().0,
+                seed_chain.commitment(),
+                tick_hz,
+                inputs,
+                plan,
+            )
+            .map_err(LobbyError::Terms)?;
         Ok(Lobby {
             offering: Offering::new(terms, &server),
             seed_chain,
@@ -264,6 +275,8 @@ mod tests {
     use campfire_package::PackageDir;
 
     use crate::local_match;
+    use crate::order_script::OrderScript;
+    use crate::server_bots::SlotBot;
     use crate::session_times::SessionTimes;
 
     use bevy_ecs::system::RunSystemOnce;
@@ -275,10 +288,10 @@ mod tests {
 
     const NOW: u64 = 1_700_000_000;
 
-    #[test]
-    fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
-        let server_key = local_match::server_key();
-        let mut lobby = Lobby::new(LobbySetup {
+    /// A session of the lane mode's 2 slots, with bots in slots `bots` and slots `open` open.
+    fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
+        let script = OrderScript::parse("end = 1").unwrap();
+        LobbySetup {
             packages: Arc::new(
                 ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap(),
             ),
@@ -286,8 +299,14 @@ mod tests {
             tick_hz: NonZeroU32::new(30).unwrap(),
             inputs: InputRules::LAN,
             slots: 2,
-            bots: ServerBots::default(),
-            open: Vec::new(),
+            bots: ServerBots {
+                slots: bots
+                    .iter()
+                    .map(|&slot| SlotBot::new(slot, script.clone()))
+                    .collect(),
+                takeover: None,
+            },
+            open: open.iter().copied().map(PlayerSlot::new).collect(),
             server: ServerSetup {
                 key: local_match::server_keypair(),
                 certificate: CertificateHash::new([3; 32]),
@@ -295,8 +314,27 @@ mod tests {
                 clock: || NOW,
                 entropy: |bytes| bytes.fill(5),
             },
-        })
-        .unwrap();
+        }
+    }
+
+    #[test]
+    fn the_lobby_plans_each_slot_once_and_leaves_one_to_a_player() {
+        let plan = |bots: &[u32], open: &[u32]| {
+            Lobby::new(setup(bots, open)).map(|lobby| lobby.terms().slots.clone())
+        };
+        assert_eq!(plan(&[1], &[]), Ok(vec![SlotPlan::Player, SlotPlan::Bot]));
+        assert_eq!(plan(&[], &[0]), Ok(vec![SlotPlan::Open, SlotPlan::Player]));
+        let slot = PlayerSlot::new;
+        assert_eq!(plan(&[2], &[]), Err(LobbyError::NoSuchSlot(slot(2))));
+        assert_eq!(plan(&[1, 1], &[]), Err(LobbyError::SlotNamedTwice(slot(1))));
+        assert_eq!(plan(&[1], &[1]), Err(LobbyError::SlotNamedTwice(slot(1))));
+        assert_eq!(plan(&[0], &[1]), Err(LobbyError::NoPlayer));
+    }
+
+    #[test]
+    fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
+        let server_key = local_match::server_key();
+        let mut lobby = Lobby::new(setup(&[], &[])).unwrap();
         assert_eq!((lobby.players, lobby.joined()), (2, 0));
         let secp = Secp256k1::new();
         let granted = DelegationTerms {

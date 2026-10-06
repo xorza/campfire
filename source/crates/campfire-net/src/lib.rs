@@ -33,6 +33,7 @@ mod receipts;
 mod save_command;
 mod seats;
 mod server_bots;
+mod server_exit;
 mod server_setup;
 mod server_signer;
 mod session_dir;
@@ -43,7 +44,8 @@ mod sim_server;
 mod superseded;
 
 pub use error::{
-    JoinError, OrderScriptError, ReceiptRefusal, RestoreMatchError, SaveRefusal, TermsMismatch,
+    JoinError, LobbyError, OrderScriptError, ReceiptRefusal, RestoreMatchError, SaveRefusal,
+    TermsMismatch,
 };
 pub use events::avatar_missing::AvatarMissing;
 pub use events::checkpoint_failed::CheckpointFailed;
@@ -89,8 +91,9 @@ pub use data_dir::DataDir;
 pub use data_dir::error::DataDirError;
 pub use order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
 pub use server_bots::{ServerBots, SlotBot};
+pub use server_exit::ServerExit;
 pub use server_setup::ServerSetup;
-pub use session_dir::error::{AbortError, FindError, RestoreError};
+pub use session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
 pub use session_dir::{RestoredSession, SessionDir, SessionFiles};
 pub use session_journal::SessionJournal;
 pub use session_times::SessionTimes;

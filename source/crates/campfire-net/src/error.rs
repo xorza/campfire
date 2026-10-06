@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::{fmt, io};
 
+use campfire_common::PlayerSlot;
 use campfire_protocol::{ConnectError, DelegationError, DurableError};
 use campfire_runner::{ResumeError, ServerInputRefused, StartError, TermsError};
 use toml::de::Error as TomlError;
@@ -215,3 +216,41 @@ impl fmt::Display for SaveRefusal {
 }
 
 impl Error for SaveRefusal {}
+
+/// Why a session's lobby does not open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LobbyError {
+    Terms(TermsError),
+    /// A bot or an open slot names a slot the session does not have.
+    NoSuchSlot(PlayerSlot),
+    /// Two bots, or a bot and an open slot, name the same slot.
+    SlotNamedTwice(PlayerSlot),
+    /// Every slot is a bot's or open: no player starts the session.
+    NoPlayer,
+}
+
+impl fmt::Display for LobbyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LobbyError::Terms(error) => write!(f, "{error}"),
+            LobbyError::NoSuchSlot(slot) => {
+                write!(f, "the session has no slot {}", slot.get())
+            }
+            LobbyError::SlotNamedTwice(slot) => {
+                write!(f, "slot {} is a bot's or open twice", slot.get())
+            }
+            LobbyError::NoPlayer => f.write_str("every slot is a bot's or open"),
+        }
+    }
+}
+
+impl Error for LobbyError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            LobbyError::Terms(error) => Some(error),
+            LobbyError::NoSuchSlot(_) | LobbyError::SlotNamedTwice(_) | LobbyError::NoPlayer => {
+                None
+            }
+        }
+    }
+}

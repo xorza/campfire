@@ -422,8 +422,7 @@ impl SimServer {
             world.resource_mut::<Session>().keep_journal(journal);
         }
         world.insert_resource(ServerSigner::new(server.key, server.entropy));
-        let loaded = world.resource::<Session>().log().loaded();
-        world.insert_resource(Door::new(Offering::new(terms, server), loaded));
+        world.insert_resource(Door::new(Offering::new(terms, server)));
     }
 
     /// Bounds the server's frames for a session of `terms`: a frame advances its clock by the

@@ -39,14 +39,15 @@ fn x_only(secret: u8) -> XOnlyPublicKey {
     local_match::keypair(secret).x_only_public_key().0
 }
 
-/// A client of the lane mode, main key 1, that means to reach the server of key 8 at `tick_hz`.
+/// A client of the lane mode, main key 1, that means to reach the remote server of key 8 at
+/// `tick_hz`.
 fn waiting(tick_hz: NonZeroU32) -> JoinState {
     let server = ServerPin {
         key: x_only(8),
         certificate: CertificateHash::new([3; 32]),
         tick_hz,
     };
-    JoinState::new(local_match::keypair(1), server, lane_rules(), clock)
+    JoinState::new(local_match::keypair(1), server, false, lane_rules(), clock)
 }
 
 /// Session key 2, whose randomness is all 6s.
@@ -410,6 +411,40 @@ fn a_client_refuses_a_receipt_not_signed_over_its_own_chain() {
         assert_eq!(state.take_receipt(&receipt, &verifier), Err(refusal));
     }
     assert_eq!(state.receipt(), None);
+}
+
+#[test]
+fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it() {
+    // After a load, the server's chain stands at seq 1 with a head that is not the client's own
+    // there, heads[1]: a local server's chain is taken, its 2 inputs after seq 1 never apply and
+    // its receipt is dropped; any other server rewrote the chain.
+    let verifier = Secp256k1::verification_only();
+    for local in [true, false] {
+        let (mut state, mut signer, heads, _, receipt) = receipted();
+        state.player.local = local;
+        state.take_receipt(&signed(receipt), &verifier).unwrap();
+        state.lose(Duration::ZERO, [0; 32]);
+        state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+        let loaded = MatchStart {
+            chain: Some(ChainHead {
+                next_seq: 1,
+                head: heads[3],
+            }),
+            loaded: true,
+            ..START
+        };
+        if local {
+            assert_eq!(state.start(loaded), Started::Playing { discarded: 2 });
+            let playing = state.playing().unwrap();
+            assert_eq!(
+                playing.chain,
+                InputChain::resume(PlayerSlot::new(1), heads[3], 1)
+            );
+            assert_eq!(state.receipt(), None);
+        } else {
+            assert_eq!(state.start(loaded), Started::Rewritten);
+        }
+    }
 }
 
 #[test]

@@ -164,6 +164,7 @@ fn main() -> ExitCode {
             main_key,
             session_key: keypair(),
             server: pin,
+            local,
             packages: Arc::new(packages),
             clock: unix_now,
             entropy: fill,

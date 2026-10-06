@@ -70,11 +70,14 @@ pub enum Loss {
 }
 
 /// What answers the server's offer: the player's identity, which signs the delegation, the server
-/// they mean to reach, and the rules of the mode the client holds.
+/// they mean to reach, whether it is local, and the rules of the mode the client holds.
 #[derive(Debug)]
 pub(crate) struct Joining {
     main_key: Keypair,
     server: ServerPin,
+    /// Whether the server runs on a thread of the client's process: only such a server loads a
+    /// save, so only its match start that says so is taken as one.
+    local: bool,
     rules: SessionRules,
     /// Unix seconds: when a delegation is made, and so when it expires.
     clock: fn() -> u64,
@@ -168,6 +171,7 @@ impl JoinState {
     pub(crate) const fn new(
         main_key: Keypair,
         server: ServerPin,
+        local: bool,
         rules: SessionRules,
         clock: fn() -> u64,
     ) -> JoinState {
@@ -175,6 +179,7 @@ impl JoinState {
             player: Joining {
                 main_key,
                 server,
+                local,
                 rules,
                 clock,
             },
@@ -300,8 +305,8 @@ impl JoinState {
     /// Plays the match `start` names, for a client that answered: the player's chain starts from
     /// their delegation's id when the server holds none, or goes on from the server's copy, which
     /// a client with a history finds in it and cuts its own back to, and a client with none
-    /// takes; after a load, which may drop inputs the client's history holds, every client takes
-    /// it. Sim tick `start.first` is Lightyear tick `start.start_tick`.
+    /// takes; after a load, which may drop inputs the client's history holds, every client of a
+    /// local server takes it. Sim tick `start.first` is Lightyear tick `start.start_tick`.
     pub(crate) fn start(&mut self, start: MatchStart) -> Started {
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Answered(answered) => answered,
@@ -311,7 +316,9 @@ impl JoinState {
             }
         };
         let mut member = answered.member;
-        if start.loaded {
+        // Any other server loads no save, so its word would let it rewrite the chain unseen.
+        let loaded = start.loaded && self.player.local;
+        if loaded {
             // A receipt names inputs the load may have dropped.
             member.receipt = None;
         }
@@ -323,7 +330,7 @@ impl JoinState {
             }
             // The session went back to a save: the player's chain stands where the save left it,
             // and the inputs after it never apply.
-            (Some(head), Some(history)) if start.loaded => {
+            (Some(head), Some(history)) if loaded => {
                 let discarded = history.next_seq().saturating_sub(head.next_seq);
                 let chain = InputChain::resume(start.slot, head.head, head.next_seq);
                 (chain, ChainHistory::of(&chain), discarded)

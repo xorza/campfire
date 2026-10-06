@@ -78,6 +78,9 @@ pub struct SimClient {
     /// This session's key, which the delegation lets sign the player's inputs.
     pub session_key: Keypair,
     pub server: ServerPin,
+    /// Whether the server runs on a thread of the client's process, the only one that loads a
+    /// save.
+    pub local: bool,
     /// The packages of the mode it plays, which must run at the listing's rate.
     pub packages: Arc<ModePackages>,
     /// Unix seconds: when the delegation is made, and so when it expires.
@@ -162,6 +165,7 @@ impl Plugin for SimClient {
         world.insert_resource(JoinState::new(
             self.main_key,
             self.server,
+            self.local,
             SessionRules::of(packages),
             self.clock,
         ));

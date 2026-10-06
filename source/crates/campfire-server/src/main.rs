@@ -22,25 +22,22 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
-use bevy_ecs::message::MessageWriter;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
-use bevy_ecs::system::{Commands, Query, Res};
-use bevy_ecs::world::World;
+use bevy_ecs::system::{Commands, Query};
+use bevy_ecs::world::{Mut, World};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    CheckpointFailed, DataDir, JournalFailed, Listening, MatchClock, NetProtocol, OrderScript,
-    ServerBots, ServerSetup, SessionDir, SessionJournal, SessionTimes, SessionWritten, SimServer,
-    SlotBot,
+    DataDir, JournalFailed, Listening, NetProtocol, OrderScript, ServerBots, ServerExit,
+    ServerSetup, SessionTimes, SimServer, SlotBot,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::Keypair;
-use campfire_runner::Session;
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
 use lightyear::prelude::{LinkOf, Linked, LocalAddr, ReplicationSender};
@@ -58,9 +55,6 @@ mod opening;
 mod server_config;
 mod server_tls;
 
-/// The process's exit code when the session's journal fails: sysexits' `EX_IOERR`, an error in
-/// I/O on a file.
-const JOURNAL_FAILED: u8 = 74;
 /// The segments of a session's seed chain: the most checkpoints it may take, less one.
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
@@ -200,7 +194,7 @@ impl Started {
                     error: error.to_string(),
                 }
                 .log();
-                ExitCode::from(JOURNAL_FAILED)
+                ExitCode::from(ServerExit::JOURNAL_FAILED)
             }
             error => no_session(error),
         })?;
@@ -254,10 +248,7 @@ fn server_app(
         Update,
         (
             Restore::run.run_if(resource_exists::<Restore>),
-            exit_on_journal_failure,
-            exit_on_checkpoint_failure,
-            end_when_everyone_left,
-            publish_when_ended,
+            exit_when_due,
         )
             .chain(),
     );
@@ -409,81 +400,13 @@ fn exit_code(exit: AppExit) -> ExitCode {
     }
 }
 
-/// Exits, with `JOURNAL_FAILED`, once a write or a sync of the session's journal failed: the
-/// server keeps no record past it, and its host's supervisor starts it again.
-fn exit_on_journal_failure(
-    journal: Option<Res<'_, SessionJournal>>,
-    mut exit: MessageWriter<'_, AppExit>,
-) {
-    let Some(failure) = journal.and_then(|journal| journal.0.take_failure()) else {
-        return;
-    };
-    JournalFailed {
-        error: failure.to_string(),
+/// Exits as `ServerExit::due` says: the server stops only once its session ended.
+fn exit_when_due(world: &mut World) {
+    let exit = world
+        .resource_scope(|world, data: Mut<'_, DataPath>| ServerExit::due(world, &data.0, false));
+    if let Some(exit) = exit {
+        world.write_message(exit);
     }
-    .log();
-    exit.write(AppExit::from_code(JOURNAL_FAILED));
-}
-
-/// Exits, with `JOURNAL_FAILED`, once a checkpoint's snapshot was not written, as on a failed
-/// journal: its host's supervisor starts it again, which takes the checkpoint again.
-fn exit_on_checkpoint_failure(world: &mut World) {
-    if let Some(error) = SimServer::checkpoint_failure(world) {
-        CheckpointFailed {
-            error: error.to_string(),
-        }
-        .log();
-        world.write_message(AppExit::from_code(JOURNAL_FAILED));
-    }
-}
-
-/// Once the match started, every slot a player controlled has left, and no player holds a link,
-/// ends the session with its result, as the mode ended the match or aborted when it did not.
-fn end_when_everyone_left(world: &mut World) {
-    if !world.contains_resource::<MatchClock>()
-        || world.resource::<Session>().log().result().is_some()
-        || !SimServer::players_gone(world)
-    {
-        return;
-    }
-    let outcome = Session::outcome(world);
-    if let Err(error) = SimServer::end_session(world, outcome) {
-        CheckpointFailed {
-            error: error.to_string(),
-        }
-        .log();
-        world.write_message(AppExit::from_code(JOURNAL_FAILED));
-    }
-}
-
-/// Once the session ended, writes its log durably into the data directory's `logs` and exits:
-/// with an error when the log is not written, as the session it holds is lost.
-fn publish_when_ended(world: &mut World) {
-    let Some(session) = world.get_resource::<Session>() else {
-        return;
-    };
-    if session.log().result().is_none() {
-        return;
-    }
-    let hash = session.state_hash(world);
-    let id = session.log().session_id();
-    let data = &world.resource::<DataPath>().0;
-    let exit = match SessionDir::publish(data, session.log()) {
-        Ok(file) => {
-            SessionWritten {
-                session: id,
-                file,
-                hash,
-            }
-            .log();
-            AppExit::Success
-        }
-        Err(error) => {
-            error!(session = %id, %error, "could not write the session log");
-            AppExit::error()
-        }
-    };
-    world.write_message(exit);
 }
 
 fn fill(bytes: &mut [u8; 32]) {
@@ -499,29 +422,7 @@ fn unix_now() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::io;
-    use std::num::NonZeroU8;
-
-    use campfire_protocol::SeedChain;
-    use campfire_protocol::secp256k1::{Secp256k1, SecretKey};
-    use campfire_protocol::{Journal, JournalFile, SessionHeader, SessionLog, SlotPlan, SlotStart};
-    use campfire_runner::{InputRules, SessionRules};
-
     use super::*;
-
-    /// A journal's file whose every sync fails.
-    #[derive(Debug)]
-    struct FailingFile;
-
-    impl JournalFile for FailingFile {
-        fn append(&mut self, _: &[u8]) -> io::Result<()> {
-            Ok(())
-        }
-
-        fn sync(&mut self) -> io::Result<()> {
-            Err(io::Error::other("sync failed"))
-        }
-    }
 
     #[test]
     fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
@@ -568,44 +469,5 @@ mod tests {
         ] {
             assert!(parse(flawed).is_err(), "{flawed:?}");
         }
-    }
-
-    #[test]
-    fn a_failed_journal_ends_the_server_with_its_exit_code() {
-        // A session of the test lane mode with one open slot, so its header needs no player; the
-        // log's header is its journal's first record, whose sync fails.
-        let dir = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../packages/test/modes/lane"
-        );
-        let packages = ModePackages::from_dir(Path::new(dir)).unwrap();
-        let secret = SecretKey::from_byte_array(&[8; 32]).unwrap();
-        let key = Keypair::from_secret_key(&Secp256k1::new(), &secret);
-        let terms = SessionRules::of(&packages)
-            .terms(
-                key.x_only_public_key().0,
-                SeedChain::new([9; 32], NonZeroU32::MIN).commitment(),
-                packages.manifest().tick_hz.default(),
-                InputRules::LAN,
-                vec![SlotPlan::Open],
-            )
-            .unwrap();
-        let header = SessionHeader {
-            terms,
-            slots: vec![SlotStart::Open],
-        };
-        let mut log = SessionLog::new(header).unwrap();
-        let journal = Journal::start(FailingFile);
-        let mut app = App::new();
-        app.insert_resource(SessionJournal(journal.watch()));
-        app.add_systems(Update, exit_on_journal_failure);
-        app.update();
-        assert_eq!(app.should_exit(), None);
-        log.keep_journal(journal);
-        // Dropped, the log's journal waits for its writer, which stopped at the failed sync.
-        drop(log);
-        app.update();
-        let code = NonZeroU8::new(JOURNAL_FAILED).unwrap();
-        assert_eq!(app.should_exit(), Some(AppExit::Error(code)));
     }
 }

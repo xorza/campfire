@@ -74,9 +74,9 @@ impl Checkpoints {
     }
 
     /// At the boundary before the next tick: begins the checkpoint due there, as the plan or a
-    /// save of the mode's says, once the last delta came back, past the seed chain's last segment ending the session aborted instead; with
-    /// none due, sends the state changed when `SEND_EVERY` ticks passed since the last delta and
-    /// it came back.
+    /// save of the mode's says, once the last delta came back; past the seed chain's last segment,
+    /// ends the session aborted instead. With none due, sends the state changed when `SEND_EVERY`
+    /// ticks passed since the last delta and it came back.
     pub(crate) fn begin(world: &mut World) {
         let session = world.resource::<Session>();
         let next = session.log().next_tick();

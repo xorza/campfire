@@ -8,8 +8,8 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
 use campfire_net::{
-    Lobby, LobbySetup, RestoredSession, ServerBots, ServerSetup, SessionAborted, SessionDir,
-    SessionRestored, SimServer,
+    Lobby, LobbySetup, RestoredSession, ServerBots, ServerSetup, SessionDir, SessionRestored,
+    SimServer,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
@@ -85,11 +85,7 @@ impl Opening {
         key: Keypair,
         entropy: fn(&mut [u8; 32]),
     ) -> Result<Option<RestoredSession>, OpeningError> {
-        let Some(dir) = SessionDir::find(data).map_err(OpeningError::Find)? else {
-            return Ok(None);
-        };
-        let Some(session) = dir.restore().map_err(OpeningError::Restore)? else {
-            dir.remove().map_err(OpeningError::Remove)?;
+        let Some(session) = SessionDir::waiting(data).map_err(OpeningError::Waiting)? else {
             return Ok(None);
         };
         let idle = SystemTime::now()
@@ -98,11 +94,9 @@ impl Opening {
         if session.log.result().is_none() && idle <= window {
             return Ok(Some(session));
         }
-        let id = session.log.session_id();
-        let file = session
+        session
             .abort(data, packages, key, entropy)
             .map_err(OpeningError::Abort)?;
-        SessionAborted { session: id, file }.log();
         Ok(None)
     }
 
@@ -124,7 +118,7 @@ impl Opening {
             open: Vec::new(),
             server: setup.server,
         })
-        .expect("a mode runs at its default rate");
+        .map_err(OpeningError::Lobby)?;
         let private = SessionPrivate {
             seed_chain,
             terms: lobby.terms().clone(),

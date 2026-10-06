@@ -705,6 +705,7 @@ impl ClientApp {
                 certificate: CERTIFICATE,
                 tick_hz,
             },
+            local: true,
             packages: Arc::clone(packages),
             clock: unix_now,
             entropy: |bytes| bytes.fill(4),

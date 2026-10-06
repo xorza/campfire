@@ -14,15 +14,14 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::Commands;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_common::PlayerSlot;
-use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
-use campfire_runner::{InputRules, Session};
+use campfire_runner::InputRules;
 use campfire_sim::TickRate;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::{RawServer, ServerPlugins};
@@ -30,21 +29,16 @@ use lightyear::prelude::{Link, LinkOf, Linked, PeerAddr, ReplicationSender};
 use tracing::error;
 
 use crate::data_dir::DataDir;
-use crate::events::checkpoint_failed::CheckpointFailed;
-use crate::events::journal_failed::JournalFailed;
-use crate::events::session_aborted::SessionAborted;
-use crate::events::session_written::SessionWritten;
 use crate::lobby::{Lobby, LobbySetup};
 use crate::local_pace::LocalPace;
 use crate::local_server::error::LocalServerError;
 use crate::local_session::LocalSession;
-use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::pace::Pace;
 use crate::server_bots::{ServerBots, SlotBot};
+use crate::server_exit::ServerExit;
 use crate::server_setup::ServerSetup;
 use crate::session_dir::{RestoredSession, SessionDir};
-use crate::session_journal::SessionJournal;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::SimServer;
@@ -57,8 +51,6 @@ const CERTIFICATE: CertificateHash = CertificateHash::new([0; 32]);
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 /// How often the server's app loop runs, as a dedicated server's.
 const FRAME: Duration = Duration::from_millis(2);
-/// The exit code of a server whose journal or snapshot failed, as a dedicated server's.
-const JOURNAL_FAILED: u8 = 74;
 
 /// A session's server on a thread of a singleplayer client's process, linked to the client by
 /// in-process channels: the client's player in slot 0, in each other slot the server's bot its
@@ -148,10 +140,6 @@ impl LocalServer {
             clock,
             entropy,
         } = setup;
-        assert!(
-            bots.iter().all(|bot| bot.slot != PlayerSlot::new(0)),
-            "slot 0 is the client's"
-        );
         let dir = DataDir::open(&data, entropy).map_err(LocalServerError::Data)?;
         let key = dir.key;
         LocalServer::end_earlier(&data, &packages, key, entropy)?;
@@ -186,7 +174,7 @@ impl LocalServer {
             open,
             server,
         })
-        .map_err(LocalServerError::Terms)?;
+        .map_err(LocalServerError::Lobby)?;
         let private = SessionPrivate {
             seed_chain,
             terms: lobby.terms().clone(),
@@ -251,17 +239,11 @@ impl LocalServer {
         key: Keypair,
         entropy: fn(&mut [u8; 32]),
     ) -> Result<(), LocalServerError> {
-        let Some(dir) = SessionDir::find(data).map_err(LocalServerError::Find)? else {
-            return Ok(());
-        };
-        let Some(session) = dir.restore().map_err(LocalServerError::Restore)? else {
-            return dir.remove().map_err(LocalServerError::Remove);
-        };
-        let id = session.log.session_id();
-        let file = session
-            .abort(data, packages, key, entropy)
-            .map_err(LocalServerError::Abort)?;
-        SessionAborted { session: id, file }.log();
+        if let Some(session) = SessionDir::waiting(data).map_err(LocalServerError::Waiting)? {
+            session
+                .abort(data, packages, key, entropy)
+                .map_err(LocalServerError::Abort)?;
+        }
         Ok(())
     }
 
@@ -281,76 +263,20 @@ impl LocalServer {
         }
     }
 
-    /// Ends once the session went back to a save, for its thread to start a new app; exits once
-    /// a write of the journal or a snapshot failed; ends the session once the client
-    /// asked the server to stop, or every player left, as the mode ended the match or aborted;
-    /// publishes the log of the session once it ended, and exits; exits at once when asked to
-    /// stop before the match started.
+    /// Ends once the session went back to a save, for its thread to start a new app; else exits
+    /// as `ServerExit::due` says, the client asking the server to stop.
     fn watch(world: &mut World) {
         if SimServer::reload_wanted(world) {
             world.resource::<Restart>().0.store(true, Ordering::Relaxed);
             world.write_message(AppExit::Success);
             return;
         }
-        if let Some(failure) = world
-            .get_resource::<SessionJournal>()
-            .and_then(|journal| journal.0.take_failure())
-        {
-            JournalFailed {
-                error: failure.to_string(),
-            }
-            .log();
-            world.write_message(AppExit::from_code(JOURNAL_FAILED));
-            return;
-        }
-        if let Some(error) = SimServer::checkpoint_failure(world) {
-            CheckpointFailed {
-                error: error.to_string(),
-            }
-            .log();
-            world.write_message(AppExit::from_code(JOURNAL_FAILED));
-            return;
-        }
         let stop = world.resource::<Stop>().0.load(Ordering::Relaxed);
-        if !world.contains_resource::<MatchClock>() {
-            if stop {
-                world.write_message(AppExit::Success);
-            }
-            return;
+        let exit = world
+            .resource_scope(|world, data: Mut<'_, Data>| ServerExit::due(world, &data.path, stop));
+        if let Some(exit) = exit {
+            world.write_message(exit);
         }
-        if world.resource::<Session>().log().result().is_none() {
-            if !stop && !SimServer::players_gone(world) {
-                return;
-            }
-            let outcome = Session::outcome(world);
-            if let Err(error) = SimServer::end_session(world, outcome) {
-                CheckpointFailed {
-                    error: error.to_string(),
-                }
-                .log();
-                world.write_message(AppExit::from_code(JOURNAL_FAILED));
-                return;
-            }
-        }
-        let session = world.resource::<Session>();
-        let id = session.log().session_id();
-        let hash = session.state_hash(world);
-        let exit = match SessionDir::publish(&world.resource::<Data>().path, session.log()) {
-            Ok(file) => {
-                SessionWritten {
-                    session: id,
-                    file,
-                    hash,
-                }
-                .log();
-                AppExit::Success
-            }
-            Err(error) => {
-                error!(session = %id, %error, "could not write the session log");
-                AppExit::error()
-            }
-        };
-        world.write_message(exit);
     }
 }
 
@@ -399,13 +325,11 @@ impl Runs {
     /// client's end of its new link given to the client.
     fn restored(&self) -> Result<App, LocalServerError> {
         let dir = DataDir::open(&self.data, self.server.entropy).map_err(LocalServerError::Data)?;
-        let found = SessionDir::find(&self.data).map_err(LocalServerError::Find)?;
-        let found = found.expect("the session that loaded");
-        let session = found.restore().map_err(LocalServerError::Restore)?;
+        let session = SessionDir::waiting(&self.data).map_err(LocalServerError::Waiting)?;
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let mut app = self.app(server_io, dir);
         app.insert_resource(PendingRestore {
-            session: session.expect("a session whose match started"),
+            session: session.expect("the session that loaded, whose match started"),
             packages: Arc::clone(&self.packages),
             bots: self.bots.clone(),
             server: self.server,

@@ -138,7 +138,8 @@ pub struct SessionLog {
     segments: Vec<SegmentStart>,
     /// The checkpoint that starts the last segment, while its record has not come.
     begun: Option<CheckpointBegun>,
-    /// Whether the log went back to a save since it was made, or rebuilt from a journal.
+    /// Whether the log went back to a save: a load it took, or one in the journal it was
+    /// rebuilt from.
     loaded: bool,
     /// How the session ended, once it did.
     result: Option<LoggedResult>,
@@ -511,8 +512,8 @@ impl SessionLog {
         Some(offset(at))
     }
 
-    /// Whether the log went back to a save since it was made, or rebuilt from a journal: a
-    /// player's chain may then stand before what their client holds.
+    /// Whether the log went back to a save: a load it took, or one in the journal it was rebuilt
+    /// from. A player's chain may then stand before what their client holds.
     pub const fn loaded(&self) -> bool {
         self.loaded
     }

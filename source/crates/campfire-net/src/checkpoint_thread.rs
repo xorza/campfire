@@ -4,7 +4,6 @@ use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 
-use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_protocol::{
     Checkpoint, CheckpointBegun, DurableError, DurableFile, SessionId, Signature,
@@ -20,7 +19,7 @@ use crate::server_signer::ServerSigner;
 /// copy, writes the snapshot durably into the session's `snapshots`, named by its fingerprint in
 /// hex, and signs the record, which it gives back for the main thread to log. It takes one delta
 /// at a time.
-#[derive(Resource, Debug)]
+#[derive(Debug)]
 pub(crate) struct CheckpointThread {
     jobs: Option<Sender<Job>>,
     done: Mutex<Receiver<Done>>,

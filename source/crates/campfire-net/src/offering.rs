@@ -32,7 +32,7 @@ pub(crate) struct Offering {
     certificate: CertificateHash,
     pub(crate) times: SessionTimes,
     clock: fn() -> u64,
-    pub(crate) entropy: fn(&mut [u8; 32]),
+    entropy: fn(&mut [u8; 32]),
     secp: Secp256k1<VerifyOnly>,
 }
 

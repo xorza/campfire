@@ -1,3 +1,4 @@
+use std::mem;
 use std::ops::Range;
 
 use bevy_ecs::query::With;
@@ -21,7 +22,9 @@ use crate::sim_client::bot_script::BotScript;
 /// inputs its script has for that tick, each a payload as a client writes it, which the server
 /// signs and logs as a `Bot` input. A tick takes at most the session's max inputs a slot; the
 /// rest wait for the next. A slot that becomes a bot's after its player left plays the takeover
-/// script from then; one a player took is played no more.
+/// script from the tick its leave applies in, as the log holds it, so a restore plays on where
+/// the run before it stopped; one a player took is played no more, and a bot of the plan with no
+/// script idles.
 #[derive(Resource, Debug)]
 pub(crate) struct BotDriver {
     bots: Vec<DrivenBot>,
@@ -31,6 +34,10 @@ pub(crate) struct BotDriver {
     waiting: Vec<Waiting>,
     /// The body of the order being written, kept so no order allocates.
     body: Vec<u8>,
+    /// The slots whose tick takes no more inputs, and the payloads that wait for the next tick,
+    /// kept so no tick allocates.
+    full: Vec<PlayerSlot>,
+    kept: Vec<Waiting>,
 }
 
 /// A bot the driver plays: its slot, its script, and the tick the script's ticks count from.
@@ -55,17 +62,7 @@ impl BotDriver {
         let ServerBots { slots, takeover } = bots;
         let bots = slots
             .into_iter()
-            .map(|bot| {
-                let mut script = BotScript::new(bot.script);
-                if let Some(before) = next.get().checked_sub(1) {
-                    script.due(Tick::new(before));
-                }
-                DrivenBot {
-                    slot: bot.slot,
-                    script,
-                    since: Tick::new(0),
-                }
-            })
+            .map(|bot| DrivenBot::new(bot.slot, bot.script, Tick::new(0), next))
             .collect();
         BotDriver {
             bots,
@@ -73,6 +70,8 @@ impl BotDriver {
             payloads: Vec::new(),
             waiting: Vec::new(),
             body: Vec::new(),
+            full: Vec::new(),
+            kept: Vec::new(),
         }
     }
 
@@ -88,8 +87,8 @@ impl BotDriver {
         });
     }
 
-    /// Plays the takeover script in each slot that became a bot's, from `tick`, and stops
-    /// playing each slot a player took.
+    /// Plays the takeover script in each slot that became a bot's after its player left, from the
+    /// tick the leave applies in, as of `tick`, and stops playing each slot a player took.
     fn follow_controllers(&mut self, session: &Session, tick: Tick) {
         let log = session.log();
         let bot = |slot| log.controller(slot) == Some(Controller::Bot);
@@ -99,13 +98,16 @@ impl BotDriver {
             return;
         };
         for slot in (0..log.slot_count()).map(PlayerSlot::new) {
-            if bot(slot) && !self.bots.iter().any(|driven| driven.slot == slot) {
-                self.bots.push(DrivenBot {
-                    slot,
-                    script: BotScript::new(takeover.clone()),
-                    since: tick,
-                });
+            if !bot(slot) || self.bots.iter().any(|driven| driven.slot == slot) {
+                continue;
             }
+            // A bot's slot with no change is the plan's, which has no script.
+            let Some(left) = log.changes().iter().rfind(|change| change.slot == slot) else {
+                continue;
+            };
+            let script = takeover.clone();
+            self.bots
+                .push(DrivenBot::new(slot, script, left.tick, tick));
         }
     }
 
@@ -156,8 +158,9 @@ impl BotDriver {
     /// Logs the waiting payloads in order, each slot's until the tick takes no more of them; a
     /// payload past the session's max length is dropped.
     fn serve(&mut self, signer: &ServerSigner, session: &mut Session) {
-        let mut full = Vec::new();
-        let mut kept = Vec::with_capacity(self.waiting.len());
+        let (full, kept) = (&mut self.full, &mut self.kept);
+        full.clear();
+        kept.clear();
         for waiting in self.waiting.drain(..) {
             if full.contains(&waiting.slot) {
                 kept.push(waiting);
@@ -185,13 +188,62 @@ impl BotDriver {
         }
         // Each kept payload moves to the front of the buffer, in order.
         let mut at = 0;
-        for waiting in &mut kept {
+        for waiting in kept.iter_mut() {
             let len = waiting.payload.len();
             self.payloads.copy_within(waiting.payload.clone(), at);
             waiting.payload = at..at + len;
             at += len;
         }
         self.payloads.truncate(at);
-        self.waiting = kept;
+        mem::swap(&mut self.waiting, &mut self.kept);
+    }
+}
+
+impl DrivenBot {
+    /// The bot of `slot` that plays `script` from tick `since`, from tick `next` on: what the
+    /// script had for earlier ticks was logged already, by the run a restore follows.
+    fn new(slot: PlayerSlot, script: OrderScript, since: Tick, next: Tick) -> DrivenBot {
+        let mut script = BotScript::new(script);
+        let played = next.since(since).expect("a bot plays from its start on");
+        if let Some(before) = played.get().checked_sub(1) {
+            script.due(Tick::new(before));
+        }
+        DrivenBot {
+            slot,
+            script,
+            since,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_bot_built_later_skips_what_its_script_had_for_the_ticks_before() {
+        // Orders at script ticks 2 and 6 of a bot from tick 10. Built at tick 10, it plays both;
+        // built at tick 15, as a restore does, script ticks 0 to 4 were logged, so it plays the
+        // second only, at tick 16.
+        let script = OrderScript::parse(
+            "[[order]]\ntick = 2\nmove = [1, 0]\n[[order]]\ntick = 6\nmove = [2, 0]\n",
+        )
+        .unwrap();
+        let ticks = |next: u64| {
+            let mut bot = DrivenBot::new(
+                PlayerSlot::new(1),
+                script.clone(),
+                Tick::new(10),
+                Tick::new(next),
+            );
+            (next..20)
+                .filter(|&tick| {
+                    let since = Tick::new(tick).since(bot.since).unwrap();
+                    !bot.script.due(Tick::new(since.get())).orders.is_empty()
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ticks(10), [12, 16]);
+        assert_eq!(ticks(15), [16]);
     }
 }

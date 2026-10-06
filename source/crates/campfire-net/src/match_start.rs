@@ -13,7 +13,8 @@ pub(crate) struct MatchStart {
     pub first: Tick,
     pub slot: PlayerSlot,
     pub chain: Option<ChainHead>,
-    /// The client then takes the server's chain as it holds it, whatever its own history.
+    /// A client of a local server then takes the server's chain as it holds it, whatever its own
+    /// history.
     pub loaded: bool,
 }
 

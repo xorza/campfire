@@ -62,6 +62,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
             main_key: keypair(1),
             session_key: keypair(2),
             server: server.pin(),
+            local: true,
             packages: Arc::new(packages),
             clock: || 1_700_000_000,
             entropy: |bytes| bytes.fill(4),
