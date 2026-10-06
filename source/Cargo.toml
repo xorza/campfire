@@ -104,7 +104,10 @@ strip = "none"
 incremental = true
 
 [profile.bench]
-inherits = "release"
+inherits = "release-max"
+debug = "line-tables-only"
+strip = "none"
+incremental = true
 
 [profile.release-max]
 inherits = "release"
