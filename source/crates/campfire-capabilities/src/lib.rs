@@ -198,6 +198,7 @@ pub mod bench {
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         navigation::bench::collision(c);
+        navigation::bench::pathing_grid(c);
         vision::bench::fog(c);
     }
 }

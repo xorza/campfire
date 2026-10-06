@@ -79,7 +79,9 @@ Positions go to everyone who sees the unit. A client predicts its own units' rou
 
 Long and short routes cost up to as many units of work a tick as the grid has cells, in total, past which only the plan that meets the limit runs. Each walking unit costs a step, a steering test and its bucket's contacts a tick. A change of static bodies costs the chunks it touches.
 
-The Collide stage, for 1000 bodies on one core of an i9-13980HX, finds and parts their contacts in 0.32 ms when they crowd into 40 m square, and in 0.09 ms when they spread over 120 m square: 1% and 0.3% of a tick at 30 Hz. `cargo bench -p campfire-capabilities --features bench -- collision/` measures it.
+The Collide stage, for 1,000 bodies on one core of a Ryzen 7 6800U, finds and parts their contacts in 0.31 ms when they crowd into 40 m square, `collision/crowded`, and in 0.08 ms when they spread over 120 m square, `collision/spread`: 0.9 % and 0.2 % of a tick at 30 Hz.
+
+A static body that enters a grid of half-meter cells over 124 m square, which holds the other static bodies of the spread scene, each of its 1,000 bodies static by a draw of one in four, costs 124 µs on the same core for the 3v3's five walker sizes, `pathing_grid/one`: 0.4 % of a tick at 30 Hz. 94 % of it labels again each chunk of 64 by 64 cells the body touches, once for each walker size, so the cost grows with the walker sizes and with the chunks a body spans, not with the map.
 
 ## Genres
 
