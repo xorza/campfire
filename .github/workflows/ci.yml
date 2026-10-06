@@ -47,6 +47,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test
         run: cargo test --workspace --tests --all-features --locked
+      - name: Benches
+        run: cargo test --workspace --all-features --locked --bench '*'
       - name: LAN check
         run: cargo run --locked -p campfire-lan-check -- "$RUNNER_TEMP/lan-check"
       - name: Keep the LAN match

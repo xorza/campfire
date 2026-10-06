@@ -20,16 +20,21 @@ const MATCH_TICKS: u64 = 600;
 /// rollbacks, each 4 ticks deep, as far as the client runs ahead. A delayed link would make them
 /// deeper, but it would measure the harness: Lightyear resends every unacked reliable message
 /// after its wall-clock round trip, which a step of the manual clock hardly takes.
-pub fn rollback(c: &mut Criterion) {
+pub(crate) fn rollback(c: &mut Criterion) {
     let mut group = c.benchmark_group("rollback");
     for (name, mode) in [
         ("frame_without_rollback", RollbackMode::Check),
         ("frame_with_rollback", RollbackMode::Always),
     ] {
-        let mut local = InProcessMatch::new(MatchSetup::solo(mode, 1, InProcessMatch::SEED_CHAIN));
-        local.start_match();
+        let mut local = None;
         let mut frame: u64 = 0;
         group.bench_function(name, |b| {
+            let local = local.get_or_insert_with(|| {
+                let mut local =
+                    InProcessMatch::new(MatchSetup::solo(mode, 1, InProcessMatch::SEED_CHAIN));
+                local.start_match();
+                local
+            });
             b.iter(|| {
                 if frame.is_multiple_of(LEG_FRAMES) {
                     let z = if frame.is_multiple_of(2 * LEG_FRAMES) {
@@ -47,7 +52,7 @@ pub fn rollback(c: &mut Criterion) {
                 }
                 local.step();
                 frame += 1;
-                black_box(&local);
+                black_box(&*local);
             });
         });
     }
@@ -56,7 +61,7 @@ pub fn rollback(c: &mut Criterion) {
 
 /// The worst frame of either client in each 1v1 of the lane mode, as the match scenario plays
 /// it: the rollback of each avatar's death falls in it.
-pub fn worst_client_frame(c: &mut Criterion) {
+pub(crate) fn worst_client_frame(c: &mut Criterion) {
     let mut group = c.benchmark_group("match_1v1");
     group.sample_size(10);
     group.bench_function("worst_client_frame", |b| {

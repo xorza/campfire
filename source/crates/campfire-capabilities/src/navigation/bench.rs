@@ -8,7 +8,7 @@ use crate::navigation::collider::Collider;
 
 /// The Collide stage's work for 1000 bodies, crowded into 40 m square and spread over 120 m
 /// square: finding the contacts, then parting them, from the same scene every run.
-pub fn collision(c: &mut Criterion) {
+pub(crate) fn collision(c: &mut Criterion) {
     let mut group = c.benchmark_group("collision");
     group.throughput(Throughput::Elements(1000));
     for (name, span) in [("crowded", 20), ("spread", 60)] {

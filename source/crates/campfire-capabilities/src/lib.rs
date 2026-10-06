@@ -188,5 +188,12 @@ pub mod internals {
 
 #[cfg(feature = "bench")]
 pub mod bench {
-    pub use crate::navigation::bench::collision;
+    use criterion::Criterion;
+
+    use crate::navigation;
+
+    /// Runs each bench of the crate whose id criterion's filter takes.
+    pub fn run(c: &mut Criterion) {
+        navigation::bench::collision(c);
+    }
 }

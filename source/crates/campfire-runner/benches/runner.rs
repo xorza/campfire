@@ -1,5 +1,5 @@
-use campfire_sim::bench;
+use campfire_runner::bench;
 use criterion::{criterion_group, criterion_main};
 
-criterion_group!(benches, bench::state_hash);
+criterion_group!(benches, bench::run);
 criterion_main!(benches);
