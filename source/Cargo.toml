@@ -7,8 +7,22 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
+
 # Exact versions: a release must rebuild bit for bit (docs/design/02-engine-core.md).
 [workspace.dependencies]
+campfire-capabilities = { path = "crates/campfire-capabilities" }
+campfire-common = { path = "crates/campfire-common" }
+campfire-log = { path = "crates/campfire-log" }
+campfire-math = { path = "crates/campfire-math" }
+campfire-net = { path = "crates/campfire-net" }
+campfire-package = { path = "crates/campfire-package" }
+campfire-protocol = { path = "crates/campfire-protocol" }
+campfire-runner = { path = "crates/campfire-runner" }
+campfire-script = { path = "crates/campfire-script" }
+campfire-sim = { path = "crates/campfire-sim" }
+campfire-store = { path = "crates/campfire-store" }
+campfire-verifier = { path = "crates/campfire-verifier" }
+
 bevy = { version = "=0.19.1", default-features = false, features = [
     "std",
     "multi_threaded",
@@ -73,18 +87,33 @@ tracing-subscriber = { version = "=0.3.23", default-features = false, features =
 unic-langid = "=0.9.6"
 wtransport = "=0.6.1"
 
-campfire-capabilities = { path = "crates/campfire-capabilities" }
-campfire-common = { path = "crates/campfire-common" }
-campfire-log = { path = "crates/campfire-log" }
-campfire-math = { path = "crates/campfire-math" }
-campfire-net = { path = "crates/campfire-net" }
-campfire-package = { path = "crates/campfire-package" }
-campfire-protocol = { path = "crates/campfire-protocol" }
-campfire-runner = { path = "crates/campfire-runner" }
-campfire-script = { path = "crates/campfire-script" }
-campfire-sim = { path = "crates/campfire-sim" }
-campfire-store = { path = "crates/campfire-store" }
-campfire-verifier = { path = "crates/campfire-verifier" }
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
+debug = "full"
+overflow-checks = true
+
+[profile.release]
+debug = "full"
+overflow-checks = true
+lto = "thin"
+strip = "none"
+incremental = true
+
+[profile.bench]
+inherits = "release"
+
+[profile.release-max]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = false
+
 
 # Warn, not deny: the check chain runs clippy with `-D warnings`, and builds keep working mid-edit.
 [workspace.lints.rust]
@@ -96,7 +125,6 @@ unreachable_pub = "warn"
 unused_lifetimes = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
-# Deny, not forbid: Bevy derives emit unsafe impls under a local allow.
 unsafe_code = "deny"
 
 [workspace.lints.clippy]
@@ -106,7 +134,6 @@ print_stdout = "warn"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
-# `assert!(x.is_empty())` reads plainer than a comparison with an empty array.
 assert_is_empty = "allow"
 absolute_paths = "warn"
 clone_on_ref_ptr = "warn"
@@ -116,30 +143,3 @@ map_err_ignore = "warn"
 self_named_module_files = "warn"
 todo = "warn"
 unused_result_ok = "warn"
-
-[profile.dev]
-opt-level = 1
-debug = "line-tables-only"
-overflow-checks = true
-
-[profile.dev.package."*"]
-opt-level = 3
-
-[profile.release]
-debug = "line-tables-only"
-overflow-checks = true
-lto = "thin"
-
-[profile.release-max]
-inherits = "release"
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = "symbols"
-debug = false
-
-[profile.bench]
-inherits = "release"
-debug = "line-tables-only"
-strip = "none"
-incremental = true
