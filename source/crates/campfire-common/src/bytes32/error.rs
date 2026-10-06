@@ -1,14 +1,10 @@
 use std::error::Error;
-use std::fmt;
+
+use derive_more::Display;
 
 /// Text that is not 64 lowercase hex digits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[display("not 64 lowercase hex digits")]
 pub struct NotHex;
-
-impl fmt::Display for NotHex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("not 64 lowercase hex digits")
-    }
-}
 
 impl Error for NotHex {}

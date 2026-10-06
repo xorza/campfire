@@ -1,22 +1,31 @@
-use std::fmt;
 use std::path::{Path, PathBuf};
 
+use derive_more::Display;
+
 /// A process the check runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Process {
+    #[display("the server")]
     Server,
     /// The server started again on its data directory, after the check stopped it.
+    #[display("the server, started again")]
     ServerAgain,
     /// The bot that plays the script of this index.
+    #[display("bot {_0}")]
     Bot(usize),
     /// The bot of this index, started again with its key file after the check stopped it.
+    #[display("bot {_0}, started again")]
     Rejoined(usize),
     /// A bot that pins a certificate no server has, so it never links.
+    #[display("the impostor bot")]
     Impostor,
+    #[display("the verifier")]
     Verifier,
     /// A client bot that plays alone on a local server, against a server bot.
+    #[display("the local client")]
     Local,
     /// The verifier of the local server's session log.
+    #[display("the verifier of the local session")]
     LocalVerifier,
 }
 
@@ -37,21 +46,6 @@ impl Process {
             Process::Verifier => "verifier".to_owned(),
             Process::Local => "local".to_owned(),
             Process::LocalVerifier => "local-verifier".to_owned(),
-        }
-    }
-}
-
-impl fmt::Display for Process {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Process::Server => f.write_str("the server"),
-            Process::ServerAgain => f.write_str("the server, started again"),
-            Process::Bot(index) => write!(f, "bot {index}"),
-            Process::Rejoined(index) => write!(f, "bot {index}, started again"),
-            Process::Impostor => f.write_str("the impostor bot"),
-            Process::Verifier => f.write_str("the verifier"),
-            Process::Local => f.write_str("the local client"),
-            Process::LocalVerifier => f.write_str("the verifier of the local session"),
         }
     }
 }

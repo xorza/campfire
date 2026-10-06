@@ -15,6 +15,7 @@ campfire-math.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 
+derive_more.workspace = true
 fluent-bundle.workspace = true
 fluent-syntax.workspace = true
 postcard.workspace = true

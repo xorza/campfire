@@ -1,5 +1,4 @@
-use std::fmt;
-
+use derive_more::Display;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -7,7 +6,7 @@ use serde::{Deserialize, Deserializer};
 /// and holding no `\`, so it cannot leave the package, reads the same on every system, and has
 /// one spelling. Data names its scripts with one, so a path that leaves the package, or names a
 /// file two ways, is refused where the data is read.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PackagePath(String);
 
 impl PackagePath {
@@ -29,12 +28,6 @@ impl PackagePath {
         self.0
             .strip_prefix(dir)
             .is_some_and(|rest| rest.starts_with('/'))
-    }
-}
-
-impl fmt::Display for PackagePath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
     }
 }
 

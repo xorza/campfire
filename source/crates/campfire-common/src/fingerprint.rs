@@ -1,5 +1,4 @@
-use std::fmt;
-
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 use crate::bytes32::Bytes32;
@@ -7,7 +6,9 @@ use crate::bytes32::Bytes32;
 /// A package's identity: the SHA-256 of its postcard-encoded file list, one `(path, size,
 /// SHA-256)` row per file, sorted by path bytes. Any change to any file, or to the list, gives
 /// another fingerprint.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(transparent)]
 pub struct Fingerprint(Bytes32);
 
@@ -18,13 +19,6 @@ impl Fingerprint {
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
         self.0.as_bytes()
-    }
-}
-
-/// In lowercase hex.
-impl fmt::Display for Fingerprint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
     }
 }
 

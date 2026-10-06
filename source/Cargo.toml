@@ -34,6 +34,7 @@ bevy_state = "=0.19.1"
 bevy_time = "=0.19.1"
 blake3 = "=1.8.7"
 criterion = { version = "=0.8.2", default-features = false, features = ["cargo_bench_support"] }
+derive_more = { version = "=2.1.1", default-features = false, features = ["display"] }
 fluent-bundle = "=0.16.0"
 fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"

@@ -1,9 +1,9 @@
-use std::fmt;
-
+use derive_more::Display;
 use serde::Deserialize;
 
 /// The cargo targets the check runs, by the names cargo gives them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[display("{}", self.name())]
 pub(crate) enum TargetName {
     #[serde(rename = "campfire-server")]
     Server,
@@ -27,11 +27,5 @@ impl TargetName {
             TargetName::Verifier => "campfire-verifier",
             TargetName::Other => "another target",
         }
-    }
-}
-
-impl fmt::Display for TargetName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
     }
 }

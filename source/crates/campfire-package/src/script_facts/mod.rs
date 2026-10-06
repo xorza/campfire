@@ -1,9 +1,10 @@
-use std::{fmt, ptr};
+use std::ptr;
 
 use campfire_capabilities::{
     ApiOwner, Applies, EngineEnum, EnumArgs, MemberKind, NameArgs, NameKind, ScriptApi,
 };
 use campfire_script::rhai::{AST, ASTNode, Expr, FnCallExpr, Stmt};
+use derive_more::Display;
 
 use crate::error::ctx_misuse::CtxMisuse;
 use crate::error::load_problem::LoadProblem;
@@ -88,18 +89,12 @@ pub(crate) struct EnumString {
 
 /// A name a script reads in a module, `Relation::Hostile`, as a value, or calls,
 /// `PathEnd::named(text)`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, PartialEq, Eq)]
+#[display("{module}::{name}")]
 pub(crate) struct EnumPath {
     pub(crate) module: String,
     pub(crate) name: String,
     pub(crate) kind: MemberKind,
-}
-
-/// As the script writes it: `Relation::Hostile`.
-impl fmt::Display for EnumPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}::{}", self.module, self.name)
-    }
 }
 
 /// A name read on a value, as a field or as a method.

@@ -2011,6 +2011,7 @@ dependencies = [
  "campfire-script",
  "campfire-sim",
  "criterion 0.8.2",
+ "derive_more",
  "postcard",
  "serde",
  "thiserror 2.0.21",
@@ -2040,6 +2041,7 @@ dependencies = [
 name = "campfire-common"
 version = "0.1.0"
 dependencies = [
+ "derive_more",
  "postcard",
  "serde",
 ]
@@ -2056,6 +2058,7 @@ dependencies = [
  "campfire-sim",
  "campfire-store",
  "campfire-verifier",
+ "derive_more",
  "serde",
  "serde_json",
  "tempfile",
@@ -2124,6 +2127,7 @@ dependencies = [
  "campfire-package",
  "campfire-script",
  "campfire-sim",
+ "derive_more",
  "fluent-bundle",
  "fluent-syntax",
  "postcard",
@@ -2142,6 +2146,7 @@ dependencies = [
  "blake3",
  "campfire-common",
  "criterion 0.8.2",
+ "derive_more",
  "nostr",
  "postcard",
  "secp256k1",

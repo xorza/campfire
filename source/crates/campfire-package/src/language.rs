@@ -1,5 +1,4 @@
-use std::fmt;
-
+use derive_more::Display;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 use unic_langid::LanguageIdentifier;
@@ -7,7 +6,7 @@ use unic_langid::LanguageIdentifier;
 /// A language, as a Unicode language identifier in its canonical spelling, such as `en` or
 /// `pt-BR`: the language of a package's own text, and the name of each of its `locale/` files,
 /// so each language has one spelling.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Language(String);
 
 impl Language {
@@ -24,12 +23,6 @@ impl Language {
 
     pub fn identifier(&self) -> LanguageIdentifier {
         self.0.parse().expect("a language is an identifier")
-    }
-}
-
-impl fmt::Display for Language {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
     }
 }
 

@@ -1,13 +1,15 @@
-use std::fmt;
 use std::str::FromStr;
 
 use campfire_common::{Bytes32, NotHex};
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 /// A session's id: the hash of its terms, see `SessionTerms::session_id`. Delegations and
 /// chain-head signatures name it, so neither counts in another session, and both sign the terms.
 /// It writes, and reads back, as 64 lowercase hex digits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(transparent)]
 pub struct SessionId(Bytes32);
 
@@ -18,12 +20,6 @@ impl SessionId {
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
         self.0.as_bytes()
-    }
-}
-
-impl fmt::Display for SessionId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
     }
 }
 

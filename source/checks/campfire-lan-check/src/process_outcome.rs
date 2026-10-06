@@ -1,19 +1,23 @@
-use std::fmt;
 use std::process::ExitStatus;
 
+use derive_more::Display;
+
 /// How a process ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProcessOutcome {
+    #[display("succeeded")]
     Succeeded,
     /// It exited with a failure, with its code when it has one.
-    Failed {
-        code: Option<i32>,
-    },
+    #[display("{}", failed(*code))]
+    Failed { code: Option<i32> },
     /// It still ran at the deadline, and the check stopped it.
+    #[display("still ran at the deadline")]
     Overran,
     /// The check stopped it mid-match, as the run asks.
+    #[display("was stopped mid-match")]
     Stopped,
     /// The check did not start it: the server never listened.
+    #[display("did not start")]
     NotStarted,
 }
 
@@ -29,16 +33,10 @@ impl ProcessOutcome {
     }
 }
 
-/// How a process ended, as the end of a sentence about it.
-impl fmt::Display for ProcessOutcome {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ProcessOutcome::Succeeded => f.write_str("succeeded"),
-            ProcessOutcome::Failed { code: Some(code) } => write!(f, "exited with {code}"),
-            ProcessOutcome::Failed { code: None } => f.write_str("was killed by a signal"),
-            ProcessOutcome::Overran => f.write_str("still ran at the deadline"),
-            ProcessOutcome::Stopped => f.write_str("was stopped mid-match"),
-            ProcessOutcome::NotStarted => f.write_str("did not start"),
-        }
+/// How a process that failed ended: with its exit code, or by a signal when it has none.
+fn failed(code: Option<i32>) -> String {
+    match code {
+        Some(code) => format!("exited with {code}"),
+        None => "was killed by a signal".to_owned(),
     }
 }

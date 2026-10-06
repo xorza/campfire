@@ -1,10 +1,11 @@
-use std::fmt;
-
 use campfire_common::Bytes32;
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 /// The BLAKE3 hash that links a player's input to the one before it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(transparent)]
 pub struct InputHash(Bytes32);
 
@@ -15,12 +16,5 @@ impl InputHash {
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
         self.0.as_bytes()
-    }
-}
-
-/// In lowercase hex.
-impl fmt::Display for InputHash {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
     }
 }

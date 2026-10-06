@@ -1,11 +1,21 @@
-use std::fmt;
-
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 /// A time in the match, in ticks from its start: tick `t` starts at time `t` and ends at `t + 1`.
 #[must_use]
 #[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Display,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 #[serde(transparent)]
 pub struct Tick(u64);
@@ -42,13 +52,6 @@ impl Tick {
             Some(ticks) => Some(Ticks(ticks)),
             None => None,
         }
-    }
-}
-
-/// As its number.
-impl fmt::Display for Tick {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

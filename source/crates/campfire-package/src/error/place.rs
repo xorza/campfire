@@ -1,65 +1,57 @@
-use std::fmt;
-
 use campfire_capabilities::{DeclaredName, PackagePath};
+use derive_more::Display;
 
 /// Where in a package a load problem is.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, PartialEq, Eq)]
 pub enum Place {
+    #[display("unit type {_0}")]
     UnitType(DeclaredName),
     /// By its package's name.
+    #[display("avatar {_0}")]
     Avatar(String),
+    #[display("action {_0}")]
     Action(DeclaredName),
+    #[display("modifier {_0}")]
     Modifier(DeclaredName),
+    #[display("{_0}")]
     Script(PackagePath),
     /// The map's paths.
+    #[display("the map's paths")]
     Paths,
     /// The mode's `[combat]`.
+    #[display("the mode's [combat]")]
     Combat,
     /// The mode's `[navigation]`.
+    #[display("the mode's [navigation]")]
     Navigation,
     /// The mode's pool of that name.
+    #[display("pool {_0}")]
     Pool(DeclaredName),
     /// The mode's choice of that name.
+    #[display("choice {_0}")]
     Choice(DeclaredName),
     /// The mode's `[tracks]`.
+    #[display("the mode's [tracks]")]
     Tracks,
     /// The mode's unit types and its avatars, each by its name.
+    #[display("the mode's unit types and avatars")]
     UnitTypes,
     /// The actions of the mode's loadout packages.
+    #[display("the mode's loadouts")]
     Loadouts,
     /// The mode's players' resources, beside its pools.
+    #[display("the mode's resources and pools")]
     Resources,
     /// The mode's slot kinds.
+    #[display("the mode's slot kinds")]
     SlotKinds,
     /// The mode's item type of that id.
+    #[display("item {_0}")]
     Item(DeclaredName),
     /// The mode's `[shop]`.
+    #[display("the mode's [shop]")]
     Shop,
     /// The mode's `data/mode.toml`.
+    #[display("the mode's data/mode.toml")]
     Mode,
-}
-
-impl fmt::Display for Place {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Place::UnitType(name) => write!(f, "unit type {name}"),
-            Place::Avatar(name) => write!(f, "avatar {name}"),
-            Place::Action(id) => write!(f, "action {id}"),
-            Place::Modifier(id) => write!(f, "modifier {id}"),
-            Place::Script(path) => write!(f, "{path}"),
-            Place::Paths => f.write_str("the map's paths"),
-            Place::Combat => f.write_str("the mode's [combat]"),
-            Place::Navigation => f.write_str("the mode's [navigation]"),
-            Place::Pool(name) => write!(f, "pool {name}"),
-            Place::Choice(name) => write!(f, "choice {name}"),
-            Place::Tracks => f.write_str("the mode's [tracks]"),
-            Place::UnitTypes => f.write_str("the mode's unit types and avatars"),
-            Place::Loadouts => f.write_str("the mode's loadouts"),
-            Place::Resources => f.write_str("the mode's resources and pools"),
-            Place::SlotKinds => f.write_str("the mode's slot kinds"),
-            Place::Item(id) => write!(f, "item {id}"),
-            Place::Shop => f.write_str("the mode's [shop]"),
-            Place::Mode => f.write_str("the mode's data/mode.toml"),
-        }
-    }
 }

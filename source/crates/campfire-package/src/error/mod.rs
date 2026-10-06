@@ -1,9 +1,9 @@
-use std::error::Error;
+use std::io;
 use std::path::PathBuf;
-use std::{fmt, io};
 
 use campfire_capabilities::PackagePath;
 use campfire_common::Fingerprint;
+use derive_more::Display;
 use thiserror::Error;
 use toml::de::Error as TomlError;
 
@@ -73,29 +73,24 @@ pub enum StoreError {
 }
 
 /// Why a mode's packages do not load: `problem`, in the package `package`.
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("package {package}")]
 pub struct LoadError {
     pub package: PackageRef,
+    #[source]
     pub problem: Box<LoadProblem>,
 }
 
 /// Which package a load error is in: by its name, once its manifest named it; else where it was
 /// read from, a directory, or the fingerprint a session named it by.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, PartialEq, Eq)]
 pub enum PackageRef {
+    #[display("{_0}")]
     Name(String),
+    #[display("at {}", _0.display())]
     Dir(PathBuf),
+    #[display("of fingerprint {_0}")]
     Fingerprint(Fingerprint),
-}
-
-impl fmt::Display for PackageRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PackageRef::Name(name) => f.write_str(name),
-            PackageRef::Dir(dir) => write!(f, "at {}", dir.display()),
-            PackageRef::Fingerprint(fingerprint) => write!(f, "of fingerprint {fingerprint}"),
-        }
-    }
 }
 
 impl LoadError {
@@ -112,69 +107,74 @@ impl LoadError {
     }
 }
 
-impl fmt::Display for LoadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &*self.problem {
-            LoadProblem::Content(_) | LoadProblem::Mode(_) | LoadProblem::Map(_) => {
-                write!(f, "package {}", self.package)
-            }
-            problem => write!(f, "package {}: {problem}", self.package),
-        }
-    }
-}
-
-impl Error for LoadError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.problem.error()
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+
     use campfire_capabilities::{DeclaredName, ModifierProblem};
 
     use super::*;
     use crate::error::locale_problem::LocaleProblem;
     use crate::error::script_problem::ScriptProblem;
 
+    /// The message of `error` and of each error under it, down to the root.
+    fn chain(error: &(dyn Error + 'static)) -> Vec<String> {
+        let mut messages = vec![error.to_string()];
+        let mut source = error.source();
+        while let Some(cause) = source {
+            messages.push(cause.to_string());
+            source = cause.source();
+        }
+        messages
+    }
+
     #[test]
-    fn a_load_errors_source_is_the_error_its_problem_holds() {
+    fn a_load_error_names_its_package_and_its_problem_and_the_error_under_it() {
         let error = |problem| LoadError::of("hero", problem);
-        let modifier = DeclaredName::new("haste").unwrap();
-        let path = PackagePath::parse("en.ftl").unwrap();
-
-        // A problem that holds an error gives it.
-        let held = error(LoadProblem::Modifier {
-            modifier,
-            problem: ModifierProblem::Time,
-        });
-        let source = held.source().unwrap();
-        assert_eq!(
-            source.downcast_ref::<ModifierProblem>(),
-            Some(&ModifierProblem::Time)
-        );
-        let content = error(LoadProblem::Content(ContentError::NotUtf8(PathBuf::from(
-            "x",
-        ))));
-        assert!(content.source().unwrap().is::<ContentError>());
-        // The text holds the problem's own step alone, and none for a problem that only holds an
-        // error: its source gives the rest.
-        assert_eq!(held.to_string(), "package hero: modifier \"haste\"");
-        assert_eq!(content.to_string(), "package hero");
-
-        // A problem of the package's own checks holds none.
-        for problem in [
-            LoadProblem::WrongKind,
-            LoadProblem::Script {
-                path: path.clone(),
-                problem: ScriptProblem::Missing,
-            },
-            LoadProblem::Locale {
-                path,
-                problem: LocaleProblem::FileName,
-            },
-        ] {
-            assert!(error(problem).source().is_none());
+        let path = |text| PackagePath::parse(text).unwrap();
+        // A problem that holds an error adds its own step, and one that only holds one is the
+        // error itself, so no step shows twice.
+        let cases = [
+            (
+                LoadProblem::Modifier {
+                    modifier: DeclaredName::new("haste").unwrap(),
+                    problem: ModifierProblem::Time,
+                },
+                &[
+                    "package hero",
+                    "modifier \"haste\"",
+                    "a time negative or too large to count in ticks",
+                ][..],
+            ),
+            (
+                LoadProblem::Content(ContentError::NotUtf8(PathBuf::from("x"))),
+                &["package hero", "x: path is not UTF-8"],
+            ),
+            (
+                LoadProblem::Script {
+                    path: path("scripts/a.rhai"),
+                    problem: ScriptProblem::Missing,
+                },
+                &["package hero", "scripts/a.rhai", "named, but not held"],
+            ),
+            (
+                LoadProblem::Locale {
+                    path: path("en.ftl"),
+                    problem: LocaleProblem::FileName,
+                },
+                &[
+                    "package hero",
+                    "en.ftl",
+                    "not <language>.ftl, its language in its canonical spelling",
+                ],
+            ),
+            (
+                LoadProblem::WrongKind,
+                &["package hero", "not a package of the kind its place needs"],
+            ),
+        ];
+        for (problem, messages) in cases {
+            assert_eq!(chain(&error(problem)), messages);
         }
     }
 }

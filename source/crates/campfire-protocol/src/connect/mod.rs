@@ -1,6 +1,5 @@
-use std::fmt;
-
 use campfire_common::Bytes32;
+use derive_more::Display;
 use secp256k1::{Keypair, Secp256k1, Signing, Verification};
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +19,9 @@ const ANSWER_MESSAGE_LEN: usize = ANSWER_DOMAIN.len() + 32 + 32;
 /// The random bytes a server sends a connecting client. The client answers with its delegation
 /// and its session key's signature over the challenge and the certificate hash it verified, which
 /// binds the answer to this connection to this server.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(transparent)]
 pub struct ConnectChallenge(Bytes32);
 
@@ -83,13 +84,6 @@ impl ConnectChallenge {
         challenge.copy_from_slice(self.0.as_bytes());
         hash.copy_from_slice(certificate.as_bytes());
         message
-    }
-}
-
-/// In lowercase hex.
-impl fmt::Display for ConnectChallenge {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
     }
 }
 

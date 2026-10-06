@@ -13,6 +13,7 @@ campfire-common.workspace = true
 
 blake3.workspace = true
 criterion = { workspace = true, optional = true }
+derive_more.workspace = true
 nostr.workspace = true
 postcard.workspace = true
 secp256k1 = { workspace = true, features = ["serde"] }

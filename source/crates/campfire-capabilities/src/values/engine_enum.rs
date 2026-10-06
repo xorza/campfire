@@ -1,8 +1,9 @@
-use std::fmt;
+use derive_more::Display;
 
 /// A fixed set the engine owns, which scripts hold as members of an enum, `Relation::Hostile`,
 /// not as strings, as design 08's Engine enums gives them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[display("{}", self.name())]
 pub enum EngineEnum {
     /// How one team regards another, as `set_relation` takes it.
     Relation,
@@ -17,12 +18,5 @@ impl EngineEnum {
             EngineEnum::Relation => "Relation",
             EngineEnum::PathEnd => "PathEnd",
         }
-    }
-}
-
-/// As scripts name it.
-impl fmt::Display for EngineEnum {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
     }
 }

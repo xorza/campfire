@@ -1,7 +1,7 @@
 use std::fs;
 
 #[test]
-fn the_crate_depends_on_serde_alone() {
+fn the_crate_depends_on_serde_and_derive_more_alone() {
     // Read by hand, as the crate has no TOML parser. Only the listed sections may appear, so
     // a dependency in any other form, such as `[dependencies.name]`, a target's section or
     // a dotted key before the first section, fails the test instead of passing it unseen.
@@ -24,7 +24,7 @@ fn the_crate_depends_on_serde_alone() {
             }
         }
     }
-    assert_eq!(names, ["serde"]);
+    assert_eq!(names, ["derive_more", "serde"]);
 }
 
 #[test]
