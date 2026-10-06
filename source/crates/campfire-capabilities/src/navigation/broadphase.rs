@@ -165,19 +165,19 @@ pub(crate) mod internals {
     use crate::navigation::body_index::{BodyIndex, IndexedBody};
     use crate::navigation::collider::Collider;
     use crate::units::layer::Layer;
-    use crate::values::scene::Scene;
+    use crate::values::kernel_scene::KernelScene;
 
     /// `count` bodies from `seed`: each at a whole centimeter within `span` meters of the origin
     /// on both axes, of a radius from 0.2 to 1.19 m, on one of `layers` layers, and that may be
     /// pushed, and walks, at random. A scene of one layer draws no layer.
     pub(crate) fn scene(seed: u64, count: usize, span: u64, layers: u8) -> Vec<Collider> {
-        let mut scene = Scene::new(seed);
+        let mut scene = KernelScene::new(seed);
         let mut ids = IdAllocator::default();
         let mut world = World::new();
         (0..count)
             .map(|_| {
                 let at = scene.point(span);
-                let radius = Scene::centimeters(20 + scene.below(100).cast_signed());
+                let radius = KernelScene::centimeters(20 + scene.below(100).cast_signed());
                 let movable = scene.below(4) != 0;
                 let layer = match layers {
                     1 => Layer::FIRST,

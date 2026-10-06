@@ -25,21 +25,17 @@ impl StageClock {
         world.insert_resource(StageClock {
             edges: [Instant::now(); EDGES],
         });
-        world.schedule_scope(SimUpdate, |_, schedule| {
-            for edge in 0..EDGES {
-                let probe = move |mut clock: ResMut<'_, StageClock>| {
-                    clock.edges[edge] = Instant::now();
-                };
-                let before = edge.checked_sub(1).map(|stage| SimSet::ALL[stage]);
-                match (before, SimSet::ALL.get(edge)) {
-                    (Some(before), Some(&after)) => {
-                        schedule.add_systems(probe.after(before).before(after))
-                    }
-                    (None, Some(&after)) => schedule.add_systems(probe.before(after)),
-                    (Some(before), None) => schedule.add_systems(probe.after(before)),
-                    (None, None) => unreachable!("a tick has stages"),
-                };
+        let probe = |edge: usize| {
+            move |mut clock: ResMut<'_, StageClock>| {
+                clock.edges[edge] = Instant::now();
             }
+        };
+        world.schedule_scope(SimUpdate, |_, schedule| {
+            schedule.add_systems(probe(0).before(SimSet::ALL[0]));
+            for (edge, stages) in SimSet::ALL.windows(2).enumerate() {
+                schedule.add_systems(probe(edge + 1).after(stages[0]).before(stages[1]));
+            }
+            schedule.add_systems(probe(EDGES - 1).after(SimSet::ALL[EDGES - 2]));
         });
     }
 

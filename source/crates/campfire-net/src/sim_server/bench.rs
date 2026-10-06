@@ -1,5 +1,4 @@
 use std::hint::black_box;
-use std::time::Duration;
 
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
@@ -16,11 +15,7 @@ pub(crate) fn server_frame(c: &mut Criterion) {
     group.bench_function("walk", |b| {
         let local = local.get_or_insert_with(|| InProcessMatch::walking(RollbackMode::Check));
         b.iter_custom(|frames| {
-            let mut spent = Duration::ZERO;
-            for _ in 0..frames {
-                spent += local.walk_step(frame).server;
-                frame += 1;
-            }
+            let spent = local.walk_steps(&mut frame, frames).server;
             black_box(&*local);
             spent
         });
