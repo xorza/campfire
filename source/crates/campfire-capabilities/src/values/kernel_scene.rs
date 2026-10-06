@@ -8,15 +8,37 @@ pub(crate) struct KernelScene {
     rng: Rng,
 }
 
+/// How close a kernel case's units stand: crowded into 40 m square, or spread over 120 m square.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Density {
+    Crowded,
+    Spread,
+}
+
+impl Density {
+    /// Both, for a kernel whose cost grows with how close its units stand.
+    pub(crate) const ALL: [Density; 2] = [Density::Crowded, Density::Spread];
+
+    /// The case's name.
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Density::Crowded => "crowded",
+            Density::Spread => "spread",
+        }
+    }
+
+    /// Half the side of the square the units stand in, in meters.
+    pub(crate) const fn span(self) -> u64 {
+        match self {
+            Density::Crowded => 20,
+            Density::Spread => 60,
+        }
+    }
+}
+
 impl KernelScene {
     /// The units of a kernel case: the count design 04 sets for an RTS battle.
     pub(crate) const UNITS: usize = 1000;
-    /// A kernel case's scenes, each by its name and half its side in meters: crowded into 40 m
-    /// square, and spread over 120 m square.
-    pub(crate) const CROWDED: (&str, u64) = ("crowded", 20);
-    pub(crate) const SPREAD: (&str, u64) = ("spread", 60);
-    /// Both scenes, for a kernel whose cost grows with how close its units stand.
-    pub(crate) const DENSITIES: [(&str, u64); 2] = [KernelScene::CROWDED, KernelScene::SPREAD];
 
     pub(crate) fn new(seed: u64) -> KernelScene {
         let source = RngSource::new(SegmentSeed::new([0; 32]));

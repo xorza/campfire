@@ -172,7 +172,7 @@ A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the 
 - **Other limits** (call depth, sizes) are engine constants, set explicitly, since Rhai's defaults differ between debug and release builds.
 - **All or nothing per call.** State writes go to an overlay the call can read back; engine effects (damage, spawn, orders, timers) are queued. On success the overlay commits, then the effects apply in call order. Each capability keeps its own effect types in the call's frame, one queue a type, and each type applies itself: the queue records with each effect the apply of its type, so the script runtime names no capability, and no table can pair a type with another type's apply. On failure (error, overflow, limit) both are discarded, the sim emits a `script_error` event, and the tick goes on.
 - **No hidden script state.** It is declared in a typed schema and stored in sim components; see [Script state](03-game-scripting.md#script-state).
-- **Measured** (one core of a Ryzen 7 6800U): a hook call through `ScriptHost::call` costs 59 ns with an empty body, `script/call`, and 368 ns when the hook makes one call to a function the host registered, `script/native`, so each such call, as each `ctx` query is, costs about 310 ns, five times the hook's own. The AI's `on_think` calls take 32 % of a 3v3 tick ([Benches](13-benches.md)).
+- **Measured** (one core of a Ryzen 7 6800U): a hook call through `ScriptHost::call` costs 59.5 ns with an empty body, `script/call`, and 392 ns when the hook makes one call to a function the host registered, `script/native`, so each such call, as each `ctx` query is, costs about 333 ns, 5.6 times the hook's own. The AI's `on_think` calls take 32 % of a 3v3 tick ([Benches](13-benches.md)).
 
 ## Backends
 

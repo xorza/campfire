@@ -8,7 +8,7 @@ use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
-use crate::values::kernel_scene::KernelScene;
+use crate::values::kernel_scene::{Density, KernelScene};
 use crate::vision::brush_map::BrushMap;
 use crate::vision::fog::Fog;
 use crate::vision::vision_grid::VisionGrid;
@@ -16,13 +16,13 @@ use crate::vision::vision_grid::VisionGrid;
 /// Each unit's sight in meters: the reference units see 8 to 11 m.
 const SIGHT: i64 = 10;
 
-/// The Vision stage's grid fog for `KernelScene::UNITS` units of two teams, as `vision::see` runs it:
-/// each unit reveals the cells within its 10 m sight on a grid of 1 m cells with no brush, then
-/// each learns the teams that see it. Each sight reveals as many cells however close the units
-/// stand, so one scene serves, the spread one; the grid reaches a sight past it, so no sight is
-/// cut at its edge.
+/// The Vision stage's grid fog for `KernelScene::UNITS` units of two teams, as `vision::see`
+/// runs it: each unit reveals the cells within its 10 m sight on a grid of 1 m cells with no
+/// brush, then each learns the teams that see it. Each sight reveals as many cells however close
+/// the units stand, so one density serves, the spread one; the grid reaches a sight past it, so
+/// no sight is cut at its edge.
 pub(crate) fn fog(c: &mut Criterion) {
-    let (_, span) = KernelScene::SPREAD;
+    let span = Density::Spread.span();
     let mut scene = KernelScene::new(11);
     let units: Vec<(Position, Team)> = (0..KernelScene::UNITS)
         .map(|_| {

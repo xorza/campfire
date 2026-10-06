@@ -54,7 +54,7 @@ fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
                 let worst = (0..TICKS)
                     .map(|_| timed_tick(fixed.runner_mut()))
                     .max()
-                    .unwrap_or_default();
+                    .expect("a match of `TICKS` ticks");
                 worst_sum += worst;
             }
             worst_sum
@@ -80,7 +80,7 @@ fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
                         spent
                     })
                     .max()
-                    .unwrap_or_default();
+                    .expect("a match of `TICKS` ticks");
                 worst_sum += worst;
             }
             worst_sum
@@ -124,7 +124,7 @@ fn server_stage(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
                     let worst = (0..TICKS)
                         .map(|_| stage_tick(fixed.runner_mut(), stage))
                         .max()
-                        .unwrap_or_default();
+                        .expect("a match of `TICKS` ticks");
                     worst_sum += worst;
                 }
                 worst_sum
