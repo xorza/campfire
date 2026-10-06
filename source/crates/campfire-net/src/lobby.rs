@@ -11,7 +11,7 @@ use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly, XOnlyPublicKey};
 use campfire_protocol::{
     CertificateHash, ConnectChallenge, Delegation, SeedChain, SessionHeader, SessionLog,
-    SessionTerms,
+    SessionTerms, SlotPlan, SlotStart,
 };
 use campfire_runner::{InputRules, SessionRules, TermsError};
 use lightyear::prelude::server::ClientOf;
@@ -126,6 +126,7 @@ impl Lobby {
             seed_chain.commitment(),
             tick_hz,
             inputs,
+            vec![SlotPlan::Player; players],
         )?;
         Ok(Lobby {
             terms,
@@ -228,7 +229,7 @@ impl Lobby {
         let (links, players): (Vec<Entity>, Vec<Delegation>) = lobby.joined.into_iter().unzip();
         let header = SessionHeader {
             terms: lobby.terms,
-            players,
+            slots: players.into_iter().map(SlotStart::player).collect(),
         };
         let session = header.terms.session_id();
         let log = SessionLog::new(header).expect("every delegation names this session");

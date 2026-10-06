@@ -1,9 +1,11 @@
 use bevy_ecs::world::World;
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, InputError, PlayerInput, ServerSeed, SessionLog, Signature};
+use campfire_protocol::{
+    Applied, InputError, PlayerInput, ServerInput, ServerSeed, SessionLog, Signature,
+};
 use campfire_sim::StateHash;
 
-use crate::error::StartError;
+use crate::error::{ServerInputRefused, StartError};
 use crate::session::Session;
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.
@@ -38,6 +40,17 @@ impl Runner {
         self.world
             .resource_mut::<Session>()
             .record(inputs, signature, applied)
+    }
+
+    /// See `Session::record_server`.
+    pub fn record_server(
+        &mut self,
+        input: ServerInput,
+        signature: &Signature,
+    ) -> Result<(), ServerInputRefused> {
+        self.world
+            .resource_mut::<Session>()
+            .record_server(input, signature)
     }
 
     pub fn run_tick(&mut self) {

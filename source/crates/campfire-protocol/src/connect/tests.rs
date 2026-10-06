@@ -9,6 +9,7 @@ use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 
 use super::*;
+use crate::slot_plan::SlotPlan;
 
 const NOW: u64 = 1_700_000_000;
 const EXPIRATION: u64 = NOW + 60;
@@ -30,6 +31,7 @@ fn terms() -> SessionTerms {
         release: "0.1.0".to_owned(),
         mode: Fingerprint::new([5; 32]),
         dependencies: vec![Fingerprint::new([4; 32])],
+        slots: vec![SlotPlan::Player],
     }
 }
 

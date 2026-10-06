@@ -17,7 +17,7 @@ How a session outlives its server process, its players' links and its players: t
 
 ## Slots and controllers
 
-- **Plan.** The terms carry one entry per player slot of the manifest: `player`, `bot` or `open`. The session id hashes it, so every delegation signs it. The match starts when every `player` slot holds a joined, connected player.
+- **Plan.** The terms carry one entry per slot the session plays, at least one and at most the manifest's slots: `player`, `bot` or `open`. The session id hashes it, so every delegation signs it. The match starts when every `player` slot holds a joined, connected player.
 - **Controller.** At every tick each slot has one controller: a player (a delegation, its chain and its counts), a bot, open, or reserved for a player who left. The log knows it from its own records, with no package: it checks a player packet against the slot's current player, and a bot input against a bot slot.
 - **Changes.** The server logs each change as a signed server input: `Join` (a player takes the slot, with their delegation, starting a new chain from its id), `Renew` (the same main key, a new session key, the chain going on), `Leave` (the player left, by asking or after the grace period), and `Connected` and `Disconnected`, which change no controller. A `Leave` turns the slot into what the mode's `leaver` says: `reserve` keeps it for that main key only, `bot` gives it to a bot, `open` opens it to anyone `late_join` lets in. The slot remembers its leaver, who may always take it back while it is reserved, played by a bot or still open. Anyone else's `Join` takes an open slot only when `late_join` is on, a bot slot only when `bot_takeover` is on, and a reserved slot never. The log checks the structure; the runner checks the mode's rules as it records, so a verifier checks both.
 - **Mode data.** `[players]`: `late_join` (default `false`), `bot_takeover` (default `false`, and `true` only with `late_join`), `leaver` (`reserve`, the default, `bot` or `open`).
@@ -30,10 +30,10 @@ A server input is logged before the tick it applies in, with one Schnorr signatu
 
 | Input | Fields | Effect |
 | --- | --- | --- |
-| `Bot` | slot, payload | Commands of the slot's bot, applied in that tick as a player's are, in slot order; at most the max inputs per tick a tick |
+| `Bot` | slot, payload | Commands of the slot's bot, applied in that tick as a player's are, in slot order; a payload within the max length, at most the max inputs per tick in a tick |
 | `Join` | slot, delegation JSON | The slot's controller becomes the delegation's player, whose chain starts from its id; `on_player_join` |
 | `Renew` | slot, delegation JSON | The slot's player, the same main key, signs with the new session key from now on |
-| `Leave` | slot, reason (`asked`, `grace`) | The slot becomes what `leaver` says; `on_player_leave` |
+| `Leave` | slot, reason (`asked`, `grace`), what the slot becomes | The slot becomes what `leaver` says, which the runner checks; `on_player_leave` |
 | `Connected`, `Disconnected` | slot | None; the log shows when a player's link came and went |
 
 A delegation in a `Join` or a `Renew` must name the session, the server and a session key, as the header's do; its seed contribution is ignored.

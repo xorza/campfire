@@ -10,17 +10,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use campfire_capabilities::{
-    Action, ActionSlots, Destination, Order, Owner, PoolId, Pools, Projectile,
-};
-use campfire_common::{Fingerprint, Tick, Ticks};
+use campfire_capabilities::{Action, ActionSlots, Destination, Order, PoolId, Pools, Projectile};
+use campfire_common::{Fingerprint, PlayerSlot, Tick, Ticks};
 use campfire_log::LogEvent;
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
-use campfire_protocol::{Applied, SeedError, ServerSeed, SessionLog, SessionTerms};
+use campfire_protocol::{
+    AfterLeave, Applied, LeaveReason, SeedError, ServerInput, ServerSeed, SessionLog, SessionTerms,
+    SlotChange, SlotChangeKind, SlotPlan, Taken,
+};
 use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, MatchUnits, Reference3v3};
-use campfire_runner::{InputRules, Runner, StartError, TermsError};
+use campfire_runner::{
+    InputRules, Runner, ServerInputRefused, SlotRuleError, StartError, TermsError,
+};
 use campfire_sim::{EntityIndex, Position, StableId};
 use campfire_verifier::{Replay, Verified};
 use tempfile::TempDir;
@@ -44,7 +47,7 @@ struct Sent {
 
 /// At a quarter meter a tick, straight lines take exactly 4 ticks a meter.
 const ORDERS: [Sent; 3] = [
-    // 5 m along z: ticks 0 to 19.
+    // Toward (0, 5), from the spawn at (0, −2): 5.5 m in ticks 0 to 21.
     Sent {
         arrives: 0,
         stamp: 0,
@@ -52,7 +55,7 @@ const ORDERS: [Sent; 3] = [
         z: 5,
         applied: Applied::At(Tick::new(0)),
     },
-    // Stamped 2 ticks ahead; 2 m along −x: ticks 22 to 29.
+    // Stamped 2 ticks ahead; from (0, 3.5), 2.5 m to (−2, 5): ticks 22 to 31.
     Sent {
         arrives: 20,
         stamp: 22,
@@ -113,20 +116,11 @@ struct Hero {
     destination: Destination,
 }
 
-/// The player's hero: the one unit under their control.
-fn hero_id(runner: &Runner) -> StableId {
+/// Where player `slot`'s hero stands and walks to.
+fn hero(runner: &Runner, slot: u32) -> Hero {
     let world = runner.world();
-    let mut units = world.resource::<EntityIndex>().iter();
-    let hero = units.find(|&(_, entity)| world.entity(entity).contains::<Owner>());
-    hero.unwrap().0
-}
-
-fn hero(runner: &Runner) -> Hero {
-    let world = runner.world();
-    let entity = world
-        .resource::<EntityIndex>()
-        .get(hero_id(runner))
-        .unwrap();
+    let id = MatchUnits::of_world(world).hero(slot);
+    let entity = world.resource::<EntityIndex>().get(id).unwrap();
     let hero = world.entity(entity);
     Hero {
         position: *hero.get::<Position>().unwrap(),
@@ -147,14 +141,7 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
     let mut trail = HashTrail::default();
     for tick in 0..ticks {
         for sent in orders.iter().filter(|sent| sent.arrives == tick) {
-            let hero = hero_id(fixed.runner());
-            let payload = Order::payload(&[Order {
-                unit: hero,
-                action: Action::Move {
-                    x: Num::int(sent.x),
-                    z: Num::int(sent.z),
-                },
-            }]);
+            let payload = move_order(&fixed, 0, sent.x, sent.z);
             assert_eq!(
                 fixed.send(0, Tick::new(sent.stamp), &payload),
                 sent.applied,
@@ -176,7 +163,7 @@ fn run_and_replay_agree_on_every_tick() {
         position: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
         destination: Destination::default(),
     };
-    assert_eq!(hero(runner), arrived);
+    assert_eq!(hero(runner, 0), arrived);
 
     let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
@@ -185,7 +172,7 @@ fn run_and_replay_agree_on_every_tick() {
         replayed.record(replay.runner().world());
     }
     live.assert_same(&replayed);
-    assert_eq!(hero(replay.runner()), arrived);
+    assert_eq!(hero(replay.runner(), 0), arrived);
 
     // Without the second order the hashes agree until it would apply, at tick 22, and differ
     // from then on: the hash sees the hero move.
@@ -194,6 +181,148 @@ fn run_and_replay_agree_on_every_tick() {
     let first_difference = live.iter().zip(without).position(|(a, b)| a != b);
     assert_eq!(first_difference, Some(22));
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
+}
+
+/// The order that moves player `slot`'s hero to (`x`, `z`).
+fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
+    Order::payload(&[Order {
+        unit: MatchUnits::of(fixed).hero(slot),
+        action: Action::Move {
+            x: Num::int(x),
+            z: Num::int(z),
+        },
+    }])
+}
+
+/// The hero standing at (`x`, `z`), with nowhere to walk.
+fn standing(x: i64, z: i64) -> Hero {
+    Hero {
+        position: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
+        destination: Destination::default(),
+    }
+}
+
+/// Player 0's leave of slot 0, the slot becoming `becomes`.
+fn leave(becomes: AfterLeave) -> ServerInput {
+    ServerInput::Leave {
+        slot: PlayerSlot::new(0),
+        reason: LeaveReason::Asked,
+        becomes,
+    }
+}
+
+/// Sends tick `tick`'s inputs of a lane match whose slot 1 the server's bot plays; the lane
+/// mode's `[players]` is the default: no late join, no bot takeover, a leaver's slot reserved.
+fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
+    match tick {
+        // At a quarter meter a tick, the player's hero walks along z from (0, −2) toward
+        // (0, 5), and the bot's 3 m along x from (0, 2) to (3, 2) in ticks 0 to 11.
+        0 => {
+            let payload = move_order(fixed, 0, 0, 5);
+            fixed.send(0, Tick::new(0), &payload);
+            let payload = move_order(fixed, 1, 3, 2);
+            let order = ServerInput::Bot {
+                slot: PlayerSlot::new(1),
+                payload,
+            };
+            fixed.serve(order).unwrap();
+        }
+        // The mode refuses a leaver's slot to a bot, and a player in the bot's slot; neither is
+        // logged. The player leaves, their slot reserved; their hero walks on, as no rule of the
+        // mode acts on a leave.
+        10 => {
+            assert!(matches!(
+                fixed.serve(leave(AfterLeave::Bot)),
+                Err(ServerInputRefused::Rule(SlotRuleError::Leaver {
+                    becomes: AfterLeave::Bot
+                }))
+            ));
+            assert!(matches!(
+                fixed.join(1),
+                Err(ServerInputRefused::Rule(SlotRuleError::BotTakeover))
+            ));
+            assert_eq!(fixed.runner().log().next_place().index, 0);
+            fixed.serve(leave(AfterLeave::Reserve)).unwrap();
+        }
+        // They come back, and turn their hero, at (0, 3.5) after 22 ticks, to (−2, 5): 2.5 m in
+        // ticks 22 to 31.
+        20 => {
+            fixed.join(0).unwrap();
+            let payload = move_order(fixed, 0, -2, 5);
+            fixed.send(0, Tick::new(22), &payload);
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hashes() {
+    let session = FixedSession::planned(
+        packages(),
+        NonZeroU32::new(30).unwrap(),
+        InputRules::ROOMY,
+        vec![SlotPlan::Player, SlotPlan::Bot],
+    );
+    let mut fixed = session.start();
+    let mut live = HashTrail::default();
+    for tick in 0..TICKS {
+        bot_and_returning_player(&mut fixed, tick);
+        fixed.runner_mut().run_tick();
+        live.record(fixed.runner().world());
+    }
+    fixed.runner_mut().reveal_seed();
+    let runner = fixed.runner();
+    assert_eq!(
+        [hero(runner, 0), hero(runner, 1)],
+        [standing(-2, 5), standing(3, 2)]
+    );
+    let slot = PlayerSlot::new(0);
+    let changes = [
+        SlotChange {
+            tick: Tick::new(10),
+            slot,
+            kind: SlotChangeKind::Left {
+                becomes: AfterLeave::Reserve,
+            },
+        },
+        SlotChange {
+            tick: Tick::new(20),
+            slot,
+            kind: SlotChangeKind::Joined { from: Taken::Own },
+        },
+    ];
+    assert_eq!(runner.log().changes(), changes);
+
+    // The file decodes to a log that encodes to the same bytes, and replays to the same hashes.
+    let bytes = encoded(runner.log());
+    let decoded = SessionLog::decode(&bytes).unwrap();
+    assert_eq!(encoded(&decoded), bytes);
+    let mut replay = Replay::new(decoded, &store()).unwrap();
+    let mut replayed = HashTrail::default();
+    while replay.run_tick() {
+        replayed.record(replay.runner().world());
+    }
+    live.assert_same(&replayed);
+    assert_eq!(replay.runner().log().changes(), changes);
+
+    // A log whose server sent the leaver's slot to a bot breaks the mode's rules: the verifier
+    // does not start it.
+    let mut log = session.log();
+    let to_bot = leave(AfterLeave::Bot);
+    let signature = FixedSession::server_signature(&to_bot, log.session_id(), log.next_place());
+    log.record_server(to_bot, &signature).unwrap();
+    log.reveal_seed(FixedSession::seed());
+    let refused = Replay::new(log, &store()).err();
+    assert!(
+        matches!(
+            refused,
+            Some(StartError::SlotRule {
+                change: SlotChange { tick, .. },
+                error: SlotRuleError::Leaver { becomes: AfterLeave::Bot },
+            }) if tick == Tick::new(0)
+        ),
+        "{refused:?}"
+    );
 }
 
 #[test]
@@ -426,19 +555,16 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         "{refused:?}"
     );
 
-    // Three players, and the lane's two teams seat one each.
-    let mut header = session.header(session.terms().clone());
-    header.players = vec![header.players[0].clone(); 3];
-    let mut log = SessionLog::new(header).unwrap();
+    // Three slots, the session's player and two open, and the lane's two teams seat one each.
+    let mut terms = session.terms().clone();
+    terms.slots.extend([SlotPlan::Open; 2]);
+    let mut log = SessionLog::new(session.header(terms)).unwrap();
     log.reveal_seed(FixedSession::seed());
     let refused = Replay::new(log, &store).err();
     assert!(
         matches!(
             refused,
-            Some(StartError::Players {
-                players: 3,
-                slots: 2
-            })
+            Some(StartError::Terms(TermsError::Slots { slots: 3, most: 2 }))
         ),
         "{refused:?}"
     );

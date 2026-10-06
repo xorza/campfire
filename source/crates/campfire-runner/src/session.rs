@@ -5,14 +5,15 @@ use campfire_common::Tick;
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
-    Applied, InputError, PlayerInput, ServerSeed, SessionLog, SessionTerms, Signature,
+    Applied, InputError, PlayerInput, ServerInput, ServerSeed, SessionLog, SessionTerms, Signature,
 };
 use campfire_sim::{SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs, TickRate};
 
-use crate::error::StartError;
+use crate::error::{ServerInputRefused, StartError};
 use crate::match_build::MatchBuild;
 use crate::script_call_failed::ScriptCallFailed;
 use crate::session_rules::SessionRules;
+use crate::slot_rules::SlotRules;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
 /// a bare one on a verifier, Lightyear's on a server. The server records inputs as they arrive; a
@@ -24,6 +25,8 @@ pub struct Session {
     server_seed: ServerSeed,
     state: StateRegistry,
     log: SessionLog,
+    /// Who the mode lets take a slot.
+    rules: SlotRules,
 }
 
 impl Session {
@@ -32,8 +35,10 @@ impl Session {
     /// players' contributions; starts the match; and inserts the session, which records into
     /// `log` from its first tick. An error when the terms name another release, mode or
     /// dependencies than this release and `packages`, a tick rate outside the mode's range, or
-    /// `server_seed` is not the first segment's seed of the chain the header commits to, or when
-    /// the packages do not load into the match.
+    /// more slots than the mode's teams have, when `server_seed` is not the first segment's seed
+    /// of the chain the header commits to, when a change of a slot's controller the log holds,
+    /// as a published log replayed does, breaks the mode's `[players]`, or when the packages do
+    /// not load into the match.
     pub fn start(
         world: &mut World,
         log: SessionLog,
@@ -55,11 +60,13 @@ impl Session {
         SimUpdate::prepare(world, seed, TickRate::new(header.terms.tick_hz));
         let mut schedule = SimUpdate::schedule();
         let mut state = StateRegistry::new();
-        let players = u32::try_from(header.players.len()).expect("the log counts players in u32");
-        let slots = packages.manifest().slots();
-        if u64::from(players) > slots {
-            return Err(StartError::Players { players, slots });
+        let rules = SlotRules::new(packages.data().players);
+        for &change in log.changes() {
+            rules
+                .check(change.kind)
+                .map_err(|error| StartError::SlotRule { change, error })?;
         }
+        let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         MatchBuild::run(packages, world, &mut schedule, &mut state, players);
         world.add_schedule(schedule);
         Mode::start(world).map_err(StartError::MatchStart)?;
@@ -67,6 +74,7 @@ impl Session {
             server_seed,
             state,
             log,
+            rules,
         });
         Ok(())
     }
@@ -94,6 +102,26 @@ impl Session {
         I::IntoIter: Clone,
     {
         self.log.record(inputs, signature, applied)
+    }
+
+    /// Logs a server input before the next tick, its `signature` the server key's at its place;
+    /// see `SessionLog::record_server`. The mode's `[players]` refuses a change of a slot's
+    /// controller it does not allow, before the log takes it.
+    pub fn record_server(
+        &mut self,
+        input: ServerInput,
+        signature: &Signature,
+    ) -> Result<(), ServerInputRefused> {
+        if let Some(change) = self
+            .log
+            .change_of(&input)
+            .map_err(ServerInputRefused::Log)?
+        {
+            self.rules.check(change).map_err(ServerInputRefused::Rule)?;
+        }
+        self.log
+            .record_server(input, signature)
+            .map_err(ServerInputRefused::Log)
     }
 
     /// Seals the next tick in the log of the session in `world` and runs it with the inputs

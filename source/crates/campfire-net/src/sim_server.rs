@@ -135,7 +135,7 @@ impl SimServer {
     ) -> Result<(), StartError> {
         assert_eq!(
             clients.len(),
-            log.header().players.len(),
+            log.header().players().count(),
             "one client per player"
         );
         assert_eq!(

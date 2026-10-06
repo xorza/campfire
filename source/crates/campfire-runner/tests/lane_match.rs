@@ -58,7 +58,7 @@ fn the_lane_match_plays_to_its_golden_record() {
     let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/lane"))
         .unwrap_or_else(|error| panic!("{error}"));
     let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
-    let mut golden = Golden::new(session.packages(), session.players());
+    let mut golden = Golden::new(session.packages(), session.slots());
     let mut fixed = session.start();
     let walker = MatchUnits::of(&fixed).hero(0);
     // The first wave's creeps of the east, which spawn in tick 0, walk to the walker and strike

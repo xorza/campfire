@@ -1,10 +1,9 @@
-use campfire_package::PackageDir;
 use std::num::NonZeroU32;
 
 use campfire_common::{Fingerprint, PlayerSlot, Tick};
-use campfire_package::ModePackages;
+use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Secp256k1, XOnlyPublicKey};
-use campfire_protocol::{CertificateHash, ConnectChallenge, Delegation, SeedChain};
+use campfire_protocol::{CertificateHash, ConnectChallenge, Delegation, SeedChain, SlotPlan};
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
@@ -49,6 +48,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
             SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),
             TICK_HZ,
             InputRules::LAN,
+            vec![SlotPlan::Player; 2],
         )
         .unwrap();
     change(&mut terms);

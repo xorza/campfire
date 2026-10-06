@@ -30,8 +30,9 @@ mod script_call_failed;
 mod scripted;
 mod session;
 mod session_rules;
+mod slot_rules;
 
-pub use error::{StartError, TermsError};
+pub use error::{ServerInputRefused, SlotRuleError, StartError, TermsError};
 pub use input_rules::InputRules;
 pub use runner::Runner;
 pub use script_call_failed::ScriptCallFailed;

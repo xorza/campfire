@@ -11,11 +11,15 @@ mod input_hash;
 mod key_file;
 mod player_input;
 mod seed_chain;
+mod server_input;
 mod server_seed;
 mod session_id;
 mod session_log;
 mod session_terms;
 mod signature;
+mod slot_change;
+mod slot_plan;
+mod slot_start;
 
 pub use connect::ConnectChallenge;
 pub use connect::certificate_hash::CertificateHash;
@@ -33,12 +37,17 @@ pub use player_input::PlayerInput;
 /// The curve library the keys and signatures of this API are typed in, at the version it pins.
 pub use secp256k1;
 pub use seed_chain::SeedChain;
+pub use server_input::error::ServerInputDecodeError;
+pub use server_input::{AfterLeave, InputPlace, LeaveReason, ServerInput};
 pub use server_seed::{SeedCommitment, ServerSeed};
 pub use session_id::SessionId;
-pub use session_log::error::{HeaderError, InputError, LogError, SeedError};
+pub use session_log::error::{HeaderError, InputError, LogError, SeedError, ServerInputError};
 pub use session_log::{Applied, SessionHeader, SessionLog};
 pub use session_terms::SessionTerms;
 pub use signature::Signature;
+pub use slot_change::{SlotChange, SlotChangeKind, Taken};
+pub use slot_plan::SlotPlan;
+pub use slot_start::SlotStart;
 
 #[cfg(feature = "bench")]
 pub mod bench {

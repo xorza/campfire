@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use campfire_common::Fingerprint;
 use campfire_package::{ModePackages, RELEASE, TickRange};
 use campfire_protocol::secp256k1::XOnlyPublicKey;
-use campfire_protocol::{SeedCommitment, SessionTerms};
+use campfire_protocol::{SeedCommitment, SessionTerms, SlotPlan};
 
 use crate::error::TermsError;
 use crate::input_rules::InputRules;
@@ -17,6 +17,8 @@ pub struct SessionRules {
     mode: Fingerprint,
     dependencies: Box<[Fingerprint]>,
     tick_hz: TickRange,
+    /// The player slots the mode's teams have.
+    slots: u64,
 }
 
 impl SessionRules {
@@ -25,18 +27,21 @@ impl SessionRules {
             mode: packages.fingerprint(),
             dependencies: packages.dependency_fingerprints().collect(),
             tick_hz: packages.manifest().tick_hz,
+            slots: packages.manifest().slots(),
         }
     }
 
     /// The terms of a session by these rules on the server `server_key`, whose seed chain
-    /// `seed_commitment` commits to, at `tick_hz`, its inputs within `inputs`; an error when the
-    /// mode does not run at `tick_hz`.
+    /// `seed_commitment` commits to, at `tick_hz`, its inputs within `inputs`, its slots opened
+    /// as `slots` plans them; an error when the mode does not run at `tick_hz`, or when `slots`
+    /// plans none or more than the mode's teams have.
     pub fn terms(
         &self,
         server_key: XOnlyPublicKey,
         seed_commitment: SeedCommitment,
         tick_hz: NonZeroU32,
         inputs: InputRules,
+        slots: Vec<SlotPlan>,
     ) -> Result<SessionTerms, TermsError> {
         let terms = SessionTerms {
             server_key,
@@ -49,13 +54,15 @@ impl SessionRules {
             release: RELEASE.to_owned(),
             mode: self.mode,
             dependencies: self.dependencies.to_vec(),
+            slots,
         };
         self.check(&terms)?;
         Ok(terms)
     }
 
     /// Whether `terms` name a session by these rules: of this release, of the mode and the
-    /// dependencies, in their order, and at a rate the mode runs at.
+    /// dependencies, in their order, at a rate the mode runs at, and of a slot at least and no
+    /// more than the mode's teams have.
     pub fn check(&self, terms: &SessionTerms) -> Result<(), TermsError> {
         SessionRules::check_release(terms)?;
         if terms.mode != self.mode {
@@ -63,6 +70,13 @@ impl SessionRules {
         }
         if *terms.dependencies != *self.dependencies {
             return Err(TermsError::OtherDependencies);
+        }
+        let slots = u64::try_from(terms.slots.len()).expect("a slot count fits u64");
+        if slots == 0 || slots > self.slots {
+            return Err(TermsError::Slots {
+                slots,
+                most: self.slots,
+            });
         }
         self.runs_at(terms.tick_hz)
     }

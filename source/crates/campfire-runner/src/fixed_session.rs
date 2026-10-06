@@ -5,8 +5,8 @@ use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{
-    Delegation, DelegationTerms, InputChain, SeedChain, ServerSeed, SessionHeader, SessionLog,
-    SessionTerms,
+    Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, ServerInput, ServerSeed,
+    SessionHeader, SessionId, SessionLog, SessionTerms, Signature, SlotPlan, SlotStart,
 };
 
 use crate::fixed_match::FixedMatch;
@@ -15,19 +15,24 @@ use crate::runner::Runner;
 use crate::session_rules::SessionRules;
 
 /// A session of a mode's packages for tests and checks, whose server and players hold fixed keys:
-/// every run signs alike, so every run of the same inputs gives the same log and state.
+/// every run signs alike, so every run of the same inputs gives the same log and state. The
+/// player of slot `n` holds the same keys whether the session starts them in it or they join it
+/// later.
 #[derive(Debug)]
 pub struct FixedSession {
     packages: ModePackages,
     terms: SessionTerms,
-    players: u32,
 }
 
 /// The seed chain of every fixed session.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
-/// The server's key, the x of a point on the curve.
+/// The server's key, which signs its inputs.
+fn server_keypair() -> Keypair {
+    FixedSession::key(8)
+}
+
 fn server_key() -> XOnlyPublicKey {
-    XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap()
+    server_keypair().x_only_public_key().0
 }
 
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
@@ -49,22 +54,31 @@ impl FixedSession {
         players: u32,
         rules: InputRules,
     ) -> FixedSession {
+        let plan = vec![SlotPlan::Player; usize::try_from(players).expect("players fit usize")];
+        FixedSession::planned(packages, tick_hz, rules, plan)
+    }
+
+    /// A session of `packages` at `tick_hz`, its inputs within `rules`, its slots as `plan` opens
+    /// them.
+    pub fn planned(
+        packages: ModePackages,
+        tick_hz: NonZeroU32,
+        rules: InputRules,
+        plan: Vec<SlotPlan>,
+    ) -> FixedSession {
         let terms = SessionRules::of(&packages)
-            .terms(server_key(), SEED_CHAIN.commitment(), tick_hz, rules)
+            .terms(server_key(), SEED_CHAIN.commitment(), tick_hz, rules, plan)
             .unwrap_or_else(|error| panic!("{error}"));
-        FixedSession {
-            packages,
-            terms,
-            players,
-        }
+        FixedSession { packages, terms }
     }
 
     pub const fn packages(&self) -> &ModePackages {
         &self.packages
     }
 
-    pub const fn players(&self) -> u32 {
-        self.players
+    /// The slots the session plays, whoever controls them.
+    pub fn slots(&self) -> u32 {
+        u32::try_from(self.terms.slots.len()).expect("the terms count slots in u32")
     }
 
     /// The session's terms.
@@ -72,13 +86,18 @@ impl FixedSession {
         &self.terms
     }
 
-    /// The header of a session of `terms` with this session's players, each delegation signed
-    /// for `terms`.
+    /// The header of a session of `terms` with a start for each slot `terms` plans, each
+    /// player's delegation signed for `terms`.
     pub fn header(&self, terms: SessionTerms) -> SessionHeader {
-        let players = (0..self.players)
-            .map(|slot| FixedSession::delegation(&terms, slot))
+        let slots = (0..)
+            .zip(&terms.slots)
+            .map(|(slot, plan)| match plan {
+                SlotPlan::Player => SlotStart::player(FixedSession::delegation(&terms, slot)),
+                SlotPlan::Bot => SlotStart::Bot,
+                SlotPlan::Open => SlotStart::Open,
+            })
             .collect();
-        SessionHeader { terms, players }
+        SessionHeader { terms, slots }
     }
 
     /// The log of the session, as it starts, its seed not yet revealed.
@@ -94,19 +113,33 @@ impl FixedSession {
     /// A match at tick 0, its players joined, none of their inputs sent yet.
     pub fn start(&self) -> FixedMatch {
         let check = LogCheck::start();
-        let log = self.log();
-        let chains = log
-            .header()
-            .players
-            .iter()
-            .zip(0..)
-            .map(|(delegation, slot)| {
-                InputChain::new(PlayerSlot::new(slot), delegation.chain_root())
-            })
+        let chains = (0..self.slots())
+            .map(|slot| FixedSession::chain(&self.terms, slot))
             .collect();
-        let runner = Runner::new(log, FixedSession::seed(), &self.packages)
+        let runner = Runner::new(self.log(), FixedSession::seed(), &self.packages)
             .unwrap_or_else(|error| panic!("{error}"));
-        FixedMatch::new(runner, chains, self.terms.session_id(), check)
+        FixedMatch::new(runner, chains, self.terms.clone(), check)
+    }
+
+    /// The server's signature of `input` at `place` in the session of `session_id`.
+    pub fn server_signature(
+        input: &ServerInput,
+        session_id: SessionId,
+        place: InputPlace,
+    ) -> Signature {
+        input.sign(
+            &Secp256k1::new(),
+            &server_keypair(),
+            session_id,
+            place,
+            &AUX,
+        )
+    }
+
+    /// Player `slot`'s chain, as they start it in a session of `terms`, from its first input.
+    pub(crate) fn chain(terms: &SessionTerms, slot: u32) -> InputChain {
+        let root = FixedSession::delegation(terms, slot).chain_root();
+        InputChain::new(PlayerSlot::new(slot), root)
     }
 
     /// Player `slot`'s session key.
@@ -123,7 +156,7 @@ impl FixedSession {
     }
 
     /// Player `slot`'s delegation in a session of `terms`.
-    fn delegation(terms: &SessionTerms, slot: u32) -> Delegation {
+    pub(crate) fn delegation(terms: &SessionTerms, slot: u32) -> Delegation {
         let delegated = DelegationTerms {
             session_key: FixedSession::session_key(slot).x_only_public_key().0,
             server_key: server_key(),
