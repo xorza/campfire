@@ -6,4 +6,6 @@ Design: [Navigation](../design/04-capabilities/navigation.md). Rules: [Issue log
 
 ## Research
 
+- Each creep of a wave's group asks for its own route, from nearly the same cell to the same lane end, so the 3v3's 24 creeps of a wave plan about four distinct routes six times each, up to the planner's work limit for a tick and into the next tick ([Hot stages](../design/13-benches.md#hot-stages), Move).
+
 ## Ready
