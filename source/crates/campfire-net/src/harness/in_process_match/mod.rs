@@ -105,24 +105,6 @@ pub(crate) struct StepCost {
     pub(crate) server: Duration,
 }
 
-impl StepCost {
-    /// Each end's worse of `self` and `other`.
-    fn worst(self, other: StepCost) -> StepCost {
-        StepCost {
-            client: self.client.max(other.client),
-            server: self.server.max(other.server),
-        }
-    }
-
-    /// Each end's sum of `self` and `other`.
-    fn sum(self, other: StepCost) -> StepCost {
-        StepCost {
-            client: self.client + other.client,
-            server: self.server + other.server,
-        }
-    }
-}
-
 /// An app of a match: the server's, or a client's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum End {
@@ -881,6 +863,24 @@ pub(crate) mod bench {
 
     /// The data directories the benches of this process made, each a new one.
     static DATA_DIRS: AtomicU64 = AtomicU64::new(0);
+
+    impl StepCost {
+        /// Each end's worse of `self` and `other`.
+        fn worst(self, other: StepCost) -> StepCost {
+            StepCost {
+                client: self.client.max(other.client),
+                server: self.server.max(other.server),
+            }
+        }
+
+        /// Each end's sum of `self` and `other`.
+        fn sum(self, other: StepCost) -> StepCost {
+            StepCost {
+                client: self.client + other.client,
+                server: self.server + other.server,
+            }
+        }
+    }
 
     impl InProcessMatch {
         /// A solo match whose client rolls back as `rollback` says, started, for `walk_steps`.
