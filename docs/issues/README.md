@@ -16,6 +16,7 @@ One file for each system, which lists its open problems. The rules are in [AGENT
 - [Server](server.md)
 - [Net](net.md)
 - [Log](log.md)
+- [Store](store.md)
 - [Client](client.md)
 - [Launcher](launcher.md)
 - [Content](content.md)

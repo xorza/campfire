@@ -17,6 +17,7 @@ flowchart TB
     subgraph services["Services"]
         net
         content:::planned
+        store:::planned
         identity:::planned
         ownership:::planned
         payments:::planned
@@ -37,6 +38,7 @@ flowchart TB
     verifier --> runner
     lancheck --> verifier
     lancheck --> net
+    net --> store
     runner --> package
     runner --> protocol
     package --> capabilities
@@ -70,6 +72,7 @@ Each layer uses the layers below it.
 | `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | built | Lightyear over QUIC (WebTransport): handshake, replication; internal |
 | `log` | built | The binaries' log output: text on standard error, and JSON lines into a file; the events a tool reads back from those lines |
+| `store` | planned | Durable and secret files, data directories and their locks, and the worker threads that write them, each with its failure ([Storage and workers](11-storage.md)) |
 | `launcher` | planned | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | built | Bevy app: rendering, input, UI, audio, prediction |
 | `content` | planned | Package signatures, pinning, cache, Blossom fetch |
