@@ -12,6 +12,5 @@ Design: [Modules](../design/02-engine-core.md#modules), `runner`. Rules: [Issue 
 
 ## Ready
 
-- **Plan: B13.** The worst cases, `server_tick/worst_3v3` and `worst_3v3_checkpointed`, measure only a match's first tick, 3.9 ms to 4.5 ms against about 1.3 ms for the next: the sim schedule's first build and the pathing grid's first labels. No checkpoint copies in tick 0, so the checkpointed case cannot show the copy's cost, which design 10's Cost line reads from it.
 
 
