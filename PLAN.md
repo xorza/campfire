@@ -6,7 +6,9 @@ The concrete steps of the current stages of the [roadmap](ROADMAP.md), in order,
 
 The design is [Benches](docs/design/13-benches.md): three tiers, one rule for a case's id, a case for each stage of the tick, and a kernel for each path past 10 % of a tick. Each step ends with `-- --list` printing its ids, and the check chain with `cargo test --bench '*'` passing for its crates.
 
-1. **B12. A client's re-simulated 3v3 tick** (net; [Bevy](docs/design/02-engine-core.md#bevy), Measured): no case measures it, so design 02 bounds an 8-tick rollback by eight of the server's worst ticks after the first, 10 ms. Propose in design 13 how a case plays a predicting client through the 3v3 and times its re-simulated ticks, for review; then the case, and design 02's bound from its figure.
+B12's case waits for review: [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#a-clients-re-simulated-3v3-tick-b12).
+
+1. **B12. A client's re-simulated 3v3 tick** (net; [A client's re-simulated 3v3 tick](docs/design/13-benches.md#a-clients-re-simulated-3v3-tick)): the case of the reviewed option; design 02's bound of an 8-tick rollback from its figure, in place of eight of the server's worst ticks after the first, 10 ms.
 
 ## Core
 
