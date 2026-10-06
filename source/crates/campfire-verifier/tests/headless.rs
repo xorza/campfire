@@ -343,7 +343,7 @@ fn standing(x: i64, z: i64) -> Hero {
 }
 
 /// Player 0's leave of slot 0, the slot becoming `becomes`.
-fn leave(becomes: AfterLeave) -> ServerInput {
+fn leave(becomes: AfterLeave) -> ServerInput<'static> {
     ServerInput::Leave {
         slot: PlayerSlot::new(0),
         reason: LeaveReason::Asked,
@@ -363,7 +363,7 @@ fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
             let payload = move_order(fixed, 1, 3, 2);
             let order = ServerInput::Bot {
                 slot: PlayerSlot::new(1),
-                payload,
+                payload: &payload,
             };
             fixed.serve(order).unwrap();
         }

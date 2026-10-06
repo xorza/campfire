@@ -34,7 +34,7 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
     let inputs = [
         ServerInput::Bot {
             slot,
-            payload: vec![1, 2, 3],
+            payload: &[1, 2, 3],
         },
         ServerInput::Join {
             slot,

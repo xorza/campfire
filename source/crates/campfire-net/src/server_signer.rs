@@ -47,7 +47,7 @@ impl ServerSigner {
     pub(crate) fn serve(
         &self,
         session: &mut Session,
-        input: ServerInput,
+        input: ServerInput<'_>,
     ) -> Result<(), ServerInputRefused> {
         let log = session.log();
         let mut aux = [0; 32];

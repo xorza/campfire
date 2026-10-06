@@ -37,12 +37,12 @@ fn keypair(secret: u8) -> Keypair {
 #[test]
 fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let data = Scratch::new("local-server");
-    let lane = || ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap();
-    let packages = lane();
+    let packages =
+        Arc::new(ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap());
     let tick = TickRate::new(packages.manifest().tick_hz.default()).length();
     let pace = Arc::new(Pace::default());
     let mut server = LocalServer::start(LocalServerSetup {
-        packages: lane(),
+        packages: Arc::clone(&packages),
         data: data.0.clone(),
         bots: Vec::new(),
         pace,
@@ -63,7 +63,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
             session_key: keypair(2),
             server: server.pin(),
             local: true,
-            packages: Arc::new(packages),
+            packages,
             clock: || 1_700_000_000,
             entropy: |bytes| bytes.fill(4),
             data: None,

@@ -127,7 +127,7 @@ fn main() -> ExitCode {
         }
     };
     let packages = match load_mode(&args) {
-        Ok(packages) => packages,
+        Ok(packages) => Arc::new(packages),
         Err(code) => return code,
     };
     let script = match args.bot.as_deref().map(read_script).transpose() {
@@ -142,7 +142,7 @@ fn main() -> ExitCode {
         Err(code) => return code,
     };
     let pace = Arc::new(Pace::default());
-    let mut connection = match Connection::open(&args, &pace) {
+    let mut connection = match Connection::open(&args, &packages, &pace) {
         Ok(connection) => connection,
         Err(code) => return code,
     };
@@ -165,7 +165,7 @@ fn main() -> ExitCode {
             session_key: keypair(),
             server: pin,
             local,
-            packages: Arc::new(packages),
+            packages,
             clock: unix_now,
             entropy: fill,
             data: args.data.clone(),

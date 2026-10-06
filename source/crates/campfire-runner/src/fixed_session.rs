@@ -129,7 +129,7 @@ impl FixedSession {
 
     /// The server's signature of `input` at `place` in the session of `session_id`.
     pub fn server_signature(
-        input: &ServerInput,
+        input: &ServerInput<'_>,
         session_id: SessionId,
         place: InputPlace,
     ) -> Signature {

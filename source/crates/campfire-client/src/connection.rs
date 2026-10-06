@@ -8,6 +8,7 @@ use bevy::ecs::entity::Entity;
 use campfire_net::{
     LocalPace, LocalRelink, LocalServer, LocalServerSetup, Pace, ServerPin, SlotBot,
 };
+use campfire_package::ModePackages;
 use lightyear::prelude::client::WebTransportClientIo;
 use lightyear::prelude::{LocalAddr, PeerAddr};
 use tracing::error;
@@ -23,9 +24,13 @@ pub(crate) enum Connection {
 }
 
 impl Connection {
-    /// The server `args` names; a local one starts, following `pace`. The exit code when a local
-    /// server does not start.
-    pub(crate) fn open(args: &Args, pace: &Arc<Pace>) -> Result<Connection, ExitCode> {
+    /// The server `args` names; a local one starts, of the mode `packages` holds, following
+    /// `pace`. The exit code when a local server does not start.
+    pub(crate) fn open(
+        args: &Args,
+        packages: &Arc<ModePackages>,
+        pace: &Arc<Pace>,
+    ) -> Result<Connection, ExitCode> {
         match &args.server {
             &Server::Remote {
                 address,
@@ -41,7 +46,7 @@ impl Connection {
                 address,
             }),
             Server::Local { bots } => {
-                Connection::start_local(args, bots, pace).map(Connection::Local)
+                Connection::start_local(args, packages, bots, pace).map(Connection::Local)
             }
         }
     }
@@ -86,15 +91,15 @@ impl Connection {
         }
     }
 
-    /// Starts the local server of the mode `args` names, its data in `server` under the
+    /// Starts the local server of the mode `packages` holds, its data in `server` under the
     /// client's data directory, its bots those of `bots`, following `pace`; the exit code when
     /// it does not start.
     fn start_local(
         args: &Args,
+        packages: &Arc<ModePackages>,
         bots: &[BotFile],
         pace: &Arc<Pace>,
     ) -> Result<LocalServer, ExitCode> {
-        let packages = crate::load_mode(args)?;
         let mut slots = Vec::with_capacity(bots.len());
         for bot in bots {
             let script = crate::read_script(&bot.path).map_err(|problem| {
@@ -109,7 +114,7 @@ impl Connection {
             .expect("--local has --data")
             .join("server");
         LocalServer::start(LocalServerSetup {
-            packages,
+            packages: Arc::clone(packages),
             data,
             bots: slots,
             pace: Arc::clone(pace),

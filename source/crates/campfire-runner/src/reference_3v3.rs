@@ -371,7 +371,10 @@ impl Reference3v3 {
                 }
                 SlotPlan::Bot => {
                     let slot = PlayerSlot::new(slot);
-                    let pick = ServerInput::Bot { slot, payload };
+                    let pick = ServerInput::Bot {
+                        slot,
+                        payload: &payload,
+                    };
                     fixed.serve(pick).unwrap_or_else(|error| panic!("{error}"));
                 }
                 SlotPlan::Open => {}

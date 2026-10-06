@@ -349,9 +349,9 @@ impl LocalMatch {
     }
 
     /// Every input the server logged, in the order logged.
-    pub fn server_inputs(&self) -> Vec<ServerInput> {
+    pub fn server_inputs(&self) -> Vec<ServerInput<'_>> {
         let session = self.server.world().resource::<Session>();
-        session.log().server_inputs().cloned().collect()
+        session.log().server_inputs().collect()
     }
 
     /// The server's key pair, which signs what it logs.

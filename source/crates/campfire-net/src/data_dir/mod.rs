@@ -1,4 +1,4 @@
-use std::fs::{self, File, TryLockError};
+use std::fs::{DirBuilder, File, TryLockError};
 use std::path::Path;
 
 use campfire_protocol::KeyFile;
@@ -9,7 +9,8 @@ use crate::data_dir::error::DataDirError;
 pub(crate) mod error;
 
 /// A server's data directory, which it holds locked while it runs, so no second server writes
-/// what it writes: its key, `server.nsec`, made when missing, and its sessions.
+/// what it writes: its key, `server.nsec`, made when missing, and its sessions. On Unix the
+/// directory it makes and its `lock` are its owner's only, as every file in it is.
 #[derive(Debug)]
 pub struct DataDir {
     pub key: Keypair,
@@ -20,11 +21,18 @@ pub struct DataDir {
 impl DataDir {
     /// The data directory at `path`, made when missing, its new key's bytes from `fill`.
     pub fn open(path: &Path, fill: fn(&mut [u8; 32])) -> Result<DataDir, DataDirError> {
-        fs::create_dir_all(path).map_err(DataDirError::Create)?;
-        let lock = File::options()
-            .write(true)
-            .create(true)
-            .truncate(false)
+        let mut builder = DirBuilder::new();
+        builder.recursive(true);
+        let mut options = File::options();
+        options.write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+            builder.mode(0o700);
+            options.mode(0o600);
+        }
+        builder.create(path).map_err(DataDirError::Create)?;
+        let lock = options
             .open(path.join("lock"))
             .map_err(DataDirError::Lock)?;
         match lock.try_lock() {
@@ -40,7 +48,7 @@ impl DataDir {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, process};
+    use std::{env, fs, process};
 
     use super::*;
 
@@ -54,6 +62,12 @@ mod tests {
             DataDir::open(&path, |bytes| bytes.fill(4)),
             Err(DataDirError::Locked)
         ));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+            assert_eq!((mode(&path), mode(&path.join("lock"))), (0o700, 0o600));
+        }
         let key = first.key;
         drop(first);
         let again = DataDir::open(&path, |bytes| bytes.fill(4)).unwrap();

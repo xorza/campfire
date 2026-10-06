@@ -7,7 +7,6 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::{DelegationError, ScopeError};
 use crate::seed_chain::SeedChain;
-use crate::server_input::LeaveReason;
 use crate::session_result::{Outcome, SessionResult};
 use crate::slot_plan::SlotPlan;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
@@ -1126,7 +1125,7 @@ fn mixed_log() -> SessionLog {
 }
 
 /// `input` signed by the server key at the next place of `log`, recorded into it.
-fn serve(log: &mut SessionLog, input: ServerInput) -> Result<(), ServerInputError> {
+fn serve(log: &mut SessionLog, input: ServerInput<'_>) -> Result<(), ServerInputError> {
     let signature = input.sign(
         &Secp256k1::new(),
         &server_keypair(),
@@ -1159,7 +1158,7 @@ fn mixed_packet(
 
 /// Player `main`'s join of `slot` with the session key of `key`, in the session of
 /// `mixed_terms`.
-fn joins(slot: u32, main: u32, key: u32) -> ServerInput {
+fn joins(slot: u32, main: u32, key: u32) -> ServerInput<'static> {
     ServerInput::Join {
         slot: PlayerSlot::new(slot),
         delegation: mixed_delegation(main, key),
@@ -1167,7 +1166,7 @@ fn joins(slot: u32, main: u32, key: u32) -> ServerInput {
 }
 
 /// The leave of `slot`'s player after the grace period, the slot becoming `becomes`.
-fn leaves(slot: u32, becomes: AfterLeave) -> ServerInput {
+fn leaves(slot: u32, becomes: AfterLeave) -> ServerInput<'static> {
     ServerInput::Leave {
         slot: PlayerSlot::new(slot),
         reason: LeaveReason::Grace,
@@ -1175,17 +1174,17 @@ fn leaves(slot: u32, becomes: AfterLeave) -> ServerInput {
     }
 }
 
-fn bot(slot: u32, payload: &[u8]) -> ServerInput {
+fn bot(slot: u32, payload: &[u8]) -> ServerInput<'_> {
     ServerInput::Bot {
         slot: PlayerSlot::new(slot),
-        payload: payload.to_vec(),
+        payload,
     }
 }
 
 /// Server inputs a log of `mixed_log` refuses before tick 1 for their structure alone: a bot's
 /// commands for a player's slot, a join of a player's slot, a leave of the bot's, a renewal by
 /// another main key, a join of a delegation of another session, and an input for no slot.
-fn refused_by_structure() -> [(ServerInput, ServerInputError); 6] {
+fn refused_by_structure() -> [(ServerInput<'static>, ServerInputError); 6] {
     let renewal = ServerInput::Renew {
         slot: PlayerSlot::new(0),
         delegation: mixed_delegation(1, 1),
@@ -1346,7 +1345,7 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     assert_eq!(log.server_inputs().count(), 7);
     assert!(matches!(
         log.server_inputs().last(),
-        Some(ServerInput::Join { slot: taken, .. }) if *taken == slot(2)
+        Some(ServerInput::Join { slot: taken, .. }) if taken == slot(2)
     ));
     // Player 0 takes their own slot back from the bot; a third player may not take player 1's.
     // Player 1 leaves slot 2, reserved for them: another player may not take it either.

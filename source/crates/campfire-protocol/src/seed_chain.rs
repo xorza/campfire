@@ -38,12 +38,12 @@ impl SeedChain {
         seed
     }
 
-    /// `C(s_0)`, what the session's terms commit to.
     /// Every segment's seed, as the server that holds the chain knows them.
     pub const fn seeds(&self) -> ServerSeeds {
         ServerSeeds::new(self.len.get() - 1, self.root)
     }
 
+    /// `C(s_0)`, what the session's terms commit to.
     pub fn commitment(&self) -> SeedCommitment {
         self.seed(0).commitment()
     }

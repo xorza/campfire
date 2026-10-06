@@ -1,8 +1,9 @@
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey, schnorr};
 use serde::{Deserialize, Serialize};
 
-/// A session key's BIP-340 signature, `R.x ‖ s`: over a player's chain head, or over a connect
-/// challenge. Kept as its two halves because serde encodes arrays of at most 32 elements.
+/// A BIP-340 signature, `R.x ‖ s`: a session key's over a player's chain head or a connect
+/// challenge, or the server key's over a server input, a checkpoint, a result or a receipt. Kept
+/// as its two halves because serde encodes arrays of at most 32 elements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Signature {
     r: [u8; 32],

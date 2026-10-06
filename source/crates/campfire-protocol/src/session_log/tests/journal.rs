@@ -51,11 +51,21 @@ fn a_journal_rebuilds_the_log_it_followed() {
     assert_eq!(begun.segment_starting(Tick::new(1)), Some(1));
     assert_eq!(begun.checkpoint_at(Tick::new(1)), None);
 
-    // A journal with no header, or a record past it that the log refuses: the packet again,
-    // whose first stamp, 0, goes back from its last, 1.
+    // A journal with no header; a seal after the result; a checkpoint's begin after the first
+    // packet, before its tick is sealed; or a record past the header that the log refuses: the
+    // packet again, whose first stamp, 0, goes back from its last, 1.
     assert_eq!(
         SessionLog::from_journal(all[1..].iter().copied()).err(),
         Some(JournalReplayError::NoHeader)
+    );
+    let ended = all.iter().copied().chain([all[3]]);
+    assert_eq!(
+        SessionLog::from_journal(ended).err(),
+        Some(JournalReplayError::AfterResult { record: 8 })
+    );
+    assert_eq!(
+        SessionLog::from_journal([all[0], all[1], all[4]]).err(),
+        Some(JournalReplayError::CheckpointMidTick { record: 2 })
     );
     let again = [all[0], all[1], all[1]];
     assert_eq!(

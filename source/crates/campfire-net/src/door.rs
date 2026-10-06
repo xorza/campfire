@@ -229,7 +229,7 @@ impl Door {
     }
 
     /// Logs `input`, signed by the server.
-    fn serve(world: &mut World, input: ServerInput) -> Result<(), JoinError> {
+    fn serve(world: &mut World, input: ServerInput<'_>) -> Result<(), JoinError> {
         world.resource_scope(|world, mut session: Mut<'_, Session>| {
             world
                 .resource::<ServerSigner>()

@@ -49,6 +49,7 @@ use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
 use crate::offering::{Offering, Superseding};
+use crate::pace::Speed;
 use crate::receipts::Receipts;
 use crate::seats::Seats;
 use crate::server_bots::ServerBots;
@@ -246,7 +247,8 @@ impl SimServer {
         world.insert_resource(MatchClock::new(start));
         let next = world.resource::<Session>().log().next_tick();
         world.insert_resource(FrameStart(next));
-        world.insert_resource(BotDriver::new(bots, next));
+        let driver = BotDriver::new(bots, next, world);
+        world.insert_resource(driver);
         for &(slot, client) in clients {
             let team = Mode::team_of(world, slot).expect("every player has a team");
             world.entity_mut(client).insert(PlayerLink::new(slot, team));
@@ -336,7 +338,8 @@ impl SimServer {
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::resumed(start, next));
         world.insert_resource(FrameStart(next));
-        world.insert_resource(BotDriver::new(bots, next));
+        let driver = BotDriver::new(bots, next, world);
+        world.insert_resource(driver);
         Ok(())
     }
 
@@ -426,13 +429,15 @@ impl SimServer {
     }
 
     /// Bounds the server's frames for a session of `terms`: a frame advances its clock by the
-    /// ticks of the max input delay less one at most, a tick at least.
+    /// ticks of the max input delay less one at most, a tick at least, each as long as the
+    /// clock's tick now, which a local match's pace may have set before the match started or
+    /// restored.
     fn bound_frames(world: &mut World, terms: &SessionTerms) {
-        let tick = TickRate::new(terms.tick_hz).length();
-        assert_eq!(
-            world.resource::<TickDuration>().0,
-            tick,
-            "the server ticks at the session's rate"
+        let session = TickRate::new(terms.tick_hz).length();
+        let tick = world.resource::<TickDuration>().0;
+        assert!(
+            Speed::ALL.iter().any(|speed| speed.tick(session) == tick),
+            "the server ticks at the session's rate at a speed, not every {tick:?}"
         );
         let burst = terms.max_input_delay.get().saturating_sub(1).max(1);
         let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");

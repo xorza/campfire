@@ -13,11 +13,12 @@ pub(crate) mod error;
 const SIGNATURE_DOMAIN: &[u8] = b"campfire/server-input/v1";
 
 /// An input the server makes and signs with its key, logged before the tick it applies in: a
-/// bot's commands, and each change of who controls a slot or of a player's link.
+/// bot's commands, and each change of who controls a slot or of a player's link. A bot's payload
+/// is borrowed, from where the server wrote it or the bytes it was read from.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ServerInput {
+pub enum ServerInput<'a> {
     /// Commands of the slot's bot, in the same format as a player's payload.
-    Bot { slot: PlayerSlot, payload: Vec<u8> },
+    Bot { slot: PlayerSlot, payload: &'a [u8] },
     /// The player of `delegation` takes the slot, their chain starting from its id.
     Join {
         slot: PlayerSlot,
@@ -87,7 +88,7 @@ enum Wire<'a> {
     },
 }
 
-impl ServerInput {
+impl<'a> ServerInput<'a> {
     /// The slot it is about.
     pub const fn slot(&self) -> PlayerSlot {
         match self {
@@ -107,15 +108,17 @@ impl ServerInput {
 
     /// The input at the front of `bytes`, and the bytes after it; an error for bytes that do not
     /// decode, and for a delegation that does not parse.
-    pub(crate) fn take(bytes: &[u8]) -> Result<(ServerInput, &[u8]), ServerInputDecodeError> {
-        let (wire, rest) = postcard::take_from_bytes::<Wire<'_>>(bytes)
+    pub(crate) fn take(
+        bytes: &'a [u8],
+    ) -> Result<(ServerInput<'a>, &'a [u8]), ServerInputDecodeError> {
+        let (wire, rest) = postcard::take_from_bytes::<Wire<'a>>(bytes)
             .map_err(ServerInputDecodeError::Malformed)?;
         let delegation =
             |json: &str| Delegation::parse(json).map_err(ServerInputDecodeError::Delegation);
         let input = match wire {
             Wire::Bot { slot, payload } => ServerInput::Bot {
                 slot: PlayerSlot::new(slot),
-                payload: payload.to_vec(),
+                payload,
             },
             Wire::Join {
                 slot,

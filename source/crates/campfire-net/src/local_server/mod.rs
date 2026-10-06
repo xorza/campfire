@@ -104,7 +104,7 @@ struct Restart(Arc<AtomicBool>);
 /// What a local server starts with.
 #[derive(Debug)]
 pub struct LocalServerSetup {
-    pub packages: ModePackages,
+    pub packages: Arc<ModePackages>,
     /// Its data directory, which it holds locked while it runs.
     pub data: PathBuf,
     /// The bots it plays, none in slot 0.
@@ -159,7 +159,6 @@ impl LocalServer {
             .filter(|&slot| bots.iter().all(|bot| bot.slot != slot))
             .collect();
         let tick_hz = packages.manifest().tick_hz.default();
-        let packages = Arc::new(packages);
         let bots = ServerBots {
             slots: bots,
             takeover: None,

@@ -80,7 +80,7 @@ impl Runner {
     /// See `Session::record_server`.
     pub fn record_server(
         &mut self,
-        input: ServerInput,
+        input: ServerInput<'_>,
         signature: &Signature,
     ) -> Result<(), ServerInputRefused> {
         self.world

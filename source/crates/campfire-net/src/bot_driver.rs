@@ -1,7 +1,7 @@
 use std::mem;
 use std::ops::Range;
 
-use bevy_ecs::query::With;
+use bevy_ecs::query::{QueryState, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{Experience, Order, Owner};
@@ -38,7 +38,12 @@ pub(crate) struct BotDriver {
     /// kept so no tick allocates.
     full: Vec<PlayerSlot>,
     kept: Vec<Waiting>,
+    /// The avatars, by their owners' slots, kept so no tick builds the query again.
+    avatars: Avatars,
 }
+
+/// The query of the avatars and their owners.
+type Avatars = QueryState<(&'static StableId, &'static Owner), With<Experience>>;
 
 /// A bot the driver plays: its slot, its script, and the tick the script's ticks count from.
 #[derive(Debug)]
@@ -56,9 +61,9 @@ struct Waiting {
 }
 
 impl BotDriver {
-    /// The driver of `bots`, from tick `next` on: what their scripts had for earlier ticks was
-    /// logged already, by the run a restore follows.
-    pub(crate) fn new(bots: ServerBots, next: Tick) -> BotDriver {
+    /// The driver of `bots` in the match of `world`, from tick `next` on: what their scripts had
+    /// for earlier ticks was logged already, by the run a restore follows.
+    pub(crate) fn new(bots: ServerBots, next: Tick, world: &mut World) -> BotDriver {
         let ServerBots { slots, takeover } = bots;
         let bots = slots
             .into_iter()
@@ -72,6 +77,7 @@ impl BotDriver {
             body: Vec::new(),
             full: Vec::new(),
             kept: Vec::new(),
+            avatars: world.query_filtered(),
         }
     }
 
@@ -113,8 +119,7 @@ impl BotDriver {
 
     /// Writes the payloads of what each bot's script has due by `tick`: its mode inputs, then
     /// its orders, for the slot's avatar.
-    fn write_due(&mut self, world: &mut World, tick: Tick) {
-        let mut avatars = world.query_filtered::<(&StableId, &Owner), With<Experience>>();
+    fn write_due(&mut self, world: &World, tick: Tick) {
         for driven in &mut self.bots {
             let since = tick
                 .since(driven.since)
@@ -128,7 +133,8 @@ impl BotDriver {
                     payload: start..self.payloads.len(),
                 });
             }
-            let avatar = avatars
+            let avatar = self
+                .avatars
                 .iter(world)
                 .find(|(_, owner)| owner.slot() == driven.slot)
                 .map(|(&id, _)| id);
@@ -166,10 +172,9 @@ impl BotDriver {
                 kept.push(waiting);
                 continue;
             }
-            let payload = self.payloads[waiting.payload.clone()].to_vec();
             let input = ServerInput::Bot {
                 slot: waiting.slot,
-                payload,
+                payload: &self.payloads[waiting.payload.clone()],
             };
             match signer.serve(session, input) {
                 Ok(()) => {}

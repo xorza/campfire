@@ -221,7 +221,7 @@ impl Session {
     /// controller it does not allow, before the log takes it.
     pub fn record_server(
         &mut self,
-        input: ServerInput,
+        input: ServerInput<'_>,
         signature: &Signature,
     ) -> Result<(), ServerInputRefused> {
         if let Some(change) = self

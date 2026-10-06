@@ -1,19 +1,23 @@
 //! A player's saves and loads on a local server: a save makes a checkpoint at the boundary after
 //! the next tick, unless the mode alone saves; a quick load goes back to the latest save, its
-//! server starts again on its data from it, every client plays on from it, and the published
-//! log's segments verify.
+//! server starts again on its data from it, at the speed the match plays at, every client plays
+//! on from it, and the published log's segments verify.
 
 use std::fs;
 use std::num::NonZeroU32;
 
+use bevy_time::{Time, Virtual};
 use campfire_capabilities::SaveBy;
 use campfire_common::PlayerSlot;
 use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
 use campfire_net::{
     InputsDiscarded, JoinState, PendingSaves, SaveCommand, SaveRefused, SessionDir, SimServer,
+    Speed,
 };
 use campfire_protocol::{Outcome, SeedChain, SessionLog};
-use campfire_runner::{Runner, Session};
+use campfire_runner::{InputRules, Runner, Session};
+use campfire_sim::TickRate;
+use lightyear::core::tick::TickDuration;
 
 use crate::Scratch;
 
@@ -88,8 +92,9 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     }
     assert!(log(&local).next_tick() > save.tick);
 
-    // The quick load: the server starts again on its data, the match at the save's tick and in
-    // its state, the log holding nothing after it.
+    // The quick load, at speed 2: the server starts again on its data, at that speed, the match
+    // at the save's tick and in its state, the log holding nothing after it.
+    local.pace().set_speed(Speed::Double);
     command(&mut local, SaveCommand::LoadLatest);
     for _ in 0..10 {
         local.step();
@@ -103,6 +108,12 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
         world.resource::<Session>().state_hash(world),
         save.state_hash
     );
+    // At speed 2 a tick lasts half the session's, and a frame runs the LAN's max input delay of
+    // 10 ticks less one at most.
+    let tick = TickRate::new(local.packages().manifest().tick_hz.default()).length();
+    assert_eq!(InputRules::LAN.max_input_delay.get(), 10);
+    assert_eq!(world.resource::<TickDuration>().0, tick / 2);
+    assert_eq!(world.resource::<Time<Virtual>>().max_delta(), tick / 2 * 9);
     assert_eq!(log(&local).checkpoints().collect::<Vec<_>>(), [&save]);
 
     // Every client comes back and plays on from the save.

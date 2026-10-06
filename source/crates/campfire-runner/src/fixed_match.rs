@@ -58,7 +58,7 @@ impl FixedMatch {
     }
 
     /// Logs `input` before the next tick, signed by the server at the place it takes.
-    pub fn serve(&mut self, input: ServerInput) -> Result<(), ServerInputRefused> {
+    pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefused> {
         let place = self.runner.log().next_place();
         let signature = FixedSession::server_signature(&input, self.terms.session_id(), place);
         self.runner.record_server(input, &signature)
