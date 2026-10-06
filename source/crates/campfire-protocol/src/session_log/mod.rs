@@ -1,5 +1,5 @@
 use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, VecDeque};
 use std::mem;
 use std::ops::Range;
 
@@ -14,6 +14,7 @@ use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot, Lo
 use crate::controller::Controller;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
+use crate::input_hash::InputHash;
 use crate::journal::Journal;
 use crate::journal::error::JournalReplayError;
 use crate::player_input::PlayerInput;
@@ -159,6 +160,28 @@ pub struct SessionLog {
     session_id: SessionId,
     /// Where each record the log takes goes as it takes it, once the server keeps one.
     journal: Option<Journal>,
+    /// The journaled packets not known durable yet, by record, and where each left its chain.
+    journaled: VecDeque<Journaled>,
+    /// Where each slot's chain stands in the records the journal synced, by slot.
+    durable: Vec<Option<DurableHead>>,
+}
+
+/// Where a player's chain stands after an input of theirs whose journal record is durable: the
+/// id of the delegation whose key signed the chain head then, the input's seq, and the head after
+/// it, as a receipt names them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DurableHead {
+    pub delegation: [u8; 32],
+    pub seq: u64,
+    pub head: InputHash,
+}
+
+/// A journaled packet: its record's index, its slot, and where it left its chain.
+#[derive(Debug, Clone, Copy)]
+struct Journaled {
+    record: u64,
+    slot: PlayerSlot,
+    head: DurableHead,
 }
 
 /// A slot as the log follows it: who controls it, the main key of the player who left it last,
@@ -361,6 +384,7 @@ impl SessionLog {
             return Err(HeaderError::SlotCount);
         }
         let session_id = header.terms.session_id();
+        let slots_len = header.slots.len();
         let mut slots = Vec::with_capacity(header.slots.len());
         let mut delegations = Vec::new();
         for ((slot, start), &plan) in (0..).zip(&header.slots).zip(&header.terms.slots) {
@@ -408,6 +432,8 @@ impl SessionLog {
             position_bound: POSITION_BOUND,
             session_id,
             journal: None,
+            journaled: VecDeque::new(),
+            durable: vec![None; slots_len],
         })
     }
 
@@ -628,6 +654,17 @@ impl SessionLog {
             signature: *signature,
         });
         self.journal_last_entry();
+        if let Some(journal) = &self.journal {
+            self.journaled.push_back(Journaled {
+                record: journal.appended() - 1,
+                slot,
+                head: DurableHead {
+                    delegation: *self.delegations[delegation as usize].id(),
+                    seq: chain.next_seq() - 1,
+                    head: chain.head(),
+                },
+            });
+        }
         Ok(())
     }
 
@@ -752,6 +789,7 @@ impl SessionLog {
                 held.leaver = None;
                 held.stamps = StampCount::default();
                 self.forget_pending(slot);
+                self.forget_durable(slot);
             }
             ServerInput::Renew { delegation, .. } => {
                 let index = self.push_delegation(delegation);
@@ -771,6 +809,7 @@ impl SessionLog {
                 };
                 held.stamps = StampCount::default();
                 self.forget_pending(slot);
+                self.forget_durable(slot);
             }
             ServerInput::Connected { .. } | ServerInput::Disconnected { .. } => {}
         }
@@ -1289,10 +1328,41 @@ impl SessionLog {
     }
 
     /// Keeps `journal`, which holds every record the log took, as the log was rebuilt from it:
-    /// from then on each record the log takes goes to it as it takes it.
+    /// from then on each record the log takes goes to it as it takes it. Every chain stands
+    /// durably where the log holds it, as the journal was read back from the disk.
     pub fn resume_journal(&mut self, journal: Journal) {
         assert!(self.journal.is_none(), "a log keeps one journal");
         self.journal = Some(journal);
+        for (durable, held) in self.durable.iter_mut().zip(&self.slots) {
+            let Control::Player { delegation, chain } = held.control else {
+                continue;
+            };
+            *durable = chain.next_seq().checked_sub(1).map(|seq| DurableHead {
+                delegation: *self.delegations[delegation as usize].id(),
+                seq,
+                head: chain.head(),
+            });
+        }
+    }
+
+    /// Notes where each player's chain stands in the records the journal synced so far.
+    pub fn advance_durable(&mut self) {
+        let Some(journal) = &self.journal else {
+            return;
+        };
+        let durable = journal.watch().durable();
+        while let Some(journaled) = self.journaled.front()
+            && journaled.record < durable
+        {
+            self.durable[journaled.slot.index()] = Some(journaled.head);
+            self.journaled.pop_front();
+        }
+    }
+
+    /// Where `slot`'s player's chain stands in the records the journal synced, as of the last
+    /// `advance_durable`; none before any, and since a player took the slot or left it.
+    pub fn durable_head(&self, slot: PlayerSlot) -> Option<DurableHead> {
+        self.durable.get(slot.index()).copied().flatten()
     }
 
     /// The journal the log writes to, once it keeps one.
@@ -1366,6 +1436,12 @@ impl SessionLog {
                 true
             }
         }
+    }
+
+    /// Forgets where `slot`'s chain stands durably: a player took the slot, or left it.
+    fn forget_durable(&mut self, slot: PlayerSlot) {
+        self.durable[slot.index()] = None;
+        self.journaled.retain(|journaled| journaled.slot != slot);
     }
 
     /// Drops the inputs of `slot` still to apply, and starts its spill afresh: its controller

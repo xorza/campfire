@@ -2,6 +2,7 @@ mod bots;
 mod fog;
 mod lane;
 mod prototype;
+mod receipts;
 mod rejoin;
 mod restore;
 mod scenario;

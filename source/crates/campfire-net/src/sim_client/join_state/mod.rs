@@ -3,12 +3,14 @@ use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
-use campfire_protocol::secp256k1::Keypair;
-use campfire_protocol::{Delegation, DelegationTerms, InputChain, SessionId, SessionTerms};
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
+use campfire_protocol::{
+    Delegation, DelegationTerms, InputChain, SessionId, SessionTerms, SignedReceipt,
+};
 use campfire_runner::SessionRules;
 use lightyear::prelude::Tick as NetTick;
 
-use crate::error::TermsMismatch;
+use crate::error::{ReceiptRefusal, TermsMismatch};
 use crate::join::Join;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
@@ -87,35 +89,43 @@ pub(crate) struct JoinedSession {
     pub(crate) max_payload_len: u32,
 }
 
-/// What a player who answered holds: the session, their delegation, the times the offer gave,
-/// and, when they played before, their chain's history.
+/// What a player holds from their first answer on, through each link: the session, their
+/// delegation, the id of the one it renewed, the times the offer gave, and the newest receipt the
+/// server gave.
+#[derive(Debug)]
+pub(crate) struct Member {
+    pub(crate) session: JoinedSession,
+    delegation: Delegation,
+    /// The delegation the current one renewed, which signed the inputs before it: a receipt of
+    /// them names it.
+    renewed: Option<[u8; 32]>,
+    times: SessionTimes,
+    receipt: Option<SignedReceipt>,
+}
+
+/// What a player who answered holds: what they hold as a member, and, when they played before,
+/// their chain's history.
 #[derive(Debug)]
 struct Answered {
-    session: JoinedSession,
-    delegation: Delegation,
-    times: SessionTimes,
+    member: Member,
     history: Option<ChainHistory>,
 }
 
-/// The match the player plays: their session, their chain, its history since the log's copy last
-/// met it, and the clock of the match's ticks.
+/// The match the player plays: what they hold as a member, their chain, its history since the
+/// server's receipt or copy last met it, and the clock of the match's ticks.
 #[derive(Debug)]
 pub(crate) struct Playing {
-    pub(crate) session: JoinedSession,
+    pub(crate) member: Member,
     pub(crate) chain: InputChain,
     pub(crate) clock: MatchClock,
     history: ChainHistory,
-    delegation: Delegation,
-    times: SessionTimes,
 }
 
 /// A player whose link failed: what they played with, when the link failed by the client's real
 /// clock, and when they try it again.
 #[derive(Debug)]
 struct Rejoining {
-    session: JoinedSession,
-    delegation: Delegation,
-    times: SessionTimes,
+    member: Member,
     history: Option<ChainHistory>,
     lost_at: Duration,
     tries: u32,
@@ -234,47 +244,53 @@ impl JoinState {
         signer: &mut Signer,
     ) -> Option<Result<Join, TermsMismatch>> {
         let now = (self.player.clock)();
-        let answered = match &mut self.step {
+        let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Waiting => {
                 if let Err(mismatch) = self.player.fits(&offer.terms) {
                     self.step = Step::Refused(mismatch.clone());
                     return Some(Err(mismatch));
                 }
                 Answered {
-                    session: JoinedSession {
-                        id: offer.terms.session_id(),
-                        max_inputs: offer.terms.max_inputs_per_tick,
-                        max_payload_len: offer.terms.max_payload_len,
+                    member: Member {
+                        session: JoinedSession {
+                            id: offer.terms.session_id(),
+                            max_inputs: offer.terms.max_inputs_per_tick,
+                            max_payload_len: offer.terms.max_payload_len,
+                        },
+                        delegation: self.player.delegate(&offer.terms, signer, now),
+                        renewed: None,
+                        times: offer.times,
+                        receipt: None,
                     },
-                    delegation: self.player.delegate(&offer.terms, signer, now),
-                    times: offer.times,
                     history: None,
                 }
             }
             Step::Rejoining(rejoining) => {
-                if offer.terms.session_id() != rejoining.session.id {
+                let mut member = rejoining.member;
+                if offer.terms.session_id() != member.session.id {
                     let mismatch = TermsMismatch::OtherSession;
                     self.step = Step::Refused(mismatch.clone());
                     return Some(Err(mismatch));
                 }
-                let expires = rejoining.delegation.terms().expiration;
-                let delegation = if now.saturating_add(RENEW_MARGIN) >= expires {
+                if now.saturating_add(RENEW_MARGIN) >= member.delegation.terms().expiration {
                     signer.renew();
-                    self.player.delegate(&offer.terms, signer, now)
-                } else {
-                    rejoining.delegation.clone()
-                };
+                    let delegation = self.player.delegate(&offer.terms, signer, now);
+                    let renewed = mem::replace(&mut member.delegation, delegation);
+                    member.renewed = Some(*renewed.id());
+                }
+                member.times = offer.times;
                 Answered {
-                    session: rejoining.session,
-                    delegation,
-                    times: offer.times,
-                    history: rejoining.history.take(),
+                    member,
+                    history: rejoining.history,
                 }
             }
-            _ => return None,
+            other => {
+                self.step = other;
+                return None;
+            }
         };
         let join = Join {
-            delegation: answered.delegation.json().to_owned(),
+            delegation: answered.member.delegation.json().to_owned(),
             answer: signer.answer(offer.challenge, &self.player.server.certificate),
         };
         self.step = Step::Answered(answered);
@@ -293,9 +309,11 @@ impl JoinState {
                 return Started::No;
             }
         };
+        let mut member = answered.member;
         let (chain, history, discarded) = match (start.chain, answered.history) {
             (None, _) => {
-                let chain = InputChain::new(start.slot, answered.delegation.chain_root());
+                let chain = InputChain::new(start.slot, member.delegation.chain_root());
+                member.receipt = None;
                 (chain, ChainHistory::of(&chain), 0)
             }
             (Some(head), Some(mut history)) => {
@@ -313,12 +331,10 @@ impl JoinState {
             }
         };
         self.step = Step::Playing(Playing {
-            session: answered.session,
+            member,
             chain,
             clock: MatchClock::resumed(NetTick(start.start_tick), start.first),
             history,
-            delegation: answered.delegation,
-            times: answered.times,
         });
         Started::Playing { discarded }
     }
@@ -326,19 +342,9 @@ impl JoinState {
     /// Notes that the client's link failed at `now`, by its real clock: a client that knows the
     /// server's times tries again, its chain's history kept; one that does not stops.
     pub(crate) fn lose(&mut self, now: Duration, random: [u8; 32]) -> LinkLoss {
-        let (session, delegation, times, history) = match mem::replace(&mut self.step, Step::Left) {
-            Step::Playing(playing) => (
-                playing.session,
-                playing.delegation,
-                playing.times,
-                Some(playing.history),
-            ),
-            Step::Answered(answered) => (
-                answered.session,
-                answered.delegation,
-                answered.times,
-                answered.history,
-            ),
+        let (member, history) = match mem::replace(&mut self.step, Step::Left) {
+            Step::Playing(playing) => (playing.member, Some(playing.history)),
+            Step::Answered(answered) => (answered.member, answered.history),
             Step::Waiting => {
                 self.step = Step::Lost(Loss::LinkFailed);
                 return LinkLoss::Stopped(Loss::LinkFailed);
@@ -349,9 +355,7 @@ impl JoinState {
             }
         };
         self.step = Step::Rejoining(Rejoining {
-            session,
-            delegation,
-            times,
+            member,
             history,
             lost_at: now,
             tries: 0,
@@ -367,7 +371,8 @@ impl JoinState {
         let Step::Rejoining(rejoining) = &mut self.step else {
             return Retry::Wait;
         };
-        let patience = rejoining.times.grace + rejoining.times.restore_window;
+        let times = rejoining.member.times;
+        let patience = times.grace + times.restore_window;
         if now.saturating_sub(rejoining.lost_at) > patience {
             self.step = Step::Lost(Loss::GaveUp);
             return Retry::GiveUp;
@@ -378,6 +383,55 @@ impl JoinState {
         rejoining.tries += 1;
         rejoining.next_try = now + JoinState::wait(rejoining.tries, random);
         Retry::Connect
+    }
+
+    /// Takes `receipt`, when the server key signed it over this player's chain as it stood at
+    /// its seq, under their delegation or the one it renewed, a later seq than the one the client
+    /// keeps: the client keeps it, and forgets its chain's history before it.
+    pub(crate) fn take_receipt(
+        &mut self,
+        receipt: &SignedReceipt,
+        secp: &Secp256k1<VerifyOnly>,
+    ) -> Result<(), ReceiptRefusal> {
+        let Step::Playing(playing) = &mut self.step else {
+            return Err(ReceiptRefusal::NotPlaying);
+        };
+        let signed = receipt.receipt;
+        if !signed.signed_by(secp, &self.player.server.key, &receipt.signature) {
+            return Err(ReceiptRefusal::BadSignature);
+        }
+        let member = &mut playing.member;
+        if signed.session_id != member.session.id
+            || signed.slot != playing.chain.slot()
+            || (signed.delegation != *member.delegation.id()
+                && Some(signed.delegation) != member.renewed)
+        {
+            return Err(ReceiptRefusal::Other);
+        }
+        if member
+            .receipt
+            .is_some_and(|kept| kept.receipt.seq >= signed.seq)
+        {
+            return Err(ReceiptRefusal::Older);
+        }
+        let next_seq = signed.seq.checked_add(1).ok_or(ReceiptRefusal::OtherHead)?;
+        if playing.history.head_at(next_seq) != Some(signed.head) {
+            return Err(ReceiptRefusal::OtherHead);
+        }
+        playing.history.forget_before(next_seq);
+        member.receipt = Some(*receipt);
+        Ok(())
+    }
+
+    /// The newest receipt the client keeps, from its first answer until it stops.
+    pub const fn receipt(&self) -> Option<&SignedReceipt> {
+        let member = match &self.step {
+            Step::Answered(Answered { member, .. })
+            | Step::Playing(Playing { member, .. })
+            | Step::Rejoining(Rejoining { member, .. }) => member,
+            Step::Waiting | Step::Refused(_) | Step::Left | Step::Lost(_) => return None,
+        };
+        member.receipt.as_ref()
     }
 
     /// A newer login of the player took the slot: the client stops.

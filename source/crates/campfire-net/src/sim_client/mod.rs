@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy_app::{App, FixedUpdate, Plugin, Update};
@@ -8,15 +9,15 @@ use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
-use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{Dead, MatchEnd, Order, Owner, Relations};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::PlayerInput;
-use campfire_protocol::secp256k1::Keypair;
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
+use campfire_protocol::{PlayerInput, SignedReceipt};
 use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
@@ -34,6 +35,8 @@ use crate::events::link_lost::LinkLost;
 use crate::events::match_started::MatchStarted;
 use crate::events::order_dropped::OrderDropped;
 use crate::events::orders_sent::OrdersSent;
+use crate::events::receipt_refused::ReceiptRefused;
+use crate::events::receipt_unsaved::ReceiptUnsaved;
 use crate::events::session_refused::SessionRefused;
 use crate::input_message::InputMessage;
 use crate::join::Join;
@@ -44,6 +47,7 @@ use crate::offer::Offer;
 use crate::order_script::ScriptedInput;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::join_state::{JoinState, LinkLoss, Retry, Started};
+use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
@@ -54,6 +58,7 @@ pub(crate) mod bench;
 pub(crate) mod bot_script;
 pub(crate) mod chain_history;
 pub(crate) mod join_state;
+pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
 pub(crate) mod signer;
@@ -78,6 +83,19 @@ pub struct SimClient {
     pub clock: fn() -> u64,
     /// Fills a seed contribution or BIP-340's auxiliary randomness with random bytes.
     pub entropy: fn(&mut [u8; 32]),
+    /// The client's data directory, where it writes the newest receipt of its session, as
+    /// `receipts/<session id>.receipt`; none writes none.
+    pub data: Option<PathBuf>,
+}
+
+/// The context that checks receipts' signatures.
+#[derive(Debug)]
+struct Verifier(Secp256k1<VerifyOnly>);
+
+impl Default for Verifier {
+    fn default() -> Verifier {
+        Verifier(Secp256k1::verification_only())
+    }
 }
 
 /// The player's wish to leave the match: the client tells the server once, and then tries its
@@ -137,6 +155,9 @@ impl Plugin for SimClient {
             self.clock,
         ));
         world.init_resource::<SentInputs>();
+        if let Some(data) = &self.data {
+            world.insert_resource(ReceiptWriter::start(data.clone()));
+        }
         // Prediction covers all the latency, with no input delay: an input goes out stamped with
         // the tick the client predicts it in, which Lightyear keeps ahead of the server's present
         // tick by half the round trip and its margins, so the input arrives before the server
@@ -156,6 +177,7 @@ impl Plugin for SimClient {
                 answer_offer,
                 receive_superseded,
                 receive_match_start,
+                receive_receipt,
                 receive_relations,
                 receive_match_end,
                 report_deaths,
@@ -269,6 +291,39 @@ fn lose_link(
         }
         .log(),
         LinkLoss::Nothing => {}
+    }
+}
+
+/// Keeps each receipt the client accepts, and hands it to the data directory's writer, when the
+/// client keeps one.
+fn receive_receipt(
+    mut receivers: Query<'_, '_, &mut MessageReceiver<SignedReceipt>, With<Client>>,
+    mut state: ResMut<'_, JoinState>,
+    writer: Option<Res<'_, ReceiptWriter>>,
+    verifier: Local<'_, Verifier>,
+) {
+    for mut receiver in &mut receivers {
+        for receipt in receiver.receive() {
+            if let Err(refusal) = state.take_receipt(&receipt, &verifier.0) {
+                ReceiptRefused {
+                    reason: refusal.to_string(),
+                }
+                .log();
+                continue;
+            }
+            if let Some(writer) = &writer {
+                writer.give(receipt);
+            }
+        }
+    }
+    let Some(writer) = writer else {
+        return;
+    };
+    for error in writer.failures() {
+        ReceiptUnsaved {
+            error: error.to_string(),
+        }
+        .log();
     }
 }
 
@@ -428,7 +483,7 @@ fn send_orders(
             }
         }
     }
-    let session = playing.session;
+    let session = playing.member.session;
     let first = sent.len();
     let stamped = pending.0.len().min(session.max_inputs as usize);
     for pending in pending.0.drain(..stamped) {

@@ -222,6 +222,11 @@ impl Session {
         self.rules.after_leave()
     }
 
+    /// See `SessionLog::advance_durable`.
+    pub fn advance_durable(&mut self) {
+        self.log.advance_durable();
+    }
+
     /// Keeps `journal`, a new one, for the session's log: see `SessionLog::keep_journal`.
     pub fn keep_journal(&mut self, journal: Journal) {
         self.log.keep_journal(journal);

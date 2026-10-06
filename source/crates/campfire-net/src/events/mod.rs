@@ -14,6 +14,8 @@ pub(crate) mod listening;
 pub(crate) mod match_started;
 pub(crate) mod order_dropped;
 pub(crate) mod orders_sent;
+pub(crate) mod receipt_refused;
+pub(crate) mod receipt_unsaved;
 pub(crate) mod session_aborted;
 pub(crate) mod session_refused;
 pub(crate) mod session_restored;

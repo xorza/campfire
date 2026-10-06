@@ -44,6 +44,7 @@ use crate::session_dir::SessionDir;
 use crate::session_times::SessionTimes;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::join_state::JoinState;
+use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::{PendingOrders, SimClient};
 use crate::sim_server::{PlayerLink, SimServer, TickHashes};
@@ -366,12 +367,17 @@ impl LocalMatch {
     }
 
     /// Gives the server the data directory `dir`, where the session `start_match` opens keeps its
-    /// directory, private record and journal.
+    /// directory, private record and journal, and each client `client-<index>` in it, where it
+    /// writes its receipts.
     pub fn keep_data(&mut self, dir: PathBuf) {
         assert!(
             !self.server.world().contains_resource::<MatchClock>(),
             "a server keeps its data from before the match"
         );
+        for (client, app) in self.clients.iter_mut().enumerate() {
+            let own = dir.join(format!("client-{client}"));
+            app.world_mut().insert_resource(ReceiptWriter::start(own));
+        }
         self.data = Some(dir);
     }
 
@@ -637,12 +643,12 @@ impl LocalMatch {
         self.links[client]
     }
 
-    /// The packages of the session's mode.
     /// The events at Warn and Error that the match logged and no test took yet.
     pub const fn log(&self) -> &LogCheck {
         &self.log
     }
 
+    /// The packages of the session's mode.
     pub fn packages(&self) -> &ModePackages {
         &self.packages
     }
@@ -675,6 +681,7 @@ impl ClientApp {
             packages: Arc::clone(packages),
             clock: unix_now,
             entropy: |bytes| bytes.fill(4),
+            data: None,
         };
         let tick = TickRate::new(tick_hz).length();
         let mut client = App::new();

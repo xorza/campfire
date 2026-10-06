@@ -35,6 +35,18 @@ impl ChainHistory {
         }
     }
 
+    /// Forgets the heads before the one after the chain's first `next_seq` inputs, which it
+    /// must hold: a receipt confirms the server holds those inputs durably.
+    pub(crate) fn forget_before(&mut self, next_seq: u64) {
+        let base = self
+            .head_at(next_seq)
+            .expect("a receipt within the history");
+        let dropped = usize::try_from(next_seq - self.first_seq).expect("a history fits memory");
+        self.heads.drain(..dropped);
+        self.first_seq = next_seq;
+        self.base = base;
+    }
+
     /// Drops the heads after the chain's first `next_seq` inputs, which it must hold; how many it
     /// drops.
     pub(crate) fn cut(&mut self, next_seq: u64) -> u64 {
@@ -83,5 +95,13 @@ mod tests {
         assert_eq!(history.head_at(4), None);
         assert_eq!(history.cut(2), 1);
         assert_eq!(history.cut(2), 0);
+        // Two inputs again, then a receipt for the first, seq 2: the history holds from 3 on.
+        history.push(heads[1]);
+        history.push(heads[2]);
+        history.forget_before(3);
+        assert_eq!(history.head_at(2), None);
+        assert_eq!(history.head_at(3), Some(heads[1]));
+        assert_eq!(history.head_at(4), Some(heads[2]));
+        assert_eq!(history.head_at(5), None);
     }
 }

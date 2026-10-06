@@ -138,6 +138,11 @@ impl Delegation {
         &self.json
     }
 
+    /// The event's id, which a receipt names.
+    pub const fn id(&self) -> &[u8; 32] {
+        &self.id
+    }
+
     /// What the player's first input links to: the event id, so the chain covers the delegation.
     pub const fn chain_root(&self) -> InputHash {
         InputHash::new(self.id)

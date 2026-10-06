@@ -4,8 +4,10 @@ use std::cell::Cell;
 
 use campfire_common::{Fingerprint, PlayerSlot};
 use campfire_package::{ModePackages, PackageDir};
-use campfire_protocol::secp256k1::{Secp256k1, XOnlyPublicKey};
-use campfire_protocol::{CertificateHash, ConnectChallenge, InputHash, SeedChain, SlotPlan};
+use campfire_protocol::secp256k1::XOnlyPublicKey;
+use campfire_protocol::{
+    CertificateHash, ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan,
+};
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
@@ -32,9 +34,9 @@ fn lane_rules() -> SessionRules {
     SessionRules::of(&ModePackages::from_dir(&dir).unwrap())
 }
 
-/// An x-only key of the bytes `[byte; 32]`, which must be the x of a point on the curve.
-fn x_only(byte: u8) -> XOnlyPublicKey {
-    XOnlyPublicKey::from_byte_array(&[byte; 32]).unwrap()
+/// The x-only key of `local_match::keypair(secret)`.
+fn x_only(secret: u8) -> XOnlyPublicKey {
+    local_match::keypair(secret).x_only_public_key().0
 }
 
 /// A client of the lane mode, main key 1, that means to reach the server of key 8 at `tick_hz`.
@@ -180,7 +182,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
         [None, Some(Tick::new(0)), Some(Tick::new(2))]
     );
     let playing = state.playing_mut().unwrap();
-    assert_eq!(playing.session.id, offer.terms.session_id());
+    assert_eq!(playing.member.session.id, offer.terms.session_id());
     assert_eq!(
         playing.chain,
         InputChain::new(PlayerSlot::new(1), delegation.chain_root())
@@ -318,4 +320,182 @@ fn each_wait_is_drawn_below_a_bound_that_doubles_to_8_s() {
     let mut half = [0; 32];
     half[7] = 0x80;
     assert_eq!(JoinState::wait(1, half), Duration::from_secs(1));
+}
+
+/// `receipt` with the server key's signature over it.
+fn signed(receipt: Receipt) -> SignedReceipt {
+    let server = local_match::keypair(8);
+    SignedReceipt {
+        receipt,
+        signature: receipt.sign(&Secp256k1::new(), &server, &[0; 32]),
+    }
+}
+
+/// A client that played inputs a, b and c, seqs 0, 1 and 2, `heads[n]` the head after the first
+/// `n` of them; with a receipt of b, seq 1, at tick 5.
+fn receipted() -> (JoinState, Signer, Vec<InputHash>, Delegation, Receipt) {
+    let (state, signer, heads, delegation) = played(&[b"a", b"b", b"c"]);
+    let receipt = Receipt {
+        session_id: offer(|_| {}).terms.session_id(),
+        slot: PlayerSlot::new(1),
+        delegation: *delegation.id(),
+        tick: Tick::new(5),
+        seq: 1,
+        head: heads[2],
+    };
+    (state, signer, heads, delegation, receipt)
+}
+
+#[test]
+fn a_client_refuses_a_receipt_not_signed_over_its_own_chain() {
+    let verifier = Secp256k1::verification_only();
+    let (mut state, _, heads, _, receipt) = receipted();
+    assert_eq!(
+        waiting(TICK_HZ).take_receipt(&signed(receipt), &verifier),
+        Err(ReceiptRefusal::NotPlaying)
+    );
+    let forged = SignedReceipt {
+        signature: signed(Receipt { seq: 0, ..receipt }).signature,
+        ..signed(receipt)
+    };
+    let refused = [
+        (forged, ReceiptRefusal::BadSignature),
+        (
+            signed(Receipt {
+                session_id: SessionId::new([1; 32]),
+                ..receipt
+            }),
+            ReceiptRefusal::Other,
+        ),
+        (
+            signed(Receipt {
+                slot: PlayerSlot::new(0),
+                ..receipt
+            }),
+            ReceiptRefusal::Other,
+        ),
+        (
+            signed(Receipt {
+                delegation: [0; 32],
+                ..receipt
+            }),
+            ReceiptRefusal::Other,
+        ),
+        (
+            signed(Receipt {
+                head: heads[1],
+                ..receipt
+            }),
+            ReceiptRefusal::OtherHead,
+        ),
+        // Seq 3 is past the chain's last input.
+        (
+            signed(Receipt {
+                seq: 3,
+                head: heads[3],
+                ..receipt
+            }),
+            ReceiptRefusal::OtherHead,
+        ),
+        (
+            signed(Receipt {
+                seq: u64::MAX,
+                ..receipt
+            }),
+            ReceiptRefusal::OtherHead,
+        ),
+    ];
+    for (receipt, refusal) in refused {
+        assert_eq!(state.take_receipt(&receipt, &verifier), Err(refusal));
+    }
+    assert_eq!(state.receipt(), None);
+}
+
+#[test]
+fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
+    let verifier = Secp256k1::verification_only();
+    let (mut state, mut signer, heads, delegation, receipt) = receipted();
+    // Seq 1 is kept; seq 1 again and seq 0 are older; seq 2 replaces it.
+    assert_eq!(state.take_receipt(&signed(receipt), &verifier), Ok(()));
+    assert_eq!(state.receipt(), Some(&signed(receipt)));
+    let first = Receipt {
+        seq: 0,
+        head: heads[1],
+        ..receipt
+    };
+    for older in [receipt, first] {
+        assert_eq!(
+            state.take_receipt(&signed(older), &verifier),
+            Err(ReceiptRefusal::Older)
+        );
+    }
+    let third = Receipt {
+        tick: Tick::new(6),
+        seq: 2,
+        head: heads[3],
+        ..receipt
+    };
+    assert_eq!(state.take_receipt(&signed(third), &verifier), Ok(()));
+    assert_eq!(state.receipt(), Some(&signed(third)));
+
+    // A day on, the link fails: the client keeps the receipt while it tries again, renews its
+    // delegation, and resumes from the server's copy of all three inputs.
+    let failed = Duration::from_secs(10);
+    assert_eq!(state.lose(failed, [0; 32]), LinkLoss::Rejoining);
+    assert_eq!(state.receipt(), Some(&signed(third)));
+    CLOCK.with(|clock| clock.set(NOW + 86_400 - 60));
+    let join = state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+    CLOCK.with(|clock| clock.set(NOW));
+    let renewed = Delegation::parse(&join.delegation).unwrap();
+    assert_ne!(delegation.id(), renewed.id());
+    let resumed = MatchStart {
+        chain: Some(ChainHead {
+            next_seq: 3,
+            head: heads[3],
+        }),
+        ..START
+    };
+    assert_eq!(state.start(resumed), Started::Playing { discarded: 0 });
+    assert_eq!(state.receipt(), Some(&signed(third)));
+
+    // Inputs d and e, seqs 3 and 4: a receipt names the renewed delegation, or the one it renewed,
+    // which signed the inputs before it; no other.
+    let playing = state.playing_mut().unwrap();
+    playing.extend(Tick::new(0), b"d");
+    let fourth = Receipt {
+        seq: 3,
+        head: playing.chain.head(),
+        ..third
+    };
+    let stranger = Receipt {
+        delegation: [0; 32],
+        ..fourth
+    };
+    assert_eq!(
+        state.take_receipt(&signed(stranger), &verifier),
+        Err(ReceiptRefusal::Other)
+    );
+    assert_eq!(state.take_receipt(&signed(fourth), &verifier), Ok(()));
+    let playing = state.playing_mut().unwrap();
+    playing.extend(Tick::new(0), b"e");
+    let fifth = Receipt {
+        delegation: *renewed.id(),
+        seq: 4,
+        head: playing.chain.head(),
+        ..fourth
+    };
+    assert_eq!(state.take_receipt(&signed(fifth), &verifier), Ok(()));
+
+    // The history forgot every head before the receipt's: a server whose copy holds fewer
+    // inputs than it named rewrote the chain.
+    assert_eq!(state.lose(failed, [0; 32]), LinkLoss::Rejoining);
+    state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+    let start = MatchStart {
+        chain: Some(ChainHead {
+            next_seq: 4,
+            head: fourth.head,
+        }),
+        ..START
+    };
+    assert_eq!(state.start(start), Started::Rewritten);
 }

@@ -2,7 +2,8 @@
 //! match as capsules on the ground; a right click walks the avatar there. With `--bot <orders
 //! file>`, it opens no window and renders nothing, and plays the file's `OrderScript` instead.
 //! With `--key <file>`, the player's main key is the file's, made when missing; without it, the
-//! player is a new key each run.
+//! player is a new key each run. With `--data <directory>`, the client writes the newest receipt
+//! of its session there; without it, it writes none.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by
 //! default). With `CAMPFIRE_LOG` set to a path, they also go there as JSON lines, filtered by
@@ -62,6 +63,7 @@ mod view;
 struct Args {
     bot: Option<PathBuf>,
     key: Option<PathBuf>,
+    data: Option<PathBuf>,
     mode: PathBuf,
     address: SocketAddr,
     certificate: CertificateHash,
@@ -91,7 +93,8 @@ fn main() -> ExitCode {
         Err(problem) => {
             error!(
                 %problem,
-                "usage: campfire-client [--bot <orders file>] [--key <key file>] <mode package \
+                "usage: campfire-client [--bot <orders file>] [--key <key file>] [--data <data \
+                 directory>] <mode package \
                  directory> <server address> <certificate hash> <server key> <tick rate>"
             );
             return ExitCode::from(2);
@@ -158,6 +161,7 @@ fn main() -> ExitCode {
             packages: Arc::new(packages),
             clock: unix_now,
             entropy: fill,
+            data: args.data.clone(),
         },
     ));
     app.insert_resource(PredictionManager::default());
@@ -187,10 +191,20 @@ fn main() -> ExitCode {
 impl Args {
     fn parse(args: impl Iterator<Item = OsString>) -> Result<Args, String> {
         let mut args = args.peekable();
-        let (mut bot, mut key) = (None, None);
-        while let Some(flag) = args.next_if(|arg| arg == "--bot" || arg == "--key") {
-            let value = args.next().ok_or("--bot and --key each need a file")?;
-            let slot = if flag == "--bot" { &mut bot } else { &mut key };
+        let (mut bot, mut key, mut data) = (None, None, None);
+        while let Some(flag) =
+            args.next_if(|arg| arg == "--bot" || arg == "--key" || arg == "--data")
+        {
+            let value = args
+                .next()
+                .ok_or_else(|| format!("{} needs a path", flag.display()))?;
+            let slot = if flag == "--bot" {
+                &mut bot
+            } else if flag == "--key" {
+                &mut key
+            } else {
+                &mut data
+            };
             if slot.replace(PathBuf::from(value)).is_some() {
                 return Err(format!("{} given twice", flag.display()));
             }
@@ -217,6 +231,7 @@ impl Args {
         Ok(Args {
             bot,
             key,
+            data,
             mode: PathBuf::from(mode),
             address: address
                 .parse()

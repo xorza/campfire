@@ -6,7 +6,6 @@ use secp256k1::{Keypair, XOnlyPublicKey};
 use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::{DelegationError, ScopeError};
-use crate::input_hash::InputHash;
 use crate::seed_chain::SeedChain;
 use crate::server_input::LeaveReason;
 use crate::session_result::{Outcome, SessionResult};

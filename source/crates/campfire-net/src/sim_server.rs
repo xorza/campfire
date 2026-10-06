@@ -43,6 +43,7 @@ use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
 use crate::offering::{Offering, Superseding};
+use crate::receipts::Receipts;
 use crate::seats::Seats;
 use crate::server_bots::ServerBots;
 use crate::server_setup::ServerSetup;
@@ -117,6 +118,12 @@ impl Plugin for SimServer {
             (Door::offer, Door::take_joins, Door::watch)
                 .chain()
                 .run_if(resource_exists::<Door>),
+        );
+        app.add_systems(
+            Update,
+            Receipts::give
+                .after(Door::watch)
+                .run_if(resource_exists::<Receipts>),
         );
         app.add_systems(Last, Superseding::tell);
         app.add_systems(PostUpdate, Superseding::end.after(LinkSystems::Send));
@@ -196,6 +203,7 @@ impl SimServer {
         Session::start(world, log, seeds, packages)?;
         SimServer::open_door(world, terms, server, journal);
         world.insert_resource(Seats::new(slots, clients));
+        world.insert_resource(Receipts::new(slots));
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
         let next = world.resource::<Session>().log().next_tick();
@@ -262,6 +270,7 @@ impl SimServer {
         });
         let now = world.resource::<Time<Real>>().elapsed();
         world.insert_resource(Seats::gone(slots, players.into_iter(), now));
+        world.insert_resource(Receipts::new(slots));
         let next = world.resource::<Session>().log().next_tick();
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::resumed(start, next));

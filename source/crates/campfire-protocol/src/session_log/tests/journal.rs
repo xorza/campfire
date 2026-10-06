@@ -1,3 +1,6 @@
+use std::thread;
+use std::time::Duration;
+
 use super::*;
 use crate::journal::journal_frames::JournalFrames;
 use crate::journal::tests::MemoryFile;
@@ -58,4 +61,47 @@ fn a_journal_rebuilds_the_log_it_followed() {
             },
         })
     );
+}
+
+#[test]
+fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
+    let mut log = new_log();
+    let file = MemoryFile::new();
+    let journal = Journal::start(file.clone());
+    let watch = journal.watch();
+    log.keep_journal(journal);
+    play_minimal(&mut log);
+    // No chain is durable before the log notes the synced records; once the writer synced all 7,
+    // player 1's is.
+    let slot = PlayerSlot::new(1);
+    assert_eq!(log.durable_head(slot), None);
+    for _ in 0..1000 {
+        if watch.durable() == 7 {
+            break;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(watch.durable(), 7);
+    log.advance_durable();
+    // Player 1's chain holds a, b and c: c, seq 2, the last, signed under their delegation.
+    let mut chain = InputChain::new(slot, root(1));
+    for (stamp, payload) in [(0, b"a"), (1, b"b"), (1, b"c")] {
+        chain.extend(Tick::new(stamp), payload);
+    }
+    let head = DurableHead {
+        delegation: *delegation(1).id(),
+        seq: 2,
+        head: chain.head(),
+    };
+    assert_eq!(log.durable_head(slot), Some(head));
+    assert_eq!(log.durable_head(PlayerSlot::new(0)), None);
+
+    // The log the journal rebuilds, once it keeps the journal again, holds every chain durably.
+    drop(log);
+    let journal = file.bytes();
+    let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
+    assert_eq!(rebuilt.durable_head(slot), None);
+    rebuilt.resume_journal(Journal::start(MemoryFile::new()));
+    assert_eq!(rebuilt.durable_head(slot), Some(head));
+    assert_eq!(rebuilt.durable_head(PlayerSlot::new(0)), None);
 }

@@ -112,6 +112,11 @@ impl Journal {
         self.shared.wake.notify_one();
     }
 
+    /// How many records the main thread appended, durable or not.
+    pub(crate) fn appended(&self) -> u64 {
+        self.lock().records
+    }
+
     pub fn watch(&self) -> JournalWatch {
         JournalWatch(Arc::clone(&self.shared))
     }

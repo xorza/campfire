@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
-use campfire_protocol::ServerInput;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
+use campfire_protocol::{Receipt, ServerInput, Signature};
 use campfire_runner::{ServerInputRefused, Session};
 
 /// The server's key, which signs each input the server logs, each with fresh auxiliary
@@ -19,6 +19,13 @@ impl ServerSigner {
             entropy,
             secp: Secp256k1::signing_only(),
         }
+    }
+
+    /// The server key's signature over `receipt`.
+    pub(crate) fn sign_receipt(&self, receipt: &Receipt) -> Signature {
+        let mut aux = [0; 32];
+        (self.entropy)(&mut aux);
+        receipt.sign(&self.secp, &self.key, &aux)
     }
 
     /// Logs `input` in `session` before its next tick, signed at the place it takes; see

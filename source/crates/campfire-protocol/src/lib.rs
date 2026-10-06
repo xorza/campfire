@@ -13,6 +13,7 @@ mod input_hash;
 mod journal;
 mod key_file;
 mod player_input;
+mod receipt;
 mod seed_chain;
 mod server_input;
 mod server_seed;
@@ -50,6 +51,8 @@ pub use journal::journal_watch::JournalWatch;
 pub use key_file::KeyFile;
 pub use key_file::error::KeyFileError;
 pub use player_input::PlayerInput;
+pub use receipt::error::ReceiptFileError;
+pub use receipt::{Receipt, SignedReceipt};
 /// The curve library the keys and signatures of this API are typed in, at the version it pins.
 pub use secp256k1;
 pub use seed_chain::SeedChain;
@@ -61,7 +64,7 @@ pub use session_id::SessionId;
 pub use session_log::error::{
     CheckpointError, HeaderError, InputError, LogError, ResultError, SeedError, ServerInputError,
 };
-pub use session_log::{Applied, SessionHeader, SessionLog};
+pub use session_log::{Applied, DurableHead, SessionHeader, SessionLog};
 pub use session_private::SessionPrivate;
 pub use session_private::error::SessionPrivateError;
 pub use session_result::{Outcome, SessionResult};

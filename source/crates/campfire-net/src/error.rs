@@ -53,6 +53,21 @@ pub enum TermsMismatch {
     OtherSession,
 }
 
+/// Why a client refused a receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiptRefusal {
+    /// The client plays no match.
+    NotPlaying,
+    /// The server key did not sign it.
+    BadSignature,
+    /// It names another session, slot or delegation than the player's.
+    Other,
+    /// It names a seq the client's history does not hold, or a head that is not the player's.
+    OtherHead,
+    /// It names no later seq than the one the client keeps.
+    Older,
+}
+
 impl fmt::Display for JoinError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -121,3 +136,17 @@ impl fmt::Display for OrderScriptError {
 }
 
 impl Error for OrderScriptError {}
+
+impl fmt::Display for ReceiptRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ReceiptRefusal::NotPlaying => "the client plays no match",
+            ReceiptRefusal::BadSignature => "the server key did not sign it",
+            ReceiptRefusal::Other => "it names another session, slot or delegation",
+            ReceiptRefusal::OtherHead => "it names a head that is not the player's at its seq",
+            ReceiptRefusal::Older => "it names no later seq than the kept receipt",
+        })
+    }
+}
+
+impl Error for ReceiptRefusal {}

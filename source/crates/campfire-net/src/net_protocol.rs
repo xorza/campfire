@@ -4,6 +4,7 @@ use campfire_capabilities::{
     Modifiers, MoveStep, Owner, Points, Pools, Progress, Projectile, Relations, Respawn, Route,
     SpawnPoint, Team, UnitType,
 };
+use campfire_protocol::SignedReceipt;
 use campfire_sim::{Position, StableId};
 use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings, NetworkDirection,
@@ -22,8 +23,8 @@ use crate::superseded::Superseded;
 #[derive(Debug)]
 pub struct InputChannel;
 
-/// Carries the offer, the match start and end, the relations as they change, and the word that
-/// a newer login took the seat, to the client.
+/// Carries the offer, the match start and end, the relations as they change, the receipts, and
+/// the word that a newer login took the seat, to the client.
 #[derive(Debug)]
 pub(crate) struct MatchChannel;
 
@@ -66,6 +67,8 @@ impl Plugin for NetProtocol {
         app.register_message::<Offer>()
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<Superseded>()
+            .add_direction(NetworkDirection::ServerToClient);
+        app.register_message::<SignedReceipt>()
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<Join>()
             .add_direction(NetworkDirection::ClientToServer);
