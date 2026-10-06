@@ -5,6 +5,7 @@ use campfire_protocol::{
     Applied, Checkpoint, CheckpointError, InputError, Journal, Outcome, PlayerInput, ResultError,
     ServerInput, ServerSeeds, SessionLog, SessionResult, Signature,
 };
+use campfire_sim::StateCopy;
 
 use crate::error::{ResultMismatch, ServerInputRefused, StartError};
 use crate::session::Session;
@@ -121,6 +122,16 @@ impl Runner {
 
     pub fn state_hash(&self) -> StateHash {
         self.world.resource::<Session>().state_hash(&self.world)
+    }
+
+    /// See `Session::copy_state`.
+    pub fn copy_state(&mut self) -> StateCopy {
+        Session::copy_state(&mut self.world)
+    }
+
+    /// See `Session::follow`.
+    pub fn follow(&mut self, copy: &mut StateCopy) {
+        Session::follow(&mut self.world, copy);
     }
 
     pub fn log(&self) -> &SessionLog {

@@ -5,7 +5,7 @@ use bevy_ecs::bundle::Bundle;
 use campfire_common::{PlayerSlot, StateHash};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_script::NumError;
-use campfire_sim::{Capability, EntityIndex, SimRng, TickInput, TickInputs};
+use campfire_sim::{Capability, EntityIndex, SimRng, StateCopy, TickInput, TickInputs};
 
 use super::*;
 use crate::actions::Actions;
@@ -3184,7 +3184,12 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     let ward = veil.game.spawn(0, ground(Num::ONE, Num::ZERO), ward_parts);
     veil.game.give(source, "boost");
     veil.game.give_from(ward, source, "dual_path");
+    // A copy of the state follows the match: the value a live change last had is state, and
+    // each write of it marks its change.
+    let sim = &mut veil.game.sim;
+    let mut copy = StateCopy::new(&sim.registry, &mut sim.world);
     veil.game.sim.step();
+    veil.game.sim.check_copy(&mut copy);
     let vamp = Num::from_bits(1_847_173);
     assert_eq!(veil.values(ward)[1], vamp);
     // Veil goes: the change keeps the value it last had. Read with no source it would fall to
@@ -3192,6 +3197,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     let entity = veil.game.sim.entity(source);
     veil.game.sim.world.despawn(entity);
     veil.game.sim.step();
+    veil.game.sim.check_copy(&mut copy);
     assert_eq!(veil.values(ward)[1], vamp);
     // At no stack it adds nothing, and is no live change that refreshes its unit every pass.
     let dual_path = Stats::modifier(&veil.game.sim.world, 0, "dual_path").unwrap();
@@ -3204,6 +3210,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
         .unwrap();
     modifiers.set_stacks(dual_path, Some(source), 0, Tick::new(0));
     veil.game.sim.step();
+    veil.game.sim.check_copy(&mut copy);
     assert_eq!(veil.values(ward)[1], Num::ZERO);
     assert!(
         !veil

@@ -10,8 +10,8 @@ use campfire_protocol::{
     SessionTerms, Signature, SlotChangeKind, SnapshotFingerprint,
 };
 use campfire_sim::{
-    SimRng, SimTick, SimUpdate, SlotEvent, SlotEventKind, SnapshotError, StateRegistry, TickInput,
-    TickInputs, TickRate,
+    SimRng, SimTick, SimUpdate, SlotEvent, SlotEventKind, SnapshotError, StateCopy, StateRegistry,
+    TickInput, TickInputs, TickRate,
 };
 
 use crate::error::{ResultMismatch, ServerInputRefused, StartError};
@@ -156,8 +156,8 @@ impl Session {
     }
 
     /// Seals the next tick in the log of the session in `world` and runs it with the inputs and
-    /// the changes of a slot's controller applied in it, drawing from the seed of the segment that starts there when one does, and
-    /// logs each script call of the tick that failed.
+    /// the changes of a slot's controller applied in it, drawing from the seed of the segment
+    /// that starts there when one does, and logs each script call of the tick that failed.
     pub fn run_tick(world: &mut World) {
         world.resource_scope(|world, mut session: Mut<'_, Session>| {
             debug_assert_eq!(
@@ -334,6 +334,21 @@ impl Session {
 
     pub fn state_hash(&self, world: &World) -> StateHash {
         self.state.hash(world)
+    }
+
+    /// A copy of the state of the session in `world`, which follows it by what changed: see
+    /// `StateCopy`.
+    pub fn copy_state(world: &mut World) -> StateCopy {
+        world.resource_scope(|world, session: Mut<'_, Session>| {
+            StateCopy::new(&session.state, world)
+        })
+    }
+
+    /// Brings `copy` up to the state of the session in `world`.
+    pub fn follow(world: &mut World, copy: &mut StateCopy) {
+        world.resource_scope(|world, session: Mut<'_, Session>| {
+            copy.follow(&session.state, world);
+        });
     }
 
     pub const fn log(&self) -> &SessionLog {

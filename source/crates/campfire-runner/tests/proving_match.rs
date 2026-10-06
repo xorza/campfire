@@ -7,7 +7,7 @@ use campfire_capabilities::{
     ScriptFailures, SeenBy, StateValue, Team, TeamSet, TrainQueue,
 };
 use campfire_math::{Num, Vec3};
-use campfire_runner::internals::{FixedMatch, Golden, ProvingMatch, RestoreTarget};
+use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, ProvingMatch, RestoreTarget};
 use campfire_sim::internals::Draws;
 use campfire_sim::{EntityIndex, Position};
 
@@ -77,9 +77,11 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     let mut fixed = proving.start();
     let mut seen = Seen::default();
     let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut copy = CopyCheck::new(fixed.runner_mut());
     for tick in 0..ProvingMatch::TICKS {
         ProvingMatch::play_tick(&mut fixed, tick);
         golden.record(fixed.runner());
+        copy.check(fixed.runner_mut());
         let failures = fixed.runner().world().non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
@@ -161,6 +163,7 @@ fn the_proving_match_plays_alike_in_reverse_query_order() {
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
     let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut copy = CopyCheck::new(fixed.runner_mut());
     let mut units = Vec::new();
     for tick in 0..ProvingMatch::TICKS {
         let world = fixed.runner_mut().world_mut();
@@ -176,6 +179,7 @@ fn the_proving_match_plays_alike_in_reverse_query_order() {
         }
         ProvingMatch::play_tick(&mut fixed, tick);
         golden.record(fixed.runner());
+        copy.check(fixed.runner_mut());
     }
     golden.check("proving");
 }

@@ -86,6 +86,11 @@ impl Modifiers {
         self.find(id, source).ok()
     }
 
+    /// The value of the share at `at` of its buffer.
+    pub(crate) fn share_value(&self, at: usize) -> Num {
+        self.shares[at].value
+    }
+
     /// Writes `value` as the value of the share at `at` of its buffer, as a live change last
     /// computed it.
     pub(crate) fn set_share_value(&mut self, at: usize, value: Num) {

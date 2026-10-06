@@ -4,6 +4,7 @@ use bevy_ecs::world::DeferredWorld;
 use serde::{Deserialize, Serialize};
 
 use crate::entity_index::EntityIndex;
+use crate::state_changes::StateChanges;
 
 /// An entity's identity in the sim, the protocol and replays. Unlike Bevy's `Entity`, it is
 /// allocated in order and never reused. It is immutable, so it changes only by an insert, which
@@ -33,6 +34,9 @@ fn index_on_insert(mut world: DeferredWorld<'_>, context: HookContext) {
         .resource_mut::<EntityIndex>()
         .insert(id, context.entity);
     debug_assert!(previous.is_none(), "{id:?} is already in use");
+    if let Some(mut changes) = world.get_resource_mut::<StateChanges>() {
+        changes.gain(id);
+    }
 }
 
 fn unindex_on_discard(mut world: DeferredWorld<'_>, context: HookContext) {
@@ -40,6 +44,9 @@ fn unindex_on_discard(mut world: DeferredWorld<'_>, context: HookContext) {
         .get::<StableId>(context.entity)
         .expect("on_discard runs on an entity with a StableId");
     world.resource_mut::<EntityIndex>().remove(id);
+    if let Some(mut changes) = world.get_resource_mut::<StateChanges>() {
+        changes.lose(id);
+    }
 }
 
 #[cfg(test)]

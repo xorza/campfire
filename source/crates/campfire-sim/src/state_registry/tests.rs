@@ -1,6 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
+use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use serde::{Deserialize, Serialize};
 
@@ -442,4 +443,165 @@ fn duplicate_names_are_refused() {
 fn restore_refuses_a_populated_world() {
     let mut world = plain_world();
     let _outcome = registry().restore(&snapshot(&plain_world()), &mut world);
+}
+
+/// A section of a delta that holds bytes: its type's name and its bytes.
+type Section = (&'static str, Vec<u8>);
+
+/// The sections of `delta` that hold bytes, by type name, in the registry's order.
+fn sections(registry: &StateRegistry, delta: &StateDelta) -> Vec<Section> {
+    (0..delta.sections())
+        .filter(|&at| !delta.section(at).is_empty())
+        .map(|at| (registry.entries[at].name, delta.section(at).to_vec()))
+        .collect()
+}
+
+/// A world's state and a copy of it that follows by deltas.
+#[derive(Debug)]
+struct Following {
+    registry: StateRegistry,
+    world: World,
+    copy: World,
+    delta: StateDelta,
+}
+
+impl Following {
+    fn new(world: World) -> Following {
+        let mut following = Following {
+            registry: registry(),
+            world,
+            copy: World::new(),
+            delta: StateDelta::default(),
+        };
+        following.copy.init_resource::<EntityIndex>();
+        following
+            .registry
+            .track(&mut following.world, &mut following.delta);
+        following
+            .registry
+            .apply(&following.delta, &mut following.copy);
+        following
+    }
+
+    /// Changes the world by `change`, copies what changed, and checks that the copy's state is
+    /// the world's; the delta's lost and gained ids, and its sections that hold bytes.
+    fn step(
+        &mut self,
+        change: impl FnOnce(&mut World),
+    ) -> (Vec<StableId>, Vec<StableId>, Vec<Section>) {
+        change(&mut self.world);
+        self.registry.changes(&mut self.world, &mut self.delta);
+        self.registry.apply(&self.delta, &mut self.copy);
+        assert_eq!(by_type(&self.copy), by_type(&self.world));
+        (
+            self.delta.lost.clone(),
+            self.delta.gained.clone(),
+            sections(&self.registry, &self.delta),
+        )
+    }
+}
+
+fn entity(world: &World, id: StableId) -> Entity {
+    world.resource::<EntityIndex>().get(id).unwrap()
+}
+
+#[test]
+fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
+    let mut following = Following::new(plain_world());
+    let (first, second) = (StableId::new(0), StableId::new(1));
+    assert_eq!(by_type(&following.copy), by_type(&following.world));
+    // No tick resource: each delta holds its absence, `None`, a 0 byte.
+    let absent = ("sim.tick", vec![0]);
+    let allocator = |world: &World| {
+        (
+            "sim.id_allocator",
+            encoded(&[Some(world.resource::<IdAllocator>())]),
+        )
+    };
+
+    // Nothing changed: nothing but the absent tick.
+    assert_eq!(
+        following.step(|_| {}),
+        (vec![], vec![], vec![absent.clone()])
+    );
+
+    // One value changed: that value alone.
+    let changed = following.step(|world| {
+        world.get_mut::<Health>(entity(world, first)).unwrap().0 = Num::from_int(11).unwrap();
+    });
+    let health_11 = ("test.health", encoded(&[(first, Some(health(11)))]));
+    assert_eq!(changed, (vec![], vec![], vec![absent.clone(), health_11]));
+
+    // A new entity: its id, the allocator, and each of its values.
+    let third = StableId::new(2);
+    let spawned = following.step(|world| {
+        let id = allocate(world);
+        world.spawn((id, health(30)));
+    });
+    let health_30 = ("test.health", encoded(&[(third, Some(health(30)))]));
+    assert_eq!(
+        spawned,
+        (
+            vec![],
+            vec![third],
+            vec![allocator(&following.world), absent.clone(), health_30]
+        )
+    );
+
+    // A removed component, and a despawned entity: its id alone, as its removals go with it.
+    let removed = following.step(|world| {
+        world.entity_mut(entity(world, first)).remove::<Position>();
+        world.despawn(entity(world, second));
+    });
+    let unplaced = ("test.position", encoded(&[(first, None::<Position>)]));
+    assert_eq!(
+        removed,
+        (vec![second], vec![], vec![absent.clone(), unplaced])
+    );
+
+    // An entity spawned and despawned between two copies, and a component removed and put back:
+    // the allocator, and the value put back.
+    let back = following.step(|world| {
+        let id = allocate(world);
+        let gone = world.spawn((id, health(40))).id();
+        world.despawn(gone);
+        let third = entity(world, third);
+        world.entity_mut(third).remove::<Health>();
+        world.entity_mut(third).insert(health(31));
+    });
+    let health_31 = ("test.health", encoded(&[(third, Some(health(31)))]));
+    assert_eq!(
+        back,
+        (
+            vec![],
+            vec![],
+            vec![allocator(&following.world), absent.clone(), health_31]
+        )
+    );
+
+    // An entity given another stable id: the old id lost, the new one gained with every value.
+    let fifth = StableId::new(4);
+    let renamed = following.step(|world| {
+        let id = allocate(world);
+        world.entity_mut(entity(world, third)).insert(id);
+    });
+    let moved = ("test.health", encoded(&[(fifth, Some(health(31)))]));
+    assert_eq!(
+        renamed,
+        (
+            vec![third],
+            vec![fifth],
+            vec![allocator(&following.world), absent.clone(), moved]
+        )
+    );
+
+    // A resource inserted, then removed.
+    let tick = SimTick::new(Tick::new(5));
+    let inserted = following.step(|world| world.insert_resource(tick));
+    let present = ("sim.tick", encoded(&[Some(tick)]));
+    assert_eq!(inserted, (vec![], vec![], vec![present]));
+    let gone = following.step(|world| {
+        world.remove_resource::<SimTick>();
+    });
+    assert_eq!(gone, (vec![], vec![], vec![absent]));
 }

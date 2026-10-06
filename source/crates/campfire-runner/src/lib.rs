@@ -5,6 +5,8 @@
 
 #[cfg(feature = "internals")]
 mod arena;
+#[cfg(feature = "internals")]
+mod copy_check;
 mod error;
 #[cfg(feature = "internals")]
 mod fixed_match;
@@ -47,6 +49,7 @@ pub mod bench {
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::arena::Arena;
+    pub use crate::copy_check::CopyCheck;
     pub use crate::fixed_match::FixedMatch;
     pub use crate::fixed_session::FixedSession;
     pub use crate::golden::Golden;

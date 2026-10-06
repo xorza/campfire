@@ -71,17 +71,15 @@ impl Progression {
                         .expect("a unit given experience has tracks");
                     // The unit's level counts as changed only when it rises, as its stats are
                     // derived again when it changes.
-                    let unit_level = level
-                        .as_mut()
-                        .map(DetectChangesMut::bypass_change_detection);
-                    let raised = experience.add(track, amount, &book, unit_level);
+                    let mut unit_level = level.as_deref().copied();
+                    let raised = experience.add(track, amount, &book, unit_level.as_mut());
+                    if let (Some(level), Some(value)) = (&mut level, unit_level) {
+                        level.set_if_neq(value);
+                    }
                     if raised.to == raised.from {
                         return;
                     }
-                    if let Some(level) = &mut level
-                        && book.level_track() == Some(track)
-                    {
-                        level.set_changed();
+                    if level.is_some() && book.level_track() == Some(track) {
                         points
                             .expect("a unit with the `level` track has points")
                             .gain(raised.to.get() - raised.from.get());

@@ -1,4 +1,8 @@
-use bevy_ecs::world::World;
+use bevy_ecs::change_detection::{DetectChanges, Ref, Tick as ChangeTick};
+use bevy_ecs::lifecycle::Remove;
+use bevy_ecs::observer::On;
+use bevy_ecs::system::{Query, ResMut};
+use bevy_ecs::world::{Mut, World};
 use blake3::Hasher;
 use campfire_common::StateHash;
 use serde::de::DeserializeOwned;
@@ -9,12 +13,15 @@ use crate::position::Position;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
+use crate::state_changes::{Removal, StateChanges};
 use crate::state_registry::error::SnapshotError;
+use crate::state_registry::state_delta::StateDelta;
 use crate::state_registry::writer::{Sink, write};
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod error;
+pub(crate) mod state_delta;
 mod writer;
 
 /// Starts the combined hash, so no other BLAKE3 use can produce the same state hash.
@@ -29,9 +36,10 @@ const ENTITIES: &str = "sim.entities";
 const NAME_LEN_BYTES: usize = size_of::<u32>();
 const BODY_LEN_BYTES: usize = size_of::<u64>();
 
-/// The types that make up the simulated state, and the three things done with them: hash,
-/// snapshot, restore. Each type walks entities in stable-id order, and a snapshot's section for a
-/// type holds exactly the bytes its hash consumes, so a snapshot and its hash cannot disagree.
+/// The types that make up the simulated state, and what is done with them: hash, snapshot,
+/// restore, and copy what changed to another world. Each type walks entities in stable-id order,
+/// and a snapshot's section for a type holds exactly the bytes its hash consumes, so a snapshot
+/// and its hash cannot disagree.
 #[derive(Debug)]
 pub struct StateRegistry {
     entries: Vec<Entry>,
@@ -53,8 +61,34 @@ struct Entry {
     decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
     /// Whether every value of the type keeps its rules, once everything is decoded.
     check: fn(&World) -> bool,
+    /// Writes the type's section of a `StateDelta`.
+    copy: fn(&mut World, &Copying<'_>, &mut Vec<u8>),
+    /// Applies the type's section of a `StateDelta`, in one of its two passes.
+    apply: fn(&mut World, &[u8], Pass),
+    /// Records each removal of the type's component, at its place in the registry, in the
+    /// world's `StateChanges`.
+    watch: fn(&mut World, u16),
     #[cfg(any(test, feature = "internals"))]
     scramble: fn(&mut World, &mut internals::Draws) -> bool,
+}
+
+/// What a type's copy takes: the world's change tick at the last copy, none for a first copy of
+/// every value, and now; the ids gained since, whose every value it takes; and the ids whose
+/// component of the type was removed since.
+#[derive(Debug)]
+struct Copying<'a> {
+    since: Option<ChangeTick>,
+    now: ChangeTick,
+    gained: &'a [StableId],
+    removed: &'a [Removal],
+}
+
+/// The passes of an apply: every value first, then every removal, so a component that requires
+/// another, which an insert adds, never puts back one the copied world lacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    Values,
+    Removals,
 }
 
 /// The hash of one registered type.
@@ -99,6 +133,9 @@ impl StateRegistry {
             encode: encode_entities,
             decode: decode_entities,
             check: |_| true,
+            copy: |_, _, _| {},
+            apply: |_, _, _| {},
+            watch: |_, _| {},
             #[cfg(any(test, feature = "internals"))]
             scramble: |_, _| false,
         };
@@ -115,6 +152,9 @@ impl StateRegistry {
             encode: encode_component::<C>,
             decode: decode_component::<C>,
             check: check_component::<C>,
+            copy: copy_component::<C>,
+            apply: apply_component::<C>,
+            watch: watch_component::<C>,
             #[cfg(any(test, feature = "internals"))]
             scramble: internals::scramble_component::<C>,
         });
@@ -140,6 +180,9 @@ impl StateRegistry {
             encode: encode_resource::<R>,
             decode: decode_resource::<R>,
             check: check_resource::<R>,
+            copy: copy_resource::<R>,
+            apply: apply_resource::<R>,
+            watch: |_, _| {},
             #[cfg(any(test, feature = "internals"))]
             scramble: internals::scramble_resource::<R>,
         });
@@ -257,6 +300,74 @@ impl StateRegistry {
             return Err(SnapshotError::NotCanonical);
         }
         Ok(())
+    }
+
+    /// Starts recording the changes of the state of `world` for copies of it, and writes its
+    /// whole state into `delta`, which an empty world takes as the base the later changes apply
+    /// to.
+    pub fn track(&self, world: &mut World, delta: &mut StateDelta) {
+        assert!(
+            !world.contains_resource::<StateChanges>(),
+            "a world records its changes once"
+        );
+        let changes = StateChanges::new(world.resource::<EntityIndex>());
+        world.insert_resource(changes);
+        for (at, entry) in self.entries.iter().enumerate() {
+            (entry.watch)(world, u16::try_from(at).expect("the types fit u16"));
+        }
+        self.changes(world, delta);
+    }
+
+    /// Writes into `delta`, which is cleared first, the state of `world` that changed since the
+    /// last copy, or since `track`, and starts recording again. A value counts as changed when
+    /// its change tick is newer than the last copy's, so every write of state marks its change.
+    pub fn changes(&self, world: &mut World, delta: &mut StateDelta) {
+        let now = world.change_tick();
+        world.resource_scope(|world, mut changes: Mut<'_, StateChanges>| {
+            changes.settle(world.resource::<EntityIndex>());
+            delta.clear();
+            delta.lost.extend_from_slice(changes.lost());
+            delta.gained.extend_from_slice(changes.gained());
+            for (at, entry) in self.entries.iter().enumerate() {
+                let copying = Copying {
+                    since: changes.since(),
+                    now,
+                    gained: &delta.gained,
+                    removed: changes.removed(u16::try_from(at).expect("the types fit u16")),
+                };
+                (entry.copy)(world, &copying, &mut delta.bytes);
+                delta.end_section();
+            }
+            changes.restart(now);
+        });
+        // Every write after the copy is newer than its tick.
+        world.increment_change_tick();
+    }
+
+    /// Makes `world`, a copy of another world's state, follow the changes `delta` holds: it
+    /// despawns the ids lost, spawns those gained, inserts each changed value, then removes each
+    /// removed component.
+    pub fn apply(&self, delta: &StateDelta, world: &mut World) {
+        assert_eq!(
+            delta.sections(),
+            self.entries.len(),
+            "a delta of this registry's types"
+        );
+        for &id in &delta.lost {
+            let entity = world
+                .resource::<EntityIndex>()
+                .get(id)
+                .expect("a copy holds each id its world lost");
+            world.despawn(entity);
+        }
+        for &id in &delta.gained {
+            world.spawn(id);
+        }
+        for pass in [Pass::Values, Pass::Removals] {
+            for (at, entry) in self.entries.iter().enumerate() {
+                (entry.apply)(world, delta.section(at), pass);
+            }
+        }
     }
 
     fn register(&mut self, entry: Entry) {
@@ -404,6 +515,86 @@ fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(),
         None => drop(world.remove_resource::<R>()),
     }
     Ok(())
+}
+
+fn copy_component<C: SimComponent>(world: &mut World, copying: &Copying<'_>, out: &mut Vec<u8>) {
+    let mut query = world.query::<(&StableId, Ref<'_, C>)>();
+    for (&id, value) in query.iter(world) {
+        let changed = copying
+            .since
+            .is_none_or(|since| value.last_changed().is_newer_than(since, copying.now));
+        if changed || copying.gained.binary_search(&id).is_ok() {
+            write(out, &(id, Some(&*value)));
+        }
+    }
+    let index = world.resource::<EntityIndex>();
+    for &Removal { id, .. } in copying.removed {
+        if let Some(entity) = index.get(id)
+            && !world.entity(entity).contains::<C>()
+        {
+            write(out, &(id, None::<&C>));
+        }
+    }
+}
+
+fn apply_component<C: SimComponent>(world: &mut World, mut body: &[u8], pass: Pass) {
+    while !body.is_empty() {
+        let Taken {
+            value: (id, value),
+            rest,
+        } = take::<(StableId, Option<C>)>(body).expect("a delta decodes");
+        body = rest;
+        let entity = world
+            .resource::<EntityIndex>()
+            .get(id)
+            .expect("a copy holds each id a delta names");
+        match (pass, value) {
+            (Pass::Values, Some(value)) => drop(world.entity_mut(entity).insert(value)),
+            (Pass::Removals, None) => drop(world.entity_mut(entity).remove::<C>()),
+            (Pass::Values, None) | (Pass::Removals, Some(_)) => {}
+        }
+    }
+}
+
+fn watch_component<C: SimComponent>(world: &mut World, entry: u16) {
+    world.add_observer(
+        move |removed: On<'_, '_, Remove, C>,
+              ids: Query<'_, '_, &StableId>,
+              mut changes: ResMut<'_, StateChanges>| {
+            if let Ok(&id) = ids.get(removed.entity) {
+                changes.remove(Removal { entry, id });
+            }
+        },
+    );
+}
+
+fn copy_resource<R: SimResource>(world: &mut World, copying: &Copying<'_>, out: &mut Vec<u8>) {
+    match world.get_resource_ref::<R>() {
+        None => write(out, &None::<&R>),
+        Some(value)
+            if copying
+                .since
+                .is_none_or(|since| value.last_changed().is_newer_than(since, copying.now)) =>
+        {
+            write(out, &Some(&*value));
+        }
+        Some(_) => {}
+    }
+}
+
+fn apply_resource<R: SimResource>(world: &mut World, body: &[u8], pass: Pass) {
+    if pass == Pass::Removals || body.is_empty() {
+        return;
+    }
+    let Taken { value, rest } = take::<Option<R>>(body).expect("a delta decodes");
+    debug_assert!(
+        rest.is_empty(),
+        "a resource's section holds its value alone"
+    );
+    match value {
+        Some(value) => world.insert_resource(value),
+        None => drop(world.remove_resource::<R>()),
+    }
 }
 
 fn check_component<C: SimComponent>(world: &World) -> bool {
