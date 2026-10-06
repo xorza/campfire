@@ -120,8 +120,10 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
     let id = log(&local).session_id();
     local.stop_server();
 
-    // A crash between the second checkpoint's begin and its record: the journal ends before
-    // the record, and the snapshot is gone.
+    // A crash while the second checkpoint's snapshot was on its thread: the journal holds the
+    // ticks the server ran after its begin, and no record, and the snapshot is gone. The record
+    // came in its own time, by the disk's: its frame alone goes, so the ticks after the begin
+    // stay whatever frame it came in.
     let journal = data.0.join("sessions").join(id.to_string()).join("journal");
     let bytes = fs::read(&journal).unwrap();
     let mut frames = JournalFrames::new(&bytes).unwrap();
@@ -132,11 +134,12 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
             break;
         };
         if record[0] == 4 {
-            done.push(start);
+            done.push(start..frames.whole());
         }
     }
     assert_eq!(done.len(), 2);
-    fs::write(&journal, &bytes[..done[1]]).unwrap();
+    let without = [&bytes[..done[1].start], &bytes[done[1].end..]].concat();
+    fs::write(&journal, without).unwrap();
     let file = snapshots.join(second.snapshot.to_string());
     fs::remove_file(&file).unwrap();
 
