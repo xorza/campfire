@@ -108,7 +108,7 @@ B12 of the plan; the review chose option 1. Design 02 bounds an 8-tick rollback 
 
 **Decision.** Option 1: the bound in design 02 is about what a client's rollback costs, and only the client's own frames, with what replication sent and Lightyear's restore, measure that.
 
-**How the harness plays it.** Proposal for review. `InProcessMatch` plays only the test lane mode, with one or two players and at most one server bot; it waits for each client to hold its avatar within 300 frames of the start; it times the worst of the clients' frames in a step, not each client's; and its walk goes around (0, 0). The changes:
+**How the harness plays it.** Reviewed. `InProcessMatch` plays only the test lane mode, with one or two players and at most one server bot; it waits for each client to hold its avatar within 300 frames of the start; it times the worst of the clients' frames in a step, not each client's; and its walk goes around (0, 0). The changes:
 
 - **Any mode.** `InProcessMatch::of_mode(setup, packages)` plays the packages it is given; `new(setup)` plays the lane mode, and keeps its check of one or two players.
 - **Bots in any slots.** `MatchSetup.bots`, an order script for each slot after the players', in place of `bot`, one script for the one slot after them; the takeover bot stays. The reference 3v3's bots pick through their scripts' `[[input]]`s: a hero each, at tick 1, none twice, and its two spells, at tick 2, as `Reference3v3` picks.
