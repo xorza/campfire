@@ -18,6 +18,7 @@ bevy_app.workspace = true
 bevy_ecs.workspace = true
 bevy_state.workspace = true
 bevy_time.workspace = true
+clap.workspace = true
 lightyear.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

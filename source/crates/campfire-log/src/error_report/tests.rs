@@ -50,8 +50,12 @@ fn a_report_writes_each_error_down_to_the_root() {
 }
 
 /// The lines that write an error's message alone and pass: Rhai's `EvalAltResult` has no source,
-/// so its message is all of it.
-const ALONE: [&str; 1] = ["_ => ScriptError::Runtime(error.to_string()),"];
+/// so its message is all of it; and clap writes its value parser's error into its own message,
+/// which the binaries log as their usage error.
+const ALONE: [&str; 2] = [
+    "_ => ScriptError::Runtime(error.to_string()),",
+    "error!(error = %error, \"the command line is refused\");",
+];
 
 /// The lines of `code` that write an error with its message alone, the workspace binding each
 /// error it writes as `error`: as a log's `%` field, by `to_string`, or in a format string; and

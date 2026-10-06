@@ -56,10 +56,6 @@ mod server_tls;
 /// The segments of a session's seed chain: the most checkpoints it may take, less one.
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
-const USAGE: &str = "usage: campfire-server --data <data directory> [--restore-window <seconds>] \
-                     [--grace <seconds>] [--server-bot <slot>=<orders file>]... [--takeover <orders \
-                     file>] <mode package directory> <address, as 0.0.0.0:4433>";
-
 /// What the terminal shows when `RUST_LOG` does not say.
 const TERMINAL_FILTER: &str = "info";
 /// What the log file holds when `CAMPFIRE_LOG_FILTER` does not say: Campfire's messages down to
@@ -73,10 +69,11 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Args::parse(env::args_os().skip(1)) {
+    let args = match Args::read(env::args_os()) {
         Ok(args) => args,
+        Err(output) if !output.use_stderr() => return shown(&output),
         Err(error) => {
-            error!(error = %ErrorReport::of(&error), USAGE);
+            error!(error = %error, "the command line is refused");
             return ExitCode::from(ExitStatus::Usage);
         }
     };
@@ -140,6 +137,18 @@ fn main() -> ExitCode {
         .id();
     app.world_mut().trigger(Start { entity: server });
     ProcessExit::code(app.run())
+}
+
+/// Ends the server once clap printed the help or the version `output` asked for, to standard
+/// output: with success, or with failure when it does not print.
+fn shown(output: &clap::Error) -> ExitCode {
+    match output.print() {
+        Ok(()) => ExitCode::from(ExitStatus::Success),
+        Err(error) => {
+            error!(error = %ErrorReport::of(&error), "the help does not print");
+            ExitCode::from(ExitStatus::Failure)
+        }
+    }
 }
 
 /// What the server starts with: its session, its setup, and its TLS identity.

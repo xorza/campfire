@@ -1,13 +1,13 @@
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use campfire_common::PlayerSlot;
 use campfire_net::SlotBotFile;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
+use clap::Parser;
 
 use crate::args::error::ArgsError;
 
@@ -38,148 +38,84 @@ pub(crate) enum Server {
     Local { bots: Vec<SlotBotFile> },
 }
 
-/// A flag the client takes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Flag {
-    Bot,
-    Key,
-    Data,
-    Local,
-    ServerBot,
+/// Joins a session on a server, or plays a mode alone on a local server.
+#[derive(Debug, Parser)]
+#[command(version)]
+struct CommandLine {
+    /// Plays the orders file's script as a bot, with no window
+    #[arg(long, value_name = "ORDERS FILE")]
+    bot: Option<PathBuf>,
+    /// The player's key file, made when missing; without it, the player is a new key each run
+    #[arg(long, value_name = "KEY FILE")]
+    key: Option<PathBuf>,
+    /// The data directory, which keeps the newest receipt of the session and a local server's data
+    #[arg(long, value_name = "DIRECTORY")]
+    data: Option<PathBuf>,
+    /// Plays the mode alone on a local server, a thread of the client's process
+    #[arg(long, requires = "data")]
+    local: bool,
+    /// A bot of the local server, in a slot other than the player's 0
+    #[arg(
+        long = "server-bot",
+        value_name = "SLOT=ORDERS FILE",
+        requires = "local"
+    )]
+    server_bots: Vec<SlotBotFile>,
+    /// The mode's package directory
+    mode: PathBuf,
+    /// The server's address, as its listing gives it
+    #[arg(required_unless_present = "local", conflicts_with = "local")]
+    address: Option<SocketAddr>,
+    /// The hash of the server's TLS certificate, in hex
+    #[arg(required_unless_present = "local", conflicts_with = "local")]
+    certificate: Option<CertificateHash>,
+    /// The server's public key, in hex
+    #[arg(required_unless_present = "local", conflicts_with = "local")]
+    server_key: Option<XOnlyPublicKey>,
+    /// The session's ticks a second
+    #[arg(required_unless_present = "local", conflicts_with = "local")]
+    tick_hz: Option<NonZeroU32>,
 }
 
 impl Args {
-    /// What `args`, the command line after the program, names, its flags in any order before the
-    /// mode; an error for each flaw.
-    pub(crate) fn parse(args: impl Iterator<Item = OsString>) -> Result<Args, ArgsError> {
-        let mut args = args.peekable();
-        let (mut bot, mut key, mut data) = (None, None, None);
-        let mut local = false;
-        let mut bots = Vec::new();
-        while let Some(arg) =
-            args.next_if(|arg| arg.to_str().is_some_and(|arg| arg.starts_with("--")))
-        {
-            let flag = Flag::of(&arg).ok_or(ArgsError::UnknownFlag(arg))?;
-            let held = match flag {
-                Flag::Local => {
-                    if local {
-                        return Err(ArgsError::Twice(flag));
-                    }
-                    local = true;
-                    continue;
-                }
-                Flag::ServerBot => {
-                    let value = args.next().ok_or(ArgsError::NoValue(flag))?;
-                    let bot: SlotBotFile = Args::text(&value)?.parse().map_err(ArgsError::Bot)?;
-                    if bot.slot == PlayerSlot::new(0) {
-                        return Err(ArgsError::BotInClientSlot);
-                    }
-                    bots.push(bot);
-                    continue;
-                }
-                Flag::Bot => &mut bot,
-                Flag::Key => &mut key,
-                Flag::Data => &mut data,
-            };
-            let value = args.next().ok_or(ArgsError::NoValue(flag))?;
-            if held.replace(PathBuf::from(value)).is_some() {
-                return Err(ArgsError::Twice(flag));
+    /// What the command line `args`, the program first, names; an error for each flaw, or for a
+    /// request for the help or the version.
+    pub(crate) fn read(args: impl IntoIterator<Item = OsString>) -> Result<Args, ArgsError> {
+        let line = CommandLine::try_parse_from(args).map_err(ArgsError::CommandLine)?;
+        let server = if line.local {
+            if line
+                .server_bots
+                .iter()
+                .any(|bot| bot.slot == PlayerSlot::new(0))
+            {
+                return Err(ArgsError::BotInClientSlot);
             }
-        }
-        let mode = PathBuf::from(args.next().ok_or(ArgsError::NoMode)?);
-        let server = if local {
-            if data.is_none() {
-                return Err(ArgsError::LocalWithoutData);
+            Server::Local {
+                bots: line.server_bots,
             }
-            if args.next().is_some() {
-                return Err(ArgsError::LocalExtra);
-            }
-            Server::Local { bots }
         } else {
-            if !bots.is_empty() {
-                return Err(ArgsError::BotWithoutLocal);
+            let (Some(address), Some(certificate), Some(key), Some(tick_hz)) = (
+                line.address,
+                line.certificate,
+                line.server_key,
+                line.tick_hz,
+            ) else {
+                unreachable!("clap requires a remote server's four arguments without --local");
+            };
+            Server::Remote {
+                address,
+                certificate,
+                key,
+                tick_hz,
             }
-            Server::parse(args)?
         };
         Ok(Args {
-            bot,
-            key,
-            data,
-            mode,
+            bot: line.bot,
+            key: line.key,
+            data: line.data,
+            mode: line.mode,
             server,
         })
-    }
-
-    /// The text of `arg`; an error when it is not UTF-8.
-    fn text(arg: &OsStr) -> Result<&str, ArgsError> {
-        arg.to_str()
-            .ok_or_else(|| ArgsError::NotText(arg.to_owned()))
-    }
-}
-
-impl Server {
-    /// The remote server the arguments after the mode name: its address, its certificate's
-    /// hash, its key and its tick rate.
-    fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Server, ArgsError> {
-        let (Some(address), Some(certificate), Some(key), Some(tick_hz), None) = (
-            args.next(),
-            args.next(),
-            args.next(),
-            args.next(),
-            args.next(),
-        ) else {
-            return Err(ArgsError::RemoteArgs);
-        };
-        let address = Args::text(&address)?;
-        let certificate = Args::text(&certificate)?;
-        let key = Args::text(&key)?;
-        let tick_hz = Args::text(&tick_hz)?;
-        Ok(Server::Remote {
-            address: address.parse().map_err(|error| ArgsError::Address {
-                text: address.to_owned(),
-                error,
-            })?,
-            certificate: certificate
-                .parse()
-                .map_err(|error| ArgsError::Certificate {
-                    text: certificate.to_owned(),
-                    error,
-                })?,
-            key: XOnlyPublicKey::from_str(key).map_err(|error| ArgsError::Key {
-                text: key.to_owned(),
-                error,
-            })?,
-            tick_hz: tick_hz.parse().map_err(|error| ArgsError::TickRate {
-                text: tick_hz.to_owned(),
-                error,
-            })?,
-        })
-    }
-}
-
-impl Flag {
-    const ALL: [Flag; 5] = [
-        Flag::Bot,
-        Flag::Key,
-        Flag::Data,
-        Flag::Local,
-        Flag::ServerBot,
-    ];
-
-    /// The flag `arg` names; none for text that names no flag.
-    fn of(arg: &OsStr) -> Option<Flag> {
-        Flag::ALL.into_iter().find(|flag| arg == flag.name())
-    }
-
-    /// The flag as the command line writes it.
-    pub(crate) const fn name(self) -> &'static str {
-        match self {
-            Flag::Bot => "--bot",
-            Flag::Key => "--key",
-            Flag::Data => "--data",
-            Flag::Local => "--local",
-            Flag::ServerBot => "--server-bot",
-        }
     }
 }
 

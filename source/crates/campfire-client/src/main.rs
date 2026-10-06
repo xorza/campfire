@@ -42,6 +42,7 @@ use campfire_sim::TickRate;
 use lightyear::prelude::Connect;
 use tracing::error;
 
+use crate::args::error::ArgsError;
 use crate::args::{Args, Server};
 use crate::bot::Bot;
 use crate::connection::Connection;
@@ -76,17 +77,15 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Args::parse(env::args_os().skip(1)) {
+    let args = match Args::read(env::args_os()) {
         Ok(args) => args,
+        Err(ArgsError::CommandLine(output)) if !output.use_stderr() => return shown(&output),
+        Err(ArgsError::CommandLine(error)) => {
+            error!(error = %error, "the command line is refused");
+            return ExitCode::from(ExitStatus::Usage);
+        }
         Err(error) => {
-            error!(
-                error = %ErrorReport::of(&error),
-                "usage: campfire-client [--bot <orders file>] [--key <key file>] [--data <data \
-                 directory>] <mode package directory> <server address> <certificate hash> \
-                 <server key> <tick rate>; or campfire-client --local --data <data directory> \
-                 [--server-bot <slot>=<orders file>]... [--bot <orders file>] [--key <key \
-                 file>] <mode package directory>"
-            );
+            error!(error = %ErrorReport::of(&error), "the command line is refused");
             return ExitCode::from(ExitStatus::Usage);
         }
     };
@@ -198,6 +197,18 @@ fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
             })?;
     }
     Ok(packages)
+}
+
+/// Ends the client once clap printed the help or the version `output` asked for, to standard
+/// output: with success, or with failure when it does not print.
+fn shown(output: &clap::Error) -> ExitCode {
+    match output.print() {
+        Ok(()) => ExitCode::from(ExitStatus::Success),
+        Err(error) => {
+            error!(error = %ErrorReport::of(&error), "the help does not print");
+            ExitCode::from(ExitStatus::Failure)
+        }
+    }
 }
 
 /// The player's main key: the key file's, made when missing, or a new one with no file; the exit
