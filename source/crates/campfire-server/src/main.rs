@@ -1,5 +1,6 @@
 //! Headless game server: opens a session of a mode on an address, lets its players join over
-//! WebTransport, runs the match, and writes the session log once every player left.
+//! WebTransport, runs the match, and writes the session log once every player left. Its data
+//! directory, which it holds locked while it runs, keeps its key.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info` by default). With `CAMPFIRE_LOG` set
 //! to a path, they also go there as JSON lines, filtered by `CAMPFIRE_LOG_FILTER` (Campfire's
@@ -11,6 +12,7 @@
 )]
 
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
@@ -31,13 +33,19 @@ use campfire_net::{
     Listening, Lobby, LobbySetup, MatchClock, NetProtocol, PlayerLink, SessionWritten, SimServer,
 };
 use campfire_package::ModePackages;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{CertificateHash, SeedChain};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
 use lightyear::prelude::{Connected, Identity, LinkOf, Linked, LocalAddr, ReplicationSender};
 use tracing::{error, info};
+
+use crate::data_dir::DataDir;
+
+mod data_dir;
+
+const USAGE: &str = "usage: campfire-server --data <data directory> <mode package directory> \
+                     <address, as 0.0.0.0:4433>";
 
 /// How often the app loop runs: often enough that no fixed tick waits long for its frame.
 const FRAME: Duration = Duration::from_millis(2);
@@ -55,18 +63,23 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let mut args = env::args_os().skip(1);
-    let (Some(mode), Some(address), None) = (args.next(), args.next(), args.next()) else {
-        error!("usage: campfire-server <mode package directory> <address, as 0.0.0.0:4433>");
-        return ExitCode::from(2);
+    let Args {
+        data,
+        mode,
+        address,
+    } = match Args::parse(env::args_os().skip(1)) {
+        Ok(args) => args,
+        Err(problem) => {
+            error!(%problem, USAGE);
+            return ExitCode::from(2);
+        }
     };
-    let mode = PathBuf::from(mode);
-    let Some(address) = address
-        .to_str()
-        .and_then(|text| text.parse::<SocketAddr>().ok())
-    else {
-        error!(address = %address.display(), "not a socket address");
-        return ExitCode::from(2);
+    let data_dir = match DataDir::open(&data, fill) {
+        Ok(data_dir) => data_dir,
+        Err(error) => {
+            error!(data = %data.display(), %error, "the data directory does not open");
+            return ExitCode::FAILURE;
+        }
     };
     let packages = match ModePackages::from_dir(&mode) {
         Ok(packages) => packages,
@@ -78,7 +91,7 @@ fn main() -> ExitCode {
     let identity = Identity::self_signed(["localhost"]).expect("a fixed name is a valid SAN");
     let certificate =
         CertificateHash::new(*identity.certificate_chain().as_slice()[0].hash().as_ref());
-    let server_key = keypair();
+    let server_key = data_dir.key;
     let players = usize::try_from(packages.manifest().slots()).expect("the slots fit usize");
     let key = server_key.x_only_public_key().0;
     let tick_hz = packages.manifest().tick_hz.default();
@@ -104,6 +117,34 @@ fn main() -> ExitCode {
         "opened a session"
     );
 
+    let listening = Listening {
+        certificate,
+        server_key: key,
+        tick_hz,
+        join: format!(
+            "campfire-client {} <this machine's LAN address>:{} {certificate} {key} {tick_hz}",
+            mode.display(),
+            address.port()
+        ),
+    };
+    let mut app = server_app(lobby, tick, listening);
+    let server = app
+        .world_mut()
+        .spawn((
+            RawServer,
+            WebTransportServerIo {
+                certificate: identity,
+            },
+            LocalAddr(address),
+        ))
+        .id();
+    app.world_mut().trigger(Start { entity: server });
+    exit_code(app.run())
+}
+
+/// The server's app: its plugins at `tick` a tick, the session `lobby` opened, a `listening`
+/// event logged once its transport listens, and the end once every player left.
+fn server_app(lobby: Lobby, tick: Duration, listening: Listening) -> App {
     let mut app = App::new();
     app.add_plugins((
         TaskPoolPlugin::default(),
@@ -121,16 +162,6 @@ fn main() -> ExitCode {
             commands.entity(added.entity).insert(ReplicationSender);
         },
     );
-    let listening = Listening {
-        certificate,
-        server_key: key,
-        tick_hz,
-        join: format!(
-            "campfire-client {} <this machine's LAN address>:{} {certificate} {key} {tick_hz}",
-            mode.display(),
-            address.port()
-        ),
-    };
     app.add_observer(
         move |added: On<'_, '_, Add, Linked>, servers: Query<'_, '_, (), With<RawServer>>| {
             if servers.contains(added.entity) {
@@ -139,18 +170,42 @@ fn main() -> ExitCode {
         },
     );
     app.add_systems(Update, end_when_everyone_left);
-    let server = app
-        .world_mut()
-        .spawn((
-            RawServer,
-            WebTransportServerIo {
-                certificate: identity,
-            },
-            LocalAddr(address),
-        ))
-        .id();
-    app.world_mut().trigger(Start { entity: server });
-    exit_code(app.run())
+    app
+}
+
+/// What the command line names: the data directory, the mode to open, and the address to listen
+/// on.
+#[derive(Debug)]
+struct Args {
+    data: PathBuf,
+    mode: PathBuf,
+    address: SocketAddr,
+}
+
+impl Args {
+    fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Args, String> {
+        let (Some(flag), Some(data), Some(mode), Some(address), None) = (
+            args.next(),
+            args.next(),
+            args.next(),
+            args.next(),
+            args.next(),
+        ) else {
+            return Err("four arguments are needed".to_owned());
+        };
+        if flag != "--data" {
+            return Err(format!("{}: not --data", flag.display()));
+        }
+        let address = address
+            .to_str()
+            .and_then(|text| text.parse::<SocketAddr>().ok())
+            .ok_or_else(|| format!("{}: not a socket address", address.display()))?;
+        Ok(Args {
+            data: PathBuf::from(data),
+            mode: PathBuf::from(mode),
+            address,
+        })
+    }
 }
 
 /// The process's exit code for how the app exited.
@@ -198,15 +253,6 @@ fn end_when_everyone_left(
         }
     };
     world.write_message(exit);
-}
-
-/// A fresh server key.
-fn keypair() -> Keypair {
-    loop {
-        if let Ok(secret) = SecretKey::from_byte_array(&random()) {
-            return Keypair::from_secret_key(&Secp256k1::new(), &secret);
-        }
-    }
 }
 
 fn random() -> [u8; 32] {

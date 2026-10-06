@@ -51,6 +51,8 @@ impl LanMatch<'_> {
         let mut server = self.start(
             Process::Server,
             Command::new(&self.binaries.server)
+                .arg("--data")
+                .arg(self.dir.join("server-data"))
                 .arg(self.mode)
                 .arg(address.to_string()),
         )?;
@@ -99,6 +101,8 @@ impl LanMatch<'_> {
                 Command::new(&self.binaries.client)
                     .arg("--bot")
                     .arg(script)
+                    .arg("--key")
+                    .arg(self.dir.join(format!("{}.nsec", process.file_stem())))
                     .arg(self.mode)
                     .arg(address.to_string())
                     .arg(certificate)

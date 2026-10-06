@@ -1,6 +1,8 @@
 //! Game client: joins a session over WebTransport, predicts the player's own avatar, and draws the
 //! match as capsules on the ground; a right click walks the avatar there. With `--bot <orders
 //! file>`, it opens no window and renders nothing, and plays the file's `OrderScript` instead.
+//! With `--key <file>`, the player's main key is the file's, made when missing; without it, the
+//! player is a new key each run.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by
 //! default). With `CAMPFIRE_LOG` set to a path, they also go there as JSON lines, filtered by
@@ -31,8 +33,8 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_log::Logging;
 use campfire_net::{NetProtocol, OrderScript, ServerPin, SimClient};
 use campfire_package::ModePackages;
-use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
+use campfire_protocol::{CertificateHash, KeyFile};
 use campfire_runner::SessionRules;
 use campfire_sim::TickRate;
 use lightyear::prelude::client::{ClientPlugins, RawClient, WebTransportClientIo};
@@ -59,6 +61,7 @@ mod view;
 #[derive(Debug)]
 struct Args {
     bot: Option<PathBuf>,
+    key: Option<PathBuf>,
     mode: PathBuf,
     address: SocketAddr,
     certificate: CertificateHash,
@@ -88,8 +91,8 @@ fn main() -> ExitCode {
         Err(problem) => {
             error!(
                 %problem,
-                "usage: campfire-client [--bot <orders file>] <mode package directory> \
-                 <server address> <certificate hash> <server key> <tick rate>"
+                "usage: campfire-client [--bot <orders file>] [--key <key file>] <mode package \
+                 directory> <server address> <certificate hash> <server key> <tick rate>"
             );
             return ExitCode::from(2);
         }
@@ -104,6 +107,10 @@ fn main() -> ExitCode {
             error!(%problem, "the orders file does not read");
             return ExitCode::FAILURE;
         }
+    };
+    let main_key = match main_key(&args) {
+        Ok(key) => key,
+        Err(code) => return code,
     };
     let tick = TickRate::new(args.tick_hz).length();
 
@@ -141,7 +148,7 @@ fn main() -> ExitCode {
     app.add_plugins((
         NetProtocol,
         SimClient {
-            main_key: keypair(),
+            main_key,
             session_key: keypair(),
             server: ServerPin {
                 key: args.server_key,
@@ -180,13 +187,14 @@ fn main() -> ExitCode {
 impl Args {
     fn parse(args: impl Iterator<Item = OsString>) -> Result<Args, String> {
         let mut args = args.peekable();
-        let bot = if args.next_if(|arg| arg == "--bot").is_some() {
-            Some(PathBuf::from(
-                args.next().ok_or("--bot needs an orders file")?,
-            ))
-        } else {
-            None
-        };
+        let (mut bot, mut key) = (None, None);
+        while let Some(flag) = args.next_if(|arg| arg == "--bot" || arg == "--key") {
+            let value = args.next().ok_or("--bot and --key each need a file")?;
+            let slot = if flag == "--bot" { &mut bot } else { &mut key };
+            if slot.replace(PathBuf::from(value)).is_some() {
+                return Err(format!("{} given twice", flag.display()));
+            }
+        }
         let (Some(mode), Some(address), Some(certificate), Some(server_key), Some(tick_hz), None) = (
             args.next(),
             args.next(),
@@ -208,6 +216,7 @@ impl Args {
         let tick_hz = text(&tick_hz)?;
         Ok(Args {
             bot,
+            key,
             mode: PathBuf::from(mode),
             address: address
                 .parse()
@@ -238,6 +247,18 @@ fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
             ExitCode::from(2)
         })?;
     Ok(packages)
+}
+
+/// The player's main key: the key file's, made when missing, or a new one with no file; the exit
+/// code when the file does not read.
+fn main_key(args: &Args) -> Result<Keypair, ExitCode> {
+    let Some(path) = &args.key else {
+        return Ok(keypair());
+    };
+    KeyFile::read_or_create(path, fill).map_err(|error| {
+        error!(key = %path.display(), %error, "the key file does not read");
+        ExitCode::FAILURE
+    })
 }
 
 /// The order script in the file at `path`.
