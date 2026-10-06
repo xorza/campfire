@@ -7,10 +7,12 @@ use campfire_net::{
 };
 use campfire_verifier::Verified;
 
+use crate::error::CheckError;
 use crate::failure::Failure;
 use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
+use crate::session_kind::SessionKind;
 
 /// What the check found wrong with a LAN match, from the processes' outcomes and logs; nothing
 /// when the match passed.
@@ -19,12 +21,34 @@ pub(crate) struct Verdict {
     failures: Vec<Failure>,
 }
 
-/// What a bot logged of its match, and the number of orders its script holds.
+/// What a bot process logged of its match, the bot's index, the number of orders its script
+/// holds, and whether it ran to its end: one the check stopped sent only some.
 #[derive(Debug)]
 pub(crate) struct BotEvents {
+    pub(crate) bot: usize,
     pub(crate) started: Option<MatchStarted>,
     pub(crate) sent: Vec<OrdersSent>,
     pub(crate) scripted: usize,
+    pub(crate) whole: bool,
+}
+
+impl BotEvents {
+    /// What bot `bot`'s process logged in `log`, its script of `scripted` orders, and whether it
+    /// ran to its end.
+    pub(crate) fn of(
+        bot: usize,
+        log: &ProcessLog,
+        scripted: usize,
+        whole: bool,
+    ) -> Result<BotEvents, CheckError> {
+        Ok(BotEvents {
+            bot,
+            started: log.first::<MatchStarted>()?,
+            sent: log.read_all::<OrdersSent>()?,
+            scripted,
+            whole,
+        })
+    }
 }
 
 impl Verdict {
@@ -33,6 +57,11 @@ impl Verdict {
         if outcome != Outcome::Succeeded {
             self.failures.push(Failure::Ended { process, outcome });
         }
+        self.warned(process, log);
+    }
+
+    /// Checks that `process` logged no warning or error.
+    fn warned(&mut self, process: Process, log: &ProcessLog) {
         for line in log.lines() {
             if line.level >= Level::Warn {
                 self.failures.push(Failure::Warned {
@@ -43,6 +72,15 @@ impl Verdict {
                 });
             }
         }
+    }
+
+    /// Checks that `process`, which the check stops mid-match, ran until it did, and logged no
+    /// warning or error.
+    pub(crate) fn stopped(&mut self, process: Process, outcome: Outcome, log: &ProcessLog) {
+        if outcome != Outcome::Stopped {
+            self.failures.push(Failure::NotStopped { process, outcome });
+        }
+        self.warned(process, log);
     }
 
     /// Checks that the impostor bot exited with failure, and logged why its link failed: a client
@@ -63,9 +101,10 @@ impl Verdict {
         }
     }
 
-    /// Checks that each bot learned its slot and sent every order of its script, and that the
-    /// server logged exactly the inputs the bots sent, each taking effect in its stamp tick, or
-    /// after the ticks of a frame that `caught_up` with a stall and that it waited for.
+    /// Checks that each bot process learned its slot and, when it ran to its end, sent every
+    /// order of its script, and that the server logged exactly the inputs the bots sent, each
+    /// taking effect in its stamp tick, or after the ticks of a frame that `caught_up` with a
+    /// stall and that it waited for.
     pub(crate) fn orders(
         &mut self,
         logged: &[InputLogged],
@@ -73,7 +112,8 @@ impl Verdict {
         bots: &[BotEvents],
     ) {
         let mut sent = BTreeMap::<(PlayerSlot, Tick), usize>::new();
-        for (bot, events) in bots.iter().enumerate() {
+        for events in bots {
+            let bot = events.bot;
             let Some(MatchStarted { slot, .. }) = events.started else {
                 self.failures.push(Failure::NoSlot { bot });
                 continue;
@@ -83,7 +123,7 @@ impl Verdict {
                 *sent.entry((slot, stamp)).or_default() += orders;
                 count += orders;
             }
-            if count != events.scripted {
+            if events.whole && count != events.scripted {
                 self.failures.push(Failure::OrderCount {
                     bot,
                     sent: count,
@@ -114,18 +154,24 @@ impl Verdict {
         }
     }
 
-    /// Checks that the server wrote the session log, and that the verifier replayed it to the
-    /// server's final hash.
-    pub(crate) fn hash(&mut self, written: Option<&SessionWritten>, verified: Option<&Verified>) {
+    /// Checks that the host of `session` wrote the session log, and that the verifier replayed
+    /// it to the host's final hash.
+    pub(crate) fn hash(
+        &mut self,
+        session: SessionKind,
+        written: Option<&SessionWritten>,
+        verified: Option<&Verified>,
+    ) {
         let Some(written) = written else {
-            self.failures.push(Failure::NoLog);
+            self.failures.push(Failure::NoLog { session });
             return;
         };
         match verified {
-            None => self.failures.push(Failure::NotVerified),
+            None => self.failures.push(Failure::NotVerified { session }),
             Some(verified) if verified.hash != written.hash => {
                 self.failures.push(Failure::OtherHash {
-                    server: written.hash,
+                    session,
+                    host: written.hash,
                     verifier: verified.hash,
                 });
             }
@@ -133,20 +179,20 @@ impl Verdict {
         }
     }
 
-    /// The failures found, less each that follows from another: with a server that did not
-    /// succeed, the missing session log and final hash; with a verifier that did not, the final
-    /// hash.
+    /// The failures found, less each that follows from another: with a session's host that did
+    /// not succeed, its missing session log and final hash; with its verifier that did not, the
+    /// final hash.
     pub(crate) fn failures(&self) -> impl Iterator<Item = &Failure> {
         let ended = |of: Process| {
             self.failures
                 .iter()
                 .any(|failure| matches!(failure, Failure::Ended { process, .. } if *process == of))
         };
-        let server = ended(Process::Server);
-        let verifier = ended(Process::Verifier);
         self.failures.iter().filter(move |failure| match failure {
-            Failure::NoLog => !server,
-            Failure::NotVerified => !server && !verifier,
+            Failure::NoLog { session } => !ended(session.host()),
+            Failure::NotVerified { session } => {
+                !ended(session.host()) && !ended(session.verifier())
+            }
             _ => true,
         })
     }

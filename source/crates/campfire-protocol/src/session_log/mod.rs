@@ -201,6 +201,9 @@ struct Slot {
     leaver: Option<[u8; 32]>,
     stamps: StampCount,
     spill: Spill,
+    /// The delegation whose key signed the head of its player's chain, by index; none before
+    /// their first input.
+    head_signer: Option<u32>,
 }
 
 /// Who controls a slot.
@@ -371,6 +374,7 @@ impl Slot {
             leaver: None,
             stamps: StampCount::default(),
             spill: Spill::default(),
+            head_signer: None,
         }
     }
 }
@@ -677,6 +681,7 @@ impl SessionLog {
         let held = &mut self.slots[player];
         held.control = Control::Player { delegation, chain };
         held.stamps = stamps;
+        held.head_signer = Some(delegation);
         applied.clear();
         applied.reserve_exact(count);
         let start = offset(self.inputs.len());
@@ -824,14 +829,18 @@ impl SessionLog {
                 held.control = Control::player(slot, delegation, index);
                 held.leaver = None;
                 held.stamps = StampCount::default();
+                held.head_signer = None;
                 self.forget_pending(slot);
                 self.forget_durable(slot);
             }
+            // The chain's head stays the old key's until the new key signs an input: a receipt
+            // names the key that signed its head, which the player's client then no longer holds.
             ServerInput::Renew { delegation, .. } => {
                 let index = self.push_delegation(delegation);
                 if let Control::Player { delegation, .. } = &mut self.slots[at].control {
                     *delegation = index;
                 }
+                self.forget_durable(slot);
             }
             ServerInput::Leave { becomes, .. } => {
                 let held = &mut self.slots[at];
@@ -1496,8 +1505,9 @@ impl SessionLog {
     }
 
     /// Keeps `journal`, which holds every record the log took, as the log was rebuilt from it:
-    /// from then on each record the log takes goes to it as it takes it. Every chain stands
-    /// durably where the log holds it, as the journal was read back from the disk.
+    /// from then on each record the log takes goes to it as it takes it. Every chain whose head
+    /// its player's current delegation signed stands durably where the log holds it, as the
+    /// journal was read back from the disk.
     pub fn resume_journal(&mut self, journal: Journal) {
         assert!(self.journal.is_none(), "a log keeps one journal");
         self.journal = Some(journal);
@@ -1505,6 +1515,10 @@ impl SessionLog {
             let Control::Player { delegation, chain } = held.control else {
                 continue;
             };
+            // A player who renewed their delegation since their last input has no head of theirs.
+            if held.head_signer != Some(delegation) {
+                continue;
+            }
             *durable = chain.next_seq().checked_sub(1).map(|seq| DurableHead {
                 delegation: *self.delegations[delegation as usize].id(),
                 seq,
@@ -1528,7 +1542,8 @@ impl SessionLog {
     }
 
     /// Where `slot`'s player's chain stands in the records the journal synced, as of the last
-    /// `advance_durable`; none before any, and since a player took the slot or left it.
+    /// `advance_durable`; none before any, and since a player took the slot, renewed their
+    /// delegation, or left it.
     pub fn durable_head(&self, slot: PlayerSlot) -> Option<DurableHead> {
         self.durable.get(slot.index()).copied().flatten()
     }
@@ -1606,7 +1621,8 @@ impl SessionLog {
         }
     }
 
-    /// Forgets where `slot`'s chain stands durably: a player took the slot, or left it.
+    /// Forgets where `slot`'s chain stands durably: a player took the slot, renewed their
+    /// delegation, or left it.
     fn forget_durable(&mut self, slot: PlayerSlot) {
         self.durable[slot.index()] = None;
         self.journaled.retain(|journaled| journaled.slot != slot);

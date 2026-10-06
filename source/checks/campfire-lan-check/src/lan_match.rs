@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::mem;
 use std::net::{SocketAddr, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -6,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use campfire_common::Bytes32;
-use campfire_net::Listening;
+use campfire_net::{InputLogged, Listening, MatchStarted};
 
 use crate::binaries::Binaries;
 use crate::error::CheckError;
@@ -21,6 +22,12 @@ const DEADLINE: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(50);
 /// The server's data directory, in the run's directory.
 pub(crate) const SERVER_DATA: &str = "server-data";
+/// The local client's data directory, in the run's directory; its local server's is `server`
+/// under it.
+pub(crate) const LOCAL_DATA: &str = "local-data";
+/// The bot the check stops once the server logged its first order, and starts again with its key
+/// file.
+pub(crate) const RESTARTED: usize = 1;
 
 /// A match of the real server and one bot per script, each a process on `127.0.0.1`, each
 /// logging JSON to a file in the run's directory; beside them, an impostor bot that pins the
@@ -36,17 +43,20 @@ pub(crate) struct LanMatch<'a> {
     pub(crate) scripts: &'a [PathBuf],
 }
 
-/// How each process of a match ended.
+/// How each process of a match ended: the bot `RESTARTED`'s first process among the bots, and
+/// the one the check started again after it.
 #[derive(Debug)]
 pub(crate) struct Played {
     pub(crate) server: Outcome,
     pub(crate) bots: Vec<Outcome>,
+    pub(crate) rejoined: Outcome,
     pub(crate) impostor: Outcome,
 }
 
 impl LanMatch<'_> {
-    /// Starts the server, waits until it listens, starts the bots and the impostor, and waits until
-    /// every process ended or the deadline passed.
+    /// Starts the server, waits until it listens, starts the bots and the impostor; once the
+    /// server logged the first order of bot `RESTARTED`, stops that bot and starts it again with
+    /// its key file; and waits until every process ended or the deadline passed.
     pub(crate) fn play(&self) -> Result<Played, CheckError> {
         let deadline = Instant::now() + DEADLINE;
         let address = SocketAddr::from(([127, 0, 0, 1], free_port()?));
@@ -71,6 +81,7 @@ impl LanMatch<'_> {
                 return Ok(Played {
                     server: Outcome::of(status),
                     bots: vec![Outcome::NotStarted; self.scripts.len()],
+                    rejoined: Outcome::NotStarted,
                     impostor: Outcome::NotStarted,
                 });
             }
@@ -86,6 +97,7 @@ impl LanMatch<'_> {
             return Ok(Played {
                 server: stop(Process::Server, &mut server)?,
                 bots: vec![Outcome::NotStarted; self.scripts.len()],
+                rejoined: Outcome::NotStarted,
                 impostor: Outcome::NotStarted,
             });
         };
@@ -97,51 +109,102 @@ impl LanMatch<'_> {
             .enumerate()
             .map(|(index, script)| (Process::Bot(index), script, certificate.to_string()));
         let impostor = (Process::Impostor, &self.scripts[0], wrong);
+        let bot = |process: Process, key: Process, script: &Path, certificate: &str| {
+            let mut command = Command::new(&self.binaries.client);
+            command
+                .arg("--bot")
+                .arg(script)
+                .arg("--key")
+                .arg(self.dir.join(format!("{}.nsec", key.file_stem())))
+                .arg(self.mode)
+                .arg(address.to_string())
+                .arg(certificate)
+                .arg(server_key.to_string())
+                .arg(tick_hz.to_string());
+            self.start(process, &mut command)
+        };
         for (process, script, certificate) in bots.chain([impostor]) {
-            let bot = self.start(
-                process,
-                Command::new(&self.binaries.client)
-                    .arg("--bot")
-                    .arg(script)
-                    .arg("--key")
-                    .arg(self.dir.join(format!("{}.nsec", process.file_stem())))
-                    .arg(self.mode)
-                    .arg(address.to_string())
-                    .arg(certificate)
-                    .arg(server_key.to_string())
-                    .arg(tick_hz.to_string()),
-            )?;
-            children.push((process, bot));
+            children.push((process, bot(process, process, script, &certificate)?));
         }
-        let mut outcomes = vec![None; children.len()];
-        while outcomes.iter().any(Option::is_none) && Instant::now() < deadline {
-            for ((process, child), outcome) in children.iter_mut().zip(&mut outcomes) {
-                if outcome.is_none() {
-                    *outcome = child
-                        .try_wait()
-                        .map_err(|error| CheckError::Wait {
-                            process: *process,
-                            error,
-                        })?
-                        .map(Outcome::of);
+        let restarted = Process::Bot(RESTARTED);
+        let stopped = if self.first_order_logged(restarted, deadline)? {
+            let at = 1 + RESTARTED;
+            kill(restarted, &mut children[at].1)?;
+            let again = Process::Rejoined(RESTARTED);
+            let script = &self.scripts[RESTARTED];
+            children[at] = (
+                again,
+                bot(again, restarted, script, &certificate.to_string())?,
+            );
+            Some(Outcome::Stopped)
+        } else {
+            None
+        };
+        let mut ended = wait(&mut children, deadline)?;
+        let server = ended.remove(0);
+        let impostor = ended.pop().expect("the impostor ran");
+        let rejoined = match stopped {
+            Some(outcome) => mem::replace(&mut ended[RESTARTED], outcome),
+            None => Outcome::NotStarted,
+        };
+        Ok(Played {
+            server,
+            bots: ended,
+            rejoined,
+            impostor,
+        })
+    }
+
+    /// Waits until the server logged an input of the slot that `bot` learned it plays, or the
+    /// deadline passed; whether it did.
+    fn first_order_logged(&self, bot: Process, deadline: Instant) -> Result<bool, CheckError> {
+        while Instant::now() < deadline {
+            let started =
+                ProcessLog::read(bot, &bot.log_path(self.dir))?.first::<MatchStarted>()?;
+            if let Some(MatchStarted { slot, .. }) = started {
+                let server =
+                    ProcessLog::read(Process::Server, &Process::Server.log_path(self.dir))?;
+                let logged = server.read_all::<InputLogged>()?;
+                if logged.iter().any(|input| input.slot == slot) {
+                    return Ok(true);
                 }
             }
             thread::sleep(POLL);
         }
-        let mut ended = Vec::with_capacity(children.len());
-        for ((process, child), outcome) in children.iter_mut().zip(outcomes) {
-            ended.push(match outcome {
-                Some(outcome) => outcome,
-                None => stop(*process, child)?,
-            });
+        Ok(false)
+    }
+
+    /// Plays a client bot of the first script alone on a local server with no network, a server
+    /// bot of the second in slot 1, and waits until it ended or the deadline passed.
+    pub(crate) fn play_local(&self) -> Result<Outcome, CheckError> {
+        let deadline = Instant::now() + DEADLINE;
+        let mut client = self.start(
+            Process::Local,
+            Command::new(&self.binaries.client)
+                .arg("--local")
+                .arg("--data")
+                .arg(self.dir.join(LOCAL_DATA))
+                .arg("--server-bot")
+                .arg(format!("1={}", self.scripts[1].display()))
+                .arg("--bot")
+                .arg(&self.scripts[0])
+                .arg("--key")
+                .arg(
+                    self.dir
+                        .join(format!("{}.nsec", Process::Local.file_stem())),
+                )
+                .arg(self.mode),
+        )?;
+        while Instant::now() < deadline {
+            if let Some(status) = client.try_wait().map_err(|error| CheckError::Wait {
+                process: Process::Local,
+                error,
+            })? {
+                return Ok(Outcome::of(status));
+            }
+            thread::sleep(POLL);
         }
-        let server = ended.remove(0);
-        let impostor = ended.pop().expect("the impostor ran");
-        Ok(Played {
-            server,
-            bots: ended,
-            impostor,
-        })
+        stop(Process::Local, &mut client)
     }
 
     /// Starts `command` as `process`, in the run's directory, logging JSON to its file and text to
@@ -160,13 +223,47 @@ impl LanMatch<'_> {
     }
 }
 
+/// How each of `children` ended, waiting until each did or the deadline passed, when the check
+/// stops each that still runs.
+fn wait(children: &mut [(Process, Child)], deadline: Instant) -> Result<Vec<Outcome>, CheckError> {
+    let mut outcomes = vec![None; children.len()];
+    while outcomes.iter().any(Option::is_none) && Instant::now() < deadline {
+        for ((process, child), outcome) in children.iter_mut().zip(&mut outcomes) {
+            if outcome.is_none() {
+                *outcome = child
+                    .try_wait()
+                    .map_err(|error| CheckError::Wait {
+                        process: *process,
+                        error,
+                    })?
+                    .map(Outcome::of);
+            }
+        }
+        thread::sleep(POLL);
+    }
+    let mut ended = Vec::with_capacity(children.len());
+    for ((process, child), outcome) in children.iter_mut().zip(outcomes) {
+        ended.push(match outcome {
+            Some(outcome) => outcome,
+            None => stop(*process, child)?,
+        });
+    }
+    Ok(ended)
+}
+
 /// Kills `child`, which overran the deadline.
 fn stop(process: Process, child: &mut Child) -> Result<Outcome, CheckError> {
+    kill(process, child)?;
+    Ok(Outcome::Overran)
+}
+
+/// Kills `child`, as a crash ends a process.
+fn kill(process: Process, child: &mut Child) -> Result<(), CheckError> {
     child
         .kill()
         .and_then(|()| child.wait())
         .map_err(|error| CheckError::Wait { process, error })?;
-    Ok(Outcome::Overran)
+    Ok(())
 }
 
 /// A UDP port on `127.0.0.1` that no socket holds now.

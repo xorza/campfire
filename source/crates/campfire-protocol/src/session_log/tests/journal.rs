@@ -112,3 +112,51 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     assert_eq!(rebuilt.durable_head(slot), Some(head));
     assert_eq!(rebuilt.durable_head(PlayerSlot::new(0)), None);
 }
+
+#[test]
+fn a_renewal_forgets_where_the_chain_stands_durably() {
+    // Player 1 sends a and b, which the journal syncs.
+    let mut log = new_log();
+    let file = MemoryFile::new();
+    let journal = Journal::start(file.clone());
+    let watch = journal.watch();
+    log.keep_journal(journal);
+    let mut applied = Vec::new();
+    resent(1, &[&[(0, b"a"), (1, b"b")]], 1)[0]
+        .submit(&mut log, &mut applied)
+        .unwrap();
+    let synced = |records| {
+        for _ in 0..1000 {
+            if watch.durable() == records {
+                break;
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(watch.durable(), records);
+    };
+    synced(2);
+    log.advance_durable();
+    let slot = PlayerSlot::new(1);
+    assert_eq!(log.durable_head(slot).map(|head| head.seq), Some(1));
+
+    // Their renewal to session key 5: the head stays the old key's, which a receipt would name,
+    // so none is durable; and none once the journal rebuilds the log either.
+    let renewed = delegation_with(1, |terms| {
+        terms.session_key = session_key(5).x_only_public_key().0;
+    });
+    serve(
+        &mut log,
+        ServerInput::Renew {
+            slot,
+            delegation: renewed,
+        },
+    )
+    .unwrap();
+    assert_eq!(log.durable_head(slot), None);
+    synced(3);
+    drop(log);
+    let journal = file.bytes();
+    let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
+    rebuilt.resume_journal(Journal::start(MemoryFile::new()));
+    assert_eq!(rebuilt.durable_head(slot), None);
+}

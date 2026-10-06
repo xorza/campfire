@@ -77,7 +77,7 @@ A delegation in a `Join` or a `Renew` must name the session, the server and a se
 
 ## Receipts
 
-About once a second, for each player whose durable seq advanced, the server signs `{session id, slot, delegation id, tick, seq, head}` over `"campfire/receipt/v1" ‖ session id ‖ u32 slot ‖ delegation id ‖ u64 tick ‖ u64 seq ‖ head` and sends it. Only inputs whose journal records are synced count, so a receipt names only what a crash cannot lose. The client checks the signature, the session, slot and delegation, and that the head is its own chain's at that seq. It keeps the newest, forgets its chain's history before it, and a writer thread writes it to `receipts/<session id>.receipt` in the client's data directory (`--data`): `"campfire/receipt-file/v1"` and the signed receipt in postcard.
+About once a second, for each player whose durable seq advanced, the server signs `{session id, slot, delegation id, tick, seq, head}` over `"campfire/receipt/v1" ‖ session id ‖ u32 slot ‖ delegation id ‖ u64 tick ‖ u64 seq ‖ head` and sends it. Only inputs whose journal records are synced count, so a receipt names only what a crash cannot lose. A join, a leave and a renewal of the slot's delegation start its durable head again: until the new key signs an input, the head is the old key's, whose delegation the player's client may no longer hold, as one started again with a new session key does. The client checks the signature, the session, slot and delegation, and that the head is its own chain's at that seq. It keeps the newest, forgets its chain's history before it, and a writer thread writes it to `receipts/<session id>.receipt` in the client's data directory (`--data`): `"campfire/receipt-file/v1"` and the signed receipt in postcard.
 
 ## Checkpoints
 

@@ -1,10 +1,14 @@
 //! LAN check on request: builds and starts the real `campfire-server` and two
 //! `campfire-client --bot` processes over WebTransport on `127.0.0.1`, for a match of about 3 s
-//! of the test lane mode, and a third bot that pins the wrong certificate; then reads their JSON
-//! logs and runs `campfire-verifier` on the session log. It passes when the server, the two bots
-//! and the verifier succeeded and logged no warning or error, every order was logged and took
-//! effect in its stamp tick, or right after a frame of several ticks it waited for, the verifier
-//! gives the server's final hash, and the third bot exited with failure and logged why.
+//! of the test lane mode, and a third bot that pins the wrong certificate; once the server logged
+//! the second bot's first order, it stops that bot and starts it again with its key file. Then it
+//! plays a client bot of the first script against a server bot of the second on a local server,
+//! `campfire-client --local`, with no network. It reads their JSON logs and runs
+//! `campfire-verifier` on each session log. It passes when every process succeeded, the bot it
+//! stopped ran until it did, and none logged a warning or an error; every order a bot process
+//! sent was logged and took effect in its stamp tick, or right after a frame of several ticks it
+//! waited for, the second bot started again sending each order of its script, late or not; each
+//! verifier gives its host's final hash; and the third bot exited with failure and logged why.
 //!
 //! Run it with `cargo run -p campfire-lan-check [-- <run root>]`. Each run's logs and session log
 //! go into a new directory below the run root, named for the run's start. `cargo run -p
@@ -19,8 +23,7 @@ use std::time::SystemTime;
 
 use campfire_log::Logging;
 use campfire_net::{
-    InputLogged, LinkLost, Listening, MatchStarted, OrderScript, OrdersSent, SessionDir,
-    SessionWritten, TicksCaughtUp,
+    InputLogged, LinkLost, Listening, OrderScript, SessionDir, SessionWritten, TicksCaughtUp,
 };
 use campfire_package::PackageDir;
 use campfire_verifier::Verified;
@@ -28,12 +31,13 @@ use tracing::{error, info};
 
 use crate::binaries::Binaries;
 use crate::error::CheckError;
-use crate::lan_match::{LanMatch, SERVER_DATA};
+use crate::lan_match::{LOCAL_DATA, LanMatch, RESTARTED, SERVER_DATA};
 use crate::mode::Mode;
 use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
 use crate::run_dir::RunDir;
+use crate::session_kind::SessionKind;
 use crate::verdict::{BotEvents, Verdict};
 
 mod binaries;
@@ -45,6 +49,7 @@ mod outcome;
 mod process;
 mod process_log;
 mod run_dir;
+mod session_kind;
 mod target_name;
 mod verdict;
 
@@ -145,33 +150,42 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     let server = ProcessLog::read(Process::Server, &Process::Server.log_path(dir))?;
     verdict.process(Process::Server, played.server, &server);
     verdict.listened(&server.read_all::<Listening>()?);
-    let mut bots = Vec::with_capacity(played.bots.len());
-    for ((index, &outcome), &scripted) in played.bots.iter().enumerate().zip(&scripted) {
-        let process = Process::Bot(index);
+    let mut bots = Vec::with_capacity(played.bots.len() + 1);
+    for ((bot, &outcome), &scripted) in played.bots.iter().enumerate().zip(&scripted) {
+        let process = Process::Bot(bot);
         let log = ProcessLog::read(process, &process.log_path(dir))?;
-        verdict.process(process, outcome, &log);
-        bots.push(BotEvents {
-            started: log.first::<MatchStarted>()?,
-            sent: log.read_all::<OrdersSent>()?,
-            scripted,
-        });
+        if bot == RESTARTED {
+            verdict.stopped(process, outcome, &log);
+        } else {
+            verdict.process(process, outcome, &log);
+        }
+        bots.push(BotEvents::of(bot, &log, scripted, bot != RESTARTED)?);
     }
+    let again = Process::Rejoined(RESTARTED);
+    let log = ProcessLog::read(again, &again.log_path(dir))?;
+    verdict.process(again, played.rejoined, &log);
+    bots.push(BotEvents::of(RESTARTED, &log, scripted[RESTARTED], true)?);
     let caught_up = server.read_all::<TicksCaughtUp>()?;
     verdict.orders(&server.read_all::<InputLogged>()?, &caught_up, &bots);
     let impostor = ProcessLog::read(Process::Impostor, &Process::Impostor.log_path(dir))?;
     verdict.impostor(played.impostor, &impostor.read_all::<LinkLost>()?);
+    verify(&binaries, dir, SessionKind::Lan, &mut verdict)?;
 
-    verify(&binaries, dir, &server, &mut verdict)?;
+    let local = lan.play_local()?;
+    let log = ProcessLog::read(Process::Local, &Process::Local.log_path(dir))?;
+    verdict.process(Process::Local, local, &log);
+    verify(&binaries, dir, SessionKind::Local, &mut verdict)?;
     Ok(verdict)
 }
 
-/// Verifies the session log of the match played in `dir` with this machine's verifier, and
-/// compares the server's final hash.
+/// Verifies the session logs of the matches played in `dir` with this machine's verifier, and
+/// compares each host's final hash.
 fn verify_run(dir: &Path) -> Result<Verdict, CheckError> {
     let binaries = build()?;
-    let server = ProcessLog::read(Process::Server, &Process::Server.log_path(dir))?;
     let mut verdict = Verdict::default();
-    verify(&binaries, dir, &server, &mut verdict)?;
+    for session in [SessionKind::Lan, SessionKind::Local] {
+        verify(&binaries, dir, session, &mut verdict)?;
+    }
     Ok(verdict)
 }
 
@@ -181,21 +195,27 @@ fn build() -> Result<Binaries, CheckError> {
     Binaries::build(&cargo)
 }
 
-/// Checks that the server whose log is `server` wrote the session log into `dir`, and that this
-/// machine's verifier ends without failure or warning, at the server's final hash.
+/// Checks that the host of `session` wrote the session log into `dir`, and that this machine's
+/// verifier ends without failure or warning, at the host's final hash.
 fn verify(
     binaries: &Binaries,
     dir: &Path,
-    server: &ProcessLog,
+    session: SessionKind,
     verdict: &mut Verdict,
 ) -> Result<(), CheckError> {
-    let written = server.first::<SessionWritten>()?;
+    let host = session.host();
+    let written = ProcessLog::read(host, &host.log_path(dir))?.first::<SessionWritten>()?;
+    let data = match session {
+        SessionKind::Lan => dir.join(SERVER_DATA),
+        SessionKind::Local => dir.join(LOCAL_DATA).join("server"),
+    };
+    let replayer = session.verifier();
     let verified = match &written {
         Some(written) => {
             // The log in the run's directory: `written.file` is a path on the machine that played
             // the run, in that system's syntax, which another may not read.
-            let file = SessionDir::published(&dir.join(SERVER_DATA), written.session);
-            let path = Process::Verifier.log_path(dir);
+            let file = SessionDir::published(&data, written.session);
+            let path = replayer.log_path(dir);
             let status = Command::new(&binaries.verifier)
                 .arg(PackageDir::workspace(PACKAGES))
                 .arg(file)
@@ -205,15 +225,15 @@ fn verify(
                 .stderr(Stdio::null())
                 .status()
                 .map_err(|error| CheckError::Start {
-                    process: Process::Verifier,
+                    process: replayer,
                     error,
                 })?;
-            let log = ProcessLog::read(Process::Verifier, &path)?;
-            verdict.process(Process::Verifier, Outcome::of(status), &log);
+            let log = ProcessLog::read(replayer, &path)?;
+            verdict.process(replayer, Outcome::of(status), &log);
             log.first::<Verified>()?
         }
         None => None,
     };
-    verdict.hash(written.as_ref(), verified.as_ref());
+    verdict.hash(session, written.as_ref(), verified.as_ref());
     Ok(())
 }

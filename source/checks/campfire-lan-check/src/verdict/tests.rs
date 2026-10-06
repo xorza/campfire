@@ -15,9 +15,11 @@ fn logged(slot: u32, stamp: u64, tick: u64) -> InputLogged {
     }
 }
 
-/// A bot of a script of 2 orders, which started in `slot` and sent `sent`, by stamp.
-fn bot(slot: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
+/// The process of bot `index`, of a script of 2 orders, which started in `slot` and sent `sent`,
+/// by stamp, and ran to its end.
+fn bot(index: usize, slot: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
     BotEvents {
+        bot: index,
         started: slot.map(|slot| MatchStarted {
             slot: PlayerSlot::new(slot),
             start_tick: 5,
@@ -30,6 +32,7 @@ fn bot(slot: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
             })
             .collect(),
         scripted: 2,
+        whole: true,
     }
 }
 
@@ -84,9 +87,16 @@ fn a_match_passes_when_every_order_lands_in_its_stamp_tick_or_waited_for_a_catch
             logged(1, 50, 56),
         ],
         &[caught_up],
-        &[bot(Some(0), &[(20, 2)]), bot(Some(1), &[(20, 1), (50, 1)])],
+        &[
+            bot(0, Some(0), &[(20, 2)]),
+            bot(1, Some(1), &[(20, 1), (50, 1)]),
+        ],
     );
-    verdict.hash(Some(&written(hash("aa"))), Some(&verified(hash("aa"))));
+    verdict.hash(
+        SessionKind::Lan,
+        Some(&written(hash("aa"))),
+        Some(&verified(hash("aa"))),
+    );
     verdict.process(
         Process::Server,
         Outcome::Succeeded,
@@ -109,9 +119,13 @@ fn a_match_fails_by_each_flaw_it_has() {
             first: Tick::new(21),
             last: Tick::new(25),
         }],
-        &[bot(Some(0), &[(20, 1), (50, 2)]), bot(None, &[])],
+        &[bot(0, Some(0), &[(20, 1), (50, 2)]), bot(1, None, &[])],
     );
-    verdict.hash(Some(&written(hash("aa"))), Some(&verified(hash("bb"))));
+    verdict.hash(
+        SessionKind::Lan,
+        Some(&written(hash("aa"))),
+        Some(&verified(hash("bb"))),
+    );
     let slot = PlayerSlot::new(0);
     assert_eq!(
         found(&verdict),
@@ -135,7 +149,8 @@ fn a_match_fails_by_each_flaw_it_has() {
                 logged: 1
             },
             Failure::OtherHash {
-                server: hash("aa"),
+                session: SessionKind::Lan,
+                host: hash("aa"),
                 verifier: hash("bb")
             },
         ]
@@ -143,9 +158,14 @@ fn a_match_fails_by_each_flaw_it_has() {
     // Without the session log there is nothing to verify; with it and no verifier's hash,
     // the log did not verify.
     let mut verdict = Verdict::default();
-    verdict.hash(None, Some(&verified(hash("aa"))));
-    verdict.hash(Some(&written(hash("aa"))), None);
-    assert_eq!(found(&verdict), [Failure::NoLog, Failure::NotVerified]);
+    let lan = SessionKind::Lan;
+    verdict.hash(lan, None, Some(&verified(hash("aa"))));
+    verdict.hash(lan, Some(&written(hash("aa"))), None);
+    let no_log = Failure::NoLog { session: lan };
+    assert_eq!(
+        found(&verdict),
+        [no_log.clone(), Failure::NotVerified { session: lan }]
+    );
     // Neither follows from a verifier that failed but the first; both follow from a server
     // that overran, which alone the verdict names.
     let empty = |process| ProcessLog::empty(process);
@@ -155,16 +175,20 @@ fn a_match_fails_by_each_flaw_it_has() {
         process: Process::Verifier,
         outcome: failed,
     };
-    assert_eq!(found(&verdict), [Failure::NoLog, verifier_failed.clone()]);
+    assert_eq!(found(&verdict), [no_log, verifier_failed.clone()]);
     verdict.process(Process::Server, Outcome::Overran, &empty(Process::Server));
     let server_overran = Failure::Ended {
         process: Process::Server,
         outcome: Outcome::Overran,
     };
     assert_eq!(found(&verdict), [verifier_failed, server_overran]);
+}
 
+#[test]
+fn the_impostor_and_each_process_fail_by_their_own_flaws() {
     // The impostor must exit with failure and say why; one that succeeded or overran, or
     // stayed silent, fails the check.
+    let failed = Outcome::Failed { code: Some(1) };
     let lost = LinkLost {
         reason: "Transport error: certificate hash mismatch".to_owned(),
     };
@@ -209,4 +233,57 @@ fn a_match_fails_by_each_flaw_it_has() {
             },
         ]
     );
+}
+
+#[test]
+fn a_bot_the_check_stops_and_starts_again_counts_its_orders_once_across_both() {
+    // Bot 1's first process sent 1 order, stamped 20, before the check stopped it; started
+    // again, it sent both of its script's late, stamped 40. The server logged all 3, and the
+    // first process sent fewer than its script with no failure.
+    let stopped = BotEvents {
+        whole: false,
+        ..bot(1, Some(1), &[(20, 1)])
+    };
+    let again = bot(1, Some(1), &[(40, 2)]);
+    let mut verdict = Verdict::default();
+    verdict.orders(
+        &[logged(1, 20, 20), logged(1, 40, 40), logged(1, 40, 40)],
+        &[],
+        &[stopped, again],
+    );
+    let empty = ProcessLog::empty(Process::Bot(1));
+    verdict.stopped(Process::Bot(1), Outcome::Stopped, &empty);
+    assert_eq!(found(&verdict), []);
+    // One that ended before the check stopped it fails.
+    verdict.stopped(Process::Bot(1), Outcome::Succeeded, &empty);
+    assert_eq!(
+        found(&verdict),
+        [Failure::NotStopped {
+            process: Process::Bot(1),
+            outcome: Outcome::Succeeded
+        }]
+    );
+
+    // The local session's missing log follows from its client's failure alone, not the LAN
+    // server's.
+    let local = SessionKind::Local;
+    let mut verdict = Verdict::default();
+    verdict.hash(local, None, None);
+    let empty = ProcessLog::empty(Process::Server);
+    verdict.process(Process::Server, Outcome::Overran, &empty);
+    let server_overran = Failure::Ended {
+        process: Process::Server,
+        outcome: Outcome::Overran,
+    };
+    assert_eq!(
+        found(&verdict),
+        [Failure::NoLog { session: local }, server_overran.clone()]
+    );
+    let empty = ProcessLog::empty(Process::Local);
+    verdict.process(Process::Local, Outcome::Overran, &empty);
+    let local_overran = Failure::Ended {
+        process: Process::Local,
+        outcome: Outcome::Overran,
+    };
+    assert_eq!(found(&verdict), [server_overran, local_overran]);
 }
