@@ -46,4 +46,3 @@ path = "tests/mod.rs"
 name = "runner"
 harness = false
 required-features = ["bench"]
-
