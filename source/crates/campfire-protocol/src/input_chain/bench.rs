@@ -2,18 +2,18 @@ use std::hint::black_box;
 
 use campfire_common::{PlayerSlot, Tick};
 use criterion::Criterion;
-use secp256k1::{Keypair, Secp256k1, SecretKey};
+use secp256k1::Secp256k1;
 
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
+use crate::test_key::TestKey;
 
 /// The per-packet cost of the chain-head signature: the client signs the chain head once per
 /// packet with its session key, and the log checks it once per packet.
 pub fn chain_head_signature(c: &mut Criterion) {
     let secp = Secp256k1::new();
-    let secret = SecretKey::from_byte_array(&[7; 32]).expect("a valid secret key");
-    let keypair = Keypair::from_secret_key(&secp, &secret);
+    let keypair = TestKey::of(7);
     let (public_key, _) = keypair.x_only_public_key();
     let session_id = SessionId::new([5; 32]);
 

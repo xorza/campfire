@@ -31,6 +31,8 @@ mod slot_change;
 mod slot_plan;
 mod slot_start;
 mod snapshot_fingerprint;
+#[cfg(any(test, feature = "internals"))]
+mod test_key;
 
 pub use crate::checkpoint::Checkpoint;
 pub use crate::checkpoint::checkpoint_begun::CheckpointBegun;
@@ -82,6 +84,11 @@ pub use crate::slot_start::SlotStart;
 pub use crate::snapshot_fingerprint::SnapshotFingerprint;
 /// The curve library the keys and signatures of this API are typed in, at the version it pins.
 pub use secp256k1;
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::test_key::TestKey;
+}
 
 #[cfg(feature = "bench")]
 pub mod bench {

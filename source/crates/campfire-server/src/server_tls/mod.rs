@@ -105,7 +105,7 @@ impl ServerTls {
 )]
 #[cfg(test)]
 mod tests {
-    use std::{env, process};
+    use tempfile::TempDir;
 
     use super::*;
 
@@ -113,9 +113,8 @@ mod tests {
 
     #[test]
     fn two_starts_keep_one_certificate_until_it_nears_its_end() {
-        let data = env::temp_dir().join(format!("campfire-server-tls-{}", process::id()));
-        drop(fs::remove_dir_all(&data));
-        fs::create_dir_all(&data).unwrap();
+        let scratch = TempDir::new().unwrap();
+        let data = scratch.path();
         let path = data.join("tls");
         let open = |now, restoring| ServerTls::open(&path, now, restoring).unwrap();
 
@@ -150,6 +149,5 @@ mod tests {
             ServerTls::open(&path, NOW, true),
             Err(TlsError::Certificate(_))
         ));
-        fs::remove_dir_all(&data).unwrap();
     }
 }

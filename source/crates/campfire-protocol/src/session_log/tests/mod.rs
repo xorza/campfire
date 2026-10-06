@@ -14,6 +14,7 @@ use crate::session_log::error::SeedError;
 use crate::session_result::{Outcome, SessionResult};
 use crate::slot_plan::SlotPlan;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
+use crate::test_key::TestKey;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
@@ -35,22 +36,13 @@ fn x_only(byte: u8) -> XOnlyPublicKey {
     XOnlyPublicKey::from_byte_array(&[byte; 32]).unwrap()
 }
 
-fn secret(byte: u32) -> secp256k1::SecretKey {
-    secp256k1::SecretKey::from_byte_array(&[u8::try_from(byte).unwrap(); 32]).unwrap()
-}
-
-/// The server's key, which signs its inputs.
-fn server_keypair() -> Keypair {
-    Keypair::from_secret_key(&Secp256k1::new(), &secret(41))
-}
-
 fn server_key() -> XOnlyPublicKey {
-    server_keypair().x_only_public_key().0
+    TestKey::server().x_only_public_key().0
 }
 
 /// Player `slot`'s session key.
 fn session_key(slot: u32) -> Keypair {
-    Keypair::from_secret_key(&Secp256k1::new(), &secret(21 + slot))
+    TestKey::of(u8::try_from(21 + slot).unwrap())
 }
 
 /// Player `slot`'s delegation of their session key in this session, with `change` applied to its
@@ -64,7 +56,7 @@ fn delegation_with(slot: u32, change: impl FnOnce(&mut DelegationTerms)) -> Dele
         expiration: 1_700_086_400,
     };
     change(&mut terms);
-    let main_key = Keypair::from_secret_key(&Secp256k1::new(), &secret(11 + slot));
+    let main_key = TestKey::of(u8::try_from(11 + slot).unwrap());
     Delegation::sign(&Secp256k1::new(), &main_key, &terms, 1_700_000_000, &AUX)
 }
 
@@ -862,7 +854,7 @@ fn a_log_file_has_its_layout() {
     let place = log.next_place();
     let signature = disconnected.sign(
         &Secp256k1::new(),
-        &server_keypair(),
+        &TestKey::server(),
         session_id(),
         place,
         &AUX,
@@ -951,7 +943,7 @@ fn play_minimal(log: &mut SessionLog) {
         snapshot: SnapshotFingerprint::new([4; 32]),
         carry: log.carry(),
     };
-    let signature = record.sign(&secp, &server_keypair(), session_id(), &AUX);
+    let signature = record.sign(&secp, &TestKey::server(), session_id(), &AUX);
     log.record_checkpoint(record, &signature).unwrap();
     sent[1].submit(log, &mut applied).unwrap();
     let result = SessionResult {
@@ -959,7 +951,7 @@ fn play_minimal(log: &mut SessionLog) {
         outcome: Outcome::Won { team: 1 },
         state_hash: StateHash::new([5; 32]),
     };
-    let signature = result.sign(&secp, &server_keypair(), session_id(), &AUX);
+    let signature = result.sign(&secp, &TestKey::server(), session_id(), &AUX);
     log.record_result(result, &signature).unwrap();
 }
 
@@ -1113,7 +1105,7 @@ fn mixed_delegation(main: u32, key: u32) -> Delegation {
         seed_contribution: SeedContribution::new([6; 32]),
         expiration: 1_700_086_400,
     };
-    let main_key = Keypair::from_secret_key(&Secp256k1::new(), &secret(11 + main));
+    let main_key = TestKey::of(u8::try_from(11 + main).unwrap());
     Delegation::sign(&Secp256k1::new(), &main_key, &terms, 1_700_000_000, &AUX)
 }
 
@@ -1134,7 +1126,7 @@ fn mixed_log() -> SessionLog {
 fn serve(log: &mut SessionLog, input: ServerInput<'_>) -> Result<(), ServerInputError> {
     let signature = input.sign(
         &Secp256k1::new(),
-        &server_keypair(),
+        &TestKey::server(),
         log.session_id(),
         log.next_place(),
         &AUX,
@@ -1253,7 +1245,7 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
     };
     let stale = input.sign(
         &Secp256k1::new(),
-        &server_keypair(),
+        &TestKey::server(),
         log.session_id(),
         early,
         &AUX,

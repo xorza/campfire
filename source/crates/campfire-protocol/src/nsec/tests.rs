@@ -1,9 +1,9 @@
 use super::*;
+use crate::test_key::TestKey;
 
 #[test]
 fn a_key_round_trips_and_what_is_no_nsec_is_refused() {
-    let secret = SecretKey::from_byte_array(&[7; 32]).unwrap();
-    let key = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+    let key = TestKey::of(7);
     let text = Nsec::encode(&key);
     assert!(text.starts_with("nsec1") && text.ends_with('\n'), "{text}");
     assert_eq!(Nsec::decode(text.as_bytes()).unwrap(), key);

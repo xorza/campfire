@@ -1,11 +1,9 @@
-use std::num::NonZeroU32;
-
 use campfire_capabilities::{
-    Action, ActionSlots, ActionTarget, Combat, Dead, InputValue, Inventory, ItemId, ModeInput,
-    Order, PathWalker, Pools, Team,
+    Action, ActionSlots, Combat, Dead, InputValue, Inventory, ItemId, ModeInput, Order, PathWalker,
+    Pools, Team,
 };
 use campfire_common::{PlayerSlot, Tick};
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
@@ -13,7 +11,7 @@ use campfire_sim::{Position, StableId};
 use crate::harness::fixed_match::FixedMatch;
 use crate::harness::fixed_session::FixedSession;
 use crate::harness::match_units::MatchUnits;
-use crate::harness::scripted::{Plan, Scripted};
+use crate::harness::scripted::{Aim, Plan, Scripted, TICK_HZ};
 use crate::input_rules::InputRules;
 
 /// The reference 3v3 as its packages hold it, at its slowest rate, which plays a match in the
@@ -24,7 +22,6 @@ pub struct Reference3v3 {
     script: Vec<Scripted<ReferencePlan>>,
 }
 
-const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 /// The hero each slot picks.
 const HEROES: [&str; 6] = [
     "hero-cinder",
@@ -62,24 +59,6 @@ enum ReferencePlan {
     Sell { slot: u8 },
     /// The hero swaps its inventory slots `from` and `to`.
     Swap { from: u8, to: u8 },
-}
-
-/// What a cast aims at.
-#[derive(Debug, Clone, Copy)]
-enum Aim {
-    Nothing,
-    /// Player `slot`'s hero.
-    Hero {
-        slot: u32,
-    },
-    /// The point player `slot`'s hero stands at as the order is sent.
-    HeroPoint {
-        slot: u32,
-    },
-    Point {
-        x: i64,
-        z: i64,
-    },
 }
 
 /// How far from a hero a creep it farms stands at most, in meters.
@@ -130,32 +109,32 @@ const RECALL: u64 = 13_400;
 ///   instead; Rime learns Fan of Frost while she is dead. None of these abilities holds a
 ///   passive, and no hero casts one.
 const SKIRMISH: [Scripted<ReferencePlan>; 45] = {
-    let mut script = [order(1200, 0, ReferencePlan::Move { x: -2, z: -26 }); 45];
+    let mut script = [Scripted::new(1200, 0, ReferencePlan::Move { x: -2, z: -26 }); 45];
     let moves = [
-        order(1200, 1, ReferencePlan::Move { x: 2, z: -26 }),
-        order(1200, 4, ReferencePlan::Move { x: 0, z: -20 }),
-        order(1200, 3, ReferencePlan::Move { x: -38, z: 12 }),
-        order(1200, 5, ReferencePlan::Move { x: 38, z: 8 }),
-        order(1200, 2, cast(HASTE, Aim::Nothing)),
-        order(1201, 2, ReferencePlan::Move { x: -34, z: 4 }),
-        order(1700, 0, ReferencePlan::AttackHero { slot: 4 }),
-        order(1700, 1, ReferencePlan::AttackHero { slot: 4 }),
-        order(1700, 4, ReferencePlan::AttackHero { slot: 1 }),
-        order(1880, 1, cast(MEND, Aim::Nothing)),
-        order(1880, 0, ReferencePlan::Move { x: -36, z: 10 }),
-        order(2000, 4, ReferencePlan::Move { x: -18, z: 24 }),
-        order(2160, 2, ReferencePlan::AttackHero { slot: 3 }),
-        order(2225, 0, ReferencePlan::Move { x: -30, z: -6 }),
-        order(2240, 0, ReferencePlan::Move { x: -38, z: -8 }),
-        order(2320, 3, attack_at(SOUTH_CAMP)),
-        order(2500, 3, ReferencePlan::Move { x: -18, z: 30 }),
-        order(2650, 3, attack_at(SOUTH_CAMP)),
-        order(2650, 4, attack_at(SOUTH_CAMP)),
-        order(1200, 0, ReferencePlan::Learn { slot: FIRST }),
-        order(1200, 0, ReferencePlan::Learn { slot: SECOND }),
-        order(1200, 5, ReferencePlan::Learn { slot: ULTIMATE }),
-        order(1201, 5, ReferencePlan::Learn { slot: FIRST }),
-        order(1900, 4, ReferencePlan::Learn { slot: SECOND }),
+        Scripted::new(1200, 1, ReferencePlan::Move { x: 2, z: -26 }),
+        Scripted::new(1200, 4, ReferencePlan::Move { x: 0, z: -20 }),
+        Scripted::new(1200, 3, ReferencePlan::Move { x: -38, z: 12 }),
+        Scripted::new(1200, 5, ReferencePlan::Move { x: 38, z: 8 }),
+        Scripted::new(1200, 2, cast(HASTE, Aim::Nothing)),
+        Scripted::new(1201, 2, ReferencePlan::Move { x: -34, z: 4 }),
+        Scripted::new(1700, 0, ReferencePlan::AttackHero { slot: 4 }),
+        Scripted::new(1700, 1, ReferencePlan::AttackHero { slot: 4 }),
+        Scripted::new(1700, 4, ReferencePlan::AttackHero { slot: 1 }),
+        Scripted::new(1880, 1, cast(MEND, Aim::Nothing)),
+        Scripted::new(1880, 0, ReferencePlan::Move { x: -36, z: 10 }),
+        Scripted::new(2000, 4, ReferencePlan::Move { x: -18, z: 24 }),
+        Scripted::new(2160, 2, ReferencePlan::AttackHero { slot: 3 }),
+        Scripted::new(2225, 0, ReferencePlan::Move { x: -30, z: -6 }),
+        Scripted::new(2240, 0, ReferencePlan::Move { x: -38, z: -8 }),
+        Scripted::new(2320, 3, attack_at(SOUTH_CAMP)),
+        Scripted::new(2500, 3, ReferencePlan::Move { x: -18, z: 30 }),
+        Scripted::new(2650, 3, attack_at(SOUTH_CAMP)),
+        Scripted::new(2650, 4, attack_at(SOUTH_CAMP)),
+        Scripted::new(1200, 0, ReferencePlan::Learn { slot: FIRST }),
+        Scripted::new(1200, 0, ReferencePlan::Learn { slot: SECOND }),
+        Scripted::new(1200, 5, ReferencePlan::Learn { slot: ULTIMATE }),
+        Scripted::new(1201, 5, ReferencePlan::Learn { slot: FIRST }),
+        Scripted::new(1900, 4, ReferencePlan::Learn { slot: SECOND }),
     ];
     let mut at = 0;
     while at < moves.len() {
@@ -166,16 +145,12 @@ const SKIRMISH: [Scripted<ReferencePlan>; 45] = {
     let mut farm = 0;
     while farm < 10 {
         let stamp = 2810 + 40 * farm as u64;
-        script[farms + 2 * farm] = order(stamp, 0, farm_at(POSTS[0]));
-        script[farms + 1 + 2 * farm] = order(stamp, 5, farm_at(POSTS[5]));
+        script[farms + 2 * farm] = Scripted::new(stamp, 0, farm_at(POSTS[0]));
+        script[farms + 1 + 2 * farm] = Scripted::new(stamp, 5, farm_at(POSTS[5]));
         farm += 1;
     }
     script
 };
-
-const fn order(stamp: u64, slot: u32, plan: ReferencePlan) -> Scripted<ReferencePlan> {
-    Scripted::new(stamp, slot, plan)
-}
 
 const fn attack_at((x, z): (i64, i64)) -> ReferencePlan {
     ReferencePlan::AttackSpawnedAt { x, z }
@@ -212,19 +187,19 @@ impl Reference3v3 {
             script.extend(
                 (0..)
                     .zip(POSTS)
-                    .map(|(slot, post)| order(stamp, slot, farm_at(post))),
+                    .map(|(slot, post)| Scripted::new(stamp, slot, farm_at(post))),
             );
         }
         for stamp in (LEARN..Reference3v3::SHOWCASE).step_by(LEARN_EVERY) {
             for slot in 0..Reference3v3::PLAYERS {
                 let ultimate = ReferencePlan::Learn { slot: ULTIMATE };
-                script.push(order(stamp, slot, ultimate));
-                script.push(order(stamp, slot, ReferencePlan::LearnBasic));
+                script.push(Scripted::new(stamp, slot, ultimate));
+                script.push(Scripted::new(stamp, slot, ReferencePlan::LearnBasic));
             }
         }
         for slot in 0..Reference3v3::PLAYERS {
             let z = if slot < 3 { -60 } else { 60 };
-            script.push(order(RECALL, slot, ReferencePlan::Move { x: 0, z }));
+            script.push(Scripted::new(RECALL, slot, ReferencePlan::Move { x: 0, z }));
         }
         let buys = [
             (2, "cloth_armor"),
@@ -242,25 +217,29 @@ impl Reference3v3 {
         ];
         for (slot, name) in buys {
             let item = item(name);
-            script.push(order(Reference3v3::SHOP, slot, ReferencePlan::Buy { item }));
+            script.push(Scripted::new(
+                Reference3v3::SHOP,
+                slot,
+                ReferencePlan::Buy { item },
+            ));
         }
-        script.push(order(
+        script.push(Scripted::new(
             Reference3v3::SHOP,
             5,
             ReferencePlan::Swap { from: 0, to: 1 },
         ));
-        script.push(order(
+        script.push(Scripted::new(
             Reference3v3::SHOP + 1,
             5,
             ReferencePlan::Sell { slot: 1 },
         ));
         for (slot, post) in (0..).zip(ARENA) {
-            script.push(order(Reference3v3::SHOP + 2, slot, walk_to(post)));
+            script.push(Scripted::new(Reference3v3::SHOP + 2, slot, walk_to(post)));
         }
         let showcase = Reference3v3::showcase(item);
         assert_eq!(showcase.len() as u64, Reference3v3::CASTS);
         for (at, (slot, plan)) in (0..).zip(showcase) {
-            script.push(order(
+            script.push(Scripted::new(
                 Reference3v3::SHOWCASE + Reference3v3::CAST_EVERY * at,
                 slot,
                 plan,
@@ -428,20 +407,6 @@ impl Plan for ReferencePlan {
             ReferencePlan::Swap { from, to } => Action::Swap { from, to },
         };
         Order { unit: hero, action }
-    }
-}
-
-impl Aim {
-    fn target(self, units: MatchUnits<'_>) -> ActionTarget {
-        match self {
-            Aim::Nothing => ActionTarget::None,
-            Aim::Hero { slot } => ActionTarget::Unit(units.hero(slot)),
-            Aim::HeroPoint { slot } => ActionTarget::Point(units.position(units.hero(slot))),
-            Aim::Point { x, z } => {
-                let at = Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
-                ActionTarget::Point(Position::new(at).expect("a map point"))
-            }
-        }
     }
 }
 

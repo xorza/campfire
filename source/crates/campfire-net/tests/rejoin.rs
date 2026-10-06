@@ -14,8 +14,7 @@ use campfire_net::{
 use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
-
-use crate::Scratch;
+use tempfile::TempDir;
 
 /// Steps a client and the server may take to link, offer, join and play again.
 const REJOIN_STEPS: usize = 300;
@@ -277,12 +276,12 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
 
 #[test]
 fn every_client_rejoins_a_restored_server() {
-    let data = Scratch::new("rejoin");
+    let data = TempDir::new().unwrap();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(data.0.clone());
+    local.keep_data(data.path().to_owned());
     local.start_match();
     for _ in 0..30 {
         local.step();

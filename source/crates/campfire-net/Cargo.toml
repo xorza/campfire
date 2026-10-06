@@ -9,6 +9,7 @@ autotests = false
 internals = [
     "campfire-log/internals",
     "campfire-package/internals",
+    "campfire-protocol/internals",
 ]
 bench = ["internals", "dep:criterion"]
 

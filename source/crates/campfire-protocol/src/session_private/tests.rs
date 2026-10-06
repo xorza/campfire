@@ -1,15 +1,14 @@
 use std::num::NonZeroU32;
 
 use campfire_common::{Fingerprint, Ticks};
-use secp256k1::{Keypair, Secp256k1, SecretKey};
 
 use super::*;
 use crate::slot_plan::SlotPlan;
+use crate::test_key::TestKey;
 
 #[test]
 fn a_private_record_round_trips_and_other_bytes_are_refused() {
-    let secret = SecretKey::from_byte_array(&[8; 32]).unwrap();
-    let key = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+    let key = TestKey::of(8);
     let seed_chain = SeedChain::new([9; 32], NonZeroU32::new(1024).unwrap());
     let private = SessionPrivate {
         seed_chain,

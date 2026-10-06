@@ -1,11 +1,10 @@
-use secp256k1::SecretKey;
-
 use super::*;
+use crate::test_key::TestKey;
 
 #[test]
 fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
     let secp = Secp256k1::new();
-    let server = Keypair::from_secret_key(&secp, &SecretKey::from_byte_array(&[41; 32]).unwrap());
+    let server = TestKey::server();
     let key = server.x_only_public_key().0;
     let receipt = Receipt {
         session_id: SessionId::new([8; 32]),
@@ -36,7 +35,7 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
         Err(ReceiptFileError::Malformed(_))
     ));
     assert!(receipt.signed_by(&secp, &key, &signed.signature));
-    let stranger = Keypair::from_secret_key(&secp, &SecretKey::from_byte_array(&[42; 32]).unwrap());
+    let stranger = TestKey::of(42);
     assert!(!receipt.signed_by(&secp, &stranger.x_only_public_key().0, &signed.signature));
     let others = [
         Receipt {

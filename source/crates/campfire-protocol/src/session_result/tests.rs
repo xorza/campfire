@@ -1,11 +1,10 @@
-use secp256k1::SecretKey;
-
 use super::*;
+use crate::test_key::TestKey;
 
 #[test]
 fn a_results_signature_holds_only_over_it() {
     let secp = Secp256k1::new();
-    let server = Keypair::from_secret_key(&secp, &SecretKey::from_byte_array(&[41; 32]).unwrap());
+    let server = TestKey::server();
     let key = server.x_only_public_key().0;
     let id = SessionId::new([8; 32]);
     let result = SessionResult {

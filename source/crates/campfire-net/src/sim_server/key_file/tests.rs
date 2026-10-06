@@ -1,12 +1,13 @@
-use std::{env, fs, process};
+use std::fs;
+
+use tempfile::TempDir;
 
 use super::*;
 
 #[test]
 fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
-    let dir = env::temp_dir().join(format!("campfire-key-file-{}", process::id()));
-    drop(fs::remove_dir_all(&dir));
-    fs::create_dir_all(&dir).unwrap();
+    let scratch = TempDir::new().unwrap();
+    let dir = scratch.path();
     let path = dir.join("player.nsec");
     // Made when missing, from the random bytes given, then read back the same.
     let made = KeyFile::read_or_create(&path, |bytes| bytes.fill(7)).unwrap();
@@ -43,5 +44,4 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
             Err(KeyFileError::Read(SecretReadError::Exposed { mode: 0o640 }))
         ));
     }
-    fs::remove_dir_all(&dir).unwrap();
 }

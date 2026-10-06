@@ -1,26 +1,6 @@
-use std::path::PathBuf;
-use std::{env, process};
+use tempfile::TempDir;
 
 use super::*;
-
-/// A directory of its own under the system's temporary directory, removed when dropped.
-#[derive(Debug)]
-pub(crate) struct ScratchDir(pub(crate) PathBuf);
-
-impl ScratchDir {
-    pub(crate) fn new(name: &str) -> ScratchDir {
-        let dir = env::temp_dir().join(format!("campfire-{name}-{}", process::id()));
-        drop(fs::remove_dir_all(&dir));
-        fs::create_dir_all(&dir).unwrap();
-        ScratchDir(dir)
-    }
-}
-
-impl Drop for ScratchDir {
-    fn drop(&mut self) {
-        drop(fs::remove_dir_all(&self.0));
-    }
-}
 
 /// The permission bits of the file at `path`.
 #[cfg(unix)]
@@ -31,12 +11,12 @@ pub(crate) fn mode(path: &Path) -> u32 {
 
 #[test]
 fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
-    let dir = ScratchDir::new("durable");
-    let path = dir.0.join("state");
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("state");
     DurableFile::write(&path, b"first, and longer").unwrap();
     DurableFile::write(&path, b"second").unwrap();
     assert_eq!(fs::read(&path).unwrap(), b"second");
-    let names: Vec<_> = fs::read_dir(&dir.0)
+    let names: Vec<_> = fs::read_dir(dir.path())
         .unwrap()
         .map(|entry| entry.unwrap().file_name())
         .collect();
@@ -46,7 +26,7 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
 
     // A crash left a temporary file, which others may read: the write makes its own, so the file
     // is its owner's only.
-    let stale = dir.0.join("state.part");
+    let stale = dir.path().join("state.part");
     fs::write(&stale, b"stale and longer").unwrap();
     #[cfg(unix)]
     {
@@ -64,7 +44,7 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
         DurableFile::write(Path::new("/"), b""),
         Err(DurableError::NoName)
     ));
-    let lost = dir.0.join("missing").join("state");
+    let lost = dir.path().join("missing").join("state");
     assert!(matches!(
         DurableFile::write(&lost, b""),
         Err(DurableError::Create(_))
@@ -73,8 +53,8 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
 
 #[test]
 fn a_durable_directory_is_made_once_and_its_owners_only() {
-    let dir = ScratchDir::new("durable-dir");
-    let path = dir.0.join("sessions");
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("sessions");
     DurableFile::create_dir(&path).unwrap();
     DurableFile::write(&path.join("kept"), b"kept").unwrap();
     // Made again, it stays as it is.

@@ -247,28 +247,23 @@ impl RestoredSession {
     }
 }
 
-#[expect(
-    clippy::disallowed_methods,
-    reason = "a test makes and removes the files of its fixtures"
-)]
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU32;
-    use std::{env, process};
 
     use campfire_common::{Fingerprint, Ticks};
-    use campfire_protocol::secp256k1::{Secp256k1, SecretKey};
+    use campfire_protocol::internals::TestKey;
     use campfire_protocol::{SeedChain, SessionTerms, SlotPlan};
+    use tempfile::TempDir;
 
     use super::*;
 
     #[test]
     fn a_session_stopped_at_any_step_before_its_first_record_goes() {
-        let root = env::temp_dir().join(format!("campfire-session-dir-{}", process::id()));
-        drop(fs::remove_dir_all(&root));
+        let scratch = TempDir::new().unwrap();
+        let root = scratch.path().join("data");
         let data = ServerDir::open(&root).unwrap();
-        let secret = SecretKey::from_byte_array(&[8; 32]).unwrap();
-        let key = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+        let key = TestKey::of(8);
         let seed_chain = SeedChain::new([9; 32], NonZeroU32::MIN);
         let private = SessionPrivate {
             seed_chain,
@@ -311,6 +306,5 @@ mod tests {
             Err(FindError::Stray(name)) if name == "stray"
         ));
         drop(data);
-        fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -23,3 +23,11 @@ pub struct PackageContent {
     #[serde(default)]
     pub items: BTreeMap<DeclaredName, ItemData>,
 }
+
+impl PackageContent {
+    /// The keys of a data file's table that hold a package's content: its fields' names.
+    pub const KEYS: [&'static str; 4] = ["actions", "modifiers", "units", "items"];
+}
+
+#[cfg(test)]
+mod tests;

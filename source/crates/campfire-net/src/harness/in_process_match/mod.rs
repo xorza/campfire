@@ -17,7 +17,7 @@ use campfire_capabilities::{
 use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
+use campfire_protocol::internals::TestKey;
 use campfire_protocol::{CertificateHash, SeedChain, ServerInput, SessionPrivate};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
@@ -351,21 +351,6 @@ impl InProcessMatch {
         session.log().server_inputs().collect()
     }
 
-    /// The server's key pair, which signs what it logs.
-    pub fn server_keypair() -> Keypair {
-        InProcessMatch::keypair(41)
-    }
-
-    /// The key pair whose secret is 32 bytes of `secret`.
-    pub(crate) fn keypair(secret: u8) -> Keypair {
-        let secret = SecretKey::from_byte_array(&[secret; 32]).expect("a valid secret key");
-        Keypair::from_secret_key(&Secp256k1::new(), &secret)
-    }
-
-    pub(crate) fn server_key() -> XOnlyPublicKey {
-        InProcessMatch::server_keypair().x_only_public_key().0
-    }
-
     /// The test lane mode, its `[players]` as `rules` says, and its `[saves]` as `saves` says.
     pub(crate) fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
         let mut files = PackageDir::workspace_tree("test");
@@ -398,7 +383,7 @@ impl InProcessMatch {
     /// ends take, the setup's times, a fixed clock and fixed random bytes.
     fn server_setup(&self) -> ServerSetup {
         ServerSetup {
-            key: InProcessMatch::server_keypair(),
+            key: TestKey::server(),
             certificate: CERTIFICATE,
             times: self.setup.times,
             clock: unix_now,
@@ -739,10 +724,10 @@ impl ClientApp {
     ) -> ClientApp {
         let secret = u8::try_from(2 * player + 1).expect("a small player");
         let sim_client = SimClient {
-            main_key: InProcessMatch::keypair(secret),
-            session_key: InProcessMatch::keypair(secret + 1),
+            main_key: TestKey::of(secret),
+            session_key: TestKey::of(secret + 1),
             server: ServerPin {
-                key: InProcessMatch::server_key(),
+                key: TestKey::server().x_only_public_key().0,
                 certificate: CERTIFICATE,
                 tick_hz,
             },

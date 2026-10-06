@@ -1,9 +1,9 @@
-use std::num::NonZeroU32;
-
 use std::cell::Cell;
+use std::num::NonZeroU32;
 
 use campfire_common::{Fingerprint, PlayerSlot};
 use campfire_package::{ModePackages, PackageDir};
+use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
 use campfire_protocol::{
     CertificateHash, ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan,
@@ -11,7 +11,6 @@ use campfire_protocol::{
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
-use crate::harness::in_process_match::InProcessMatch;
 use crate::match_start::ChainHead;
 
 const NOW: u64 = 1_700_000_000;
@@ -34,9 +33,9 @@ fn lane_rules() -> SessionRules {
     SessionRules::of(&ModePackages::from_dir(&dir).unwrap())
 }
 
-/// The x-only key of `InProcessMatch::keypair(secret)`.
+/// The x-only key of `TestKey::of(secret)`.
 fn x_only(secret: u8) -> XOnlyPublicKey {
-    InProcessMatch::keypair(secret).x_only_public_key().0
+    TestKey::of(secret).x_only_public_key().0
 }
 
 /// A client of the lane mode, main key 1, that means to reach the remote server of key 8 at
@@ -47,18 +46,12 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
         certificate: CertificateHash::new([3; 32]),
         tick_hz,
     };
-    JoinState::new(
-        InProcessMatch::keypair(1),
-        server,
-        false,
-        lane_rules(),
-        clock,
-    )
+    JoinState::new(TestKey::of(1), server, false, lane_rules(), clock)
 }
 
 /// Session key 2, whose randomness is all 6s.
 fn signer() -> Signer {
-    Signer::new(InProcessMatch::keypair(2), |bytes| bytes.fill(6))
+    Signer::new(TestKey::of(2), |bytes| bytes.fill(6))
 }
 
 /// Terms the client can play, with `change` applied.
@@ -154,13 +147,10 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     let delegation = Delegation::parse(&join.delegation).unwrap();
     let granted = delegation.terms();
     assert_eq!(granted.session_id, offer.terms.session_id());
-    assert_eq!(
-        granted.session_key,
-        InProcessMatch::keypair(2).x_only_public_key().0
-    );
+    assert_eq!(granted.session_key, TestKey::of(2).x_only_public_key().0);
     assert_eq!(
         delegation.main_key(),
-        &InProcessMatch::keypair(1).x_only_public_key().0.serialize()
+        &TestKey::of(1).x_only_public_key().0.serialize()
     );
     assert_eq!(
         (granted.seed_contribution, granted.expiration),
@@ -332,7 +322,7 @@ fn each_wait_is_drawn_below_a_bound_that_doubles_to_8_s() {
 
 /// `receipt` with the server key's signature over it.
 fn signed(receipt: Receipt) -> SignedReceipt {
-    let server = InProcessMatch::keypair(8);
+    let server = TestKey::of(8);
     SignedReceipt {
         receipt,
         signature: receipt.sign(&Secp256k1::new(), &server, &[0; 32]),

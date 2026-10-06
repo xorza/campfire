@@ -50,9 +50,9 @@ The workspace keeps most of its own rules: no `foo.rs` sits beside a `foo/`, no 
 
 ## Shared test helpers
 
-- **Keys.** `protocol`'s `internals` gives the key of one byte, and the server key the tests share; every test takes its keys from it.
+- **Keys.** `protocol`'s `internals` gives `TestKey`: the key of one byte, and the key of byte 41 that the tests' servers sign with; every test takes its keys from it.
 - **Directories.** Every test makes its directory with `tempfile::TempDir::new()`, removed when the test ends or panics, each with a name of its own. `ScratchDir`, `Scratch` and the five hand-made directories go.
-- **Scripted matches.** `runner`'s `scripted.rs` holds `Aim`, the tick rate and the `order` and `cast` builders that the proving match and the reference 3v3 share.
+- **Scripted matches.** `runner`'s `scripted.rs` holds `Aim`, the tick rate and the order builder that the proving match and the reference 3v3 share. Each keeps its own `cast`, as each builds its own plan type in a `const` script, which no trait method can.
 - **A package's content.** `PackageContent` holds the list of its keys beside its fields, and a test checks that the two name the same keys; `package` takes the list from there.
 
 ## Tests

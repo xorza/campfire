@@ -3,12 +3,12 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::ExitStatus;
 use campfire_package::{ModePackages, PackageDir};
+use campfire_protocol::internals::TestKey;
 use campfire_protocol::{SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
 use campfire_runner::{InputRules, SessionRules};
 use campfire_store::{AppendFile, AppendWriter};
 
 use super::*;
-use crate::harness::in_process_match::InProcessMatch;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::session_journal::SessionJournal;
 
@@ -31,7 +31,7 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
     // A session of the test lane mode with one open slot, so its header needs no player; the
     // log's header is its journal's first record, whose sync fails.
     let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap();
-    let key = InProcessMatch::keypair(8);
+    let key = TestKey::of(8);
     let terms = SessionRules::of(&packages)
         .terms(
             key.x_only_public_key().0,

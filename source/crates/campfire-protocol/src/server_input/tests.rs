@@ -1,28 +1,20 @@
-use secp256k1::SecretKey;
-
 use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::seed_contribution::SeedContribution;
-
-fn keypair(byte: u8) -> Keypair {
-    Keypair::from_secret_key(
-        &Secp256k1::new(),
-        &SecretKey::from_byte_array(&[byte; 32]).unwrap(),
-    )
-}
+use crate::test_key::TestKey;
 
 /// A delegation of the main key of `main` for the session key of `byte`.
 fn delegation(main: u8, byte: u8) -> Delegation {
     let terms = DelegationTerms {
-        session_key: keypair(byte).x_only_public_key().0,
-        server_key: keypair(41).x_only_public_key().0,
+        session_key: TestKey::of(byte).x_only_public_key().0,
+        server_key: TestKey::of(41).x_only_public_key().0,
         session_id: SessionId::new([8; 32]),
         seed_contribution: SeedContribution::new([6; 32]),
         expiration: 1_700_086_400,
     };
     Delegation::sign(
         &Secp256k1::new(),
-        &keypair(main),
+        &TestKey::of(main),
         &terms,
         1_700_000_000,
         &[0; 32],
@@ -68,7 +60,7 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
     }
 
     let secp = Secp256k1::new();
-    let server = keypair(41);
+    let server = TestKey::of(41);
     let id = SessionId::new([8; 32]);
     let place = InputPlace {
         tick: Tick::new(7),
@@ -87,7 +79,7 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
     assert!(!input.signed_by(&secp, &key, id, other_tick, &signature));
     assert!(!input.signed_by(&secp, &key, id, other_index, &signature));
     assert!(!input.signed_by(&secp, &key, SessionId::new([9; 32]), place, &signature));
-    let stranger = keypair(42).x_only_public_key().0;
+    let stranger = TestKey::of(42).x_only_public_key().0;
     assert!(!input.signed_by(&secp, &stranger, id, place, &signature));
     assert!(!inputs[4].signed_by(&secp, &key, id, place, &signature));
 
