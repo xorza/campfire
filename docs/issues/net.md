@@ -14,7 +14,5 @@ Design: [Modules](../design/02-engine-core.md#modules), `net`. Rules: [Issue log
 
 ## Ready
 
-- CI's clippy fails on Windows: the `#[expect(clippy::disallowed_methods)]` on `key_file`'s `mod tests` is unfulfilled there, as the test's only disallowed call, the `fs::set_permissions` of its fixture, is `#[cfg(unix)]`.
-
 - **Stage 10.** No unit's inventory replicates: a client sees no item its units carry, where design 04's items send a unit's own inventory to its owner ([Items](../design/04-capabilities/items.md#network)).
 

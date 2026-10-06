@@ -42,5 +42,22 @@ impl SecretFile {
     }
 }
 
+#[cfg(all(unix, any(test, feature = "internals")))]
+pub(crate) mod internals {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+
+    use crate::secret_file::SecretFile;
+
+    impl SecretFile {
+        /// Gives the file at `path` the permission bits `mode`, as a `chmod` would: a test's
+        /// secret file that others may read.
+        pub fn set_mode(path: &Path, mode: u32) {
+            fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

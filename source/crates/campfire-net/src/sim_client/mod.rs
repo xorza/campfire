@@ -24,8 +24,8 @@ use campfire_sim::{
 use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
 use lightyear::prelude::{
     Client, Connect, Disconnect, LocalTimeline, MessageReceiver, MessageSender, Predicted,
-    PredictionManager, Replicated, ReplicationReceiver, SyncConfig, UnlinkReason, Unlinked,
-    is_in_rollback,
+    PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
+    UnlinkReason, Unlinked, is_in_rollback,
 };
 use tracing::{debug, info};
 
@@ -421,9 +421,11 @@ fn retry_link(
     }
 }
 
-/// The player plays a match, so this fixed tick runs a sim tick.
-fn playing(state: Res<'_, JoinState>) -> bool {
-    state.clock().is_some()
+/// The client runs a sim tick in this fixed tick; see `JoinState::sim_tick`. A match start's
+/// clock names the server's Lightyear tick, which a server started again counts from 0, while the
+/// client's timeline counts the old link's until its first sync on the new one shifts it.
+fn playing(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_, '_>>) -> bool {
+    state.sim_tick(timeline.as_ref()).is_some()
 }
 
 /// Takes the teams' relations the server sends into the client's world, where its units' targets
@@ -457,11 +459,13 @@ type Died<'w, 's> =
     Query<'w, 's, (&'static StableId, Has<Predicted>), (Added<Dead>, Allow<Unpredicted>)>;
 
 /// Logs each death the server's state brings, at the client's own tick, which runs ahead of the
-/// server's.
-fn report_deaths(timeline: Res<'_, LocalTimeline>, state: Res<'_, JoinState>, died: Died<'_, '_>) {
-    let tick = state
-        .clock()
-        .and_then(|clock| clock.sim_tick(timeline.tick()));
+/// server's, once its timeline synced.
+fn report_deaths(
+    timeline: Option<SyncedLocalTimeline<'_, '_>>,
+    state: Res<'_, JoinState>,
+    died: Died<'_, '_>,
+) {
+    let tick = state.sim_tick(timeline.as_ref());
     for (id, own) in &died {
         let unit = id.get();
         let tick = tick.map(Tick::get);
@@ -476,12 +480,14 @@ fn report_deaths(timeline: Res<'_, LocalTimeline>, state: Res<'_, JoinState>, di
 /// The client's own avatar: the one unit it predicts under a player's control.
 type OwnAvatar<'w, 's> = Query<'w, 's, &'static StableId, (With<Owner>, With<Predicted>)>;
 
-/// Adds the bot script's orders due in the tick about to run, for the player's own avatar, then
-/// stamps the pending orders with that tick, up to the session's max inputs per tick, chains each
-/// and keeps it, and sends them in one message signed over the chain head after the last. The
-/// orders past the max wait for the next tick, so the log never refuses the message; an order
-/// whose payload passes the session's max length can never be sent, and is dropped. The inputs
-/// older than the deepest rollback Lightyear takes are dropped first.
+/// Adds the bot script's mode inputs due by the tick about to run, and its orders for the
+/// player's own avatar once the client predicts it, as a link that came back replicates it a
+/// little later: an order due before waits, and goes out late. Then stamps the pending orders
+/// with that tick, up to the session's max inputs per tick, chains each and keeps it, and sends
+/// them in one message signed over the chain head after the last. The orders past the max wait
+/// for the next tick, so the log never refuses the message; an order whose payload passes the
+/// session's max length can never be sent, and is dropped. The inputs older than the deepest
+/// rollback Lightyear takes are dropped first.
 #[expect(
     clippy::too_many_arguments,
     reason = "a Bevy system takes each resource it reads"
@@ -509,12 +515,11 @@ fn send_orders(
         .effective_max_rollback_ticks(&timeline_config);
     sent.prune(Tick::new(stamp.get().saturating_sub(u64::from(reach))));
     if let Some(mut bot) = bot {
-        let due = bot.due(stamp);
-        for input in due.inputs {
+        for input in bot.due_inputs(stamp) {
             pending.push_input(input.clone());
         }
         if let Ok(&unit) = avatar.single() {
-            for scripted in due.orders {
+            for scripted in bot.due_orders(stamp) {
                 pending.push(Order {
                     unit,
                     action: scripted.action,

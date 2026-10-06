@@ -41,6 +41,7 @@ tracing.workspace = true
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
+campfire-store = { workspace = true, features = ["internals"] }
 
 tempfile.workspace = true
 

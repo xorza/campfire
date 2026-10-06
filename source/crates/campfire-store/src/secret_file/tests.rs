@@ -17,12 +17,10 @@ fn a_secret_file_round_trips_and_refuses_one_others_may_read() {
     ));
     #[cfg(unix)]
     {
-        use std::fs;
-        use std::os::unix::fs::PermissionsExt;
         assert_eq!(mode(&path), 0o600);
         // Others may read it: refused, with its mode, before its bytes are read.
         for mode in [0o644, 0o640, 0o604] {
-            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+            SecretFile::set_mode(&path, mode);
             assert!(matches!(
                 SecretFile::read(&path),
                 Err(SecretReadError::Exposed { mode: refused }) if refused == mode

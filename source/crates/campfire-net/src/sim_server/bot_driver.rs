@@ -132,8 +132,8 @@ impl BotDriver {
             let since = tick
                 .since(driven.since)
                 .expect("a bot plays from its start on");
-            let due = driven.script.due(Tick::new(since.get()));
-            for input in due.inputs {
+            let script_tick = Tick::new(since.get());
+            for input in driven.script.due_inputs(script_tick) {
                 let start = self.payloads.len();
                 input.write_payload(&mut self.payloads);
                 self.waiting.push(Waiting {
@@ -146,7 +146,7 @@ impl BotDriver {
                 .iter(world)
                 .find(|(_, owner)| owner.slot() == driven.slot)
                 .map(|(&id, _)| id);
-            for scripted in due.orders {
+            for scripted in driven.script.due_orders(script_tick) {
                 let Some(unit) = avatar else {
                     AvatarMissing {
                         slot: driven.slot,
@@ -218,7 +218,8 @@ impl DrivenBot {
         let mut script = BotScript::new(script);
         let played = next.since(since).expect("a bot plays from its start on");
         if let Some(before) = played.get().checked_sub(1) {
-            script.due(Tick::new(before));
+            script.due_inputs(Tick::new(before));
+            script.due_orders(Tick::new(before));
         }
         DrivenBot {
             slot,
@@ -297,7 +298,7 @@ mod tests {
             (next..20)
                 .filter(|&tick| {
                     let since = Tick::new(tick).since(bot.since).unwrap();
-                    !bot.script.due(Tick::new(since.get())).orders.is_empty()
+                    !bot.script.due_orders(Tick::new(since.get())).is_empty()
                 })
                 .collect::<Vec<_>>()
         };

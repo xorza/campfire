@@ -9,7 +9,8 @@ use campfire_common::PlayerSlot;
 use campfire_math::Num;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
-    InputsDiscarded, JoinRefused, JoinState, LinkLost, Loss, PlayerLink, SessionTimes, TickHashes,
+    InputsDiscarded, JoinRefused, JoinState, LinkLost, Loss, OrderScript, PlayerLink, SessionTimes,
+    TickHashes,
 };
 use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
@@ -294,6 +295,17 @@ fn every_client_rejoins_a_restored_server() {
         .get()
         .to_vec();
     local.restart_server();
+    // An order due in the tick the server runs on from, which each client plays as soon as it
+    // plays again, late. It takes effect: the client stamps it once its timeline counts the
+    // restored server's ticks, which start from 0 again, and not the stopped server's, which run
+    // ahead past the max input lead.
+    let script = format!(
+        "[[order]]\ntick = {}\nmove = [3, -2]\n",
+        local.next_tick(End::Server)
+    );
+    for client in [0, 1] {
+        local.play(client, OrderScript::parse(&script).unwrap());
+    }
     step_until(&mut local, REJOIN_STEPS, |local| {
         playing(local, 0) && playing(local, 1)
     });
@@ -305,6 +317,16 @@ fn every_client_rejoins_a_restored_server() {
         assert!(inputs.contains(&ServerInput::Connected { slot }));
     }
     assert!(local.next_tick(End::Server) > u64::try_from(before.len()).unwrap());
+    let walking = |local: &mut InProcessMatch| {
+        slots.map(|slot| destination(local, slot) != Destination::default())
+    };
+    for _ in 0..REJOIN_STEPS {
+        if walking(&mut local) == [true; 2] {
+            break;
+        }
+        local.step();
+    }
+    assert_eq!(walking(&mut local), [true; 2]);
     drop(local);
     drop(data);
 }

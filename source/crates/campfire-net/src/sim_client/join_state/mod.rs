@@ -9,7 +9,7 @@ use campfire_protocol::{
     SessionTerms, SignedReceipt,
 };
 use campfire_runner::SessionRules;
-use lightyear::prelude::Tick as NetTick;
+use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
 
 use crate::join::Join;
 use crate::match_clock::MatchClock;
@@ -197,6 +197,13 @@ impl JoinState {
             Step::Playing(playing) => Some(playing.clock),
             _ => None,
         }
+    }
+
+    /// The sim tick the client runs now: its match clock's, read on `timeline` once that is synced
+    /// to the server's, whose ticks the clock counts; `None` while it does not play or its
+    /// timeline is not synced.
+    pub fn sim_tick(&self, timeline: Option<&SyncedLocalTimeline<'_, '_>>) -> Option<Tick> {
+        self.clock()?.sim_tick(timeline?.tick())
     }
 
     /// Why the client refused the offer, once it did.

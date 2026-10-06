@@ -31,9 +31,8 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
     // exposed too, and a file of such a key is no missing one, which a new key would replace.
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
         for path in [&path, &bad] {
-            fs::set_permissions(path, fs::Permissions::from_mode(0o640)).unwrap();
+            SecretFile::set_mode(path, 0o640);
             assert!(matches!(
                 KeyFile::read(path),
                 Err(KeyFileError::Read(SecretReadError::Exposed { mode: 0o640 }))

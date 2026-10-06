@@ -14,13 +14,6 @@ pub struct BotScript {
     next_input: usize,
 }
 
-/// What a script has due by a tick, each once.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Due<'a> {
-    pub(crate) inputs: &'a [ScriptedInput],
-    pub(crate) orders: &'a [ScriptedOrder],
-}
-
 impl BotScript {
     pub const fn new(script: OrderScript) -> BotScript {
         BotScript {
@@ -30,18 +23,44 @@ impl BotScript {
         }
     }
 
-    /// Takes the orders and inputs due by `tick`, each once: a tick that passed while the match
-    /// did not run sends its own late.
-    pub(crate) fn due(&mut self, tick: Tick) -> Due<'_> {
-        let orders = self.script.orders();
-        let start = self.next_order;
-        self.next_order += orders[start..].partition_point(|order| order.tick <= tick);
+    /// Takes the mode inputs due by `tick`, each once: a tick that passed while the match did not
+    /// run sends its own late.
+    pub(crate) fn due_inputs(&mut self, tick: Tick) -> &[ScriptedInput] {
         let inputs = self.script.inputs();
         let first = self.next_input;
         self.next_input += inputs[first..].partition_point(|input| input.tick <= tick);
-        Due {
-            inputs: &inputs[first..self.next_input],
-            orders: &orders[start..self.next_order],
-        }
+        &inputs[first..self.next_input]
+    }
+
+    /// Takes the orders due by `tick`, each once, as `due_inputs` takes the mode inputs.
+    pub(crate) fn due_orders(&mut self, tick: Tick) -> &[ScriptedOrder] {
+        let orders = self.script.orders();
+        let first = self.next_order;
+        self.next_order += orders[first..].partition_point(|order| order.tick <= tick);
+        &orders[first..self.next_order]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_bot_takes_its_inputs_and_its_orders_apart_each_once() {
+        let script = OrderScript::parse(
+            "[[input]]\ntick = 0\nname = \"hero\"\nvalue = \"hero-x\"\n\
+             [[order]]\ntick = 2\nmove = [1, 0]\n[[order]]\ntick = 5\nmove = [0, 1]\n",
+        )
+        .unwrap();
+        let ticks = |orders: &[ScriptedOrder]| -> Vec<u64> {
+            orders.iter().map(|order| order.tick.get()).collect()
+        };
+        let mut bot = BotScript::new(script);
+        // A client with no avatar yet takes the inputs only: the orders due by tick 3 wait.
+        assert_eq!(bot.due_inputs(Tick::new(3)).len(), 1);
+        assert_eq!(bot.due_inputs(Tick::new(3)), []);
+        // Taken late, at tick 6, the orders due by then go out together, each once.
+        assert_eq!(ticks(bot.due_orders(Tick::new(6))), [2, 5]);
+        assert!(bot.due_orders(Tick::new(9)).is_empty());
     }
 }
