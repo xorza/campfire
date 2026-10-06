@@ -28,7 +28,7 @@ name = "tests"
 path = "tests/mod.rs"
 
 [[bench]]
-name = "state_hash"
+name = "sim"
 harness = false
 required-features = ["bench"]
 

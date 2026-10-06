@@ -52,5 +52,12 @@ pub mod internals {
 
 #[cfg(feature = "bench")]
 pub mod bench {
-    pub use crate::state_registry::bench::state_hash;
+    use criterion::Criterion;
+
+    use crate::state_registry;
+
+    /// Runs each bench of the crate whose id criterion's filter takes.
+    pub fn run(c: &mut Criterion) {
+        state_registry::bench::state_hash(c);
+    }
 }

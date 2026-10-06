@@ -91,7 +91,14 @@ pub mod internals {
 
 #[cfg(feature = "bench")]
 pub mod bench {
-    pub use crate::input_chain::bench::chain_head_signature;
+    use criterion::Criterion;
+
+    use crate::input_chain;
+
+    /// Runs each bench of the crate whose id criterion's filter takes.
+    pub fn run(c: &mut Criterion) {
+        input_chain::bench::chain_head(c);
+    }
 }
 
 #[cfg(test)]

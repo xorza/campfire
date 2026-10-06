@@ -99,7 +99,15 @@ pub use crate::sim_server::tick_hashes::TickHashes;
 
 #[cfg(feature = "bench")]
 pub mod bench {
-    pub use crate::sim_client::bench::{rollback, worst_client_frame};
+    use criterion::Criterion;
+
+    use crate::sim_client;
+
+    /// Runs each bench of the crate whose id criterion's filter takes.
+    pub fn run(c: &mut Criterion) {
+        sim_client::bench::rollback(c);
+        sim_client::bench::worst_client_frame(c);
+    }
 }
 
 #[cfg(feature = "internals")]

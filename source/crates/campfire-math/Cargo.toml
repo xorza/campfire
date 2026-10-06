@@ -21,17 +21,7 @@ postcard.workspace = true
 proptest.workspace = true
 
 [[bench]]
-name = "num"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "rng"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "vec3"
+name = "math"
 harness = false
 required-features = ["bench"]
 

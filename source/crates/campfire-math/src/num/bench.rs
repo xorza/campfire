@@ -26,7 +26,7 @@ pub(crate) fn split_mix(seed: u64) -> impl FnMut() -> u64 {
     }
 }
 
-pub fn num(c: &mut Criterion) {
+pub(crate) fn num(c: &mut Criterion) {
     let one = Num::ONE.to_bits();
     let small = spread(1, 1000 * one);
     let other = spread(2, 1000 * one);

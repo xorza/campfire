@@ -26,7 +26,14 @@ pub use crate::slot_rules::error::SlotRuleError;
 
 #[cfg(feature = "bench")]
 pub mod bench {
-    pub use crate::runner::bench::tick_3v3;
+    use criterion::Criterion;
+
+    use crate::runner;
+
+    /// Runs each bench of the crate whose id criterion's filter takes.
+    pub fn run(c: &mut Criterion) {
+        runner::bench::tick_3v3(c);
+    }
 }
 
 #[cfg(feature = "internals")]

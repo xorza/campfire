@@ -19,7 +19,7 @@ const CHECKPOINT_EVERY: u64 = 100;
 /// and the worst tick of each such match, with no checkpoint and with the main thread's part of
 /// a checkpoint every `CHECKPOINT_EVERY` ticks, the copy of the state that changed. A rollback
 /// re-simulates whole ticks, so it costs its depth times these.
-pub fn tick_3v3(c: &mut Criterion) {
+pub(crate) fn tick_3v3(c: &mut Criterion) {
     let reference = Reference3v3::load();
     let mut group = c.benchmark_group("tick_3v3");
     group.sample_size(10);

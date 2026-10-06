@@ -22,7 +22,7 @@ sha2.workspace = true
 thiserror.workspace = true
 
 [[bench]]
-name = "chain_head_signature"
+name = "protocol"
 harness = false
 required-features = ["bench"]
 

@@ -43,6 +43,7 @@ name = "tests"
 path = "tests/mod.rs"
 
 [[bench]]
-name = "tick_3v3"
+name = "runner"
 harness = false
 required-features = ["bench"]
+

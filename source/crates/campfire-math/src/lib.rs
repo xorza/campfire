@@ -21,7 +21,14 @@ pub use crate::vec3::Vec3;
 
 #[cfg(feature = "bench")]
 pub mod bench {
-    pub use crate::num::bench::num;
-    pub use crate::rng::bench::rng;
-    pub use crate::vec3::bench::vec3;
+    use criterion::Criterion;
+
+    use crate::{num, rng, vec3};
+
+    /// Runs each bench of the crate whose id criterion's filter takes.
+    pub fn run(c: &mut Criterion) {
+        num::bench::num(c);
+        rng::bench::rng(c);
+        vec3::bench::vec3(c);
+    }
 }

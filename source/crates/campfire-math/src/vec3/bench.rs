@@ -17,7 +17,7 @@ fn points(seed: u64) -> Vec<Vec3> {
         .collect()
 }
 
-pub fn vec3(c: &mut Criterion) {
+pub(crate) fn vec3(c: &mut Criterion) {
     let a = points(1);
     let b = points(2);
     let radius = Num::from_int(800).unwrap();

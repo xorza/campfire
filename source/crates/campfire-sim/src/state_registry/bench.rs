@@ -130,7 +130,7 @@ fn moba_world() -> World {
     world
 }
 
-pub fn state_hash(c: &mut Criterion) {
+pub(crate) fn state_hash(c: &mut Criterion) {
     let world = moba_world();
     let mut registry = StateRegistry::new();
     registry.register_component::<Position>();

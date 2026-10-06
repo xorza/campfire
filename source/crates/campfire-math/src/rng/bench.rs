@@ -7,7 +7,7 @@ use crate::num::Num;
 use crate::rng::rng_source::RngSource;
 use crate::rng::rng_stream::RngStream;
 
-pub fn rng(c: &mut Criterion) {
+pub(crate) fn rng(c: &mut Criterion) {
     let mut source = RngSource::new(SegmentSeed::new([7; 32]));
     source.begin_tick(1);
     let mut entity = 0_u64;

@@ -49,7 +49,7 @@ name = "tests"
 path = "tests/mod.rs"
 
 [[bench]]
-name = "rollback"
+name = "net"
 harness = false
 required-features = ["bench"]
 

@@ -26,7 +26,7 @@ campfire-log = { workspace = true, features = ["internals"] }
 toml.workspace = true
 
 [[bench]]
-name = "collision"
+name = "capabilities"
 harness = false
 required-features = ["bench"]
 
