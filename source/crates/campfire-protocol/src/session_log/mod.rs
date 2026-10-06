@@ -27,7 +27,7 @@ use crate::server_seed::ServerSeed;
 use crate::server_seeds::ServerSeeds;
 use crate::session_id::SessionId;
 use crate::session_log::error::{
-    CheckpointError, HeaderError, InputError, LoadError, LogError, ResultError, SeedError,
+    CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, SeedError,
     ServerInputError,
 };
 use crate::session_result::SessionResult;
@@ -1223,7 +1223,7 @@ impl SessionLog {
     /// entry logged after the boundary dropped, and the segment goes on from its checkpoint, with
     /// its seed. The journal logs the load, so a log rebuilt from it is the log loaded. An error
     /// when the log holds no checkpoint that starts the segment.
-    pub fn load(&mut self, segment: u32) -> Result<(), LoadError> {
+    pub fn load(&mut self, segment: u32) -> Result<(), LogLoadError> {
         debug_assert!(
             self.to_replay.is_empty(),
             "a log that replays loads nothing"
@@ -1234,7 +1234,7 @@ impl SessionLog {
             .get(at)
             .is_none_or(|start| start.checkpoint.is_none())
         {
-            return Err(LoadError::NoCheckpoint);
+            return Err(LogLoadError::NoCheckpoint);
         }
         let mut bytes = Vec::new();
         self.encode_through(at, &mut bytes);

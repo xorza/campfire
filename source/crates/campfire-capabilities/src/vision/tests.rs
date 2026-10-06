@@ -10,7 +10,7 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pools::Pools;
-use crate::units::tag_effects::TagEffects;
+use crate::units::tag_properties::TagProperties;
 use crate::units::unit::Unit;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
@@ -61,9 +61,9 @@ impl Scene {
         id
     }
 
-    /// Gives unit `id` tags with `effects`, as its modifiers would.
-    fn set_effects(&mut self, id: StableId, effects: TagEffects) {
-        self.sim.insert(id, UnitTags::with_effects(effects));
+    /// Gives unit `id` tags with `properties`, as its modifiers would.
+    fn set_properties(&mut self, id: StableId, properties: TagProperties) {
+        self.sim.insert(id, UnitTags::with_properties(properties));
     }
 
     /// Runs `ctx.reveal(at.pos, radius, ms)` as `actor` thinks, or as the mode with no actor,
@@ -167,9 +167,9 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // true sight, beyond: team 1 alone sees it. The ward steps to (−3, 0), √6.5 ≈ 2.55 m off:
     // its true sight shows the sneak to team 0.
     let sneak = scene.spawn(1, -1, 0, None);
-    scene.set_effects(sneak, TagEffects::default().with_hidden());
+    scene.set_properties(sneak, TagProperties::default().with_hidden());
     let ward = scene.spawn(0, -4, 0, Some(3));
-    scene.set_effects(ward, TagEffects::default().with_detects());
+    scene.set_properties(ward, TagProperties::default().with_detects());
     scene.sim.step();
     assert_eq!(scene.seen_by(sneak), team(1));
     let entity = scene.sim.entity(ward);
@@ -241,7 +241,7 @@ fn a_reveal_shows_its_cells_to_the_caster_group_alone_for_its_time_and_no_hidden
     let caster = scene.spawn(0, -9, -9, Some(1));
     let target = scene.spawn(1, 5, 0, None);
     let sneak = scene.spawn(1, 5, 1, None);
-    scene.set_effects(sneak, TagEffects::default().with_hidden());
+    scene.set_properties(sneak, TagProperties::default().with_hidden());
     let beyond = scene.spawn(1, 7, 0, None);
     scene.spawn(2, -9, 9, Some(1));
     scene.sim.step();

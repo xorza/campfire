@@ -17,7 +17,7 @@ use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::items::inventory::Carried;
+use crate::items::inventory::ItemStack;
 use crate::items::item_book::ItemSpec;
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
@@ -206,7 +206,7 @@ impl Carrier {
     /// Each slot's item type and count, then its action and the tick it is ready.
     fn carried(&self) -> Vec<Option<(usize, u32)>> {
         let inventory = self.sim.get::<Inventory>(self.unit);
-        let carried = |slot: &Option<Carried>| {
+        let carried = |slot: &Option<ItemStack>| {
             slot.map(|carried| (carried.item.index(), carried.count.get()))
         };
         inventory.slots().iter().map(carried).collect()
@@ -256,7 +256,7 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     // a slot, and a flash with no uses.
     let restored = |item: u32, count: u32, uses: Option<u32>| {
         let mut inventory = Inventory::new(NonZeroU8::new(1).unwrap(), SlotKind::new(0));
-        let stack = Carried {
+        let stack = ItemStack {
             item: ItemId::nth(item),
             count: NonZeroU32::new(count).unwrap(),
             uses: uses.map(|uses| NonZeroU32::new(uses).unwrap()),

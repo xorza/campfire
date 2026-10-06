@@ -3,7 +3,7 @@ use std::process::ExitStatus;
 
 /// How a process ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Outcome {
+pub(crate) enum ProcessOutcome {
     Succeeded,
     /// It exited with a failure, with its code when it has one.
     Failed {
@@ -17,12 +17,12 @@ pub(crate) enum Outcome {
     NotStarted,
 }
 
-impl Outcome {
-    pub(crate) fn of(status: ExitStatus) -> Outcome {
+impl ProcessOutcome {
+    pub(crate) fn of(status: ExitStatus) -> ProcessOutcome {
         if status.success() {
-            Outcome::Succeeded
+            ProcessOutcome::Succeeded
         } else {
-            Outcome::Failed {
+            ProcessOutcome::Failed {
                 code: status.code(),
             }
         }
@@ -30,15 +30,15 @@ impl Outcome {
 }
 
 /// How a process ended, as the end of a sentence about it.
-impl fmt::Display for Outcome {
+impl fmt::Display for ProcessOutcome {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Outcome::Succeeded => f.write_str("succeeded"),
-            Outcome::Failed { code: Some(code) } => write!(f, "exited with {code}"),
-            Outcome::Failed { code: None } => f.write_str("was killed by a signal"),
-            Outcome::Overran => f.write_str("still ran at the deadline"),
-            Outcome::Stopped => f.write_str("was stopped mid-match"),
-            Outcome::NotStarted => f.write_str("did not start"),
+            ProcessOutcome::Succeeded => f.write_str("succeeded"),
+            ProcessOutcome::Failed { code: Some(code) } => write!(f, "exited with {code}"),
+            ProcessOutcome::Failed { code: None } => f.write_str("was killed by a signal"),
+            ProcessOutcome::Overran => f.write_str("still ran at the deadline"),
+            ProcessOutcome::Stopped => f.write_str("was stopped mid-match"),
+            ProcessOutcome::NotStarted => f.write_str("did not start"),
         }
     }
 }

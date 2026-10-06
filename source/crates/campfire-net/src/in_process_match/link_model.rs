@@ -1,4 +1,4 @@
-/// How a `LocalMatch` link carries packets, the same each way, in steps of the match, so a run
+/// How an `InProcessMatch` link carries packets, the same each way, in steps of the match, so a run
 /// repeats exactly: each packet waits `delay` steps and up to `jitter` more, or is lost, one in
 /// every `1000 / loss_per_mille`; the draws follow `seed`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

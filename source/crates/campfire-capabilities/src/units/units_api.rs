@@ -12,9 +12,9 @@ use crate::scripts::script_api::member_spec::MemberSpec;
 /// The script API of positions and vectors: `Pos` with `distance_to`, `within` and
 /// `direction_to`, and `Vector` with `rotated_deg`.
 #[derive(Debug)]
-pub(crate) struct PositionApi;
+pub(crate) struct UnitsApi;
 
-impl PositionApi {
+impl UnitsApi {
     /// `Pos` and `Vector`.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let position = |name, signature, description| {
@@ -44,13 +44,13 @@ impl PositionApi {
             .bind(
                 within,
                 |call: NativeCallContext<'_>, from: &mut Position, to: Position, radius: Num| {
-                    PositionApi::within(&call, *from, to, radius)
+                    UnitsApi::within(&call, *from, to, radius)
                 },
             )
             .bind(
                 within,
                 |call: NativeCallContext<'_>, from: &mut Position, to: Position, radius: INT| {
-                    PositionApi::within(&call, *from, to, ApiError::num(radius)?)
+                    UnitsApi::within(&call, *from, to, ApiError::num(radius)?)
                 },
             )
             .bind(
@@ -78,10 +78,10 @@ impl PositionApi {
         );
         api.ty::<Vec3>("Vector")
             .bind(rotated, |vector: &mut Vec3, degrees: Num| {
-                PositionApi::rotated(*vector, degrees)
+                UnitsApi::rotated(*vector, degrees)
             })
             .bind(rotated, |vector: &mut Vec3, degrees: INT| {
-                PositionApi::rotated(*vector, ApiError::num(degrees)?)
+                UnitsApi::rotated(*vector, ApiError::num(degrees)?)
             });
         let scaled = MemberSpec::operator(
             ApiOwner::Vector,
@@ -90,23 +90,23 @@ impl PositionApi {
         );
         api.bind(
             MemberSpec::operator(ApiOwner::Vector, "+", "the sum of two vectors"),
-            |a: Vec3, b: Vec3| PositionApi::exact(a.checked_add(b)),
+            |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_add(b)),
         )
         .bind(
             MemberSpec::operator(ApiOwner::Vector, "-", "the difference of two vectors"),
-            |a: Vec3, b: Vec3| PositionApi::exact(a.checked_sub(b)),
+            |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_sub(b)),
         )
         .bind(scaled, |vector: Vec3, factor: Num| {
-            PositionApi::exact(vector.checked_scale(factor))
+            UnitsApi::exact(vector.checked_scale(factor))
         })
         .bind(scaled, |factor: Num, vector: Vec3| {
-            PositionApi::exact(vector.checked_scale(factor))
+            UnitsApi::exact(vector.checked_scale(factor))
         })
         .bind(scaled, |vector: Vec3, factor: INT| {
-            PositionApi::exact(vector.checked_scale(ApiError::num(factor)?))
+            UnitsApi::exact(vector.checked_scale(ApiError::num(factor)?))
         })
         .bind(scaled, |factor: INT, vector: Vec3| {
-            PositionApi::exact(vector.checked_scale(ApiError::num(factor)?))
+            UnitsApi::exact(vector.checked_scale(ApiError::num(factor)?))
         });
     }
 
@@ -121,7 +121,7 @@ impl PositionApi {
             .checked_mul(Num::PI)
             .and_then(|turn| turn.checked_div_int(180))
             .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))?;
-        PositionApi::exact(vector.checked_rotated_y(radians.sin_cos()))
+        UnitsApi::exact(vector.checked_rotated_y(radians.sin_cos()))
     }
 
     /// Whether `to` is within `radius` of `from` in the map's metric, exactly: the reach rule

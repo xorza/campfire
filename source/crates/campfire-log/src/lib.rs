@@ -7,7 +7,7 @@ mod log_line;
 mod logging;
 
 pub use log_event::LogEvent;
-pub use log_line::{Level, LogLine};
+pub use log_line::{LogLevel, LogLine};
 pub use logging::Logging;
 
 #[cfg(feature = "internals")]

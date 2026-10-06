@@ -5,7 +5,7 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Res, ResMut};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
-use campfire_net::{Pace, PendingSaves, SaveCommand, Speed};
+use campfire_net::{Pace, PaceSpeed, PendingSaves, SaveCommand};
 
 /// The keys of a local match: P pauses it and plays it on, 1 to 4 set its speed to 0.5, 1, 2 or
 /// 4 times, F5 saves it, and F9 loads its latest save.
@@ -18,7 +18,7 @@ pub(crate) struct LocalKeys {
 #[derive(Resource, Debug)]
 struct Keyed(Arc<Pace>);
 
-/// The speed keys, slowest first, as `Speed::ALL` lists the speeds.
+/// The speed keys, slowest first, as `PaceSpeed::ALL` lists the speeds.
 const SPEED_KEYS: [KeyCode; 4] = [
     KeyCode::Digit1,
     KeyCode::Digit2,
@@ -43,7 +43,7 @@ impl LocalKeys {
         if keys.just_pressed(KeyCode::KeyP) {
             pace.set_paused(!pace.paused());
         }
-        for (key, speed) in SPEED_KEYS.into_iter().zip(Speed::ALL) {
+        for (key, speed) in SPEED_KEYS.into_iter().zip(PaceSpeed::ALL) {
             if keys.just_pressed(key) {
                 pace.set_speed(speed);
             }

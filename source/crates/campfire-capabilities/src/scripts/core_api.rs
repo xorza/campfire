@@ -4,14 +4,14 @@ use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::{Ctx, Params};
-use crate::scripts::draws::Draws;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
+use crate::scripts::scripts_call::ScriptsCall;
 use crate::units::block::Block;
-use crate::units::tag_effect::TagEffect;
+use crate::units::tag_property::TagProperty;
 
 /// The script API of the core: `ctx` itself, `ctx.p`, and the core's and the movement calls
 /// design 08 plans.
@@ -48,12 +48,12 @@ impl CoreApi {
             .data(DataTable::ModeNavigation, &["layers"], &[])
             .data(DataTable::Collision, &["radius", "layer"], &[])
             .data(DataTable::Tag, &["blocks", "hidden", "detects", "immune"], &[]);
-        api.tag_effect(
-            TagEffect::Blocks(Block::Move),
+        api.tag_property(
+            TagProperty::Blocks(Block::Move),
             Status::Runs(ApiVersion::FIRST),
         )
-        .tag_effect(
-            TagEffect::Blocks(Block::Use),
+        .tag_property(
+            TagProperty::Blocks(Block::Use),
             Status::Runs(ApiVersion::FIRST),
         );
         api.ty::<Params>("Params")
@@ -79,9 +79,9 @@ impl CoreApi {
         Ok(list[at].clone())
     }
 
-    fn draws(frame: &mut Frame) -> &mut Draws {
+    fn draws(frame: &mut Frame) -> &mut ScriptsCall {
         frame
-            .part_mut::<Draws>()
+            .part_mut::<ScriptsCall>()
             .expect("every match with scripts draws")
     }
 }

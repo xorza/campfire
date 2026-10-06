@@ -9,13 +9,13 @@ use crate::units::spawner::{SpawnAt, Spawner};
 /// A unit a listed `spawn` makes, `at` its place, of the acting unit's team and player, with a
 /// timed life of `life` when it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpawnEffect {
+pub(crate) struct ActionsEffect {
     pub(crate) at: SpawnAt,
     pub(crate) owner: Option<PlayerSlot>,
     pub(crate) life: Option<Ticks>,
 }
 
-impl Effect for SpawnEffect {
+impl Effect for ActionsEffect {
     // The unit spawns with the id the call took, and lives `life` ticks from this one.
     fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
         let spawner = world.non_send::<Spawner>().clone();

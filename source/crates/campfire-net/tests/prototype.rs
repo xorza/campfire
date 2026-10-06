@@ -13,7 +13,7 @@ use campfire_capabilities::{
 };
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_net::internals::{End, LocalMatch, MatchSetup};
+use campfire_net::internals::{End, InProcessMatch, MatchSetup};
 use campfire_net::{InputChannel, InputMessage, InputMessageRefused, PlayerLink, TickHashes};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_runner::internals::HashTrail;
@@ -57,7 +57,7 @@ fn hero(app: &App) -> Hero {
 /// The ticks the client runs ahead of the server. An order shows on the server `lead + 1` steps
 /// after the client sends it: it is stamped `lead` ticks ahead, and moves the hero in that tick's
 /// step. The server's state of a tick the client predicted reaches it as many steps on.
-fn lead(local: &LocalMatch) -> u64 {
+fn lead(local: &InProcessMatch) -> u64 {
     local.next_tick(End::Client(0)) - local.next_tick(End::Server)
 }
 
@@ -76,10 +76,10 @@ fn server_and_replay_agree_on_every_tick() {
         (RollbackMode::Check, 3, 2),
     ] {
         let case = format!("{rollback:?}, {server_frames} frames, shift {shift}");
-        let mut local = LocalMatch::new(MatchSetup::solo(
+        let mut local = InProcessMatch::new(MatchSetup::solo(
             rollback,
             server_frames,
-            LocalMatch::SEED_CHAIN,
+            InProcessMatch::SEED_CHAIN,
         ));
         for _ in 0..shift {
             local.server_frame();
@@ -151,7 +151,7 @@ fn server_and_replay_agree_on_every_tick() {
 
 #[test]
 fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link() {
-    let mut local = LocalMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // Six moves in one frame, past the session's 4 inputs a tick: the client stamps 4 now and 2
     // in the next tick, so the server refuses none, and the last move is where the hero ends.
@@ -175,7 +175,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     };
     assert_eq!(hero(local.server()), arrived);
     let link = local.link(0);
-    let refused = |local: &LocalMatch| {
+    let refused = |local: &InProcessMatch| {
         let link = local.server().world().entity(link);
         (
             link.get::<PlayerLink>().map(|player| player.refused()),
@@ -217,7 +217,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
 
 #[test]
 fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_its_client() {
-    let mut local = LocalMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The client predicts on the ground and with the life pool the server's mode installs.
     let (server, client) = (local.server().world(), local.client(0).world());
@@ -229,11 +229,11 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     // edge and hits for 150 of its 600: the fourth hit kills it where it stands.
     local.order(0, move_to(4, 0));
     let dead = |app: &App| app.world().entity(hero_entity(app)).contains::<Dead>();
-    let rollbacks = |local: &LocalMatch| local.rollbacks(0);
+    let rollbacks = |local: &InProcessMatch| local.rollbacks(0);
     // While it attacks, the client holds the tower's target, the hero, and its projectiles in
     // flight, to draw them.
     let hero_id = local.avatar(0);
-    let client_sees = |local: &LocalMatch| {
+    let client_sees = |local: &InProcessMatch| {
         let world = local.client(0).world();
         let units = || world.resource::<EntityIndex>().iter();
         let aimed = units().any(|(_, entity)| {
@@ -306,7 +306,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
 
 #[test]
 fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
-    let mut local = LocalMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The east tower, of team 1, the one unit of that team that neither walks nor has an owner,
     // falls to one strike: the walker's attack on it ends the match, and the west, team 0, wins.
@@ -363,7 +363,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
 
 #[test]
 fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
-    let mut local = LocalMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The hero walks off the lane, where nothing meets it: 16.5 m at 0.25 m a tick, so it still
     // walks when both modifiers end, 30 and 15 ticks after the client learns each.
@@ -372,7 +372,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
         local.step();
     }
     assert_ne!(hero(local.server()).destination, Destination::default());
-    let rollbacks = |local: &LocalMatch| local.rollbacks(0);
+    let rollbacks = |local: &InProcessMatch| local.rollbacks(0);
     let carries = |app: &App| {
         let modifiers = app.world().get::<Modifiers>(hero_entity(app));
         modifiers.is_some_and(|modifiers| *modifiers != Modifiers::default())
@@ -406,7 +406,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
 
 #[test]
 fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
-    let mut local = LocalMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The hero walks off the lane, where nothing meets it, as in the stun's test. The server
     // dashes it 6 m along −x, a fifth of a meter a tick, 30 ticks: it learns the dash some
@@ -416,7 +416,7 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
     for _ in 0..=lead(&local) {
         local.step();
     }
-    let rollbacks = |local: &LocalMatch| local.rollbacks(0);
+    let rollbacks = |local: &InProcessMatch| local.rollbacks(0);
     let dashing = |app: &App| app.world().get::<ForcedMove>(hero_entity(app)).is_some();
     let entity = hero_entity(local.server());
     let world = local.server_mut().world_mut();
@@ -449,7 +449,7 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
 
 #[test]
 fn the_client_takes_the_relations_a_script_sets() {
-    let mut local = LocalMatch::new(MatchSetup::SOLO);
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     let relations = |app: &App| app.world().resource::<Relations>().clone();
     assert_eq!(relations(local.client(0)), Relations::default());

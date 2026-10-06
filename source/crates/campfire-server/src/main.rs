@@ -32,8 +32,8 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, KeyFile, Listening, NetProtocol, OrderScript, ServerBots, ServerData,
-    ServerExit, ServerSetup, SessionTimes, SimServer, SlotBot,
+    JournalFailed, KeyFile, Listening, NetProtocol, OrderScript, ServerBots, ServerDir, ServerExit,
+    ServerSetup, SessionTimes, SimServer, SlotBot,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
@@ -97,7 +97,7 @@ fn main() -> ExitCode {
         address,
         ..
     } = args;
-    let data = match ServerData::open(&data) {
+    let data = match ServerDir::open(&data) {
         Ok(data) => data,
         Err(error) => {
             error!(data = %data.display(), %error, "the data directory does not open");
@@ -158,7 +158,7 @@ impl Started {
     /// `packages` holds, with `bots`; the TLS identity, made again only when no session
     /// restores; and the server's setup of `key` and `times`. The exit code when one fails.
     fn open(
-        data: &ServerData,
+        data: &ServerDir,
         packages: ModePackages,
         key: Keypair,
         times: SessionTimes,
@@ -212,7 +212,7 @@ impl Started {
 fn server_app(
     opening: Opening,
     config: ServerConfig,
-    data: ServerData,
+    data: ServerDir,
     tick: Duration,
     listening: Listening,
 ) -> App {

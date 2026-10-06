@@ -137,7 +137,7 @@ fn experience_is_state_and_restores() {
     // A match of stats and progression with the tracks of `book`, the same in both.
     let tracks = |sim: &mut TestMatch| {
         let book = book();
-        TracksColumn::share(sim.world.non_send::<View>(), book.clone());
+        ProgressionColumn::share(sim.world.non_send::<View>(), book.clone());
         sim.world.insert_resource(book);
     };
     let declared = [Capability::Stats, Capability::Progression];

@@ -6,7 +6,7 @@ use crate::units::engine_tag::EngineTag;
 use crate::units::tag::Tag;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_data::TagData;
-use crate::units::tag_effects::TagEffects;
+use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_state_book::UnitStateBook;
@@ -143,13 +143,13 @@ impl UnitTypes {
     pub(crate) fn tag_book(&mut self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
         let tags = self.tag_names.iter().map(|name| {
             let Some(data) = data.get(name) else {
-                return (TagEffects::default(), TagSet::default());
+                return (TagProperties::default(), TagSet::default());
             };
             let immune = data.immune.iter().map(|name| {
                 self.tag_named(name.as_str())
                     .expect("the match declared every tag the mode names")
             });
-            (TagEffects::of(data), TagSet::of(immune))
+            (TagProperties::of(data), TagSet::of(immune))
         });
         let effects: Vec<_> = tags.collect();
         let types = self.types.iter_mut().enumerate().map(|(at, entry)| {

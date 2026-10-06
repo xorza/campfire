@@ -36,7 +36,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_log::Logging;
-use campfire_net::{ClientData, KeyFile, NetProtocol, OrderScript, Pace, SimClient};
+use campfire_net::{ClientDir, KeyFile, NetProtocol, OrderScript, Pace, SimClient};
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
@@ -143,7 +143,7 @@ fn main() -> ExitCode {
     };
     let data = match &args.data {
         None => None,
-        Some(path) => match ClientData::open(path) {
+        Some(path) => match ClientDir::open(path) {
             Ok(data) => Some(Arc::new(data)),
             Err(error) => {
                 error!(data = %path.display(), %error, "the data directory does not open");

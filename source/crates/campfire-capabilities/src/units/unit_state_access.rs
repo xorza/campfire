@@ -6,9 +6,9 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
 use crate::units::new_unit::NewUnit;
-use crate::units::unit_state_call::UnitStateCall;
-use crate::units::unit_state_column::UnitStateColumn;
 use crate::units::unit_type::UnitType;
+use crate::units::units_call::UnitsCall;
+use crate::units::units_column::UnitsColumn;
 
 /// `unit.state`, `UnitState` in scripts: the script state fields of a unit a script holds, by
 /// name, to read and write; of a unit the view read, or of one the call creates, which has no
@@ -65,28 +65,28 @@ impl UnitStateAccess {
     /// the call.
     fn get(&self, ctx: &Ctx, name: &str) -> Checked<Dynamic> {
         let view = ctx.view();
-        let field = UnitStateColumn::field(view, self.unit_type, name)?;
-        if let Some(value) = UnitStateCall::of(&ctx.frame()).written(self.unit, field.at) {
+        let field = UnitsColumn::field(view, self.unit_type, name)?;
+        if let Some(value) = UnitsCall::of(&ctx.frame()).written(self.unit, field.at) {
             return Ok(value.to_dynamic(view));
         }
         if let Some(row) = self.row {
-            return Ok(UnitStateColumn::read(view, row, field.at));
+            return Ok(UnitsColumn::read(view, row, field.at));
         }
         let unit_type = self
             .unit_type
             .expect("a unit the call creates has its type");
-        Ok(UnitStateColumn::initial(view, unit_type, field.at))
+        Ok(UnitsColumn::initial(view, unit_type, field.at))
     }
 
     /// Writes `value` to the field `name`, for the call to read back and to apply when it ends,
     /// or as the unit spawns; a field the unit's type does not declare, a value of another
     /// type, and a pure hook's call fail the call.
     fn set(&self, ctx: &Ctx, name: &str, value: &Dynamic) -> Checked<()> {
-        let field = UnitStateColumn::field(ctx.view(), self.unit_type, name)?;
+        let field = UnitsColumn::field(ctx.view(), self.unit_type, name)?;
         let value = StateValue::from_dynamic(field.kind, value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
         let mut frame = ctx.write()?;
-        UnitStateCall::of_mut(&mut frame).write(self.unit, field.at, value);
+        UnitsCall::of_mut(&mut frame).write(self.unit, field.at, value);
         Ok(())
     }
 }

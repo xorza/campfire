@@ -42,10 +42,10 @@ The workspace keeps most of its own rules: no `foo.rs` sits beside a `foo/`, no 
   | `AreaEffect`, `ProjectileEffect`, `RevealEffect`, `SpawnEffect`, `ModifierEffect` | `AreasEffect`, `ProjectilesEffect`, `VisionEffect`, `ActionsEffect`, `StatsEffect` | A role takes its module's name |
   | `TracksColumn`, `SightColumn`, `UnitStateColumn` | `ProgressionColumn`, `VisionColumn`, `UnitsColumn` | The same |
   | `UnitStateCall`, `Draws` | `UnitsCall`, `ScriptsCall` | The same; `sim`'s public `Draws` is another type |
-  | `PositionApi`, `position_api.rs`; `CoreApi`, `core_api.rs` | `UnitsApi`, `units_api.rs`; `ScriptsApi`, `scripts_api.rs` | The same |
-  | `TagEffect`, `TagEffectStatus` | `TagProperty`, `TagPropertyStatus` | It is what a tag gives, not an `Effect` |
+  | `PositionApi`, `position_api.rs` | `UnitsApi`, `units_api.rs` | The same |
+  | `TagEffect`, `TagEffects`, `TagEffectStatus`, "tag effect" | `TagProperty`, `TagProperties`, `TagPropertyStatus`, "tag property" | It is what a tag gives, not an `Effect`: the term changes in the code, designs 04 and 08, the generated reference and the roadmap |
 
-  `UnitOrder` stays: it is the orders' effect, and the order to a unit that 12 other places of the crate name. Each module has one type of each role, so the name follows from the module alone.
+  Two names stay: `UnitOrder`, the orders' effect, and the order to a unit that 12 other places of the crate name; and `CoreApi`, the script API of the core, which is `units`, `scripts` and `players` and no one module, and which as `ScriptsApi` would stand one letter from the registry, `ScriptApi`. Each module has one type of each role, so the name follows from the module alone.
 - **U9. One shape for each kind of file.** A public type that stands on its own has its own file: `SessionHeader`, `Applied` and `DurableHead` leave `session_log/mod.rs`, `TickHashes` and `PlayerLink` leave `sim_server`. Inline tests past 40% or 150 lines of their file move to `tests.rs`. The free `pub(crate)` functions become methods. A crate's log events are in `events/`, and its harness, the code only `internals` builds that reads no one file's privates, in `harness/`. The `lib.rs` lists take one path form, `pub use module::Item`, in `internals` as elsewhere.
 
 ## Shared test helpers
@@ -63,6 +63,6 @@ The renames, moves and splits are pure refactors: the tests that cover the code 
 - `ExitStatus` gives 0, 1, 2 and 74; a failed snapshot still exits with 74.
 - `SlotBotFile` parses `3=bot.toml`, and refuses a missing `=`, a slot that is not a number, and a script that does not read, each with its variant; each binary's `ArgsError` covers a missing value, an unknown flag and a flag given twice; the server takes its flags in any order.
 - The random key skips a secret that is not a valid key: a source whose first 32 bytes are zero gives the key of its next.
-- `capabilities` checks the role names: every `Effect`, `ViewColumn` and `CallPart` of a module, and its script API, is named `<Module><Role>` in `<module>_<role>.rs`, but `UnitOrder`, which the test lists.
+- `capabilities` checks the role names: every `Effect`, `ViewColumn` and `CallPart` of a module, and its script API, is named `<Module><Role>` in `<module>_<role>.rs`, but `UnitOrder` and `CoreApi`, which the test lists.
 - `PackageContent`'s list of keys names exactly its fields.
 - The net scenarios, the restore and checkpoint tests, and the LAN check pass unchanged, with the server's `--server-bot`.

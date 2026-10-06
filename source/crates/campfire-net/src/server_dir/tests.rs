@@ -6,7 +6,7 @@ use super::*;
 fn each_path_is_as_stage_6_names_it_and_one_server_holds_the_directory() {
     let path = env::temp_dir().join(format!("campfire-server-data-{}", process::id()));
     drop(fs::remove_dir_all(&path));
-    let data = ServerData::open(&path).unwrap();
+    let data = ServerDir::open(&path).unwrap();
     let id = SessionId::new([0xa7; 32]);
     let hex = "a7".repeat(32);
     assert_eq!(data.path(), path);
@@ -19,7 +19,7 @@ fn each_path_is_as_stage_6_names_it_and_one_server_holds_the_directory() {
         data.published_log(id),
         path.join("logs").join(format!("{hex}.campfire-log"))
     );
-    assert!(matches!(ServerData::open(&path), Err(DataDirError::Locked)));
+    assert!(matches!(ServerDir::open(&path), Err(DataDirError::Locked)));
     drop(data);
     fs::remove_dir_all(&path).unwrap();
 }

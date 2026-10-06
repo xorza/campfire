@@ -25,7 +25,7 @@ pub(crate) struct UnitRow {
     /// Whether it may be a target: a living unit with the life pool whose tags let it be one, by
     /// the rule `Targets` holds; combat fills it.
     pub(crate) targetable: bool,
-    /// Its tags and their effects, as the core derives them.
+    /// Its tags and their properties, as the core derives them.
     pub(crate) tags: UnitTags,
 }
 

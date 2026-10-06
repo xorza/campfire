@@ -5,8 +5,8 @@
 use std::fs;
 
 use campfire_common::{StateHash, Tick};
-use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{RestoreError, ServerData, SessionDir, TickHashes};
+use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Runner, Session};
 
@@ -14,11 +14,14 @@ use crate::Scratch;
 
 /// The scenario's match, its server's data in `data`, after 90 steps; with the state hash after
 /// each tick the server ran.
-fn played(data: &Scratch) -> (LocalMatch, Vec<StateHash>) {
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
+fn played(data: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
     local.keep_data(data.0.clone());
     local.start_match();
-    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     for _ in 0..90 {
         local.step();
     }
@@ -67,7 +70,7 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
 
     // The private record, at the path Stage 6 names, names another release: the restore refuses
     // it, naming the release.
-    let stopped = ServerData::open(&data.0).unwrap();
+    let stopped = ServerDir::open(&data.0).unwrap();
     let path = data.0.join("sessions").join(id.to_string()).join("private");
     let ours = fs::read(&path).unwrap();
     let mut private = SessionPrivate::decode(&ours).unwrap();
@@ -84,7 +87,7 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
     // at, in the state the server left, and its log, published, replays to every hash.
     fs::write(&path, ours).unwrap();
     let session = dir.restore().unwrap().unwrap();
-    let key = LocalMatch::server_keypair();
+    let key = InProcessMatch::server_keypair();
     let file = session
         .abort(&stopped, local.packages(), key, |aux| aux.fill(6))
         .unwrap();

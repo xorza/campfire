@@ -11,7 +11,7 @@ use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
-use crate::stats::modifier_effect::ModifierEffect;
+use crate::stats::stats_effect::StatsEffect;
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
 
@@ -118,10 +118,10 @@ impl ModifierHandle {
     }
 
     /// `ctx.remove(m)`: the effect that ends its instance, which the call now sees as gone.
-    pub(crate) fn remove(&self) -> ModifierEffect {
+    pub(crate) fn remove(&self) -> StatsEffect {
         let mut data = self.data();
         data.removed = true;
-        ModifierEffect::Remove {
+        StatsEffect::Remove {
             carrier: data.carrier,
             id: data.id,
             source: data.source,

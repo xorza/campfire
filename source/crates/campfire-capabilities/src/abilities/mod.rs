@@ -294,7 +294,7 @@ fn run_toggles(
         );
         for &(at, slot) in &*on {
             let group = Inventory::group(inventory, slot.kind);
-            if dead || UnitTags::effects_of(tags).blocks(group) {
+            if dead || UnitTags::properties_of(tags).blocks(group) {
                 slots.toggle_off(at);
                 continue;
             }

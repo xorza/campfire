@@ -9,7 +9,7 @@ A capability is native code: components, systems that run in the tick, backends,
 Every capability says its mechanism in the same few terms, so that capabilities meet in one match and a genre is only data and scripts. Each capability's doc gives the reasons and sources for the form its terms take.
 
 - **Unit.** Anything in the sim with a stable id, a position and a type: a hero, a soldier, a building, a creep, a projectile, an area, an item on the ground, a door, a resource node, a vehicle. The sections of its type decide what it is and what it does. Scripts see every unit through one handle, which has the fields of its type's sections.
-- **Tag.** A unit's tags are its type's tags and the tags its modifiers grant. A tag has effects only when the mode gives it some ([Tags](stats.md#tags)): it can block an action kind, moving, being a target or taking damage; hide the unit or detect hidden units; or make the unit immune to the modifiers that grant other tags. The engine tags a unit by some of its sections: `avatar`, `projectile`, `area`, `item`, and the name of the layer it moves on.
+- **Tag.** A unit's tags are its type's tags and the tags its modifiers grant. A tag has properties only when the mode gives it some ([Tags](stats.md#tags)): it can block an action kind, moving, being a target or taking damage; hide the unit or detect hidden units; or make the unit immune to the modifiers that grant other tags. The engine tags a unit by some of its sections: `avatar`, `projectile`, `area`, `item`, and the name of the layer it moves on.
 - **Stat.** A number the mode declares. A unit's value of a stat is its type's value at its level, changed by its modifiers through one formula ([Stats](stats.md#stats)).
 - **Pool.** An amount between 0 and the value of a stat, which a regen stat refills: health, mana, energy, rage, ammunition. The mode declares its pools; a unit type lists those it has ([Pools](stats.md#pools)).
 - **Modifier.** An instance on a unit, from a source, for a time: it changes stats, grants tags, runs effects at intervals, and hears the unit's events ([Modifiers](stats.md#modifiers)).
@@ -24,7 +24,7 @@ Every capability says its mechanism in the same few terms, so that capabilities 
 | Capability | Status | Adds | Doc |
 | --- | --- | --- | --- |
 | `combat` | built | The life pool, weapons, the damage and heal pass, deaths, kill credit, respawns | [Combat](combat.md) |
-| `stats` | built | Stats and their formula, pools, modifiers, tags and their effects, levels | [Stats](stats.md) |
+| `stats` | built | Stats and their formula, pools, modifiers, tags and their properties, levels | [Stats](stats.md) |
 | `abilities` | built | Cast actions: ranks, charges, toggles, channels, charged casts | [Actions](actions.md#kinds) |
 | `projectiles`, `areas` | built | Deliveries: projectiles that fly a line, home or fall; areas that hold modifiers on the units inside | [Actions](actions.md#deliveries) |
 | `orders` | built | Units that take orders: move, attack, an action, stop, hold, queues, groups and formations; AI `on_think` | [Control](control.md#orders) |
@@ -94,7 +94,7 @@ A package's `[tables.<id>]` lists weighted entries, each a unit type, an item ty
 The dependencies form a fixed graph with no cycle:
 
 - **Base:** `sim` (positions, stable ids, randomness, the state hash, the tick rate) and collision; then the core under every script: unit types, tags, relations, the map and its markers, the action pipeline, the effect queue, the one script host and its tick budget, and the units as scripts see them. A capability adds its fields to that view, so the core names no capability.
-- **`combat` and `stats`:** pools, damage, deaths, stats, modifiers, tag effects.
+- **`combat` and `stats`:** pools, damage, deaths, stats, modifiers, tag properties.
 - **Everything else** builds on those: action kinds and deliveries (`abilities`, `projectiles`, `areas`, `hitboxes`, `interaction`, `production`, `items`), who starts actions (`orders`, `character`), and the rest.
 
 The capabilities are modules of one crate; a capability with a heavy dependency, such as physics, gets its own crate. Only the declared capabilities' systems run, so an unused one costs nothing.

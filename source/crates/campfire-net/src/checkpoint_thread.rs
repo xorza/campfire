@@ -4,7 +4,7 @@ use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
 use campfire_store::{DurableError, Exchange};
 
 use crate::server_signer::ServerSigner;
-use crate::session_dir::snapshots::Snapshots;
+use crate::session_dir::snapshot_dir::SnapshotDir;
 
 /// The thread that takes a session's checkpoints off the main thread. It holds its own copy of
 /// the match's state, which starts as a full copy and which each delta the main thread sends
@@ -49,7 +49,7 @@ pub(crate) struct SignedCheckpoint {
 struct CheckpointCopy {
     registry: StateRegistry,
     session_id: SessionId,
-    snapshots: Snapshots,
+    snapshots: SnapshotDir,
     signer: ServerSigner,
     world: World,
     /// The snapshot of the last checkpoint, kept between checkpoints.
@@ -64,7 +64,7 @@ impl CheckpointThread {
         registry: StateRegistry,
         base: StateDelta,
         session_id: SessionId,
-        snapshots: Snapshots,
+        snapshots: SnapshotDir,
         signer: ServerSigner,
     ) -> CheckpointThread {
         let mut world = World::new();

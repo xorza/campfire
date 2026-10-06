@@ -12,7 +12,7 @@ use crate::units::unit_type::UnitType;
 /// A projectile a call queued: `id`, the id the call took for it, of `by`, of `unit_type`, from
 /// `from`, toward a direction or homing on a unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ProjectileEffect {
+pub(crate) struct ProjectilesEffect {
     pub(crate) id: StableId,
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
@@ -27,7 +27,7 @@ pub(crate) enum Toward {
     Unit(StableId),
 }
 
-impl Effect for ProjectileEffect {
+impl Effect for ProjectilesEffect {
     fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
         Projectiles::apply(world, self);
     }

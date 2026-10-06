@@ -13,12 +13,12 @@ use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
-use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::pools::Pools;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
-use crate::units::tag_effect::TagEffect;
+use crate::stats::stats_effect::StatsEffect;
+use crate::units::tag_property::TagProperty;
 use crate::units::unit::Unit;
 
 /// The script API of `stats`: `ctx.add_modifier`, `ctx.remove`, the `Modifier` handle, and the
@@ -126,7 +126,7 @@ impl StatsApi {
             .hook(Hook::OnDamageTaken, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnKill, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnTakedown, Status::Runs(ApiVersion::FIRST))
-            .tag_effect(TagEffect::Immune, Status::Runs(ApiVersion::FIRST));
+            .tag_property(TagProperty::Immune, Status::Runs(ApiVersion::FIRST));
         api.data(
             DataTable::Modifier,
             &[
@@ -155,7 +155,7 @@ impl StatsApi {
         let player = ctx.view().player(player)?;
         let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
         StatsColumn::check_way(ctx.view(), StatsCall::of(&ctx.frame()), id, None, 1)?;
-        ctx.queue(ModifierEffect::AddPlayer { player, id })
+        ctx.queue(StatsEffect::AddPlayer { player, id })
     }
 
     /// Queues modifier `id` of the call's package on `target`, from the acting unit, for
@@ -173,7 +173,7 @@ impl StatsApi {
         let call = StatsCall::of_mut(&mut frame);
         StatsColumn::check_way(ctx.view(), call, id, ability, rank)?;
         let handle = StatsColumn::applied_handle(ctx.view(), call, target.id, id, source);
-        frame.effects.push(ModifierEffect::Add {
+        frame.effects.push(StatsEffect::Add {
             target: target.id,
             id,
             duration,

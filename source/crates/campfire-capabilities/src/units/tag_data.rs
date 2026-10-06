@@ -3,7 +3,7 @@ use serde::Deserialize;
 use crate::units::block::Block;
 use crate::values::declared_name::DeclaredName;
 
-/// A tag's effects as the mode's `[tags.<name>]` declares them; a tag it does not declare has
+/// A tag's properties as the mode's `[tags.<name>]` declares them; a tag it does not declare has
 /// none.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -149,7 +149,7 @@ impl DamagePass {
     /// The entity of `unit`, when it is living and its tags let damage reach it.
     fn damageable(world: &World, unit: StableId) -> Option<Entity> {
         DamagePass::living(world, unit)
-            .filter(|&entity| !UnitTags::effects_of(world.get(entity)).blocks(Block::Damage))
+            .filter(|&entity| !UnitTags::properties_of(world.get(entity)).blocks(Block::Damage))
     }
 
     /// Runs the `on_hit` list of the weapon of `damage`, an attack's that reached its target, in

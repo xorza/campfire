@@ -60,7 +60,7 @@ pub use server_seed::{SeedCommitment, ServerSeed};
 pub use server_seeds::ServerSeeds;
 pub use session_id::SessionId;
 pub use session_log::error::{
-    CheckpointError, HeaderError, InputError, LoadError, LogError, ResultError, SeedError,
+    CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, SeedError,
     ServerInputError,
 };
 pub use session_log::{Applied, DurableHead, SessionHeader, SessionLog};

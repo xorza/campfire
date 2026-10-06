@@ -1,24 +1,30 @@
 use std::fmt;
 
 use campfire_common::{PlayerSlot, StateHash, Tick};
-use campfire_log::Level;
+use campfire_log::LogLevel;
 use serde_json::Value;
 
-use crate::outcome::Outcome;
 use crate::process::Process;
+use crate::process_outcome::ProcessOutcome;
 use crate::session_kind::SessionKind;
 
 /// One way a LAN match failed the check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Failure {
-    /// A process did not end with success; never with `Outcome::Succeeded`.
-    Ended { process: Process, outcome: Outcome },
+    /// A process did not end with success; never with `ProcessOutcome::Succeeded`.
+    Ended {
+        process: Process,
+        outcome: ProcessOutcome,
+    },
     /// The process the check stops mid-match ended before it, as `outcome` says.
-    NotStopped { process: Process, outcome: Outcome },
+    NotStopped {
+        process: Process,
+        outcome: ProcessOutcome,
+    },
     /// A process logged a warning or an error: a refused join or input among them.
     Warned {
         process: Process,
-        level: Level,
+        level: LogLevel,
         target: String,
         fields: Value,
     },
@@ -46,7 +52,7 @@ pub(crate) enum Failure {
         tick: Tick,
     },
     /// The impostor bot did not exit with failure: it linked, or it still ran at the deadline.
-    ImpostorNotRefused { outcome: Outcome },
+    ImpostorNotRefused { outcome: ProcessOutcome },
     /// The impostor bot did not log why its link failed.
     ImpostorSilent,
     /// The host of the session did not say it wrote the session log.

@@ -274,7 +274,7 @@ impl Lobby {
 mod tests {
     use campfire_package::PackageDir;
 
-    use crate::local_match;
+    use crate::in_process_match;
     use crate::order_script::OrderScript;
     use crate::server_bots::SlotBot;
     use crate::session_times::SessionTimes;
@@ -308,7 +308,7 @@ mod tests {
             },
             open: open.iter().copied().map(PlayerSlot::new).collect(),
             server: ServerSetup {
-                key: local_match::server_keypair(),
+                key: in_process_match::server_keypair(),
                 certificate: CertificateHash::new([3; 32]),
                 times: SessionTimes::DEFAULT,
                 clock: || NOW,
@@ -333,24 +333,30 @@ mod tests {
 
     #[test]
     fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
-        let server_key = local_match::server_key();
+        let server_key = in_process_match::server_key();
         let mut lobby = Lobby::new(setup(&[], &[])).unwrap();
         assert_eq!((lobby.players, lobby.joined()), (2, 0));
         let secp = Secp256k1::new();
         let granted = DelegationTerms {
-            session_key: local_match::keypair(2).x_only_public_key().0,
+            session_key: in_process_match::keypair(2).x_only_public_key().0,
             server_key,
             session_id: lobby.terms().session_id(),
             seed_contribution: [6; 32],
             expiration: NOW + 60,
         };
-        let delegation = Delegation::sign(&secp, &local_match::keypair(1), &granted, NOW, &[0; 32]);
+        let delegation = Delegation::sign(
+            &secp,
+            &in_process_match::keypair(1),
+            &granted,
+            NOW,
+            &[0; 32],
+        );
         let challenge = ConnectChallenge::new([9; 32]);
         let join = |certificate: [u8; 32], json: &str| Join {
             delegation: json.to_owned(),
             answer: challenge.answer(
                 &secp,
-                &local_match::keypair(2),
+                &in_process_match::keypair(2),
                 &CertificateHash::new(certificate),
                 &[0; 32],
             ),
@@ -378,8 +384,13 @@ mod tests {
         // takes its seat back, and gives its older link; and a third player finds both taken.
         let good = join([3; 32], delegation.json());
         let player = |main: u8| {
-            let delegation =
-                Delegation::sign(&secp, &local_match::keypair(main), &granted, NOW, &[0; 32]);
+            let delegation = Delegation::sign(
+                &secp,
+                &in_process_match::keypair(main),
+                &granted,
+                NOW,
+                &[0; 32],
+            );
             join([3; 32], delegation.json())
         };
         let mut world = World::new();

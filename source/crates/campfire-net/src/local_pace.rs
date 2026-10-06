@@ -9,7 +9,7 @@ use bevy_time::{Time, TimeSystems, Virtual};
 use lightyear::core::tick::TickDuration;
 use lightyear::core::timeline::SetTickDuration;
 
-use crate::pace::{Pace, Speed};
+use crate::pace::{Pace, PaceSpeed};
 
 /// Applies a local match's `Pace` to an app's clock, its client's or its local server's, at the
 /// start of each frame, before the frame's time advances: a pause stops `Time<Virtual>`, so no
@@ -28,7 +28,7 @@ struct Paced {
     pace: Arc<Pace>,
     tick: Duration,
     paused: bool,
-    speed: Speed,
+    speed: PaceSpeed,
 }
 
 impl Plugin for LocalPace {
@@ -37,7 +37,7 @@ impl Plugin for LocalPace {
             pace: Arc::clone(&self.pace),
             tick: self.tick,
             paused: false,
-            speed: Speed::Normal,
+            speed: PaceSpeed::Normal,
         });
         app.add_systems(First, Paced::apply.before(TimeSystems));
     }

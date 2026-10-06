@@ -8,12 +8,12 @@ use campfire_store::{DataDir, DataDirError};
 /// `receipts/<session id>.receipt`, and its local server's data directory, `server`, a data
 /// directory of its own with its own lock.
 #[derive(Debug)]
-pub struct ClientData(DataDir);
+pub struct ClientDir(DataDir);
 
-impl ClientData {
+impl ClientDir {
     /// The data directory at `path`, made when missing, and locked.
-    pub fn open(path: &Path) -> Result<ClientData, DataDirError> {
-        DataDir::open(path).map(ClientData)
+    pub fn open(path: &Path) -> Result<ClientDir, DataDirError> {
+        DataDir::open(path).map(ClientDir)
     }
 
     pub(crate) fn receipts_dir(&self) -> PathBuf {

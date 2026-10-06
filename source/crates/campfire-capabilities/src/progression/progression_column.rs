@@ -15,7 +15,7 @@ use crate::units::view_column::ViewColumn;
 /// What progression adds to the script view: the tracks the mode declares, and each unit's
 /// tracks, its experience and level on each, and its points, a row each.
 #[derive(Debug, Default)]
-pub(crate) struct TracksColumn {
+pub(crate) struct ProgressionColumn {
     book: TrackBook,
     rows: Vec<TracksRow>,
     held: Vec<HeldTrack>,
@@ -37,7 +37,7 @@ struct HeldTrack {
     level: Level,
 }
 
-impl ViewColumn for TracksColumn {
+impl ViewColumn for ProgressionColumn {
     fn clear(&mut self) {
         self.rows.clear();
         self.held.clear();
@@ -48,7 +48,7 @@ impl ViewColumn for TracksColumn {
     }
 }
 
-impl TracksColumn {
+impl ProgressionColumn {
     /// Adds the row of a unit with `experience`, or with none, at `level`, the level of its
     /// `level` track, with `points`.
     pub(crate) fn push(
@@ -83,14 +83,14 @@ impl TracksColumn {
     /// Shares the tracks the mode declares with the view, which names them to scripts.
     pub(crate) fn share(view: &View, book: TrackBook) {
         view.set_track_names(book.names());
-        view.column_mut(|column: &mut TracksColumn| {
+        view.column_mut(|column: &mut ProgressionColumn| {
             column.book = book;
         });
     }
 
     /// The track `name`; an error for one the mode does not declare.
     pub(crate) fn track_named(view: &View, name: &str) -> Checked<TrackId> {
-        let found = view.column(|column: &TracksColumn| column.book.named(name));
+        let found = view.column(|column: &ProgressionColumn| column.book.named(name));
         Ok(found
             .flatten()
             .ok_or_else(|| ApiError::UnknownTrack.fail())?)
@@ -101,30 +101,30 @@ impl TracksColumn {
         let Some(row) = view.row_index(unit) else {
             return false;
         };
-        view.column(|column: &TracksColumn| column.find(row, track).is_some())
+        view.column(|column: &ProgressionColumn| column.find(row, track).is_some())
             .unwrap_or(false)
     }
 
     /// The experience of the unit in row `row` on `track`; an error for a track it does not
     /// have.
     pub(crate) fn xp(view: &View, row: usize, track: TrackId) -> Checked<Num> {
-        Ok(TracksColumn::held(view, row, track)?.xp)
+        Ok(ProgressionColumn::held(view, row, track)?.xp)
     }
 
     /// The level of the unit in row `row` on `track`, as `xp` refuses.
     pub(crate) fn level(view: &View, row: usize, track: TrackId) -> Checked<Level> {
-        Ok(TracksColumn::held(view, row, track)?.level)
+        Ok(ProgressionColumn::held(view, row, track)?.level)
     }
 
     /// The unspent points of the unit in row `row`; an error for a unit without the `level`
     /// track.
     pub(crate) fn points(view: &View, row: usize) -> Checked<Points> {
-        let points = view.column(|column: &TracksColumn| column.rows[row].points);
+        let points = view.column(|column: &ProgressionColumn| column.rows[row].points);
         Ok(points.flatten().ok_or_else(|| ApiError::NoTrack.fail())?)
     }
 
     fn held(view: &View, row: usize, track: TrackId) -> Checked<HeldTrack> {
-        let held = view.column(|column: &TracksColumn| column.find(row, track));
+        let held = view.column(|column: &ProgressionColumn| column.find(row, track));
         Ok(held.flatten().ok_or_else(|| ApiError::NoTrack.fail())?)
     }
 

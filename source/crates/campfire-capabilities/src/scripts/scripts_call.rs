@@ -16,7 +16,7 @@ const MODE_DRAWS: RngStream = RngStream::new("script.mode");
 /// acting unit and one for the mode's own calls, kept from call to call, so each draw takes the
 /// next words of its drawer's sequence. Not state: it starts again with each start of a tick.
 #[derive(Debug, Default)]
-pub(crate) struct Draws {
+pub(crate) struct ScriptsCall {
     /// The running tick's opener.
     opener: Option<RngOpener>,
     /// Whose sequence the running call draws on: its acting unit's, or none for the mode's.
@@ -25,7 +25,7 @@ pub(crate) struct Draws {
     open: Vec<(Option<StableId>, Rng)>,
 }
 
-impl CallPart for Draws {
+impl CallPart for ScriptsCall {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         let opener = world.resource::<SimRng>().opener();
         if self.opener != Some(opener) {
@@ -43,7 +43,7 @@ impl CallPart for Draws {
     fn apply(&mut self, _: &mut World) {}
 }
 
-impl Draws {
+impl ScriptsCall {
     /// Whether a draw with probability `probability`, from 0 to 1, comes true.
     pub(crate) fn chance(&mut self, probability: Num) -> bool {
         debug_assert!((Num::ZERO..=Num::ONE).contains(&probability));

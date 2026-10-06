@@ -34,10 +34,10 @@ use lightyear::prelude::{
 };
 use lightyear::transport::plugin::TransportSystems;
 
-use crate::client_data::ClientData;
+use crate::client_dir::ClientDir;
+use crate::in_process_match::delay_line::DelayLine;
+use crate::in_process_match::link_model::LinkModel;
 use crate::lobby::{Lobby, LobbySetup};
-use crate::local_match::delay_line::DelayLine;
-use crate::local_match::link_model::LinkModel;
 use crate::local_pace::LocalPace;
 use crate::local_session::LocalSession;
 use crate::match_clock::MatchClock;
@@ -45,7 +45,7 @@ use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
 use crate::pace::Pace;
 use crate::server_bots::{ServerBots, SlotBot};
-use crate::server_data::ServerData;
+use crate::server_dir::ServerDir;
 use crate::server_setup::ServerSetup;
 use crate::session_dir::SessionDir;
 use crate::session_times::SessionTimes;
@@ -75,7 +75,7 @@ fn unix_now() -> u64 {
     UNIX_NOW.with(Cell::get)
 }
 
-/// What a `LocalMatch` runs: how many players join, and how.
+/// What an `InProcessMatch` runs: how many players join, and how.
 #[derive(Debug, Clone, Copy)]
 pub struct MatchSetup {
     /// 1 or 2: the lane mode has a slot a side.
@@ -110,7 +110,8 @@ pub enum End {
 impl MatchSetup {
     /// One player through a perfect link, whose client rolls back only on a misprediction, with
     /// a server that runs a frame a tick.
-    pub const SOLO: MatchSetup = MatchSetup::solo(RollbackMode::Check, 1, LocalMatch::SEED_CHAIN);
+    pub const SOLO: MatchSetup =
+        MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
 
     /// One player, through perfect links.
     pub const fn solo(
@@ -161,7 +162,7 @@ impl MatchSetup {
 /// exactly. Each player holds fixed keys and draws fixed random bytes, and the server keeps the
 /// state hash after every tick.
 #[derive(Debug)]
-pub struct LocalMatch {
+pub struct InProcessMatch {
     server: App,
     /// The server's raw server entity, which its links belong to.
     server_entity: Entity,
@@ -182,7 +183,7 @@ pub struct LocalMatch {
     log: LogCheck,
 }
 
-impl LocalMatch {
+impl InProcessMatch {
     /// The seed chain the tests' servers commit to.
     pub const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 
@@ -197,7 +198,7 @@ impl LocalMatch {
     ];
 
     /// A match of the test lane mode at its default rate, its clients connected and synced.
-    pub fn new(setup: MatchSetup) -> LocalMatch {
+    pub fn new(setup: MatchSetup) -> InProcessMatch {
         let log = LogCheck::start();
         assert!(
             (1..=2).contains(&setup.players),
@@ -212,13 +213,13 @@ impl LocalMatch {
         let tick = TickRate::new(tick_hz).length();
 
         let pace = Arc::new(Pace::default());
-        let mut server = LocalMatch::server_app(&setup, tick, &pace);
+        let mut server = InProcessMatch::server_app(&setup, tick, &pace);
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
         server.cleanup();
         run_in_order(&mut server);
-        let mut local = LocalMatch {
+        let mut local = InProcessMatch {
             server,
             server_entity,
             clients: Vec::with_capacity(setup.players),
@@ -401,12 +402,12 @@ impl LocalMatch {
             "a server keeps its data from before the match"
         );
         for (client, app) in self.clients.iter_mut().enumerate() {
-            let own = ClientData::open(&dir.join(format!("client-{client}")))
+            let own = ClientDir::open(&dir.join(format!("client-{client}")))
                 .unwrap_or_else(|error| panic!("{error}"));
             app.world_mut()
                 .insert_resource(ReceiptWriter::start(Arc::new(own)));
         }
-        let data = ServerData::open(&dir).unwrap_or_else(|error| panic!("{error}"));
+        let data = ServerDir::open(&dir).unwrap_or_else(|error| panic!("{error}"));
         self.server.world_mut().insert_resource(data);
         self.data = Some(dir);
     }
@@ -430,7 +431,7 @@ impl LocalMatch {
     pub fn restart_server(&mut self) {
         self.stop_server();
         let path = self.data.as_ref().expect("a server with a data directory");
-        let data = ServerData::open(path).unwrap_or_else(|error| panic!("{error}"));
+        let data = ServerDir::open(path).unwrap_or_else(|error| panic!("{error}"));
         let dir = SessionDir::find(&data)
             .unwrap_or_else(|error| panic!("{error}"))
             .expect("a session the stop ended");
@@ -439,7 +440,7 @@ impl LocalMatch {
             .unwrap_or_else(|error| panic!("{error}"))
             .expect("a session whose match started");
         let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
-        let mut server = LocalMatch::server_app(&self.setup, tick, &self.pace);
+        let mut server = InProcessMatch::server_app(&self.setup, tick, &self.pace);
         self.server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
         server.cleanup();
@@ -478,7 +479,7 @@ impl LocalMatch {
             server: self.server_setup(),
         })
         .expect("the lane mode runs at its default rate");
-        if let Some(data) = self.server.world().get_resource::<ServerData>() {
+        if let Some(data) = self.server.world().get_resource::<ServerDir>() {
             let private = SessionPrivate {
                 seed_chain: self.setup.seed_chain,
                 terms: lobby.terms().clone(),
@@ -694,7 +695,7 @@ impl LocalMatch {
     }
 }
 
-/// A client app of a `LocalMatch`, and its client entity.
+/// A client app of an `InProcessMatch`, and its client entity.
 #[derive(Debug)]
 struct ClientApp {
     app: App,

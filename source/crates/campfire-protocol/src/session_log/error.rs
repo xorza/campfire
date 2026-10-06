@@ -259,20 +259,20 @@ impl Error for HeaderError {
 
 /// Why a log does not load a save.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoadError {
+pub enum LogLoadError {
     /// The log holds no checkpoint that starts the segment.
     NoCheckpoint,
 }
 
-impl fmt::Display for LoadError {
+impl fmt::Display for LogLoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LoadError::NoCheckpoint => f.write_str("no checkpoint starts the segment"),
+            LogLoadError::NoCheckpoint => f.write_str("no checkpoint starts the segment"),
         }
     }
 }
 
-impl Error for LoadError {}
+impl Error for LogLoadError {}
 
 /// Why bytes do not decode to a session log. A log file is untrusted, so every flaw is an error.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -315,7 +315,7 @@ pub enum LogError {
     /// The log refuses the result.
     Result(ResultError),
     /// The journal's load of the save that starts segment `segment` does not load.
-    Load { segment: u32, error: LoadError },
+    Load { segment: u32, error: LogLoadError },
     /// Bytes remain after the result.
     Trailing,
     /// The bytes decode, but not from the one encoding the log has, such as an overlong varint.

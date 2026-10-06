@@ -17,10 +17,10 @@ use crate::scripts::script_api::member_spec::{EnumArgs, MemberSpec, NameArgs};
 use crate::scripts::script_api::status::Status;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::new_unit::NewUnit;
-use crate::units::position_api::PositionApi;
 use crate::units::script_view::View;
-use crate::units::tag_effect::TagEffect;
+use crate::units::tag_property::TagProperty;
 use crate::units::unit::Unit;
+use crate::units::units_api::UnitsApi;
 use crate::values::engine_enum::EngineEnum;
 use crate::values::name_list::NameList;
 
@@ -37,9 +37,9 @@ pub(crate) mod status;
 pub struct ScriptApi {
     /// Sorted by owner, then name.
     members: Vec<ApiMember>,
-    /// Each hook, each tag effect, and each data field: whether it runs.
+    /// Each hook, each tag property, and each data field: whether it runs.
     hooks: Vec<HookStatus>,
-    tag_effects: Vec<TagEffectStatus>,
+    tag_properties: Vec<TagPropertyStatus>,
     data: Vec<DataField>,
     /// The engine enums, in the order they bind.
     enums: Vec<EnumRecord>,
@@ -55,10 +55,10 @@ pub struct HookStatus {
     pub status: Status,
 }
 
-/// Whether the release honours an effect a tag may have.
+/// Whether the release honours a property a tag may have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TagEffectStatus {
-    pub effect: TagEffect,
+pub struct TagPropertyStatus {
+    pub property: TagProperty,
     pub status: Status,
 }
 
@@ -140,7 +140,7 @@ impl ScriptApi {
         let mut api = ScriptApi {
             members: Vec::new(),
             hooks: Vec::new(),
-            tag_effects: Vec::new(),
+            tag_properties: Vec::new(),
             data: Vec::new(),
             enums: Vec::new(),
             builtins: NameList::default(),
@@ -149,7 +149,7 @@ impl ScriptApi {
         CoreApi::register(&mut builder);
         Unit::register(&mut builder);
         NewUnit::register(&mut builder);
-        PositionApi::register(&mut builder);
+        UnitsApi::register(&mut builder);
         View::register_queries(&mut builder);
         for register in apis {
             register(&mut builder);
@@ -161,8 +161,8 @@ impl ScriptApi {
         &self.hooks
     }
 
-    pub fn tag_effects(&self) -> &[TagEffectStatus] {
-        &self.tag_effects
+    pub fn tag_properties(&self) -> &[TagPropertyStatus] {
+        &self.tag_properties
     }
 
     pub fn data(&self) -> &[DataField] {
@@ -271,9 +271,9 @@ impl ScriptApi {
                 status.status,
             )?;
         }
-        out.push_str("\n## Tag effects\n\n| Effect | Status |\n| --- | --- |\n");
-        for status in &self.tag_effects {
-            writeln!(out, "| `{}` | {} |", status.effect.name(), status.status)?;
+        out.push_str("\n## Tag properties\n\n| Property | Status |\n| --- | --- |\n");
+        for status in &self.tag_properties {
+            writeln!(out, "| `{}` | {} |", status.property.name(), status.status)?;
         }
         out.push_str("\n## Data fields\n");
         for table in DataTable::ALL {
@@ -313,13 +313,16 @@ impl ScriptApi {
         self.hooks.push(hook);
     }
 
-    /// Records whether the release honours `effect`.
-    pub(crate) fn record_tag_effect(&mut self, effect: TagEffect, status: Status) {
+    /// Records whether the release honours `property`.
+    pub(crate) fn record_tag_property(&mut self, property: TagProperty, status: Status) {
         assert!(
-            self.tag_effects.iter().all(|held| held.effect != effect),
-            "{effect:?} is recorded once"
+            self.tag_properties
+                .iter()
+                .all(|held| held.property != property),
+            "{property:?} is recorded once"
         );
-        self.tag_effects.push(TagEffectStatus { effect, status });
+        self.tag_properties
+            .push(TagPropertyStatus { property, status });
     }
 
     /// Records the fields of `table`: `runs`, which the release reads, and `planned`.

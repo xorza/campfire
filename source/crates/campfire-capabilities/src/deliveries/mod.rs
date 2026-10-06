@@ -10,7 +10,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::CombatSet;
-use crate::deliveries::delivered::{Delivered, Reach};
+use crate::deliveries::delivered::{Delivered, Reached};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
@@ -154,8 +154,10 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
             let pool = owner.map_or(Pool::Think, Pool::Player);
             let hit = Dynamic::from(HitHandle::new(hit, view.clone()));
             let called = match reach {
-                Reach::Hit(_) => batch.call(pool, script, hook, (ctx.clone(), caster, target, hit)),
-                Reach::End => batch.call(pool, script, hook, (ctx.clone(), caster, hit)),
+                Reached::Hit(_) => {
+                    batch.call(pool, script, hook, (ctx.clone(), caster, target, hit))
+                }
+                Reached::End => batch.call(pool, script, hook, (ctx.clone(), caster, hit)),
             };
             match called {
                 Ok(_) => ctx.apply(batch.world(), now),

@@ -286,7 +286,7 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
 
     // Segment 0 starts from no checkpoint, and segment 2 is none of the log's.
     for segment in [0, 2] {
-        assert_eq!(log.load(segment), Err(LoadError::NoCheckpoint));
+        assert_eq!(log.load(segment), Err(LogLoadError::NoCheckpoint));
     }
     // The load of segment 1: the log is the one saved, at tick 2 again, its y due again there
     // and z gone; and the journal rebuilds the log loaded.

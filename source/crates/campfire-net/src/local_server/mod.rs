@@ -36,7 +36,7 @@ use crate::local_session::LocalSession;
 use crate::net_protocol::NetProtocol;
 use crate::pace::Pace;
 use crate::server_bots::{ServerBots, SlotBot};
-use crate::server_data::ServerData;
+use crate::server_dir::ServerDir;
 use crate::server_exit::ServerExit;
 use crate::server_setup::ServerSetup;
 use crate::session_dir::{RestoredSession, SessionDir};
@@ -135,7 +135,7 @@ impl LocalServer {
             clock,
             entropy,
         } = setup;
-        let dir = ServerData::open(&data).map_err(LocalServerError::Data)?;
+        let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
         let key =
             KeyFile::read_or_create(&dir.key_file(), entropy).map_err(LocalServerError::Key)?;
         LocalServer::end_earlier(&dir, &packages, key, entropy)?;
@@ -226,7 +226,7 @@ impl LocalServer {
     /// Ends aborted a session an earlier start left under `data`, of the mode `packages` holds,
     /// and publishes its log; removes one whose match never started.
     fn end_earlier(
-        data: &ServerData,
+        data: &ServerDir,
         packages: &ModePackages,
         key: Keypair,
         entropy: fn(&mut [u8; 32]),
@@ -311,7 +311,7 @@ impl Runs {
     /// A new app, which restores the session from the data directory in its first frame, the
     /// client's end of its new link given to the client.
     fn restored(&self) -> Result<App, LocalServerError> {
-        let dir = ServerData::open(&self.data).map_err(LocalServerError::Data)?;
+        let dir = ServerDir::open(&self.data).map_err(LocalServerError::Data)?;
         let session = SessionDir::waiting(&dir).map_err(LocalServerError::Waiting)?;
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let mut app = self.app(server_io, dir);
@@ -327,7 +327,7 @@ impl Runs {
 
     /// An app of the server: its plugins, its end of the link `link`, and its data directory
     /// `dir`, which it holds locked.
-    fn app(&self, link: CrossbeamIo, dir: ServerData) -> App {
+    fn app(&self, link: CrossbeamIo, dir: ServerDir) -> App {
         let mut app = App::new();
         app.add_plugins((
             TaskPoolPlugin::default(),

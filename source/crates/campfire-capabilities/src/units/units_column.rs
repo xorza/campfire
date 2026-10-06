@@ -14,13 +14,13 @@ use crate::units::view_column::ViewColumn;
 /// declares, and each unit's values, a run a row, as the view read them and as the calls of the
 /// stage since wrote them.
 #[derive(Debug, Default)]
-pub(crate) struct UnitStateColumn {
+pub(crate) struct UnitsColumn {
     book: UnitStateBook,
     rows: Vec<Range<u32>>,
     values: Vec<StateValue>,
 }
 
-impl ViewColumn for UnitStateColumn {
+impl ViewColumn for UnitsColumn {
     fn clear(&mut self) {
         self.rows.clear();
         self.values.clear();
@@ -31,7 +31,7 @@ impl ViewColumn for UnitStateColumn {
     }
 }
 
-impl UnitStateColumn {
+impl UnitsColumn {
     /// Adds the row of a unit with `state`, none for one whose type declares no field.
     pub(crate) fn push(&mut self, state: Option<&UnitState>) {
         let start = len(self.values.len());
@@ -43,7 +43,7 @@ impl UnitStateColumn {
 
     /// Shares the unit types' fields, as the load built them.
     pub(crate) fn share(view: &View, book: UnitStateBook) {
-        view.column_mut(|column: &mut UnitStateColumn| column.book = book);
+        view.column_mut(|column: &mut UnitsColumn| column.book = book);
     }
 
     /// The field `name` of a unit of `unit_type`; one its type does not declare fails the call.
@@ -53,7 +53,7 @@ impl UnitStateColumn {
         name: &str,
     ) -> Checked<StateField> {
         let found = view
-            .column(|column: &UnitStateColumn| {
+            .column(|column: &UnitsColumn| {
                 unit_type.and_then(|unit_type| column.book.field_named(unit_type, name))
             })
             .expect("a view of units has their state");
@@ -63,7 +63,7 @@ impl UnitStateColumn {
     /// The value at `at` of the unit in row `row`, as a script reads it.
     pub(crate) fn read(view: &View, row: usize, at: usize) -> Dynamic {
         let value = view
-            .column(|column: &UnitStateColumn| {
+            .column(|column: &UnitsColumn| {
                 let run = &column.rows[row];
                 column.values[run.start as usize + at].clone()
             })
@@ -74,9 +74,7 @@ impl UnitStateColumn {
     /// The default of the field at `at` of `unit_type`, as a script reads it.
     pub(crate) fn initial(view: &View, unit_type: UnitType, at: usize) -> Dynamic {
         let value = view
-            .column(|column: &UnitStateColumn| {
-                column.book.fields(unit_type)[at].decl.initial.clone()
-            })
+            .column(|column: &UnitsColumn| column.book.fields(unit_type)[at].decl.initial.clone())
             .expect("a view of units has their state");
         value.to_dynamic(view)
     }
@@ -84,7 +82,7 @@ impl UnitStateColumn {
     /// Writes `value` at `at` of the unit in row `row`, as a call's write applies, so a later
     /// call of the stage reads it.
     pub(crate) fn write(view: &View, row: usize, at: usize, value: StateValue) {
-        view.column_mut(|column: &mut UnitStateColumn| {
+        view.column_mut(|column: &mut UnitsColumn| {
             let run = column.rows[row].clone();
             column.values[run.start as usize + at] = value;
         });

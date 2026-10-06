@@ -13,7 +13,7 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
     JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace, PendingSaves,
-    SaveCommand, ServerData, SessionDir, SimClient,
+    SaveCommand, ServerDir, SessionDir, SimClient,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
@@ -118,7 +118,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     // Dropped, the server ends the session, aborted as the mode did not end the match, and
     // publishes its log.
     drop(server);
-    let stopped = ServerData::open(&data.0).unwrap();
+    let stopped = ServerDir::open(&data.0).unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());
     let logs: Vec<_> = fs::read_dir(data.0.join("logs")).unwrap().collect();
     assert_eq!(logs.len(), 1);

@@ -20,7 +20,7 @@ use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::stats::stats_column::StatsColumn;
 use crate::units::block::Block;
-use crate::units::tag_effect::TagEffect;
+use crate::units::tag_property::TagProperty;
 use crate::units::unit::Unit;
 
 /// The script API of `combat`: `ctx.damage`, `ctx.heal`, `ctx.restore`, `ctx.attack_hit`, and the
@@ -99,16 +99,16 @@ impl CombatApi {
         .bind(attack_hit, |ctx: &mut Ctx, target: Unit| {
             CombatApi::attack_hit(ctx, &target)
         })
-        .tag_effect(
-            TagEffect::Blocks(Block::Attack),
+        .tag_property(
+            TagProperty::Blocks(Block::Attack),
             Status::Runs(ApiVersion::FIRST),
         )
-        .tag_effect(
-            TagEffect::Blocks(Block::Target),
+        .tag_property(
+            TagProperty::Blocks(Block::Target),
             Status::Runs(ApiVersion::FIRST),
         )
-        .tag_effect(
-            TagEffect::Blocks(Block::Damage),
+        .tag_property(
+            TagProperty::Blocks(Block::Damage),
             Status::Runs(ApiVersion::FIRST),
         )
         .data(

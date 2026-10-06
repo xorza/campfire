@@ -9,12 +9,12 @@ use campfire_store::{DataDir, DataDirError};
 /// identity, `tls`; each session's directory, `sessions/<session id>`, whose files `SessionDir`
 /// names; and each ended session's log, `logs/<session id>.campfire-log`.
 #[derive(Resource, Debug)]
-pub struct ServerData(DataDir);
+pub struct ServerDir(DataDir);
 
-impl ServerData {
+impl ServerDir {
     /// The data directory at `path`, made when missing, and locked.
-    pub fn open(path: &Path) -> Result<ServerData, DataDirError> {
-        DataDir::open(path).map(ServerData)
+    pub fn open(path: &Path) -> Result<ServerDir, DataDirError> {
+        DataDir::open(path).map(ServerDir)
     }
 
     pub fn path(&self) -> &Path {

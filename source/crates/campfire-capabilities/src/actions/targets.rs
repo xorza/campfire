@@ -111,7 +111,7 @@ impl Targets<'_, '_> {
     /// script view reads too.
     pub(crate) fn targetable(pools: Option<&Pools>, tags: Option<&UnitTags>, life: PoolId) -> bool {
         pools.is_some_and(|pools| pools.max(life).is_some())
-            && !UnitTags::effects_of(tags).blocks(Block::Target)
+            && !UnitTags::properties_of(tags).blocks(Block::Target)
     }
 
     /// Every living unit with the life pool, those whose tags block it as a target among them,

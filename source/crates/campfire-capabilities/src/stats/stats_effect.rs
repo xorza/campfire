@@ -11,7 +11,7 @@ use crate::units::tag::Tag;
 
 /// A change to a unit's modifiers that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ModifierEffect {
+pub(crate) enum StatsEffect {
     /// Modifier `id` on `target`, for `duration` when the call names one.
     Add {
         target: StableId,
@@ -32,7 +32,7 @@ pub(crate) enum ModifierEffect {
 }
 
 /// From the call's acting unit, by its action at its rank.
-impl Effect for ModifierEffect {
+impl Effect for StatsEffect {
     fn apply(self, world: &mut World, frame: &mut Frame, _: Tick) {
         let applier = Applier {
             source: frame.acting(),

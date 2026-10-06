@@ -1942,7 +1942,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         } else {
             game.sim.step();
         }
-        let stunned = UnitTags::effects_of(game.sim.world.get(entity)).blocks(Block::Move);
+        let stunned = UnitTags::properties_of(game.sim.world.get(entity)).blocks(Block::Move);
         seen.push((game.sim.registry.hash(&game.sim.world), stunned));
     }
     seen
@@ -2037,7 +2037,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     game.sim.step();
     let stopped = |game: &Match, unit| {
         let entity = game.sim.entity(unit);
-        UnitTags::effects_of(game.sim.world.get(entity)).blocks(Block::Move)
+        UnitTags::properties_of(game.sim.world.get(entity)).blocks(Block::Move)
     };
     assert_eq!([stopped(&game, freed), stopped(&game, held)], [true, true]);
     game.casts(&[

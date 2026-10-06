@@ -5,7 +5,7 @@ use bevy_app::App;
 use campfire_capabilities::{ActionSlots, Body, Dead, PoolId, Pools, SeenBy, Team};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
+use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{OrderScript, TickHashes};
 use campfire_protocol::SessionLog;
 use campfire_runner::internals::HashTrail;
@@ -63,10 +63,10 @@ impl Life {
 
 /// Plays the match through `link` and checks it; gives each client's rollbacks.
 fn play(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup::duo(link, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     let heroes = [local.avatar(0), local.avatar(1)];
-    let teams = local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    let teams = local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     let mut on_server = [Life::default(); 2];
     let mut on_client = [Life::default(); 2];
     // Each client's lead on the server, in ticks, when it learned its hero died; below 0 when it
@@ -89,7 +89,7 @@ fn play(link: LinkModel) -> [u32; 2] {
         }
     }
 
-    check_log(&mut local, LocalMatch::SCENARIO_SCRIPTS);
+    check_log(&mut local, InProcessMatch::SCENARIO_SCRIPTS);
 
     let worst = u64::from(link.delay + link.jitter);
     for index in 0..2 {
@@ -136,7 +136,7 @@ fn play(link: LinkModel) -> [u32; 2] {
 
 /// Checks the server's log: every order of the two `scripts` was logged in time, and took effect
 /// in the tick of its stamp; the replayed log gives the server's hash after every tick.
-fn check_log(local: &mut LocalMatch, scripts: [&str; 2]) {
+fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
     let inputs: usize = scripts
         .map(|script| OrderScript::parse(script).unwrap().orders().len())
         .iter()
@@ -232,7 +232,7 @@ fn caster(app: &App, id: StableId) -> Caster {
 /// Plays the cast and attack scenario through `link` and checks it; gives the rollbacks of the
 /// walker's client, then of the runner's.
 fn cast(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup::duo(link, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     // Player 0 plays the walker, of the west.
     let clients = [0, 1].map(|team| {
@@ -315,7 +315,7 @@ const ROUTE_TICKS: u64 = 240;
 /// whose body the straight line passes a third of a meter from its center; the east hero walks
 /// off to (12, 7), out of every unit's reach.
 fn route(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup::duo(link, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     let scripts = [
         "[[order]]\ntick = 60\nmove = [-12, -4]\n",
@@ -367,7 +367,7 @@ const ROUND_TICKS: u64 = 70;
 /// client, then of the runner's. In tick 1 the west hero, from (0, −2), is ordered to (0, 5),
 /// through the east hero, which stands on its spawn at (0, 2).
 fn round(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup::duo(link, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     let scripts = ["[[order]]\ntick = 1\nmove = [0, 5]\n", ""];
     local.play_by_team(scripts);
@@ -433,14 +433,17 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     // the server 9 ticks at most. A stall of 8 ticks, as the first orders go out in tick 60,
     // runs all 8 in one frame, and the orders it held are read after them, 8 ticks late at most:
     // none is late, and the match plays out as it does with no stall.
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
     local.start_match();
     let heroes = [local.avatar(0), local.avatar(1)];
-    let teams = local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    let teams = local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     while local.next_tick(End::Server) < 56 {
         local.step();
     }
-    let ran = |local: &mut LocalMatch, ticks: u32| {
+    let ran = |local: &mut InProcessMatch, ticks: u32| {
         let before = local.next_tick(End::Server);
         local.stall_server(ticks);
         local.next_tick(End::Server) - before

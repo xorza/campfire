@@ -6,7 +6,7 @@ use campfire_capabilities::CallError;
 use campfire_common::StateHash;
 use campfire_package::StoreError;
 use campfire_protocol::{
-    AfterLeave, CheckpointError, LoadError, Outcome, SeedError, ServerInputError, SlotChange,
+    AfterLeave, CheckpointError, LogLoadError, Outcome, SeedError, ServerInputError, SlotChange,
 };
 use campfire_sim::SnapshotError;
 
@@ -70,7 +70,7 @@ pub enum ResumeError {
     /// The snapshot restores to another state hash than the checkpoint's.
     StateHash,
     /// The log does not load the save.
-    Load(LoadError),
+    Load(LogLoadError),
 }
 
 impl fmt::Display for ResumeError {

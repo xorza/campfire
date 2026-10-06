@@ -2495,7 +2495,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
     planned.sort_unstable();
     assert_eq!(planned, ["gravity", "loot", "noise", "state_version"]);
     assert!(
-        api.tag_effects()
+        api.tag_properties()
             .iter()
             .all(|held| held.status != Status::Planned)
     );

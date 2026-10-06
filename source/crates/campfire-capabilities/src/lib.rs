@@ -91,7 +91,7 @@ pub use scripts::state_decl::synced_state_decl::SyncTo;
 pub use mode::team_manifest::TeamManifest;
 
 pub use items::Items;
-pub use items::inventory::{Carried, Inventory};
+pub use items::inventory::{Inventory, ItemStack};
 pub use items::inventory_data::InventoryData;
 pub use items::item_data::ItemData;
 pub use items::item_id::ItemId;

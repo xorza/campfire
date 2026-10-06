@@ -236,7 +236,7 @@ mod tests {
     use campfire_runner::internals::FixedSession;
 
     use super::*;
-    use crate::local_match;
+    use crate::in_process_match;
 
     #[test]
     fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
@@ -252,7 +252,7 @@ mod tests {
             by: SaveBy::Player,
             autosave_ms: None,
         };
-        let packages = local_match::lane_mode(rules, saves);
+        let packages = in_process_match::lane_mode(rules, saves);
         let tick_hz = packages.manifest().tick_hz.default();
         let plan = vec![SlotPlan::Player, SlotPlan::Bot];
         let mut fixed = FixedSession::planned(packages, tick_hz, InputRules::LAN, plan).start();

@@ -95,7 +95,7 @@ impl ForcedMove {
     /// Whether a unit with `tags`, under a forced move when `forced`, is kept from `block`: by its
     /// tags, or by the forced move from a step, a cast or an attack.
     pub(crate) fn blocks(tags: Option<&UnitTags>, forced: bool, block: Block) -> bool {
-        UnitTags::effects_of(tags).blocks(block)
+        UnitTags::properties_of(tags).blocks(block)
             || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
     }
 

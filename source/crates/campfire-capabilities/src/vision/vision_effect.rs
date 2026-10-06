@@ -12,14 +12,14 @@ use crate::vision::vision_grid::VisionGrid;
 /// A reveal a call queued: to `team`'s vision group, of the cells within `radius` of `pos`, in
 /// `ticks` Vision stages from the tick it applies in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealEffect {
+pub(crate) struct VisionEffect {
     pub(crate) team: Team,
     pub(crate) pos: Position,
     pub(crate) radius: Num,
     pub(crate) ticks: Ticks,
 }
 
-impl Effect for RevealEffect {
+impl Effect for VisionEffect {
     // A match with no grid sees nothing, so it keeps no reveal.
     fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
         if !world.contains_resource::<VisionGrid>() {

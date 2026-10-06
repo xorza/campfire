@@ -17,7 +17,6 @@ use crate::stats::held_pass::HeldPass;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
-use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
@@ -30,6 +29,7 @@ use crate::stats::refresh::Refresh;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
+use crate::stats::stats_effect::StatsEffect;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
@@ -53,7 +53,6 @@ pub(crate) mod meter;
 pub(crate) mod modifier_book;
 pub(crate) mod modifier_clocks;
 pub(crate) mod modifier_data;
-pub(crate) mod modifier_effect;
 pub(crate) mod modifier_handle;
 pub(crate) mod modifier_spec;
 pub(crate) mod modifiers;
@@ -82,6 +81,7 @@ pub(crate) mod stats_api;
 pub(crate) mod stats_call;
 pub(crate) mod stats_column;
 pub(crate) mod stats_data;
+pub(crate) mod stats_effect;
 pub(crate) mod unit_stats;
 
 /// The `stats` capability.
@@ -163,26 +163,26 @@ impl Stats {
     /// Applies `effect`, which a call by `applier` queued. An added modifier's numbers resolve
     /// now, its params read from the param book, of its source as it is now; nothing is added to a
     /// dead or gone unit, or one that carries no modifiers.
-    pub(crate) fn apply_effect(world: &mut World, effect: ModifierEffect, applier: Applier) {
+    pub(crate) fn apply_effect(world: &mut World, effect: StatsEffect, applier: Applier) {
         match effect {
-            ModifierEffect::Add {
+            StatsEffect::Add {
                 target,
                 id,
                 duration,
             } => Stats::add_modifier(world, target, id, applier, duration),
-            ModifierEffect::AddPlayer { player, id } => {
+            StatsEffect::AddPlayer { player, id } => {
                 let held = PlayerModifier {
                     player,
                     modifier: id,
                 };
                 world.resource_mut::<PlayerModifiers>().add(held);
             }
-            ModifierEffect::Remove {
+            StatsEffect::Remove {
                 carrier,
                 id,
                 source,
             } => Stats::remove_modifier(world, carrier, id, source),
-            ModifierEffect::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
+            StatsEffect::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
         }
     }
 
@@ -314,8 +314,8 @@ pub(crate) mod internals {
     use crate::stats::applier::Applier;
     use crate::stats::lifetime::Hold;
     use crate::stats::modifier_book::ModifierBook;
-    use crate::stats::modifier_effect::ModifierEffect;
     use crate::stats::modifiers::Modifiers;
+    use crate::stats::stats_effect::StatsEffect;
     use crate::units::action_id::ActionId;
     use crate::units::modifier_id::ModifierId;
 
@@ -344,7 +344,7 @@ pub(crate) mod internals {
             rank,
             hold: passive.then_some(Hold::Passive),
         };
-        let add = ModifierEffect::Add {
+        let add = StatsEffect::Add {
             target,
             id,
             duration: None,

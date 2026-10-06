@@ -14,14 +14,14 @@ use crate::units::unit_type::UnitType;
 /// An area a call queued: of `by`, of `unit_type`, at `at`; with `id`, the id the call took for
 /// it, which a script reads, or none for a launch of a list, which takes its id as it lands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AreaEffect {
+pub(crate) struct AreasEffect {
     pub(crate) id: Option<StableId>,
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
     pub(crate) at: Position,
 }
 
-impl AreaEffect {
+impl AreasEffect {
     /// Queues the listed `does`, a launch, in `frame`: an area of its type, of the call's action
     /// at its rank from its acting unit, which runs the launch's lists, where `unit` stands as
     /// `view` reads it; none when `unit` is gone.
@@ -55,7 +55,7 @@ impl AreaEffect {
             start: frame.start(),
             launch: Some(launch),
         };
-        frame.effects.push(AreaEffect {
+        frame.effects.push(AreasEffect {
             id: None,
             by,
             unit_type: area,
@@ -65,7 +65,7 @@ impl AreaEffect {
     }
 }
 
-impl Effect for AreaEffect {
+impl Effect for AreasEffect {
     fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
         Areas::apply(world, self);
     }

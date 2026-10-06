@@ -61,7 +61,7 @@ pub struct ModeData {
     /// How pairs of its teams regard each other; a pair not named is hostile.
     #[serde(default)]
     pub relations: Vec<RelationData>,
-    /// The effects of its tags, by name.
+    /// The properties of its tags, by name.
     #[serde(default)]
     pub tags: BTreeMap<DeclaredName, TagData>,
     /// The tracks its units gain experience on, by name.

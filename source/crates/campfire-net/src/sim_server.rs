@@ -51,7 +51,7 @@ use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
 use crate::offering::{Offering, Superseding};
-use crate::pace::Speed;
+use crate::pace::PaceSpeed;
 use crate::receipts::Receipts;
 use crate::seats::Seats;
 use crate::server_bots::ServerBots;
@@ -447,7 +447,9 @@ impl SimServer {
         let session = TickRate::new(terms.tick_hz).length();
         let tick = world.resource::<TickDuration>().0;
         assert!(
-            Speed::ALL.iter().any(|speed| speed.tick(session) == tick),
+            PaceSpeed::ALL
+                .iter()
+                .any(|speed| speed.tick(session) == tick),
             "the server ticks at the session's rate at a speed, not every {tick:?}"
         );
         let burst = terms.max_input_delay.get().saturating_sub(1).max(1);

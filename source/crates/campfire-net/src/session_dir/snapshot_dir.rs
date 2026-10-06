@@ -6,9 +6,9 @@ use campfire_store::{DurableError, DurableFile};
 /// A session's `snapshots` directory, where each checkpoint's snapshot is named by its
 /// fingerprint in hex.
 #[derive(Debug, Clone)]
-pub struct Snapshots(pub(crate) PathBuf);
+pub struct SnapshotDir(pub(crate) PathBuf);
 
-impl Snapshots {
+impl SnapshotDir {
     /// Writes `snapshot` durably, the directory made when missing, named by its fingerprint;
     /// the fingerprint.
     pub(crate) fn write(&self, snapshot: &[u8]) -> Result<SnapshotFingerprint, DurableError> {

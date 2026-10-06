@@ -11,12 +11,12 @@ use crate::scripts::state_value::StateValue;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::script_view::View;
 use crate::units::unit_state::UnitState;
-use crate::units::unit_state_column::UnitStateColumn;
+use crate::units::units_column::UnitsColumn;
 
 /// What the core adds to the call frame for units' script state: the writes the call made, in
 /// order, which it reads back and which apply to the units when it ends.
 #[derive(Debug, Default)]
-pub(crate) struct UnitStateCall {
+pub(crate) struct UnitsCall {
     writes: Vec<StateWrite>,
 }
 
@@ -28,7 +28,7 @@ pub(crate) struct StateWrite {
     pub(crate) value: StateValue,
 }
 
-impl CallPart for UnitStateCall {
+impl CallPart for UnitsCall {
     fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
         self.writes.clear();
         Ok(())
@@ -44,7 +44,7 @@ impl CallPart for UnitStateCall {
         let view = world.non_send::<View>().clone();
         for write in self.writes.drain(..) {
             if let Some(row) = view.row_index(write.unit) {
-                UnitStateColumn::write(&view, row, write.at, write.value.clone());
+                UnitsColumn::write(&view, row, write.at, write.value.clone());
             }
             let entity = world.resource::<EntityIndex>().get(write.unit);
             match entity.and_then(|entity| world.get_mut::<UnitState>(entity)) {
@@ -55,16 +55,16 @@ impl CallPart for UnitStateCall {
     }
 }
 
-impl UnitStateCall {
+impl UnitsCall {
     /// The core's part of `frame`; the core adds it as it installs a match that runs scripts.
-    pub(crate) fn of(frame: &Frame) -> &UnitStateCall {
+    pub(crate) fn of(frame: &Frame) -> &UnitsCall {
         frame
             .part()
             .expect("a match that runs scripts has the core's part")
     }
 
     /// The core's part of `frame`, to change.
-    pub(crate) fn of_mut(frame: &mut Frame) -> &mut UnitStateCall {
+    pub(crate) fn of_mut(frame: &mut Frame) -> &mut UnitsCall {
         frame
             .part_mut()
             .expect("a match that runs scripts has the core's part")

@@ -28,7 +28,7 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info};
 
-use crate::client_data::ClientData;
+use crate::client_dir::ClientDir;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::LinkLost;
@@ -89,7 +89,7 @@ pub struct SimClient {
     pub entropy: fn(&mut [u8; 32]),
     /// The client's data directory, held locked, where it writes the newest receipt of its
     /// session; none writes none.
-    pub data: Option<Arc<ClientData>>,
+    pub data: Option<Arc<ClientDir>>,
 }
 
 /// The context that checks receipts' signatures.

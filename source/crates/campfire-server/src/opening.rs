@@ -7,7 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
 use campfire_net::{
-    Lobby, LobbySetup, RestoredSession, ServerBots, ServerData, ServerSetup, SessionDir,
+    Lobby, LobbySetup, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionDir,
     SessionRestored, SimServer,
 };
 use campfire_package::ModePackages;
@@ -39,7 +39,7 @@ pub(crate) struct Restore {
 /// What `Opening::of` needs.
 #[derive(Debug)]
 pub(crate) struct OpeningSetup<'a> {
-    pub(crate) data: &'a ServerData,
+    pub(crate) data: &'a ServerDir,
     pub(crate) packages: ModePackages,
     pub(crate) server: ServerSetup,
     pub(crate) bots: ServerBots,
@@ -78,7 +78,7 @@ impl Opening {
     /// is published, the server key `key` signing its result with auxiliary randomness from
     /// `entropy`. An error for a session that does not read or end.
     pub(crate) fn find(
-        data: &ServerData,
+        data: &ServerDir,
         packages: &ModePackages,
         window: Duration,
         key: Keypair,

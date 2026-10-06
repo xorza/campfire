@@ -15,7 +15,7 @@ use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
-use crate::items::inventory::Carried;
+use crate::items::inventory::ItemStack;
 use crate::items::item_book::ItemSpec;
 use crate::items::shop::ShopPlace;
 use crate::navigation::Navigation;
@@ -1256,7 +1256,7 @@ impl Match {
     /// The items of `unit`'s inventory, slot by slot, each by its book's index and its count.
     fn carried(&self, unit: StableId) -> Vec<Option<(usize, u32)>> {
         let inventory = self.sim.try_get::<Inventory>(unit).unwrap();
-        let carried = |slot: &Option<Carried>| {
+        let carried = |slot: &Option<ItemStack>| {
             slot.map(|carried| (carried.item.index(), carried.count.get()))
         };
         inventory.slots().iter().map(carried).collect()

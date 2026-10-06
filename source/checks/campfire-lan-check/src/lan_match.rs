@@ -11,9 +11,9 @@ use campfire_net::{InputLogged, Listening, MatchStarted};
 
 use crate::binaries::Binaries;
 use crate::error::CheckError;
-use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
+use crate::process_outcome::ProcessOutcome;
 
 /// How long the server gets to listen, and then the whole match to end, before the check stops
 /// what still runs: a match of 11 s, with a restart its clients notice in 5 s, ends in a few more.
@@ -51,30 +51,30 @@ pub(crate) struct LanMatch<'a> {
 /// started again after it.
 #[derive(Debug)]
 pub(crate) struct Played {
-    pub(crate) server: Outcome,
-    pub(crate) server_again: Outcome,
-    pub(crate) bots: Vec<Outcome>,
-    pub(crate) rejoined: Outcome,
-    pub(crate) impostor: Outcome,
+    pub(crate) server: ProcessOutcome,
+    pub(crate) server_again: ProcessOutcome,
+    pub(crate) bots: Vec<ProcessOutcome>,
+    pub(crate) rejoined: ProcessOutcome,
+    pub(crate) impostor: ProcessOutcome,
 }
 
 /// What the first server's start came to: it listened, or it ended as the outcome says.
 #[derive(Debug)]
 enum Listened {
     Yes(Listening),
-    No(Outcome),
+    No(ProcessOutcome),
 }
 
 impl Played {
     /// A match whose server never listened, which ended as `server` says, of `bots` bots none of
     /// which started.
-    fn unplayed(server: Outcome, bots: usize) -> Played {
+    fn unplayed(server: ProcessOutcome, bots: usize) -> Played {
         Played {
             server,
-            server_again: Outcome::NotStarted,
-            bots: vec![Outcome::NotStarted; bots],
-            rejoined: Outcome::NotStarted,
-            impostor: Outcome::NotStarted,
+            server_again: ProcessOutcome::NotStarted,
+            bots: vec![ProcessOutcome::NotStarted; bots],
+            rejoined: ProcessOutcome::NotStarted,
+            impostor: ProcessOutcome::NotStarted,
         }
     }
 }
@@ -133,7 +133,7 @@ impl LanMatch<'_> {
                 again,
                 bot(again, restarted, script, &certificate.to_string())?,
             );
-            Some(Outcome::Stopped)
+            Some(ProcessOutcome::Stopped)
         } else {
             None
         };
@@ -149,14 +149,14 @@ impl LanMatch<'_> {
         };
         let mut ended = wait(&mut children, deadline)?;
         let (server, server_again) = if restored {
-            (Outcome::Stopped, ended.remove(0))
+            (ProcessOutcome::Stopped, ended.remove(0))
         } else {
-            (ended.remove(0), Outcome::NotStarted)
+            (ended.remove(0), ProcessOutcome::NotStarted)
         };
         let impostor = ended.pop().expect("the impostor ran");
         let rejoined = match stopped {
             Some(outcome) => mem::replace(&mut ended[RESTARTED], outcome),
-            None => Outcome::NotStarted,
+            None => ProcessOutcome::NotStarted,
         };
         Ok(Played {
             server,
@@ -184,7 +184,7 @@ impl LanMatch<'_> {
                 process: Process::Server,
                 error,
             })? {
-                return Ok(Listened::No(Outcome::of(status)));
+                return Ok(Listened::No(ProcessOutcome::of(status)));
             }
             thread::sleep(POLL);
         }
@@ -237,7 +237,7 @@ impl LanMatch<'_> {
 
     /// Plays a client bot of the first script alone on a local server with no network, a server
     /// bot of the second in slot 1, and waits until it ended or the deadline passed.
-    pub(crate) fn play_local(&self) -> Result<Outcome, CheckError> {
+    pub(crate) fn play_local(&self) -> Result<ProcessOutcome, CheckError> {
         let deadline = Instant::now() + DEADLINE;
         let mut client = self.start(
             Process::Local,
@@ -261,7 +261,7 @@ impl LanMatch<'_> {
                 process: Process::Local,
                 error,
             })? {
-                return Ok(Outcome::of(status));
+                return Ok(ProcessOutcome::of(status));
             }
             thread::sleep(POLL);
         }
@@ -290,7 +290,10 @@ impl LanMatch<'_> {
 
 /// How each of `children` ended, waiting until each did or the deadline passed, when the check
 /// stops each that still runs.
-fn wait(children: &mut [(Process, Child)], deadline: Instant) -> Result<Vec<Outcome>, CheckError> {
+fn wait(
+    children: &mut [(Process, Child)],
+    deadline: Instant,
+) -> Result<Vec<ProcessOutcome>, CheckError> {
     let mut outcomes = vec![None; children.len()];
     while outcomes.iter().any(Option::is_none) && Instant::now() < deadline {
         for ((process, child), outcome) in children.iter_mut().zip(&mut outcomes) {
@@ -301,7 +304,7 @@ fn wait(children: &mut [(Process, Child)], deadline: Instant) -> Result<Vec<Outc
                         process: *process,
                         error,
                     })?
-                    .map(Outcome::of);
+                    .map(ProcessOutcome::of);
             }
         }
         thread::sleep(POLL);
@@ -317,9 +320,9 @@ fn wait(children: &mut [(Process, Child)], deadline: Instant) -> Result<Vec<Outc
 }
 
 /// Kills `child`, which overran the deadline.
-fn stop(process: Process, child: &mut Child) -> Result<Outcome, CheckError> {
+fn stop(process: Process, child: &mut Child) -> Result<ProcessOutcome, CheckError> {
     kill(process, child)?;
-    Ok(Outcome::Overran)
+    Ok(ProcessOutcome::Overran)
 }
 
 /// Kills `child`, as a crash ends a process.

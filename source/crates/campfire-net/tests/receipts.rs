@@ -6,8 +6,8 @@
 use std::time::Duration;
 use std::{fs, thread};
 
-use campfire_net::internals::{LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{JoinState, JournalWatch, PlayerLink, ReceiptUnsaved, ServerData, SessionDir};
+use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
+use campfire_net::{JoinState, JournalWatch, PlayerLink, ReceiptUnsaved, ServerDir, SessionDir};
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Controller, SignedReceipt};
 use campfire_runner::Session;
@@ -17,10 +17,13 @@ use crate::Scratch;
 #[test]
 fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     let data = Scratch::new("receipts");
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
     local.keep_data(data.0.clone());
     local.start_match();
-    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     // 150 steps of 1/60 s: two and a half seconds of the server's clock, which gives receipts
     // once a second. A receipt names only what the journal's writer synced, by the disk's real
     // time, so the match waits for the sync, then plays one more second.
@@ -36,7 +39,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     }
     let world = local.server().world();
     let id = world.resource::<Session>().log().session_id();
-    let server = LocalMatch::server_keypair().x_only_public_key().0;
+    let server = InProcessMatch::server_keypair().x_only_public_key().0;
     let secp = Secp256k1::verification_only();
     let mut kept = Vec::new();
     for client in 0..2 {
@@ -76,7 +79,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     // A crash after the journal's last sync: the log the journal rebuilds holds each slot's
     // chain past the seq its receipt names, under the delegation it names.
     local.stop_server();
-    let stopped = ServerData::open(&data.0).unwrap();
+    let stopped = ServerDir::open(&data.0).unwrap();
     let restored = SessionDir::find(&stopped)
         .unwrap()
         .unwrap()
@@ -103,12 +106,15 @@ fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     // A file holds the place of client 0's receipts' directory, so its receipts are not written,
     // on every OS; client 1's are.
     let data = Scratch::new("receipt-fault");
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
     local.keep_data(data.0.clone());
     let place = data.0.join("client-0").join("receipts");
     fs::write(&place, b"").unwrap();
     local.start_match();
-    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     // The writer fails in its own time, after a receipt came; the client's `Faults` logs it.
     let mut unsaved = Vec::new();
     for _ in 0..2000 {

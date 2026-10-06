@@ -6,8 +6,8 @@ use campfire_math::Num;
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
-use crate::local_match::link_model::LinkModel;
-use crate::local_match::{LocalMatch, MatchSetup};
+use crate::in_process_match::link_model::LinkModel;
+use crate::in_process_match::{InProcessMatch, MatchSetup};
 
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new order
 /// every 40 frames keeps the avatar walking and the server sending updates.
@@ -26,7 +26,7 @@ pub fn rollback(c: &mut Criterion) {
         ("frame_without_rollback", RollbackMode::Check),
         ("frame_with_rollback", RollbackMode::Always),
     ] {
-        let mut local = LocalMatch::new(MatchSetup::solo(mode, 1, LocalMatch::SEED_CHAIN));
+        let mut local = InProcessMatch::new(MatchSetup::solo(mode, 1, InProcessMatch::SEED_CHAIN));
         local.start_match();
         let mut frame: u64 = 0;
         group.bench_function(name, |b| {
@@ -72,9 +72,12 @@ pub fn worst_client_frame(c: &mut Criterion) {
 }
 
 fn worst_frame_of_a_match() -> Duration {
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
     local.start_match();
-    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     let mut worst = Duration::ZERO;
     for _ in 0..MATCH_TICKS {
         for client in 0..2 {

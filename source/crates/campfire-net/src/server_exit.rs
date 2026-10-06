@@ -8,7 +8,7 @@ use crate::events::session_written::SessionWritten;
 use crate::faults::Faults;
 use crate::faults::fault::Fault;
 use crate::match_clock::MatchClock;
-use crate::server_data::ServerData;
+use crate::server_dir::ServerDir;
 use crate::session_dir::SessionDir;
 use crate::sim_server::SimServer;
 
@@ -26,7 +26,7 @@ impl ServerExit {
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
     /// `STORAGE_FAILED`; before the match started, at once when `stop` asks it to. Once the match
     /// started, when `stop` asks it to or every player left, it ends the session, as the mode
-    /// ended the match or aborted; it then publishes the log in its `ServerData`, and exits, with
+    /// ended the match or aborted; it then publishes the log in its `ServerDir`, and exits, with
     /// an error when the log is not written, as the session it holds is lost.
     pub fn due(world: &mut World, stop: bool) -> Option<AppExit> {
         if let Some(exit) = Faults::apply(world) {
@@ -50,7 +50,7 @@ impl ServerExit {
         let session = world.resource::<Session>();
         let id = session.log().session_id();
         let hash = session.state_hash(world);
-        let data = world.resource::<ServerData>();
+        let data = world.resource::<ServerDir>();
         Some(match SessionDir::publish(data, session.log()) {
             Ok(file) => {
                 SessionWritten {
@@ -80,8 +80,8 @@ mod tests {
     use campfire_store::{AppendFile, AppendWriter};
 
     use super::*;
+    use crate::in_process_match;
     use crate::journal_watch::JournalWatch;
-    use crate::local_match;
     use crate::session_journal::SessionJournal;
 
     /// A journal's file whose every sync fails.
@@ -103,7 +103,7 @@ mod tests {
         // A session of the test lane mode with one open slot, so its header needs no player; the
         // log's header is its journal's first record, whose sync fails.
         let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap();
-        let key = local_match::keypair(8);
+        let key = in_process_match::keypair(8);
         let terms = SessionRules::of(&packages)
             .terms(
                 key.x_only_public_key().0,

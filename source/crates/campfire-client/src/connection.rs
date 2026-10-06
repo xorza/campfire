@@ -6,7 +6,7 @@ use std::time::Duration;
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use campfire_net::{
-    ClientData, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Pace, ServerPin, SlotBot,
+    ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Pace, ServerPin, SlotBot,
 };
 use campfire_package::ModePackages;
 use lightyear::prelude::client::WebTransportClientIo;
@@ -29,7 +29,7 @@ impl Connection {
     /// does not start.
     pub(crate) fn open(
         args: &Args,
-        data: Option<&ClientData>,
+        data: Option<&ClientDir>,
         packages: &Arc<ModePackages>,
         pace: &Arc<Pace>,
     ) -> Result<Connection, ExitCode> {
@@ -97,7 +97,7 @@ impl Connection {
     /// directory `data`, its bots those of `bots`, following `pace`; the exit code when it does
     /// not start.
     fn start_local(
-        data: Option<&ClientData>,
+        data: Option<&ClientDir>,
         packages: &Arc<ModePackages>,
         bots: &[BotFile],
         pace: &Arc<Pace>,

@@ -86,7 +86,7 @@ impl DataTable {
             DataTable::Vision => "A unit type's `vision`",
             DataTable::Collision => "A unit type's `collision`",
             DataTable::Ai => "A unit type's `orders`",
-            DataTable::Tag => "A tag's effects, `[tags.<name>]`",
+            DataTable::Tag => "A tag's properties, `[tags.<name>]`",
             DataTable::Item => "An item type, `[items.<id>]`",
             DataTable::Inventory => "A unit type's `inventory`",
             DataTable::Shop => "The mode's `[shop]`",

@@ -9,31 +9,31 @@ use crate::values::hit::Hit;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Delivered {
     pub(crate) by: Delivering,
-    pub(crate) reach: Reach,
+    pub(crate) reach: Reached,
     pub(crate) hit: Hit,
 }
 
 /// What a delivery reached: a unit, or its end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Reach {
+pub(crate) enum Reached {
     Hit(StableId),
     End,
 }
 
-impl Reach {
+impl Reached {
     /// The hook that runs for it.
     pub(crate) const fn hook(self) -> Hook {
         match self {
-            Reach::Hit(_) => Hook::OnHit,
-            Reach::End => Hook::OnEnd,
+            Reached::Hit(_) => Hook::OnHit,
+            Reached::End => Hook::OnEnd,
         }
     }
 
     /// The unit it hit, if any.
     pub(crate) const fn unit(self) -> Option<StableId> {
         match self {
-            Reach::Hit(unit) => Some(unit),
-            Reach::End => None,
+            Reached::Hit(unit) => Some(unit),
+            Reached::End => None,
         }
     }
 }

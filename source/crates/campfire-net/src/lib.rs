@@ -8,19 +8,19 @@
 mod bot_driver;
 mod checkpoint_thread;
 mod checkpoints;
-mod client_data;
+mod client_dir;
 mod door;
 mod error;
 mod events;
 mod faults;
+#[cfg(feature = "internals")]
+mod in_process_match;
 mod input_message;
 mod join;
 mod journal_watch;
 mod key_file;
 mod leave_match;
 mod lobby;
-#[cfg(feature = "internals")]
-mod local_match;
 mod local_pace;
 mod local_relink;
 mod local_server;
@@ -36,7 +36,7 @@ mod receipts;
 mod save_command;
 mod seats;
 mod server_bots;
-mod server_data;
+mod server_dir;
 mod server_exit;
 mod server_setup;
 mod server_signer;
@@ -62,6 +62,7 @@ pub use events::input_never_applied::{InputNeverApplied, Unapplied};
 pub use events::inputs_discarded::InputsDiscarded;
 pub use events::join_refused::JoinRefused;
 pub use events::journal_failed::JournalFailed;
+pub use events::journal_sync_slow::JournalSyncSlow;
 pub use events::link_lost::LinkLost;
 pub use events::listening::Listening;
 pub use events::match_started::MatchStarted;
@@ -75,7 +76,6 @@ pub use events::session_aborted::SessionAborted;
 pub use events::session_refused::SessionRefused;
 pub use events::session_restored::SessionRestored;
 pub use events::session_written::SessionWritten;
-pub use events::slow_sync::SlowSync;
 pub use events::ticks_caught_up::TicksCaughtUp;
 pub use events::time_dropped::TimeDropped;
 
@@ -87,22 +87,22 @@ pub use local_relink::LocalRelink;
 pub use local_server::error::LocalServerError;
 pub use local_server::{LocalServer, LocalServerSetup, Relinks};
 pub use match_clock::MatchClock;
-pub use pace::{Pace, Speed};
+pub use pace::{Pace, PaceSpeed};
 pub use save_command::SaveCommand;
 
 pub use net_protocol::{InputChannel, NetProtocol};
 
-pub use client_data::ClientData;
+pub use client_dir::ClientDir;
 pub use journal_watch::JournalWatch;
 pub use key_file::KeyFile;
 pub use key_file::error::KeyFileError;
 pub use order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
 pub use server_bots::{ServerBots, SlotBot};
-pub use server_data::ServerData;
+pub use server_dir::ServerDir;
 pub use server_exit::ServerExit;
 pub use server_setup::ServerSetup;
 pub use session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
-pub use session_dir::snapshots::Snapshots;
+pub use session_dir::snapshot_dir::SnapshotDir;
 pub use session_dir::{RestoredSession, SessionDir, SessionFiles};
 pub use session_journal::SessionJournal;
 pub use session_times::SessionTimes;
@@ -119,6 +119,6 @@ pub mod bench {
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::local_match::link_model::LinkModel;
-    pub use crate::local_match::{End, LocalMatch, MatchSetup};
+    pub use crate::in_process_match::link_model::LinkModel;
+    pub use crate::in_process_match::{End, InProcessMatch, MatchSetup};
 }

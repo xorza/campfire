@@ -5,7 +5,7 @@ use campfire_common::{SegmentSeed, StateHash, Tick, Ticks};
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
-    AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LoadError,
+    AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError,
     Outcome, PlayerInput, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds,
     SessionHeader, SessionLog, SessionResult, SessionTerms, Signature, SlotChangeKind,
     SnapshotFingerprint,
@@ -299,7 +299,7 @@ impl Session {
 
     /// Goes back to the save that starts segment `segment`; see `SessionLog::load`. The match's
     /// world is then stale: a new one resumes from the save.
-    pub fn load(&mut self, segment: u32) -> Result<(), LoadError> {
+    pub fn load(&mut self, segment: u32) -> Result<(), LogLoadError> {
         self.log.load(segment)
     }
 
