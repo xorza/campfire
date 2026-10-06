@@ -1379,10 +1379,10 @@ static FLAWS: [Flaw; 242] = [
         MODE_SCRIPT,
         Edit::Replace(
             "fn on_match_start(ctx) {",
-            "fn on_player_join(ctx, player) {}\n\nfn on_match_start(ctx) {",
+            "fn on_generate(ctx, region) {}\n\nfn on_match_start(ctx) {",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "on_player_join"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "on_generate"),
     ),
     flaw(
         MODE_DATA,

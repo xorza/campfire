@@ -1,5 +1,5 @@
-// Each player plays its hero from the start, holds its barracks, and starts with gold for one
-// guard; gold comes every income_ms. At the end of tick 0 each hero learns its basic abilities and
+// Each slot's player plays its hero from the start, holds its barracks, and starts with gold for
+// one guard, whether the player joined before the start or after it; gold comes every income_ms. At the end of tick 0 each hero learns its basic abilities and
 // the first wave comes, then a wave every wave_ms. A unit that dies gives experience to the enemy heroes near it,
 // and gold to its killer's player. A hero that dies respawns respawn_ms later. The team whose
 // tower falls loses.
@@ -18,6 +18,14 @@ fn on_match_start(ctx) {
     }
     ctx.timer("first_wave", 1, false, ());
     ctx.timer("income", ctx.p.income_ms, true, ());
+}
+
+fn on_player_join(ctx, player) {
+    ctx.state.joined = player;
+}
+
+fn on_player_leave(ctx, player) {
+    ctx.state.left = player;
 }
 
 fn on_timer(ctx, name, data) {

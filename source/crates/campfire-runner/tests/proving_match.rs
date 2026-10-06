@@ -3,8 +3,8 @@
 
 use bevy_ecs::component::Component;
 use campfire_capabilities::{
-    Area, Dead, Experience, Level, Lifespan, Modifiers, Owner, Projectile, ScriptFailures, SeenBy,
-    Team, TeamSet, TrainQueue,
+    Area, Dead, Experience, Level, Lifespan, ModeState, Modifiers, Owner, Projectile,
+    ScriptFailures, SeenBy, StateValue, Team, TeamSet, TrainQueue,
 };
 use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{FixedMatch, Golden, ProvingMatch, RestoreTarget};
@@ -25,10 +25,16 @@ struct Seen {
     /// after which north saw south's barracks.
     ward: Vec<(u64, Position, TeamSet)>,
     barracks_watched: Vec<u64>,
+    /// The mode's state after each tick that changed it.
+    states: Vec<(u64, Vec<StateValue>)>,
 }
 
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
     let world = fixed.runner().world();
+    let state = world.resource::<ModeState>().get();
+    if seen.states.last().is_none_or(|(_, last)| last != state) {
+        seen.states.push((tick, state.to_vec()));
+    }
     for (_, entity) in world.resource::<EntityIndex>().iter() {
         let unit = world.entity(entity);
         seen.projectiles += usize::from(unit.contains::<Projectile>());
@@ -84,6 +90,17 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     }
     golden.check("proving");
     let world = fixed.runner().world();
+    // The mode's hooks saw player 1 join in tick 1 and leave in tick 400; its state fields, by
+    // name, are `joined` and `left`.
+    let state = |joined, left| vec![StateValue::Int(joined), StateValue::Int(left)];
+    assert_eq!(
+        seen.states,
+        [
+            (0, state(-1, -1)),
+            (ProvingMatch::JOIN, state(1, -1)),
+            (ProvingMatch::LEAVE, state(1, 1)),
+        ]
+    );
     // Production: the orders of tick 2 train in 1.5 s, 30 ticks. North's two barracks competed
     // for gold for one guard, so north has one guard, and south one.
     assert_eq!(seen.trained, [1, 1]);

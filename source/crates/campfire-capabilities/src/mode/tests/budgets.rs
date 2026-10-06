@@ -177,3 +177,55 @@ fn on_level_up(ctx, unit, track, level) {
     assert_eq!(stands(&game, grunts[2]), None);
     assert_eq!(game.failures(), []);
 }
+
+#[test]
+fn a_join_or_a_leave_whose_call_finds_the_mode_pool_spent_waits() {
+    // Each call spins 50 additions: a mode pool of 500 operations holds two of them, not three.
+    let script = r"
+fn on_player_join(ctx, player) {
+    ctx.state.kind += `join ${player};`;
+    let spun = 0;
+    for i in 0..50 { spun += i; }
+}
+
+fn on_player_leave(ctx, player) {
+    ctx.state.kind += `leave ${player};`;
+    let spun = 0;
+    for i in 0..50 { spun += i; }
+}
+";
+    let limits = ScriptLimits {
+        mode: 500,
+        ..ScriptLimits::ROOMY
+    };
+    let mut game = Game::new(script, limits);
+    // Player 2 leaves, and players 1 and 2 join, in one tick: the first two calls run, in that
+    // order, and player 2's join waits.
+    let (joined, left) = (SlotEventKind::Joined, SlotEventKind::Left);
+    game.tick_slots(&[(2, left), (1, joined), (2, joined)]);
+    assert_eq!(
+        game.field("kind"),
+        StateValue::Text("leave 2;join 1;".to_owned())
+    );
+    let waiting = game.sim.world.resource::<UnansweredSlotEvents>();
+    let join = SlotEvent {
+        slot: PlayerSlot::new(2),
+        kind: joined,
+    };
+    assert_eq!(waiting.0, [join]);
+    // The waiting join is state: it decodes to itself.
+    let bytes = postcard::to_allocvec(waiting).unwrap();
+    let decoded = postcard::from_bytes::<UnansweredSlotEvents>(&bytes).ok();
+    assert_eq!(decoded.as_ref(), Some(waiting));
+    // It runs first in the next tick, before that tick's leave of player 1.
+    game.tick_slots(&[(1, left)]);
+    let all = "leave 2;join 1;join 2;leave 1;";
+    assert_eq!(game.field("kind"), StateValue::Text(all.to_owned()));
+    assert!(
+        game.sim
+            .world
+            .resource::<UnansweredSlotEvents>()
+            .0
+            .is_empty()
+    );
+}

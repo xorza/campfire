@@ -4,14 +4,15 @@ use campfire_capabilities::{
     Action, ActionSlots, ActionTarget, Combat, Dead, InputValue, Inventory, ItemId, ModeInput,
     Order, PathWalker, Pools, Team,
 };
-use campfire_common::Tick;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir};
-use campfire_protocol::ServerSeeds;
+use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
 
 use crate::fixed_match::FixedMatch;
 use crate::fixed_session::FixedSession;
+use crate::input_rules::InputRules;
 use crate::match_units::MatchUnits;
 use crate::scripted::{Plan, Scripted};
 
@@ -322,13 +323,19 @@ impl Reference3v3 {
     }
 
     pub fn load() -> Reference3v3 {
+        let players = usize::try_from(Reference3v3::PLAYERS).expect("6 fits usize");
+        Reference3v3::planned(vec![SlotPlan::Player; players])
+    }
+
+    /// The reference 3v3 with its slots opened as `plan` says.
+    pub fn planned(plan: Vec<SlotPlan>) -> Reference3v3 {
         let packages = ModePackages::from_dir(&PackageDir::workspace("moba/modes/3v3"))
             .unwrap_or_else(|error| panic!("{error}"));
         let items = &packages.packages().next().expect("a mode").content.items;
         let item = |name: &str| ItemId::named(items, name).expect("an item of the 3v3");
         let script = Reference3v3::script(&item);
         Reference3v3 {
-            session: FixedSession::new(packages, TICK_HZ, Reference3v3::PLAYERS),
+            session: FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan),
             script,
         }
     }
@@ -342,10 +349,12 @@ impl Reference3v3 {
         FixedSession::seeds()
     }
 
-    /// A match at tick 0, in which each player picked a hero, in slot order, and two spells.
+    /// A match at tick 0, in which each player and each bot picked a hero, in slot order, and
+    /// two spells; an open slot picked nothing.
     pub fn start(&self) -> FixedMatch {
         let mut fixed = self.session.start();
-        for (slot, hero) in (0..).zip(HEROES) {
+        let plan = &self.session.terms().slots;
+        for ((slot, hero), plan) in (0..).zip(HEROES).zip(plan) {
             let payload = ModeInput::payload(&[
                 ModeInput {
                     name: "hero",
@@ -356,7 +365,17 @@ impl Reference3v3 {
                     value: InputValue::StringList(vec!["haste", "mend"]),
                 },
             ]);
-            fixed.send(slot, Tick::new(0), &payload);
+            match plan {
+                SlotPlan::Player => {
+                    fixed.send(slot, Tick::new(0), &payload);
+                }
+                SlotPlan::Bot => {
+                    let slot = PlayerSlot::new(slot);
+                    let pick = ServerInput::Bot { slot, payload };
+                    fixed.serve(pick).unwrap_or_else(|error| panic!("{error}"));
+                }
+                SlotPlan::Open => {}
+            }
         }
         fixed
     }

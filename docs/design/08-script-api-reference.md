@@ -34,6 +34,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `learn` | `(avatar, slot)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
 | `nearest_visible` | `(of, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none |
+| `offers` | `(choice)`, `choice` a choice | mode | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, or the loadout entries by id |
 | `order_attack` | `(unit, target)` | AI | orders | since 1.0 | `unit` attacks `target`, a living enemy that one of its weapons selects |
 | `order_follow_path` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks its path again |
 | `order_move` | `(unit, pos)` | AI | orders | since 1.0 | `unit` drops its target and walks to `pos`, within the map, off its path |
@@ -41,7 +42,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `origin` | read | action | abilities | since 1.0 | where the action's unit stood as it started |
 | `p` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
-| `players` | read | mode | core | since 1.0 | how many players the session has |
+| `players` | read | mode | core | since 1.0 | how many slots the session has, whatever controls each |
 | `projectile` | `(from, direction) or (from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick |
 | `range` | read | action | abilities | since 1.0 | the ability's range at its rank in meters, `()` for a global one |
 | `reduce_cooldown` | `(unit, id, ms)`, `id` a ability | every role | abilities | since 1.0 | takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package |
@@ -204,8 +205,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_match_start(ctx)` | mode | core | since 1.0 |
 | `on_mode_input(ctx, player, name, value)` | mode | core | since 1.0 |
 | `on_timer(ctx, name, data)` | mode | core | since 1.0 |
-| `on_player_join(ctx, player)` | mode | core | planned |
-| `on_player_leave(ctx, player)` | mode | core | planned |
+| `on_player_join(ctx, player)` | mode | core | since 1.0 |
+| `on_player_leave(ctx, player)` | mode | core | since 1.0 |
 | `on_unit_died(ctx, unit, killer, assisters)` | mode | combat | since 1.0 |
 | `calc_damage(ctx, d)` | mode | combat | since 1.0 |
 | `calc_heal(ctx, h)` | mode | combat | since 1.0 |

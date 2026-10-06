@@ -43,6 +43,8 @@ impl ModeSchema {
                     Hook::OnMatchStart,
                     Hook::OnModeInput,
                     Hook::OnTimer,
+                    Hook::OnPlayerJoin,
+                    Hook::OnPlayerLeave,
                     Hook::OnUnitDied,
                     Hook::CalcDamage,
                     Hook::CalcHeal,

@@ -35,10 +35,17 @@ impl<'a> MatchUnits<'a> {
 
     /// Player `slot`'s hero: the unit it owns that gains experience.
     pub fn hero(self, slot: u32) -> StableId {
+        let mut heroes = self.heroes(slot);
+        heroes.next().expect("each player has a hero")
+    }
+
+    /// The units player `slot` owns that gain experience, by stable id.
+    pub fn heroes(self, slot: u32) -> impl Iterator<Item = StableId> {
         self.all()
-            .find(|(_, unit)| MatchUnits::owned_by(unit, slot) && unit.contains::<Experience>())
+            .filter(move |(_, unit)| {
+                MatchUnits::owned_by(unit, slot) && unit.contains::<Experience>()
+            })
             .map(|(id, _)| id)
-            .expect("each player has a hero")
     }
 
     pub fn position(self, id: StableId) -> Position {

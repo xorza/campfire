@@ -7,10 +7,11 @@ use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointError, InputError, Outcome, PlayerInput, ResultError, SeedError,
     ServerInput, ServerSeeds, SessionHeader, SessionLog, SessionResult, SessionTerms, Signature,
-    SnapshotFingerprint,
+    SlotChangeKind, SnapshotFingerprint,
 };
 use campfire_sim::{
-    SimRng, SimTick, SimUpdate, SnapshotError, StateRegistry, TickInput, TickInputs, TickRate,
+    SimRng, SimTick, SimUpdate, SlotEvent, SlotEventKind, SnapshotError, StateRegistry, TickInput,
+    TickInputs, TickRate,
 };
 
 use crate::error::{ResultMismatch, ServerInputRefused, StartError};
@@ -154,8 +155,8 @@ impl Session {
             .map_err(ServerInputRefused::Log)
     }
 
-    /// Seals the next tick in the log of the session in `world` and runs it with the inputs
-    /// applied in it, drawing from the seed of the segment that starts there when one does, and
+    /// Seals the next tick in the log of the session in `world` and runs it with the inputs and
+    /// the changes of a slot's controller applied in it, drawing from the seed of the segment that starts there when one does, and
     /// logs each script call of the tick that failed.
     pub fn run_tick(world: &mut World) {
         world.resource_scope(|world, mut session: Mut<'_, Session>| {
@@ -188,6 +189,16 @@ impl Session {
                 inputs.push(TickInput {
                     slot: input.slot,
                     payload: input.payload,
+                });
+            }
+            for change in session.log.sealed_changes() {
+                let kind = match change.kind {
+                    SlotChangeKind::Joined { .. } => SlotEventKind::Joined,
+                    SlotChangeKind::Left { .. } => SlotEventKind::Left,
+                };
+                inputs.push_slot_event(SlotEvent {
+                    slot: change.slot,
+                    kind,
                 });
             }
         });

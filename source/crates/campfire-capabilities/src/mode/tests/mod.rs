@@ -6,7 +6,9 @@ use bevy_ecs::query::With;
 use campfire_common::Ticks;
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost, ScriptId};
-use campfire_sim::{Capability, Position, SimComponent, SimResource, StableId, TickInput};
+use campfire_sim::{
+    Capability, Position, SimComponent, SimResource, SlotEvent, SlotEventKind, StableId, TickInput,
+};
 
 use super::*;
 use crate::actions::Actions;
@@ -776,6 +778,16 @@ impl Game {
                 slot: PlayerSlot::new(*slot),
                 payload: &payload,
             });
+        }
+        self.sim.step();
+    }
+
+    /// Runs a tick in which the session logged `events`, each a player's join or leave.
+    fn tick_slots(&mut self, events: &[(u32, SlotEventKind)]) {
+        for &(slot, kind) in events {
+            let slot = PlayerSlot::new(slot);
+            let mut inputs = self.sim.world.resource_mut::<TickInputs>();
+            inputs.push_slot_event(SlotEvent { slot, kind });
         }
         self.sim.step();
     }
