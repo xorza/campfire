@@ -16,38 +16,31 @@ use campfire_protocol::SessionLog;
 use campfire_verifier::{Replay, Verified};
 use tracing::{error, warn};
 
+use crate::args::Args;
+
+mod args;
+
 fn main() -> ExitCode {
     Logging {
         terminal: "info",
         file: "info,campfire_runner=debug,campfire_script=debug",
     }
     .start();
-    let mut args = env::args_os().skip(1);
-    let (Some(packages), Some(path), snapshots, None) =
-        (args.next(), args.next(), args.next(), args.next())
-    else {
-        error!(
-            "usage: campfire-verifier <packages directory> <session log file> \
-             [<snapshots directory>]"
-        );
-        return ExitCode::from(ExitStatus::Usage);
+    let args: Args = match Logging::command_line(env::args_os()) {
+        Ok(args) => args,
+        Err(status) => return ExitCode::from(status),
     };
-    let path = Path::new(&path);
-    match verify(
-        Path::new(&packages),
-        path,
-        snapshots.as_deref().map(Path::new),
-    ) {
+    match verify(&args.packages, &args.log, args.snapshots.as_deref()) {
         Ok(hash) => {
             Verified {
-                file: path.to_owned(),
+                file: args.log,
                 hash,
             }
             .log();
             ExitCode::from(ExitStatus::Success)
         }
         Err(error) => {
-            error!(file = %path.display(), error = %ErrorReport::of(&*error), "the log does not verify");
+            error!(file = %args.log.display(), error = %ErrorReport::of(&*error), "the log does not verify");
             ExitCode::from(ExitStatus::Failure)
         }
     }

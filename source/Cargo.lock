@@ -2032,6 +2032,7 @@ dependencies = [
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",
+ "clap",
  "lightyear",
  "thiserror 2.0.21",
  "tracing",
@@ -2058,6 +2059,7 @@ dependencies = [
  "campfire-sim",
  "campfire-store",
  "campfire-verifier",
+ "clap",
  "derive_more",
  "serde",
  "serde_json",
@@ -2070,6 +2072,8 @@ dependencies = [
 name = "campfire-log"
 version = "0.1.0"
 dependencies = [
+ "campfire-common",
+ "clap",
  "serde",
  "serde_json",
  "tracing",
@@ -2201,6 +2205,7 @@ dependencies = [
  "campfire-runner",
  "campfire-sim",
  "campfire-store",
+ "clap",
  "lightyear",
  "tempfile",
  "thiserror 2.0.21",
@@ -2244,6 +2249,7 @@ dependencies = [
  "campfire-runner",
  "campfire-sim",
  "campfire-store",
+ "clap",
  "serde",
  "tempfile",
  "thiserror 2.0.21",
@@ -2391,6 +2397,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946"
 dependencies = [
  "clap_builder",
+ "clap_derive",
 ]
 
 [[package]]
@@ -2401,6 +2408,19 @@ checksum = "ec0797fb7aeb1406c84efac526901f7ec3ead2124f946b494e72879d4b54704d"
 dependencies = [
  "anstyle",
  "clap_lex",
+ "strsim",
+]
+
+[[package]]
+name = "clap_derive"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9c751b79415d4e559e3d1fcf128e09e720eb673a06d26cf6f392d37d75b66e0"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -3775,6 +3795,12 @@ dependencies = [
  "portable-atomic",
  "stable_deref_trait",
 ]
+
+[[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermit-abi"
@@ -7407,6 +7433,12 @@ name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6637bab7722d379c8b41ba849228d680cc12d0a45ba1fa2b48f2a30577a06731"
+
+[[package]]
+name = "strsim"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "subtle"

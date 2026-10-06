@@ -76,19 +76,9 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Args::parse(env::args_os().skip(1)) {
-        Ok(args) => args,
-        Err(error) => {
-            error!(
-                error = %ErrorReport::of(&error),
-                "usage: campfire-client [--bot <orders file>] [--key <key file>] [--data <data \
-                 directory>] <mode package directory> <server address> <certificate hash> \
-                 <server key> <tick rate>; or campfire-client --local --data <data directory> \
-                 [--server-bot <slot>=<orders file>]... [--bot <orders file>] [--key <key \
-                 file>] <mode package directory>"
-            );
-            return ExitCode::from(ExitStatus::Usage);
-        }
+    let args = match Logging::command_line(env::args_os()) {
+        Ok(line) => Args::of(line),
+        Err(status) => return ExitCode::from(status),
     };
     let packages = match load_mode(&args) {
         Ok(packages) => Arc::new(packages),

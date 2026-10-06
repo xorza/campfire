@@ -81,9 +81,9 @@ fn main() -> ExitCode {
         file: "info",
     }
     .start();
-    let Some(mode) = Mode::parse(env::args_os().skip(1)) else {
-        error!("usage: campfire-lan-check [<run root>] | verify <run directory>");
-        return ExitCode::from(ExitStatus::Usage);
+    let mode = match Logging::command_line(env::args_os()) {
+        Ok(line) => Mode::of(line),
+        Err(status) => return ExitCode::from(status),
     };
     let dir = match &mode {
         Mode::Play { root } => match RunDir::create(root, SystemTime::now()) {

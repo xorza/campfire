@@ -56,10 +56,6 @@ mod server_tls;
 /// The segments of a session's seed chain: the most checkpoints it may take, less one.
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
-const USAGE: &str = "usage: campfire-server --data <data directory> [--restore-window <seconds>] \
-                     [--grace <seconds>] [--server-bot <slot>=<orders file>]... [--takeover <orders \
-                     file>] <mode package directory> <address, as 0.0.0.0:4433>";
-
 /// What the terminal shows when `RUST_LOG` does not say.
 const TERMINAL_FILTER: &str = "info";
 /// What the log file holds when `CAMPFIRE_LOG_FILTER` does not say: Campfire's messages down to
@@ -73,12 +69,9 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Args::parse(env::args_os().skip(1)) {
-        Ok(args) => args,
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), USAGE);
-            return ExitCode::from(ExitStatus::Usage);
-        }
+    let args = match Logging::command_line(env::args_os()) {
+        Ok(line) => Args::of(line),
+        Err(status) => return ExitCode::from(status),
     };
     let bots = match args.server_bots() {
         Ok(bots) => bots,

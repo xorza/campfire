@@ -1,8 +1,11 @@
 use std::env;
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, IsTerminal};
 use std::sync::Mutex;
 
+use campfire_common::ExitStatus;
+use clap::Parser;
 use tracing::{Subscriber, error, warn};
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::fmt::format::{Format, Json, JsonFields};
@@ -67,6 +70,30 @@ impl Logging {
         for (variable, refused) in refusals {
             if let Some(refused) = refused {
                 warn!(variable, error = %refused, "the variable holds no filter, so the default filters");
+            }
+        }
+    }
+
+    /// The command line `args`, the program first, as `P` reads it; else the status the binary
+    /// exits with: `Success` once clap printed the help or the version asked for to standard
+    /// output, `Failure` when it does not print, and `Usage` for a command line clap refuses,
+    /// which is logged. A binary reads its command line here once `start` installed the log.
+    pub fn command_line<P: Parser>(
+        args: impl IntoIterator<Item = OsString>,
+    ) -> Result<P, ExitStatus> {
+        let output = match P::try_parse_from(args) {
+            Ok(line) => return Ok(line),
+            Err(error) if error.use_stderr() => {
+                error!(error = %error, "the command line is refused");
+                return Err(ExitStatus::Usage);
+            }
+            Err(output) => output,
+        };
+        match output.print() {
+            Ok(()) => Err(ExitStatus::Success),
+            Err(error) => {
+                error!(error = %ErrorReport::of(&error), "the help or the version does not print");
+                Err(ExitStatus::Failure)
             }
         }
     }
@@ -244,15 +271,16 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use std::env::VarError;
-    use std::ffi::OsString;
     use std::panic;
 
     use serde::Deserialize;
+    use serde_json::Value;
     use tracing::info;
 
     use super::*;
     use crate::log_event::LogEvent;
-    use crate::logging::internals::LogCheck;
+    use crate::log_line::{LogLevel, LogLine};
+    use crate::logging::internals::{LogCheck, capture};
 
     #[derive(Debug, PartialEq, Eq, Deserialize)]
     struct Refused {
@@ -328,5 +356,39 @@ mod tests {
         );
         let unicode = Err(VarError::NotUnicode(OsString::from("x")));
         assert_eq!(chosen(unicode), ("warn".to_owned(), true));
+    }
+
+    #[test]
+    fn a_command_line_reads_or_ends_the_binary_with_its_status() {
+        #[derive(Debug, Parser)]
+        #[command(name = "tool", version = "1.0")]
+        struct Line {
+            count: u8,
+        }
+        let line = |args: &[&str]| ["tool"].iter().chain(args).map(OsString::from).collect();
+        let read = |args: &[&str]| {
+            let mut read = None;
+            let lines = capture(|| read = Some(Logging::command_line::<Line>(line(args))));
+            (read.unwrap().map(|line| line.count), lines)
+        };
+        assert_eq!(read(&["3"]), (Ok(3), vec![]));
+        // The version prints `tool 1.0` to standard output, and is no refusal.
+        assert_eq!(read(&["--version"]), (Err(ExitStatus::Success), vec![]));
+
+        let (refused, lines) = read(&["300"]);
+        assert_eq!(refused, Err(ExitStatus::Usage));
+        let [logged] = &lines[..] else {
+            panic!("{lines:?}");
+        };
+        let logged = LogLine::parse(logged).unwrap();
+        let clap_error = Line::try_parse_from::<Vec<OsString>, _>(line(&["300"])).unwrap_err();
+        assert_eq!(logged.level, LogLevel::Error);
+        assert_eq!(
+            (&logged.fields["message"], &logged.fields["error"]),
+            (
+                &Value::from("the command line is refused"),
+                &Value::from(clap_error.to_string())
+            )
+        );
     }
 }
