@@ -139,6 +139,13 @@ impl Plugin for SimServer {
             Update,
             Checkpoints::finish.run_if(resource_exists::<Checkpoints>),
         );
+        app.add_systems(
+            Update,
+            Checkpoints::take_commands
+                .after(Door::watch)
+                .run_if(resource_exists::<Door>)
+                .run_if(session_running),
+        );
         app.add_systems(Last, Superseding::tell);
         app.add_systems(PostUpdate, Superseding::end.after(LinkSystems::Send));
         // Lightyear keeps a received message for one frame only, and a frame runs no fixed tick
@@ -172,6 +179,11 @@ impl Plugin for SimServer {
         );
     }
 }
+
+/// The session went back to a save: its server starts again on its data, which restores the
+/// match from it.
+#[derive(Resource, Debug)]
+struct Reload;
 
 /// What a match starts from: the log of its header, the seeds of its segments, its mode's
 /// packages, its journal and snapshots' directory if the server keeps them, and the server's
@@ -246,6 +258,7 @@ impl SimServer {
                     first: next,
                     slot,
                     chain: None,
+                    loaded: false,
                 });
         }
         Ok(())
@@ -355,6 +368,27 @@ impl SimServer {
         Ok(())
     }
 
+    /// Loads the save that starts segment `segment` in the session in `world`: logs the record of
+    /// the checkpoint on its thread first, then goes back in the log, as `SessionLog::load`
+    /// says, which the journal logs. The match then runs no tick and logs nothing: its server
+    /// starts again on its data, which restores the match from the save, once `reload_wanted`
+    /// says so. An error when the checkpoint's snapshot was not written.
+    pub fn load(world: &mut World, segment: u32) -> Result<(), DurableError> {
+        Checkpoints::settle(world)?;
+        world
+            .resource_mut::<Session>()
+            .load(segment)
+            .expect("a save of the session's log");
+        world.insert_resource(Reload);
+        Ok(())
+    }
+
+    /// Whether the session in `world` went back to a save, and its server is to start again on
+    /// its data, which restores the match from it.
+    pub fn reload_wanted(world: &World) -> bool {
+        world.contains_resource::<Reload>()
+    }
+
     /// Waits for the checkpoint on its thread in the session in `world`, whose server keeps its
     /// files, and logs its record; an error when its snapshot was not written.
     pub fn settle_checkpoint(world: &mut World) -> Result<(), DurableError> {
@@ -388,7 +422,8 @@ impl SimServer {
             world.resource_mut::<Session>().keep_journal(journal);
         }
         world.insert_resource(ServerSigner::new(server.key, server.entropy));
-        world.insert_resource(Door::new(Offering::new(terms, server)));
+        let loaded = world.resource::<Session>().log().loaded();
+        world.insert_resource(Door::new(Offering::new(terms, server), loaded));
     }
 
     /// Bounds the server's frames for a session of `terms`: a frame advances its clock by the
@@ -497,13 +532,15 @@ fn sim_tick_due(
     timeline: Res<'_, LocalTimeline>,
     clock: Option<Res<'_, MatchClock>>,
     session: Option<Res<'_, Session>>,
+    reload: Option<Res<'_, Reload>>,
 ) -> bool {
-    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some()) && session_running(session)
+    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some())
+        && session_running(session, reload)
 }
 
-/// The session has started and has not ended.
-fn session_running(session: Option<Res<'_, Session>>) -> bool {
-    session.is_some_and(|session| session.log().result().is_none())
+/// The session has started, has not ended, and has not gone back to a save.
+fn session_running(session: Option<Res<'_, Session>>, reload: Option<Res<'_, Reload>>) -> bool {
+    reload.is_none() && session.is_some_and(|session| session.log().result().is_none())
 }
 
 fn run_sim_tick(world: &mut World) {

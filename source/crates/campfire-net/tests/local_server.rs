@@ -1,6 +1,7 @@
 //! A local server on its own thread, which a client app in the same process plays through
 //! in-process channels: it opens a session in its data directory, the client's player takes slot
-//! 0 and plays, and once the server drops, the session ends and its log is published.
+//! 0 and plays, saves and loads the save, the server starting again and the client taking its new
+//! link; once the server drops, the session ends and its log is published.
 
 use std::fs;
 use std::sync::Arc;
@@ -11,7 +12,8 @@ use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
-    JoinState, LocalServer, LocalServerSetup, NetProtocol, Pace, SessionDir, SimClient,
+    JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace, PendingSaves,
+    SaveCommand, SessionDir, SimClient,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
@@ -66,6 +68,9 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
             data: None,
         },
     ));
+    client.add_plugins(LocalRelink {
+        relinks: server.relinks(),
+    });
     client.insert_resource(PredictionManager::default());
     client.finish();
     client.cleanup();
@@ -75,14 +80,38 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         .id();
     client.world_mut().trigger(Connect { entity });
     let start = Instant::now();
+    let frame = |client: &mut App| {
+        assert!(start.elapsed() < DEADLINE, "the client did not play on");
+        client.update();
+        thread::sleep(Duration::from_millis(2));
+    };
+    let playing = |client: &App| client.world().resource::<JoinState>().clock().is_some();
     let mut played = 0;
     while played < 30 {
-        assert!(start.elapsed() < DEADLINE, "the client did not play");
-        client.update();
-        if client.world().resource::<JoinState>().clock().is_some() {
-            played += 1;
-        }
-        thread::sleep(Duration::from_millis(2));
+        frame(&mut client);
+        played += usize::from(playing(&client));
+    }
+
+    // A save, then a load of it: the server starts again on its data, and the client loses its
+    // link, takes the new one, and plays on.
+    let save = |client: &mut App, command| {
+        client
+            .world_mut()
+            .resource_mut::<PendingSaves>()
+            .push(command);
+    };
+    save(&mut client, SaveCommand::Save);
+    for _ in 0..30 {
+        frame(&mut client);
+    }
+    save(&mut client, SaveCommand::LoadLatest);
+    while playing(&client) {
+        frame(&mut client);
+    }
+    let mut played = 0;
+    while played < 30 {
+        frame(&mut client);
+        played += usize::from(playing(&client));
     }
 
     // Dropped, the server ends the session, aborted as the mode did not end the match, and
@@ -96,5 +125,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         log.result().map(|result| result.outcome),
         Some(Outcome::Aborted)
     );
-    assert!(log.next_tick().get() > 0);
+    let saves: Vec<_> = log.checkpoints().collect();
+    assert_eq!(saves.len(), 1);
+    assert!(log.next_tick() > saves[0].tick);
 }

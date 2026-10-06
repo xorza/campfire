@@ -25,7 +25,8 @@ use crate::server_seed::ServerSeed;
 use crate::server_seeds::ServerSeeds;
 use crate::session_id::SessionId;
 use crate::session_log::error::{
-    CheckpointError, HeaderError, InputError, LogError, ResultError, SeedError, ServerInputError,
+    CheckpointError, HeaderError, InputError, LoadError, LogError, ResultError, SeedError,
+    ServerInputError,
 };
 use crate::session_result::SessionResult;
 use crate::session_terms::SessionTerms;
@@ -53,6 +54,7 @@ const JOURNAL_SEALED: u8 = 3;
 const JOURNAL_CHECKPOINT_DONE: u8 = 4;
 const JOURNAL_RESULT: u8 = 5;
 const JOURNAL_CHECKPOINT_BEGUN: u8 = 6;
+const JOURNAL_LOADED: u8 = 7;
 
 /// What the log fixes before the first tick: the session's terms, and how each of its slots
 /// starts.
@@ -136,6 +138,8 @@ pub struct SessionLog {
     segments: Vec<SegmentStart>,
     /// The checkpoint that starts the last segment, while its record has not come.
     begun: Option<CheckpointBegun>,
+    /// Whether the log went back to a save since it was made, or rebuilt from a journal.
+    loaded: bool,
     /// How the session ended, once it did.
     result: Option<LoggedResult>,
     inputs: Vec<LoggedInput>,
@@ -425,6 +429,7 @@ impl SessionLog {
                 checkpoint: None,
             }],
             begun: None,
+            loaded: false,
             result: None,
             header,
             revealed: None,
@@ -500,6 +505,12 @@ impl SessionLog {
             .get(at)
             .filter(|segment| at > 0 && segment.tick == tick)?;
         Some(offset(at))
+    }
+
+    /// Whether the log went back to a save since it was made, or rebuilt from a journal: a
+    /// player's chain may then stand before what their client holds.
+    pub const fn loaded(&self) -> bool {
+        self.loaded
     }
 
     /// The checkpoint the log began and has no record of yet.
@@ -1094,16 +1105,36 @@ impl SessionLog {
     /// them. The header goes field by field, each slot's start as a byte, 0 for a player, then
     /// the delegation's JSON, 1 for a bot and 2 for an open slot.
     pub fn encode(&self, out: &mut Vec<u8>) {
-        out.clear();
-        out.extend_from_slice(LOG_TAG);
-        self.put_header(out);
-        put(out, &offset(self.segments.len()));
-        let mut start = 0;
         assert!(
             self.begun.is_none(),
             "a log is written once every checkpoint it began has its record"
         );
-        for (at, segment) in self.segments.iter().enumerate() {
+        let start = self.put_segments(out, self.segments.len(), self.next_tick());
+        self.put_entries(out, start..offset(self.entries.len()));
+        put(out, &self.revealed);
+        put(out, &self.result);
+    }
+
+    /// Writes into `out`, which is cleared first, the file of the log as it stood at the boundary
+    /// where segment `segment` starts: its segments up to that one, their ticks before it, and
+    /// none of the entries logged after them.
+    fn encode_through(&self, segment: usize, out: &mut Vec<u8>) {
+        let tick = self.segments[segment].tick;
+        let start = self.put_segments(out, segment + 1, tick);
+        self.put_entries(out, start..start);
+        put(out, &None::<ServerSeed>);
+        put(out, &None::<LoggedResult>);
+    }
+
+    /// Writes into `out`, which is cleared first, the tag, the header, and the first `segments`
+    /// segments, the last ending before `end`; where the entries of the ticks written end.
+    fn put_segments(&self, out: &mut Vec<u8>, segments: usize, end: Tick) -> u32 {
+        out.clear();
+        out.extend_from_slice(LOG_TAG);
+        self.put_header(out);
+        put(out, &offset(segments));
+        let mut start = 0;
+        for (at, segment) in self.segments[..segments].iter().enumerate() {
             if let Some(logged) = &segment.checkpoint {
                 logged.record.encode(out);
                 put(out, &logged.signature);
@@ -1111,7 +1142,8 @@ impl SessionLog {
             let end = self
                 .segments
                 .get(at + 1)
-                .map_or(self.next_tick(), |next| next.tick);
+                .filter(|_| at + 1 < segments)
+                .map_or(end, |next| next.tick);
             put(out, &(end.get() - segment.tick.get()));
             for tick in segment.tick.get()..end.get() {
                 let tick_end = self.tick_ends[usize::try_from(tick).expect("tick fits usize")];
@@ -1119,9 +1151,41 @@ impl SessionLog {
                 start = tick_end;
             }
         }
-        self.put_entries(out, start..offset(self.entries.len()));
-        put(out, &self.revealed);
-        put(out, &self.result);
+        start
+    }
+
+    /// Goes back to the boundary where segment `segment` starts, its checkpoint's, as a load of
+    /// that save does: the log becomes what it held there, its segments after that one and every
+    /// entry logged after the boundary dropped, and the segment goes on from its checkpoint, with
+    /// its seed. The journal logs the load, so a log rebuilt from it is the log loaded. An error
+    /// when the log holds no checkpoint that starts the segment.
+    pub fn load(&mut self, segment: u32) -> Result<(), LoadError> {
+        debug_assert!(
+            self.to_replay.is_empty(),
+            "a log that replays loads nothing"
+        );
+        let at = usize::try_from(segment).expect("segments fit usize");
+        if self
+            .segments
+            .get(at)
+            .is_none_or(|start| start.checkpoint.is_none())
+        {
+            return Err(LoadError::NoCheckpoint);
+        }
+        let mut bytes = Vec::new();
+        self.encode_through(at, &mut bytes);
+        let mut loaded = SessionLog::decode_within(&bytes, self.position_bound)
+            .expect("the log's own past decodes");
+        if let Some(journal) = self.journal.take() {
+            journal.append(|out| {
+                out.push(JOURNAL_LOADED);
+                put(out, &segment);
+            });
+            loaded.journal = Some(journal);
+        }
+        loaded.loaded = true;
+        *self = loaded;
+        Ok(())
     }
 
     /// Decodes a log file. Its entries are recorded again, which checks every chain link and
@@ -1365,6 +1429,11 @@ impl SessionLog {
             JOURNAL_CHECKPOINT_DONE => {
                 let segment = self.segment();
                 self.record_done(&mut rest, segment)?;
+            }
+            JOURNAL_LOADED => {
+                let segment: u32 = take(&mut rest)?;
+                self.load(segment)
+                    .map_err(|error| LogError::Load { segment, error })?;
             }
             JOURNAL_RESULT => {
                 let LoggedResult { result, signature } = take(&mut rest)?;

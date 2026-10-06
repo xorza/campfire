@@ -84,6 +84,8 @@ pub use mode::mode_setup::ModeSetup;
 pub use mode::mode_state::ModeState;
 pub use mode::offer::Offer;
 pub use mode::players_data::{Leaver, PlayersData};
+pub use mode::save_asked::SaveAsked;
+pub use mode::saves_data::{SaveBy, SavesData};
 pub use scripts::state_decl::synced_state_decl::SyncTo;
 
 pub use mode::team_manifest::TeamManifest;

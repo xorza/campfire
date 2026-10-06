@@ -51,7 +51,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `respawn` | `(unit, ms)` | mode | combat | since 1.0 | brings back `unit`, dead and of a type that stays, `ms` from the call |
 | `restore` | `(unit, pool, amount)`, `pool` a pool | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | action, modifier, AI | vision | since 1.0 | shows the acting unit's vision group the cells within `radius` of `pos` for `ms`, from this tick's Vision stage; no hidden unit |
-| `save` | `()` | mode | core | planned | asks for a save at the end of the tick |
+| `save` | `()` | mode | core | since 1.0 | asks for a save at the end of the tick |
 | `set_relation` | `(a, b, relation)`, `a` a team, `b` a team, `relation` a `Relation` | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, their vision as it was |
 | `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path, `from` a `PathEnd` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from` of `path`, walking it from there |
 | `spawn_unit` | `(type, team, pos) or (type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` and its `.state` |
@@ -253,6 +253,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `relations` | since 1.0 |
 | `tags` | since 1.0 |
 | `players` | since 1.0 |
+| `saves` | since 1.0 |
 | `state_version` | planned |
 
 ### The mode's `[combat]`
@@ -310,6 +311,13 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `late_join` | since 1.0 |
 | `bot_takeover` | since 1.0 |
 | `leaver` | since 1.0 |
+
+### The mode's `[saves]`
+
+| Field | Status |
+| --- | --- |
+| `by` | since 1.0 |
+| `autosave_ms` | since 1.0 |
 
 ### An action, `[actions.<id>]`
 

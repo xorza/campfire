@@ -4,7 +4,8 @@ use serde::Deserialize;
 use tracing::warn;
 
 /// The client took its match up again after its link failed, and the server's copy of the
-/// player's chain lacked their last `count` inputs: those never apply.
+/// player's chain lacked their last `count` inputs, as a crash lost them or a load dropped them:
+/// those never apply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct InputsDiscarded {
     pub slot: PlayerSlot,
@@ -12,7 +13,8 @@ pub struct InputsDiscarded {
 }
 
 impl LogEvent for InputsDiscarded {
-    const MESSAGE: &'static str = "the server lacked the player's last inputs; they never apply";
+    const MESSAGE: &'static str =
+        "the server's log does not hold the player's last inputs; they never apply";
 
     fn log(&self) {
         warn!(

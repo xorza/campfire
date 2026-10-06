@@ -41,6 +41,7 @@ fn on_timer(ctx, name, data) {
         }
     }
     if name == "first_wave" {
+        ctx.save();
         for hero in ctx.avatars() {
             for slot in 0..hero.params.basics {
                 ctx.learn(hero, slot);

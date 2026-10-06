@@ -45,6 +45,7 @@ use crate::match_start::MatchStart;
 use crate::net_protocol::{InputChannel, JoinChannel};
 use crate::offer::Offer;
 use crate::order_script::ScriptedInput;
+use crate::save_command::SaveCommand;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::join_state::{JoinState, LinkLoss, Retry, Started};
 use crate::sim_client::receipt_writer::ReceiptWriter;
@@ -102,6 +103,16 @@ impl Default for Verifier {
 /// link no more. The server logs the leave at once, and ends the link.
 #[derive(Resource, Debug)]
 pub struct LeaveRequest;
+
+/// The player's save commands, which a local server takes, sent while the client plays.
+#[derive(Resource, Debug, Default)]
+pub struct PendingSaves(Vec<SaveCommand>);
+
+impl PendingSaves {
+    pub fn push(&mut self, command: SaveCommand) {
+        self.0.push(command);
+    }
+}
 
 /// Orders the player gave, and mode inputs a bot script gives, sent in the next fixed tick.
 #[derive(Resource, Debug, Default)]
@@ -168,12 +179,14 @@ impl Plugin for SimClient {
             InputDelayConfig::no_input_delay(),
         ));
         app.init_resource::<PendingOrders>();
+        app.init_resource::<PendingSaves>();
         app.add_observer(lose_link);
         app.add_systems(
             Update,
             (
                 retry_link,
                 send_leave.run_if(resource_exists::<LeaveRequest>),
+                send_saves,
                 answer_offer,
                 receive_superseded,
                 receive_match_start,
@@ -340,6 +353,20 @@ fn receive_superseded(
             }
             .log();
         }
+    }
+}
+
+/// Sends the player's save commands, while the client plays.
+fn send_saves(
+    mut sender: Single<'_, '_, &mut MessageSender<SaveCommand>, With<Client>>,
+    state: Res<'_, JoinState>,
+    mut pending: ResMut<'_, PendingSaves>,
+) {
+    if state.clock().is_none() {
+        return;
+    }
+    for command in pending.0.drain(..) {
+        sender.send::<JoinChannel>(command);
     }
 }
 

@@ -6,8 +6,8 @@
 //! of its session there; without it, it writes none. With `--local`, it plays the mode alone on a
 //! local server, a thread of its own process, whose data goes in `server` under the data
 //! directory, `--data` then needed; each `--server-bot <slot>=<orders file>` gives the server a bot
-//! there, and every other slot but the player's is open. P pauses a local match, and the keys 1 to
-//! 4 set its speed to 0.5, 1, 2 or 4 times.
+//! there, and every other slot but the player's is open. P pauses a local match, the keys 1 to 4
+//! set its speed to 0.5, 1, 2 or 4 times, F5 saves it, and F9 loads its latest save.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by
 //! default). With `CAMPFIRE_LOG` set to a path, they also go there as JSON lines, filtered by
@@ -50,16 +50,16 @@ use crate::bot::Bot;
 use crate::connection::Connection;
 use crate::hud::Hud;
 use crate::link_watch::LinkWatch;
+use crate::local_keys::LocalKeys;
 use crate::orders::Orders;
-use crate::pace_keys::PaceKeys;
 use crate::view::View;
 
 mod bot;
 mod connection;
 mod hud;
 mod link_watch;
+mod local_keys;
 mod orders;
-mod pace_keys;
 mod pointer;
 mod view;
 
@@ -305,7 +305,7 @@ impl BotFile {
 }
 
 /// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD and the
-/// orders, with the pace keys of a local match that `pace` follows.
+/// orders, with the keys of a local match that `pace` follows.
 fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>, tick: Duration) {
     if let Some(script) = script {
         app.add_plugins((
@@ -318,7 +318,7 @@ fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>
         return;
     }
     if let Some(pace) = pace {
-        app.add_plugins(PaceKeys {
+        app.add_plugins(LocalKeys {
             pace: Arc::clone(pace),
         });
     }

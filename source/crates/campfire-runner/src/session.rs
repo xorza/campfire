@@ -1,13 +1,14 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{MatchEnd, MatchResult, Mode, ScriptFailures};
-use campfire_common::{SegmentSeed, StateHash, Tick};
+use campfire_capabilities::{MatchEnd, MatchResult, Mode, SavesData, ScriptFailures};
+use campfire_common::{SegmentSeed, StateHash, Tick, Ticks};
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
     AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal,
-    Outcome, PlayerInput, ResultError, SeedError, ServerInput, ServerSeeds, SessionHeader,
-    SessionLog, SessionResult, SessionTerms, Signature, SlotChangeKind, SnapshotFingerprint,
+    LoadError, Outcome, PlayerInput, ResultError, SeedError, ServerInput, ServerSeeds,
+    SessionHeader, SessionLog, SessionResult, SessionTerms, Signature, SlotChangeKind,
+    SnapshotFingerprint,
 };
 use campfire_sim::{
     SimRng, SimTick, SimUpdate, SlotEvent, SlotEventKind, SnapshotError, StateCopy, StateDelta,
@@ -37,6 +38,17 @@ pub struct Session {
     log: SessionLog,
     /// Who the mode lets take a slot.
     rules: SlotRules,
+    /// Who may ask for a save, and the mode's autosaves.
+    saves: SavesData,
+    /// The ticks between two autosaves, without which the mode makes none.
+    autosave: Option<Ticks>,
+}
+
+/// A session's log and seeds, as `Session::into_parts` gives them.
+#[derive(Debug)]
+pub(crate) struct SessionParts {
+    pub(crate) log: SessionLog,
+    pub(crate) seeds: ServerSeeds,
 }
 
 impl Session {
@@ -143,12 +155,19 @@ impl Session {
         let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         MatchBuild::run(packages, world, &mut schedule, &mut state, players);
         world.add_schedule(schedule);
+        let saves = packages.data().saves;
+        let rate = TickRate::new(header.terms.tick_hz);
+        let autosave = saves
+            .autosave_ms
+            .map(|ms| rate.ticks(u64::from(ms.get())).expect("a tick at least"));
         Ok(Session {
             seeds,
             segment,
             state,
             log,
             rules,
+            saves,
+            autosave,
         })
     }
 
@@ -276,6 +295,29 @@ impl Session {
                 .log();
             }
         }
+    }
+
+    /// Goes back to the save that starts segment `segment`; see `SessionLog::load`. The match's
+    /// world is then stale: a new one resumes from the save.
+    pub fn load(&mut self, segment: u32) -> Result<(), LoadError> {
+        self.log.load(segment)
+    }
+
+    /// Who may ask for a save, and the mode's autosaves, as its `[saves]` says.
+    pub const fn saves(&self) -> SavesData {
+        self.saves
+    }
+
+    /// Whether a save is due at the boundary before the next tick of the session in `world`:
+    /// the mode asked for one in the tick before, by `ctx.save()`, or the boundary is at a
+    /// multiple of the mode's `[saves] autosave_ms` from the session's start.
+    pub fn save_due(&self, world: &World) -> bool {
+        let next = self.log.next_tick();
+        let asked = Mode::save_asked(world) == Some(next);
+        let autosave = self
+            .autosave
+            .is_some_and(|every| next.get() > 0 && next.get().is_multiple_of(every.get()));
+        asked || autosave
     }
 
     /// What the slot of a player who leaves becomes, as the mode's `[players] leaver` says.
@@ -415,6 +457,14 @@ impl Session {
 
     pub fn state_hash(&self, world: &World) -> StateHash {
         self.state.hash(world)
+    }
+
+    /// The session's log and seeds, its match's world left.
+    pub(crate) fn into_parts(self) -> SessionParts {
+        SessionParts {
+            log: self.log,
+            seeds: self.seeds,
+        }
     }
 
     /// The registry of the match's state types.

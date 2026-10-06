@@ -40,6 +40,8 @@ type JoinLink = (Entity, &'static Offered, &'static mut MessageReceiver<Join>);
 #[derive(Resource, Debug)]
 pub(crate) struct Door {
     offering: Offering,
+    /// Whether the session went back to a save since it started, which every match start says.
+    loaded: bool,
 }
 
 /// What the door seats a player in: the slot, and their chain as the log holds it, or none for a
@@ -51,8 +53,8 @@ struct SeatIn {
 }
 
 impl Door {
-    pub(crate) const fn new(offering: Offering) -> Door {
-        Door { offering }
+    pub(crate) const fn new(offering: Offering, loaded: bool) -> Door {
+        Door { offering, loaded }
     }
 
     /// Offers the terms to each connected link that has no offer; see `Offering::offer`.
@@ -188,6 +190,7 @@ impl Door {
         );
         let first = world.resource::<Session>().log().next_tick();
         let start_tick = world.resource::<MatchClock>().net_tick(first);
+        let loaded = world.resource::<Door>().loaded;
         world
             .get_mut::<MessageSender<MatchStart>>(link)
             .expect("a client link sends the match start")
@@ -196,6 +199,7 @@ impl Door {
                 first,
                 slot,
                 chain,
+                loaded,
             });
         let mut units = world.query_filtered::<(
             Entity,

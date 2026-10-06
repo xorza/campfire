@@ -1,4 +1,6 @@
 use super::*;
+use crate::journal::journal_frames::JournalFrames;
+use crate::journal::tests::MemoryFile;
 
 /// The checkpoint record of the segment after `log`'s last, at its next tick, carrying its own
 /// state, with a state hash and a snapshot fingerprint of `byte`.
@@ -263,4 +265,40 @@ fn revealing_an_earlier_segments_seed_is_a_bug() {
     log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
         .unwrap();
     log.reveal_seed(SEED_CHAIN.seed(0));
+}
+
+#[test]
+fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
+    // A save at tick 2, segment 1, then tick 2 runs y, and player 0 sends z for tick 3.
+    let mut log = two_ticks();
+    let file = MemoryFile::new();
+    log.keep_journal(Journal::start(file.clone()));
+    let record = checkpoint(&log, 3);
+    log.begin_checkpoint().unwrap();
+    log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
+        .unwrap();
+    let saved = encoded(&log);
+    assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
+    let mut applied = Vec::new();
+    resent(0, &[&[(3, b"z")]], 0)[0]
+        .submit(&mut log, &mut applied)
+        .unwrap();
+
+    // Segment 0 starts from no checkpoint, and segment 2 is none of the log's.
+    for segment in [0, 2] {
+        assert_eq!(log.load(segment), Err(LoadError::NoCheckpoint));
+    }
+    // The load of segment 1: the log is the one saved, at tick 2 again, its y due again there
+    // and z gone; and the journal rebuilds the log loaded.
+    log.load(1).unwrap();
+    assert_eq!(encoded(&log), saved);
+    assert_eq!((log.next_tick(), log.segment()), (Tick::new(2), 1));
+    assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));
+    assert_eq!(log.carry(), record.carry);
+    drop(log);
+    let journal = file.bytes();
+    let records: Vec<&[u8]> = JournalFrames::new(&journal).unwrap().collect();
+    assert_eq!(records.last().map(|record| record[0]), Some(7));
+    let rebuilt = SessionLog::from_journal(records).unwrap();
+    assert_eq!(encoded(&rebuilt), saved);
 }

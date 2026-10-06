@@ -10,6 +10,7 @@ use crate::items::shop_data::ShopData;
 use crate::mode::choice_data::ChoiceData;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
+use crate::mode::saves_data::SavesData;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::players::resource_id::ResourceId;
 use crate::progression::track_data::TrackData;
@@ -71,6 +72,9 @@ pub struct ModeData {
     /// Who may take a slot once the match started.
     #[serde(default)]
     pub players: PlayersData,
+    /// Who may ask for a save, and how often the mode saves.
+    #[serde(default)]
+    pub saves: SavesData,
 }
 
 impl ModeData {

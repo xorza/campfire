@@ -2,8 +2,8 @@ use std::fmt;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -11,6 +11,8 @@ use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
+use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::Commands;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
@@ -35,12 +37,13 @@ use crate::events::session_written::SessionWritten;
 use crate::lobby::{Lobby, LobbySetup};
 use crate::local_pace::LocalPace;
 use crate::local_server::error::LocalServerError;
+use crate::local_session::LocalSession;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::pace::Pace;
 use crate::server_bots::{ServerBots, SlotBot};
 use crate::server_setup::ServerSetup;
-use crate::session_dir::SessionDir;
+use crate::session_dir::{RestoredSession, SessionDir};
 use crate::session_journal::SessionJournal;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
@@ -69,7 +72,42 @@ pub struct LocalServer {
     pin: ServerPin,
     /// The client's end of the link, until the client takes it.
     link: Option<CrossbeamIo>,
+    relinks: Relinks,
 }
+
+/// The client's end of the new link a local server makes once it starts again after a load,
+/// which the client takes; see `LocalRelink`.
+#[derive(Clone, Default)]
+pub struct Relinks(Arc<Mutex<Option<CrossbeamIo>>>);
+
+/// What the local server's thread keeps across the apps it runs: one, then a new one after each
+/// load, which restores the session from its data.
+#[derive(Debug)]
+struct Runs {
+    data: PathBuf,
+    packages: Arc<ModePackages>,
+    bots: ServerBots,
+    server: ServerSetup,
+    pace: Arc<Pace>,
+    tick: Duration,
+    stop: Arc<AtomicBool>,
+    /// Set by an app that ends for a load.
+    restart: Arc<AtomicBool>,
+    relinks: Relinks,
+}
+
+/// A session to restore in an app's first frame, after a load.
+#[derive(Resource, Debug)]
+struct PendingRestore {
+    session: RestoredSession,
+    packages: Arc<ModePackages>,
+    bots: ServerBots,
+    server: ServerSetup,
+}
+
+/// Set once the app ends for a load, as its thread then starts a new one.
+#[derive(Resource, Debug)]
+struct Restart(Arc<AtomicBool>);
 
 /// What a local server starts with.
 #[derive(Debug)]
@@ -133,16 +171,18 @@ impl LocalServer {
             .filter(|&slot| bots.iter().all(|bot| bot.slot != slot))
             .collect();
         let tick_hz = packages.manifest().tick_hz.default();
+        let packages = Arc::new(packages);
+        let bots = ServerBots {
+            slots: bots,
+            takeover: None,
+        };
         let mut lobby = Lobby::new(LobbySetup {
-            packages,
+            packages: Arc::clone(&packages),
             seed_chain,
             tick_hz,
             inputs: InputRules::LAN,
             slots: usize::try_from(slots).expect("slots fit usize"),
-            bots: ServerBots {
-                slots: bots,
-                takeover: None,
-            },
+            bots: bots.clone(),
             open,
             server,
         })
@@ -155,17 +195,24 @@ impl LocalServer {
         lobby.keep_files(session.start().map_err(LocalServerError::NewJournal)?);
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let stop = Arc::new(AtomicBool::new(false));
-        let stopped = Arc::clone(&stop);
-        let tick = TickRate::new(tick_hz).length();
+        let relinks = Relinks::default();
+        let runs = Runs {
+            data,
+            packages,
+            bots,
+            server,
+            pace,
+            tick: TickRate::new(tick_hz).length(),
+            stop: Arc::clone(&stop),
+            restart: Arc::new(AtomicBool::new(false)),
+            relinks: relinks.clone(),
+        };
         let thread = thread::Builder::new()
             .name("local server".to_owned())
             .spawn(move || {
-                let data = Data {
-                    path: data,
-                    _dir: dir,
-                };
-                let app = LocalServer::app(lobby, server_io, data, Stop(stopped), pace, tick);
-                LocalServer::run(app);
+                let mut app = runs.app(server_io, dir);
+                app.insert_resource(lobby);
+                runs.run(app);
             })
             .expect("the OS starts a thread");
         Ok(LocalServer {
@@ -177,7 +224,13 @@ impl LocalServer {
                 tick_hz,
             },
             link: Some(client_io),
+            relinks,
         })
+    }
+
+    /// Where the client takes the new link the server makes after each load.
+    pub fn relinks(&self) -> Relinks {
+        self.relinks.clone()
     }
 
     /// What the client pins: the server's key, its certificate's hash and its tick rate.
@@ -212,60 +265,33 @@ impl LocalServer {
         Ok(())
     }
 
-    /// The server's app: its plugins at `tick` a tick, the session of `lobby`, and its end of
-    /// the link.
-    fn app(
-        lobby: Lobby,
-        link: CrossbeamIo,
-        data: Data,
-        stop: Stop,
-        pace: Arc<Pace>,
-        tick: Duration,
-    ) -> App {
-        let mut app = App::new();
-        app.add_plugins((
-            TaskPoolPlugin::default(),
-            TimePlugin,
-            StatesPlugin,
-            ScheduleRunnerPlugin::run_loop(FRAME),
-        ));
-        app.add_plugins(ServerPlugins {
-            tick_duration: tick,
-        });
-        app.add_plugins((NetProtocol, SimServer, LocalPace { pace, tick }));
-        app.add_observer(
-            |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
-                commands.entity(added.entity).insert(ReplicationSender);
-            },
-        );
-        app.insert_resource(lobby);
-        app.insert_resource(data);
-        app.insert_resource(stop);
-        app.add_systems(Update, LocalServer::watch);
-        // A raw server starts once linked, and in-process channels have no socket to link it.
-        let server = app.world_mut().spawn((RawServer, Linked)).id();
-        let address = SocketAddr::from(([127, 0, 0, 1], 1));
-        app.world_mut().spawn((
-            LinkOf { server },
-            Link::default(),
-            PeerAddr(address),
-            Linked,
-            link,
-        ));
-        app
-    }
-
-    fn run(mut app: App) {
-        if let AppExit::Error(code) = app.run() {
-            error!(code = code.get(), "the local server stopped with an error");
+    /// Restores the session that waits, after a load; an error, logged, ends the app.
+    fn restore(world: &mut World) {
+        let PendingRestore {
+            session,
+            packages,
+            bots,
+            server,
+        } = world
+            .remove_resource::<PendingRestore>()
+            .expect("a restore runs while one waits");
+        if let Err(error) = SimServer::restore_match(world, session, &packages, &server, bots) {
+            error!(%error, "the local session does not restore after its load");
+            world.write_message(AppExit::error());
         }
     }
 
-    /// Exits once a write of the journal or a snapshot failed; ends the session once the client
+    /// Ends once the session went back to a save, for its thread to start a new app; exits once
+    /// a write of the journal or a snapshot failed; ends the session once the client
     /// asked the server to stop, or every player left, as the mode ended the match or aborted;
     /// publishes the log of the session once it ended, and exits; exits at once when asked to
     /// stop before the match started.
     fn watch(world: &mut World) {
+        if SimServer::reload_wanted(world) {
+            world.resource::<Restart>().0.store(true, Ordering::Relaxed);
+            world.write_message(AppExit::Success);
+            return;
+        }
         if let Some(failure) = world
             .get_resource::<SessionJournal>()
             .and_then(|journal| journal.0.take_failure())
@@ -344,5 +370,122 @@ impl Drop for LocalServer {
         if let Some(thread) = self.thread.take() {
             thread.join().expect("the local server does not panic");
         }
+    }
+}
+
+impl Runs {
+    /// Runs `app`, then after each load a new app that restores the session from its data, until
+    /// one ends otherwise.
+    fn run(self, mut app: App) {
+        loop {
+            let exit = app.run();
+            if !self.restart.swap(false, Ordering::Relaxed) {
+                if let AppExit::Error(code) = exit {
+                    error!(code = code.get(), "the local server stopped with an error");
+                }
+                return;
+            }
+            match self.restored() {
+                Ok(next) => app = next,
+                Err(error) => {
+                    error!(%error, "the local session does not restore after its load");
+                    return;
+                }
+            }
+        }
+    }
+
+    /// A new app, which restores the session from the data directory in its first frame, the
+    /// client's end of its new link given to the client.
+    fn restored(&self) -> Result<App, LocalServerError> {
+        let dir = DataDir::open(&self.data, self.server.entropy).map_err(LocalServerError::Data)?;
+        let found = SessionDir::find(&self.data).map_err(LocalServerError::Find)?;
+        let found = found.expect("the session that loaded");
+        let session = found.restore().map_err(LocalServerError::Restore)?;
+        let (client_io, server_io) = CrossbeamIo::new_pair();
+        let mut app = self.app(server_io, dir);
+        app.insert_resource(PendingRestore {
+            session: session.expect("a session whose match started"),
+            packages: Arc::clone(&self.packages),
+            bots: self.bots.clone(),
+            server: self.server,
+        });
+        self.relinks.give(client_io);
+        Ok(app)
+    }
+
+    /// An app of the server: its plugins, its end of the link `link`, and its data directory
+    /// `dir`, which it holds locked.
+    fn app(&self, link: CrossbeamIo, dir: DataDir) -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            TaskPoolPlugin::default(),
+            TimePlugin,
+            StatesPlugin,
+            ScheduleRunnerPlugin::run_loop(FRAME),
+        ));
+        app.add_plugins(ServerPlugins {
+            tick_duration: self.tick,
+        });
+        app.add_plugins((
+            NetProtocol,
+            SimServer,
+            LocalPace {
+                pace: Arc::clone(&self.pace),
+                tick: self.tick,
+            },
+        ));
+        app.add_observer(
+            |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
+                commands.entity(added.entity).insert(ReplicationSender);
+            },
+        );
+        app.insert_resource(LocalSession);
+        app.insert_resource(Data {
+            path: self.data.clone(),
+            _dir: dir,
+        });
+        app.insert_resource(Stop(Arc::clone(&self.stop)));
+        app.insert_resource(Restart(Arc::clone(&self.restart)));
+        app.add_systems(
+            Update,
+            (
+                LocalServer::restore.run_if(resource_exists::<PendingRestore>),
+                LocalServer::watch,
+            )
+                .chain(),
+        );
+        // A raw server starts once linked, and in-process channels have no socket to link it.
+        let server = app.world_mut().spawn((RawServer, Linked)).id();
+        let address = SocketAddr::from(([127, 0, 0, 1], 1));
+        app.world_mut().spawn((
+            LinkOf { server },
+            Link::default(),
+            PeerAddr(address),
+            Linked,
+            link,
+        ));
+        app
+    }
+}
+
+impl Relinks {
+    fn give(&self, link: CrossbeamIo) {
+        *self.lock() = Some(link);
+    }
+
+    /// The new link, once the server made one and no client took it yet.
+    pub(crate) fn take(&self) -> Option<CrossbeamIo> {
+        self.lock().take()
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Option<CrossbeamIo>> {
+        self.0.lock().expect("no thread panics holding the link")
+    }
+}
+
+impl fmt::Debug for Relinks {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Relinks").finish_non_exhaustive()
     }
 }

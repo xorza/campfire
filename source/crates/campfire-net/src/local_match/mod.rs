@@ -14,7 +14,9 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_capabilities::{Action, Body, Leaver, MoveStep, Order, Owner, PlayersData, Team};
+use campfire_capabilities::{
+    Action, Body, Leaver, MoveStep, Order, Owner, PlayersData, SaveBy, Team,
+};
 use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
@@ -36,6 +38,7 @@ use crate::lobby::{Lobby, LobbySetup};
 use crate::local_match::delay_line::DelayLine;
 use crate::local_match::link_model::LinkModel;
 use crate::local_pace::LocalPace;
+use crate::local_session::LocalSession;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
@@ -87,6 +90,8 @@ pub struct MatchSetup {
     pub times: SessionTimes,
     /// The lane mode's `[players]`.
     pub rules: PlayersData,
+    /// The lane mode's `[saves] by`.
+    pub save_by: SaveBy,
     /// The script of the server's bot in the slot after the players', when it plays one.
     pub bot: Option<&'static str>,
     /// The script of the server's bot in a slot its player left, when it plays one.
@@ -119,6 +124,7 @@ impl MatchSetup {
             seed_chain,
             times: SessionTimes::DEFAULT,
             rules: PlayersData::DEFAULT,
+            save_by: SaveBy::Player,
             bot: None,
             takeover: None,
         }
@@ -135,6 +141,7 @@ impl MatchSetup {
             seed_chain,
             times: SessionTimes::DEFAULT,
             rules: PlayersData::DEFAULT,
+            save_by: SaveBy::Player,
             bot: None,
             takeover: None,
         }
@@ -192,7 +199,7 @@ impl LocalMatch {
             setup.server_frames > 0,
             "the server runs a frame a tick at least"
         );
-        let packages = Arc::new(lane_mode(setup.rules));
+        let packages = Arc::new(lane_mode(setup.rules, setup.save_by));
         let tick_hz = packages.manifest().tick_hz.default();
         let tick = TickRate::new(tick_hz).length();
 
@@ -248,6 +255,7 @@ impl LocalMatch {
             tick_duration: tick,
         });
         server.add_plugins((NetProtocol, SimServer));
+        server.insert_resource(LocalSession);
         server.add_plugins(LocalPace {
             pace: Arc::clone(pace),
             tick,
@@ -444,7 +452,7 @@ impl LocalMatch {
     /// its avatar comes in the replication after the server's first tick, in another packet: which
     /// arrives first varies with how Lightyear packs and resends them, by the wall clock.
     pub fn start_match(&mut self) {
-        let packages = lane_mode(self.setup.rules);
+        let packages = Arc::clone(&self.packages);
         let mut lobby = Lobby::new(LobbySetup {
             tick_hz: packages.manifest().tick_hz.default(),
             packages,
@@ -493,13 +501,17 @@ impl LocalMatch {
         self.server.update();
     }
 
-    /// One frame of each client, then the server's frames: one tick each.
+    /// One frame of each client, then the server's frames: one tick each. A server whose session
+    /// went back to a save then starts again on its data, as a local server does.
     pub fn step(&mut self) {
         for client in 0..self.clients.len() {
             self.client_frame(client);
         }
         for _ in 0..self.setup.server_frames {
             self.server_frame();
+        }
+        if SimServer::reload_wanted(self.server.world()) {
+            self.restart_server();
         }
     }
 
@@ -770,8 +782,8 @@ pub(crate) fn server_key() -> XOnlyPublicKey {
     server_keypair().x_only_public_key().0
 }
 
-/// The test lane mode, its `[players]` as `rules` says.
-fn lane_mode(rules: PlayersData) -> ModePackages {
+/// The test lane mode, its `[players]` as `rules` says, and its `[saves] by` `save_by`.
+fn lane_mode(rules: PlayersData, save_by: SaveBy) -> ModePackages {
     let mut files = PackageDir::workspace_tree("test");
     let data = PathBuf::from("modes/lane/data/mode.toml");
     let mut text = String::from_utf8(files[&data].clone()).expect("the mode's data is UTF-8");
@@ -780,9 +792,13 @@ fn lane_mode(rules: PlayersData) -> ModePackages {
         Leaver::Bot => "bot",
         Leaver::Open => "open",
     };
+    let by = match save_by {
+        SaveBy::Player => "player",
+        SaveBy::Mode => "mode",
+    };
     write!(
         text,
-        "\n[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n",
+        "\n[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n\n[saves]\nby = \"{by}\"\n",
         rules.late_join, rules.bot_takeover
     )
     .expect("a String takes any text");

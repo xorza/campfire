@@ -79,6 +79,7 @@ const START: MatchStart = MatchStart {
     first: Tick::new(0),
     slot: PlayerSlot::new(1),
     chain: None,
+    loaded: false,
 };
 
 #[test]

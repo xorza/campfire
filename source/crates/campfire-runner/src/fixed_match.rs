@@ -105,6 +105,11 @@ impl FixedMatch {
         result
     }
 
+    /// The match's runner, its keys and chains dropped, as a load leaves them behind.
+    pub fn into_runner(self) -> Runner {
+        self.runner
+    }
+
     pub const fn runner(&self) -> &Runner {
         &self.runner
     }

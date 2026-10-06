@@ -1352,10 +1352,10 @@ static FLAWS: [Flaw; 242] = [
         MODE_SCRIPT,
         Edit::Replace(
             "fn on_match_start(ctx) {",
-            "fn on_match_start(ctx) {\n    ctx.save();",
+            "fn on_match_start(ctx) {\n    ctx.generate(\"north\");",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "save"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "generate"),
     ),
     flaw(
         MODE_SCRIPT,

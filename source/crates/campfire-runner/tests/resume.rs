@@ -5,9 +5,9 @@
 use std::num::NonZeroU32;
 
 use campfire_capabilities::{Dead, Deaths};
-use campfire_common::StateHash;
+use campfire_common::{StateHash, Tick};
 use campfire_package::{ModePackages, PackageDir};
-use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
+use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
 use campfire_runner::internals::{FixedMatch, FixedSession, ProvingMatch, Reference3v3};
 use campfire_runner::{ResumeError, Runner};
 use campfire_sim::SnapshotError;
@@ -200,4 +200,64 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
         resume(2, &garbage),
         Some(ResumeError::Snapshot(SnapshotError::NotSnapshot))
     ));
+}
+
+#[test]
+fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
+    // A save before tick 100, segment 1, and a checkpoint before tick 150, segment 2.
+    let proving = ProvingMatch::load();
+    let mut fixed = proving.start();
+    let id = fixed.runner().log().session_id();
+    let mut hashes = Vec::new();
+    let mut save = Vec::new();
+    for tick in 0..200 {
+        if tick == 100 {
+            fixed.checkpoint(&mut save);
+        }
+        if tick == 150 {
+            fixed.checkpoint(&mut Vec::new());
+        }
+        ProvingMatch::play_tick(&mut fixed, tick);
+        hashes.push(fixed.runner().state_hash());
+    }
+    let record = fixed
+        .runner()
+        .log()
+        .checkpoint_at(Tick::new(100))
+        .unwrap()
+        .clone();
+
+    // The load of the save: the match stands before tick 100 again, and plays 50 ticks with no
+    // order, unlike the ticks the load dropped.
+    let mut runner = fixed
+        .into_runner()
+        .load(1, &save, proving.packages())
+        .unwrap();
+    assert_eq!(runner.log().next_tick(), Tick::new(100));
+    assert_eq!(runner.state_hash(), hashes[99]);
+    for _ in 100..150 {
+        runner.run_tick();
+    }
+    assert_ne!(runner.state_hash(), hashes[149]);
+    let result = runner.result_as(Outcome::Aborted);
+    let signature = FixedSession::result_signature(&result, id);
+    runner.record_result(result, &signature).unwrap();
+    runner.reveal_seed();
+    let mut bytes = Vec::new();
+    runner.log().encode(&mut bytes);
+
+    // The published log holds the segments up to the save, and the one the load started: its
+    // replay meets the save's hash and the result.
+    let published = SessionLog::decode(&bytes).unwrap();
+    assert_eq!(published.next_tick(), Tick::new(150));
+    assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&record]);
+    let seeds = published.revealed_seeds().unwrap();
+    let mut replay = Runner::new(published.rewound(), seeds, proving.packages()).unwrap();
+    while replay.log().next_tick() < Tick::new(150) {
+        if replay.log().next_tick() == Tick::new(100) {
+            assert_eq!(replay.state_hash(), record.state_hash);
+        }
+        replay.run_tick();
+    }
+    assert_eq!(replay.check_result(), Ok(()));
 }

@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
-use campfire_net::{LocalPace, LocalServer, LocalServerSetup, Pace, ServerPin, SlotBot};
+use campfire_net::{
+    LocalPace, LocalRelink, LocalServer, LocalServerSetup, Pace, ServerPin, SlotBot,
+};
 use lightyear::prelude::client::WebTransportClientIo;
 use lightyear::prelude::{LocalAddr, PeerAddr};
 use tracing::error;
@@ -54,7 +56,7 @@ impl Connection {
 
     /// Links `client`, the client entity of `app`, to the server: over WebTransport to a remote
     /// one; by in-process channels to a local one, whose `pace` the app then follows, its
-    /// session's ticks `tick` long.
+    /// session's ticks `tick` long, and whose new link after each load it takes.
     pub(crate) fn link(&mut self, app: &mut App, client: Entity, pace: &Arc<Pace>, tick: Duration) {
         match self {
             Connection::Remote { pin, address } => {
@@ -71,10 +73,15 @@ impl Connection {
             }
             Connection::Local(local) => {
                 app.world_mut().entity_mut(client).insert(local.take_link());
-                app.add_plugins(LocalPace {
-                    pace: Arc::clone(pace),
-                    tick,
-                });
+                app.add_plugins((
+                    LocalPace {
+                        pace: Arc::clone(pace),
+                        tick,
+                    },
+                    LocalRelink {
+                        relinks: local.relinks(),
+                    },
+                ));
             }
         }
     }

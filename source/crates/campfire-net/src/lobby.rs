@@ -1,4 +1,5 @@
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
@@ -33,7 +34,7 @@ use crate::sim_server::{SessionStart, SimServer};
 pub struct Lobby {
     offering: Offering,
     seed_chain: SeedChain,
-    packages: ModePackages,
+    packages: Arc<ModePackages>,
     /// How many slots players take: every slot but the bots'.
     players: usize,
     bots: ServerBots,
@@ -47,7 +48,7 @@ pub struct Lobby {
 /// What a server opens a session with.
 #[derive(Debug)]
 pub struct LobbySetup {
-    pub packages: ModePackages,
+    pub packages: Arc<ModePackages>,
     pub seed_chain: SeedChain,
     /// Ticks a second, which the mode's range must hold.
     pub tick_hz: NonZeroU32,
@@ -278,7 +279,9 @@ mod tests {
     fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
         let server_key = local_match::server_key();
         let mut lobby = Lobby::new(LobbySetup {
-            packages: ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap(),
+            packages: Arc::new(
+                ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap(),
+            ),
             seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
             tick_hz: NonZeroU32::new(30).unwrap(),
             inputs: InputRules::LAN,

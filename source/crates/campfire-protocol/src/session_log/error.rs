@@ -257,6 +257,23 @@ impl Error for HeaderError {
     }
 }
 
+/// Why a log does not load a save.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadError {
+    /// The log holds no checkpoint that starts the segment.
+    NoCheckpoint,
+}
+
+impl fmt::Display for LoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LoadError::NoCheckpoint => f.write_str("no checkpoint starts the segment"),
+        }
+    }
+}
+
+impl Error for LoadError {}
+
 /// Why bytes do not decode to a session log. A log file is untrusted, so every flaw is an error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogError {
@@ -297,6 +314,8 @@ pub enum LogError {
     WrongSeed,
     /// The log refuses the result.
     Result(ResultError),
+    /// The journal's load of the save that starts segment `segment` does not load.
+    Load { segment: u32, error: LoadError },
     /// Bytes remain after the result.
     Trailing,
     /// The bytes decode, but not from the one encoding the log has, such as an overlong varint.
@@ -343,6 +362,9 @@ impl fmt::Display for LogError {
                 f.write_str("session log reveals a server seed that is not its last segment's")
             }
             LogError::Result(error) => write!(f, "session log result refused: {error}"),
+            LogError::Load { segment, error } => {
+                write!(f, "session log load of segment {segment} refused: {error}")
+            }
             LogError::Trailing => f.write_str("session log has trailing bytes"),
             LogError::NotCanonical => f.write_str("session log is not in its canonical encoding"),
         }
@@ -360,6 +382,7 @@ impl Error for LogError {
             LogError::CheckpointDecode { error, .. } => Some(error),
             LogError::Checkpoint { error, .. } => Some(error),
             LogError::Result(error) => Some(error),
+            LogError::Load { error, .. } => Some(error),
             _ => None,
         }
     }

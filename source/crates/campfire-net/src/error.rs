@@ -189,3 +189,29 @@ impl Error for RestoreMatchError {
         }
     }
 }
+
+/// Why a server refused a player's save command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveRefusal {
+    /// Only a local server takes a player's saves and loads.
+    NotLocal,
+    /// The mode's `[saves] by` is `mode`: it alone saves.
+    ByMode,
+    /// The server keeps no data to write a save into.
+    NoData,
+    /// The session holds no save to load.
+    NoSave,
+}
+
+impl fmt::Display for SaveRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            SaveRefusal::NotLocal => "only a local server takes a player's saves and loads",
+            SaveRefusal::ByMode => "the mode alone saves",
+            SaveRefusal::NoData => "the server keeps no data to save into",
+            SaveRefusal::NoSave => "the session holds no save to load",
+        })
+    }
+}
+
+impl Error for SaveRefusal {}

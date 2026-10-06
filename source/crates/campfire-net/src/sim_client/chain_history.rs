@@ -21,6 +21,11 @@ impl ChainHistory {
         }
     }
 
+    /// The seq of the input after the last it holds.
+    pub(crate) fn next_seq(&self) -> u64 {
+        self.first_seq + u64::try_from(self.heads.len()).expect("a history fits u64")
+    }
+
     /// Notes the head after the chain's next input.
     pub(crate) fn push(&mut self, head: InputHash) {
         self.heads.push(head);

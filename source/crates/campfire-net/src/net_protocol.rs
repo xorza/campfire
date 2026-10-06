@@ -16,6 +16,7 @@ use crate::join::Join;
 use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
+use crate::save_command::SaveCommand;
 use crate::superseded::Superseded;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
@@ -71,6 +72,8 @@ impl Plugin for NetProtocol {
         app.register_message::<SignedReceipt>()
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<Join>()
+            .add_direction(NetworkDirection::ClientToServer);
+        app.register_message::<SaveCommand>()
             .add_direction(NetworkDirection::ClientToServer);
         app.register_message::<LeaveMatch>()
             .add_direction(NetworkDirection::ClientToServer);

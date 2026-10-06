@@ -8,6 +8,7 @@ mod prototype;
 mod receipts;
 mod rejoin;
 mod restore;
+mod saves;
 mod scenario;
 
 use std::path::PathBuf;

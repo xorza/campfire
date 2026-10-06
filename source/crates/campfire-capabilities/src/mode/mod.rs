@@ -39,6 +39,7 @@ use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_state::ModeState;
 use crate::mode::placed_unit::PlacedPath;
+use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
@@ -89,6 +90,8 @@ pub(crate) mod placed_unit;
 pub(crate) mod players_data;
 pub(crate) mod relation_data;
 pub(crate) mod roster;
+pub(crate) mod save_asked;
+pub(crate) mod saves_data;
 pub(crate) mod team_manifest;
 pub(crate) mod timers;
 pub(crate) mod unanswered_deaths;
@@ -198,6 +201,12 @@ impl Mode {
         registry.register_resource::<UnansweredSlotEvents>();
     }
 
+    /// The boundary the mode in `world` last asked for a save at, by `ctx.save()`, by the tick
+    /// it comes before.
+    pub fn save_asked(world: &World) -> Option<Tick> {
+        world.get_resource::<SaveAsked>().map(|asked| asked.at())
+    }
+
     /// The team of player `slot` in the match in `world`; `None` before the mode installs, or for
     /// a slot the session does not have.
     pub fn team_of(world: &World, slot: PlayerSlot) -> Option<Team> {
@@ -251,6 +260,8 @@ impl Mode {
                     .resource_mut::<Relations>()
                     .set_attitude(a, b, attitude);
             }
+            // A call's `now` is the end of its tick.
+            ModeEffect::Save => world.insert_resource(SaveAsked::new(now)),
         }
     }
 

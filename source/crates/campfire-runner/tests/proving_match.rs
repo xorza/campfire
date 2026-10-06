@@ -27,6 +27,8 @@ struct Seen {
     barracks_watched: Vec<u64>,
     /// The mode's state after each tick that changed it.
     states: Vec<(u64, Vec<StateValue>)>,
+    /// The boundaries a save was due at, each by the tick it comes before.
+    saves: Vec<u64>,
 }
 
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
@@ -89,6 +91,9 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
             failures.get()
         );
         look(&fixed, tick, &mut seen);
+        if fixed.runner().save_due() {
+            seen.saves.push(tick + 1);
+        }
     }
     golden.check("proving");
     let world = fixed.runner().world();
@@ -148,6 +153,9 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
             .all(|&(_, place, teams)| place == at && north_alone(teams))
     );
     assert_eq!(seen.barracks_watched, (300..=339).collect::<Vec<_>>());
+    // A save is due after tick 0, whose first wave asked for one, and at each 12 s of 20 Hz,
+    // every 240 ticks, from the start.
+    assert_eq!(seen.saves, [1, 240, 480]);
 }
 
 /// A component no system reads, which moves the unit that carries it to another archetype.

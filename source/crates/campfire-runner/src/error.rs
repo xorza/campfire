@@ -6,7 +6,7 @@ use campfire_capabilities::CallError;
 use campfire_common::StateHash;
 use campfire_package::StoreError;
 use campfire_protocol::{
-    AfterLeave, CheckpointError, Outcome, SeedError, ServerInputError, SlotChange,
+    AfterLeave, CheckpointError, LoadError, Outcome, SeedError, ServerInputError, SlotChange,
 };
 use campfire_sim::SnapshotError;
 
@@ -69,6 +69,8 @@ pub enum ResumeError {
     Snapshot(SnapshotError),
     /// The snapshot restores to another state hash than the checkpoint's.
     StateHash,
+    /// The log does not load the save.
+    Load(LoadError),
 }
 
 impl fmt::Display for ResumeError {
@@ -83,6 +85,7 @@ impl fmt::Display for ResumeError {
             ResumeError::StateHash => {
                 f.write_str("the snapshot restores to another state than the checkpoint's")
             }
+            ResumeError::Load(error) => write!(f, "the save does not load: {error}"),
         }
     }
 }
@@ -92,6 +95,7 @@ impl Error for ResumeError {
         match self {
             ResumeError::Start(error) => Some(error),
             ResumeError::Snapshot(error) => Some(error),
+            ResumeError::Load(error) => Some(error),
             ResumeError::NoCheckpoint | ResumeError::Fingerprint | ResumeError::StateHash => None,
         }
     }

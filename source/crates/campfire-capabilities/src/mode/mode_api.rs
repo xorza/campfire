@@ -61,9 +61,10 @@ impl ModeApi {
             .hook(Hook::OnPlayerJoin, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnPlayerLeave, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnGenerate, Status::Planned)
-            .plan(
+            .bind(
                 MemberSpec::call("save", "()", "asks for a save at the end of the tick")
                     .roles(RoleSet::MODE),
+                |ctx: &mut Ctx| ctx.queue(ModeEffect::Save),
             )
             .plan(
                 MemberSpec::value(
@@ -99,6 +100,7 @@ impl ModeApi {
                     "relations",
                     "tags",
                     "players",
+                    "saves",
                 ],
                 &["state_version"],
             )
@@ -107,7 +109,8 @@ impl ModeApi {
                 DataTable::Players,
                 &["late_join", "bot_takeover", "leaver"],
                 &[],
-            );
+            )
+            .data(DataTable::Saves, &["by", "autosave_ms"], &[]);
     }
 
     /// What every role reads of the mode: the teams, the map, the avatars, the units of a tag,

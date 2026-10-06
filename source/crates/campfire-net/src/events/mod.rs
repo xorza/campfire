@@ -18,6 +18,7 @@ pub(crate) mod order_dropped;
 pub(crate) mod orders_sent;
 pub(crate) mod receipt_refused;
 pub(crate) mod receipt_unsaved;
+pub(crate) mod save_refused;
 pub(crate) mod seeds_ran_out;
 pub(crate) mod session_aborted;
 pub(crate) mod session_refused;

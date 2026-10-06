@@ -1,18 +1,25 @@
 use std::path::{Path, PathBuf};
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
+use campfire_capabilities::SaveBy;
 use campfire_common::{Tick, Ticks};
 use campfire_log::LogEvent;
 use campfire_protocol::{CheckpointBegun, CheckpointError, DurableError, Outcome};
 use campfire_runner::{CheckpointBeginError, Session};
 use campfire_sim::StateDelta;
+use lightyear::prelude::MessageReceiver;
 
 use crate::checkpoint_thread::{CheckpointThread, Returned, SignedCheckpoint};
+use crate::error::SaveRefusal;
 use crate::events::checkpoint_taken::CheckpointTaken;
+use crate::events::save_refused::SaveRefused;
 use crate::events::seeds_ran_out::SeedsRanOut;
+use crate::local_session::LocalSession;
+use crate::save_command::SaveCommand;
 use crate::server_signer::ServerSigner;
-use crate::sim_server::SimServer;
+use crate::sim_server::{PlayerLink, SimServer};
 
 /// How often, in ticks, the main thread sends the state changed to the checkpoint thread when no
 /// checkpoint is due, so what the match records for the next delta stays as small as this many
@@ -66,14 +73,16 @@ impl Checkpoints {
         }
     }
 
-    /// At the boundary before the next tick: begins the checkpoint due there, once the last delta
-    /// came back, past the seed chain's last segment ending the session aborted instead; with
+    /// At the boundary before the next tick: begins the checkpoint due there, as the plan or a
+    /// save of the mode's says, once the last delta came back, past the seed chain's last segment ending the session aborted instead; with
     /// none due, sends the state changed when `SEND_EVERY` ticks passed since the last delta and
     /// it came back.
     pub(crate) fn begin(world: &mut World) {
-        let next = world.resource::<Session>().log().next_tick();
+        let session = world.resource::<Session>();
+        let next = session.log().next_tick();
+        let saved = session.save_due(world);
         let mut checkpoints = world.resource_mut::<Checkpoints>();
-        let due = checkpoints.plan.first() == Some(&next);
+        let due = saved || checkpoints.plan.first() == Some(&next);
         checkpoints.plan.retain(|&tick| tick > next);
         if !due {
             if checkpoints.sent.after(SEND_EVERY) <= next && !checkpoints.thread.pending() {
@@ -113,6 +122,58 @@ impl Checkpoints {
             Some(error) => Err(error),
             None => Ok(()),
         }
+    }
+
+    /// Takes the save commands of the seated players: on a local server, a save makes a
+    /// checkpoint due at the boundary after the next tick, unless the mode alone saves, and a load
+    /// goes back to the latest save; each refused one is logged.
+    pub(crate) fn take_commands(world: &mut World, mut taken: Local<'_, Vec<SaveCommand>>) {
+        let mut links = world.query::<(&PlayerLink, &mut MessageReceiver<SaveCommand>)>();
+        for (link, mut receiver) in links.iter_mut(world) {
+            if !link.refused() {
+                taken.extend(receiver.receive());
+            }
+        }
+        for command in taken.drain(..) {
+            if let Err(refusal) = Checkpoints::take(world, command) {
+                SaveRefused {
+                    reason: refusal.to_string(),
+                }
+                .log();
+            }
+        }
+    }
+
+    /// Takes `command`; why not, when it refuses it.
+    fn take(world: &mut World, command: SaveCommand) -> Result<(), SaveRefusal> {
+        if !world.contains_resource::<LocalSession>() {
+            return Err(SaveRefusal::NotLocal);
+        }
+        if !world.contains_resource::<Checkpoints>() {
+            return Err(SaveRefusal::NoData);
+        }
+        match command {
+            SaveCommand::Save => {
+                let session = world.resource::<Session>();
+                if session.saves().by == SaveBy::Mode {
+                    return Err(SaveRefusal::ByMode);
+                }
+                let next = session.log().next_tick();
+                world
+                    .resource_mut::<Checkpoints>()
+                    .request(next.after(Ticks::ONE));
+            }
+            SaveCommand::LoadLatest => {
+                if let Err(error) = Checkpoints::settle(world) {
+                    world.resource_mut::<Checkpoints>().failure = Some(error);
+                    return Ok(());
+                }
+                let latest = world.resource::<Session>().log().checkpoints().last();
+                let segment = latest.ok_or(SaveRefusal::NoSave)?.segment;
+                SimServer::load(world, segment).expect("no checkpoint is on the thread");
+            }
+        }
+        Ok(())
     }
 
     /// The failure of a snapshot's write, once one failed, given once.

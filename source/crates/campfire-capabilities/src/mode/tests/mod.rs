@@ -37,6 +37,7 @@ use crate::mode::mode_units::ModeUnits;
 use crate::mode::offer::Offer;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
+use crate::mode::saves_data::SavesData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::destination::Destination;
@@ -579,6 +580,7 @@ fn mode_files() -> ModeFiles {
             tracks: tracks(),
             shop: None,
             players: PlayersData::default(),
+            saves: SavesData::default(),
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),

@@ -30,6 +30,10 @@ levels = [100, 300, 600]
 [players]
 late_join = true
 
+# The mode saves as the first wave comes, at the end of tick 0, and every 12 s.
+[saves]
+autosave_ms = 12000
+
 [state]
 joined = { type = "int", default = -1 }
 left = { type = "int", default = -1 }

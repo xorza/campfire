@@ -10,7 +10,7 @@ use campfire_sim::StateCopy;
 use crate::error::{
     CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
 };
-use crate::session::Session;
+use crate::session::{Session, SessionParts};
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.
 #[derive(Debug)]
@@ -41,6 +41,24 @@ impl Runner {
         let mut world = World::new();
         Session::resume(&mut world, log, seeds, packages, segment, snapshot)?;
         Ok(Runner { world })
+    }
+
+    /// Loads the save that starts segment `segment`, whose snapshot is `snapshot`: the log goes
+    /// back to it, as `SessionLog::load` says, and the match of the mode `packages` holds
+    /// resumes from it, as `Session::resume` does.
+    pub fn load(
+        mut self,
+        segment: u32,
+        snapshot: &[u8],
+        packages: &ModePackages,
+    ) -> Result<Runner, ResumeError> {
+        let session = self
+            .world
+            .remove_resource::<Session>()
+            .expect("a runner holds its session");
+        let SessionParts { mut log, seeds } = session.into_parts();
+        log.load(segment).map_err(ResumeError::Load)?;
+        Runner::resume(log.rewound(), seeds, packages, segment, snapshot)
     }
 
     /// See `Session::record`.
@@ -82,6 +100,11 @@ impl Runner {
     /// See `Session::resume_journal`.
     pub fn resume_journal(&mut self, journal: Journal) {
         self.world.resource_mut::<Session>().resume_journal(journal);
+    }
+
+    /// See `Session::save_due`.
+    pub fn save_due(&self) -> bool {
+        self.world.resource::<Session>().save_due(&self.world)
     }
 
     /// See `Session::begin_checkpoint`.

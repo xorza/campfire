@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_app::AppExit;
@@ -108,7 +109,7 @@ impl Opening {
         let slots = usize::try_from(setup.packages.manifest().slots()).expect("slots fit usize");
         let tick_hz = setup.packages.manifest().tick_hz.default();
         let mut lobby = Lobby::new(LobbySetup {
-            packages: setup.packages,
+            packages: Arc::new(setup.packages),
             seed_chain,
             tick_hz,
             inputs: InputRules::LAN,
