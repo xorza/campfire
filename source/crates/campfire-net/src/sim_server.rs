@@ -42,6 +42,8 @@ use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
 use crate::events::unit_died::UnitDied;
+use crate::faults::Faults;
+use crate::faults::fault::Fault;
 use crate::input_message::InputMessage;
 use crate::journal_watch::JournalWatch;
 use crate::lobby::Lobby;
@@ -109,6 +111,7 @@ impl TickHashes {
 
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
+        app.init_resource::<Faults>();
         app.add_systems(
             Update,
             (
@@ -403,23 +406,19 @@ impl SimServer {
     }
 
     /// Waits for the checkpoint on its thread in the session in `world`, whose server keeps its
-    /// files, and logs its record; an error when its snapshot was not written.
-    pub fn settle_checkpoint(world: &mut World) -> Result<(), DurableError> {
-        Checkpoints::settle(world)
+    /// files, and logs its record; reports the fault when its snapshot was not written.
+    pub fn settle_checkpoint(world: &mut World) {
+        if let Err(error) = Checkpoints::settle(world) {
+            world
+                .resource_mut::<Faults>()
+                .report(Fault::Snapshot(error));
+        }
     }
 
     /// Makes a checkpoint due at the boundary before `tick` in the session in `world`, whose
     /// server keeps its files.
     pub fn request_checkpoint(world: &mut World, tick: Tick) {
         world.resource_mut::<Checkpoints>().request(tick);
-    }
-
-    /// The failure of a checkpoint's snapshot write, once one failed, given once: the server
-    /// exits, as on a failed journal.
-    pub fn checkpoint_failure(world: &mut World) -> Option<DurableError> {
-        world
-            .get_resource_mut::<Checkpoints>()
-            .and_then(|mut checkpoints| checkpoints.take_failure())
     }
 
     /// Opens the door of the session of `terms` on the server of `server`, which signs what it

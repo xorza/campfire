@@ -96,7 +96,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     for _ in 0..10 {
         local.step();
     }
-    SimServer::settle_checkpoint(local.server_mut().world_mut()).unwrap();
+    SimServer::settle_checkpoint(local.server_mut().world_mut());
     let save = log(&local).checkpoints().next().unwrap().clone();
     assert_eq!(save.segment, 1);
     for _ in 0..30 {
@@ -176,7 +176,7 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
     for _ in 0..40 {
         local.step();
     }
-    SimServer::settle_checkpoint(local.server_mut().world_mut()).unwrap();
+    SimServer::settle_checkpoint(local.server_mut().world_mut());
     let save = log(&local).checkpoints().next().unwrap().clone();
     assert_eq!((save.segment, save.tick), (1, Tick::new(30)));
     let id = log(&local).session_id();
@@ -203,7 +203,7 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
     // written again.
     local.restart_server();
     assert_eq!(local.next_tick(End::Server), 30);
-    SimServer::settle_checkpoint(local.server_mut().world_mut()).unwrap();
+    SimServer::settle_checkpoint(local.server_mut().world_mut());
     assert_eq!(log(&local).checkpoint_at(save.tick), Some(&save));
     assert!(snapshot.exists());
 }

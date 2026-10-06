@@ -1,15 +1,19 @@
 //! Checkpoints on a server that keeps its data: taken on their thread at the boundaries due, a
 //! restore builds the match from the latest one with a record and replays from there, takes a
 //! checkpoint begun with no record again, and the published log verifies with its snapshots; a
-//! checkpoint past the seed chain's last segment ends the session aborted.
+//! checkpoint past the seed chain's last segment ends the session aborted, and one whose
+//! snapshot is not written ends the server.
 
 use std::fs;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU8, NonZeroU32};
 use std::path::{Path, PathBuf};
 
+use bevy_app::AppExit;
 use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{SeedsRanOut, ServerData, SessionDir, SimServer, TickHashes};
+use campfire_net::{
+    CheckpointFailed, SeedsRanOut, ServerData, ServerExit, SessionDir, SimServer, TickHashes,
+};
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Runner, Session};
@@ -36,7 +40,7 @@ fn checkpointed(data: &Scratch) -> (LocalMatch, Vec<StateHash>) {
         for _ in 0..steps {
             local.step();
         }
-        SimServer::settle_checkpoint(local.server_mut().world_mut()).unwrap();
+        SimServer::settle_checkpoint(local.server_mut().world_mut());
     }
     assert_eq!(log(&local).checkpoints().count(), 2);
     let hashes = local
@@ -179,4 +183,29 @@ fn a_checkpoint_past_the_seed_chain_ends_the_session_aborted() {
             tick: Tick::new(30)
         }]
     );
+}
+
+#[test]
+fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
+    // A file holds the place of the session's snapshots' directory, so the snapshot of the
+    // checkpoint before tick 30 is not written, on every OS.
+    let data = Scratch::new("checkpoint-fault");
+    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    local.keep_data(data.0.clone());
+    local.start_match();
+    let place = snapshots(&data, &local);
+    fs::write(&place, b"").unwrap();
+    SimServer::request_checkpoint(local.server_mut().world_mut(), Tick::new(30));
+    for _ in 0..40 {
+        local.step();
+    }
+    // The fault reaches `Faults`, a snapshot's, which ends the server.
+    let world = local.server_mut().world_mut();
+    SimServer::settle_checkpoint(world);
+    let code = NonZeroU8::new(ServerExit::JOURNAL_FAILED).unwrap();
+    assert_eq!(ServerExit::due(world, false), Some(AppExit::Error(code)));
+    assert_eq!(ServerExit::due(world, false), None);
+    assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);
+    assert_eq!(local.log().take::<CheckpointFailed>().len(), 1);
+    assert!(place.is_file());
 }

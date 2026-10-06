@@ -15,6 +15,8 @@ use crate::error::SaveRefusal;
 use crate::events::checkpoint_taken::CheckpointTaken;
 use crate::events::save_refused::SaveRefused;
 use crate::events::seeds_ran_out::SeedsRanOut;
+use crate::faults::Faults;
+use crate::faults::fault::Fault;
 use crate::local_session::LocalSession;
 use crate::save_command::SaveCommand;
 use crate::server_signer::ServerSigner;
@@ -38,8 +40,6 @@ pub(crate) struct Checkpoints {
     thread: CheckpointThread,
     /// The boundary the last delta was made at.
     sent: Tick,
-    /// The failure of a snapshot's write, once one failed.
-    failure: Option<DurableError>,
 }
 
 impl Checkpoints {
@@ -62,7 +62,6 @@ impl Checkpoints {
             plan: Vec::new(),
             thread,
             sent,
-            failure: None,
         });
     }
 
@@ -91,7 +90,9 @@ impl Checkpoints {
             return;
         }
         if let Err(error) = Checkpoints::settle(world) {
-            world.resource_mut::<Checkpoints>().failure = Some(error);
+            world
+                .resource_mut::<Faults>()
+                .report(Fault::Snapshot(error));
             return;
         }
         match world.resource_mut::<Session>().begin_checkpoint() {
@@ -107,21 +108,22 @@ impl Checkpoints {
         }
     }
 
-    /// Logs the record of the checkpoint the thread finished, when it did.
+    /// Logs the record of the checkpoint the thread finished, when it did; reports its fault
+    /// when its snapshot was not written.
     pub(crate) fn finish(world: &mut World) {
         let returned = world.resource_mut::<Checkpoints>().thread.take();
-        Checkpoints::record(world, returned);
+        if let Err(error) = Checkpoints::record(world, returned) {
+            world
+                .resource_mut::<Faults>()
+                .report(Fault::Snapshot(error));
+        }
     }
 
     /// Waits for the delta on the thread, and logs the record of its checkpoint; an error when
     /// its snapshot was not written.
     pub(crate) fn settle(world: &mut World) -> Result<(), DurableError> {
         let returned = world.resource_mut::<Checkpoints>().thread.wait();
-        Checkpoints::record(world, returned);
-        match world.resource_mut::<Checkpoints>().failure.take() {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
+        Checkpoints::record(world, returned)
     }
 
     /// Takes the save commands of the seated players: on a local server, a save makes a
@@ -165,7 +167,9 @@ impl Checkpoints {
             }
             SaveCommand::LoadLatest => {
                 if let Err(error) = Checkpoints::settle(world) {
-                    world.resource_mut::<Checkpoints>().failure = Some(error);
+                    world
+                        .resource_mut::<Faults>()
+                        .report(Fault::Snapshot(error));
                     return Ok(());
                 }
                 let latest = world.resource::<Session>().log().checkpoints().last();
@@ -174,11 +178,6 @@ impl Checkpoints {
             }
         }
         Ok(())
-    }
-
-    /// The failure of a snapshot's write, once one failed, given once.
-    pub(crate) fn take_failure(&mut self) -> Option<DurableError> {
-        self.failure.take()
     }
 
     /// Takes the checkpoint begun at the boundary before the next tick again, on the main thread,
@@ -220,13 +219,16 @@ impl Checkpoints {
         });
     }
 
-    fn record(world: &mut World, returned: Option<Returned>) {
+    /// Logs the record `returned` brings, when it brings one; an error when its snapshot was
+    /// not written.
+    fn record(world: &mut World, returned: Option<Returned>) -> Result<(), DurableError> {
         match returned {
-            None | Some(Returned::Applied) => {}
-            Some(Returned::Taken(signed)) => Checkpoints::log(world, signed),
-            Some(Returned::Failed(error)) => {
-                world.resource_mut::<Checkpoints>().failure = Some(error);
+            None | Some(Returned::Applied) => Ok(()),
+            Some(Returned::Taken(signed)) => {
+                Checkpoints::log(world, signed);
+                Ok(())
             }
+            Some(Returned::Failed(error)) => Err(error),
         }
     }
 

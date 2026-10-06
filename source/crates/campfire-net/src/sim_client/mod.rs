@@ -36,8 +36,8 @@ use crate::events::match_started::MatchStarted;
 use crate::events::order_dropped::OrderDropped;
 use crate::events::orders_sent::OrdersSent;
 use crate::events::receipt_refused::ReceiptRefused;
-use crate::events::receipt_unsaved::ReceiptUnsaved;
 use crate::events::session_refused::SessionRefused;
+use crate::faults::Faults;
 use crate::input_message::InputMessage;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
@@ -184,6 +184,7 @@ impl Plugin for SimClient {
         ));
         app.init_resource::<PendingOrders>();
         app.init_resource::<PendingSaves>();
+        app.init_resource::<Faults>();
         app.add_observer(lose_link);
         app.add_systems(
             Update,
@@ -195,6 +196,7 @@ impl Plugin for SimClient {
                 receive_superseded,
                 receive_match_start,
                 receive_receipt,
+                Faults::watch,
                 receive_relations,
                 receive_match_end,
                 report_deaths,
@@ -332,15 +334,6 @@ fn receive_receipt(
                 writer.give(receipt);
             }
         }
-    }
-    let Some(writer) = writer else {
-        return;
-    };
-    for error in writer.failures() {
-        ReceiptUnsaved {
-            error: error.to_string(),
-        }
-        .log();
     }
 }
 

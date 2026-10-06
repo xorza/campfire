@@ -12,6 +12,7 @@ mod client_data;
 mod door;
 mod error;
 mod events;
+mod faults;
 mod input_message;
 mod join;
 mod journal_watch;

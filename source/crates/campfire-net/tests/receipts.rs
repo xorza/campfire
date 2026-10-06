@@ -1,12 +1,13 @@
 //! Receipts: each player of a match whose server keeps a journal gets a receipt of the inputs the
 //! journal synced, keeps it, and writes it to the client's data directory; the journal the server
-//! leaves when it stops holds every input a receipt names.
+//! leaves when it stops holds every input a receipt names. A receipt not written is logged, and
+//! the client plays on.
 
 use std::time::Duration;
 use std::{fs, thread};
 
 use campfire_net::internals::{LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{JoinState, JournalWatch, PlayerLink, ServerData, SessionDir};
+use campfire_net::{JoinState, JournalWatch, PlayerLink, ReceiptUnsaved, ServerData, SessionDir};
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Controller, SignedReceipt};
 use campfire_runner::Session;
@@ -95,4 +96,33 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
             .unwrap();
         assert_eq!(*delegation.id(), receipt.delegation);
     }
+}
+
+#[test]
+fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
+    // A file holds the place of client 0's receipts' directory, so its receipts are not written,
+    // on every OS; client 1's are.
+    let data = Scratch::new("receipt-fault");
+    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
+    local.keep_data(data.0.clone());
+    let place = data.0.join("client-0").join("receipts");
+    fs::write(&place, b"").unwrap();
+    local.start_match();
+    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    // The writer fails in its own time, after a receipt came; the client's `Faults` logs it.
+    let mut unsaved = Vec::new();
+    for _ in 0..2000 {
+        local.step();
+        unsaved.extend(local.log().take::<ReceiptUnsaved>());
+        if !unsaved.is_empty() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert!(!unsaved.is_empty());
+    // The client keeps its receipt and plays on.
+    let state = local.client(0).world().resource::<JoinState>();
+    assert!(state.receipt().is_some());
+    assert!(state.clock().is_some());
+    assert!(place.is_file());
 }
