@@ -61,6 +61,7 @@ tracing-subscriber = { version = "=0.3.23", default-features = false, features =
     "tracing-log",
 ] }
 unic-langid = "=0.9.6"
+wtransport = "=0.6.1"
 
 campfire-capabilities = { path = "crates/campfire-capabilities" }
 campfire-common = { path = "crates/campfire-common" }

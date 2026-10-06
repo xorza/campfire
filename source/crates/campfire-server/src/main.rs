@@ -43,18 +43,20 @@ use campfire_protocol::secp256k1::Keypair;
 use campfire_runner::Session;
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
-use lightyear::prelude::{Identity, LinkOf, Linked, LocalAddr, ReplicationSender};
+use lightyear::prelude::{LinkOf, Linked, LocalAddr, ReplicationSender};
 use tracing::{error, info};
 
 use crate::data_path::DataPath;
 use crate::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, Restore};
 use crate::server_config::ServerConfig;
+use crate::server_tls::ServerTls;
 
 mod data_path;
 mod error;
 mod opening;
 mod server_config;
+mod server_tls;
 
 /// The process's exit code when the session's journal fails: sysexits' `EX_IOERR`, an error in
 /// I/O on a file.
@@ -117,37 +119,15 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let identity = Identity::self_signed(["localhost"]).expect("a fixed name is a valid SAN");
-    let certificate =
-        CertificateHash::new(*identity.certificate_chain().as_slice()[0].hash().as_ref());
-    let server = ServerSetup {
-        key: data_dir.key,
-        certificate,
-        times,
-        clock: unix_now,
-        entropy: fill,
-    };
-    let opening = Opening::of(OpeningSetup {
-        data: &data,
-        packages,
+    let Started {
+        opening,
         server,
-        bots,
-        segments: SEGMENTS,
-    });
-    let opening = match opening {
-        Ok(opening) => opening,
-        Err(error @ (OpeningError::NewSession(_) | OpeningError::NewJournal(_))) => {
-            JournalFailed {
-                error: error.to_string(),
-            }
-            .log();
-            return ExitCode::from(JOURNAL_FAILED);
-        }
-        Err(error) => {
-            error!(data = %data.display(), %error, "no session starts");
-            return ExitCode::FAILURE;
-        }
+        tls,
+    } = match Started::open(&data, packages, data_dir.key, times, bots) {
+        Ok(started) => started,
+        Err(code) => return code,
     };
+    let certificate = tls.certificate();
     let listening = announce(&opening, &mode, address, certificate, &server.key);
     let tick = TickRate::new(opening.terms().tick_hz).length();
     let mut app = server_app(
@@ -162,13 +142,74 @@ fn main() -> ExitCode {
         .spawn((
             RawServer,
             WebTransportServerIo {
-                certificate: identity,
+                certificate: tls.into_identity(),
             },
             LocalAddr(address),
         ))
         .id();
     app.world_mut().trigger(Start { entity: server });
     exit_code(app.run())
+}
+
+/// What the server starts with: its session, its setup, and its TLS identity.
+#[derive(Debug)]
+struct Started {
+    opening: Opening,
+    server: ServerSetup,
+    tls: ServerTls,
+}
+
+impl Started {
+    /// The session the data directory `data` holds to restore, or a new one of the mode
+    /// `packages` holds, with `bots`; the TLS identity, made again only when no session
+    /// restores; and the server's setup of `key` and `times`. The exit code when one fails.
+    fn open(
+        data: &Path,
+        packages: ModePackages,
+        key: Keypair,
+        times: SessionTimes,
+        bots: ServerBots,
+    ) -> Result<Started, ExitCode> {
+        let no_session = |error: OpeningError| {
+            error!(data = %data.display(), %error, "no session starts");
+            ExitCode::FAILURE
+        };
+        let found =
+            Opening::find(data, &packages, times.restore_window, key, fill).map_err(no_session)?;
+        let tls = ServerTls::open(data, unix_now(), found.is_some()).map_err(|error| {
+            error!(data = %data.display(), %error, "the TLS identity does not open");
+            ExitCode::FAILURE
+        })?;
+        let server = ServerSetup {
+            key,
+            certificate: tls.certificate(),
+            times,
+            clock: unix_now,
+            entropy: fill,
+        };
+        let setup = OpeningSetup {
+            data,
+            packages,
+            server,
+            bots,
+            segments: SEGMENTS,
+        };
+        let opening = Opening::of(found, setup).map_err(|error| match error {
+            OpeningError::NewSession(_) | OpeningError::NewJournal(_) => {
+                JournalFailed {
+                    error: error.to_string(),
+                }
+                .log();
+                ExitCode::from(JOURNAL_FAILED)
+            }
+            error => no_session(error),
+        })?;
+        Ok(Started {
+            opening,
+            server,
+            tls,
+        })
+    }
 }
 
 /// The server's app: its plugins at `tick` a tick, the session of `opening`, a `listening`

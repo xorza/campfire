@@ -19,6 +19,7 @@ bevy_time.workspace = true
 getrandom.workspace = true
 lightyear.workspace = true
 tracing.workspace = true
+wtransport.workspace = true
 
 [lints]
 workspace = true

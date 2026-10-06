@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
@@ -12,6 +12,7 @@ use campfire_net::{
     SessionRestored, SimServer,
 };
 use campfire_package::ModePackages;
+use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{SeedChain, SessionPrivate, SessionTerms};
 use campfire_runner::{InputRules, Session};
 use tracing::error;
@@ -47,11 +48,14 @@ pub(crate) struct OpeningSetup<'a> {
 }
 
 impl Opening {
-    /// What the data directory `setup.data` holds to start: the session to restore, or a new
-    /// one, its directory, private record and journal made. An error for a data directory whose
-    /// session does not read or end, and for a session or a journal not made.
-    pub(crate) fn of(setup: OpeningSetup<'_>) -> Result<Opening, OpeningError> {
-        if let Some(session) = Opening::find(&setup)? {
+    /// What the server starts: `found`, the session to restore that `find` gave, or a new one,
+    /// its directory, private record and journal made. An error for a session or a journal not
+    /// made.
+    pub(crate) fn of(
+        found: Option<RestoredSession>,
+        setup: OpeningSetup<'_>,
+    ) -> Result<Opening, OpeningError> {
+        if let Some(session) = found {
             return Ok(Opening::Restored(Box::new(Restore {
                 session,
                 packages: setup.packages,
@@ -69,11 +73,18 @@ impl Opening {
         }
     }
 
-    /// The session a stop ended, within the window: none when the data directory holds none;
-    /// when its match never started, whose directory goes; and when it is past the window or
-    /// ended, whose log is published.
-    fn find(setup: &OpeningSetup<'_>) -> Result<Option<RestoredSession>, OpeningError> {
-        let data = setup.data;
+    /// The session a stop ended, under the data directory `data`, of the mode `packages` holds,
+    /// within the restore window `window`: none when the directory holds none; when its match
+    /// never started, whose directory goes; and when it is past the window or ended, whose log
+    /// is published, the server key `key` signing its result with auxiliary randomness from
+    /// `entropy`. An error for a session that does not read or end.
+    pub(crate) fn find(
+        data: &Path,
+        packages: &ModePackages,
+        window: Duration,
+        key: Keypair,
+        entropy: fn(&mut [u8; 32]),
+    ) -> Result<Option<RestoredSession>, OpeningError> {
         let Some(dir) = SessionDir::find(data).map_err(OpeningError::Find)? else {
             return Ok(None);
         };
@@ -84,17 +95,12 @@ impl Opening {
         let idle = SystemTime::now()
             .duration_since(session.modified)
             .unwrap_or_default();
-        if session.log.result().is_none() && idle <= setup.server.times.restore_window {
+        if session.log.result().is_none() && idle <= window {
             return Ok(Some(session));
         }
         let id = session.log.session_id();
         let file = session
-            .abort(
-                data,
-                &setup.packages,
-                setup.server.key,
-                setup.server.entropy,
-            )
+            .abort(data, packages, key, entropy)
             .map_err(OpeningError::Abort)?;
         SessionAborted { session: id, file }.log();
         Ok(None)
