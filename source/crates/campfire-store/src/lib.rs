@@ -4,6 +4,8 @@
 
 mod append_writer;
 mod durable_file;
+mod exchange;
+mod latest_writer;
 mod secret_file;
 mod worker;
 
@@ -11,8 +13,11 @@ pub use append_writer::AppendWriter;
 pub use append_writer::append_file::AppendFile;
 pub use append_writer::append_watch::AppendWatch;
 pub use append_writer::error::{AppendError, AppendOpenError};
+pub use append_writer::slow_sync::SlowSync;
 pub use durable_file::DurableFile;
 pub use durable_file::error::DurableError;
+pub use exchange::Exchange;
+pub use latest_writer::LatestWriter;
 pub use secret_file::SecretFile;
 pub use secret_file::error::SecretReadError;
 pub use worker::Worker;

@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 
 use crate::append_writer::Shared;
 use crate::append_writer::error::AppendError;
+use crate::append_writer::slow_sync::SlowSync;
 
 /// What another part of the program sees of an append writer: how many of its records are
 /// durable, and its failure.
@@ -29,6 +30,15 @@ impl AppendWatch {
             .failure
             .lock()
             .expect("no thread panics holding the failure")
+            .take()
+    }
+
+    /// The slowest sync since the last call, when one was slow.
+    pub fn take_slow_sync(&self) -> Option<SlowSync> {
+        self.0
+            .slow
+            .lock()
+            .expect("no thread panics holding a slow sync")
             .take()
     }
 }

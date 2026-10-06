@@ -142,6 +142,10 @@ impl Plugin for SimServer {
         );
         app.add_systems(
             Update,
+            JournalWatch::warn_slow.run_if(resource_exists::<JournalWatch>),
+        );
+        app.add_systems(
+            Update,
             Checkpoints::take_commands
                 .after(Door::watch)
                 .run_if(resource_exists::<Door>)

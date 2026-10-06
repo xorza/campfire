@@ -2,25 +2,29 @@ use std::fs::OpenOptions;
 use std::mem;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::{Duration, Instant};
 
 use crate::append_writer::append_file::AppendFile;
 use crate::append_writer::append_watch::AppendWatch;
 use crate::append_writer::error::{AppendError, AppendOpenError};
+use crate::append_writer::slow_sync::SlowSync;
 use crate::durable_file::DurableFile;
 use crate::worker::Worker;
 
 pub(crate) mod append_file;
 pub(crate) mod append_watch;
 pub(crate) mod error;
+pub(crate) mod slow_sync;
 
 /// A file that records are appended to, as a write-ahead journal's: the caller puts each record
 /// into a buffer, never touching the disk, and a worker appends what the buffer holds, syncs, and
 /// publishes how many records are durable; the next sync waits for the next records, so a burst
 /// of records shares one sync. A crash loses at most the records not yet synced. A failed write
 /// or sync is never retried, as the data a failed sync held may be lost and a retry can succeed
-/// over the loss: the worker stops, and reports the failure once. Dropping the writer writes and
-/// syncs what it holds, then ends the worker.
+/// over the loss: the worker stops, and reports the failure once. A sync slower than
+/// `SLOW_SYNC` is kept for the caller to see. Dropping the writer writes and syncs what it holds,
+/// then ends the worker.
 #[derive(Debug)]
 pub struct AppendWriter {
     shared: Arc<Shared>,
@@ -35,6 +39,9 @@ pub(crate) struct Shared {
     wake: Condvar,
     durable: AtomicU64,
     failure: Mutex<Option<AppendError>>,
+    /// A sync longer than this is slow.
+    slow_after: Duration,
+    slow: Mutex<Option<SlowSync>>,
 }
 
 /// The records the caller appended and the worker has not taken yet.
@@ -49,6 +56,11 @@ struct Pending {
 }
 
 impl AppendWriter {
+    /// How long a sync takes before it is slow, as etcd warns of a slow `fdatasync`: a sync of
+    /// a few records takes milliseconds on a healthy disk, and a second is far past what a
+    /// burst of them costs.
+    pub const SLOW_SYNC: Duration = Duration::from_secs(1);
+
     /// A new file at `path`, holding `head` alone, written durably as a whole file, and open to
     /// append on the worker `name`.
     pub fn create(name: &str, path: &Path, head: &[u8]) -> Result<AppendWriter, AppendOpenError> {
@@ -79,11 +91,18 @@ impl AppendWriter {
 
     /// A writer that appends to `file` on the worker `name`.
     pub fn start<F: AppendFile>(name: &str, file: F) -> AppendWriter {
+        AppendWriter::start_slow_after(name, file, AppendWriter::SLOW_SYNC)
+    }
+
+    /// A writer whose syncs longer than `slow_after` are slow.
+    fn start_slow_after<F: AppendFile>(name: &str, file: F, slow_after: Duration) -> AppendWriter {
         let shared = Arc::new(Shared {
             pending: Mutex::new(Pending::default()),
             wake: Condvar::new(),
             durable: AtomicU64::new(0),
             failure: Mutex::new(None),
+            slow_after,
+            slow: Mutex::new(None),
         });
         let writing = Arc::clone(&shared);
         let worker = Worker::start(name, move || writing.write(file));
@@ -139,7 +158,12 @@ impl Shared {
             let written = file
                 .append(&taken)
                 .map_err(AppendError::Write)
-                .and_then(|()| file.sync().map_err(AppendError::Sync));
+                .and_then(|()| {
+                    let start = Instant::now();
+                    let synced = file.sync().map_err(AppendError::Sync);
+                    self.note_sync(start.elapsed());
+                    synced
+                });
             if let Err(error) = written {
                 *self
                     .failure
@@ -154,11 +178,33 @@ impl Shared {
             taken.clear();
         }
     }
+
+    /// Keeps a sync that took `took` when it is slow, and slower than one kept.
+    fn note_sync(&self, took: Duration) {
+        if took <= self.slow_after {
+            return;
+        }
+        let mut slow = self
+            .slow
+            .lock()
+            .expect("no thread panics holding a slow sync");
+        if slow.is_none_or(|kept| kept.took < took) {
+            *slow = Some(SlowSync { took });
+        }
+    }
 }
 
 impl Drop for AppendWriter {
     fn drop(&mut self) {
-        self.shared.lock().closing = true;
+        // A drop as a panic unwinds must not panic again, which would abort: a caller's record
+        // that panicked as it was written poisoned the lock.
+        let mut pending = self
+            .shared
+            .pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        pending.closing = true;
+        drop(pending);
         self.shared.wake.notify_one();
     }
 }

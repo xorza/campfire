@@ -110,14 +110,14 @@ impl Checkpoints {
 
     /// Logs the record of the checkpoint the thread finished, when it did.
     pub(crate) fn finish(world: &mut World) {
-        let returned = world.resource_mut::<Checkpoints>().thread.done(false);
+        let returned = world.resource_mut::<Checkpoints>().thread.take();
         Checkpoints::record(world, returned);
     }
 
     /// Waits for the delta on the thread, and logs the record of its checkpoint; an error when
     /// its snapshot was not written.
     pub(crate) fn settle(world: &mut World) -> Result<(), DurableError> {
-        let returned = world.resource_mut::<Checkpoints>().thread.done(true);
+        let returned = world.resource_mut::<Checkpoints>().thread.wait();
         Checkpoints::record(world, returned);
         match world.resource_mut::<Checkpoints>().failure.take() {
             Some(error) => Err(error),

@@ -73,6 +73,7 @@ pub use events::session_aborted::SessionAborted;
 pub use events::session_refused::SessionRefused;
 pub use events::session_restored::SessionRestored;
 pub use events::session_written::SessionWritten;
+pub use events::slow_sync::SlowSync;
 pub use events::ticks_caught_up::TicksCaughtUp;
 pub use events::time_dropped::TimeDropped;
 

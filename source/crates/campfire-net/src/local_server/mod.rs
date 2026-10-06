@@ -4,7 +4,6 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
@@ -23,6 +22,7 @@ use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
 use campfire_runner::InputRules;
 use campfire_sim::TickRate;
+use campfire_store::Worker;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::{RawServer, ServerPlugins};
 use lightyear::prelude::{Link, LinkOf, Linked, PeerAddr, ReplicationSender};
@@ -60,11 +60,12 @@ const FRAME: Duration = Duration::from_millis(2);
 /// match or aborted, publishes its log, and its thread ends. Both ends follow the setup's pace.
 pub struct LocalServer {
     stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
     pin: ServerPin,
     /// The client's end of the link, until the client takes it.
     link: Option<CrossbeamIo>,
     relinks: Relinks,
+    /// Dropped after the server's `Drop` asks it to stop.
+    _worker: Worker,
 }
 
 /// The client's end of the new link a local server makes once it starts again after a load,
@@ -194,17 +195,13 @@ impl LocalServer {
             restart: Arc::new(AtomicBool::new(false)),
             relinks: relinks.clone(),
         };
-        let thread = thread::Builder::new()
-            .name("local server".to_owned())
-            .spawn(move || {
-                let mut app = runs.app(server_io, dir);
-                app.insert_resource(lobby);
-                runs.run(app);
-            })
-            .expect("the OS starts a thread");
+        let worker = Worker::start("local server", move || {
+            let mut app = runs.app(server_io, dir);
+            app.insert_resource(lobby);
+            runs.run(app);
+        });
         Ok(LocalServer {
             stop,
-            thread: Some(thread),
             pin: ServerPin {
                 key: key.x_only_public_key().0,
                 certificate: CERTIFICATE,
@@ -212,6 +209,7 @@ impl LocalServer {
             },
             link: Some(client_io),
             relinks,
+            _worker: worker,
         })
     }
 
@@ -292,9 +290,6 @@ impl fmt::Debug for LocalServer {
 impl Drop for LocalServer {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
-            thread.join().expect("the local server does not panic");
-        }
     }
 }
 

@@ -44,6 +44,16 @@ impl AppendFile for GatedFile {
     }
 }
 
+/// Sends on its channel when dropped, so a test sees a drop return.
+#[derive(Debug)]
+struct SendOnDrop(mpsc::Sender<()>);
+
+impl Drop for SendOnDrop {
+    fn drop(&mut self) {
+        self.0.send(()).unwrap_or(());
+    }
+}
+
 #[test]
 fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() {
     for (append, sync) in [(true, false), (false, true)] {
@@ -75,9 +85,12 @@ fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() 
 }
 
 #[test]
-fn a_writer_is_settled_once_its_records_are_synced() {
+fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
+    // Syncs past 200 ms are slow, for a test that holds one 300 ms, not a second; one answered
+    // at once takes microseconds, far below.
+    let slow_after = Duration::from_millis(200);
     let (sync, gate) = mpsc::channel();
-    let writer = AppendWriter::start("gated", GatedFile(gate));
+    let writer = AppendWriter::start_slow_after("gated", GatedFile(gate), slow_after);
     let watch = writer.watch();
     assert!(watch.settled());
     writer.append(|out| out.extend_from_slice(b"held"));
@@ -87,7 +100,45 @@ fn a_writer_is_settled_once_its_records_are_synced() {
         thread::yield_now();
     }
     assert!(watch.settled());
+    assert_eq!(watch.take_slow_sync(), None);
+
+    // Held 300 ms: slow, by at least that, and taken once.
+    writer.append(|out| out.extend_from_slice(b"slow"));
+    let held = Duration::from_millis(300);
+    thread::sleep(held);
+    sync.send(()).unwrap();
+    while watch.durable() < 2 {
+        thread::yield_now();
+    }
+    let slow = watch.take_slow_sync().expect("the held sync is slow");
+    assert!(slow.took >= held, "{slow:?}");
+    assert_eq!(watch.take_slow_sync(), None);
     drop(sync);
+}
+
+#[test]
+fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
+    // The worker's sync waits for a word that comes only once the test saw the drop return.
+    let (release, gate) = mpsc::channel();
+    let (returned, dropped) = mpsc::channel();
+    let owner = thread::spawn(move || {
+        let _returned = SendOnDrop(returned);
+        let writer = AppendWriter::start("held", GatedFile(gate));
+        writer.append(|out| out.extend_from_slice(b"held"));
+        // Once the worker took the record, it waits in its sync.
+        while !writer.shared.lock().bytes.is_empty() {
+            thread::yield_now();
+        }
+        // A record that panics as it is written poisons the lock the drop takes.
+        writer.append(|_| panic!("the owner panics"));
+    });
+    dropped
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the drop returns");
+    // The owner's panic is its own, and no other passed on, which would have aborted.
+    let payload = owner.join().unwrap_err();
+    assert_eq!(payload.downcast_ref::<&str>(), Some(&"the owner panics"));
+    drop(release);
 }
 
 #[test]
