@@ -413,12 +413,11 @@ impl InProcessMatch {
             "a server keeps its data from before the match"
         );
         for (client, app) in self.clients.iter_mut().enumerate() {
-            let own = ClientDir::open(&dir.join(format!("client-{client}")))
-                .unwrap_or_else(|error| panic!("{error}"));
+            let own = ClientDir::open(&dir.join(format!("client-{client}"))).unwrap();
             app.world_mut()
                 .insert_resource(ReceiptWriter::start(Arc::new(own)));
         }
-        let data = ServerDir::open(&dir).unwrap_or_else(|error| panic!("{error}"));
+        let data = ServerDir::open(&dir).unwrap();
         self.server.world_mut().insert_resource(data);
         self.data = Some(dir);
     }
@@ -442,13 +441,13 @@ impl InProcessMatch {
     pub fn restart_server(&mut self) {
         self.stop_server();
         let path = self.data.as_ref().expect("a server with a data directory");
-        let data = ServerDir::open(path).unwrap_or_else(|error| panic!("{error}"));
+        let data = ServerDir::open(path).unwrap();
         let dir = SessionDir::find(&data)
-            .unwrap_or_else(|error| panic!("{error}"))
+            .unwrap()
             .expect("a session the stop ended");
         let session = dir
             .restore()
-            .unwrap_or_else(|error| panic!("{error}"))
+            .unwrap()
             .expect("a session whose match started");
         let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
         let mut server = InProcessMatch::server_app(&self.setup, tick, &self.pace);
@@ -464,7 +463,7 @@ impl InProcessMatch {
             &self.server_setup(),
             self.server_bots(),
         )
-        .unwrap_or_else(|error| panic!("{error}"));
+        .unwrap();
         server.world_mut().insert_resource(data);
         self.server = server;
         for client in 0..self.clients.len() {
@@ -495,8 +494,8 @@ impl InProcessMatch {
                 seed_chain: self.setup.seed_chain,
                 terms: lobby.terms().clone(),
             };
-            let dir = SessionDir::create(data, &private).unwrap_or_else(|error| panic!("{error}"));
-            let files = dir.start().unwrap_or_else(|error| panic!("{error}"));
+            let dir = SessionDir::create(data, &private).unwrap();
+            let files = dir.start().unwrap();
             lobby.keep_files(files);
         }
         self.server.world_mut().insert_resource(lobby);

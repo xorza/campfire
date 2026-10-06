@@ -20,7 +20,7 @@ use campfire_capabilities::{
     Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team, TeamSet,
 };
 use campfire_common::{PlayerSlot, Tick};
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{Session, StartError};
@@ -486,13 +486,13 @@ fn record_inputs(
                 InputMessageRefused {
                     slot: link.slot(),
                     next_tick,
-                    error: error.to_string(),
+                    error: ErrorReport::of(&error).to_string(),
                 }
                 .log();
                 link.refuse();
                 commands.trigger(Unlink {
                     entity,
-                    reason: UnlinkReason::UserRequested(Some(error.to_string())),
+                    reason: UnlinkReason::UserRequested(Some(ErrorReport::of(&error).to_string())),
                 });
                 continue;
             }

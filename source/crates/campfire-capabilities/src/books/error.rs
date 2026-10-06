@@ -12,7 +12,7 @@ use crate::values::declared_name::DeclaredName;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum BookError {
     /// The unit type makes no unit.
-    #[error("{unit_type}: {error}")]
+    #[error("{unit_type}")]
     Kit {
         package: u16,
         unit_type: TypePlace,
@@ -20,7 +20,7 @@ pub enum BookError {
         error: UnitKitError,
     },
     /// The unit type's AI does not load.
-    #[error("{unit_type}: {error}")]
+    #[error("{unit_type}")]
     Ai {
         package: u16,
         unit_type: TypePlace,
@@ -28,7 +28,7 @@ pub enum BookError {
         error: AiError,
     },
     /// A time of the action does not count in ticks.
-    #[error("action {action}: {error}")]
+    #[error("action {action}")]
     Action {
         package: u16,
         action: DeclaredName,
@@ -36,7 +36,7 @@ pub enum BookError {
         error: ActionError,
     },
     /// The modifier does not load.
-    #[error("modifier {modifier}: {problem}")]
+    #[error("modifier {modifier}")]
     Modifier {
         package: u16,
         modifier: DeclaredName,
@@ -50,6 +50,6 @@ pub enum BookError {
         unit_type: DeclaredName,
     },
     /// The mode's teams, relations or map name what the mode does not have.
-    #[error("{0}")]
-    Mode(#[source] ModeError),
+    #[error(transparent)]
+    Mode(ModeError),
 }

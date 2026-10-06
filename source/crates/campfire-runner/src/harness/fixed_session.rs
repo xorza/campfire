@@ -65,7 +65,7 @@ impl FixedSession {
     ) -> FixedSession {
         let terms = SessionRules::of(&packages)
             .terms(server_key(), SEED_CHAIN.commitment(), tick_hz, rules, plan)
-            .unwrap_or_else(|error| panic!("{error}"));
+            .unwrap();
         FixedSession { packages, terms }
     }
 
@@ -99,7 +99,7 @@ impl FixedSession {
 
     /// The log of the session, as it starts, its seed not yet revealed.
     pub fn log(&self) -> SessionLog {
-        SessionLog::new(self.header(self.terms.clone())).unwrap_or_else(|error| panic!("{error}"))
+        SessionLog::new(self.header(self.terms.clone())).unwrap()
     }
 
     /// The seed of the log's segment `segment`.
@@ -118,8 +118,7 @@ impl FixedSession {
         let chains = (0..self.slots())
             .map(|slot| FixedSession::chain(&self.terms, slot))
             .collect();
-        let runner = Runner::new(self.log(), FixedSession::seeds(), &self.packages)
-            .unwrap_or_else(|error| panic!("{error}"));
+        let runner = Runner::new(self.log(), FixedSession::seeds(), &self.packages).unwrap();
         FixedMatch::new(runner, chains, self.terms.clone(), check)
     }
 

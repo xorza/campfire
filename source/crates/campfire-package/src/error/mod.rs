@@ -24,21 +24,21 @@ pub(crate) mod script_problem;
 #[derive(Debug, Error)]
 pub enum ContentError {
     /// The file does not read.
-    #[error("{path}: {error}")]
+    #[error("{path} does not read")]
     Io {
         path: PackagePath,
         #[source]
         error: io::Error,
     },
     /// The data file is not TOML of the expected shape.
-    #[error("{path}: {error}")]
+    #[error("{path} does not parse as its data")]
     Data {
         path: PackagePath,
         #[source]
         error: TomlError,
     },
     /// A directory of packages, or of a package's files, does not read.
-    #[error("{}: {error}", .dir.display())]
+    #[error("{} does not list", .dir.display())]
     Scan {
         dir: PathBuf,
         #[source]
@@ -68,8 +68,8 @@ pub enum StoreError {
     #[error("no package of the fingerprint the session gives {0:?} is held")]
     MissingDependency(String),
     /// The packages do not load.
-    #[error("{0}")]
-    Load(#[source] LoadError),
+    #[error(transparent)]
+    Load(LoadError),
 }
 
 /// Why a mode's packages do not load: `problem`, in the package `package`.
@@ -114,7 +114,12 @@ impl LoadError {
 
 impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "package {}: {}", self.package, self.problem)
+        match &*self.problem {
+            LoadProblem::Content(_) | LoadProblem::Mode(_) | LoadProblem::Map(_) => {
+                write!(f, "package {}", self.package)
+            }
+            problem => write!(f, "package {}: {problem}", self.package),
+        }
     }
 }
 
@@ -152,6 +157,10 @@ mod tests {
             "x",
         ))));
         assert!(content.source().unwrap().is::<ContentError>());
+        // The text holds the problem's own step alone, and none for a problem that only holds an
+        // error: its source gives the rest.
+        assert_eq!(held.to_string(), "package hero: modifier \"haste\"");
+        assert_eq!(content.to_string(), "package hero");
 
         // A problem of the package's own checks holds none.
         for problem in [

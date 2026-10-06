@@ -14,6 +14,7 @@ use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_common::PlayerSlot;
+use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
@@ -245,7 +246,7 @@ impl LocalServer {
             .remove_resource::<PendingRestore>()
             .expect("a restore runs while one waits");
         if let Err(error) = SimServer::restore_match(world, session, &packages, &server, bots) {
-            error!(%error, "the local session does not restore after its load");
+            error!(error = %ErrorReport::of(&error), "the local session does not restore after its load");
             world.write_message(AppExit::error());
         }
     }
@@ -296,7 +297,7 @@ impl Runs {
             match self.restored() {
                 Ok(next) => app = next,
                 Err(error) => {
-                    error!(%error, "the local session does not restore after its load");
+                    error!(error = %ErrorReport::of(&error), "the local session does not restore after its load");
                     return;
                 }
             }

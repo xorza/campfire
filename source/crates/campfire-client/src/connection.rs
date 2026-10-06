@@ -6,6 +6,7 @@ use std::time::Duration;
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use campfire_common::ExitStatus;
+use campfire_log::ErrorReport;
 use campfire_net::{
     ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Os, Pace, ServerPin,
     SlotBotFile,
@@ -107,7 +108,7 @@ impl Connection {
         let mut slots = Vec::with_capacity(bots.len());
         for bot in bots {
             let bot = bot.read().map_err(|error| {
-                error!(%error, "a server bot's orders file does not read");
+                error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
                 ExitCode::from(ExitStatus::Failure)
             })?;
             slots.push(bot);
@@ -122,7 +123,7 @@ impl Connection {
             entropy: Os::fill,
         })
         .map_err(|error| {
-            error!(%error, "the local server does not start");
+            error!(error = %ErrorReport::of(&error), "the local server does not start");
             ExitCode::from(ExitStatus::Failure)
         })
     }

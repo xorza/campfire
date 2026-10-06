@@ -68,9 +68,17 @@ pub enum ModeError {
     #[error("no layer \"{0}\"")]
     UnknownLayer(DeclaredName),
     /// The points of wall `wall`, counted from 0, make no simple polygon.
-    #[error("wall {wall}: {problem}")]
-    Wall { wall: usize, problem: PolygonError },
+    #[error("wall {wall}")]
+    Wall {
+        wall: usize,
+        #[source]
+        problem: PolygonError,
+    },
     /// The points of brush `brush`, counted from 0, make no simple polygon.
-    #[error("brush {brush}: {problem}")]
-    Brush { brush: usize, problem: PolygonError },
+    #[error("brush {brush}")]
+    Brush {
+        brush: usize,
+        #[source]
+        problem: PolygonError,
+    },
 }

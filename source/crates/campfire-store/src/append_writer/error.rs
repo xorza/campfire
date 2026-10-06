@@ -8,12 +8,12 @@ use crate::durable_file::error::DurableError;
 #[derive(Debug, Error)]
 pub enum AppendOpenError {
     /// The new file's first bytes were not written durably.
-    #[error("could not make the file: {0}")]
+    #[error("could not make the file")]
     Create(#[source] DurableError),
-    #[error("could not open the file: {0}")]
+    #[error("could not open the file")]
     Open(#[source] io::Error),
     /// The file was not cut to its whole records, or the cut not synced.
-    #[error("could not cut the file's torn tail: {0}")]
+    #[error("could not cut the file's torn tail")]
     Cut(#[source] io::Error),
 }
 
@@ -21,8 +21,8 @@ pub enum AppendOpenError {
 /// may be lost, and a retry can succeed over the loss.
 #[derive(Debug, Error)]
 pub enum AppendError {
-    #[error("could not append: {0}")]
+    #[error("could not append")]
     Write(#[source] io::Error),
-    #[error("could not sync what was appended: {0}")]
+    #[error("could not sync what was appended")]
     Sync(#[source] io::Error),
 }

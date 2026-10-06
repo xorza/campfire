@@ -1,3 +1,5 @@
+use campfire_log::ErrorReport;
+
 use super::*;
 
 fn parse(args: &[&str]) -> Result<Args, ArgsError> {
@@ -71,14 +73,16 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         ),
         (
             &["mode", "nowhere", &certificate, key, "30"],
-            "nowhere: invalid socket address syntax",
+            "nowhere: not a socket address: invalid socket address syntax",
         ),
         (
             &["mode", "10.0.0.2:4433", &certificate, key, "0"],
-            "0: number would be zero for non-zero type",
+            "0: not a tick rate: number would be zero for non-zero type",
         ),
     ] {
-        let refused = parse(args).err().map(|error| error.to_string());
+        let refused = parse(args)
+            .err()
+            .map(|error| ErrorReport::of(&error).to_string());
         assert_eq!(refused.as_deref(), Some(problem), "{args:?}");
     }
 }

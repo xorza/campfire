@@ -1,4 +1,4 @@
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_store::{AppendError, DurableError};
 
 use crate::events::checkpoint_failed::CheckpointFailed;
@@ -47,15 +47,15 @@ impl Fault {
     pub(crate) fn log(&self) {
         match self {
             Fault::Journal(error) => JournalFailed {
-                error: error.to_string(),
+                error: ErrorReport::of(error).to_string(),
             }
             .log(),
             Fault::Snapshot(error) => CheckpointFailed {
-                error: error.to_string(),
+                error: ErrorReport::of(error).to_string(),
             }
             .log(),
             Fault::Receipt(error) => ReceiptUnsaved {
-                error: error.to_string(),
+                error: ErrorReport::of(error).to_string(),
             }
             .log(),
         }

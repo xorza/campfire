@@ -6,7 +6,7 @@ pub enum SessionPrivateError {
     /// The bytes do not start with the record's tag.
     #[error("not a session's private record")]
     NotPrivate,
-    #[error("does not decode: {0}")]
+    #[error("does not decode")]
     Malformed(#[source] postcard::Error),
     /// Bytes remain after the record.
     #[error("bytes after the record")]

@@ -222,6 +222,8 @@ impl LoadProblem {
     }
 }
 
+/// The problem's own text, without the error it holds: its load error gives that as its source.
+/// A problem that only holds an error has no text.
 impl fmt::Display for LoadProblem {
     #[expect(
         clippy::too_many_lines,
@@ -229,7 +231,7 @@ impl fmt::Display for LoadProblem {
     )]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LoadProblem::Content(error) => write!(f, "{error}"),
+            LoadProblem::Content(_) | LoadProblem::Mode(_) | LoadProblem::Map(_) => Ok(()),
             LoadProblem::WrongKind => f.write_str("not a package of the kind its place needs"),
             LoadProblem::OtherName(name) => write!(f, "the package is named {name:?}"),
             LoadProblem::OtherApi(api) => write!(
@@ -264,7 +266,6 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoPathingGrid => {
                 f.write_str("the mode declares navigation, and its map has no [navigation] cells")
             }
-            LoadProblem::Map(problem) => write!(f, "{problem}"),
             LoadProblem::Unslotted(id) => write!(f, "action \"{id}\" is in no slot"),
             LoadProblem::AvatarOrders => f.write_str("an avatar takes no `orders`: bots play it"),
             LoadProblem::NoQueue(id) => {
@@ -302,13 +303,20 @@ impl fmt::Display for LoadProblem {
             LoadProblem::ActionRanks(id) => {
                 write!(f, "action \"{id}\" sits in slot kinds of other ranks")
             }
-            LoadProblem::Mode(error) => write!(f, "{error}"),
             LoadProblem::RankCount { action, ranks } => {
                 write!(
                     f,
                     "action \"{action}\": a per-rank array without {ranks} entries"
                 )
             }
+            LoadProblem::Script {
+                path,
+                problem: ScriptProblem::Compile(_),
+            }
+            | LoadProblem::Locale {
+                path,
+                problem: LocaleProblem::Parse(_),
+            } => write!(f, "{path}"),
             LoadProblem::Script { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::Unknown { at, name, of } => write!(f, "{at}: no {of} {name:?}"),
             LoadProblem::Repeated { at, name } => write!(f, "{at}: {name:?} twice"),
@@ -341,30 +349,21 @@ impl fmt::Display for LoadProblem {
                     "{at}: {field} is planned, and the release does not read it yet"
                 )
             }
-            LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),
-            LoadProblem::Ai { at, error } => write!(f, "{at}: {error}"),
-            LoadProblem::Action { action, error } => write!(f, "action \"{action}\": {error}"),
-            LoadProblem::Modifier { modifier, problem } => {
-                write!(f, "modifier \"{modifier}\": {problem}")
-            }
+            LoadProblem::UnitKit { at, .. } | LoadProblem::Ai { at, .. } => write!(f, "{at}"),
+            LoadProblem::Action { action, .. } => write!(f, "action \"{action}\""),
+            LoadProblem::Modifier { modifier, .. } => write!(f, "modifier \"{modifier}\""),
             LoadProblem::ModifierParam {
                 modifier,
                 param,
                 way: Some(way),
-                problem,
-            } => write!(
-                f,
-                "modifier \"{modifier}\", param {param}, by {way}: {problem}"
-            ),
+                ..
+            } => write!(f, "modifier \"{modifier}\", param {param}, by {way}"),
             LoadProblem::ModifierParam {
                 modifier,
                 param,
                 way: None,
-                problem,
-            } => write!(
-                f,
-                "modifier \"{modifier}\", its own param {param}: {problem}"
-            ),
+                ..
+            } => write!(f, "modifier \"{modifier}\", its own param {param}"),
             LoadProblem::EngineTag { at, tag } => {
                 write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
             }

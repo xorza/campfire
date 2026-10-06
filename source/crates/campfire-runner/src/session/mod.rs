@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{MatchEnd, MatchResult, Mode, SavesData, ScriptFailures};
 use campfire_common::{SegmentSeed, StateHash, Tick, Ticks};
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
     AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError,
@@ -294,7 +294,7 @@ impl Session {
                     tick,
                     unit: failure.unit,
                     hook: failure.hook,
-                    error: failure.error.to_string(),
+                    error: ErrorReport::of(&failure.error).to_string(),
                 }
                 .log();
             }

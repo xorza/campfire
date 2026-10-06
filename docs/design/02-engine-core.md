@@ -228,6 +228,6 @@ Exact versions are pinned across the workspace. Each release tag also pins its R
 | Protocol encoding | `postcard` | [Stable wire format](https://postcard.jamesmunns.com) since 1.0 |
 | State hashes | `blake3` | At checkpoints and the result; per tick in the goldens |
 | File and package fingerprints | `sha2` | SHA-256, as Blossom addresses blobs |
-| Error types | `thiserror` | Derives each error's `Display` and `source` from its variants' attributes; `common`, which depends on `serde` alone, writes its one error by hand ([Structure and names](12-structure.md#decisions), U5) |
+| Error types | `thiserror` | Derives each error's `Display` and `source` from its variants' attributes; `common`, which depends on `serde` alone, writes its one error by hand ([Structure and names](12-structure.md#decisions), U5); a message holds its own step, and `log`'s `ErrorReport` writes the chain (U10) |
 | Nostr | `nostr` in `protocol`, for delegations and their signatures; `nostr-sdk` and `nostr-connect` for the planned `identity` and `ownership` | Still alpha |
 | Lightning (`payments`) | `nwc` | Drives the host's own wallet, including [hold invoices](https://getalby.com/blog/build-conditional-payment-logic-into-your-app). No embedded node |

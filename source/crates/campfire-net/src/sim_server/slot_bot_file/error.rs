@@ -8,7 +8,7 @@ pub enum SlotBotFileError {
     /// The text has no `=` between a slot and a file.
     #[error("{0}: not <slot>=<orders file>")]
     NotPair(String),
-    #[error("{text}: not a slot number: {error}")]
+    #[error("{text}: not a slot number")]
     Slot {
         text: String,
         #[source]

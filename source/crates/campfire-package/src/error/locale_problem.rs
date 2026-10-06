@@ -29,13 +29,14 @@ impl LocaleProblem {
     }
 }
 
+/// The problem's own text, without the error it holds: its load error gives that as its source.
 impl fmt::Display for LocaleProblem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LocaleProblem::FileName => {
                 f.write_str("not <language>.ftl, its language in its canonical spelling")
             }
-            LocaleProblem::Parse(error) => write!(f, "{error}"),
+            LocaleProblem::Parse(_) => Ok(()),
             LocaleProblem::Repeated(id) => write!(f, "message {id} twice"),
             LocaleProblem::Stray(id) => {
                 write!(

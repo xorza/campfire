@@ -6,7 +6,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{Experience, Order, Owner};
 use campfire_common::{PlayerSlot, Tick};
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
 use campfire_sim::StableId;
@@ -196,7 +196,7 @@ impl BotDriver {
                     }
                     .log();
                 }
-                Err(error) => panic!("the server's bot input holds: {error}"),
+                Err(error) => panic!("the server's bot input holds: {}", ErrorReport::of(&error)),
             }
         }
         let mut at = 0;

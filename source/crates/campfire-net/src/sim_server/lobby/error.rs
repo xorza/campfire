@@ -5,8 +5,8 @@ use thiserror::Error;
 /// Why a session's lobby does not open.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum LobbyError {
-    #[error("{0}")]
-    Terms(#[source] TermsError),
+    #[error(transparent)]
+    Terms(TermsError),
     /// A bot or an open slot names a slot the session does not have.
     #[error("the session has no slot {}", .0.get())]
     NoSuchSlot(PlayerSlot),

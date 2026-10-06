@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_net::{
     Lobby, LobbySetup, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionDir,
     SessionRestored, SimServer,
@@ -150,7 +150,7 @@ impl Restore {
                 SessionRestored { session: id, tick }.log();
             }
             Err(error) => {
-                error!(%error, "the session's match does not restore");
+                error!(error = %ErrorReport::of(&error), "the session's match does not restore");
                 world.write_message(AppExit::error());
             }
         }

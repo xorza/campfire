@@ -7,7 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::{
     ConnectChallenge, Delegation, SeedChain, SessionHeader, SessionLog, SessionTerms, SlotPlan,
@@ -179,7 +179,7 @@ impl Lobby {
                 Err(error) => {
                     JoinRefused {
                         link: format!("{link:?}"),
-                        error: error.to_string(),
+                        error: ErrorReport::of(&error).to_string(),
                     }
                     .log();
                     commands.entity(link).insert(Refused(error));

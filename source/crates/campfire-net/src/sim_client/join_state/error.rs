@@ -9,8 +9,8 @@ pub enum TermsMismatch {
     OtherServer,
     #[error("the server runs another tick rate than the one given")]
     OtherTickRate,
-    #[error("{0}")]
-    Terms(#[source] TermsError),
+    #[error(transparent)]
+    Terms(TermsError),
     /// A later offer names another session than the one the player plays.
     #[error("the server offers another session than the player's")]
     OtherSession,

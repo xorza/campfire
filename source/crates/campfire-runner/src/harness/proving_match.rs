@@ -1,5 +1,6 @@
 use campfire_capabilities::{Action, ActionTarget, Order, Team, TrainQueue};
 use campfire_common::PlayerSlot;
+use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{AfterLeave, LeaveReason, ServerInput, SlotPlan};
@@ -93,8 +94,8 @@ impl ProvingMatch {
     pub const LEAVE: u64 = 400;
 
     pub fn load() -> ProvingMatch {
-        let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/proving"))
-            .unwrap_or_else(|error| panic!("{error}"));
+        let packages =
+            ModePackages::from_dir(&PackageDir::workspace("test/modes/proving")).unwrap();
         let plan = vec![SlotPlan::Player, SlotPlan::Open];
         ProvingMatch {
             session: FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan),
@@ -113,7 +114,7 @@ impl ProvingMatch {
     /// Runs tick `tick` of `fixed`: first logs player 1's join or leave in its tick, and sends the
     /// scripted inputs stamped for it, then runs it.
     pub fn play_tick(fixed: &mut FixedMatch, tick: u64) {
-        let refused = |error| panic!("tick {tick}: {error}");
+        let refused = |error| panic!("tick {tick}: {}", ErrorReport::of(&error));
         match tick {
             ProvingMatch::JOIN => fixed.join(1).unwrap_or_else(refused),
             ProvingMatch::LEAVE => {

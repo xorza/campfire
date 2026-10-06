@@ -11,6 +11,8 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer, fmt};
 
+use crate::error_report::ErrorReport;
+
 /// Where a binary logs: to standard error, as text colored only on a terminal, by `RUST_LOG`;
 /// and, when `CAMPFIRE_LOG` names a file, also there as JSON lines with their spans, by
 /// `CAMPFIRE_LOG_FILTER`. Each filter falls back to the binary's default when its variable is
@@ -60,11 +62,11 @@ impl Logging {
             .with(file)
             .init();
         if let (Some(path), Some(error)) = (path, failed) {
-            error!(path = %path.display(), %error, "CAMPFIRE_LOG names a file that cannot be created");
+            error!(path = %path.display(), error = %ErrorReport::of(&error), "CAMPFIRE_LOG names a file that cannot be created");
         }
         for (variable, refused) in refusals {
-            if let Some(error) = refused {
-                warn!(variable, %error, "the variable holds no filter, so the default filters");
+            if let Some(refused) = refused {
+                warn!(variable, error = %refused, "the variable holds no filter, so the default filters");
             }
         }
     }
@@ -76,7 +78,7 @@ impl ChosenFilter {
     fn of(value: Result<String, env::VarError>, default: &str) -> ChosenFilter {
         let refused = match value {
             Err(env::VarError::NotPresent) => None,
-            Err(error) => Some(error.to_string()),
+            Err(error) => Some(ErrorReport::of(&error).to_string()),
             Ok(text) => match EnvFilter::try_new(&text) {
                 Ok(filter) => {
                     return ChosenFilter {
@@ -84,7 +86,7 @@ impl ChosenFilter {
                         refused: None,
                     };
                 }
-                Err(error) => Some(error.to_string()),
+                Err(error) => Some(ErrorReport::of(&error).to_string()),
             },
         };
         ChosenFilter {
@@ -124,6 +126,7 @@ pub(crate) mod internals {
     use tracing_subscriber::util::SubscriberInitExt;
 
     use super::json;
+    use crate::error_report::ErrorReport;
     use crate::log_event::LogEvent;
     use crate::log_line::LogLine;
 
@@ -166,7 +169,9 @@ pub(crate) mod internals {
             let mut taken = Vec::new();
             for line in text.lines() {
                 if let Some(event) = LogLine::parse(line).unwrap().read::<E>() {
-                    taken.push(event.unwrap_or_else(|error| panic!("{line}: {error}")));
+                    taken.push(
+                        event.unwrap_or_else(|error| panic!("{line}: {}", ErrorReport::of(&error))),
+                    );
                 } else {
                     lines.extend_from_slice(line.as_bytes());
                     lines.push(b'\n');

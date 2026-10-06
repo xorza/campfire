@@ -10,7 +10,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use campfire_common::{ExitStatus, StateHash};
-use campfire_log::{LogEvent, Logging};
+use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
 use campfire_verifier::{Replay, Verified};
@@ -47,7 +47,7 @@ fn main() -> ExitCode {
             ExitCode::from(ExitStatus::Success)
         }
         Err(error) => {
-            error!(file = %path.display(), %error, "the log does not verify");
+            error!(file = %path.display(), error = %ErrorReport::of(&*error), "the log does not verify");
             ExitCode::from(ExitStatus::Failure)
         }
     }
@@ -62,7 +62,7 @@ fn verify(
 ) -> Result<StateHash, Box<dyn Error>> {
     let store = PackageStore::scan(packages)?;
     for failure in store.failures() {
-        warn!(dir = %failure.dir.display(), error = %failure.error, "a package does not read");
+        warn!(dir = %failure.dir.display(), error = %ErrorReport::of(&failure.error), "a package does not read");
     }
     let mut replay = Replay::new(SessionLog::decode(&fs::read(path)?)?, &store)?;
     if let Some(dir) = snapshots {

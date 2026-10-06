@@ -13,7 +13,7 @@ use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{Dead, MatchEnd, Order, Owner, Relations};
 use campfire_common::{SegmentSeed, Tick};
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{PlayerInput, SignedReceipt};
@@ -246,10 +246,10 @@ fn answer_offer(
                     sender.send::<JoinChannel>(join);
                     info!(%session, "joined the offered session");
                 }
-                Some(Err(mismatch)) => {
+                Some(Err(error)) => {
                     SessionRefused {
                         session,
-                        mismatch: mismatch.to_string(),
+                        mismatch: ErrorReport::of(&error).to_string(),
                     }
                     .log();
                     commands.trigger(Disconnect { entity: client });
@@ -338,9 +338,9 @@ fn receive_receipt(
 ) {
     for mut receiver in &mut receivers {
         for receipt in receiver.receive() {
-            if let Err(refusal) = state.take_receipt(&receipt, &verifier.0) {
+            if let Err(error) = state.take_receipt(&receipt, &verifier.0) {
                 ReceiptRefused {
-                    reason: refusal.to_string(),
+                    reason: ErrorReport::of(&error).to_string(),
                 }
                 .log();
                 continue;

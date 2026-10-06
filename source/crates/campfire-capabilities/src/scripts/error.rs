@@ -13,11 +13,11 @@ pub(crate) type Checked<T> = Result<T, Box<EvalAltResult>>;
 #[derive(Debug, Clone, Error)]
 pub enum CallError {
     /// The script API refused a call.
-    #[error("the script API refused a call: {0}")]
+    #[error("the script API refused a call")]
     Api(#[source] ApiError),
     /// The script failed otherwise.
-    #[error("{0}")]
-    Script(#[source] ScriptError),
+    #[error(transparent)]
+    Script(ScriptError),
 }
 
 /// Why the script API refused a call: a script gave it a value it does not take.
@@ -94,7 +94,7 @@ pub enum ApiError {
     UnknownModifier,
     /// A modifier whose param, as the call's action at its rank or no action gives it, does not
     /// hold for `problem`.
-    #[error("a param of the modifier, as the call applies it: {0}")]
+    #[error("a param of the modifier, as the call applies it")]
     ModifierParam(#[source] ParamProblem),
     /// A negative count of a modifier's stacks.
     #[error("a modifier's stacks are not negative")]

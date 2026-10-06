@@ -25,7 +25,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::SystemTime;
 
 use campfire_common::ExitStatus;
-use campfire_log::Logging;
+use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
     ClientDir, InputLogged, LinkLost, Listening, OrderScript, ServerDir, SessionWritten,
     TicksCaughtUp,
@@ -89,7 +89,7 @@ fn main() -> ExitCode {
         Mode::Play { root } => match RunDir::create(root, SystemTime::now()) {
             Ok(run) => run.path().to_owned(),
             Err(error) => {
-                error!(%error, "the LAN check did not run");
+                error!(error = %ErrorReport::of(&error), "the LAN check did not run");
                 return ExitCode::from(ExitStatus::Failure);
             }
         },
@@ -107,7 +107,7 @@ fn report(result: Result<Verdict, CheckError>, dir: &Path) -> ExitCode {
     let verdict = match result {
         Ok(verdict) => verdict,
         Err(error) => {
-            error!(%error, dir = %dir.display(), "the LAN check did not run");
+            error!(error = %ErrorReport::of(&error), dir = %dir.display(), "the LAN check did not run");
             return ExitCode::from(ExitStatus::Failure);
         }
     };

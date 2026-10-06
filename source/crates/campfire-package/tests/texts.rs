@@ -66,7 +66,7 @@ fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on()
         assert_eq!(error.package, PackageRef::Name("moba-de".to_owned()));
         assert!(
             matches!(&*error.problem, LoadProblem::Locale { path, problem: LocaleProblem::FileName } if path.as_str() == file),
-            "{error}"
+            "{error:?}"
         );
     };
     // A package it does not depend on, a file outside a package's directory, and a file name
@@ -97,7 +97,7 @@ fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on()
     assert_eq!(error.package, PackageRef::Name("moba-de".to_owned()));
     assert!(
         matches!(&*error.problem, LoadProblem::Locale { path, problem: LocaleProblem::Stray(id) } if path.as_str() == "locale/hero-husk/de.ftl" && id.as_str() == "hero-nme"),
-        "{error}"
+        "{error:?}"
     );
 
     // A mode is no locale package.

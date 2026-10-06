@@ -1,6 +1,6 @@
 use bevy_app::AppExit;
 use bevy_ecs::world::World;
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_runner::Session;
 use tracing::error;
 
@@ -57,7 +57,7 @@ impl ServerExit {
                 AppExit::Success
             }
             Err(error) => {
-                error!(session = %id, %error, "could not write the session log");
+                error!(session = %id, error = %ErrorReport::of(&error), "could not write the session log");
                 AppExit::error()
             }
         })

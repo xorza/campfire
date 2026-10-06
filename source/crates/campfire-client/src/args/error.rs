@@ -20,8 +20,8 @@ pub(crate) enum ArgsError {
     Twice(Flag),
     #[error("{}: not UTF-8", .0.display())]
     NotText(OsString),
-    #[error("{0}")]
-    Bot(#[source] SlotBotFileError),
+    #[error(transparent)]
+    Bot(SlotBotFileError),
     /// A server bot of slot 0, which the client plays.
     #[error("slot 0 is the client's")]
     BotInClientSlot,
@@ -36,25 +36,25 @@ pub(crate) enum ArgsError {
     /// A remote server, with other than its four arguments after the mode.
     #[error("four arguments are needed after the mode")]
     RemoteArgs,
-    #[error("{text}: {error}")]
+    #[error("{text}: not a socket address")]
     Address {
         text: String,
         #[source]
         error: AddrParseError,
     },
-    #[error("{text}: {error}")]
+    #[error("{text}: not a certificate hash")]
     Certificate {
         text: String,
         #[source]
         error: NotHex,
     },
-    #[error("{text}: {error}")]
+    #[error("{text}: not a server key")]
     Key {
         text: String,
         #[source]
         error: secp256k1::Error,
     },
-    #[error("{text}: {error}")]
+    #[error("{text}: not a tick rate")]
     TickRate {
         text: String,
         #[source]

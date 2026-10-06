@@ -262,13 +262,13 @@ fn every_flaw_of_the_items_fails_the_load_with_its_own_problem() {
         };
         let LoadError { package, problem } = &error;
         let named = matches!(package, PackageRef::Name(name) if name == flaw.package);
-        assert!(named && (flaw.refused)(problem), "{flaw:?}: {error}");
+        assert!(named && (flaw.refused)(problem), "{flaw:?}: {error:?}");
     }
     // An avatar holds no item types.
     let carried = [(HUSK, Edit::Set("items.charm", "{ cost = { gold = 10 } }"))];
     let error = with_items(&carried).unwrap_err();
     assert!(
         matches!(*error.problem, LoadProblem::Item(ItemProblem::OutsideMode)),
-        "{error}"
+        "{error:?}"
     );
 }

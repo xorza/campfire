@@ -6,10 +6,10 @@ use crate::delegation::error::DelegationError;
 /// Why logged bytes give no checkpoint record.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CheckpointDecodeError {
-    #[error("does not decode: {0}")]
+    #[error("does not decode")]
     Malformed(#[source] postcard::Error),
     /// The delegation the carry holds for `slot`'s player does not parse.
-    #[error("player {}'s delegation: {error}", .slot.get())]
+    #[error("player {}'s delegation", .slot.get())]
     Delegation {
         slot: PlayerSlot,
         #[source]

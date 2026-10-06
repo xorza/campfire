@@ -308,8 +308,7 @@ impl Reference3v3 {
 
     /// The reference 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: Vec<SlotPlan>) -> Reference3v3 {
-        let packages = ModePackages::from_dir(&PackageDir::workspace("moba/modes/3v3"))
-            .unwrap_or_else(|error| panic!("{error}"));
+        let packages = ModePackages::from_dir(&PackageDir::workspace("moba/modes/3v3")).unwrap();
         let items = &packages.packages().next().expect("a mode").content.items;
         let item = |name: &str| ItemId::named(items, name).expect("an item of the 3v3");
         let script = Reference3v3::script(&item);
@@ -354,7 +353,7 @@ impl Reference3v3 {
                         slot,
                         payload: &payload,
                     };
-                    fixed.serve(pick).unwrap_or_else(|error| panic!("{error}"));
+                    fixed.serve(pick).unwrap();
                 }
                 SlotPlan::Open => {}
             }

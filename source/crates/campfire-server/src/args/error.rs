@@ -27,12 +27,12 @@ pub(crate) enum ArgsError {
         #[source]
         error: ParseIntError,
     },
-    #[error("{0}")]
-    Bot(#[source] SlotBotFileError),
+    #[error(transparent)]
+    Bot(SlotBotFileError),
     /// Other than the mode and the address after the flags.
     #[error("the mode and the address are needed, and nothing after")]
     Positionals,
-    #[error("{text}: not a socket address: {error}")]
+    #[error("{text}: not a socket address")]
     Address {
         text: String,
         #[source]

@@ -15,7 +15,7 @@ pub(crate) enum CheckError {
     /// It runs only under `cargo run`, which names the cargo that builds the processes.
     #[error("run the check with `cargo run -p campfire-lan-check`")]
     NotUnderCargo,
-    #[error("cargo did not start: {0}")]
+    #[error("cargo did not start")]
     CargoStart(#[source] io::Error),
     /// Cargo did not build the processes.
     #[error("cargo did not build the processes")]
@@ -24,26 +24,26 @@ pub(crate) enum CheckError {
     #[error("cargo built no executable of {0}")]
     NoExecutable(TargetName),
     /// A file of the run could not be read or written.
-    #[error("{}: {error}", .path.display())]
+    #[error("{} could not be read or written", .path.display())]
     File {
         path: PathBuf,
         #[source]
         error: io::Error,
     },
-    #[error("{process} did not start: {error}")]
+    #[error("{process} did not start")]
     Start {
         process: Process,
         #[source]
         error: io::Error,
     },
-    #[error("could not wait for {process}: {error}")]
+    #[error("could not wait for {process}")]
     Wait {
         process: Process,
         #[source]
         error: io::Error,
     },
     /// A line of a process's log is not an event the check can read.
-    #[error("line {line} of the log of {process}: {error}")]
+    #[error("line {line} of the log of {process}")]
     Event {
         process: Process,
         line: usize,
@@ -51,15 +51,15 @@ pub(crate) enum CheckError {
         error: serde_json::Error,
     },
     /// A host's data directory does not open.
-    #[error("{}: {error}", .path.display())]
+    #[error("{} does not open", .path.display())]
     Data {
         path: PathBuf,
         #[source]
         error: DataDirError,
     },
-    #[error("a bot's script: {0}")]
+    #[error("a bot's script")]
     Script(#[source] OrderScriptError),
     /// The session log the server published does not decode.
-    #[error("the published session log: {0}")]
+    #[error("the published session log")]
     SessionLog(#[source] LogError),
 }

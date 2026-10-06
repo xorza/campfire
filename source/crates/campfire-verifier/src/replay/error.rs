@@ -20,8 +20,8 @@ pub enum ReplayError {
         replayed: StateHash,
     },
     /// The log's result does not hold for the state its replay ends in.
-    #[error("{0}")]
-    Result(#[source] ResultMismatch),
+    #[error(transparent)]
+    Result(ResultMismatch),
 }
 
 /// Why a snapshot does not hold what a checkpoint record says of it.
@@ -31,7 +31,7 @@ pub enum SnapshotCheckError {
     #[error("the snapshot is not the one its checkpoint names")]
     Fingerprint,
     /// It does not restore.
-    #[error("the snapshot does not restore: {0}")]
+    #[error("the snapshot does not restore")]
     Restore(#[source] SnapshotError),
     /// It restores to another state than the record's.
     #[error("the snapshot restores to state {restored}, and its checkpoint records {logged}")]

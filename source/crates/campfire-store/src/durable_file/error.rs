@@ -10,19 +10,19 @@ pub enum DurableError {
     #[error("the path names no file")]
     NoName,
     /// The temporary file a crash left was not removed.
-    #[error("could not remove a stale temporary file: {0}")]
+    #[error("could not remove a stale temporary file")]
     RemoveStale(#[source] io::Error),
-    #[error("could not make the temporary file: {0}")]
+    #[error("could not make the temporary file")]
     Create(#[source] io::Error),
-    #[error("could not write the temporary file: {0}")]
+    #[error("could not write the temporary file")]
     Write(#[source] io::Error),
-    #[error("could not sync the temporary file: {0}")]
+    #[error("could not sync the temporary file")]
     Sync(#[source] io::Error),
-    #[error("could not rename the temporary file: {0}")]
+    #[error("could not rename the temporary file")]
     Rename(#[source] io::Error),
     /// A directory was not removed.
-    #[error("could not remove the directory: {0}")]
+    #[error("could not remove the directory")]
     Remove(#[source] io::Error),
-    #[error("could not sync the directory: {0}")]
+    #[error("could not sync the directory")]
     SyncDirectory(#[source] io::Error),
 }

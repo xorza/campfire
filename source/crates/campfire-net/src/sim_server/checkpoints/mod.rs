@@ -3,7 +3,7 @@ use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::SaveBy;
 use campfire_common::{Tick, Ticks};
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{CheckpointBegun, CheckpointError, Outcome};
 use campfire_runner::{CheckpointBeginError, Session};
 use campfire_sim::StateDelta;
@@ -107,7 +107,7 @@ impl Checkpoints {
             }
             // A checkpoint begun at this boundary already, as a restore takes one again.
             Err(CheckpointBeginError::Log(CheckpointError::Empty)) => {}
-            Err(error) => panic!("the session's own checkpoint: {error}"),
+            Err(error) => panic!("the session's own checkpoint: {}", ErrorReport::of(&error)),
         }
     }
 
@@ -140,9 +140,9 @@ impl Checkpoints {
             }
         }
         for command in taken.drain(..) {
-            if let Err(refusal) = Checkpoints::take(world, command) {
+            if let Err(error) = Checkpoints::take(world, command) {
                 SaveRefused {
-                    reason: refusal.to_string(),
+                    reason: ErrorReport::of(&error).to_string(),
                 }
                 .log();
             }

@@ -61,12 +61,13 @@ impl ScriptProblem {
     }
 }
 
+/// The problem's own text, without the error it holds: its load error gives that as its source.
 impl fmt::Display for ScriptProblem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ScriptProblem::Unreferenced => f.write_str("no data names it"),
             ScriptProblem::Missing => f.write_str("named, but not held"),
-            ScriptProblem::Compile(error) => write!(f, "{error}"),
+            ScriptProblem::Compile(_) => Ok(()),
             ScriptProblem::UnknownHook(function) => {
                 write!(f, "{function} is no hook of the script's roles")
             }

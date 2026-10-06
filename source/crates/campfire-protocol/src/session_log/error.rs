@@ -73,7 +73,7 @@ pub enum ServerInputError {
     #[error("renewal by another player")]
     OtherPlayer,
     /// The delegation of a join or a renewal grants another session.
-    #[error("delegation refused: {0}")]
+    #[error("delegation refused")]
     Scope(#[source] ScopeError),
     /// The log's positions, which fit a `u32`, do not reach past the input.
     #[error("session log full")]
@@ -138,14 +138,14 @@ pub enum HeaderError {
     #[error("more slots than a u32 counts")]
     TooManySlots,
     /// The delegation of the player in `slot` is not a delegation.
-    #[error("player {}: {error}", .slot.get())]
+    #[error("player {}", .slot.get())]
     Delegation {
         slot: PlayerSlot,
         #[source]
         error: DelegationError,
     },
     /// The delegation of the player in `slot` grants another session.
-    #[error("player {}: {error}", .slot.get())]
+    #[error("player {}", .slot.get())]
     Scope {
         slot: PlayerSlot,
         #[source]
@@ -183,24 +183,24 @@ pub enum LogError {
     #[error("session log value does not decode")]
     Malformed(#[source] postcard::Error),
     /// The header does not start a log.
-    #[error("session log header refused: {0}")]
+    #[error("session log header refused")]
     Header(#[source] HeaderError),
     /// The log refuses a packet logged before `tick`, as it refuses one from the network.
-    #[error("session log input before tick {tick} refused: {error}")]
+    #[error("session log input before tick {tick} refused")]
     Input {
         tick: Tick,
         #[source]
         error: InputError,
     },
     /// The log refuses a server input logged before `tick`.
-    #[error("session log server input before tick {tick} refused: {error}")]
+    #[error("session log server input before tick {tick} refused")]
     Server {
         tick: Tick,
         #[source]
         error: ServerInputError,
     },
     /// A server input logged before `tick` does not decode, or its delegation does not parse.
-    #[error("session log server input before tick {tick} does not read: {error}")]
+    #[error("session log server input before tick {tick} does not read")]
     ServerDecode {
         tick: Tick,
         #[source]
@@ -214,14 +214,14 @@ pub enum LogError {
     NoSegment,
     /// The checkpoint record of segment `segment` does not decode, or a delegation it carries
     /// does not parse.
-    #[error("session log checkpoint of segment {segment} does not read: {error}")]
+    #[error("session log checkpoint of segment {segment} does not read")]
     CheckpointDecode {
         segment: u32,
         #[source]
         error: CheckpointDecodeError,
     },
     /// The log refuses the checkpoint record of segment `segment`.
-    #[error("session log checkpoint of segment {segment} refused: {error}")]
+    #[error("session log checkpoint of segment {segment} refused")]
     Checkpoint {
         segment: u32,
         #[source]
@@ -232,10 +232,10 @@ pub enum LogError {
     #[error("session log reveals a server seed that is not its last segment's")]
     WrongSeed,
     /// The log refuses the result.
-    #[error("session log result refused: {0}")]
+    #[error("session log result refused")]
     Result(#[source] ResultError),
     /// The journal's load of the save that starts segment `segment` does not load.
-    #[error("session log load of segment {segment} refused: {error}")]
+    #[error("session log load of segment {segment} refused")]
     Load {
         segment: u32,
         #[source]

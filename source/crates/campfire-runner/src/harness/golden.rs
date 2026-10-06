@@ -6,6 +6,7 @@ use campfire_capabilities::{
     Dead, Deaths, Owner, PlayerResources, Pools, ResourceId, ScriptFailures, Team,
 };
 use campfire_common::{PlayerSlot, StateHash, Tick};
+use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
 
@@ -140,13 +141,15 @@ impl Golden {
                 clippy::disallowed_methods,
                 reason = "a test's golden file, which only `CAMPFIRE_BLESS` writes again"
             )]
-            fs::write(&path, &lines).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            fs::write(&path, &lines)
+                .unwrap_or_else(|error| panic!("{}: {}", path.display(), ErrorReport::of(&error)));
             return;
         }
         let pinned = fs::read_to_string(&path).unwrap_or_else(|error| {
             panic!(
-                "{}: {error}; run with CAMPFIRE_BLESS=1 to write it",
-                path.display()
+                "{}: {}; run with CAMPFIRE_BLESS=1 to write it",
+                path.display(),
+                ErrorReport::of(&error)
             )
         });
         if pinned == lines {

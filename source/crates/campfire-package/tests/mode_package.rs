@@ -109,7 +109,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     let error = ModePackages::from_package_dir(&edited([(UNITS, edit)])).unwrap_err();
     assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
     let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotFaster(Place::UnitType(name))) if name == "caster_creep_bolt");
-    assert!(at_caster(&error.problem), "{error}");
+    assert!(at_caster(&error.problem), "{error:?}");
     // Along a line, the same speed loads: it chases no one.
     let edit = Edit::Set("units.grasping_wraps.projectile.speed", r#""5""#);
     assert!(ModePackages::from_package_dir(&edited([(HUSK, edit)])).is_ok());
@@ -177,7 +177,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
     let error = ModePackages::from_package_dir(&edited([(RIME, to_target)])).unwrap_err();
     assert!(
         read_fails(&error.problem, "data/avatar.toml", "unknown variant"),
-        "{error}"
+        "{error:?}"
     );
 }
 
@@ -204,7 +204,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
     let edit = Edit::Replace(MELEE_END, &on_end);
     let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
     let refused = |problem: &LoadProblem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::OnEnd } if action == "melee_creep_attack");
-    assert!(refused(&error.problem), "{error}");
+    assert!(refused(&error.problem), "{error:?}");
     // Cinder's bolt launches an eruption, an area type of her own package, where it hits.
     let edit = Edit::Set(
         "actions.attack.on_hit",
@@ -353,7 +353,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
         assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
         assert!(
             matches!(*error.problem, LoadProblem::TooMany(limit) if limit == case.limit),
-            "{case:?}: {error}"
+            "{case:?}: {error:?}"
         );
     }
 }
@@ -2450,7 +2450,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
             PackageRef::Dir(dir) => dir.ends_with(flaw.package),
             PackageRef::Fingerprint(_) => false,
         };
-        assert!(named && (flaw.refused)(problem), "{flaw:?}: {error}");
+        assert!(named && (flaw.refused)(problem), "{flaw:?}: {error:?}");
     }
 
     // `has_modifier` only names a modifier: Rime's passive's script may ask for the Slow it
@@ -2480,7 +2480,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
     let error = kinds(254).unwrap_err();
     assert!(
         matches!(*error.problem, LoadProblem::TooMany(Limit::DamageKinds)),
-        "{error}"
+        "{error:?}"
     );
 
     // The flaws hold each data field and tag property the release plans: `loot` and `noise` as

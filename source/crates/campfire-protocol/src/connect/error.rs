@@ -6,8 +6,8 @@ use crate::delegation::error::ScopeError;
 /// each is an expected failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum ConnectError {
-    #[error("{0}")]
-    Scope(#[source] ScopeError),
+    #[error(transparent)]
+    Scope(ScopeError),
     /// The delegation expired by the server's clock.
     #[error("the delegation expired")]
     Expired,

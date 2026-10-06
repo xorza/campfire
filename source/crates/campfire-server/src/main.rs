@@ -29,7 +29,7 @@ use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_common::ExitStatus;
-use campfire_log::{LogEvent, Logging};
+use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
     JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, ServerBots, ServerDir,
     ServerExit, ServerSetup, SessionTimes, SimServer,
@@ -75,15 +75,15 @@ fn main() -> ExitCode {
     .start();
     let args = match Args::parse(env::args_os().skip(1)) {
         Ok(args) => args,
-        Err(problem) => {
-            error!(%problem, USAGE);
+        Err(error) => {
+            error!(error = %ErrorReport::of(&error), USAGE);
             return ExitCode::from(ExitStatus::Usage);
         }
     };
     let bots = match args.server_bots() {
         Ok(bots) => bots,
-        Err(problem) => {
-            error!(%problem, "a bot's orders do not read");
+        Err(error) => {
+            error!(error = %ErrorReport::of(&error), "a bot's orders do not read");
             return ExitCode::from(ExitStatus::Usage);
         }
     };
@@ -97,7 +97,7 @@ fn main() -> ExitCode {
     let data = match ServerDir::open(&data) {
         Ok(data) => data,
         Err(error) => {
-            error!(data = %data.display(), %error, "the data directory does not open");
+            error!(data = %data.display(), error = %ErrorReport::of(&error), "the data directory does not open");
             return ExitCode::from(ExitStatus::Failure);
         }
     };
@@ -105,14 +105,14 @@ fn main() -> ExitCode {
         Ok(key) => key,
         Err(error) => {
             let file = data.key_file();
-            error!(key = %file.display(), %error, "the server's key does not open");
+            error!(key = %file.display(), error = %ErrorReport::of(&error), "the server's key does not open");
             return ExitCode::from(ExitStatus::Failure);
         }
     };
     let packages = match ModePackages::from_dir(&mode) {
         Ok(packages) => packages,
         Err(error) => {
-            error!(mode = %mode.display(), %error, "the mode does not load");
+            error!(mode = %mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
             return ExitCode::from(ExitStatus::Failure);
         }
     };
@@ -162,14 +162,14 @@ impl Started {
         bots: ServerBots,
     ) -> Result<Started, ExitCode> {
         let no_session = |error: OpeningError| {
-            error!(data = %data.path().display(), %error, "no session starts");
+            error!(data = %data.path().display(), error = %ErrorReport::of(&error), "no session starts");
             ExitCode::from(ExitStatus::Failure)
         };
         let found = Opening::find(data, &packages, times.restore_window, key, Os::fill)
             .map_err(no_session)?;
         let tls = ServerTls::open(&data.tls_file(), Os::unix_now(), found.is_some()).map_err(
             |error| {
-                error!(data = %data.path().display(), %error, "the TLS identity does not open");
+                error!(data = %data.path().display(), error = %ErrorReport::of(&error), "the TLS identity does not open");
                 ExitCode::from(ExitStatus::Failure)
             },
         )?;
@@ -190,7 +190,7 @@ impl Started {
         let opening = Opening::of(found, setup).map_err(|error| match error {
             OpeningError::NewSession(_) | OpeningError::NewJournal(_) => {
                 JournalFailed {
-                    error: error.to_string(),
+                    error: ErrorReport::of(&error).to_string(),
                 }
                 .log();
                 ExitCode::from(ExitStatus::Storage)

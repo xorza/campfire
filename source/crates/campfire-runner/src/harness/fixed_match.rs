@@ -1,4 +1,5 @@
 use campfire_common::{PlayerSlot, Tick};
+use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{
@@ -50,7 +51,12 @@ impl FixedMatch {
         );
         self.runner
             .record([input], &signature, &mut self.applied)
-            .unwrap_or_else(|error| panic!("player {slot}'s input at {stamp}: {error}"));
+            .unwrap_or_else(|error| {
+                panic!(
+                    "player {slot}'s input at {stamp}: {}",
+                    ErrorReport::of(&error)
+                )
+            });
         let [applied] = self.applied[..] else {
             panic!("a packet of one input applies once");
         };
@@ -81,7 +87,7 @@ impl FixedMatch {
     pub fn checkpoint(&mut self, snapshot: &mut Vec<u8>) -> Checkpoint {
         self.runner
             .begin_checkpoint()
-            .unwrap_or_else(|error| panic!("the match's own checkpoint: {error}"));
+            .expect("the match's own checkpoint");
         let record = self
             .runner
             .checkpoint(snapshot)
@@ -89,7 +95,7 @@ impl FixedMatch {
         let signature = FixedSession::checkpoint_signature(&record, self.terms.session_id());
         self.runner
             .record_checkpoint(record.clone(), &signature)
-            .unwrap_or_else(|error| panic!("the match's own checkpoint: {error}"));
+            .expect("the match's own checkpoint");
         record
     }
 
@@ -100,7 +106,7 @@ impl FixedMatch {
         let signature = FixedSession::result_signature(&result, self.terms.session_id());
         self.runner
             .record_result(result, &signature)
-            .unwrap_or_else(|error| panic!("the match's own result: {error}"));
+            .expect("the match's own result");
         self.runner.reveal_seed();
         result
     }

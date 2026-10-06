@@ -30,7 +30,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_common::ExitStatus;
-use campfire_log::Logging;
+use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
     ClientDir, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
 };
@@ -78,9 +78,9 @@ fn main() -> ExitCode {
     .start();
     let args = match Args::parse(env::args_os().skip(1)) {
         Ok(args) => args,
-        Err(problem) => {
+        Err(error) => {
             error!(
-                %problem,
+                error = %ErrorReport::of(&error),
                 "usage: campfire-client [--bot <orders file>] [--key <key file>] [--data <data \
                  directory>] <mode package directory> <server address> <certificate hash> \
                  <server key> <tick rate>; or campfire-client --local --data <data directory> \
@@ -96,8 +96,8 @@ fn main() -> ExitCode {
     };
     let script = match args.bot.as_deref().map(OrderScript::read).transpose() {
         Ok(script) => script,
-        Err(problem) => {
-            error!(%problem, "the orders file does not read");
+        Err(error) => {
+            error!(error = %ErrorReport::of(&error), "the orders file does not read");
             return ExitCode::from(ExitStatus::Failure);
         }
     };
@@ -110,7 +110,7 @@ fn main() -> ExitCode {
         Some(path) => match ClientDir::open(path) {
             Ok(data) => Some(Arc::new(data)),
             Err(error) => {
-                error!(data = %path.display(), %error, "the data directory does not open");
+                error!(data = %path.display(), error = %ErrorReport::of(&error), "the data directory does not open");
                 return ExitCode::from(ExitStatus::Failure);
             }
         },
@@ -186,14 +186,14 @@ fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>
 /// code when they do not load, or run at another rate.
 fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
     let packages = ModePackages::from_dir(&args.mode).map_err(|error| {
-        error!(mode = %args.mode.display(), %error, "the mode does not load");
+        error!(mode = %args.mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
         ExitCode::from(ExitStatus::Failure)
     })?;
     if let Server::Remote { tick_hz, .. } = args.server {
         SessionRules::of(&packages)
             .runs_at(tick_hz)
             .map_err(|error| {
-                error!(%error, "the mode does not run at the listing's rate");
+                error!(error = %ErrorReport::of(&error), "the mode does not run at the listing's rate");
                 ExitCode::from(ExitStatus::Usage)
             })?;
     }
@@ -207,7 +207,7 @@ fn main_key(args: &Args) -> Result<Keypair, ExitCode> {
         return Ok(RandomKey::generate(Os::fill));
     };
     KeyFile::read_or_create(path, Os::fill).map_err(|error| {
-        error!(key = %path.display(), %error, "the key file does not read");
+        error!(key = %path.display(), error = %ErrorReport::of(&error), "the key file does not read");
         ExitCode::from(ExitStatus::Failure)
     })
 }

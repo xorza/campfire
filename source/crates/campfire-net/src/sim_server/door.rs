@@ -6,7 +6,7 @@ use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{Area, Mode, Owner, Projectile, SeenBy};
 use campfire_common::PlayerSlot;
-use campfire_log::LogEvent;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
 use campfire_runner::{ServerInputRefused, Session, SlotRuleError};
 use lightyear::prelude::{
@@ -82,7 +82,7 @@ impl Door {
                 Err(error) => {
                     JoinRefused {
                         link: format!("{link:?}"),
-                        error: error.to_string(),
+                        error: ErrorReport::of(&error).to_string(),
                     }
                     .log();
                     world.entity_mut(link).insert(Refused(error));

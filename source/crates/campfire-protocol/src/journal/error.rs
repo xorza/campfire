@@ -22,7 +22,7 @@ pub enum JournalReplayError {
     #[error("journal record {record} begins a checkpoint after an entry of its tick")]
     CheckpointMidTick { record: u64 },
     /// The record of index `record`, from 0, does not decode, or the log refuses it.
-    #[error("journal record {record}: {error}")]
+    #[error("journal record {record}")]
     Record {
         record: u64,
         #[source]

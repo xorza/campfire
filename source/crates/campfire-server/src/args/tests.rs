@@ -1,3 +1,5 @@
+use campfire_log::ErrorReport;
+
 use super::*;
 
 fn parse(args: &[&str]) -> Result<Args, ArgsError> {
@@ -43,7 +45,7 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     for (args, problem) in [
         (
             &["--data", "d", "--grace", "soon", "mode", "0.0.0.0:4433"][..],
-            "--grace: soon is not a whole number of seconds",
+            "--grace: soon is not a whole number of seconds: invalid digit found in string",
         ),
         (
             &["--data", "d", "--server-bot", "1", "mode", "0.0.0.0:4433"],
@@ -82,7 +84,9 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
             "nowhere: not a socket address: invalid socket address syntax",
         ),
     ] {
-        let refused = parse(args).err().map(|error| error.to_string());
+        let refused = parse(args)
+            .err()
+            .map(|error| ErrorReport::of(&error).to_string());
         assert_eq!(refused.as_deref(), Some(problem), "{args:?}");
     }
 }

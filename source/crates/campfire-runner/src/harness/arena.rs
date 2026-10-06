@@ -29,7 +29,7 @@ impl Arena {
     /// The arena of the mode at `dir` at `rate`, for `players` players.
     pub fn new(dir: &Path, rate: TickRate, players: u32) -> Arena {
         let log = LogCheck::start();
-        let packages = ModePackages::from_dir(dir).unwrap_or_else(|error| panic!("{error}"));
+        let packages = ModePackages::from_dir(dir).unwrap();
         let mut world = World::new();
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
         let mut schedule = SimUpdate::schedule();
@@ -58,17 +58,9 @@ impl Arena {
     /// install does: from the next Vision stage, each team sees what its units and its reveals show
     /// it.
     pub fn load_vision(&mut self, teams: usize) {
-        let grid = self
-            .packages
-            .map()
-            .grid()
-            .unwrap_or_else(|error| panic!("{error}"));
+        let grid = self.packages.map().grid().unwrap();
         let grid = grid.expect("the map has a vision grid");
-        let brush = self
-            .packages
-            .map()
-            .brush()
-            .unwrap_or_else(|error| panic!("{error}"));
+        let brush = self.packages.map().brush().unwrap();
         Vision::load_grid(&mut self.world, grid, &brush, teams);
     }
 
