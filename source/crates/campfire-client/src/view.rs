@@ -139,7 +139,7 @@ impl Shape {
             (false, false) => STRUCTURE,
         };
         Shape {
-            radius: body.map_or(kind.radius, |body| float(body.radius())),
+            radius: body.map_or(kind.radius, |body| View::float(body.radius())),
             ..kind
         }
     }
@@ -199,6 +199,15 @@ impl Plugin for View {
 }
 
 impl View {
+    /// A sim number in the renderer's floats.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "drawing needs no more than an f32's 24 bits of a place"
+    )]
+    pub(crate) const fn float(value: Num) -> f32 {
+        value.to_bits() as f32 / (1_u64 << Num::FRAC_BITS) as f32
+    }
+
     fn set_scene(
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
@@ -496,16 +505,7 @@ fn lean_toward(from: Vec3, to: Vec3) -> Quat {
 /// A sim place on the ground plane, in the renderer's floats.
 fn ground(pos: Position) -> Vec3 {
     let at = pos.get();
-    Vec3::new(float(at.x), 0.0, float(at.z))
-}
-
-/// A sim number in the renderer's floats.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "drawing needs no more than an f32's 24 bits of a place"
-)]
-pub(crate) fn float(value: Num) -> f32 {
-    value.to_bits() as f32 / (1_u64 << Num::FRAC_BITS) as f32
+    Vec3::new(View::float(at.x), 0.0, View::float(at.z))
 }
 
 #[cfg(test)]

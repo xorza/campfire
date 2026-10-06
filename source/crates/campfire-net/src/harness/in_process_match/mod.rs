@@ -49,12 +49,14 @@ use crate::sim_client::join_state::JoinState;
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::{PendingOrders, SimClient};
+use crate::sim_server::SimServer;
 use crate::sim_server::lobby::{Lobby, LobbySetup};
+use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::SessionDir;
-use crate::sim_server::{PlayerLink, SimServer, TickHashes};
+use crate::sim_server::tick_hashes::TickHashes;
 
 pub(crate) mod delay_line;
 pub(crate) mod link_model;
@@ -208,7 +210,7 @@ impl InProcessMatch {
             setup.server_frames > 0,
             "the server runs a frame a tick at least"
         );
-        let packages = Arc::new(lane_mode(setup.rules, setup.saves));
+        let packages = Arc::new(InProcessMatch::lane_mode(setup.rules, setup.saves));
         let tick_hz = packages.manifest().tick_hz.default();
         let tick = TickRate::new(tick_hz).length();
 
@@ -365,14 +367,52 @@ impl InProcessMatch {
 
     /// The server's key pair, which signs what it logs.
     pub fn server_keypair() -> Keypair {
-        server_keypair()
+        InProcessMatch::keypair(41)
+    }
+
+    /// The key pair whose secret is 32 bytes of `secret`.
+    pub(crate) fn keypair(secret: u8) -> Keypair {
+        let secret = SecretKey::from_byte_array(&[secret; 32]).expect("a valid secret key");
+        Keypair::from_secret_key(&Secp256k1::new(), &secret)
+    }
+
+    pub(crate) fn server_key() -> XOnlyPublicKey {
+        InProcessMatch::server_keypair().x_only_public_key().0
+    }
+
+    /// The test lane mode, its `[players]` as `rules` says, and its `[saves]` as `saves` says.
+    pub(crate) fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
+        let mut files = PackageDir::workspace_tree("test");
+        let data = PathBuf::from("modes/lane/data/mode.toml");
+        let mut text = String::from_utf8(files[&data].clone()).expect("the mode's data is UTF-8");
+        let leaver = match rules.leaver {
+            Leaver::Reserve => "reserve",
+            Leaver::Bot => "bot",
+            Leaver::Open => "open",
+        };
+        let by = match saves.by {
+            SaveBy::Player => "player",
+            SaveBy::Mode => "mode",
+        };
+        write!(
+            text,
+            "\n[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n\n[saves]\nby = \"{by}\"\n",
+            rules.late_join, rules.bot_takeover
+        )
+        .expect("a String takes any text");
+        if let Some(every) = saves.autosave_ms {
+            writeln!(text, "autosave_ms = {every}").expect("a String takes any text");
+        }
+        files.insert(data, text.into_bytes());
+        let dir = PackageDir::in_memory(Arc::new(files), "modes/lane");
+        ModePackages::from_package_dir(&dir).expect("the test mode loads")
     }
 
     /// What the server opens or restores its session with: its key, the certificate hash both
     /// ends take, the setup's times, a fixed clock and fixed random bytes.
     fn server_setup(&self) -> ServerSetup {
         ServerSetup {
-            key: server_keypair(),
+            key: InProcessMatch::server_keypair(),
             certificate: CERTIFICATE,
             times: self.setup.times,
             clock: unix_now,
@@ -713,10 +753,10 @@ impl ClientApp {
     ) -> ClientApp {
         let secret = u8::try_from(2 * player + 1).expect("a small player");
         let sim_client = SimClient {
-            main_key: keypair(secret),
-            session_key: keypair(secret + 1),
+            main_key: InProcessMatch::keypair(secret),
+            session_key: InProcessMatch::keypair(secret + 1),
             server: ServerPin {
-                key: server_key(),
+                key: InProcessMatch::server_key(),
                 certificate: CERTIFICATE,
                 tick_hz,
             },
@@ -782,46 +822,4 @@ fn pass_through_delay_lines(app: &mut App) {
     );
     app.add_systems(First, DelayLine::pin_round_trip);
     app.add_systems(Update, DelayLine::pin_round_trip);
-}
-
-pub(crate) fn keypair(secret: u8) -> Keypair {
-    let secret = SecretKey::from_byte_array(&[secret; 32]).expect("a valid secret key");
-    Keypair::from_secret_key(&Secp256k1::new(), &secret)
-}
-
-/// The server's key pair, which signs what it logs.
-pub(crate) fn server_keypair() -> Keypair {
-    keypair(41)
-}
-
-pub(crate) fn server_key() -> XOnlyPublicKey {
-    server_keypair().x_only_public_key().0
-}
-
-/// The test lane mode, its `[players]` as `rules` says, and its `[saves]` as `saves` says.
-pub(crate) fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
-    let mut files = PackageDir::workspace_tree("test");
-    let data = PathBuf::from("modes/lane/data/mode.toml");
-    let mut text = String::from_utf8(files[&data].clone()).expect("the mode's data is UTF-8");
-    let leaver = match rules.leaver {
-        Leaver::Reserve => "reserve",
-        Leaver::Bot => "bot",
-        Leaver::Open => "open",
-    };
-    let by = match saves.by {
-        SaveBy::Player => "player",
-        SaveBy::Mode => "mode",
-    };
-    write!(
-        text,
-        "\n[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n\n[saves]\nby = \"{by}\"\n",
-        rules.late_join, rules.bot_takeover
-    )
-    .expect("a String takes any text");
-    if let Some(every) = saves.autosave_ms {
-        writeln!(text, "autosave_ms = {every}").expect("a String takes any text");
-    }
-    files.insert(data, text.into_bytes());
-    let dir = PackageDir::in_memory(Arc::new(files), "modes/lane");
-    ModePackages::from_package_dir(&dir).expect("the test mode loads")
 }

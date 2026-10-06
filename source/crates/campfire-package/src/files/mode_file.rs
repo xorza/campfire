@@ -2,7 +2,7 @@ use campfire_capabilities::{ModeData, PackageContent};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::files::package_content;
+use crate::files::content_table::ContentTable;
 
 /// The mode's `data/mode.toml`: the mode's own data, and its actions and modifiers, which its
 /// content holds beside the unit types of `data/units.toml`.
@@ -18,7 +18,7 @@ impl<'de> Deserialize<'de> for ModeFile {
         if table.contains_key("units") {
             return Err(D::Error::custom("units are in data/units.toml"));
         }
-        let content = package_content::take(&mut table)?;
+        let content = ContentTable::take(&mut table)?;
         let data = ModeData::deserialize(toml::Value::Table(table)).map_err(D::Error::custom)?;
         Ok(ModeFile { data, content })
     }

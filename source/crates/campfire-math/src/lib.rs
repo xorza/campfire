@@ -9,15 +9,15 @@ mod rng;
 mod u256;
 mod vec3;
 
-pub use num::Num;
-pub use num::error::ParseNumError;
-pub use product_sum::ProductSum;
-pub use rng::Rng;
-pub use rng::rng_opener::RngOpener;
-pub use rng::rng_source::RngSource;
-pub use rng::rng_stream::RngStream;
-pub use u256::U256;
-pub use vec3::Vec3;
+pub use crate::num::Num;
+pub use crate::num::error::ParseNumError;
+pub use crate::product_sum::ProductSum;
+pub use crate::rng::Rng;
+pub use crate::rng::rng_opener::RngOpener;
+pub use crate::rng::rng_source::RngSource;
+pub use crate::rng::rng_stream::RngStream;
+pub use crate::u256::U256;
+pub use crate::vec3::Vec3;
 
 #[cfg(feature = "bench")]
 pub mod bench {

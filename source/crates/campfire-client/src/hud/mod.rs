@@ -24,7 +24,7 @@ use campfire_capabilities::{
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use lightyear::prelude::Predicted;
 
-use crate::hud::gauge::{Cooling, Gauge, GaugeKind, share};
+use crate::hud::gauge::{Cooling, Gauge, GaugeKind};
 use crate::hud::ring::Ring;
 use crate::view::{CAMERA, Drawn, Glide, Look};
 
@@ -319,7 +319,7 @@ impl Hud {
             };
             let fill = |pool| {
                 let pools = pools?;
-                Some(share(pools.current(pool)?, pools.max(pool)?))
+                Some(Gauge::share(pools.current(pool)?, pools.max(pool)?))
             };
             let fraction = match &mut gauge.kind {
                 GaugeKind::Life { .. } => life.as_ref().and_then(|life| fill(life.0)),

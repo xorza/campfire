@@ -24,25 +24,25 @@ mod package_view;
 mod script_facts;
 mod texts;
 
-pub use error::{
+pub use crate::error::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, ItemProblem, Limit,
     LoadError, LoadProblem, LocaleProblem, PackageRef, Place, ScriptProblem, StoreError,
 };
-pub use files::avatar_data::AvatarData;
-pub use files::tick_range::TickRange;
+pub use crate::files::avatar_data::AvatarData;
+pub use crate::files::tick_range::TickRange;
 
-pub use language::Language;
-pub use locale_package::LocalePackage;
-pub use message_id::MessageId;
-pub use mode_packages::ModePackages;
-pub use modifier_ways::Way;
-pub use package::Script;
-pub use package_dir::PackageDir;
-pub use package_files::PackageFiles;
+pub use crate::language::Language;
+pub use crate::locale_package::LocalePackage;
+pub use crate::message_id::MessageId;
+pub use crate::mode_packages::ModePackages;
+pub use crate::modifier_ways::Way;
+pub use crate::package::Script;
+pub use crate::package_dir::PackageDir;
+pub use crate::package_files::PackageFiles;
 
-pub use package_store::{PackageStore, StoreFailure};
+pub use crate::package_store::{PackageStore, StoreFailure};
 
-pub use texts::Texts;
+pub use crate::texts::Texts;
 
 /// The tag of this engine release: what a session's terms name, so a replay runs the code that
 /// recorded it.

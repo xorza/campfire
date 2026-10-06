@@ -6,9 +6,9 @@ mod log_event;
 mod log_line;
 mod logging;
 
-pub use log_event::LogEvent;
-pub use log_line::{LogLevel, LogLine};
-pub use logging::Logging;
+pub use crate::log_event::LogEvent;
+pub use crate::log_line::{LogLevel, LogLine};
+pub use crate::logging::Logging;
 
 #[cfg(feature = "internals")]
 pub mod internals {

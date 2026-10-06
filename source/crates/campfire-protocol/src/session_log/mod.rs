@@ -3,8 +3,7 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::mem;
 use std::ops::Range;
 
-use blake3::Hasher;
-use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_common::{PlayerSlot, Tick, Ticks};
 use secp256k1::{Secp256k1, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +15,6 @@ use crate::controller::Controller;
 use crate::decoded::Decoded;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
-use crate::input_hash::InputHash;
 use crate::journal::Journal;
 use crate::journal::error::JournalReplayError;
 use crate::journal::record_sink::RecordSink;
@@ -26,20 +24,23 @@ use crate::server_input::{AfterLeave, InputPlace, LeaveReason, ServerInput};
 use crate::server_seed::ServerSeed;
 use crate::server_seeds::ServerSeeds;
 use crate::session_id::SessionId;
+use crate::session_log::applied::Applied;
+use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{
-    CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, SeedError,
-    ServerInputError,
+    CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, ServerInputError,
 };
+use crate::session_log::session_header::SessionHeader;
 use crate::session_result::SessionResult;
 use crate::session_terms::SessionTerms;
 use crate::signature::Signature;
 use crate::slot_change::{SlotChange, SlotChangeKind, Taken};
 use crate::slot_start::SlotStart;
 
+pub(crate) mod applied;
+pub(crate) mod durable_head;
 pub(crate) mod error;
+pub(crate) mod session_header;
 
-/// Starts the segment seed, so no other BLAKE3 use can produce one.
-const SEGMENT_SEED_DOMAIN: &[u8] = b"campfire/segment-seed/v1";
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
 const LOG_TAG: &[u8] = b"campfire/session-log/v2";
 /// The log's positions are `u32`: input indices, payload offsets and the count of entries each
@@ -57,63 +58,6 @@ const JOURNAL_CHECKPOINT_DONE: u8 = 4;
 const JOURNAL_RESULT: u8 = 5;
 const JOURNAL_CHECKPOINT_BEGUN: u8 = 6;
 const JOURNAL_LOADED: u8 = 7;
-
-/// What the log fixes before the first tick: the session's terms, and how each of its slots
-/// starts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionHeader {
-    pub terms: SessionTerms,
-    /// Each slot's start, by slot: a player's delegation, which lets their session key sign
-    /// their chain heads, whose id their first input links to, and which carries their seed
-    /// contribution; a bot; or open.
-    pub slots: Vec<SlotStart>,
-}
-
-impl SessionHeader {
-    /// Segment `segment`'s seed, `BLAKE3(domain ‖ u32 segment ‖ server seed ‖ contributions of
-    /// the players who started, in slot order)`; an error when `server_seed` is not that
-    /// segment's seed of the committed chain.
-    pub fn segment_seed(
-        &self,
-        segment: u32,
-        server_seed: &ServerSeed,
-    ) -> Result<SegmentSeed, SeedError> {
-        if !server_seed.check(segment, &self.terms.seed_commitment) {
-            return Err(SeedError::WrongSeed);
-        }
-        let mut hasher = Hasher::new();
-        hasher
-            .update(SEGMENT_SEED_DOMAIN)
-            .update(&segment.to_le_bytes())
-            .update(server_seed.as_bytes());
-        for (_, delegation) in self.players() {
-            hasher.update(&delegation.terms().seed_contribution);
-        }
-        Ok(SegmentSeed::new(*hasher.finalize().as_bytes()))
-    }
-
-    /// The players who started, by slot, with their delegations.
-    pub fn players(&self) -> impl Iterator<Item = (PlayerSlot, &Delegation)> {
-        (0..)
-            .zip(&self.slots)
-            .filter_map(|(slot, start)| match start {
-                SlotStart::Player(delegation) => Some((PlayerSlot::new(slot), &**delegation)),
-                SlotStart::Bot | SlotStart::Open => None,
-            })
-    }
-}
-
-/// When a logged input takes effect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Applied {
-    At(Tick),
-    /// It arrived more than the max input delay after its stamp. It stays in the chain but never
-    /// takes effect.
-    Late,
-    /// Its stamp was more than the max input lead ahead of the next tick. Like a late input, it
-    /// stays in the chain but never takes effect.
-    Early,
-}
 
 /// The entries of a session, in memory, in the order they were logged, and grouped by the tick
 /// that was next when each arrived: the players' packets and the server's inputs. The applied
@@ -175,16 +119,6 @@ pub struct SessionLog {
     journaled: VecDeque<Journaled>,
     /// Where each slot's chain stands in the records the journal synced, by slot.
     durable: Vec<Option<DurableHead>>,
-}
-
-/// Where a player's chain stands after an input of theirs whose journal record is durable: the
-/// id of the delegation whose key signed the chain head then, the input's seq, and the head after
-/// it, as a receipt names them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DurableHead {
-    pub delegation: [u8; 32],
-    pub seq: u64,
-    pub head: InputHash,
 }
 
 /// A journaled packet: its record's index, its slot, and where it left its chain.

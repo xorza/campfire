@@ -7,6 +7,6 @@ mod error;
 mod events;
 mod replay;
 
-pub use error::{ReplayError, SnapshotCheckError};
-pub use events::verified::Verified;
-pub use replay::Replay;
+pub use crate::error::{ReplayError, SnapshotCheckError};
+pub use crate::events::verified::Verified;
+pub use crate::replay::Replay;

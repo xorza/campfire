@@ -15,7 +15,7 @@ use crate::join::Join;
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
 use crate::session_times::SessionTimes;
-use crate::sim_server::PlayerLink;
+use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::superseded::Superseded;
 

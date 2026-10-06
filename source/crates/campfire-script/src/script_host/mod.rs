@@ -11,6 +11,7 @@ use tracing::debug;
 
 use crate::error::ScriptError;
 use crate::script_host::budget::Budget;
+use crate::script_host::num_api::NumApi;
 
 pub(crate) mod budget;
 mod num_api;
@@ -113,7 +114,7 @@ impl ScriptHost {
             allowed,
             counted,
         };
-        num_api::register(&mut host.engine);
+        NumApi::register(&mut host.engine);
         host
     }
 

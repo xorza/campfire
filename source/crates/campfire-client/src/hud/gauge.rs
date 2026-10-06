@@ -6,7 +6,7 @@ use campfire_capabilities::PoolId;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 
-use crate::view;
+use crate::view::View;
 
 /// A bar over a unit: its life, or, for the player's own avatar, another pool, the cooldown of one
 /// ability slot, a rank of one, or a mark that one may learn its next rank. It draws with two
@@ -66,6 +66,17 @@ const TICK_THICKNESS: f32 = 0.06;
 const TICK_GAP: f32 = 0.02;
 /// The learn mark's thickness.
 const MARK_THICKNESS: f32 = 0.05;
+
+impl Gauge {
+    /// `current` of `max`, as a share from 0 to 1; 0 when the maximum is not positive.
+    pub(crate) fn share(current: Num, max: Num) -> f32 {
+        if max <= Num::ZERO {
+            return 0.0;
+        }
+        let ratio = current.checked_div(max).unwrap_or(Num::ZERO);
+        View::float(ratio).clamp(0.0, 1.0)
+    }
+}
 
 impl GaugeKind {
     /// The bar's width, and its center from the top of the stack, in the plane that faces the
@@ -166,15 +177,6 @@ impl Cooling {
     }
 }
 
-/// `current` of `max`, as a share from 0 to 1; 0 when the maximum is not positive.
-pub(crate) fn share(current: Num, max: Num) -> f32 {
-    if max <= Num::ZERO {
-        return 0.0;
-    }
-    let ratio = current.checked_div(max).unwrap_or(Num::ZERO);
-    view::float(ratio).clamp(0.0, 1.0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,9 +253,9 @@ mod tests {
 
     #[test]
     fn a_share_is_current_over_max_within_zero_and_one() {
-        assert_eq!(share(Num::int(150), Num::int(600)), 0.25);
-        assert_eq!(share(Num::int(700), Num::int(600)), 1.0);
-        assert_eq!(share(Num::int(5), Num::ZERO), 0.0);
-        assert_eq!(share(Num::ZERO, Num::int(600)), 0.0);
+        assert_eq!(Gauge::share(Num::int(150), Num::int(600)), 0.25);
+        assert_eq!(Gauge::share(Num::int(700), Num::int(600)), 1.0);
+        assert_eq!(Gauge::share(Num::int(5), Num::ZERO), 0.0);
+        assert_eq!(Gauge::share(Num::ZERO, Num::int(600)), 0.0);
     }
 }

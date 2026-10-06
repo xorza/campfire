@@ -1,12 +1,15 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, StateHash};
+use blake3::Hasher;
+use campfire_common::{Fingerprint, SegmentSeed, StateHash};
 use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::{DelegationError, ScopeError};
+use crate::input_hash::InputHash;
 use crate::seed_chain::SeedChain;
+use crate::session_log::error::SeedError;
 use crate::session_result::{Outcome, SessionResult};
 use crate::slot_plan::SlotPlan;
 use crate::snapshot_fingerprint::SnapshotFingerprint;

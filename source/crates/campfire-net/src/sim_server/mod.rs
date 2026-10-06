@@ -3,7 +3,6 @@ use std::fs;
 use bevy_app::{
     App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
 };
-use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::resource::Resource;
@@ -17,7 +16,7 @@ use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
     Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team, TeamSet,
 };
-use campfire_common::{PlayerSlot, StateHash, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms};
@@ -52,6 +51,7 @@ use crate::sim_server::door::Door;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::offering::{Offering, Superseding};
+use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
 use crate::sim_server::server_bots::ServerBots;
@@ -59,6 +59,7 @@ use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
 use crate::sim_server::session_journal::SessionJournal;
+use crate::sim_server::tick_hashes::TickHashes;
 
 pub(crate) mod bot_driver;
 pub(crate) mod checkpoint_thread;
@@ -68,6 +69,7 @@ pub(crate) mod journal_watch;
 pub(crate) mod key_file;
 pub(crate) mod lobby;
 pub(crate) mod offering;
+pub(crate) mod player_link;
 pub(crate) mod receipts;
 pub(crate) mod seats;
 pub(crate) mod server_bots;
@@ -77,55 +79,13 @@ pub(crate) mod server_setup;
 pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
+pub(crate) mod tick_hashes;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
 /// its team sees. It hashes the state after a tick only while the world holds `TickHashes`.
 #[derive(Debug)]
 pub struct SimServer;
-
-/// Which player a client link carries the inputs of, their team, and whether the log refused one
-/// of its messages, which ended the link.
-#[derive(Component, Debug, Clone, Copy)]
-pub struct PlayerLink {
-    slot: PlayerSlot,
-    team: Team,
-    refused: bool,
-}
-
-impl PlayerLink {
-    pub const fn slot(self) -> PlayerSlot {
-        self.slot
-    }
-
-    /// Whether the log refused one of its messages: a broken chain or signature, or a limit
-    /// passed. A client that follows the rules sends none, so the first one ends the link.
-    pub const fn refused(self) -> bool {
-        self.refused
-    }
-}
-
-/// The state hash after each sim tick while the resource exists, from tick 0 when inserted before
-/// the match starts: the check the goldens make on every tick, for tests and for a host that
-/// looks for a divergence. Production hashes only at checkpoints and at the result.
-#[derive(Resource, Debug, Default)]
-pub struct TickHashes(Vec<StateHash>);
-
-impl PlayerLink {
-    pub(crate) const fn new(slot: PlayerSlot, team: Team) -> PlayerLink {
-        PlayerLink {
-            slot,
-            team,
-            refused: false,
-        }
-    }
-}
-
-impl TickHashes {
-    pub fn get(&self) -> &[StateHash] {
-        &self.0
-    }
-}
 
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
@@ -490,13 +450,13 @@ fn record_inputs(
     frame.0 = session.log().next_tick();
     for (entity, mut link, mut receiver) in &mut links {
         for message in receiver.receive() {
-            if link.refused {
+            if link.refused() {
                 continue;
             }
             let next_tick = session.log().next_tick();
-            let Some(inputs) = message.inputs(link.slot) else {
-                InputMessageUnfit { slot: link.slot }.log();
-                link.refused = true;
+            let Some(inputs) = message.inputs(link.slot()) else {
+                InputMessageUnfit { slot: link.slot() }.log();
+                link.refuse();
                 commands.trigger(Unlink {
                     entity,
                     reason: UnlinkReason::UserRequested(Some("broken input message".to_owned())),
@@ -505,12 +465,12 @@ fn record_inputs(
             };
             if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
                 InputMessageRefused {
-                    slot: link.slot,
+                    slot: link.slot(),
                     next_tick,
                     error: error.to_string(),
                 }
                 .log();
-                link.refused = true;
+                link.refuse();
                 commands.trigger(Unlink {
                     entity,
                     reason: UnlinkReason::UserRequested(Some(error.to_string())),
@@ -521,7 +481,7 @@ fn record_inputs(
                 let outcome = match outcome {
                     Applied::At(tick) => {
                         InputLogged {
-                            slot: link.slot,
+                            slot: link.slot(),
                             stamp: input.stamp,
                             tick,
                         }
@@ -532,7 +492,7 @@ fn record_inputs(
                     Applied::Early => Unapplied::Early,
                 };
                 InputNeverApplied {
-                    slot: link.slot,
+                    slot: link.slot(),
                     stamp: input.stamp,
                     next_tick,
                     outcome,
@@ -593,8 +553,8 @@ fn run_sim_tick(world: &mut World) {
 fn record_hash(world: &mut World) {
     let hash = world.resource::<Session>().state_hash(world);
     let mut hashes = world.resource_mut::<TickHashes>();
-    trace!(tick = hashes.0.len(), %hash, "hashed the state");
-    hashes.0.push(hash);
+    trace!(tick = hashes.get().len(), %hash, "hashed the state");
+    hashes.push(hash);
 }
 
 /// Logs each unit that died in the tick just run, from combat's record of the tick's deaths,
@@ -665,7 +625,7 @@ fn show_units(
         replicated.insert(Replicate::to_clients(NetworkTarget::All));
         let owner = owner
             .filter(|_| !projectile && !area)
-            .and_then(|owner| links.iter().find(|(_, link)| link.slot == owner.slot()));
+            .and_then(|owner| links.iter().find(|(_, link)| link.slot() == owner.slot()));
         if let Some((link, _)) = owner {
             replicated.insert(PredictionTarget::manual(vec![link]));
         }
@@ -683,10 +643,10 @@ fn show(
     seen: TeamSet,
 ) {
     for (link, player) in links {
-        let visible = seen.contains(player.team);
+        let visible = seen.contains(player.team());
         debug!(
             unit = id.get(),
-            slot = player.slot.get(),
+            slot = player.slot().get(),
             visible,
             "set a unit's visibility"
         );

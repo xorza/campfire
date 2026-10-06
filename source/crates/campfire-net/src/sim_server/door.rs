@@ -22,10 +22,10 @@ use crate::leave_match::LeaveMatch;
 use crate::match_clock::MatchClock;
 use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
-use crate::sim_server::PlayerLink;
 use crate::sim_server::offering::{
     JoinLink, Joined, OfferLinks, Offering, Refused, Superseding, Unanswered,
 };
+use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
 use crate::sim_server::server_signer::ServerSigner;
 

@@ -18,10 +18,11 @@ use crate::faults::Faults;
 use crate::faults::fault::Fault;
 use crate::local::local_session::LocalSession;
 use crate::save_command::SaveCommand;
+use crate::sim_server::SimServer;
 use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned, SignedCheckpoint};
+use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
-use crate::sim_server::{PlayerLink, SimServer};
 
 /// How often, in ticks, the main thread sends the state changed to the checkpoint thread when no
 /// checkpoint is due, so what the match records for the next delta stays as small as this many

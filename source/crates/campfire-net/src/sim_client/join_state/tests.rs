@@ -11,7 +11,7 @@ use campfire_protocol::{
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
-use crate::harness::in_process_match;
+use crate::harness::in_process_match::InProcessMatch;
 use crate::match_start::ChainHead;
 
 const NOW: u64 = 1_700_000_000;
@@ -34,9 +34,9 @@ fn lane_rules() -> SessionRules {
     SessionRules::of(&ModePackages::from_dir(&dir).unwrap())
 }
 
-/// The x-only key of `in_process_match::keypair(secret)`.
+/// The x-only key of `InProcessMatch::keypair(secret)`.
 fn x_only(secret: u8) -> XOnlyPublicKey {
-    in_process_match::keypair(secret).x_only_public_key().0
+    InProcessMatch::keypair(secret).x_only_public_key().0
 }
 
 /// A client of the lane mode, main key 1, that means to reach the remote server of key 8 at
@@ -48,7 +48,7 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
         tick_hz,
     };
     JoinState::new(
-        in_process_match::keypair(1),
+        InProcessMatch::keypair(1),
         server,
         false,
         lane_rules(),
@@ -58,7 +58,7 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
 
 /// Session key 2, whose randomness is all 6s.
 fn signer() -> Signer {
-    Signer::new(in_process_match::keypair(2), |bytes| bytes.fill(6))
+    Signer::new(InProcessMatch::keypair(2), |bytes| bytes.fill(6))
 }
 
 /// Terms the client can play, with `change` applied.
@@ -156,14 +156,11 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     assert_eq!(granted.session_id, offer.terms.session_id());
     assert_eq!(
         granted.session_key,
-        in_process_match::keypair(2).x_only_public_key().0
+        InProcessMatch::keypair(2).x_only_public_key().0
     );
     assert_eq!(
         delegation.main_key(),
-        &in_process_match::keypair(1)
-            .x_only_public_key()
-            .0
-            .serialize()
+        &InProcessMatch::keypair(1).x_only_public_key().0.serialize()
     );
     assert_eq!(
         (granted.seed_contribution, granted.expiration),
@@ -335,7 +332,7 @@ fn each_wait_is_drawn_below_a_bound_that_doubles_to_8_s() {
 
 /// `receipt` with the server key's signature over it.
 fn signed(receipt: Receipt) -> SignedReceipt {
-    let server = in_process_match::keypair(8);
+    let server = InProcessMatch::keypair(8);
     SignedReceipt {
         receipt,
         signature: receipt.sign(&Secp256k1::new(), &server, &[0; 32]),

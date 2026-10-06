@@ -24,25 +24,27 @@ impl Sink for Vec<u8> {
     }
 }
 
-/// Writes the postcard encoding of `value` into `sink`.
-pub(crate) fn write<T: Serialize>(sink: &mut dyn Sink, value: &T) {
-    postcard::serialize_with_flavor(
-        value,
-        Writer {
-            sink,
-            buffer: [0; BUFFER],
-            len: 0,
-        },
-    )
-    .expect("postcard into a sink cannot fail");
-}
-
 /// A postcard output that feeds a sink in batches.
 #[derive(Debug)]
-struct Writer<'a> {
+pub(crate) struct Writer<'a> {
     sink: &'a mut dyn Sink,
     buffer: [u8; BUFFER],
     len: usize,
+}
+
+impl Writer<'_> {
+    /// Writes the postcard encoding of `value` into `sink`.
+    pub(crate) fn write<T: Serialize>(sink: &mut dyn Sink, value: &T) {
+        postcard::serialize_with_flavor(
+            value,
+            Writer {
+                sink,
+                buffer: [0; BUFFER],
+                len: 0,
+            },
+        )
+        .expect("postcard into a sink cannot fail");
+    }
 }
 
 impl Flavor for Writer<'_> {
