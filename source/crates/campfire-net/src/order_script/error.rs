@@ -8,7 +8,7 @@ use toml::de::Error as TomlError;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum OrderScriptError {
     #[error("{0}")]
-    Toml(TomlError),
+    Toml(#[source] TomlError),
     /// A coordinate of the order at `tick` is past what a sim number holds.
     #[error("the order at tick {tick} has a coordinate past a sim number")]
     Coordinate { tick: u64 },

@@ -7,7 +7,7 @@ use thiserror::Error;
 pub enum ScriptError {
     /// The source does not compile.
     #[error("script does not compile: {0}")]
-    Compile(ParseError),
+    Compile(#[source] ParseError),
     /// The call ran past the operation limit of one call.
     #[error("script call over its operation limit")]
     CallLimit,

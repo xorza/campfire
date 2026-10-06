@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use campfire_common::Bytes32;
 use nostr::event::{Event, Kind, Tag, UnsignedEvent};
 use nostr::key::{Keys, SecretKey};
@@ -115,17 +117,6 @@ impl Delegation {
         };
         let session_key = key(DelegationTag::SessionKey)?;
         let server_key = key(DelegationTag::ServerKey)?;
-        let session_id = bytes(DelegationTag::SessionId)?;
-        let seed_contribution = tag(&event, DelegationTag::SeedContribution)?
-            .parse()
-            .ok()
-            .ok_or(DelegationError::MalformedTag(
-                DelegationTag::SeedContribution,
-            ))?;
-        let expiration = tag(&event, DelegationTag::Expiration)?
-            .parse()
-            .ok()
-            .ok_or(DelegationError::MalformedTag(DelegationTag::Expiration))?;
         Ok(Delegation {
             json: json.to_owned(),
             id: DelegationId::new(event.id.to_bytes()),
@@ -133,9 +124,9 @@ impl Delegation {
             terms: DelegationTerms {
                 session_key,
                 server_key,
-                session_id: SessionId::new(session_id),
-                seed_contribution,
-                expiration,
+                session_id: parsed(&event, DelegationTag::SessionId)?,
+                seed_contribution: parsed(&event, DelegationTag::SeedContribution)?,
+                expiration: parsed(&event, DelegationTag::Expiration)?,
             },
         })
     }
@@ -184,6 +175,14 @@ impl Delegation {
 /// The tag `delegation_tag` with its one value.
 fn custom(delegation_tag: DelegationTag, value: String) -> Tag {
     Tag::custom(delegation_tag.name(), [value])
+}
+
+/// The one value of the tag `delegation_tag`, read as a `T`.
+fn parsed<T: FromStr>(event: &Event, delegation_tag: DelegationTag) -> Result<T, DelegationError> {
+    tag(event, delegation_tag)?
+        .parse()
+        .ok()
+        .ok_or(DelegationError::MalformedTag(delegation_tag))
 }
 
 /// The one value of the tag `delegation_tag`.

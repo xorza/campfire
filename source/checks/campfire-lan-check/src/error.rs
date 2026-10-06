@@ -16,7 +16,7 @@ pub(crate) enum CheckError {
     #[error("run the check with `cargo run -p campfire-lan-check`")]
     NotUnderCargo,
     #[error("cargo did not start: {0}")]
-    CargoStart(io::Error),
+    CargoStart(#[source] io::Error),
     /// Cargo did not build the processes.
     #[error("cargo did not build the processes")]
     Build,
@@ -25,24 +25,41 @@ pub(crate) enum CheckError {
     NoExecutable(TargetName),
     /// A file of the run could not be read or written.
     #[error("{}: {error}", .path.display())]
-    File { path: PathBuf, error: io::Error },
+    File {
+        path: PathBuf,
+        #[source]
+        error: io::Error,
+    },
     #[error("{process} did not start: {error}")]
-    Start { process: Process, error: io::Error },
+    Start {
+        process: Process,
+        #[source]
+        error: io::Error,
+    },
     #[error("could not wait for {process}: {error}")]
-    Wait { process: Process, error: io::Error },
+    Wait {
+        process: Process,
+        #[source]
+        error: io::Error,
+    },
     /// A line of a process's log is not an event the check can read.
     #[error("line {line} of the log of {process}: {error}")]
     Event {
         process: Process,
         line: usize,
+        #[source]
         error: serde_json::Error,
     },
     /// A host's data directory does not open.
     #[error("{}: {error}", .path.display())]
-    Data { path: PathBuf, error: DataDirError },
+    Data {
+        path: PathBuf,
+        #[source]
+        error: DataDirError,
+    },
     #[error("a bot's script: {0}")]
-    Script(OrderScriptError),
+    Script(#[source] OrderScriptError),
     /// The session log the server published does not decode.
     #[error("the published session log: {0}")]
-    SessionLog(LogError),
+    SessionLog(#[source] LogError),
 }

@@ -19,10 +19,10 @@ pub struct ServerExit;
 impl ServerExit {
     /// How the server of the session in `world` exits in this frame, when it does: as `Faults`
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
-    /// `ExitStatus::Storage`; before the match started, at once when `stop` asks it to. Once the match
-    /// started, when `stop` asks it to or every player left, it ends the session, as the mode
-    /// ended the match or aborted; it then publishes the log in its `ServerDir`, and exits, with
-    /// an error when the log is not written, as the session it holds is lost.
+    /// `ExitStatus::Storage`; before the match started, at once when `stop` asks it to. Once the
+    /// match started, when `stop` asks it to or every player left, it ends the session, as the
+    /// mode ended the match or aborted; it then publishes the log in its `ServerDir`, and exits,
+    /// with an error when the log is not written, as the session it holds is lost.
     pub fn due(world: &mut World, stop: bool) -> Option<AppExit> {
         if let Some(exit) = Faults::apply(world) {
             return Some(exit);

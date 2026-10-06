@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt;
 
 use campfire_capabilities::EngineEnum;
@@ -38,6 +39,26 @@ pub enum ScriptProblem {
     /// It uses or defines a name design 08 plans, a `ctx` name, a field or method of a handle, or
     /// a hook, which the release does not run yet.
     Planned(String),
+}
+
+impl ScriptProblem {
+    /// The error the problem holds: the compiler's.
+    pub(crate) fn error(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ScriptProblem::Compile(error) => Some(error),
+            ScriptProblem::Unreferenced
+            | ScriptProblem::Missing
+            | ScriptProblem::UnknownHook(_)
+            | ScriptProblem::UnknownCtx(_)
+            | ScriptProblem::UnknownMember(_)
+            | ScriptProblem::UnknownState(_)
+            | ScriptProblem::EnumString { .. }
+            | ScriptProblem::UnknownEnumMember { .. }
+            | ScriptProblem::FunctionPointer
+            | ScriptProblem::CtxMisuse(_)
+            | ScriptProblem::Planned(_) => None,
+        }
+    }
 }
 
 impl fmt::Display for ScriptProblem {

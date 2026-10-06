@@ -9,9 +9,9 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum JoinError {
     #[error("{0}")]
-    Delegation(DelegationError),
+    Delegation(#[source] DelegationError),
     #[error("{0}")]
-    Connect(ConnectError),
+    Connect(#[source] ConnectError),
     /// Every slot was taken by the time the join arrived.
     #[error("every slot is taken")]
     Full,
@@ -20,7 +20,7 @@ pub enum JoinError {
     NoSlot,
     /// The log refused what the join would change.
     #[error("{0}")]
-    Refused(ServerInputRefused),
+    Refused(#[source] ServerInputRefused),
     /// A newer login of the player took the link's seat.
     #[error("a newer login of the player took the seat")]
     Superseded,

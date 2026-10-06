@@ -72,11 +72,11 @@ impl DelayLine {
     }
 
     /// Sets every link's measured round trip to its model's worst, and its jitter to zero.
-    /// Lightyear measures them by the wall clock, which a step of an in-process match hardly takes, so
-    /// under load they vary from run to run and change the input timeline. The model's jitter is
-    /// bounded, so its worst round trip, not a mean with a margin of jitter, is the round trip a
-    /// lead must cover for no input to arrive late. The `=0.30.1` pin of Lightyear keeps the two
-    /// fields this writes where they are.
+    /// Lightyear measures them by the wall clock, which a step of an in-process match hardly
+    /// takes, so under load they vary from run to run and change the input timeline. The model's
+    /// jitter is bounded, so its worst round trip, not a mean with a margin of jitter, is the round
+    /// trip a lead must cover for no input to arrive late. The `=0.30.1` pin of Lightyear keeps the
+    /// two fields this writes where they are.
     pub(crate) fn pin_round_trip(
         mut links: Query<'_, '_, (&mut Link, Option<&mut PingManager>, &DelayLine)>,
     ) {

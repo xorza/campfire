@@ -18,7 +18,6 @@ use campfire_net::{
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog};
-use campfire_sim::TickRate;
 use lightyear::prelude::Connect;
 use tempfile::TempDir;
 
@@ -30,7 +29,6 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let data = TempDir::new().unwrap();
     let packages =
         Arc::new(ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap());
-    let _tick = TickRate::new(packages.manifest().tick_hz.default()).length();
     let pace = Arc::new(Pace::default());
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),

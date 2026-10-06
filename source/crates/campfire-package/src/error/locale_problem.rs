@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt;
 
 use fluent_syntax::parser::ParserError;
@@ -16,6 +17,16 @@ pub enum LocaleProblem {
     Repeated(MessageId),
     /// A translation defines the message, which the file of its package's own language does not.
     Stray(MessageId),
+}
+
+impl LocaleProblem {
+    /// The error the problem holds: Fluent's parser's.
+    pub(crate) fn error(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            LocaleProblem::Parse(error) => Some(error),
+            LocaleProblem::FileName | LocaleProblem::Repeated(_) | LocaleProblem::Stray(_) => None,
+        }
+    }
 }
 
 impl fmt::Display for LocaleProblem {

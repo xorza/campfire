@@ -8,7 +8,6 @@ use thiserror::Error;
 use toml::de::Error as TomlError;
 
 use crate::error::load_problem::LoadProblem;
-use crate::error::script_problem::ScriptProblem;
 
 pub(crate) mod choice_problem;
 pub(crate) mod ctx_misuse;
@@ -121,14 +120,52 @@ impl fmt::Display for LoadError {
 
 impl Error for LoadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match &*self.problem {
-            LoadProblem::Content(error) => Some(error),
+        self.problem.error()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_capabilities::{DeclaredName, ModifierProblem};
+
+    use super::*;
+    use crate::error::locale_problem::LocaleProblem;
+    use crate::error::script_problem::ScriptProblem;
+
+    #[test]
+    fn a_load_errors_source_is_the_error_its_problem_holds() {
+        let error = |problem| LoadError::of("hero", problem);
+        let modifier = DeclaredName::new("haste").unwrap();
+        let path = PackagePath::parse("en.ftl").unwrap();
+
+        // A problem that holds an error gives it.
+        let held = error(LoadProblem::Modifier {
+            modifier,
+            problem: ModifierProblem::Time,
+        });
+        let source = held.source().unwrap();
+        assert_eq!(
+            source.downcast_ref::<ModifierProblem>(),
+            Some(&ModifierProblem::Time)
+        );
+        let content = error(LoadProblem::Content(ContentError::NotUtf8(PathBuf::from(
+            "x",
+        ))));
+        assert!(content.source().unwrap().is::<ContentError>());
+
+        // A problem of the package's own checks holds none.
+        for problem in [
+            LoadProblem::WrongKind,
             LoadProblem::Script {
-                problem: ScriptProblem::Compile(error),
-                ..
-            } => Some(error),
-            LoadProblem::Mode(error) => Some(error),
-            _ => None,
+                path: path.clone(),
+                problem: ScriptProblem::Missing,
+            },
+            LoadProblem::Locale {
+                path,
+                problem: LocaleProblem::FileName,
+            },
+        ] {
+            assert!(error(problem).source().is_none());
         }
     }
 }

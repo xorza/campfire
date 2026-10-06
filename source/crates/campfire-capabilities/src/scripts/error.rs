@@ -95,7 +95,7 @@ pub enum ApiError {
     /// A modifier whose param, as the call's action at its rank or no action gives it, does not
     /// hold for `problem`.
     #[error("a param of the modifier, as the call applies it: {0}")]
-    ModifierParam(ParamProblem),
+    ModifierParam(#[source] ParamProblem),
     /// A negative count of a modifier's stacks.
     #[error("a modifier's stacks are not negative")]
     NegativeStacks,

@@ -42,7 +42,6 @@ pub use crate::connect::ConnectChallenge;
 pub use crate::connect::certificate_hash::CertificateHash;
 pub use crate::connect::error::ConnectError;
 pub use crate::controller::Controller;
-
 pub use crate::delegation::delegation_id::DelegationId;
 pub use crate::delegation::error::{DelegationError, ScopeError};
 pub use crate::delegation::seed_contribution::SeedContribution;

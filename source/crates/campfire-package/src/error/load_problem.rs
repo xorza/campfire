@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt;
 
 use campfire_capabilities::{
@@ -164,6 +165,61 @@ pub enum LoadProblem {
     Item(ItemProblem),
     /// The data at `at` gives `field`, which design 08 plans and the release does not read yet.
     Planned { field: &'static str, at: Place },
+}
+
+impl LoadProblem {
+    /// The error the problem holds, as its load error's source.
+    pub(crate) fn error(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            LoadProblem::Content(error) => Some(error),
+            LoadProblem::Mode(error) => Some(error),
+            LoadProblem::Map(problem) => Some(problem),
+            LoadProblem::UnitKit { error, .. } => Some(error),
+            LoadProblem::Ai { error, .. } => Some(error),
+            LoadProblem::Action { error, .. } => Some(error),
+            LoadProblem::Modifier { problem, .. } => Some(problem),
+            LoadProblem::ModifierParam { problem, .. } => Some(problem),
+            LoadProblem::Script { problem, .. } => problem.error(),
+            LoadProblem::Locale { problem, .. } => problem.error(),
+            LoadProblem::WrongKind
+            | LoadProblem::OtherName(_)
+            | LoadProblem::OtherApi(_)
+            | LoadProblem::Undeclared { .. }
+            | LoadProblem::NoDamageKinds
+            | LoadProblem::NoGrid
+            | LoadProblem::NoPathingGrid
+            | LoadProblem::UnknownSlot(_)
+            | LoadProblem::Unslotted(_)
+            | LoadProblem::AvatarOrders
+            | LoadProblem::NoQueue(_)
+            | LoadProblem::ActionRanks(_)
+            | LoadProblem::KindField { .. }
+            | LoadProblem::AttackAims(_)
+            | LoadProblem::GlobalAttack(_)
+            | LoadProblem::TrainAims(_)
+            | LoadProblem::ClampAims(_)
+            | LoadProblem::HoldAlone(_)
+            | LoadProblem::KindNotRun { .. }
+            | LoadProblem::ActionField { .. }
+            | LoadProblem::TooMany(_)
+            | LoadProblem::LevelTracks
+            | LoadProblem::RankLevels(_)
+            | LoadProblem::RankCount { .. }
+            | LoadProblem::Repeated { .. }
+            | LoadProblem::SharedPassive { .. }
+            | LoadProblem::StatLoop(_)
+            | LoadProblem::Choice(_)
+            | LoadProblem::Unknown { .. }
+            | LoadProblem::NoLifePool
+            | LoadProblem::CombatMissing(_)
+            | LoadProblem::BotTakeoverWithoutLateJoin
+            | LoadProblem::Delivery(_)
+            | LoadProblem::Effect { .. }
+            | LoadProblem::EngineTag { .. }
+            | LoadProblem::Item(_)
+            | LoadProblem::Planned { .. } => None,
+        }
+    }
 }
 
 impl fmt::Display for LoadProblem {

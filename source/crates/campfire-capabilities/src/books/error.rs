@@ -16,6 +16,7 @@ pub enum BookError {
     Kit {
         package: u16,
         unit_type: TypePlace,
+        #[source]
         error: UnitKitError,
     },
     /// The unit type's AI does not load.
@@ -23,6 +24,7 @@ pub enum BookError {
     Ai {
         package: u16,
         unit_type: TypePlace,
+        #[source]
         error: AiError,
     },
     /// A time of the action does not count in ticks.
@@ -30,6 +32,7 @@ pub enum BookError {
     Action {
         package: u16,
         action: DeclaredName,
+        #[source]
         error: ActionError,
     },
     /// The modifier does not load.
@@ -37,6 +40,7 @@ pub enum BookError {
     Modifier {
         package: u16,
         modifier: DeclaredName,
+        #[source]
         problem: ModifierProblem,
     },
     /// A time of the area type does not count in ticks.
@@ -47,5 +51,5 @@ pub enum BookError {
     },
     /// The mode's teams, relations or map name what the mode does not have.
     #[error("{0}")]
-    Mode(ModeError),
+    Mode(#[source] ModeError),
 }

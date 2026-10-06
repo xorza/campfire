@@ -27,20 +27,6 @@ mod sim_client;
 mod sim_server;
 mod superseded;
 
-pub use crate::sim_server::lobby::error::LobbyError;
-
-pub use crate::sim_server::checkpoints::error::SaveRefusal;
-
-pub use crate::sim_client::join_state::error::ReceiptRefusal;
-
-pub use crate::sim_client::join_state::error::TermsMismatch;
-
-pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
-pub use crate::os::Os;
-pub use crate::process_exit::ProcessExit;
-
-pub use crate::sim_server::error::JoinError;
-
 pub use crate::events::avatar_missing::AvatarMissing;
 pub use crate::events::checkpoint_failed::CheckpointFailed;
 pub use crate::events::checkpoint_taken::CheckpointTaken;
@@ -68,32 +54,34 @@ pub use crate::events::session_restored::SessionRestored;
 pub use crate::events::session_written::SessionWritten;
 pub use crate::events::ticks_caught_up::TicksCaughtUp;
 pub use crate::events::time_dropped::TimeDropped;
-pub use crate::sim_server::error::RestoreMatchError;
-
 pub use crate::input_message::InputMessage;
-
 pub use crate::local::local_pace::LocalPace;
 pub use crate::local::local_relink::LocalRelink;
 pub use crate::local::local_server::error::LocalServerError;
 pub use crate::local::local_server::{LocalServer, LocalServerSetup, Relinks};
 pub use crate::match_clock::MatchClock;
-pub use crate::pace::{Pace, PaceSpeed};
-pub use crate::save_command::SaveCommand;
-pub use crate::sim_server::lobby::{Lobby, LobbySetup};
-
 pub use crate::net_protocol::{InputChannel, NetProtocol};
-
+pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 pub use crate::order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
+pub use crate::os::Os;
+pub use crate::pace::{Pace, PaceSpeed};
+pub use crate::process_exit::ProcessExit;
+pub use crate::save_command::SaveCommand;
 pub use crate::session_times::SessionTimes;
 pub use crate::sim_client::bot_script::BotScript;
 pub use crate::sim_client::client_dir::ClientDir;
+pub use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
 pub use crate::sim_client::join_state::{JoinState, Loss};
 pub use crate::sim_client::server_pin::ServerPin;
 pub use crate::sim_client::{LeaveRequest, PendingOrders, PendingSaves, SimClient};
 pub use crate::sim_server::SimServer;
+pub use crate::sim_server::checkpoints::error::SaveRefusal;
+pub use crate::sim_server::error::{JoinError, RestoreMatchError};
 pub use crate::sim_server::journal_watch::JournalWatch;
 pub use crate::sim_server::key_file::KeyFile;
 pub use crate::sim_server::key_file::error::KeyFileError;
+pub use crate::sim_server::lobby::error::LobbyError;
+pub use crate::sim_server::lobby::{Lobby, LobbySetup};
 pub use crate::sim_server::player_link::PlayerLink;
 pub use crate::sim_server::server_bots::{ServerBots, SlotBot};
 pub use crate::sim_server::server_dir::ServerDir;

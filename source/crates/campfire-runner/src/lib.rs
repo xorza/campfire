@@ -13,24 +13,16 @@ mod session;
 mod session_rules;
 mod slot_rules;
 
-pub use crate::slot_rules::error::SlotRuleError;
-
-pub use crate::session_rules::error::TermsError;
-
-pub use crate::session::error::CheckpointBeginError;
-
-pub use crate::session::error::ResultMismatch;
-
-pub use crate::session::error::ResumeError;
-
-pub use crate::session::error::ServerInputRefused;
-
 pub use crate::events::script_call_failed::ScriptCallFailed;
 pub use crate::input_rules::InputRules;
 pub use crate::runner::Runner;
 pub use crate::session::Session;
-pub use crate::session::error::StartError;
+pub use crate::session::error::{
+    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
+};
 pub use crate::session_rules::SessionRules;
+pub use crate::session_rules::error::TermsError;
+pub use crate::slot_rules::error::SlotRuleError;
 
 #[cfg(feature = "bench")]
 pub mod bench {
