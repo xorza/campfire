@@ -1,5 +1,3 @@
-use std::fs;
-
 use super::*;
 use crate::durable_file::tests::ScratchDir;
 #[cfg(unix)]
@@ -17,6 +15,7 @@ fn a_secret_file_round_trips_and_refuses_one_others_may_read() {
     ));
     #[cfg(unix)]
     {
+        use std::fs;
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(mode(&path), 0o600);
         // Others may read it: refused, with its mode, before its bytes are read.
