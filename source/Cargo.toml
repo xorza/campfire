@@ -128,6 +128,7 @@ opt-level = 3
 [profile.release]
 debug = "line-tables-only"
 overflow-checks = true
+lto = "thin"
 
 [profile.release-max]
 inherits = "release"
@@ -138,7 +139,7 @@ strip = "symbols"
 debug = false
 
 [profile.bench]
-inherits = "release-max"
+inherits = "release"
 debug = "line-tables-only"
 strip = "none"
 incremental = true
