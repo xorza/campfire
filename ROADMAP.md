@@ -9,7 +9,6 @@ The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashe
 ### 6. Sessions
 
 - Checkpoints, crash restore within the restore window, reconnect with the same session key, late join, receipts.
-- Inputs after a server stall: a frame that catches up runs all its ticks before it reads the inputs that arrived in the meantime, so on-time inputs take effect up to a whole burst late. Decide whether the server reads inputs between those ticks, or bounds the burst ([Session log](docs/design/05-protocol-spec.md#session-log)).
 - Players joining and leaving, with their hooks, as the log records them.
 - The local server on a client thread, pause and game speed; saves and loads on one release ([Singleplayer and saves](docs/design/01-campfire-design.md#singleplayer-and-saves)).
 

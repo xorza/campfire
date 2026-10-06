@@ -6,6 +6,8 @@ Design: [Modules](../design/02-engine-core.md#modules), `net`. Rules: [Issue log
 
 ## Research
 
+- A client whose server dropped time after a stall past a frame's bound runs ahead of it, and Lightyear shifts the client's timeline back whole ticks at a time; from then on the client's sim mispredicts its own hero every tick and rolls back every tick, its hero standing where the server no longer has it, in the net scenario of a 2 s server stall.
+
 - **Stage 8.** Every replicated component of a unit goes to every client that sees the unit. Design 04 sends pools other than life to the owner or the team ([Combat](../design/04-capabilities/combat.md#network)), and experience and points to the owner ([Progression](../design/04-capabilities/progression.md#network)).
 
 ## Ready

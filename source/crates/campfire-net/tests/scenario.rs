@@ -428,6 +428,45 @@ fn a_route_round_a_tower_through_delayed_links() {
 }
 
 #[test]
+fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
+    // The lane mode at 30 ticks a second, with a max input delay of 10 ticks: a frame advances
+    // the server 9 ticks at most. A stall of 8 ticks, as the first orders go out in tick 60,
+    // runs all 8 in one frame, and the orders it held are read after them, 8 ticks late at most:
+    // none is late, and the match plays out as it does with no stall.
+    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
+    local.start_match();
+    let heroes = [local.avatar(0), local.avatar(1)];
+    let teams = local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
+    while local.next_tick(End::Server) < 56 {
+        local.step();
+    }
+    let ran = |local: &mut LocalMatch, ticks: u32| {
+        let before = local.next_tick(End::Server);
+        local.stall_server(ticks);
+        local.next_tick(End::Server) - before
+    };
+    assert_eq!(ran(&mut local, 8), 8);
+    while local.next_tick(End::Server) < MATCH_TICKS {
+        local.step();
+    }
+    // Each hero ends where its last order sent it, on the server and on its client.
+    for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
+        let end = Hero {
+            position: [at(-3, -2), at(3, 4)][team],
+            dead: false,
+        };
+        assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
+        assert_eq!(
+            hero(local.client(index), id),
+            end,
+            "hero {index} on its client"
+        );
+    }
+    // A stall of 2 s, 60 ticks, runs 9, and drops the rest.
+    assert_eq!(ran(&mut local, 60), 9);
+}
+
+#[test]
 fn a_1v1_through_perfect_links() {
     // Each client corrects once, when it learns its own hero died.
     assert_eq!(play(LinkModel::PERFECT), [1, 1]);

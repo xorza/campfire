@@ -296,6 +296,23 @@ impl LocalMatch {
         }
     }
 
+    /// `ticks` frames of each client alone, then one frame of the server as long as their ticks:
+    /// a server whose process stalled, and whose clients ran on and sent their inputs meanwhile.
+    pub fn stall_server(&mut self, ticks: u32) {
+        for _ in 0..ticks {
+            for client in 0..self.clients.len() {
+                self.client_frame(client);
+            }
+        }
+        let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
+        let frame = tick / self.setup.server_frames;
+        let stalled = TimeUpdateStrategy::ManualDuration(tick * ticks);
+        self.server.insert_resource(stalled);
+        self.server_frame();
+        self.server
+            .insert_resource(TimeUpdateStrategy::ManualDuration(frame));
+    }
+
     /// One frame of `client` alone: one tick of it.
     pub fn client_frame(&mut self, client: usize) {
         self.clients[client].update();

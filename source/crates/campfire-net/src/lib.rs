@@ -34,6 +34,7 @@ pub use events::orders_sent::OrdersSent;
 pub use events::session_refused::SessionRefused;
 pub use events::session_written::SessionWritten;
 pub use events::ticks_caught_up::TicksCaughtUp;
+pub use events::time_dropped::TimeDropped;
 
 pub use input_message::InputMessage;
 

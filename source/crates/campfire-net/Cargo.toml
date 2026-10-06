@@ -8,7 +8,6 @@ autotests = false
 [features]
 internals = [
     "dep:bevy_state",
-    "dep:bevy_time",
     "campfire-log/internals",
     "campfire-package/internals",
 ]
@@ -27,7 +26,7 @@ campfire-sim.workspace = true
 bevy_app.workspace = true
 bevy_ecs.workspace = true
 bevy_state = { workspace = true, optional = true }
-bevy_time = { workspace = true, optional = true }
+bevy_time.workspace = true
 criterion = { workspace = true, optional = true }
 lightyear.workspace = true
 serde.workspace = true

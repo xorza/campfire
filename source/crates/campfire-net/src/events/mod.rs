@@ -13,4 +13,5 @@ pub(crate) mod orders_sent;
 pub(crate) mod session_refused;
 pub(crate) mod session_written;
 pub(crate) mod ticks_caught_up;
+pub(crate) mod time_dropped;
 pub(crate) mod unit_died;

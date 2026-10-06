@@ -9,6 +9,7 @@ use bevy_ecs::schedule::common_conditions::{
 };
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
     Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team, TeamSet,
 };
@@ -30,6 +31,7 @@ use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
 use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 use crate::events::ticks_caught_up::TicksCaughtUp;
+use crate::events::time_dropped::TimeDropped;
 use crate::events::unit_died::UnitDied;
 use crate::input_message::InputMessage;
 use crate::lobby::Lobby;
@@ -97,6 +99,7 @@ impl Plugin for SimServer {
             (
                 record_inputs.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
                 report_catch_up.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
+                report_dropped_time.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
             )
                 .run_if(resource_exists::<MatchClock>),
         );
@@ -118,7 +121,9 @@ impl Plugin for SimServer {
 
 impl SimServer {
     /// Starts the match of `log`'s header, of the mode `packages` holds, in the next fixed tick,
-    /// recording into `log`. `clients` are the links of the players, by slot; each learns its slot
+    /// recording into `log`. From then on a frame advances the server's clock by the ticks of the
+    /// max input delay less one at most, a tick at least, so a burst after a stall makes no
+    /// on-time input late; a longer frame's time past that is dropped, and logged. `clients` are the links of the players, by slot; each learns its slot
     /// and the start tick. From the first tick on, every unit replicates to the clients whose team
     /// sees it, and the owner's client predicts it, but a projectile or an area.
     pub fn start_match(
@@ -138,6 +143,18 @@ impl SimServer {
             TickRate::new(log.header().terms.tick_hz).length(),
             "the server ticks at the session's rate"
         );
+        let tick = TickRate::new(log.header().terms.tick_hz).length();
+        let burst = log
+            .header()
+            .terms
+            .max_input_delay
+            .get()
+            .saturating_sub(1)
+            .max(1);
+        let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");
+        world
+            .resource_mut::<Time<Virtual>>()
+            .set_max_delta(tick * burst);
         Session::start(world, log, server_seed, packages)?;
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
@@ -236,6 +253,13 @@ struct FrameStart(Tick);
 fn report_catch_up(session: Res<'_, Session>, start: Res<'_, FrameStart>) {
     if let Some(caught_up) = TicksCaughtUp::of(start.0, session.log().next_tick()) {
         caught_up.log();
+    }
+}
+
+/// Logs the time this frame dropped past the most a frame may advance.
+fn report_dropped_time(real: Res<'_, Time<Real>>, virtual_time: Res<'_, Time<Virtual>>) {
+    if let Some(dropped) = TimeDropped::of(real.delta(), virtual_time.max_delta()) {
+        dropped.log();
     }
 }
 
