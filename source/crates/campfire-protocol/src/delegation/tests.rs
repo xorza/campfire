@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_key::TestKey;
+use crate::harness::test_key::TestKey;
 
 const CREATED_AT: u64 = 1_700_000_000;
 

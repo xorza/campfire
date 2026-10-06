@@ -4,10 +4,10 @@ use campfire_common::{PlayerSlot, Tick};
 use criterion::Criterion;
 use secp256k1::Secp256k1;
 
+use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
-use crate::test_key::TestKey;
 
 /// The per-packet cost of the chain-head signature: the client signs the chain head once per
 /// packet with its session key, and the log checks it once per packet.

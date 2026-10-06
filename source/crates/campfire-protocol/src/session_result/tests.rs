@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_key::TestKey;
+use crate::harness::test_key::TestKey;
 
 #[test]
 fn a_results_signature_holds_only_over_it() {

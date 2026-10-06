@@ -7,10 +7,10 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::ScopeError;
 use crate::delegation::seed_contribution::SeedContribution;
+use crate::harness::test_key::TestKey;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
-use crate::test_key::TestKey;
 
 const NOW: u64 = 1_700_000_000;
 const EXPIRATION: u64 = NOW + 60;

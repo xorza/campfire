@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_key::TestKey;
+use crate::harness::test_key::TestKey;
 
 #[test]
 fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {

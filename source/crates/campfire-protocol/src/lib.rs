@@ -9,6 +9,8 @@ mod connect;
 mod controller;
 mod decoded;
 mod delegation;
+#[cfg(any(test, feature = "internals"))]
+mod harness;
 mod input_chain;
 mod input_hash;
 mod journal;
@@ -31,8 +33,6 @@ mod slot_change;
 mod slot_plan;
 mod slot_start;
 mod snapshot_fingerprint;
-#[cfg(any(test, feature = "internals"))]
-mod test_key;
 
 pub use crate::checkpoint::Checkpoint;
 pub use crate::checkpoint::checkpoint_begun::CheckpointBegun;
@@ -87,7 +87,7 @@ pub use secp256k1;
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::test_key::TestKey;
+    pub use crate::harness::test_key::TestKey;
 }
 
 #[cfg(feature = "bench")]

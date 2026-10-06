@@ -145,7 +145,7 @@ impl Draws {
 
 /// Why a draw does not make a value: a type the state does not hold, or a refusal of its decode.
 #[derive(Debug, Error)]
-#[error("{}", .0)]
+#[error("{0}")]
 pub struct DrawError(String);
 
 impl de::Error for DrawError {

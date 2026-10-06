@@ -290,7 +290,7 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     let edit = Edit::Set(&path, &layers);
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
     assert_eq!(tags(&packages), 253);
-    // The mode's `[tags]` may give an engine tag effects, and that names no tag of its own.
+    // The mode's `[tags]` may give an engine tag properties, and that names no tag of its own.
     let edit = Edit::Replace(
         "[tags.stunned]",
         "[tags.projectile]\nhidden = true\n\n[tags.stunned]",
@@ -2483,7 +2483,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         "{error}"
     );
 
-    // The flaws hold each data field and tag effect the release plans: `loot` and `noise` as
+    // The flaws hold each data field and tag property the release plans: `loot` and `noise` as
     // an action's effects, the others as fields.
     let api = CapabilitySet::script_api();
     let mut planned: Vec<_> = api

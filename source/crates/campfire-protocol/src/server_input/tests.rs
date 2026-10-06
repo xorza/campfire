@@ -1,7 +1,7 @@
 use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::seed_contribution::SeedContribution;
-use crate::test_key::TestKey;
+use crate::harness::test_key::TestKey;
 
 /// A delegation of the main key of `main` for the session key of `byte`.
 fn delegation(main: u8, byte: u8) -> Delegation {

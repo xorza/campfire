@@ -1,7 +1,7 @@
 use secp256k1::schnorr;
 
 use super::*;
-use crate::test_key::TestKey;
+use crate::harness::test_key::TestKey;
 
 fn root(byte: u8) -> InputHash {
     InputHash::new([byte; 32])

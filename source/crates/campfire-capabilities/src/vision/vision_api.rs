@@ -18,7 +18,7 @@ use crate::vision::vision_column::VisionColumn;
 use crate::vision::vision_effect::VisionEffect;
 
 /// The script API and data of `vision` beside the queries the view answers: the sight range, the
-/// reveal, and the hidden and detects tag effects.
+/// reveal, and the hidden and detects tag properties.
 #[derive(Debug)]
 pub(crate) struct VisionApi;
 

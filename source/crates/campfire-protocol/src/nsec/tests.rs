@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_key::TestKey;
+use crate::harness::test_key::TestKey;
 
 #[test]
 fn a_key_round_trips_and_what_is_no_nsec_is_refused() {

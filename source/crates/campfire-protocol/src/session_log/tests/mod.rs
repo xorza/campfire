@@ -8,13 +8,13 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::{DelegationError, ScopeError};
 use crate::delegation::seed_contribution::SeedContribution;
+use crate::harness::test_key::TestKey;
 use crate::input_hash::InputHash;
 use crate::seed_chain::SeedChain;
 use crate::session_log::error::SeedError;
 use crate::session_result::{Outcome, SessionResult};
 use crate::slot_plan::SlotPlan;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
-use crate::test_key::TestKey;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;

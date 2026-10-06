@@ -3,8 +3,8 @@ use std::num::NonZeroU32;
 use campfire_common::{Fingerprint, Ticks};
 
 use super::*;
+use crate::harness::test_key::TestKey;
 use crate::slot_plan::SlotPlan;
-use crate::test_key::TestKey;
 
 #[test]
 fn a_private_record_round_trips_and_other_bytes_are_refused() {

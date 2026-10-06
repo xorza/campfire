@@ -4,10 +4,10 @@ use super::*;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot};
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::delegation::{Delegation, DelegationTerms};
+use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::session_log::{Spill, StampCount};
-use crate::test_key::TestKey;
 
 fn delegation() -> Delegation {
     let terms = DelegationTerms {
