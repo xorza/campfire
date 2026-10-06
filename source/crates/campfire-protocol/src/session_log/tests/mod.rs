@@ -1327,6 +1327,27 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     );
     let joined_open = at(2, 2, SlotChangeKind::Joined { from: Taken::Open });
     assert_eq!(log.sealed_changes(), [left, joined_open]);
+    // The log's own view: slot 0 a bot's, left by player 0's main key; slot 1 the bot's; slot 2
+    // player 1's, on the chain of their delegation; and the server inputs as logged.
+    let main = |player: u32| *mixed_delegation(player, player).main_key();
+    assert_eq!(log.controller(slot(0)), Some(Controller::Bot));
+    assert_eq!(log.leaver(slot(0)), Some(main(0)));
+    let joiner = Controller::Player {
+        main_key: main(1),
+        session_key: session_key(1).x_only_public_key().0,
+        chain: InputChain::new(slot(2), mixed_delegation(1, 1).chain_root()),
+    };
+    assert_eq!(log.controller(slot(2)), Some(joiner));
+    assert_eq!(log.controller(slot(3)), None);
+    assert_eq!(log.player_slots().collect::<Vec<_>>(), [slot(2)]);
+    assert_eq!(log.slot_count(), 3);
+    // The bot's x and player 0's link down before tick 0; the bot's y and z, and player 0's
+    // renewal, before tick 1; the leave and the join before tick 2.
+    assert_eq!(log.server_inputs().count(), 7);
+    assert!(matches!(
+        log.server_inputs().last(),
+        Some(ServerInput::Join { slot: taken, .. }) if *taken == slot(2)
+    ));
     // Player 0 takes their own slot back from the bot; a third player may not take player 1's.
     // Player 1 leaves slot 2, reserved for them: another player may not take it either.
     serve(&mut log, joins(0, 0, 0)).unwrap();

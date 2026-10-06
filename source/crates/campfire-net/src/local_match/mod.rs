@@ -1,3 +1,5 @@
+use std::cell::Cell;
+use std::fmt::Write as _;
 use std::mem;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -12,12 +14,12 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_capabilities::{Action, Body, MoveStep, Order, Owner, Team};
+use campfire_capabilities::{Action, Body, Leaver, MoveStep, Order, Owner, PlayersData, Team};
 use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
-use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
-use campfire_runner::InputRules;
+use campfire_protocol::{CertificateHash, SeedChain, ServerInput, SessionPrivate};
+use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
@@ -25,7 +27,7 @@ use lightyear::prelude::server::{RawServer, ServerPlugins};
 use lightyear::prelude::{
     Client, Connect, Connected, Link, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
     PredictionManager, PredictionMetrics, ReplicationReceiver, ReplicationSender, RollbackMode,
-    SyncConfig, SyncSystems,
+    SyncConfig, SyncSystems, Unlink, UnlinkReason,
 };
 use lightyear::transport::plugin::TransportSystems;
 
@@ -35,7 +37,9 @@ use crate::local_match::link_model::LinkModel;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
+use crate::server_setup::ServerSetup;
 use crate::session_dir::SessionDir;
+use crate::session_times::SessionTimes;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::join_state::JoinState;
 use crate::sim_client::server_pin::ServerPin;
@@ -49,8 +53,17 @@ pub(crate) mod link_model;
 const CONNECT_FRAMES: usize = 300;
 /// In-process channels have no TLS; both ends take this as the certificate's hash.
 const CERTIFICATE: CertificateHash = CertificateHash::new([3; 32]);
-/// Unix seconds, on every end.
+/// Unix seconds, on every end, until a test sets the clock.
 const NOW: u64 = 1_700_000_000;
+
+thread_local! {
+    /// The Unix time every end's clock reads: a match runs on the test's thread.
+    static UNIX_NOW: Cell<u64> = const { Cell::new(NOW) };
+}
+
+fn unix_now() -> u64 {
+    UNIX_NOW.with(Cell::get)
+}
 
 /// What a `LocalMatch` runs: how many players join, and how.
 #[derive(Debug, Clone, Copy)]
@@ -65,6 +78,10 @@ pub struct MatchSetup {
     pub link: LinkModel,
     /// The seed chain the server commits to.
     pub seed_chain: SeedChain,
+    /// How long the server waits for a player whose link fails, and restores a stopped session.
+    pub times: SessionTimes,
+    /// The lane mode's `[players]`.
+    pub rules: PlayersData,
 }
 
 /// An app of a match: the server's, or a client's.
@@ -91,6 +108,8 @@ impl MatchSetup {
             server_frames,
             link: LinkModel::PERFECT,
             seed_chain,
+            times: SessionTimes::DEFAULT,
+            rules: PlayersData::DEFAULT,
         }
     }
 
@@ -103,6 +122,8 @@ impl MatchSetup {
             server_frames: 3,
             link,
             seed_chain,
+            times: SessionTimes::DEFAULT,
+            rules: PlayersData::DEFAULT,
         }
     }
 }
@@ -114,9 +135,15 @@ impl MatchSetup {
 #[derive(Debug)]
 pub struct LocalMatch {
     server: App,
+    /// The server's raw server entity, which its links belong to.
+    server_entity: Entity,
     clients: Vec<App>,
+    /// Each client app's client entity.
+    client_entities: Vec<Entity>,
     /// The server's link to each client.
     links: Vec<Entity>,
+    /// The links made so far, which numbers each link's address and delay lines.
+    links_made: u64,
     setup: MatchSetup,
     packages: Arc<ModePackages>,
     /// The server's data directory, where it keeps its session, once a test gives it one.
@@ -150,75 +177,44 @@ impl LocalMatch {
             setup.server_frames > 0,
             "the server runs a frame a tick at least"
         );
-        let packages = Arc::new(lane_mode());
+        let packages = Arc::new(lane_mode(setup.rules));
         let tick_hz = packages.manifest().tick_hz.default();
         let tick = TickRate::new(tick_hz).length();
 
         let mut server = LocalMatch::server_app(&setup, tick);
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server_entity = server.world_mut().spawn((RawServer, Linked)).id();
-
-        let mut clients = Vec::with_capacity(setup.players);
-        let mut links = Vec::with_capacity(setup.players);
-        let mut client_entities = Vec::with_capacity(setup.players);
-        for player in 0..setup.players {
-            let (client_io, server_io) = CrossbeamIo::new_pair();
-            let stream = 2 * player as u64;
-            let link = server
-                .world_mut()
-                .spawn((
-                    LinkOf {
-                        server: server_entity,
-                    },
-                    Link::default(),
-                    PeerAddr(
-                        format!("127.0.0.1:{}", player + 1)
-                            .parse()
-                            .expect("an address"),
-                    ),
-                    Linked,
-                    server_io,
-                    DelayLine::new(setup.link, setup.server_frames, stream, tick),
-                ))
-                .id();
-            links.push(link);
-
-            let ClientApp { app, entity } =
-                ClientApp::new(&setup, player, &packages, tick_hz, client_io, stream + 1);
-            client_entities.push(entity);
-            clients.push(app);
-        }
-
         server.finish();
         server.cleanup();
         run_in_order(&mut server);
-        for (client, &entity) in clients.iter_mut().zip(&client_entities) {
-            client.finish();
-            client.cleanup();
-            run_in_order(client);
-            client.world_mut().trigger(Connect { entity });
-        }
         let mut local = LocalMatch {
             server,
-            clients,
-            links,
+            server_entity,
+            clients: Vec::with_capacity(setup.players),
+            client_entities: Vec::with_capacity(setup.players),
+            links: Vec::with_capacity(setup.players),
+            links_made: 0,
             setup,
             packages,
             data: None,
             log,
         };
+        for player in 0..setup.players {
+            local.add_client(player);
+        }
         for _ in 0..CONNECT_FRAMES {
-            let synced = local
-                .clients
-                .iter()
-                .zip(&client_entities)
-                .all(|(client, &entity)| {
-                    let world = client.world();
-                    world.entity(entity).contains::<Connected>()
-                        && world
-                            .get_resource::<LocalTimelineSync>()
-                            .is_some_and(LocalTimelineSync::is_synced)
-                });
+            let synced =
+                local
+                    .clients
+                    .iter()
+                    .zip(&local.client_entities)
+                    .all(|(client, &entity)| {
+                        let world = client.world();
+                        world.entity(entity).contains::<Connected>()
+                            && world
+                                .get_resource::<LocalTimelineSync>()
+                                .is_some_and(LocalTimelineSync::is_synced)
+                    });
             if synced {
                 return local;
             }
@@ -252,9 +248,98 @@ impl LocalMatch {
         server
     }
 
+    /// Adds a client of `player`, whose keys it holds, linked to the server and connecting; the
+    /// index of the new client. A client of a player another client plays logs in again.
+    pub fn add_client(&mut self, player: usize) -> usize {
+        let tick_hz = self.packages.manifest().tick_hz.default();
+        let ClientApp { mut app, entity } =
+            ClientApp::new(&self.setup, player, &self.packages, tick_hz);
+        app.finish();
+        app.cleanup();
+        run_in_order(&mut app);
+        self.clients.push(app);
+        self.client_entities.push(entity);
+        self.links.push(Entity::PLACEHOLDER);
+        let client = self.clients.len() - 1;
+        self.mend_link(client);
+        self.clients[client].world_mut().trigger(Connect { entity });
+        client
+    }
+
+    /// Gives `client` a new link to the server through a new pair of in-process channels and
+    /// delay lines, as a network that works again does: a client that tries its link again
+    /// connects through it once its wait passed.
+    pub fn mend_link(&mut self, client: usize) {
+        let (client_io, server_io) = CrossbeamIo::new_pair();
+        let stream = 2 * self.links_made;
+        self.links_made += 1;
+        let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
+        let address = format!("127.0.0.1:{}", self.links_made)
+            .parse()
+            .expect("an address");
+        self.links[client] = self
+            .server
+            .world_mut()
+            .spawn((
+                LinkOf {
+                    server: self.server_entity,
+                },
+                Link::default(),
+                PeerAddr(address),
+                Linked,
+                server_io,
+                DelayLine::new(self.setup.link, self.setup.server_frames, stream, tick),
+            ))
+            .id();
+        let entity = self.client_entities[client];
+        self.clients[client].world_mut().entity_mut(entity).insert((
+            client_io,
+            DelayLine::new(self.setup.link, 1, stream + 1, tick),
+        ));
+    }
+
+    /// Cuts `client`'s link, as a network that fails does: the server and the client each see
+    /// it end.
+    pub fn cut_link(&mut self, client: usize) {
+        let reason = || UnlinkReason::TransportError("the test cut the link".to_owned());
+        let link = self.links[client];
+        self.server.world_mut().trigger(Unlink {
+            entity: link,
+            reason: reason(),
+        });
+        let entity = self.client_entities[client];
+        self.clients[client].world_mut().trigger(Unlink {
+            entity,
+            reason: reason(),
+        });
+    }
+
+    /// Sets the Unix time every end's clock reads, in seconds.
+    pub fn set_clock(&mut self, seconds: u64) {
+        UNIX_NOW.with(|now| now.set(seconds));
+    }
+
+    /// Every input the server logged, in the order logged.
+    pub fn server_inputs(&self) -> Vec<ServerInput> {
+        let session = self.server.world().resource::<Session>();
+        session.log().server_inputs().cloned().collect()
+    }
+
     /// The server's key pair, which signs what it logs.
     pub fn server_keypair() -> Keypair {
         server_keypair()
+    }
+
+    /// What the server opens or restores its session with: its key, the certificate hash both
+    /// ends take, the setup's times, a fixed clock and fixed random bytes.
+    fn server_setup(&self) -> ServerSetup {
+        ServerSetup {
+            key: server_keypair(),
+            certificate: CERTIFICATE,
+            times: self.setup.times,
+            clock: unix_now,
+            entropy: |bytes| bytes.fill(5),
+        }
     }
 
     /// Gives the server the data directory `dir`, where the session `start_match` opens keeps its
@@ -267,16 +352,22 @@ impl LocalMatch {
         self.data = Some(dir);
     }
 
-    /// Ends the server, as a crash after its journal's last sync does; its links to the clients
-    /// end with it, and the clients run no more.
+    /// Ends the server, as a crash after its journal's last sync does; each client sees its
+    /// link end.
     pub fn stop_server(&mut self) {
         drop(mem::replace(&mut self.server, App::new()));
-        self.clients.clear();
-        self.links.clear();
+        let reason = || UnlinkReason::TransportError("the server stopped".to_owned());
+        for (client, &entity) in self.clients.iter_mut().zip(&self.client_entities) {
+            client.world_mut().trigger(Unlink {
+                entity,
+                reason: reason(),
+            });
+        }
     }
 
     /// Ends the server, then starts a new one on its data directory, which restores the session
-    /// its journal holds; see `SimServer::restore_match`. No client links to it.
+    /// its journal holds; see `SimServer::restore_match`. Each client gets a new link to it, which
+    /// it connects through once its wait passed.
     pub fn restart_server(&mut self) {
         self.stop_server();
         let data = self.data.as_ref().expect("a server with a data directory");
@@ -289,7 +380,7 @@ impl LocalMatch {
             .expect("a session whose match started");
         let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
         let mut server = LocalMatch::server_app(&self.setup, tick);
-        server.world_mut().spawn((RawServer, Linked));
+        self.server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
         server.cleanup();
         run_in_order(&mut server);
@@ -298,11 +389,13 @@ impl LocalMatch {
             server.world_mut(),
             session,
             &self.packages,
-            &server_keypair(),
-            |bytes| bytes.fill(6),
+            &self.server_setup(),
         )
         .unwrap_or_else(|error| panic!("{error}"));
         self.server = server;
+        for client in 0..self.clients.len() {
+            self.mend_link(client);
+        }
     }
 
     /// Opens the session for every client, and steps until each joined, every end runs the
@@ -311,17 +404,14 @@ impl LocalMatch {
     /// its avatar comes in the replication after the server's first tick, in another packet: which
     /// arrives first varies with how Lightyear packs and resends them, by the wall clock.
     pub fn start_match(&mut self) {
-        let packages = lane_mode();
+        let packages = lane_mode(self.setup.rules);
         let mut lobby = Lobby::new(LobbySetup {
             tick_hz: packages.manifest().tick_hz.default(),
             packages,
-            server_key: server_key(),
             seed_chain: self.setup.seed_chain,
             inputs: InputRules::LAN,
-            certificate: CERTIFICATE,
             players: self.setup.players,
-            clock: || NOW,
-            entropy: |bytes| bytes.fill(5),
+            server: self.server_setup(),
         })
         .expect("the lane mode runs at its default rate");
         if let Some(data) = &self.data {
@@ -547,8 +637,6 @@ impl ClientApp {
         player: usize,
         packages: &Arc<ModePackages>,
         tick_hz: NonZeroU32,
-        io: CrossbeamIo,
-        stream: u64,
     ) -> ClientApp {
         let secret = u8::try_from(2 * player + 1).expect("a small player");
         let sim_client = SimClient {
@@ -560,7 +648,7 @@ impl ClientApp {
                 tick_hz,
             },
             packages: Arc::clone(packages),
-            clock: || NOW,
+            clock: unix_now,
             entropy: |bytes| bytes.fill(4),
         };
         let tick = TickRate::new(tick_hz).length();
@@ -581,13 +669,7 @@ impl ClientApp {
         pass_through_delay_lines(&mut client);
         let entity = client
             .world_mut()
-            .spawn((
-                Client,
-                RawClient,
-                ReplicationReceiver,
-                io,
-                DelayLine::new(setup.link, 1, stream, tick),
-            ))
+            .spawn((Client, RawClient, ReplicationReceiver))
             .id();
         ClientApp {
             app: client,
@@ -637,6 +719,23 @@ pub(crate) fn server_key() -> XOnlyPublicKey {
     server_keypair().x_only_public_key().0
 }
 
-fn lane_mode() -> ModePackages {
-    ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).expect("the test mode loads")
+/// The test lane mode, its `[players]` as `rules` says.
+fn lane_mode(rules: PlayersData) -> ModePackages {
+    let mut files = PackageDir::workspace_tree("test");
+    let data = PathBuf::from("modes/lane/data/mode.toml");
+    let mut text = String::from_utf8(files[&data].clone()).expect("the mode's data is UTF-8");
+    let leaver = match rules.leaver {
+        Leaver::Reserve => "reserve",
+        Leaver::Bot => "bot",
+        Leaver::Open => "open",
+    };
+    write!(
+        text,
+        "\n[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n",
+        rules.late_join, rules.bot_takeover
+    )
+    .expect("a String takes any text");
+    files.insert(data, text.into_bytes());
+    let dir = PackageDir::in_memory(Arc::new(files), "modes/lane");
+    ModePackages::from_package_dir(&dir).expect("the test mode loads")
 }

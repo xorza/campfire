@@ -5,6 +5,7 @@
 
 mod checkpoint;
 mod connect;
+mod controller;
 mod delegation;
 mod durable_file;
 mod input_chain;
@@ -33,6 +34,7 @@ pub use checkpoint::log_carry::LogCarry;
 pub use connect::ConnectChallenge;
 pub use connect::certificate_hash::CertificateHash;
 pub use connect::error::ConnectError;
+pub use controller::Controller;
 
 pub use delegation::error::{DelegationError, ScopeError};
 pub use delegation::{Delegation, DelegationTerms};

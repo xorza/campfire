@@ -12,19 +12,22 @@ use lightyear::prelude::{
 
 use crate::input_message::InputMessage;
 use crate::join::Join;
+use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
+use crate::superseded::Superseded;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
 /// not link to the one before it.
 #[derive(Debug)]
 pub struct InputChannel;
 
-/// Carries the offer, the match start and end, and the relations as they change, to the client.
+/// Carries the offer, the match start and end, the relations as they change, and the word that
+/// a newer login took the seat, to the client.
 #[derive(Debug)]
 pub(crate) struct MatchChannel;
 
-/// Carries a player's join to the server.
+/// Carries a player's join to the server, and their word that they leave.
 #[derive(Debug)]
 pub(crate) struct JoinChannel;
 
@@ -62,7 +65,11 @@ impl Plugin for NetProtocol {
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<Offer>()
             .add_direction(NetworkDirection::ServerToClient);
+        app.register_message::<Superseded>()
+            .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<Join>()
+            .add_direction(NetworkDirection::ClientToServer);
+        app.register_message::<LeaveMatch>()
             .add_direction(NetworkDirection::ClientToServer);
 
         app.component::<StableId>().replicate_once();

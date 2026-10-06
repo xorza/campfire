@@ -1,4 +1,6 @@
-use bevy_app::{App, FixedUpdate, Plugin, RunFixedMainLoop, RunFixedMainLoopSystems, Update};
+use bevy_app::{
+    App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
+};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
@@ -8,7 +10,7 @@ use bevy_ecs::schedule::common_conditions::{
     resource_added, resource_exists, resource_exists_and_changed,
 };
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
     Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team, TeamSet,
@@ -16,17 +18,17 @@ use campfire_capabilities::{
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1};
 use campfire_protocol::{Applied, Journal, ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StableId, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
-    LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
-    Unlink, UnlinkReason, VisibilityExt,
+    LinkSystems, LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget,
+    Replicate, Unlink, UnlinkReason, VisibilityExt,
 };
 use tracing::{debug, info, trace, trace_span};
 
+use crate::door::Door;
 use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
@@ -39,6 +41,10 @@ use crate::lobby::Lobby;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
+use crate::offering::{Offering, Superseding};
+use crate::seats::Seats;
+use crate::server_setup::ServerSetup;
+use crate::server_signer::ServerSigner;
 use crate::session_dir::RestoredSession;
 use crate::session_journal::SessionJournal;
 
@@ -75,6 +81,16 @@ impl PlayerLink {
 #[derive(Resource, Debug, Default)]
 pub struct TickHashes(Vec<StateHash>);
 
+impl PlayerLink {
+    pub(crate) const fn new(slot: PlayerSlot, team: Team) -> PlayerLink {
+        PlayerLink {
+            slot,
+            team,
+            refused: false,
+        }
+    }
+}
+
 impl TickHashes {
     pub fn get(&self) -> &[StateHash] {
         &self.0
@@ -94,6 +110,14 @@ impl Plugin for SimServer {
                 .chain()
                 .run_if(resource_exists::<Lobby>),
         );
+        app.add_systems(
+            Update,
+            (Door::offer, Door::take_joins, Door::watch)
+                .chain()
+                .run_if(resource_exists::<Door>),
+        );
+        app.add_systems(Last, Superseding::tell);
+        app.add_systems(PostUpdate, Superseding::end.after(LinkSystems::Send));
         // Lightyear keeps a received message for one frame only, and a frame runs no fixed tick
         // or several, so the inputs are logged in every frame, before its fixed ticks; a frame
         // that runs several is logged, as an input that missed its start waits for all of them.
@@ -122,71 +146,82 @@ impl Plugin for SimServer {
     }
 }
 
+/// What a match starts from: the log of its header, the seeds of its segments, its mode's
+/// packages, its journal if the server keeps one, and the server's setup.
+#[derive(Debug)]
+pub(crate) struct SessionStart<'a> {
+    pub(crate) log: SessionLog,
+    pub(crate) seeds: ServerSeeds,
+    pub(crate) packages: &'a ModePackages,
+    pub(crate) journal: Option<Journal>,
+    pub(crate) server: &'a ServerSetup,
+}
+
 impl SimServer {
-    /// Starts the match of `log`'s header, of the mode `packages` holds, in the next fixed tick,
-    /// recording into `log`, each segment drawing from its seed of `seeds`. From then on a frame
-    /// advances the server's clock by the ticks of the max input delay less one at most, a tick
-    /// at least, so a burst after a stall makes no on-time input late; a longer frame's time past
-    /// that is dropped, and logged. `clients` are the links of the players, by slot; each learns
-    /// its slot and the start tick. From the first tick on, every unit replicates to the clients
-    /// whose team sees it, and the owner's client predicts it, but a projectile or an area. With
-    /// a `journal`, the log goes into it as the server logs it, and `SessionJournal` watches it.
-    pub fn start_match(
+    /// Starts the match of `start.log`'s header in the next fixed tick, recording into its log,
+    /// each segment drawing from its seed. From then on a frame advances the server's clock by
+    /// the ticks of the max input delay less one at most, a tick at least, so a burst after a
+    /// stall makes no on-time input late; a longer frame's time past that is dropped, and logged.
+    /// `clients` are the links of the players, by slot; each learns its slot and the start tick.
+    /// From the first tick on, every unit replicates to the clients whose team sees it, and the
+    /// owner's client predicts it, but a projectile or an area. With a journal, the log goes into
+    /// it as the server logs it, and `SessionJournal` watches it. The door takes the joins from
+    /// then on.
+    pub(crate) fn start_match(
         world: &mut World,
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
+        start: SessionStart<'_>,
         clients: &[Entity],
-        journal: Option<Journal>,
     ) -> Result<(), StartError> {
+        let SessionStart {
+            log,
+            seeds,
+            packages,
+            journal,
+            server,
+        } = start;
         assert_eq!(
             clients.len(),
             log.header().players().count(),
             "one client per player"
         );
-        SimServer::bound_frames(world, &log.header().terms);
+        let terms = log.header().terms.clone();
+        SimServer::bound_frames(world, &terms);
+        let slots = log.slot_count();
         Session::start(world, log, seeds, packages)?;
-        if let Some(journal) = journal {
-            world.insert_resource(SessionJournal(journal.watch()));
-            world.resource_mut::<Session>().keep_journal(journal);
-        }
+        SimServer::open_door(world, terms, server, journal);
+        world.insert_resource(Seats::new(slots, clients));
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
         let next = world.resource::<Session>().log().next_tick();
         world.insert_resource(FrameStart(next));
         for (slot, &client) in (0..).map(PlayerSlot::new).zip(clients) {
             let team = Mode::team_of(world, slot).expect("every player has a team");
-            world.entity_mut(client).insert(PlayerLink {
-                slot,
-                team,
-                refused: false,
-            });
+            world.entity_mut(client).insert(PlayerLink::new(slot, team));
             world
                 .get_mut::<MessageSender<MatchStart>>(client)
                 .expect("a client link sends the match start")
                 .send::<MatchChannel>(MatchStart {
                     start_tick: start.0,
+                    first: next,
                     slot,
+                    chain: None,
                 });
         }
         Ok(())
     }
-}
 
-impl SimServer {
     /// Restores the match of `restored`, a session a crash or a failed journal ended, of the mode
-    /// `packages` holds: replays its log from tick 0 to the tick the server stopped before,
-    /// keeping each tick's state hash while the world holds `TickHashes`; logs `Disconnected`
-    /// for each slot a player controls, which `server_key` signs, its auxiliary randomness from
-    /// `entropy`; and runs the match on from the next fixed tick, so the ticks the stop lost take
+    /// `packages` holds, on the server of `server`: replays its log from tick 0 to the tick the
+    /// server stopped before, keeping each tick's state hash while the world holds
+    /// `TickHashes`; logs `Disconnected` for each slot a player controls, whose grace period runs
+    /// from then; and runs the match on from the next fixed tick, so the ticks the stop lost take
     /// no time in the sim. The journal goes on from its last record, and `SessionJournal` watches
-    /// it. No client is linked: the players come back as they join again.
+    /// it. No client is linked: the players come back through the door.
     pub fn restore_match(
         world: &mut World,
         restored: RestoredSession,
         packages: &ModePackages,
-        server_key: &Keypair,
-        entropy: fn(&mut [u8; 32]),
+        server: &ServerSetup,
     ) -> Result<(), StartError> {
         let RestoredSession {
             private,
@@ -194,8 +229,10 @@ impl SimServer {
             journal,
             ..
         } = restored;
-        SimServer::bound_frames(world, &log.header().terms);
+        let terms = log.header().terms.clone();
+        SimServer::bound_frames(world, &terms);
         let ticks = log.next_tick();
+        let slots = log.slot_count();
         Session::start(world, log.rewound(), private.seed_chain.seeds(), packages)?;
         world.insert_resource(SessionJournal(journal.watch()));
         world.resource_mut::<Session>().resume_journal(journal);
@@ -205,24 +242,45 @@ impl SimServer {
                 record_hash(world);
             }
         }
-        let secp = Secp256k1::new();
-        let mut session = world.resource_mut::<Session>();
-        let slots: Vec<PlayerSlot> = session.log().player_slots().collect();
-        for slot in slots {
-            let input = ServerInput::Disconnected { slot };
-            let place = session.log().next_place();
-            let mut aux = [0; 32];
-            entropy(&mut aux);
-            let signature = input.sign(&secp, server_key, session.log().session_id(), place, &aux);
-            session
-                .record_server(input, &signature)
-                .expect("the server's own input holds");
-        }
-        let next = session.log().next_tick();
+        SimServer::open_door(world, terms, server, None);
+        let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
+        world.resource_scope(|world, mut session: Mut<'_, Session>| {
+            let signer = world.resource::<ServerSigner>();
+            for &slot in &players {
+                signer
+                    .serve(&mut session, ServerInput::Disconnected { slot })
+                    .expect("the server's own input holds");
+            }
+        });
+        let now = world.resource::<Time<Real>>().elapsed();
+        world.insert_resource(Seats::gone(slots, players.into_iter(), now));
+        let next = world.resource::<Session>().log().next_tick();
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::resumed(start, next));
         world.insert_resource(FrameStart(next));
         Ok(())
+    }
+
+    /// Whether every slot a player controlled has left, and no player holds a link: a session
+    /// that started then ends.
+    pub fn players_gone(world: &World) -> bool {
+        Door::empty(world)
+    }
+
+    /// Opens the door of the session of `terms` on the server of `server`, which signs what it
+    /// logs; with a `journal`, the log goes into it from now on.
+    fn open_door(
+        world: &mut World,
+        terms: SessionTerms,
+        server: &ServerSetup,
+        journal: Option<Journal>,
+    ) {
+        if let Some(journal) = journal {
+            world.insert_resource(SessionJournal(journal.watch()));
+            world.resource_mut::<Session>().keep_journal(journal);
+        }
+        world.insert_resource(ServerSigner::new(server.key, server.entropy));
+        world.insert_resource(Door::new(Offering::new(terms, server)));
     }
 
     /// Bounds the server's frames for a session of `terms`: a frame advances its clock by the

@@ -14,6 +14,16 @@ pub struct PlayersData {
     pub leaver: Leaver,
 }
 
+impl PlayersData {
+    /// What a mode with no `[players]` says: no late join, no bot takeover, and a leaver's slot
+    /// reserved.
+    pub const DEFAULT: PlayersData = PlayersData {
+        late_join: false,
+        bot_takeover: false,
+        leaver: Leaver::Reserve,
+    };
+}
+
 /// What the slot of a player who left becomes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -35,6 +45,7 @@ mod tests {
     fn players_read_with_their_defaults_and_refuse_what_they_do_not_know() {
         let read = |text: &str| toml::from_str::<PlayersData>(text);
         assert_eq!(read("").unwrap(), PlayersData::default());
+        assert_eq!(PlayersData::DEFAULT, PlayersData::default());
         assert_eq!(
             PlayersData::default(),
             PlayersData {

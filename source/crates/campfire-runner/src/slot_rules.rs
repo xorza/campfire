@@ -14,6 +14,15 @@ impl SlotRules {
         SlotRules(players)
     }
 
+    /// What a leaver's slot becomes, as the mode's `leaver` says.
+    pub(crate) const fn after_leave(self) -> AfterLeave {
+        match self.0.leaver {
+            Leaver::Reserve => AfterLeave::Reserve,
+            Leaver::Bot => AfterLeave::Bot,
+            Leaver::Open => AfterLeave::Open,
+        }
+    }
+
     /// Whether the mode allows `change`: a player who takes back their own slot always; a new
     /// one an open slot with late join, a bot's with bot takeover; a leaver's slot only as
     /// `leaver` says.
@@ -85,5 +94,12 @@ mod tests {
             Err(SlotRuleError::BotTakeover)
         );
         assert_eq!(late.check(left(AfterLeave::Open)), Ok(()));
+        // What a leaver's slot becomes, by each `leaver`.
+        let becomes = [Leaver::Reserve, Leaver::Bot, Leaver::Open]
+            .map(|leaver| rules(true, true, leaver).after_leave());
+        assert_eq!(
+            becomes,
+            [AfterLeave::Reserve, AfterLeave::Bot, AfterLeave::Open]
+        );
     }
 }

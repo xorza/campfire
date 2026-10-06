@@ -2,8 +2,7 @@
 //! window it replays its log and plays on; past it, it ends the session aborted and publishes
 //! its log; and it refuses a session of another release, naming it.
 
-use std::path::PathBuf;
-use std::{fs, process};
+use std::fs;
 
 use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
@@ -11,25 +10,7 @@ use campfire_net::{RestoreError, SessionDir, TickHashes};
 use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Runner, Session};
 
-/// A directory of its own under the target's temporary directory, removed when dropped.
-#[derive(Debug)]
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Scratch {
-        let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-            .join(format!("restore-{name}-{}", process::id()));
-        drop(fs::remove_dir_all(&dir));
-        fs::create_dir_all(&dir).unwrap();
-        Scratch(dir)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        drop(fs::remove_dir_all(&self.0));
-    }
-}
+use crate::Scratch;
 
 /// The scenario's match, its server's data in `data`, after 90 steps; with the state hash after
 /// each tick the server ran.

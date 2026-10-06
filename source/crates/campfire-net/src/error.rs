@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use campfire_protocol::{ConnectError, DelegationError};
-use campfire_runner::TermsError;
+use campfire_runner::{ServerInputRefused, TermsError};
 use toml::de::Error as TomlError;
 
 /// Why the server refused a player's join.
@@ -12,8 +12,12 @@ pub enum JoinError {
     Connect(ConnectError),
     /// Every slot was taken by the time the join arrived.
     Full,
-    /// The delegation's main key holds a seat already: one identity is one player.
-    Seated,
+    /// After the start, no slot is the player's, open to them or a bot's they may take.
+    NoSlot,
+    /// The log refused what the join would change.
+    Refused(ServerInputRefused),
+    /// A newer login of the player took the link's seat.
+    Superseded,
 }
 
 /// Why an order script does not read.
@@ -45,6 +49,8 @@ pub enum TermsMismatch {
     OtherServer,
     OtherTickRate,
     Terms(TermsError),
+    /// A later offer names another session than the one the player plays.
+    OtherSession,
 }
 
 impl fmt::Display for JoinError {
@@ -53,7 +59,9 @@ impl fmt::Display for JoinError {
             JoinError::Delegation(error) => write!(f, "{error}"),
             JoinError::Connect(error) => write!(f, "{error}"),
             JoinError::Full => f.write_str("every slot is taken"),
-            JoinError::Seated => f.write_str("the main key holds a seat already"),
+            JoinError::NoSlot => f.write_str("no slot is the player's or open to them"),
+            JoinError::Refused(error) => write!(f, "{error}"),
+            JoinError::Superseded => f.write_str("a newer login of the player took the seat"),
         }
     }
 }
@@ -68,6 +76,9 @@ impl fmt::Display for TermsMismatch {
                 f.write_str("the server runs another tick rate than the one given")
             }
             TermsMismatch::Terms(error) => write!(f, "{error}"),
+            TermsMismatch::OtherSession => {
+                f.write_str("the server offers another session than the player's")
+            }
         }
     }
 }
@@ -76,7 +87,9 @@ impl Error for TermsMismatch {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             TermsMismatch::Terms(error) => Some(error),
-            TermsMismatch::OtherServer | TermsMismatch::OtherTickRate => None,
+            TermsMismatch::OtherServer
+            | TermsMismatch::OtherTickRate
+            | TermsMismatch::OtherSession => None,
         }
     }
 }

@@ -22,6 +22,20 @@ impl MatchClock {
         MatchClock { start, first }
     }
 
+    /// The Lightyear tick of the sim tick `tick`, at or after `first`.
+    pub fn net_tick(self, tick: Tick) -> NetTick {
+        let since = tick
+            .since(self.first)
+            .expect("a tick at or after the clock's first");
+        let since = u32::try_from(since.get()).expect("a match's ticks fit Lightyear's");
+        NetTick(
+            self.start
+                .0
+                .checked_add(since)
+                .expect("a match's ticks fit Lightyear's"),
+        )
+    }
+
     /// The sim tick of `tick`; `None` before the match starts, or runs on.
     pub fn sim_tick(self, tick: NetTick) -> Option<Tick> {
         let since = tick.0.checked_sub(self.start.0)?;
@@ -44,5 +58,7 @@ mod tests {
         assert_eq!(resumed.sim_tick(NetTick(6)), None);
         assert_eq!(resumed.sim_tick(NetTick(7)), Some(Tick::new(5000)));
         assert_eq!(resumed.sim_tick(NetTick(9)), Some(Tick::new(5002)));
+        assert_eq!(resumed.net_tick(Tick::new(5002)), NetTick(9));
+        assert_eq!(fresh.net_tick(Tick::new(0)), NetTick(100));
     }
 }

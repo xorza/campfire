@@ -34,6 +34,21 @@ impl InputChain {
         }
     }
 
+    /// A chain whose next input is the `next_seq`th, linking to `head`: as the log holds it, for
+    /// a player who takes their chain up again from there.
+    pub const fn resume(slot: PlayerSlot, head: InputHash, next_seq: u64) -> InputChain {
+        InputChain {
+            slot,
+            head,
+            next_seq,
+        }
+    }
+
+    /// How many inputs the chain holds: the seq of its next.
+    pub const fn next_seq(&self) -> u64 {
+        self.next_seq
+    }
+
     pub const fn slot(&self) -> PlayerSlot {
         self.slot
     }

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot, LogCarry};
+use crate::controller::Controller;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 use crate::journal::Journal;
@@ -482,12 +483,45 @@ impl SessionLog {
         }
     }
 
+    /// Who controls `slot` now; none for a slot the session does not have.
+    pub fn controller(&self, slot: PlayerSlot) -> Option<Controller> {
+        let held = self.slots.get(slot.index())?;
+        Some(match held.control {
+            Control::Player { delegation, chain } => {
+                let delegation = &self.delegations[delegation as usize];
+                Controller::Player {
+                    main_key: *delegation.main_key(),
+                    session_key: delegation.terms().session_key,
+                    chain,
+                }
+            }
+            Control::Bot => Controller::Bot,
+            Control::Open => Controller::Open,
+            Control::Reserved => Controller::Reserved,
+        })
+    }
+
+    /// The main key of the player who left `slot` last, while no player took it since.
+    pub fn leaver(&self, slot: PlayerSlot) -> Option<[u8; 32]> {
+        self.slots.get(slot.index())?.leaver
+    }
+
+    /// How many slots the session has.
+    pub fn slot_count(&self) -> u32 {
+        offset(self.slots.len())
+    }
+
     /// The slots a player controls now, in order.
     pub fn player_slots(&self) -> impl Iterator<Item = PlayerSlot> {
         (0..)
             .zip(&self.slots)
             .filter(|(_, slot)| matches!(slot.control, Control::Player { .. }))
             .map(|(slot, _)| PlayerSlot::new(slot))
+    }
+
+    /// Every server input logged so far, in the order logged.
+    pub fn server_inputs(&self) -> impl Iterator<Item = &ServerInput> {
+        self.server.iter().map(|logged| &logged.input)
     }
 
     /// Every change of a slot's controller logged so far, in the order logged.

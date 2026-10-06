@@ -36,6 +36,7 @@ impl DurableFile {
     pub fn create_dir(path: &Path) -> Result<(), DurableError> {
         let parent = path.parent().ok_or(DurableError::NoName)?;
         let mut builder = fs::DirBuilder::new();
+        builder.recursive(false);
         #[cfg(unix)]
         {
             use std::os::unix::fs::DirBuilderExt;

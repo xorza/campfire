@@ -23,7 +23,7 @@ use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::message::MessageWriter;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::{QueryState, With};
+use bevy_ecs::query::With;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Commands, Query, Res};
@@ -32,8 +32,8 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, Listening, MatchClock, NetProtocol, PlayerLink, SessionDir, SessionJournal,
-    SessionWritten, SimServer,
+    JournalFailed, Listening, MatchClock, NetProtocol, ServerSetup, SessionDir, SessionJournal,
+    SessionTimes, SessionWritten, SimServer,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
@@ -41,22 +41,20 @@ use campfire_protocol::secp256k1::{Keypair, Secp256k1};
 use campfire_runner::Session;
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
-use lightyear::prelude::{Connected, Identity, LinkOf, Linked, LocalAddr, ReplicationSender};
+use lightyear::prelude::{Identity, LinkOf, Linked, LocalAddr, ReplicationSender};
 use tracing::{error, info};
 
 use crate::data_dir::DataDir;
 use crate::data_path::DataPath;
 use crate::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, Restore};
-use crate::seated::Seated;
-use crate::server_key::ServerKey;
+use crate::server_config::ServerConfig;
 
 mod data_dir;
 mod data_path;
 mod error;
 mod opening;
-mod seated;
-mod server_key;
+mod server_config;
 
 /// The process's exit code when the session's journal fails: sysexits' `EX_IOERR`, an error in
 /// I/O on a file.
@@ -64,11 +62,8 @@ const JOURNAL_FAILED: u8 = 74;
 /// The segments of a session's seed chain: the most checkpoints it may take, less one.
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
-/// How long after its journal's last write a session a stop ended restores, by default.
-const RESTORE_WINDOW: Duration = Duration::from_secs(120);
-
 const USAGE: &str = "usage: campfire-server --data <data directory> [--restore-window <seconds>] \
-                     <mode package directory> <address, as 0.0.0.0:4433>";
+                     [--grace <seconds>] <mode package directory> <address, as 0.0.0.0:4433>";
 
 /// How often the app loop runs: often enough that no fixed tick waits long for its frame.
 const FRAME: Duration = Duration::from_millis(2);
@@ -88,7 +83,7 @@ fn main() -> ExitCode {
     .start();
     let Args {
         data,
-        window,
+        times,
         mode,
         address,
     } = match Args::parse(env::args_os().skip(1)) {
@@ -115,16 +110,18 @@ fn main() -> ExitCode {
     let identity = Identity::self_signed(["localhost"]).expect("a fixed name is a valid SAN");
     let certificate =
         CertificateHash::new(*identity.certificate_chain().as_slice()[0].hash().as_ref());
-    let server_key = data_dir.key;
+    let server = ServerSetup {
+        key: data_dir.key,
+        certificate,
+        times,
+        clock: unix_now,
+        entropy: fill,
+    };
     let opening = Opening::of(OpeningSetup {
         data: &data,
         packages,
-        key: &server_key,
-        certificate,
-        window,
+        server,
         segments: SEGMENTS,
-        entropy: fill,
-        clock: unix_now,
     });
     let opening = match opening {
         Ok(opening) => opening,
@@ -140,11 +137,11 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let listening = announce(&opening, &mode, address, certificate, &server_key);
+    let listening = announce(&opening, &mode, address, certificate, &server.key);
     let tick = TickRate::new(opening.terms().tick_hz).length();
     let mut app = server_app(
         opening,
-        ServerKey(server_key),
+        ServerConfig(server),
         DataPath(data),
         tick,
         listening,
@@ -167,7 +164,7 @@ fn main() -> ExitCode {
 /// event logged once its transport listens, and the end once every player left.
 fn server_app(
     opening: Opening,
-    key: ServerKey,
+    config: ServerConfig,
     data: DataPath,
     tick: Duration,
     listening: Listening,
@@ -187,16 +184,11 @@ fn server_app(
         Opening::New(lobby) => app.insert_resource(*lobby),
         Opening::Restored(restore) => app.insert_resource(*restore),
     };
-    app.insert_resource(key);
+    app.insert_resource(config);
     app.insert_resource(data);
     app.add_observer(
         |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
             commands.entity(added.entity).insert(ReplicationSender);
-        },
-    );
-    app.add_observer(
-        |_: On<'_, '_, Add, PlayerLink>, mut commands: Commands<'_, '_>| {
-            commands.insert_resource(Seated);
         },
     );
     app.add_observer(
@@ -257,7 +249,7 @@ fn announce(
 #[derive(Debug)]
 struct Args {
     data: PathBuf,
-    window: Duration,
+    times: SessionTimes,
     mode: PathBuf,
     address: SocketAddr,
 }
@@ -271,14 +263,21 @@ impl Args {
         if flag != "--data" {
             return Err(format!("{}: not --data", flag.display()));
         }
-        let mut window = RESTORE_WINDOW;
-        if args.next_if(|arg| arg == "--restore-window").is_some() {
-            let seconds = args.next().ok_or("--restore-window needs its seconds")?;
-            window = seconds
+        let mut times = SessionTimes::DEFAULT;
+        while let Some(flag) = args.next_if(|arg| arg == "--restore-window" || arg == "--grace") {
+            let seconds = args
+                .next()
+                .ok_or_else(|| format!("{}: no seconds", flag.display()))?;
+            let seconds = seconds
                 .to_str()
                 .and_then(|text| text.parse().ok())
                 .map(Duration::from_secs)
                 .ok_or_else(|| format!("{}: not a whole number of seconds", seconds.display()))?;
+            if flag == "--grace" {
+                times.grace = seconds;
+            } else {
+                times.restore_window = seconds;
+            }
         }
         let (Some(mode), Some(address), None) = (args.next(), args.next(), args.next()) else {
             return Err("the mode and the address are needed, and nothing after".to_owned());
@@ -289,7 +288,7 @@ impl Args {
             .ok_or_else(|| format!("{}: not a socket address", address.display()))?;
         Ok(Args {
             data: PathBuf::from(data),
-            window,
+            times,
             mode: PathBuf::from(mode),
             address,
         })
@@ -320,25 +319,18 @@ fn exit_on_journal_failure(
     exit.write(AppExit::from_code(JOURNAL_FAILED));
 }
 
-/// Once the match started, a player took a slot since the server started, and no player is
-/// connected any more, ends the session with its result,
-/// as the mode ended the match or aborted when it did not, reveals the seed, writes the session
-/// log durably into the data directory's `logs` and exits: with an error when the log is not
-/// written, as the session it holds is lost.
-fn end_when_everyone_left(
-    world: &mut World,
-    connected: &mut QueryState<(), (With<PlayerLink>, With<Connected>)>,
-) {
-    if !world.contains_resource::<MatchClock>() || !world.contains_resource::<Seated>() {
-        return;
-    }
-    if connected.iter(world).next().is_some() {
+/// Once the match started, every slot a player controlled has left, and no player holds a link,
+/// ends the session with its result, as the mode ended the match or aborted when it did not,
+/// reveals the seed, writes the session log durably into the data directory's `logs` and exits:
+/// with an error when the log is not written, as the session it holds is lost.
+fn end_when_everyone_left(world: &mut World) {
+    if !world.contains_resource::<MatchClock>() || !SimServer::players_gone(world) {
         return;
     }
     let session = world.resource::<Session>();
     let result = session.result(world, Session::outcome(world));
     let id = session.log().session_id();
-    let key = &world.resource::<ServerKey>().0;
+    let key = &world.resource::<ServerConfig>().0.key;
     let signature = result.sign(&Secp256k1::new(), key, id, &random());
     let mut session = world.resource_mut::<Session>();
     session

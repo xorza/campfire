@@ -5,9 +5,9 @@ use campfire_common::{SegmentSeed, StateHash, Tick};
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointError, InputError, Journal, Outcome, PlayerInput, ResultError,
-    SeedError, ServerInput, ServerSeeds, SessionHeader, SessionLog, SessionResult, SessionTerms,
-    Signature, SlotChangeKind, SnapshotFingerprint,
+    AfterLeave, Applied, Checkpoint, CheckpointError, InputError, Journal, Outcome, PlayerInput,
+    ResultError, SeedError, ServerInput, ServerSeeds, SessionHeader, SessionLog, SessionResult,
+    SessionTerms, Signature, SlotChangeKind, SnapshotFingerprint,
 };
 use campfire_sim::{
     SimRng, SimTick, SimUpdate, SlotEvent, SlotEventKind, SnapshotError, StateRegistry, TickInput,
@@ -215,6 +215,11 @@ impl Session {
                 .log();
             }
         }
+    }
+
+    /// What the slot of a player who leaves becomes, as the mode's `[players] leaver` says.
+    pub const fn after_leave(&self) -> AfterLeave {
+        self.rules.after_leave()
     }
 
     /// Keeps `journal`, a new one, for the session's log: see `SessionLog::keep_journal`.

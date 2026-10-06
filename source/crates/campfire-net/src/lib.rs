@@ -5,10 +5,12 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
+mod door;
 mod error;
 mod events;
 mod input_message;
 mod join;
+mod leave_match;
 mod lobby;
 #[cfg(feature = "internals")]
 mod local_match;
@@ -16,17 +18,24 @@ mod match_clock;
 mod match_start;
 mod net_protocol;
 mod offer;
+mod offering;
 mod order_script;
+mod seats;
+mod server_setup;
+mod server_signer;
 mod session_dir;
 mod session_journal;
+mod session_times;
 mod sim_client;
 mod sim_server;
+mod superseded;
 
 pub use error::{JoinError, OrderScriptError, TermsMismatch};
 pub use events::input_logged::InputLogged;
 pub use events::input_message_refused::InputMessageRefused;
 pub use events::input_message_unfit::InputMessageUnfit;
 pub use events::input_never_applied::{InputNeverApplied, Unapplied};
+pub use events::inputs_discarded::InputsDiscarded;
 pub use events::join_refused::JoinRefused;
 pub use events::journal_failed::JournalFailed;
 pub use events::link_lost::LinkLost;
@@ -49,13 +58,15 @@ pub use match_clock::MatchClock;
 pub use net_protocol::{InputChannel, NetProtocol};
 
 pub use order_script::OrderScript;
+pub use server_setup::ServerSetup;
 pub use session_dir::error::{AbortError, FindError, RestoreError};
 pub use session_dir::{RestoredSession, SessionDir};
 pub use session_journal::SessionJournal;
+pub use session_times::SessionTimes;
 pub use sim_client::bot_script::BotScript;
-pub use sim_client::join_state::JoinState;
+pub use sim_client::join_state::{JoinState, Loss};
 pub use sim_client::server_pin::ServerPin;
-pub use sim_client::{PendingOrders, SimClient};
+pub use sim_client::{LeaveRequest, PendingOrders, SimClient};
 pub use sim_server::{PlayerLink, SimServer, TickHashes};
 
 #[cfg(feature = "bench")]

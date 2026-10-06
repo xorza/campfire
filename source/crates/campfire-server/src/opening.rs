@@ -1,22 +1,22 @@
 use std::num::NonZeroU32;
 use std::path::Path;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
 use campfire_net::{
-    Lobby, LobbySetup, RestoredSession, SessionAborted, SessionDir, SessionRestored, SimServer,
+    Lobby, LobbySetup, RestoredSession, ServerSetup, SessionAborted, SessionDir, SessionRestored,
+    SimServer,
 };
 use campfire_package::ModePackages;
-use campfire_protocol::secp256k1::Keypair;
-use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate, SessionTerms};
+use campfire_protocol::{SeedChain, SessionPrivate, SessionTerms};
 use campfire_runner::{InputRules, Session};
 use tracing::error;
 
 use crate::error::OpeningError;
-use crate::server_key::ServerKey;
+use crate::server_config::ServerConfig;
 
 /// What a server starts with: a new session, open to its players, or the session a stop ended,
 /// to restore. A session past the restore window, or one that ended, has its log published
@@ -39,13 +39,8 @@ pub(crate) struct Restore {
 pub(crate) struct OpeningSetup<'a> {
     pub(crate) data: &'a Path,
     pub(crate) packages: ModePackages,
-    pub(crate) key: &'a Keypair,
-    pub(crate) certificate: CertificateHash,
-    /// How long after its journal's last write a session restores.
-    pub(crate) window: Duration,
+    pub(crate) server: ServerSetup,
     pub(crate) segments: NonZeroU32,
-    pub(crate) entropy: fn(&mut [u8; 32]),
-    pub(crate) clock: fn() -> u64,
 }
 
 impl Opening {
@@ -85,14 +80,14 @@ impl Opening {
         let idle = SystemTime::now()
             .duration_since(session.modified)
             .unwrap_or_default();
-        if session.log.result().is_none() && idle <= setup.window {
+        if session.log.result().is_none() && idle <= setup.server.times.restore_window {
             return Ok(Some(session));
         }
         let id = session.log.session_id();
         let mut aux = [0; 32];
-        (setup.entropy)(&mut aux);
+        (setup.server.entropy)(&mut aux);
         let file = session
-            .abort(data, &setup.packages, setup.key, &aux)
+            .abort(data, &setup.packages, &setup.server.key, &aux)
             .map_err(OpeningError::Abort)?;
         SessionAborted { session: id, file }.log();
         Ok(None)
@@ -102,20 +97,17 @@ impl Opening {
     /// and journal made.
     fn open(setup: OpeningSetup<'_>) -> Result<Lobby, OpeningError> {
         let mut seed = [0; 32];
-        (setup.entropy)(&mut seed);
+        (setup.server.entropy)(&mut seed);
         let seed_chain = SeedChain::new(seed, setup.segments);
         let players = usize::try_from(setup.packages.manifest().slots()).expect("slots fit usize");
         let tick_hz = setup.packages.manifest().tick_hz.default();
         let mut lobby = Lobby::new(LobbySetup {
             packages: setup.packages,
-            server_key: setup.key.x_only_public_key().0,
             seed_chain,
             tick_hz,
             inputs: InputRules::LAN,
-            certificate: setup.certificate,
             players,
-            clock: setup.clock,
-            entropy: setup.entropy,
+            server: setup.server,
         })
         .expect("a mode runs at its default rate");
         let private = SessionPrivate {
@@ -137,8 +129,8 @@ impl Restore {
             .remove_resource::<Restore>()
             .expect("a restore runs while one waits");
         let id = session.log.session_id();
-        let key = world.resource::<ServerKey>().0;
-        match SimServer::restore_match(world, session, &packages, &key, crate::fill) {
+        let server = world.resource::<ServerConfig>().0;
+        match SimServer::restore_match(world, session, &packages, &server) {
             Ok(()) => {
                 let tick = world.resource::<Session>().log().next_tick();
                 SessionRestored { session: id, tick }.log();

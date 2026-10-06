@@ -62,6 +62,12 @@ impl SentInputs {
         true
     }
 
+    /// Drops every input, as a client whose link failed does.
+    pub(crate) fn clear(&mut self) {
+        self.inputs.clear();
+        self.payloads.clear();
+    }
+
     /// Drops the inputs stamped before `oldest`, which no rollback replays.
     pub(crate) fn prune(&mut self, oldest: Tick) {
         let cut = self.inputs.partition_point(|input| input.stamp < oldest);
