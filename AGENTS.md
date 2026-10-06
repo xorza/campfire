@@ -19,6 +19,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
     - `10-sessions.md` — Stage 6 proposal: journal, crash restore, slots, reconnect, server bots, receipts, checkpoints, saves, local server
     - `11-storage.md` — proposal: one crate for durable files and worker threads, one data layout, one fault surface, and a session log with no IO
     - `12-structure.md` — proposal: one rule for each kind of value, one place for each error, one name for each meaning, and one copy of each piece of wiring
+    - `13-benches.md` — proposal: three tiers of bench, one rule for a case's id, and the benches the hottest paths need
   - `issues/` — the issue log: one file for each system, with its open problems ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/<game>/` holds the reference content packages (heroes, spells, modes); `source/packages/test/` holds small packages the tests play
 
