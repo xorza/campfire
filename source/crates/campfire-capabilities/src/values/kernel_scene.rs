@@ -1,16 +1,16 @@
 use campfire_common::SegmentSeed;
 use campfire_math::{Num, Rng, RngSource, RngStream, Vec3};
 
-/// A made scene of units for a bench or a test, drawn from a seed, the same in every run: the
-/// kernel cases of every capability draw their units from one.
+/// A made scene of units for a bench or a test, drawn from a seed, the same in every run: every
+/// kernel case draws its units' places from one.
 #[derive(Debug)]
-pub(crate) struct KernelScene {
+pub struct KernelScene {
     rng: Rng,
 }
 
 /// How close a kernel case's units stand: crowded into 40 m square, or spread over 120 m square.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Density {
+pub enum Density {
     Crowded,
     Spread,
 }
@@ -28,7 +28,7 @@ impl Density {
     }
 
     /// Half the side of the square the units stand in, in meters.
-    pub(crate) const fn span(self) -> u64 {
+    pub const fn span(self) -> u64 {
         match self {
             Density::Crowded => 20,
             Density::Spread => 60,
@@ -38,9 +38,9 @@ impl Density {
 
 impl KernelScene {
     /// The units of a kernel case: the count design 04 sets for an RTS battle.
-    pub(crate) const UNITS: usize = 1000;
+    pub const UNITS: usize = 1000;
 
-    pub(crate) fn new(seed: u64) -> KernelScene {
+    pub fn new(seed: u64) -> KernelScene {
         let source = RngSource::new(SegmentSeed::new([0; 32]));
         KernelScene {
             rng: source.open(RngStream::new("scene"), seed),
@@ -49,7 +49,7 @@ impl KernelScene {
 
     /// A point on the ground at a whole centimeter within `span` meters of the origin on both
     /// axes.
-    pub(crate) fn point(&mut self, span: u64) -> Vec3 {
+    pub fn point(&mut self, span: u64) -> Vec3 {
         let mut coordinate = || {
             let cm = self.rng.below(span * 200).cast_signed();
             KernelScene::centimeters(cm - span.cast_signed() * 100)

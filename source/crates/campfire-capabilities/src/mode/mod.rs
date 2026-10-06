@@ -563,5 +563,41 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_sim::{IdAllocator, Position, StableId};
+
+    use crate::mode::mode_book::ModeBook;
+    use crate::scripts::ctx::Ctx;
+    use crate::units::spawner::{SpawnAt, Spawner};
+    use crate::units::team::Team;
+
+    /// Spawns a unit of the mode's type `name` on `team` at `pos`, with the parts its type's
+    /// kit gives, as the mode's own spawns do.
+    pub fn spawn_typed(world: &mut World, name: &str, team: Team, pos: Position) -> StableId {
+        let ctx = world.non_send::<Ctx>().clone();
+        let book = ModeBook::of(&ctx).expect("a match with a mode");
+        let unit_type = ctx
+            .view()
+            .unit_type_named(name)
+            .filter(|&unit_type| book.kit(unit_type).is_some())
+            .expect("a type of the mode, with a kit");
+        let id = world.resource_mut::<IdAllocator>().allocate();
+        let spawner = world.non_send::<Spawner>().clone();
+        spawner.spawn(
+            world,
+            SpawnAt {
+                id,
+                unit_type,
+                team,
+                pos,
+            },
+            None,
+        );
+        id
+    }
+}
+
 #[cfg(test)]
 mod tests;
