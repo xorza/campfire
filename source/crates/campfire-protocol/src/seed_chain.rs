@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use crate::server_seed::{SeedCommitment, ServerSeed};
+use crate::server_seeds::ServerSeeds;
 
 /// Every segment's server seed, fixed when the server opens the session, as a one-way hash chain:
 /// segment `k`'s seed is the root hashed `N − 1 − k` times, so each seed is the hash of the next.
@@ -36,6 +37,11 @@ impl SeedChain {
     }
 
     /// `C(s_0)`, what the session's terms commit to.
+    /// Every segment's seed, as the server that holds the chain knows them.
+    pub const fn seeds(&self) -> ServerSeeds {
+        ServerSeeds::new(self.len.get() - 1, self.root)
+    }
+
     pub fn commitment(&self) -> SeedCommitment {
         self.seed(0).commitment()
     }

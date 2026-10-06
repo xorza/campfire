@@ -1,7 +1,9 @@
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::internals::LogCheck;
 use campfire_protocol::secp256k1::Secp256k1;
-use campfire_protocol::{Applied, InputChain, ServerInput, SessionTerms};
+use campfire_protocol::{
+    Applied, Checkpoint, InputChain, ServerInput, SessionResult, SessionTerms,
+};
 
 use crate::error::ServerInputRefused;
 use crate::fixed_session::FixedSession;
@@ -72,6 +74,32 @@ impl FixedMatch {
         })?;
         self.chains[usize::try_from(slot).unwrap()] = FixedSession::chain(&self.terms, slot);
         Ok(())
+    }
+
+    /// Checkpoints the match at the boundary before the next tick, as its server would, its
+    /// snapshot written into `snapshot`; the record, signed and logged.
+    pub fn checkpoint(&mut self, snapshot: &mut Vec<u8>) -> Checkpoint {
+        let record = self
+            .runner
+            .checkpoint(snapshot)
+            .expect("a fixed session's chain holds the segment");
+        let signature = FixedSession::checkpoint_signature(&record, self.terms.session_id());
+        self.runner
+            .record_checkpoint(record.clone(), &signature)
+            .unwrap_or_else(|error| panic!("the match's own checkpoint: {error}"));
+        record
+    }
+
+    /// Ends the session before the next tick, as the mode ended the match or aborted when it did
+    /// not, and publishes its log; the result, signed and logged.
+    pub fn end(&mut self) -> SessionResult {
+        let result = self.runner.result();
+        let signature = FixedSession::result_signature(&result, self.terms.session_id());
+        self.runner
+            .record_result(result, &signature)
+            .unwrap_or_else(|error| panic!("the match's own result: {error}"));
+        self.runner.reveal_seed();
+        result
     }
 
     pub const fn runner(&self) -> &Runner {

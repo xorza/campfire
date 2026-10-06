@@ -1,8 +1,8 @@
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
+use campfire_common::StateHash;
 use campfire_protocol::{CertificateHash, SessionId};
-use campfire_sim::StateHash;
 use serde_json::json;
 
 use super::*;

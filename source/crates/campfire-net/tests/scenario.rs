@@ -147,7 +147,7 @@ fn check_log(local: &mut LocalMatch, scripts: [&str; 2]) {
     let mut file = Vec::new();
     server.resource::<Session>().log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
-    let seed = decoded.revealed_seed().unwrap();
+    let seed = decoded.revealed_seeds().unwrap();
     let ticks = decoded.next_tick();
     let mut rewound = decoded.rewound();
     let mut applied = Vec::new();

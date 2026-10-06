@@ -1,8 +1,7 @@
 use std::fmt;
 
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::Level;
-use campfire_sim::StateHash;
 use serde_json::Value;
 
 use crate::outcome::Outcome;

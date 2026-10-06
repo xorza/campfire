@@ -1,8 +1,8 @@
 use bevy_ecs::world::World;
-use campfire_common::SegmentSeed;
+use campfire_common::{SegmentSeed, StateHash};
 use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
-use campfire_sim::{EntityIndex, SimUpdate, SnapshotError, StateHash, StateRegistry, TickRate};
+use campfire_sim::{EntityIndex, SimUpdate, SnapshotError, StateRegistry, TickRate};
 
 use crate::match_build::MatchBuild;
 

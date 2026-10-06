@@ -13,12 +13,12 @@ use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
     Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team, TeamSet,
 };
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, ServerSeed, SessionLog};
+use campfire_protocol::{Applied, ServerSeeds, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{SimTick, StableId, StateHash, TickRate};
+use campfire_sim::{SimTick, StableId, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
@@ -121,15 +121,16 @@ impl Plugin for SimServer {
 
 impl SimServer {
     /// Starts the match of `log`'s header, of the mode `packages` holds, in the next fixed tick,
-    /// recording into `log`. From then on a frame advances the server's clock by the ticks of the
-    /// max input delay less one at most, a tick at least, so a burst after a stall makes no
-    /// on-time input late; a longer frame's time past that is dropped, and logged. `clients` are the links of the players, by slot; each learns its slot
-    /// and the start tick. From the first tick on, every unit replicates to the clients whose team
-    /// sees it, and the owner's client predicts it, but a projectile or an area.
+    /// recording into `log`, each segment drawing from its seed of `seeds`. From then on a frame
+    /// advances the server's clock by the ticks of the max input delay less one at most, a tick
+    /// at least, so a burst after a stall makes no on-time input late; a longer frame's time past
+    /// that is dropped, and logged. `clients` are the links of the players, by slot; each learns
+    /// its slot and the start tick. From the first tick on, every unit replicates to the clients
+    /// whose team sees it, and the owner's client predicts it, but a projectile or an area.
     pub fn start_match(
         world: &mut World,
         log: SessionLog,
-        server_seed: ServerSeed,
+        seeds: ServerSeeds,
         packages: &ModePackages,
         clients: &[Entity],
     ) -> Result<(), StartError> {
@@ -155,7 +156,7 @@ impl SimServer {
         world
             .resource_mut::<Time<Virtual>>()
             .set_max_delta(tick * burst);
-        Session::start(world, log, server_seed, packages)?;
+        Session::start(world, log, seeds, packages)?;
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
         let next = world.resource::<Session>().log().next_tick();

@@ -5,8 +5,9 @@ use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{
-    Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, ServerInput, ServerSeed,
-    SessionHeader, SessionId, SessionLog, SessionTerms, Signature, SlotPlan, SlotStart,
+    Checkpoint, Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, ServerInput,
+    ServerSeed, ServerSeeds, SessionHeader, SessionId, SessionLog, SessionResult, SessionTerms,
+    Signature, SlotPlan, SlotStart,
 };
 
 use crate::fixed_match::FixedMatch;
@@ -24,8 +25,8 @@ pub struct FixedSession {
     terms: SessionTerms,
 }
 
-/// The seed chain of every fixed session.
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
+/// The seed chain of every fixed session, of room for a few checkpoints.
+const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
 /// The server's key, which signs its inputs.
 fn server_keypair() -> Keypair {
     FixedSession::key(8)
@@ -105,9 +106,14 @@ impl FixedSession {
         SessionLog::new(self.header(self.terms.clone())).unwrap_or_else(|error| panic!("{error}"))
     }
 
-    /// The seed of the log's first segment.
-    pub fn seed() -> ServerSeed {
-        SEED_CHAIN.seed(0)
+    /// The seed of the log's segment `segment`.
+    pub fn seed(segment: u32) -> ServerSeed {
+        SEED_CHAIN.seed(segment)
+    }
+
+    /// Every segment's seed, as the server knows them.
+    pub const fn seeds() -> ServerSeeds {
+        SEED_CHAIN.seeds()
     }
 
     /// A match at tick 0, its players joined, none of their inputs sent yet.
@@ -116,7 +122,7 @@ impl FixedSession {
         let chains = (0..self.slots())
             .map(|slot| FixedSession::chain(&self.terms, slot))
             .collect();
-        let runner = Runner::new(self.log(), FixedSession::seed(), &self.packages)
+        let runner = Runner::new(self.log(), FixedSession::seeds(), &self.packages)
             .unwrap_or_else(|error| panic!("{error}"));
         FixedMatch::new(runner, chains, self.terms.clone(), check)
     }
@@ -134,6 +140,16 @@ impl FixedSession {
             place,
             &AUX,
         )
+    }
+
+    /// The server's signature of the checkpoint `record` in the session of `session_id`.
+    pub fn checkpoint_signature(record: &Checkpoint, session_id: SessionId) -> Signature {
+        record.sign(&Secp256k1::new(), &server_keypair(), session_id, &AUX)
+    }
+
+    /// The server's signature of `result` in the session of `session_id`.
+    pub fn result_signature(result: &SessionResult, session_id: SessionId) -> Signature {
+        result.sign(&Secp256k1::new(), &server_keypair(), session_id, &AUX)
     }
 
     /// Player `slot`'s chain, as they start it in a session of `terms`, from its first input.

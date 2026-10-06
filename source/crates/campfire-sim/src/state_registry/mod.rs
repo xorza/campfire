@@ -1,9 +1,6 @@
-use std::fmt;
-use std::str::FromStr;
-
 use bevy_ecs::world::World;
 use blake3::Hasher;
-use campfire_common::{Bytes32, NotHex};
+use campfire_common::StateHash;
 use serde::de::DeserializeOwned;
 
 use crate::entity_index::EntityIndex;
@@ -22,7 +19,7 @@ mod writer;
 
 /// Starts the combined hash, so no other BLAKE3 use can produce the same state hash.
 const HASH_DOMAIN: &[u8] = b"campfire/state/v1";
-/// The domain of `StateHash::of`.
+/// The domain of `StateRegistry::digest`.
 const DIGEST_DOMAIN: &[u8] = b"campfire/digest/v1";
 /// Starts every snapshot, so other bytes are refused at once.
 const SNAPSHOT_TAG: &[u8] = b"campfire/snapshot/v1";
@@ -65,24 +62,6 @@ struct Entry {
 pub struct TypeHash {
     pub name: &'static str,
     pub hash: [u8; 32],
-}
-
-/// The hash of the whole simulated state. It writes, and reads back, as 64 lowercase hex digits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StateHash(Bytes32);
-
-impl StateHash {
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
-
-    /// The hash of `bytes` under a domain of its own: a digest of values that a test or a check
-    /// derives from the state, which no state hash can equal.
-    pub fn of(bytes: &[u8]) -> StateHash {
-        let mut hasher = Hasher::new();
-        hasher.update(DIGEST_DOMAIN).update(bytes);
-        StateHash(Bytes32::new(*hasher.finalize().as_bytes()))
-    }
 }
 
 /// One type's part of a snapshot, and the bytes after it.
@@ -164,6 +143,14 @@ impl StateRegistry {
             #[cfg(any(test, feature = "internals"))]
             scramble: internals::scramble_resource::<R>,
         });
+    }
+
+    /// The hash of `bytes` under a domain of its own: a digest of values that a test or a check
+    /// derives from the state, which no state hash can equal.
+    pub fn digest(bytes: &[u8]) -> StateHash {
+        let mut hasher = Hasher::new();
+        hasher.update(DIGEST_DOMAIN).update(bytes);
+        StateHash::new(*hasher.finalize().as_bytes())
     }
 
     pub fn hash(&self, world: &World) -> StateHash {
@@ -298,21 +285,7 @@ impl StateRegistry {
                 });
             }
         }
-        StateHash(Bytes32::new(*total.finalize().as_bytes()))
-    }
-}
-
-impl fmt::Display for StateHash {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl FromStr for StateHash {
-    type Err = NotHex;
-
-    fn from_str(text: &str) -> Result<StateHash, NotHex> {
-        text.parse().map(StateHash)
+        StateHash::new(*total.finalize().as_bytes())
     }
 }
 

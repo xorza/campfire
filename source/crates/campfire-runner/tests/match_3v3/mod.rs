@@ -563,7 +563,7 @@ pub(crate) fn assert_replays(reference: &Reference3v3, runner: &Runner, trail: &
     let decoded = SessionLog::decode(&file).unwrap();
     let mut replay = Runner::new(
         decoded.rewound(),
-        Reference3v3::seed(),
+        Reference3v3::seeds(),
         reference.packages(),
     )
     .unwrap();

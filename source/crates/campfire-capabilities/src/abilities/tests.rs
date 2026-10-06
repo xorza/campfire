@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
 use bevy_ecs::bundle::Bundle;
-use campfire_common::PlayerSlot;
+use campfire_common::{PlayerSlot, StateHash};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_script::NumError;
-use campfire_sim::{Capability, EntityIndex, SimRng, StateHash, TickInput, TickInputs};
+use campfire_sim::{Capability, EntityIndex, SimRng, TickInput, TickInputs};
 
 use super::*;
 use crate::actions::Actions;

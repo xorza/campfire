@@ -6,26 +6,28 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::num::NonZeroU32;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
 use campfire_capabilities::{Action, ActionSlots, Destination, Order, PoolId, Pools, Projectile};
-use campfire_common::{Fingerprint, PlayerSlot, Tick, Ticks};
+use campfire_common::{Fingerprint, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_log::LogEvent;
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{
-    AfterLeave, Applied, LeaveReason, SeedError, ServerInput, ServerSeed, SessionLog, SessionTerms,
-    SlotChange, SlotChangeKind, SlotPlan, Taken,
+    AfterLeave, Applied, LeaveReason, Outcome, SeedError, ServerInput, ServerSeed, ServerSeeds,
+    SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind, SlotPlan,
+    SnapshotFingerprint, Taken,
 };
 use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, MatchUnits, Reference3v3};
 use campfire_runner::{
-    InputRules, Runner, ServerInputRefused, SlotRuleError, StartError, TermsError,
+    InputRules, ResultMismatch, Runner, ServerInputRefused, SlotRuleError, StartError, TermsError,
 };
 use campfire_sim::{EntityIndex, Position, StableId};
-use campfire_verifier::{Replay, Verified};
+use campfire_verifier::{Replay, ReplayError, SnapshotCheckError, Verified};
 use tempfile::TempDir;
 
 /// The lane mode's life pool, `health`, the first of its pools by name.
@@ -139,9 +141,17 @@ struct Run {
 fn run(orders: &[&Sent], ticks: u64) -> Run {
     let mut fixed = session().start();
     let mut trail = HashTrail::default();
-    for tick in 0..ticks {
+    play(&mut fixed, orders, 0..ticks, &mut trail);
+    fixed.runner_mut().reveal_seed();
+    Run { fixed, trail }
+}
+
+/// Runs `ticks` of `fixed`, the player sending `orders` as they arrive, and records each tick's
+/// state into `trail`.
+fn play(fixed: &mut FixedMatch, orders: &[&Sent], ticks: Range<u64>, trail: &mut HashTrail) {
+    for tick in ticks {
         for sent in orders.iter().filter(|sent| sent.arrives == tick) {
-            let payload = move_order(&fixed, 0, sent.x, sent.z);
+            let payload = move_order(fixed, 0, sent.x, sent.z);
             assert_eq!(
                 fixed.send(0, Tick::new(sent.stamp), &payload),
                 sent.applied,
@@ -151,8 +161,113 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
         fixed.runner_mut().run_tick();
         trail.record(fixed.runner().world());
     }
-    fixed.runner_mut().reveal_seed();
+}
+
+/// The orders' match to tick 72, checkpointed with a full snapshot, written into `snapshot`,
+/// before tick 40, its record's state hash `hash` when given, and ended with `outcome`, as the
+/// mode ended it when none is given; the match, and its state after each tick.
+fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option<Outcome>) -> Run {
+    let mut fixed = session().start();
+    let mut trail = HashTrail::default();
+    let orders = ORDERS.each_ref();
+    play(&mut fixed, &orders, 0..40, &mut trail);
+    let mut record = fixed.runner().checkpoint(snapshot).unwrap();
+    record.state_hash = hash.unwrap_or(record.state_hash);
+    let id = fixed.runner().log().session_id();
+    let signature = FixedSession::checkpoint_signature(&record, id);
+    fixed
+        .runner_mut()
+        .record_checkpoint(record, &signature)
+        .unwrap();
+    play(&mut fixed, &orders, 40..72, &mut trail);
+    let runner = fixed.runner_mut();
+    let result = outcome.map_or_else(|| runner.result(), |outcome| runner.result_as(outcome));
+    let signature = FixedSession::result_signature(&result, id);
+    runner.record_result(result, &signature).unwrap();
+    runner.reveal_seed();
     Run { fixed, trail }
+}
+
+/// The replay of `fixed`'s log file, its state after each tick, and how it ended.
+fn replayed(fixed: &FixedMatch) -> (Replay, HashTrail, Result<(), ReplayError>) {
+    let decoded = SessionLog::decode(&encoded(fixed.runner().log())).unwrap();
+    let mut replay = Replay::new(decoded, &store()).unwrap();
+    let mut trail = HashTrail::default();
+    let end = loop {
+        match replay.run_tick() {
+            Ok(true) => trail.record(replay.runner().world()),
+            Ok(false) => break Ok(()),
+            Err(error) => break Err(error),
+        }
+    };
+    (replay, trail, end)
+}
+
+#[test]
+fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_another_hash() {
+    // Two segments: the replay reaches the state the checkpoint records, the snapshot restores
+    // to it, and the match runs on to the same hashes. The lane match has not ended by tick 72,
+    // so the session aborts.
+    let mut snapshot = Vec::new();
+    let Run { fixed, trail: live } = checkpointed(&mut snapshot, None, None);
+    let log = fixed.runner().log();
+    let record = log.checkpoint_at(Tick::new(40)).unwrap().clone();
+    assert_eq!(log.segment(), 1);
+    assert_eq!(record.snapshot, SnapshotFingerprint::of(&snapshot));
+    let ended = SessionResult {
+        tick: Tick::new(72),
+        outcome: Outcome::Aborted,
+        state_hash: fixed.runner().state_hash(),
+    };
+    assert_eq!(log.result(), Some(&ended));
+    let (replay, trail, end) = replayed(&fixed);
+    assert_eq!(end, Ok(()));
+    live.assert_same(&trail);
+    // Seeds that reach segment 0 alone do not start the log of two.
+    let first = ServerSeeds::new(0, FixedSession::seed(0));
+    assert!(matches!(
+        Runner::new(
+            SessionLog::decode(&encoded(log)).unwrap().rewound(),
+            first,
+            &packages()
+        ),
+        Err(StartError::Seed(SeedError::NotRevealed))
+    ));
+    assert_eq!(replay.check_snapshot(&record, &snapshot), Ok(()));
+    let mut other = snapshot.clone();
+    *other.last_mut().unwrap() ^= 1;
+    assert_eq!(
+        replay.check_snapshot(&record, &other),
+        Err(SnapshotCheckError::Fingerprint)
+    );
+
+    // The record's state hash changed: the replay stops at the checkpoint, and the snapshot
+    // restores to another state than it records.
+    let forged = StateHash::new([7; 32]);
+    let Run { fixed, .. } = checkpointed(&mut snapshot, Some(forged), None);
+    let (replay, _, end) = replayed(&fixed);
+    let refused = ReplayError::Checkpoint {
+        segment: 1,
+        tick: Tick::new(40),
+        logged: forged,
+        replayed: record.state_hash,
+    };
+    assert_eq!(end, Err(refused));
+    let restored = SnapshotCheckError::Hash {
+        logged: forged,
+        restored: record.state_hash,
+    };
+    let record = fixed.runner().log().checkpoint_at(Tick::new(40)).unwrap();
+    assert_eq!(replay.check_snapshot(record, &snapshot), Err(restored));
+
+    // A result that names a winner of a match that has none.
+    let won = Outcome::Won { team: 0 };
+    let Run { fixed, .. } = checkpointed(&mut snapshot, None, Some(won));
+    let mismatch = ResultMismatch::Outcome {
+        logged: won,
+        ended: Outcome::Aborted,
+    };
+    assert_eq!(replayed(&fixed).2, Err(ReplayError::Result(mismatch)));
 }
 
 #[test]
@@ -168,7 +283,7 @@ fn run_and_replay_agree_on_every_tick() {
     let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = HashTrail::default();
-    while replay.run_tick() {
+    while replay.run_tick().unwrap() {
         replayed.record(replay.runner().world());
     }
     live.assert_same(&replayed);
@@ -299,7 +414,7 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     assert_eq!(encoded(&decoded), bytes);
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = HashTrail::default();
-    while replay.run_tick() {
+    while replay.run_tick().unwrap() {
         replayed.record(replay.runner().world());
     }
     live.assert_same(&replayed);
@@ -311,7 +426,7 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     let to_bot = leave(AfterLeave::Bot);
     let signature = FixedSession::server_signature(&to_bot, log.session_id(), log.next_place());
     log.record_server(to_bot, &signature).unwrap();
-    log.reveal_seed(FixedSession::seed());
+    log.reveal_seed(FixedSession::seed(0));
     let refused = Replay::new(log, &store()).err();
     assert!(
         matches!(
@@ -327,23 +442,42 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
 
 #[test]
 fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
-    // The scripted 3v3 to tick 1900, Rime's learn, the last of its learn orders.
+    // The scripted 3v3 to tick 1900, Rime's learn, the last of its learn orders, checkpointed
+    // before tick 40, and again without the checkpoint.
     let reference = Reference3v3::load();
-    let mut fixed = reference.start();
-    let mut live = HashTrail::default();
-    for tick in 0..=1900 {
-        reference.play_tick(&mut fixed, tick);
-        live.record(fixed.runner().world());
-    }
-    fixed.runner_mut().reveal_seed();
-
+    let mut snapshot = Vec::new();
+    let play = |checkpoint: bool, snapshot: &mut Vec<u8>| {
+        let mut fixed = reference.start();
+        let mut trail = HashTrail::default();
+        for tick in 0..=1900 {
+            if checkpoint && tick == 40 {
+                fixed.checkpoint(snapshot);
+            }
+            reference.play_tick(&mut fixed, tick);
+            trail.record(fixed.runner().world());
+        }
+        fixed.end();
+        (fixed, trail)
+    };
+    let (fixed, live) = play(true, &mut snapshot);
     let decoded = SessionLog::decode(&encoded(fixed.runner().log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
+    let record = replay.runner().log().checkpoint_at(Tick::new(40)).unwrap();
+    assert_eq!(replay.check_snapshot(record, &snapshot), Ok(()));
     let mut replayed = HashTrail::default();
-    while replay.run_tick() {
+    while replay.run_tick().unwrap() {
         replayed.record(replay.runner().world());
     }
     live.assert_same(&replayed);
+    // From tick 40 the match draws from segment 1's seed: its crits land otherwise than the
+    // same match's without the checkpoint, which draws from segment 0's to the end.
+    let (_, unbroken) = play(false, &mut Vec::new());
+    let (live, unbroken) = (live.totals(), unbroken.totals());
+    let first_difference = live.iter().zip(unbroken).position(|(a, b)| a != b);
+    assert!(
+        first_difference.is_some_and(|tick| tick >= 40),
+        "{first_difference:?}"
+    );
     // The replay learned what the match did: Cinder's and Veil's first basic ability, and Rime's
     // second.
     let world = replay.runner().world();
@@ -406,7 +540,7 @@ fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = HashTrail::default();
     let mut seen = Vec::new();
-    while replay.run_tick() {
+    while replay.run_tick().unwrap() {
         replayed.record(replay.runner().world());
         seen.push(Seen::of(replay.runner()));
     }
@@ -464,7 +598,8 @@ fn encoded(log: &SessionLog) -> Vec<u8> {
 
 #[test]
 fn the_binary_logs_the_last_state_hash() {
-    let Run { fixed, trail } = run(&ORDERS.each_ref(), TICKS);
+    let mut snapshot = Vec::new();
+    let Run { fixed, trail } = checkpointed(&mut snapshot, None, None);
     let runner = fixed.runner();
     // A directory of this run's own, which goes when the test ends, passed or failed.
     let scratch = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
@@ -485,13 +620,31 @@ fn the_binary_logs_the_last_state_hash() {
     // Every package, the reference ones and the test ones: what the verifier holds.
     let packages = PackageDir::workspace("");
     let packages = packages.to_str().unwrap();
-    let output = verifier(&[packages, &path]);
-    assert!(output.status.success(), "{output:?}");
     let hash = trail.totals().last().unwrap();
-    let logged = String::from_utf8(output.stderr).unwrap();
     let success = format!("{} file={path} hash={hash}\n", Verified::MESSAGE);
-    assert!(logged.ends_with(&success), "{logged}");
-    assert!(output.stdout.is_empty());
+    // With no snapshot, and with the checkpoint's snapshot named by its fingerprint.
+    let snapshots = format!("{dir}/snapshots");
+    fs::create_dir(&snapshots).unwrap();
+    let named = format!("{snapshots}/{}", SnapshotFingerprint::of(&snapshot));
+    fs::write(&named, &snapshot).unwrap();
+    for args in [&[packages, &path][..], &[packages, &path, &snapshots]] {
+        let output = verifier(args);
+        assert!(output.status.success(), "{output:?}");
+        let logged = String::from_utf8(output.stderr).unwrap();
+        assert!(logged.ends_with(&success), "{logged}");
+        assert!(output.stdout.is_empty());
+    }
+    // A snapshot of other bytes under the checkpoint's name.
+    *snapshot.last_mut().unwrap() ^= 1;
+    fs::write(&named, &snapshot).unwrap();
+    let output = verifier(&[packages, &path, &snapshots]);
+    assert_eq!(output.status.code(), Some(1));
+    let logged = String::from_utf8(output.stderr).unwrap();
+    let refused = format!(
+        "the log does not verify file={path} error=the snapshot is not the one its checkpoint \
+         names\n"
+    );
+    assert!(logged.ends_with(&refused), "{logged}");
 
     let corrupt = format!("{dir}/headless-truncated.log");
     let bytes = encoded(runner.log());
@@ -516,7 +669,11 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
     assert!(matches!(
-        Runner::new(session.log(), ServerSeed::new([8; 32]), &packages()),
+        Runner::new(
+            session.log(),
+            ServerSeeds::new(0, ServerSeed::new([8; 32])),
+            &packages()
+        ),
         Err(StartError::Seed(SeedError::WrongSeed))
     ));
 
@@ -525,7 +682,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         let mut terms = session.terms().clone();
         change(&mut terms);
         let mut log = SessionLog::new(session.header(terms)).unwrap();
-        log.reveal_seed(FixedSession::seed());
+        log.reveal_seed(FixedSession::seed(0));
         Replay::new(log, &store).err()
     };
     let refused = [
@@ -559,7 +716,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     let mut terms = session.terms().clone();
     terms.slots.extend([SlotPlan::Open; 2]);
     let mut log = SessionLog::new(session.header(terms)).unwrap();
-    log.reveal_seed(FixedSession::seed());
+    log.reveal_seed(FixedSession::seed(0));
     let refused = Replay::new(log, &store).err();
     assert!(
         matches!(
@@ -587,7 +744,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         NonZeroU32::new(30).unwrap(),
         1,
     );
-    let refused = Runner::new(thrown.log(), FixedSession::seed(), thrown.packages()).err();
+    let refused = Runner::new(thrown.log(), FixedSession::seeds(), thrown.packages()).err();
     let Some(refused @ StartError::MatchStart(_)) = refused else {
         panic!("{refused:?}");
     };

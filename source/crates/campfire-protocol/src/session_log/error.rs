@@ -3,6 +3,7 @@ use std::fmt;
 
 use campfire_common::{PlayerSlot, Tick};
 
+use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::error::{DelegationError, ScopeError};
 use crate::server_input::error::ServerInputDecodeError;
 
@@ -120,6 +121,57 @@ impl Error for ServerInputError {
     }
 }
 
+/// Why the log refused a checkpoint record. The server signs only what it means to log, so each
+/// is a fault of the server, or of a log someone altered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckpointError {
+    /// The server key did not sign the record.
+    BadSignature,
+    /// The record starts another segment than the one after the last.
+    Segment,
+    /// The record starts its segment at another tick than the next.
+    Tick,
+    /// The last segment holds no tick.
+    Empty,
+    /// The record carries another state than the log's own at the boundary.
+    Carry,
+}
+
+impl fmt::Display for CheckpointError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            CheckpointError::BadSignature => "checkpoint not signed by the server key",
+            CheckpointError::Segment => "checkpoint of another segment than the next",
+            CheckpointError::Tick => "checkpoint at another tick than the next",
+            CheckpointError::Empty => "checkpoint ends a segment of no tick",
+            CheckpointError::Carry => "checkpoint carries another state than the log's",
+        })
+    }
+}
+
+impl Error for CheckpointError {}
+
+/// Why the log refused a result. The server signs only what it means to log, so each is a fault
+/// of the server, or of a log someone altered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultError {
+    /// The server key did not sign the result.
+    BadSignature,
+    /// The result stops before another tick than the next.
+    Tick,
+}
+
+impl fmt::Display for ResultError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ResultError::BadSignature => "result not signed by the server key",
+            ResultError::Tick => "result at another tick than the next",
+        })
+    }
+}
+
+impl Error for ResultError {}
+
 /// Why a log gives no segment seed. A published log is untrusted, so each is an expected failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SeedError {
@@ -159,6 +211,8 @@ pub enum HeaderError {
     SlotCount,
     /// The slot `slot` starts otherwise than the terms plan it: a player, a bot or open.
     PlanMismatch { slot: PlayerSlot },
+    /// The file starts the slot `slot` as no known kind of start.
+    UnknownStart { slot: PlayerSlot },
 }
 
 impl fmt::Display for HeaderError {
@@ -170,6 +224,9 @@ impl fmt::Display for HeaderError {
             }
             HeaderError::Scope { slot, error } => write!(f, "player {}: {error}", slot.get()),
             HeaderError::SlotCount => f.write_str("slot starts other than the terms' slots"),
+            HeaderError::UnknownStart { slot } => {
+                write!(f, "slot {} starts as no known kind", slot.get())
+            }
             HeaderError::PlanMismatch { slot } => {
                 write!(
                     f,
@@ -186,7 +243,8 @@ impl Error for HeaderError {
         match self {
             HeaderError::TooManySlots
             | HeaderError::SlotCount
-            | HeaderError::PlanMismatch { .. } => None,
+            | HeaderError::PlanMismatch { .. }
+            | HeaderError::UnknownStart { .. } => None,
             HeaderError::Delegation { error, .. } => Some(error),
             HeaderError::Scope { error, .. } => Some(error),
         }
@@ -213,13 +271,27 @@ pub enum LogError {
         tick: Tick,
         error: ServerInputDecodeError,
     },
-    /// An entry is neither a player's packet nor a server input, or a slot's start is none of
-    /// a player's, a bot's or an open one.
+    /// An entry is neither a player's packet nor a server input.
     UnknownEntry,
-    /// The revealed server seed is not the first segment's seed of the chain the header commits
+    /// The file holds no segment.
+    NoSegment,
+    /// The checkpoint record of segment `segment` does not decode, or a delegation it carries
+    /// does not parse.
+    CheckpointDecode {
+        segment: u32,
+        error: CheckpointDecodeError,
+    },
+    /// The log refuses the checkpoint record of segment `segment`.
+    Checkpoint {
+        segment: u32,
+        error: CheckpointError,
+    },
+    /// The revealed server seed is not the last segment's seed of the chain the header commits
     /// to.
     WrongSeed,
-    /// Bytes remain after the reveal.
+    /// The log refuses the result.
+    Result(ResultError),
+    /// Bytes remain after the result.
     Trailing,
     /// The bytes decode, but not from the one encoding the log has, such as an overlong varint.
     NotCanonical,
@@ -248,9 +320,23 @@ impl fmt::Display for LogError {
                 )
             }
             LogError::UnknownEntry => f.write_str("session log entry of no known kind"),
-            LogError::WrongSeed => {
-                f.write_str("session log reveals a server seed that is not its first segment's")
+            LogError::NoSegment => f.write_str("session log holds no segment"),
+            LogError::CheckpointDecode { segment, error } => {
+                write!(
+                    f,
+                    "session log checkpoint of segment {segment} does not read: {error}"
+                )
             }
+            LogError::Checkpoint { segment, error } => {
+                write!(
+                    f,
+                    "session log checkpoint of segment {segment} refused: {error}"
+                )
+            }
+            LogError::WrongSeed => {
+                f.write_str("session log reveals a server seed that is not its last segment's")
+            }
+            LogError::Result(error) => write!(f, "session log result refused: {error}"),
             LogError::Trailing => f.write_str("session log has trailing bytes"),
             LogError::NotCanonical => f.write_str("session log is not in its canonical encoding"),
         }
@@ -265,6 +351,9 @@ impl Error for LogError {
             LogError::Input { error, .. } => Some(error),
             LogError::Server { error, .. } => Some(error),
             LogError::ServerDecode { error, .. } => Some(error),
+            LogError::CheckpointDecode { error, .. } => Some(error),
+            LogError::Checkpoint { error, .. } => Some(error),
+            LogError::Result(error) => Some(error),
             _ => None,
         }
     }

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
+use campfire_common::StateHash;
 use campfire_log::{LogEvent, LogLine};
-use campfire_sim::StateHash;
 use serde::Deserialize;
 use tracing::info;
 

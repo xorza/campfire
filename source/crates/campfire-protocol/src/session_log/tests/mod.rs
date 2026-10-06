@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
-use campfire_common::Fingerprint;
-use secp256k1::Keypair;
+use campfire_common::{Fingerprint, StateHash};
+use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
 use crate::delegation::DelegationTerms;
@@ -9,7 +9,9 @@ use crate::delegation::error::{DelegationError, ScopeError};
 use crate::input_hash::InputHash;
 use crate::seed_chain::SeedChain;
 use crate::server_input::LeaveReason;
+use crate::session_result::{Outcome, SessionResult};
 use crate::slot_plan::SlotPlan;
+use crate::snapshot_fingerprint::SnapshotFingerprint;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
@@ -759,6 +761,8 @@ fn frame(
             put(&mut bytes, delegation.json());
         }
     }
+    // One segment, from tick 0.
+    put(&mut bytes, &1_u32);
     put(&mut bytes, &u64::try_from(ticks.len()).unwrap());
     for packets in ticks.iter().map(Vec::as_slice).chain([tail]) {
         put(&mut bytes, &u32::try_from(packets.len()).unwrap());
@@ -775,6 +779,7 @@ fn frame(
         }
     }
     put(&mut bytes, &revealed);
+    put(&mut bytes, &None::<()>);
     bytes
 }
 
@@ -888,16 +893,18 @@ fn a_log_file_has_its_layout() {
         &[0],
         &varint(second.json().len()),
         second.json().as_bytes(),
-        // 1 tick with 2 entries. A packet, 0: slot 1, 1 input: stamp 0, 1 payload byte.
-        &[1, 2, 0, 1, 1, 0, 1],
+        // 1 segment of 1 tick with 2 entries. A packet, 0: slot 1, 1 input: stamp 0, 1 payload
+        // byte.
+        &[1, 1, 2, 0, 1, 1, 0, 1],
         b"a",
         &a.signature.to_bytes(),
         // A server input, 1: `Disconnected`, the sixth kind, 5, of slot 0.
         &[1, 5, 0],
         &signature.to_bytes(),
-        // No entry since the tick, then the revealed seed.
+        // No entry since the tick, then the revealed seed, and no result.
         &[0, 1],
         server_seed().as_bytes(),
+        &[0],
     ]
     .concat();
     assert_eq!(encoded(&log), expected);
@@ -911,20 +918,38 @@ fn a_log_file_has_its_layout() {
     ));
 }
 
-/// The smallest log with every kind of byte a log file holds: the header of 2 players, 1 tick
-/// with 1 packet of 2 inputs and a server input, 1 packet after the tick, and the revealed seed.
+/// The smallest log with every kind of byte a log file holds: the header of 2 players; 1 tick
+/// with 1 packet of 2 inputs and a server input; a checkpoint, whose carry holds both players
+/// and an input still due; 1 packet after it; the revealed seed; and the result.
 fn minimal() -> SessionLog {
     let mut log = new_log();
     let mut applied = Vec::new();
-    let sent = resent(1, &[&[(0, b"a"), (0, b"b")], &[(1, b"c")]], 1);
+    let sent = resent(1, &[&[(0, b"a"), (1, b"b")], &[(1, b"c")]], 1);
     sent[0].submit(&mut log, &mut applied).unwrap();
     let connected = ServerInput::Connected {
         slot: PlayerSlot::new(0),
     };
     serve(&mut log, connected).unwrap();
     drop(log.seal_tick());
+    let secp = Secp256k1::new();
+    let record = Checkpoint {
+        segment: 1,
+        tick: log.next_tick(),
+        state_hash: StateHash::new([3; 32]),
+        snapshot: SnapshotFingerprint::new([4; 32]),
+        carry: log.carry(),
+    };
+    let signature = record.sign(&secp, &server_keypair(), session_id(), &AUX);
+    log.record_checkpoint(record, &signature).unwrap();
     sent[1].submit(&mut log, &mut applied).unwrap();
-    log.reveal_seed(server_seed());
+    let result = SessionResult {
+        tick: log.next_tick(),
+        outcome: Outcome::Won { team: 1 },
+        state_hash: StateHash::new([5; 32]),
+    };
+    let signature = result.sign(&secp, &server_keypair(), session_id(), &AUX);
+    log.record_result(result, &signature).unwrap();
+    log.reveal_seed(SEED_CHAIN.seed(1));
     log
 }
 
@@ -964,14 +989,15 @@ fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
 #[test]
 fn flawed_server_entries_are_refused() {
     // `mixed_log` with one server input before its first tick, which ends its file: the entry
-    // count 1, the kind 1, `Disconnected`'s 5 and slot 0, the signature, and no reveal.
+    // count 1, the kind 1, `Disconnected`'s 5 and slot 0, the signature, no reveal and no
+    // result.
     let mut log = mixed_log();
     let disconnected = ServerInput::Disconnected {
         slot: PlayerSlot::new(0),
     };
     serve(&mut log, disconnected).unwrap();
     let valid = encoded(&log);
-    let kind_at = valid.len() - 1 - 64 - 2 - 1;
+    let kind_at = valid.len() - 2 - 64 - 2 - 1;
     assert_eq!(valid[kind_at - 1..kind_at + 3], [1, 1, 5, 0]);
     let with = |at: usize, byte: u8| {
         let mut bytes = valid.clone();
@@ -1001,9 +1027,10 @@ fn flawed_log_files_are_refused() {
     let valid = frame(&header(), &sent, &[], None);
     assert!(SessionLog::decode(&valid).is_ok());
 
-    // The ticks count 5, after the tag and the header, as the overlong varint 0x85 0x00: the
-    // file of a log with no tick ends with the count 0, no packet and no reveal.
-    let count_at = encoded(&new_log()).len() - 3;
+    // The ticks count 5, after the tag, the header and the segment count, as the overlong varint
+    // 0x85 0x00: the file of a log with no tick ends with the count 0, no packet, no reveal and
+    // no result.
+    let count_at = encoded(&new_log()).len() - 4;
     assert_eq!(valid[count_at], 5);
     let overlong = [&valid[..count_at], &[0x85, 0x00], &valid[count_at + 1..]].concat();
 
@@ -1016,6 +1043,10 @@ fn flawed_log_files_are_refused() {
     let sig_at = json_at + json.find("\"sig\":\"").unwrap() + "\"sig\":\"".len();
     let mut forged = valid.clone();
     forged[sig_at] = if forged[sig_at] == b'0' { b'1' } else { b'0' };
+    // Player 1's start, before the two bytes of its JSON's length, as no kind of start.
+    let mut unknown_start = valid.clone();
+    assert_eq!(unknown_start[json_at - 3], 0);
+    unknown_start[json_at - 3] = 3;
 
     let cases = [
         (b"not a log".to_vec(), LogError::NotLog),
@@ -1040,6 +1071,12 @@ fn flawed_log_files_are_refused() {
             LogError::Header(HeaderError::Delegation {
                 slot: PlayerSlot::new(1),
                 error: DelegationError::BadSignature,
+            }),
+        ),
+        (
+            unknown_start,
+            LogError::Header(HeaderError::UnknownStart {
+                slot: PlayerSlot::new(1),
             }),
         ),
     ];
@@ -1341,3 +1378,5 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     };
     assert_eq!(replayed.next_place(), place);
 }
+
+mod segments;

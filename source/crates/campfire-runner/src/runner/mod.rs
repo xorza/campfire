@@ -1,11 +1,12 @@
 use bevy_ecs::world::World;
+use campfire_common::StateHash;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Applied, InputError, PlayerInput, ServerInput, ServerSeed, SessionLog, Signature,
+    Applied, Checkpoint, CheckpointError, InputError, Outcome, PlayerInput, ResultError,
+    ServerInput, ServerSeeds, SessionLog, SessionResult, Signature,
 };
-use campfire_sim::StateHash;
 
-use crate::error::{ServerInputRefused, StartError};
+use crate::error::{ResultMismatch, ServerInputRefused, StartError};
 use crate::session::Session;
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.
@@ -18,11 +19,11 @@ impl Runner {
     /// See `Session::start`.
     pub fn new(
         log: SessionLog,
-        server_seed: ServerSeed,
+        seeds: ServerSeeds,
         packages: &ModePackages,
     ) -> Result<Runner, StartError> {
         let mut world = World::new();
-        Session::start(&mut world, log, server_seed, packages)?;
+        Session::start(&mut world, log, seeds, packages)?;
         Ok(Runner { world })
     }
 
@@ -55,6 +56,53 @@ impl Runner {
 
     pub fn run_tick(&mut self) {
         Session::run_tick(&mut self.world);
+    }
+
+    /// See `Session::checkpoint`.
+    pub fn checkpoint(&self, snapshot: &mut Vec<u8>) -> Option<Checkpoint> {
+        self.world
+            .resource::<Session>()
+            .checkpoint(&self.world, snapshot)
+    }
+
+    /// See `Session::record_checkpoint`.
+    pub fn record_checkpoint(
+        &mut self,
+        record: Checkpoint,
+        signature: &Signature,
+    ) -> Result<(), CheckpointError> {
+        self.world
+            .resource_mut::<Session>()
+            .record_checkpoint(record, signature)
+    }
+
+    /// The result that ends the session before the next tick, as the mode ended the match or
+    /// aborted when it did not; see `Session::result`.
+    pub fn result(&self) -> SessionResult {
+        self.result_as(Session::outcome(&self.world))
+    }
+
+    /// See `Session::result`.
+    pub fn result_as(&self, outcome: Outcome) -> SessionResult {
+        self.world
+            .resource::<Session>()
+            .result(&self.world, outcome)
+    }
+
+    /// See `Session::record_result`.
+    pub fn record_result(
+        &mut self,
+        result: SessionResult,
+        signature: &Signature,
+    ) -> Result<(), ResultError> {
+        self.world
+            .resource_mut::<Session>()
+            .record_result(result, signature)
+    }
+
+    /// See `Session::check_result`.
+    pub fn check_result(&self) -> Result<(), ResultMismatch> {
+        self.world.resource::<Session>().check_result(&self.world)
     }
 
     pub fn reveal_seed(&mut self) {

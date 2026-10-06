@@ -7,7 +7,7 @@ use campfire_capabilities::{
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir};
-use campfire_protocol::ServerSeed;
+use campfire_protocol::ServerSeeds;
 use campfire_sim::{Position, StableId};
 
 use crate::fixed_match::FixedMatch;
@@ -337,9 +337,9 @@ impl Reference3v3 {
         self.session.packages()
     }
 
-    /// The seed of the log's first segment.
-    pub fn seed() -> ServerSeed {
-        FixedSession::seed()
+    /// Every segment's seed, as the server knows them.
+    pub const fn seeds() -> ServerSeeds {
+        FixedSession::seeds()
     }
 
     /// A match at tick 0, in which each player picked a hero, in slot order, and two spells.

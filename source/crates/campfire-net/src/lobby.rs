@@ -234,8 +234,8 @@ impl Lobby {
         let session = header.terms.session_id();
         let log = SessionLog::new(header).expect("every delegation names this session");
         info!(%session, players = links.len(), "every slot is taken; the match starts");
-        let server_seed = lobby.seed_chain.seed(0);
-        SimServer::start_match(world, log, server_seed, &lobby.packages, &links)
+        let seeds = lobby.seed_chain.seeds();
+        SimServer::start_match(world, log, seeds, &lobby.packages, &links)
             .expect("the lobby's terms come from its own packages");
     }
 

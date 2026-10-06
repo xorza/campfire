@@ -1,5 +1,5 @@
 use campfire_common::{PlayerSlot, Tick};
-use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey, schnorr};
+use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::Delegation;
@@ -160,9 +160,7 @@ impl ServerInput {
         place: InputPlace,
         aux: &[u8; 32],
     ) -> Signature {
-        let message = self.message(session_id, place);
-        let signature = secp.sign_schnorr_with_aux_rand(&message, server_key, aux);
-        Signature::from_bytes(signature.to_byte_array())
+        Signature::sign(secp, server_key, &self.message(session_id, place), aux)
     }
 
     /// Whether `signature` is `server_key`'s over the input at `place`.
@@ -174,12 +172,7 @@ impl ServerInput {
         place: InputPlace,
         signature: &Signature,
     ) -> bool {
-        secp.verify_schnorr(
-            &schnorr::Signature::from_byte_array(signature.to_bytes()),
-            &self.message(session_id, place),
-            server_key,
-        )
-        .is_ok()
+        signature.verifies(secp, server_key, &self.message(session_id, place))
     }
 
     /// `domain ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, little-endian.

@@ -33,6 +33,7 @@ use campfire_net::{
     Listening, Lobby, LobbySetup, MatchClock, NetProtocol, PlayerLink, SessionWritten, SimServer,
 };
 use campfire_package::ModePackages;
+use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{CertificateHash, SeedChain};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::TickRate;
@@ -41,8 +42,10 @@ use lightyear::prelude::{Connected, Identity, LinkOf, Linked, LocalAddr, Replica
 use tracing::{error, info};
 
 use crate::data_dir::DataDir;
+use crate::server_key::ServerKey;
 
 mod data_dir;
+mod server_key;
 
 const USAGE: &str = "usage: campfire-server --data <data directory> <mode package directory> \
                      <address, as 0.0.0.0:4433>";
@@ -127,7 +130,7 @@ fn main() -> ExitCode {
             address.port()
         ),
     };
-    let mut app = server_app(lobby, tick, listening);
+    let mut app = server_app(lobby, ServerKey(server_key), tick, listening);
     let server = app
         .world_mut()
         .spawn((
@@ -144,7 +147,7 @@ fn main() -> ExitCode {
 
 /// The server's app: its plugins at `tick` a tick, the session `lobby` opened, a `listening`
 /// event logged once its transport listens, and the end once every player left.
-fn server_app(lobby: Lobby, tick: Duration, listening: Listening) -> App {
+fn server_app(lobby: Lobby, key: ServerKey, tick: Duration, listening: Listening) -> App {
     let mut app = App::new();
     app.add_plugins((
         TaskPoolPlugin::default(),
@@ -157,6 +160,7 @@ fn server_app(lobby: Lobby, tick: Duration, listening: Listening) -> App {
     });
     app.add_plugins((NetProtocol, SimServer));
     app.insert_resource(lobby);
+    app.insert_resource(key);
     app.add_observer(
         |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
             commands.entity(added.entity).insert(ReplicationSender);
@@ -216,9 +220,10 @@ fn exit_code(exit: AppExit) -> ExitCode {
     }
 }
 
-/// Once the match started and no player is connected any more, reveals the seed, writes the
-/// session log into the working directory and exits: with an error when the log is not written,
-/// as the session it holds is lost.
+/// Once the match started and no player is connected any more, ends the session with its result,
+/// as the mode ended the match or aborted when it did not, reveals the seed, writes the session
+/// log into the working directory and exits: with an error when the log is not written, as the
+/// session it holds is lost.
 fn end_when_everyone_left(
     world: &mut World,
     connected: &mut QueryState<(), (With<PlayerLink>, With<Connected>)>,
@@ -229,7 +234,15 @@ fn end_when_everyone_left(
     if connected.iter(world).next().is_some() {
         return;
     }
+    let session = world.resource::<Session>();
+    let result = session.result(world, Session::outcome(world));
+    let id = session.log().session_id();
+    let key = &world.resource::<ServerKey>().0;
+    let signature = result.sign(&Secp256k1::new(), key, id, &random());
     let mut session = world.resource_mut::<Session>();
+    session
+        .record_result(result, &signature)
+        .expect("the server's own result holds");
     session.reveal_seed();
     let session = world.resource::<Session>();
     let hash = session.state_hash(world);

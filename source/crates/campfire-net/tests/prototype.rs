@@ -137,7 +137,7 @@ fn server_and_replay_agree_on_every_tick() {
         let mut file = Vec::new();
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
-        let seed = decoded.revealed_seed().unwrap();
+        let seed = decoded.revealed_seeds().unwrap();
         let mut replay = Runner::new(decoded.rewound(), seed, local.packages()).unwrap();
         let mut replayed = HashTrail::default();
         for _ in live.totals() {

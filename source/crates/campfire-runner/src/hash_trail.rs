@@ -1,5 +1,6 @@
 use bevy_ecs::world::World;
-use campfire_sim::{StateHash, TypeHash};
+use campfire_common::StateHash;
+use campfire_sim::TypeHash;
 
 use crate::session::Session;
 
@@ -103,6 +104,8 @@ pub enum Difference {
 
 #[cfg(test)]
 mod tests {
+    use campfire_sim::StateRegistry;
+
     use super::*;
 
     /// A trail of ticks whose types `a` and `b` hash as `types` gives, each tick's total the hash
@@ -114,7 +117,10 @@ mod tests {
                 .iter()
                 .flat_map(|&[a, b]| [[a; 32], [b; 32]])
                 .collect(),
-            totals: types.iter().map(|tick| StateHash::of(tick)).collect(),
+            totals: types
+                .iter()
+                .map(|tick| StateRegistry::digest(tick))
+                .collect(),
             scratch: Vec::new(),
         }
     }

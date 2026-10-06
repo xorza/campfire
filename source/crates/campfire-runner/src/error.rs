@@ -3,8 +3,9 @@ use std::fmt;
 use std::num::NonZeroU32;
 
 use campfire_capabilities::CallError;
+use campfire_common::StateHash;
 use campfire_package::StoreError;
-use campfire_protocol::{AfterLeave, SeedError, ServerInputError, SlotChange};
+use campfire_protocol::{AfterLeave, Outcome, SeedError, ServerInputError, SlotChange};
 
 /// Why a session log does not start a match. A published log is untrusted, and so are packages,
 /// so each is an expected failure.
@@ -148,3 +149,32 @@ impl Error for ServerInputRefused {
         }
     }
 }
+
+/// Why a log's result does not hold for the state its replay ends in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultMismatch {
+    /// The result's state hash is not the replay's.
+    Hash {
+        logged: StateHash,
+        replayed: StateHash,
+    },
+    /// The result is not the outcome the mode ended the match with.
+    Outcome { logged: Outcome, ended: Outcome },
+}
+
+impl fmt::Display for ResultMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResultMismatch::Hash { logged, replayed } => write!(
+                f,
+                "the result's state hash {logged} is not the replay's {replayed}"
+            ),
+            ResultMismatch::Outcome { logged, ended } => write!(
+                f,
+                "the result says {logged:?}, and the match ended as {ended:?}"
+            ),
+        }
+    }
+}
+
+impl Error for ResultMismatch {}

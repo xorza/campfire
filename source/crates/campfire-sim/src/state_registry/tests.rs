@@ -168,15 +168,6 @@ fn build_order_does_not_matter() {
         registry.hash(&shuffled_world())
     );
     assert_eq!(snapshot(&plain_world()), snapshot(&shuffled_world()));
-    // A hash writes as its 32 bytes in lowercase hex, two digits each, leading zeros kept, and
-    // reads back from that spelling only.
-    let mut bytes = [0; 32];
-    bytes[0] = 0x0a;
-    bytes[31] = 0xff;
-    let written = StateHash(Bytes32::new(bytes)).to_string();
-    assert_eq!(written, format!("0a{}ff", "00".repeat(30)));
-    assert_eq!(written.parse(), Ok(StateHash(Bytes32::new(bytes))));
-    assert_eq!(written.to_uppercase().parse::<StateHash>(), Err(NotHex));
 }
 
 #[test]
@@ -228,10 +219,10 @@ fn a_digest_is_blake3_over_its_domain_and_its_bytes() {
     let mut hasher = Hasher::new();
     hasher.update(b"campfire/digest/v1").update(b"abc");
     assert_eq!(
-        StateHash::of(b"abc").as_bytes(),
+        StateRegistry::digest(b"abc").as_bytes(),
         hasher.finalize().as_bytes()
     );
-    assert_ne!(StateHash::of(b""), registry().hash(&varied_world()));
+    assert_ne!(StateRegistry::digest(b""), registry().hash(&varied_world()));
 }
 
 #[test]
