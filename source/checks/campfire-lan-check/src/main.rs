@@ -26,7 +26,8 @@ use std::time::SystemTime;
 
 use campfire_log::Logging;
 use campfire_net::{
-    InputLogged, LinkLost, Listening, OrderScript, SessionDir, SessionWritten, TicksCaughtUp,
+    ClientData, InputLogged, LinkLost, Listening, OrderScript, ServerData, SessionWritten,
+    TicksCaughtUp,
 };
 use campfire_package::PackageDir;
 use campfire_protocol::SessionLog;
@@ -193,7 +194,7 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<InputLogged>,
     let Some(written) = server.first::<SessionWritten>()? else {
         return Ok(Vec::new());
     };
-    let path = SessionDir::published(&dir.join(SERVER_DATA), written.session);
+    let path = host_data(dir, SessionKind::Lan)?.published_log(written.session);
     let bytes = fs::read(&path).map_err(|error| CheckError::File { path, error })?;
     let published = SessionLog::decode(&bytes).map_err(CheckError::SessionLog)?;
     let ticks = published.next_tick();
@@ -208,6 +209,25 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<InputLogged>,
         }));
     }
     Ok(inputs)
+}
+
+/// The data directory in `dir` of the host of `session`, which ended: the server's, or the local
+/// server's under the client's.
+fn host_data(dir: &Path, session: SessionKind) -> Result<ServerData, CheckError> {
+    let refused = |path: &Path, error| CheckError::Data {
+        path: path.to_owned(),
+        error,
+    };
+    let path = match session {
+        SessionKind::Lan => dir.join(SERVER_DATA),
+        SessionKind::Local => {
+            let client = dir.join(LOCAL_DATA);
+            ClientData::open(&client)
+                .map_err(|error| refused(&client, error))?
+                .local_server_dir()
+        }
+    };
+    ServerData::open(&path).map_err(|error| refused(&path, error))
 }
 
 /// Verifies the session logs of the matches played in `dir` with this machine's verifier, and
@@ -237,16 +257,12 @@ fn verify(
 ) -> Result<(), CheckError> {
     let host = session.host();
     let written = ProcessLog::read(host, &host.log_path(dir))?.first::<SessionWritten>()?;
-    let data = match session {
-        SessionKind::Lan => dir.join(SERVER_DATA),
-        SessionKind::Local => dir.join(LOCAL_DATA).join("server"),
-    };
     let replayer = session.verifier();
     let verified = match &written {
         Some(written) => {
             // The log in the run's directory: `written.file` is a path on the machine that played
             // the run, in that system's syntax, which another may not read.
-            let file = SessionDir::published(&data, written.session);
+            let file = host_data(dir, session)?.published_log(written.session);
             let path = replayer.log_path(dir);
             let status = Command::new(&binaries.verifier)
                 .arg(PackageDir::workspace(PACKAGES))

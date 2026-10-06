@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::ffi::OsString;
 use std::fmt;
 use std::io;
 
@@ -12,6 +13,8 @@ pub enum FindError {
     Read(io::Error),
     /// More than one session has no published log: a server runs one session at a time.
     Several,
+    /// An entry of the sessions' directory is named by no session id.
+    Stray(OsString),
 }
 
 impl fmt::Display for FindError {
@@ -19,6 +22,13 @@ impl fmt::Display for FindError {
         match self {
             FindError::Read(error) => write!(f, "could not read the sessions: {error}"),
             FindError::Several => f.write_str("more than one session has no published log"),
+            FindError::Stray(name) => {
+                write!(
+                    f,
+                    "{} names no session in the sessions' directory",
+                    name.display()
+                )
+            }
         }
     }
 }
@@ -27,7 +37,7 @@ impl Error for FindError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             FindError::Read(error) => Some(error),
-            FindError::Several => None,
+            FindError::Several | FindError::Stray(_) => None,
         }
     }
 }

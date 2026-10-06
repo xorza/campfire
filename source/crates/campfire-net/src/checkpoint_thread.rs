@@ -1,11 +1,10 @@
-use std::path::{Path, PathBuf};
-
 use bevy_ecs::world::World;
 use campfire_protocol::{Checkpoint, CheckpointBegun, SessionId, Signature, SnapshotFingerprint};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
 use campfire_store::{DurableError, DurableFile, Exchange};
 
 use crate::server_signer::ServerSigner;
+use crate::session_dir::snapshots::Snapshots;
 
 /// The thread that takes a session's checkpoints off the main thread. It holds its own copy of
 /// the match's state, which starts as a full copy and which each delta the main thread sends
@@ -50,7 +49,7 @@ pub(crate) struct SignedCheckpoint {
 struct CheckpointCopy {
     registry: StateRegistry,
     session_id: SessionId,
-    snapshots: PathBuf,
+    snapshots: Snapshots,
     signer: ServerSigner,
     world: World,
     /// The snapshot of the last checkpoint, kept between checkpoints.
@@ -65,7 +64,7 @@ impl CheckpointThread {
         registry: StateRegistry,
         base: StateDelta,
         session_id: SessionId,
-        snapshots: PathBuf,
+        snapshots: Snapshots,
         signer: ServerSigner,
     ) -> CheckpointThread {
         let mut world = World::new();
@@ -83,15 +82,15 @@ impl CheckpointThread {
         CheckpointThread { exchange }
     }
 
-    /// Writes `snapshot` durably into `dir`, made when missing, named by its fingerprint in hex;
+    /// Writes `snapshot` durably into `snapshots`, made when missing, named by its fingerprint;
     /// the fingerprint.
     pub(crate) fn write_snapshot(
-        dir: &Path,
+        snapshots: &Snapshots,
         snapshot: &[u8],
     ) -> Result<SnapshotFingerprint, DurableError> {
         let fingerprint = SnapshotFingerprint::of(snapshot);
-        DurableFile::create_dir(dir)?;
-        DurableFile::write(&dir.join(fingerprint.to_string()), snapshot)?;
+        DurableFile::create_dir(snapshots.dir())?;
+        DurableFile::write(&snapshots.file(fingerprint), snapshot)?;
         Ok(fingerprint)
     }
 

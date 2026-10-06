@@ -303,8 +303,8 @@ impl SimServer {
             .last()
             .map(|record| (record.segment, record.snapshot));
         if let Some((segment, fingerprint)) = latest {
-            let snapshot = fs::read(snapshots.join(fingerprint.to_string()))
-                .map_err(RestoreMatchError::ReadSnapshot)?;
+            let snapshot =
+                fs::read(snapshots.file(fingerprint)).map_err(RestoreMatchError::ReadSnapshot)?;
             Session::resume(world, log.rewound(), seeds, packages, segment, &snapshot)
                 .map_err(RestoreMatchError::Resume)?;
         } else {

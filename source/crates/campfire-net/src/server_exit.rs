@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use bevy_app::AppExit;
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
@@ -11,6 +9,7 @@ use crate::events::journal_failed::JournalFailed;
 use crate::events::session_written::SessionWritten;
 use crate::journal_watch::JournalWatch;
 use crate::match_clock::MatchClock;
+use crate::server_data::ServerData;
 use crate::session_dir::SessionDir;
 use crate::sim_server::SimServer;
 
@@ -28,9 +27,9 @@ impl ServerExit {
     /// `JOURNAL_FAILED` once a write of the journal or of a checkpoint's snapshot failed; before
     /// the match started, at once when `stop` asks it to. Once the match started, when `stop`
     /// asks it to or every player left, it ends the session, as the mode ended the match or
-    /// aborted; it then publishes the log under `data`, and exits, with an error when the log is
+    /// aborted; it then publishes the log in its `ServerData`, and exits, with an error when the log is
     /// not written, as the session it holds is lost.
-    pub fn due(world: &mut World, data: &Path, stop: bool) -> Option<AppExit> {
+    pub fn due(world: &mut World, stop: bool) -> Option<AppExit> {
         if let Some(failure) = world
             .get_resource::<JournalWatch>()
             .and_then(|journal| journal.0.take_failure())
@@ -67,6 +66,7 @@ impl ServerExit {
         let session = world.resource::<Session>();
         let id = session.log().session_id();
         let hash = session.state_hash(world);
+        let data = world.resource::<ServerData>();
         Some(match SessionDir::publish(data, session.log()) {
             Ok(file) => {
                 SessionWritten {
@@ -136,21 +136,17 @@ mod tests {
         let journal = SessionJournal(AppendWriter::start("journal", FailingFile));
         let mut world = World::new();
         world.insert_resource(JournalWatch(journal.watch()));
-        let data = Path::new("unused");
-        assert_eq!(ServerExit::due(&mut world, data, false), None);
+        assert_eq!(ServerExit::due(&mut world, false), None);
         log.keep_journal(Box::new(journal));
         // Dropped, the log's journal waits for its writer, which stopped at the failed sync.
         drop(log);
         let code = NonZeroU8::new(ServerExit::JOURNAL_FAILED).unwrap();
         assert_eq!(
-            ServerExit::due(&mut world, data, false),
+            ServerExit::due(&mut world, false),
             Some(AppExit::Error(code))
         );
         // The failure is given once; before the match, only a stop exits.
-        assert_eq!(ServerExit::due(&mut world, data, false), None);
-        assert_eq!(
-            ServerExit::due(&mut world, data, true),
-            Some(AppExit::Success)
-        );
+        assert_eq!(ServerExit::due(&mut world, false), None);
+        assert_eq!(ServerExit::due(&mut world, true), Some(AppExit::Success));
     }
 }

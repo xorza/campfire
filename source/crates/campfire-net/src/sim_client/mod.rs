@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy_app::{App, FixedUpdate, Plugin, Update};
@@ -29,6 +28,7 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info};
 
+use crate::client_data::ClientData;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::LinkLost;
@@ -87,9 +87,9 @@ pub struct SimClient {
     pub clock: fn() -> u64,
     /// Fills a seed contribution or BIP-340's auxiliary randomness with random bytes.
     pub entropy: fn(&mut [u8; 32]),
-    /// The client's data directory, where it writes the newest receipt of its session, as
-    /// `receipts/<session id>.receipt`; none writes none.
-    pub data: Option<PathBuf>,
+    /// The client's data directory, held locked, where it writes the newest receipt of its
+    /// session; none writes none.
+    pub data: Option<Arc<ClientData>>,
 }
 
 /// The context that checks receipts' signatures.
@@ -171,7 +171,7 @@ impl Plugin for SimClient {
         ));
         world.init_resource::<SentInputs>();
         if let Some(data) = &self.data {
-            world.insert_resource(ReceiptWriter::start(data.clone()));
+            world.insert_resource(ReceiptWriter::start(Arc::clone(data)));
         }
         // Prediction covers all the latency, with no input delay: an input goes out stamped with
         // the tick the client predicts it in, which Lightyear keeps ahead of the server's present

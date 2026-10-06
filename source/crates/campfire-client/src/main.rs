@@ -36,7 +36,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_log::Logging;
-use campfire_net::{KeyFile, NetProtocol, OrderScript, Pace, SimClient};
+use campfire_net::{ClientData, KeyFile, NetProtocol, OrderScript, Pace, SimClient};
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
@@ -141,8 +141,16 @@ fn main() -> ExitCode {
         Ok(key) => key,
         Err(code) => return code,
     };
+    let data = match args.data.as_deref().map(ClientData::open).transpose() {
+        Ok(data) => data.map(Arc::new),
+        Err(error) => {
+            let path = args.data.as_deref().unwrap_or(Path::new(""));
+            error!(data = %path.display(), %error, "the data directory does not open");
+            return ExitCode::FAILURE;
+        }
+    };
     let pace = Arc::new(Pace::default());
-    let mut connection = match Connection::open(&args, &packages, &pace) {
+    let mut connection = match Connection::open(&args, data.as_deref(), &packages, &pace) {
         Ok(connection) => connection,
         Err(code) => return code,
     };
@@ -168,7 +176,7 @@ fn main() -> ExitCode {
             packages,
             clock: unix_now,
             entropy: fill,
-            data: args.data.clone(),
+            data,
         },
     ));
     app.insert_resource(PredictionManager::default());

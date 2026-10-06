@@ -1,5 +1,4 @@
 use std::num::NonZeroU32;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -8,8 +7,8 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
 use campfire_net::{
-    Lobby, LobbySetup, RestoredSession, ServerBots, ServerSetup, SessionDir, SessionRestored,
-    SimServer,
+    Lobby, LobbySetup, RestoredSession, ServerBots, ServerData, ServerSetup, SessionDir,
+    SessionRestored, SimServer,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
@@ -40,7 +39,7 @@ pub(crate) struct Restore {
 /// What `Opening::of` needs.
 #[derive(Debug)]
 pub(crate) struct OpeningSetup<'a> {
-    pub(crate) data: &'a Path,
+    pub(crate) data: &'a ServerData,
     pub(crate) packages: ModePackages,
     pub(crate) server: ServerSetup,
     pub(crate) bots: ServerBots,
@@ -79,7 +78,7 @@ impl Opening {
     /// is published, the server key `key` signing its result with auxiliary randomness from
     /// `entropy`. An error for a session that does not read or end.
     pub(crate) fn find(
-        data: &Path,
+        data: &ServerData,
         packages: &ModePackages,
         window: Duration,
         key: Keypair,

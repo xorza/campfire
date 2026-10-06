@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{SeedsRanOut, SessionDir, SimServer, TickHashes};
+use campfire_net::{SeedsRanOut, ServerData, SessionDir, SimServer, TickHashes};
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Runner, Session};
@@ -64,9 +64,10 @@ fn snapshots(data: &Scratch, local: &LocalMatch) -> PathBuf {
 /// Ends the session aborted, publishes its log, and checks it as a verifier does with the
 /// snapshots in `snapshots`: each snapshot is the one its checkpoint fingerprints and restores to
 /// its state hash, and the replay from tick 0 meets each checkpoint's hash and the result.
-fn verifies(local: &mut LocalMatch, data: &Scratch, snapshots: &Path) {
+fn verifies(local: &mut LocalMatch, snapshots: &Path) {
     SimServer::end_session(local.server_mut().world_mut(), Outcome::Aborted).unwrap();
-    let file = SessionDir::publish(&data.0, log(local)).unwrap();
+    let file =
+        SessionDir::publish(local.server().world().resource::<ServerData>(), log(local)).unwrap();
     let published = SessionLog::decode(&fs::read(file).unwrap()).unwrap();
     let packages: &ModePackages = local.packages();
     for record in published.checkpoints() {
@@ -103,7 +104,7 @@ fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_sn
         local.step();
     }
     let snapshots = snapshots(&data, &local);
-    verifies(&mut local, &data, &snapshots);
+    verifies(&mut local, &snapshots);
 }
 
 #[test]
@@ -137,8 +138,10 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
 
     // The restore builds the match from the first checkpoint, replays to the cut, and takes the
     // second again as its replay passes tick 160: the same record, its snapshot written again.
-    let dir = SessionDir::find(&data.0).unwrap().unwrap();
+    let stopped = ServerData::open(&data.0).unwrap();
+    let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let cut = dir.restore().unwrap().unwrap().log.next_tick();
+    drop(stopped);
     assert!(cut > Tick::new(160), "{cut}");
     local.restart_server();
     let world = local.server().world();
@@ -150,7 +153,7 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
         (second.state_hash, second.snapshot, &second.carry)
     );
     assert!(file.exists());
-    verifies(&mut local, &data, &snapshots);
+    verifies(&mut local, &snapshots);
 }
 
 #[test]

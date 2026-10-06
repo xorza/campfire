@@ -12,8 +12,8 @@ use campfire_capabilities::{SaveBy, SavesData};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
 use campfire_net::{
-    InputsDiscarded, JoinState, PendingSaves, SaveCommand, SaveRefused, SessionDir, SimServer,
-    Speed,
+    InputsDiscarded, JoinState, PendingSaves, SaveCommand, SaveRefused, ServerData, SessionDir,
+    SimServer, Speed,
 };
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
 use campfire_runner::{InputRules, Runner, Session};
@@ -148,7 +148,8 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
 
     // The published log holds the segment before the save and the one after it, and verifies.
     SimServer::end_session(local.server_mut().world_mut(), Outcome::Aborted).unwrap();
-    let file = SessionDir::publish(&data.0, log(&local)).unwrap();
+    let file =
+        SessionDir::publish(local.server().world().resource::<ServerData>(), log(&local)).unwrap();
     let published = SessionLog::decode(&fs::read(file).unwrap()).unwrap();
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&save]);
     let ticks = published.next_tick();

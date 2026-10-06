@@ -13,28 +13,30 @@ use campfire_store::{AppendOpenError, DurableError, DurableFile};
 
 use crate::checkpoints::Checkpoints;
 use crate::events::session_aborted::SessionAborted;
+use crate::server_data::ServerData;
 use crate::server_signer::ServerSigner;
 use crate::session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
+use crate::session_dir::snapshots::Snapshots;
 use crate::session_journal::SessionJournal;
 
 pub(crate) mod error;
+pub(crate) mod snapshots;
 
 /// A session's directory under a server's data directory, `sessions/<session id>`: its `private`
 /// record, written once before the first offer, its `journal`, and its checkpoints' `snapshots`.
 /// Each is synced into its parent as it is made, so a crash loses none. Once the session ends,
-/// its log goes to the data directory's `logs`, `<session id>.campfire-log`, which marks it
-/// done.
+/// its log is published in the data directory, which marks it done.
 #[derive(Debug)]
 pub struct SessionDir {
     path: PathBuf,
 }
 
 /// What a session writes as it runs: its journal, and the directory its checkpoints' snapshots
-/// go to, each named by its fingerprint in hex.
+/// go to.
 #[derive(Debug)]
 pub struct SessionFiles {
     pub journal: SessionJournal,
-    pub snapshots: PathBuf,
+    pub snapshots: Snapshots,
 }
 
 /// A session read back from its directory, as a server that starts again finds it.
@@ -52,43 +54,53 @@ pub struct RestoredSession {
 impl SessionDir {
     /// Makes the directory of the session whose terms `private` holds, under `data`, and writes
     /// `private` into it.
-    pub fn create(data: &Path, private: &SessionPrivate) -> Result<SessionDir, DurableError> {
-        let sessions = data.join("sessions");
-        DurableFile::create_dir(&sessions)?;
-        let path = sessions.join(private.terms.session_id().to_string());
+    pub fn create(data: &ServerData, private: &SessionPrivate) -> Result<SessionDir, DurableError> {
+        DurableFile::create_dir(&data.sessions_dir())?;
+        let path = data.session_dir(private.terms.session_id());
         DurableFile::create_dir(&path)?;
-        DurableFile::write(&path.join("private"), &private.encode())?;
-        Ok(SessionDir { path })
+        let dir = SessionDir { path };
+        DurableFile::write(&dir.private(), &private.encode())?;
+        Ok(dir)
     }
 
     /// The session's files: its new journal, and where its snapshots go.
     pub fn start(&self) -> Result<SessionFiles, AppendOpenError> {
         Ok(SessionFiles {
-            journal: SessionJournal::create(&self.path.join("journal"))?,
+            journal: SessionJournal::create(&self.journal())?,
             snapshots: self.snapshots(),
         })
     }
 
-    fn snapshots(&self) -> PathBuf {
-        self.path.join("snapshots")
+    fn private(&self) -> PathBuf {
+        self.path.join("private")
+    }
+
+    fn journal(&self) -> PathBuf {
+        self.path.join("journal")
+    }
+
+    fn snapshots(&self) -> Snapshots {
+        Snapshots(self.path.join("snapshots"))
     }
 
     /// The directory of the one session under `data` whose log is not published; none when
-    /// every session's is. An error when there are several.
-    pub fn find(data: &Path) -> Result<Option<SessionDir>, FindError> {
-        let entries = match fs::read_dir(data.join("sessions")) {
+    /// every session's is. An error when there are several, and for an entry named by no
+    /// session id.
+    pub fn find(data: &ServerData) -> Result<Option<SessionDir>, FindError> {
+        let entries = match fs::read_dir(data.sessions_dir()) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(FindError::Read(error)),
         };
         let mut found = None;
         for entry in entries {
-            let entry = entry.map_err(FindError::Read)?;
-            let mut published = entry.file_name();
-            published.push(".campfire-log");
+            let name = entry.map_err(FindError::Read)?.file_name();
+            let session: SessionId = name
+                .to_str()
+                .and_then(|name| name.parse().ok())
+                .ok_or(FindError::Stray(name))?;
             let done = data
-                .join("logs")
-                .join(published)
+                .published_log(session)
                 .try_exists()
                 .map_err(FindError::Read)?;
             if done {
@@ -97,7 +109,9 @@ impl SessionDir {
             if found.is_some() {
                 return Err(FindError::Several);
             }
-            found = Some(SessionDir { path: entry.path() });
+            found = Some(SessionDir {
+                path: data.session_dir(session),
+            });
         }
         Ok(found)
     }
@@ -106,7 +120,7 @@ impl SessionDir {
     /// up: none when every session's log is published, and none when its match never started,
     /// whose directory goes. An error as `find` and `restore` give one, and for a directory that
     /// does not go.
-    pub fn waiting(data: &Path) -> Result<Option<RestoredSession>, WaitingError> {
+    pub fn waiting(data: &ServerData) -> Result<Option<RestoredSession>, WaitingError> {
         let Some(dir) = SessionDir::find(data).map_err(WaitingError::Find)? else {
             return Ok(None);
         };
@@ -123,14 +137,14 @@ impl SessionDir {
     /// private record or no journal. An error for a record that does not read, a session of
     /// another release, and a journal whose records do not rebuild a log.
     pub fn restore(&self) -> Result<Option<RestoredSession>, RestoreError> {
-        let Some(private) = SessionDir::read(&self.path.join("private"))? else {
+        let Some(private) = SessionDir::read(&self.private())? else {
             return Ok(None);
         };
         let private = SessionPrivate::decode(&private).map_err(RestoreError::Private)?;
         if private.terms.release != RELEASE {
             return Err(RestoreError::OtherRelease(private.terms.release));
         }
-        let path = self.path.join("journal");
+        let path = self.journal();
         let Some(bytes) = SessionDir::read(&path)? else {
             return Ok(None);
         };
@@ -165,21 +179,15 @@ impl SessionDir {
         }
     }
 
-    /// Where the log of the session `session` is published under `data`.
-    pub fn published(data: &Path, session: SessionId) -> PathBuf {
-        data.join("logs").join(format!("{session}.campfire-log"))
-    }
-
     /// Removes the directory of a session whose match never started, which logged nothing.
     pub fn remove(self) -> io::Result<()> {
         fs::remove_dir_all(&self.path)
     }
 
-    /// Publishes `log`, its seed revealed, as `logs/<session id>.campfire-log` under `data`,
-    /// written durably; the file's path.
-    pub fn publish(data: &Path, log: &SessionLog) -> Result<PathBuf, DurableError> {
-        DurableFile::create_dir(&data.join("logs"))?;
-        let file = SessionDir::published(data, log.session_id());
+    /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
+    pub fn publish(data: &ServerData, log: &SessionLog) -> Result<PathBuf, DurableError> {
+        DurableFile::create_dir(&data.logs_dir())?;
+        let file = data.published_log(log.session_id());
         let mut bytes = Vec::new();
         log.encode(&mut bytes);
         DurableFile::write(&file, &bytes)?;
@@ -196,7 +204,7 @@ impl RestoredSession {
     /// auxiliary randomness from `entropy`. The published file's path.
     pub fn abort(
         self,
-        data: &Path,
+        data: &ServerData,
         packages: &ModePackages,
         server_key: Keypair,
         entropy: fn(&mut [u8; 32]),
@@ -252,9 +260,9 @@ mod tests {
 
     #[test]
     fn a_session_stopped_at_any_step_before_its_first_record_goes() {
-        let data = env::temp_dir().join(format!("campfire-session-dir-{}", process::id()));
-        drop(fs::remove_dir_all(&data));
-        fs::create_dir_all(&data).unwrap();
+        let root = env::temp_dir().join(format!("campfire-session-dir-{}", process::id()));
+        drop(fs::remove_dir_all(&root));
+        let data = ServerData::open(&root).unwrap();
         let secret = SecretKey::from_byte_array(&[8; 32]).unwrap();
         let key = Keypair::from_secret_key(&Secp256k1::new(), &secret);
         let seed_chain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -274,15 +282,15 @@ mod tests {
                 slots: vec![SlotPlan::Open],
             },
         };
-        let path = data
+        let path = root
             .join("sessions")
             .join(private.terms.session_id().to_string());
-        let gone = |data: &Path| {
+        let gone = |data: &ServerData| {
             assert!(SessionDir::waiting(data).unwrap().is_none());
             !path.exists()
         };
         // Stopped with its directory made, before its private record.
-        DurableFile::create_dir(&data.join("sessions")).unwrap();
+        DurableFile::create_dir(&root.join("sessions")).unwrap();
         DurableFile::create_dir(&path).unwrap();
         assert!(gone(&data));
         // Before its journal.
@@ -292,6 +300,13 @@ mod tests {
         let dir = SessionDir::create(&data, &private).unwrap();
         drop(dir.start().unwrap());
         assert!(gone(&data));
-        fs::remove_dir_all(&data).unwrap();
+        // An entry named by no session id is no session's.
+        DurableFile::create_dir(&root.join("sessions").join("stray")).unwrap();
+        assert!(matches!(
+            SessionDir::find(&data),
+            Err(FindError::Stray(name)) if name == "stray"
+        ));
+        drop(data);
+        fs::remove_dir_all(&root).unwrap();
     }
 }

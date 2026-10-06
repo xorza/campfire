@@ -34,6 +34,7 @@ use lightyear::prelude::{
 };
 use lightyear::transport::plugin::TransportSystems;
 
+use crate::client_data::ClientData;
 use crate::lobby::{Lobby, LobbySetup};
 use crate::local_match::delay_line::DelayLine;
 use crate::local_match::link_model::LinkModel;
@@ -44,6 +45,7 @@ use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
 use crate::pace::Pace;
 use crate::server_bots::{ServerBots, SlotBot};
+use crate::server_data::ServerData;
 use crate::server_setup::ServerSetup;
 use crate::session_dir::SessionDir;
 use crate::session_times::SessionTimes;
@@ -390,18 +392,22 @@ impl LocalMatch {
         }
     }
 
-    /// Gives the server the data directory `dir`, where the session `start_match` opens keeps its
-    /// directory, private record and journal, and each client `client-<index>` in it, where it
-    /// writes its receipts.
+    /// Gives the server the data directory `dir`, which it holds locked while it runs, where the
+    /// session `start_match` opens keeps its directory, private record and journal, and each
+    /// client `client-<index>` in it, where it writes its receipts.
     pub fn keep_data(&mut self, dir: PathBuf) {
         assert!(
             !self.server.world().contains_resource::<MatchClock>(),
             "a server keeps its data from before the match"
         );
         for (client, app) in self.clients.iter_mut().enumerate() {
-            let own = dir.join(format!("client-{client}"));
-            app.world_mut().insert_resource(ReceiptWriter::start(own));
+            let own = ClientData::open(&dir.join(format!("client-{client}")))
+                .unwrap_or_else(|error| panic!("{error}"));
+            app.world_mut()
+                .insert_resource(ReceiptWriter::start(Arc::new(own)));
         }
+        let data = ServerData::open(&dir).unwrap_or_else(|error| panic!("{error}"));
+        self.server.world_mut().insert_resource(data);
         self.data = Some(dir);
     }
 
@@ -423,8 +429,9 @@ impl LocalMatch {
     /// it connects through once its wait passed.
     pub fn restart_server(&mut self) {
         self.stop_server();
-        let data = self.data.as_ref().expect("a server with a data directory");
-        let dir = SessionDir::find(data)
+        let path = self.data.as_ref().expect("a server with a data directory");
+        let data = ServerData::open(path).unwrap_or_else(|error| panic!("{error}"));
+        let dir = SessionDir::find(&data)
             .unwrap_or_else(|error| panic!("{error}"))
             .expect("a session the stop ended");
         let session = dir
@@ -446,6 +453,7 @@ impl LocalMatch {
             self.server_bots(),
         )
         .unwrap_or_else(|error| panic!("{error}"));
+        server.world_mut().insert_resource(data);
         self.server = server;
         for client in 0..self.clients.len() {
             self.mend_link(client);
@@ -470,7 +478,7 @@ impl LocalMatch {
             server: self.server_setup(),
         })
         .expect("the lane mode runs at its default rate");
-        if let Some(data) = &self.data {
+        if let Some(data) = self.server.world().get_resource::<ServerData>() {
             let private = SessionPrivate {
                 seed_chain: self.setup.seed_chain,
                 terms: lobby.terms().clone(),

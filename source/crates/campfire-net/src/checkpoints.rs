@@ -1,5 +1,3 @@
-use std::path::{Path, PathBuf};
-
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
@@ -20,6 +18,7 @@ use crate::events::seeds_ran_out::SeedsRanOut;
 use crate::local_session::LocalSession;
 use crate::save_command::SaveCommand;
 use crate::server_signer::ServerSigner;
+use crate::session_dir::snapshots::Snapshots;
 use crate::sim_server::{PlayerLink, SimServer};
 
 /// How often, in ticks, the main thread sends the state changed to the checkpoint thread when no
@@ -47,7 +46,7 @@ impl Checkpoints {
     /// Starts the checkpoints of the session in `world`, before the next tick runs: the thread's
     /// copy of the state starts as a full copy of the state now, and the snapshots go to
     /// `snapshots`.
-    pub(crate) fn start(world: &mut World, snapshots: PathBuf, signer: ServerSigner) {
+    pub(crate) fn start(world: &mut World, snapshots: Snapshots, signer: ServerSigner) {
         let mut base = StateDelta::default();
         Session::track(world, &mut base);
         let session = world.resource::<Session>();
@@ -187,7 +186,7 @@ impl Checkpoints {
     /// logs its record, which `signer` signs. Nothing when no checkpoint begun starts there.
     pub(crate) fn take_again(
         world: &mut World,
-        snapshots: &Path,
+        snapshots: &Snapshots,
         signer: &ServerSigner,
     ) -> Result<(), DurableError> {
         let session = world.resource::<Session>();

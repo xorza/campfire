@@ -27,13 +27,13 @@ use bevy_ecs::query::With;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Commands, Query};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    DataDir, JournalFailed, Listening, NetProtocol, OrderScript, ServerBots, ServerExit,
-    ServerSetup, SessionTimes, SimServer, SlotBot,
+    JournalFailed, KeyFile, Listening, NetProtocol, OrderScript, ServerBots, ServerData,
+    ServerExit, ServerSetup, SessionTimes, SimServer, SlotBot,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
@@ -43,13 +43,11 @@ use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportSe
 use lightyear::prelude::{LinkOf, Linked, LocalAddr, ReplicationSender};
 use tracing::{error, info};
 
-use crate::data_path::DataPath;
 use crate::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, Restore};
 use crate::server_config::ServerConfig;
 use crate::server_tls::ServerTls;
 
-mod data_path;
 mod error;
 mod opening;
 mod server_config;
@@ -99,10 +97,18 @@ fn main() -> ExitCode {
         address,
         ..
     } = args;
-    let data_dir = match DataDir::open(&data, fill) {
-        Ok(data_dir) => data_dir,
+    let data = match ServerData::open(&data) {
+        Ok(data) => data,
         Err(error) => {
             error!(data = %data.display(), %error, "the data directory does not open");
+            return ExitCode::FAILURE;
+        }
+    };
+    let key = match KeyFile::read_or_create(&data.key_file(), fill) {
+        Ok(key) => key,
+        Err(error) => {
+            let file = data.key_file();
+            error!(key = %file.display(), %error, "the server's key does not open");
             return ExitCode::FAILURE;
         }
     };
@@ -117,20 +123,14 @@ fn main() -> ExitCode {
         opening,
         server,
         tls,
-    } = match Started::open(&data, packages, data_dir.key, times, bots) {
+    } = match Started::open(&data, packages, key, times, bots) {
         Ok(started) => started,
         Err(code) => return code,
     };
     let certificate = tls.certificate();
     let listening = announce(&opening, &mode, address, certificate, &server.key);
     let tick = TickRate::new(opening.terms().tick_hz).length();
-    let mut app = server_app(
-        opening,
-        ServerConfig(server),
-        DataPath(data),
-        tick,
-        listening,
-    );
+    let mut app = server_app(opening, ServerConfig(server), data, tick, listening);
     let server = app
         .world_mut()
         .spawn((
@@ -158,22 +158,23 @@ impl Started {
     /// `packages` holds, with `bots`; the TLS identity, made again only when no session
     /// restores; and the server's setup of `key` and `times`. The exit code when one fails.
     fn open(
-        data: &Path,
+        data: &ServerData,
         packages: ModePackages,
         key: Keypair,
         times: SessionTimes,
         bots: ServerBots,
     ) -> Result<Started, ExitCode> {
         let no_session = |error: OpeningError| {
-            error!(data = %data.display(), %error, "no session starts");
+            error!(data = %data.path().display(), %error, "no session starts");
             ExitCode::FAILURE
         };
         let found =
             Opening::find(data, &packages, times.restore_window, key, fill).map_err(no_session)?;
-        let tls = ServerTls::open(data, unix_now(), found.is_some()).map_err(|error| {
-            error!(data = %data.display(), %error, "the TLS identity does not open");
-            ExitCode::FAILURE
-        })?;
+        let tls =
+            ServerTls::open(&data.tls_file(), unix_now(), found.is_some()).map_err(|error| {
+                error!(data = %data.path().display(), %error, "the TLS identity does not open");
+                ExitCode::FAILURE
+            })?;
         let server = ServerSetup {
             key,
             certificate: tls.certificate(),
@@ -211,7 +212,7 @@ impl Started {
 fn server_app(
     opening: Opening,
     config: ServerConfig,
-    data: DataPath,
+    data: ServerData,
     tick: Duration,
     listening: Listening,
 ) -> App {
@@ -402,9 +403,7 @@ fn exit_code(exit: AppExit) -> ExitCode {
 
 /// Exits as `ServerExit::due` says: the server stops only once its session ended.
 fn exit_when_due(world: &mut World) {
-    let exit = world
-        .resource_scope(|world, data: Mut<'_, DataPath>| ServerExit::due(world, &data.0, false));
-    if let Some(exit) = exit {
+    if let Some(exit) = ServerExit::due(world, false) {
         world.write_message(exit);
     }
 }

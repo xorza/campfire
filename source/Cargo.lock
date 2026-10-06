@@ -2053,6 +2053,7 @@ dependencies = [
  "campfire-package",
  "campfire-protocol",
  "campfire-sim",
+ "campfire-store",
  "campfire-verifier",
  "serde",
  "serde_json",

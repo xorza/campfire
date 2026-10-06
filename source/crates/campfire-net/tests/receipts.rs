@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::{fs, thread};
 
 use campfire_net::internals::{LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{JoinState, JournalWatch, PlayerLink, SessionDir};
+use campfire_net::{JoinState, JournalWatch, PlayerLink, ServerData, SessionDir};
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Controller, SignedReceipt};
 use campfire_runner::Session;
@@ -75,7 +75,8 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     // A crash after the journal's last sync: the log the journal rebuilds holds each slot's
     // chain past the seq its receipt names, under the delegation it names.
     local.stop_server();
-    let restored = SessionDir::find(&data.0)
+    let stopped = ServerData::open(&data.0).unwrap();
+    let restored = SessionDir::find(&stopped)
         .unwrap()
         .unwrap()
         .restore()
