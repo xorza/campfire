@@ -5,6 +5,7 @@ pub(crate) mod input_message_refused;
 pub(crate) mod input_message_unfit;
 pub(crate) mod input_never_applied;
 pub(crate) mod join_refused;
+pub(crate) mod journal_failed;
 pub(crate) mod link_lost;
 pub(crate) mod listening;
 pub(crate) mod match_started;

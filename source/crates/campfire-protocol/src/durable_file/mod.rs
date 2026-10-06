@@ -31,6 +31,24 @@ impl DurableFile {
         DurableFile::sync_directory(directory).map_err(DurableError::SyncDirectory)
     }
 
+    /// Makes the directory `path` when it is missing, its owner's only on Unix, and syncs its
+    /// parent, so its name survives a crash.
+    pub fn create_dir(path: &Path) -> Result<(), DurableError> {
+        let parent = path.parent().ok_or(DurableError::NoName)?;
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        match builder.create(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists && path.is_dir() => {}
+            Err(error) => return Err(DurableError::Create(error)),
+        }
+        DurableFile::sync_directory(parent).map_err(DurableError::SyncDirectory)
+    }
+
     /// A new file at `path`, emptied if it is there, its owner's only on Unix.
     fn create(path: &Path) -> io::Result<File> {
         let mut options = OpenOptions::new();

@@ -10,7 +10,7 @@ use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly, XOnlyPublicKey};
 use campfire_protocol::{
-    CertificateHash, ConnectChallenge, Delegation, SeedChain, SessionHeader, SessionLog,
+    CertificateHash, ConnectChallenge, Delegation, Journal, SeedChain, SessionHeader, SessionLog,
     SessionTerms, SlotPlan, SlotStart,
 };
 use campfire_runner::{InputRules, SessionRules, TermsError};
@@ -45,6 +45,8 @@ pub struct Lobby {
     secp: Secp256k1<VerifyOnly>,
     /// The links that joined, by slot, with their delegations.
     joined: Vec<(Entity, Delegation)>,
+    /// Where the session's log goes as the server logs it, once the server keeps one.
+    journal: Option<Journal>,
 }
 
 /// What a server opens a session with.
@@ -138,7 +140,14 @@ impl Lobby {
             entropy,
             secp: Secp256k1::verification_only(),
             joined: Vec::with_capacity(players),
+            journal: None,
         })
+    }
+
+    /// Keeps `journal`, a new one, for the session: it follows the log from the match's start.
+    pub fn keep_journal(&mut self, journal: Journal) {
+        assert!(self.journal.is_none(), "a session keeps one journal");
+        self.journal = Some(journal);
     }
 
     pub const fn terms(&self) -> &SessionTerms {
@@ -235,7 +244,7 @@ impl Lobby {
         let log = SessionLog::new(header).expect("every delegation names this session");
         info!(%session, players = links.len(), "every slot is taken; the match starts");
         let seeds = lobby.seed_chain.seeds();
-        SimServer::start_match(world, log, seeds, &lobby.packages, &links)
+        SimServer::start_match(world, log, seeds, &lobby.packages, &links, lobby.journal)
             .expect("the lobby's terms come from its own packages");
     }
 

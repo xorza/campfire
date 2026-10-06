@@ -923,13 +923,20 @@ fn a_log_file_has_its_layout() {
 /// and an input still due; 1 packet after it; the revealed seed; and the result.
 fn minimal() -> SessionLog {
     let mut log = new_log();
+    play_minimal(&mut log);
+    log.reveal_seed(SEED_CHAIN.seed(1));
+    log
+}
+
+/// Records into `log`, of `header()` and new, what `minimal` holds before its reveal.
+fn play_minimal(log: &mut SessionLog) {
     let mut applied = Vec::new();
     let sent = resent(1, &[&[(0, b"a"), (1, b"b")], &[(1, b"c")]], 1);
-    sent[0].submit(&mut log, &mut applied).unwrap();
+    sent[0].submit(log, &mut applied).unwrap();
     let connected = ServerInput::Connected {
         slot: PlayerSlot::new(0),
     };
-    serve(&mut log, connected).unwrap();
+    serve(log, connected).unwrap();
     drop(log.seal_tick());
     let secp = Secp256k1::new();
     let record = Checkpoint {
@@ -941,7 +948,7 @@ fn minimal() -> SessionLog {
     };
     let signature = record.sign(&secp, &server_keypair(), session_id(), &AUX);
     log.record_checkpoint(record, &signature).unwrap();
-    sent[1].submit(&mut log, &mut applied).unwrap();
+    sent[1].submit(log, &mut applied).unwrap();
     let result = SessionResult {
         tick: log.next_tick(),
         outcome: Outcome::Won { team: 1 },
@@ -949,8 +956,6 @@ fn minimal() -> SessionLog {
     };
     let signature = result.sign(&secp, &server_keypair(), session_id(), &AUX);
     log.record_result(result, &signature).unwrap();
-    log.reveal_seed(SEED_CHAIN.seed(1));
-    log
 }
 
 #[test]
@@ -1379,4 +1384,5 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     assert_eq!(replayed.next_place(), place);
 }
 
+mod journal;
 mod segments;

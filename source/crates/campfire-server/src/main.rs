@@ -13,7 +13,6 @@
 
 use std::env;
 use std::ffi::OsString;
-use std::fs;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -22,19 +21,21 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
+use bevy_ecs::message::MessageWriter;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{QueryState, With};
-use bevy_ecs::system::{Commands, Query};
+use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    Listening, Lobby, LobbySetup, MatchClock, NetProtocol, PlayerLink, SessionWritten, SimServer,
+    JournalFailed, Listening, Lobby, LobbySetup, MatchClock, NetProtocol, PlayerLink,
+    SessionJournal, SessionWritten, SimServer,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Secp256k1;
-use campfire_protocol::{CertificateHash, SeedChain};
+use campfire_protocol::{CertificateHash, DurableFile, SeedChain, SessionPrivate};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
@@ -42,10 +43,20 @@ use lightyear::prelude::{Connected, Identity, LinkOf, Linked, LocalAddr, Replica
 use tracing::{error, info};
 
 use crate::data_dir::DataDir;
+use crate::logs_dir::LogsDir;
 use crate::server_key::ServerKey;
+use crate::session_dir::SessionDir;
 
 mod data_dir;
+mod logs_dir;
 mod server_key;
+mod session_dir;
+
+/// The process's exit code when the session's journal fails: sysexits' `EX_IOERR`, an error in
+/// I/O on a file.
+const JOURNAL_FAILED: u8 = 74;
+/// The segments of a session's seed chain: the most checkpoints it may take, less one.
+const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
 const USAGE: &str = "usage: campfire-server --data <data directory> <mode package directory> \
                      <address, as 0.0.0.0:4433>";
@@ -98,10 +109,11 @@ fn main() -> ExitCode {
     let players = usize::try_from(packages.manifest().slots()).expect("the slots fit usize");
     let key = server_key.x_only_public_key().0;
     let tick_hz = packages.manifest().tick_hz.default();
-    let lobby = Lobby::new(LobbySetup {
+    let seed_chain = SeedChain::new(random(), SEGMENTS);
+    let mut lobby = Lobby::new(LobbySetup {
         packages,
         server_key: key,
-        seed_chain: SeedChain::new(random(), NonZeroU32::MIN),
+        seed_chain,
         tick_hz,
         inputs: InputRules::LAN,
         certificate,
@@ -110,6 +122,20 @@ fn main() -> ExitCode {
         entropy: fill,
     })
     .expect("a mode runs at its default rate");
+    let private = SessionPrivate {
+        seed_chain,
+        terms: lobby.terms().clone(),
+    };
+    let journal = SessionDir::create(&data, &private)
+        .map_err(|error| error.to_string())
+        .and_then(|dir| dir.start_journal().map_err(|error| error.to_string()));
+    match journal {
+        Ok(journal) => lobby.keep_journal(journal),
+        Err(error) => {
+            JournalFailed { error }.log();
+            return ExitCode::from(JOURNAL_FAILED);
+        }
+    }
     let tick = TickRate::new(tick_hz).length();
 
     info!(
@@ -130,7 +156,8 @@ fn main() -> ExitCode {
             address.port()
         ),
     };
-    let mut app = server_app(lobby, ServerKey(server_key), tick, listening);
+    let logs = LogsDir(data.join("logs"));
+    let mut app = server_app(lobby, ServerKey(server_key), logs, tick, listening);
     let server = app
         .world_mut()
         .spawn((
@@ -147,7 +174,13 @@ fn main() -> ExitCode {
 
 /// The server's app: its plugins at `tick` a tick, the session `lobby` opened, a `listening`
 /// event logged once its transport listens, and the end once every player left.
-fn server_app(lobby: Lobby, key: ServerKey, tick: Duration, listening: Listening) -> App {
+fn server_app(
+    lobby: Lobby,
+    key: ServerKey,
+    logs: LogsDir,
+    tick: Duration,
+    listening: Listening,
+) -> App {
     let mut app = App::new();
     app.add_plugins((
         TaskPoolPlugin::default(),
@@ -161,6 +194,7 @@ fn server_app(lobby: Lobby, key: ServerKey, tick: Duration, listening: Listening
     app.add_plugins((NetProtocol, SimServer));
     app.insert_resource(lobby);
     app.insert_resource(key);
+    app.insert_resource(logs);
     app.add_observer(
         |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
             commands.entity(added.entity).insert(ReplicationSender);
@@ -173,7 +207,7 @@ fn server_app(lobby: Lobby, key: ServerKey, tick: Duration, listening: Listening
             }
         },
     );
-    app.add_systems(Update, end_when_everyone_left);
+    app.add_systems(Update, (exit_on_journal_failure, end_when_everyone_left));
     app
 }
 
@@ -220,10 +254,26 @@ fn exit_code(exit: AppExit) -> ExitCode {
     }
 }
 
+/// Exits, with `JOURNAL_FAILED`, once a write or a sync of the session's journal failed: the
+/// server keeps no record past it, and its host's supervisor starts it again.
+fn exit_on_journal_failure(
+    journal: Option<Res<'_, SessionJournal>>,
+    mut exit: MessageWriter<'_, AppExit>,
+) {
+    let Some(failure) = journal.and_then(|journal| journal.0.take_failure()) else {
+        return;
+    };
+    JournalFailed {
+        error: failure.to_string(),
+    }
+    .log();
+    exit.write(AppExit::from_code(JOURNAL_FAILED));
+}
+
 /// Once the match started and no player is connected any more, ends the session with its result,
 /// as the mode ended the match or aborted when it did not, reveals the seed, writes the session
-/// log into the working directory and exits: with an error when the log is not written, as the
-/// session it holds is lost.
+/// log durably into the data directory's `logs` and exits: with an error when the log is not
+/// written, as the session it holds is lost.
 fn end_when_everyone_left(
     world: &mut World,
     connected: &mut QueryState<(), (With<PlayerLink>, With<Connected>)>,
@@ -249,8 +299,10 @@ fn end_when_everyone_left(
     let mut bytes = Vec::new();
     session.log().encode(&mut bytes);
     let id = session.log().header().terms.session_id();
-    let file = PathBuf::from(format!("{id}.campfire-log"));
-    let exit = match fs::write(&file, &bytes) {
+    let logs = &world.resource::<LogsDir>().0;
+    let file = logs.join(format!("{id}.campfire-log"));
+    let written = DurableFile::create_dir(logs).and_then(|()| DurableFile::write(&file, &bytes));
+    let exit = match written {
         Ok(()) => {
             SessionWritten {
                 session: id,
@@ -283,4 +335,70 @@ fn unix_now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .expect("the clock is after 1970")
         .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::num::NonZeroU8;
+    use std::path::Path;
+
+    use campfire_protocol::secp256k1::{Keypair, SecretKey};
+    use campfire_protocol::{Journal, JournalFile, SessionHeader, SessionLog, SlotPlan, SlotStart};
+    use campfire_runner::SessionRules;
+
+    use super::*;
+
+    /// A journal's file whose every sync fails.
+    #[derive(Debug)]
+    struct FailingFile;
+
+    impl JournalFile for FailingFile {
+        fn append(&mut self, _: &[u8]) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn sync(&mut self) -> io::Result<()> {
+            Err(io::Error::other("sync failed"))
+        }
+    }
+
+    #[test]
+    fn a_failed_journal_ends_the_server_with_its_exit_code() {
+        // A session of the test lane mode with one open slot, so its header needs no player; the
+        // log's header is its journal's first record, whose sync fails.
+        let dir = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../packages/test/modes/lane"
+        );
+        let packages = ModePackages::from_dir(Path::new(dir)).unwrap();
+        let secret = SecretKey::from_byte_array(&[8; 32]).unwrap();
+        let key = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+        let terms = SessionRules::of(&packages)
+            .terms(
+                key.x_only_public_key().0,
+                SeedChain::new([9; 32], NonZeroU32::MIN).commitment(),
+                packages.manifest().tick_hz.default(),
+                InputRules::LAN,
+                vec![SlotPlan::Open],
+            )
+            .unwrap();
+        let header = SessionHeader {
+            terms,
+            slots: vec![SlotStart::Open],
+        };
+        let mut log = SessionLog::new(header).unwrap();
+        let journal = Journal::start(FailingFile);
+        let mut app = App::new();
+        app.insert_resource(SessionJournal(journal.watch()));
+        app.add_systems(Update, exit_on_journal_failure);
+        app.update();
+        assert_eq!(app.should_exit(), None);
+        log.keep_journal(journal);
+        // Dropped, the log's journal waits for its writer, which stopped at the failed sync.
+        drop(log);
+        app.update();
+        let code = NonZeroU8::new(JOURNAL_FAILED).unwrap();
+        assert_eq!(app.should_exit(), Some(AppExit::Error(code)));
+    }
 }

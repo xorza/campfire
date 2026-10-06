@@ -6,8 +6,8 @@ use campfire_protocol::SessionId;
 use serde::Deserialize;
 use tracing::info;
 
-/// Every player left, and the server wrote the session log to `file`, in its working directory,
-/// after a match that ended in the state of `hash`.
+/// Every player left, and the server wrote the session log to `file`, in its data directory's
+/// `logs`, after a match that ended in the state of `hash`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct SessionWritten {
     #[serde(deserialize_with = "LogLine::text")]

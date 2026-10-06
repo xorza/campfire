@@ -1,12 +1,14 @@
 use std::num::NonZeroU32;
 
+use serde::{Deserialize, Serialize};
+
 use crate::server_seed::{SeedCommitment, ServerSeed};
 use crate::server_seeds::ServerSeeds;
 
 /// Every segment's server seed, fixed when the server opens the session, as a one-way hash chain:
 /// segment `k`'s seed is the root hashed `N − 1 − k` times, so each seed is the hash of the next.
 /// Revealing a seed reveals every earlier one and no later one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeedChain {
     /// `s_(N−1)`, the last segment's seed. It is random, and the server keeps it secret.
     root: ServerSeed,

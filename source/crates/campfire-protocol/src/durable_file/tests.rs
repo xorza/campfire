@@ -51,3 +51,25 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
         Err(DurableError::Create(_))
     ));
 }
+
+#[test]
+fn a_durable_directory_is_made_once_and_its_owners_only() {
+    let dir = ScratchDir::new("durable-dir");
+    let path = dir.0.join("sessions");
+    DurableFile::create_dir(&path).unwrap();
+    DurableFile::write(&path.join("kept"), b"kept").unwrap();
+    // Made again, it stays as it is.
+    DurableFile::create_dir(&path).unwrap();
+    assert_eq!(fs::read(path.join("kept")).unwrap(), b"kept");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+    }
+    // A file in its place is no directory.
+    assert!(matches!(
+        DurableFile::create_dir(&path.join("kept")),
+        Err(DurableError::Create(_))
+    ));
+}

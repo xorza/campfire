@@ -5,9 +5,9 @@ use campfire_common::{SegmentSeed, StateHash, Tick};
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointError, InputError, Outcome, PlayerInput, ResultError, SeedError,
-    ServerInput, ServerSeeds, SessionHeader, SessionLog, SessionResult, SessionTerms, Signature,
-    SlotChangeKind, SnapshotFingerprint,
+    Applied, Checkpoint, CheckpointError, InputError, Journal, Outcome, PlayerInput, ResultError,
+    SeedError, ServerInput, ServerSeeds, SessionHeader, SessionLog, SessionResult, SessionTerms,
+    Signature, SlotChangeKind, SnapshotFingerprint,
 };
 use campfire_sim::{
     SimRng, SimTick, SimUpdate, SlotEvent, SlotEventKind, SnapshotError, StateRegistry, TickInput,
@@ -215,6 +215,11 @@ impl Session {
                 .log();
             }
         }
+    }
+
+    /// Keeps `journal`, a new one, for the session's log: see `SessionLog::keep_journal`.
+    pub fn keep_journal(&mut self, journal: Journal) {
+        self.log.keep_journal(journal);
     }
 
     /// The checkpoint record of the boundary before the next tick, which starts the segment after

@@ -18,9 +18,9 @@ use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{
-    AfterLeave, Applied, LeaveReason, Outcome, SeedError, ServerInput, ServerSeed, ServerSeeds,
-    SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind, SlotPlan,
-    SnapshotFingerprint, Taken,
+    AfterLeave, Applied, Journal, JournalFrames, LeaveReason, Outcome, SeedError, ServerInput,
+    ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
+    SlotPlan, SnapshotFingerprint, Taken,
 };
 use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, MatchUnits, Reference3v3};
 use campfire_runner::{
@@ -201,6 +201,30 @@ fn replayed(fixed: &FixedMatch) -> (Replay, HashTrail, Result<(), ReplayError>) 
         }
     };
     (replay, trail, end)
+}
+
+#[test]
+fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
+    // The orders' match, journaled from its start, checkpointed before tick 40 and ended before
+    // tick 72; the journal on disk holds every record once the match drops.
+    let scratch = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let path = scratch.path().join("journal");
+    let mut fixed = session().start();
+    fixed
+        .runner_mut()
+        .keep_journal(Journal::create(&path).unwrap());
+    let mut trail = HashTrail::default();
+    let orders = ORDERS.each_ref();
+    play(&mut fixed, &orders, 0..40, &mut trail);
+    fixed.checkpoint(&mut Vec::new());
+    play(&mut fixed, &orders, 40..72, &mut trail);
+    fixed.end();
+    let bytes = encoded(fixed.runner().log());
+    drop(fixed);
+    let file = fs::read(&path).unwrap();
+    let mut rebuilt = SessionLog::from_journal(JournalFrames::new(&file).unwrap()).unwrap();
+    rebuilt.reveal_seed(FixedSession::seed(1));
+    assert_eq!(encoded(&rebuilt), bytes);
 }
 
 #[test]

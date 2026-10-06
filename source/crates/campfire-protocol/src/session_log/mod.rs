@@ -13,6 +13,8 @@ use crate::checkpoint::error::CheckpointDecodeError;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot, LogCarry};
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
+use crate::journal::Journal;
+use crate::journal::error::JournalReplayError;
 use crate::player_input::PlayerInput;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::server_input::{AfterLeave, InputPlace, ServerInput};
@@ -40,6 +42,13 @@ const POSITION_BOUND: usize = u32::MAX as usize;
 /// The bytes that start a player's packet and a server input in the file.
 const PACKET_ENTRY: u8 = 0;
 const SERVER_ENTRY: u8 = 1;
+/// The bytes that start each kind of journal record.
+const JOURNAL_HEADER: u8 = 0;
+const JOURNAL_PACKET: u8 = 1;
+const JOURNAL_SERVER: u8 = 2;
+const JOURNAL_SEALED: u8 = 3;
+const JOURNAL_CHECKPOINT: u8 = 4;
+const JOURNAL_RESULT: u8 = 5;
 
 /// What the log fixes before the first tick: the session's terms, and how each of its slots
 /// starts.
@@ -147,6 +156,8 @@ pub struct SessionLog {
     position_bound: usize,
     /// The hash of the header's terms.
     session_id: SessionId,
+    /// Where each record the log takes goes as it takes it, once the server keeps one.
+    journal: Option<Journal>,
 }
 
 /// A slot as the log follows it: who controls it, the main key of the player who left it last,
@@ -298,6 +309,21 @@ impl Spill {
     }
 }
 
+impl SegmentStart {
+    /// Writes the checkpoint the segment starts from into `journal`.
+    fn journal(&self, journal: &Journal) {
+        let logged = self
+            .checkpoint
+            .as_ref()
+            .expect("every segment but the first starts from a checkpoint");
+        journal.append(|out| {
+            out.push(JOURNAL_CHECKPOINT);
+            logged.record.encode(out);
+            put(out, &logged.signature);
+        });
+    }
+}
+
 impl Slot {
     /// A slot of `control` with no input yet.
     fn of(control: Control) -> Slot {
@@ -380,6 +406,7 @@ impl SessionLog {
             due: Vec::new(),
             position_bound: POSITION_BOUND,
             session_id,
+            journal: None,
         })
     }
 
@@ -558,6 +585,7 @@ impl SessionLog {
             inputs: start..offset(self.inputs.len()),
             signature: *signature,
         });
+        self.journal_last_entry();
         Ok(())
     }
 
@@ -718,6 +746,7 @@ impl SessionLog {
             bot_input,
         });
         self.server_since += 1;
+        self.journal_last_entry();
         Ok(())
     }
 
@@ -769,6 +798,9 @@ impl SessionLog {
                 signature: *signature,
             }),
         });
+        if let (Some(journal), Some(segment)) = (&self.journal, self.segments.last()) {
+            segment.journal(journal);
+        }
         Ok(())
     }
 
@@ -829,10 +861,17 @@ impl SessionLog {
         if result.tick != self.next_tick() {
             return Err(ResultError::Tick);
         }
-        self.result = Some(LoggedResult {
+        let logged = LoggedResult {
             result,
             signature: *signature,
-        });
+        };
+        if let Some(journal) = &self.journal {
+            journal.append(|out| {
+                out.push(JOURNAL_RESULT);
+                put(out, &logged);
+            });
+        }
+        self.result = Some(logged);
         Ok(())
     }
 
@@ -840,6 +879,11 @@ impl SessionLog {
     /// the order logged; `sealed_changes` then gives the changes of a slot's controller in it.
     pub fn seal_tick(&mut self) -> impl ExactSizeIterator<Item = PlayerInput<'_>> {
         let tick = self.next_tick();
+        if self.to_replay.is_empty()
+            && let Some(journal) = &self.journal
+        {
+            journal.append(|out| out.push(JOURNAL_SEALED));
+        }
         let replayed = usize::try_from(tick.get()).expect("tick fits usize");
         let end = match self.to_replay.get(replayed) {
             Some(&end) => {
@@ -950,16 +994,7 @@ impl SessionLog {
         }
         for segment in 0..segments {
             if segment > 0 {
-                let (record, after) = Checkpoint::take(rest).map_err(|error| match error {
-                    CheckpointDecodeError::Malformed(postcard::Error::DeserializeUnexpectedEnd) => {
-                        LogError::Truncated
-                    }
-                    error => LogError::CheckpointDecode { segment, error },
-                })?;
-                rest = after;
-                let signature = take(&mut rest)?;
-                log.record_checkpoint(record, &signature)
-                    .map_err(|error| LogError::Checkpoint { segment, error })?;
+                log.record_checkpoint_at(&mut rest, segment)?;
             }
             let ticks: u64 = take(&mut rest)?;
             for _ in 0..ticks {
@@ -1006,26 +1041,37 @@ impl SessionLog {
         for &entry in &self.entries[entries.start as usize..entries.end as usize] {
             match entry {
                 Entry::Packet(at) => {
-                    let packet = &self.packets[at as usize];
-                    let slot = self.inputs[packet.inputs.start as usize].slot;
                     put(out, &PACKET_ENTRY);
-                    put(out, &slot.get());
-                    put(out, &(packet.inputs.end - packet.inputs.start));
-                    for index in packet.inputs.clone() {
-                        let input = self.input(index);
-                        put(out, &input.stamp);
-                        put(out, input.payload);
-                    }
-                    put(out, &packet.signature);
+                    self.put_packet(out, at);
                 }
                 Entry::Server(at) => {
-                    let logged = &self.server[at as usize];
                     put(out, &SERVER_ENTRY);
-                    logged.input.encode(out);
-                    put(out, &logged.signature);
+                    self.put_server(out, at);
                 }
             }
         }
+    }
+
+    /// Writes the packet `at`: its `u32` slot, its inputs as a `u32` count and each input's stamp
+    /// and payload bytes, and its signature.
+    fn put_packet(&self, out: &mut Vec<u8>, at: u32) {
+        let packet = &self.packets[at as usize];
+        let slot = self.inputs[packet.inputs.start as usize].slot;
+        put(out, &slot.get());
+        put(out, &(packet.inputs.end - packet.inputs.start));
+        for index in packet.inputs.clone() {
+            let input = self.input(index);
+            put(out, &input.stamp);
+            put(out, input.payload);
+        }
+        put(out, &packet.signature);
+    }
+
+    /// Writes the server input `at` and its signature.
+    fn put_server(&self, out: &mut Vec<u8>, at: u32) {
+        let logged = &self.server[at as usize];
+        logged.input.encode(out);
+        put(out, &logged.signature);
     }
 
     /// Records the entries `put_entries` wrote at the front of `rest` before the next tick, with
@@ -1038,41 +1084,192 @@ impl SessionLog {
     ) -> Result<(), LogError> {
         let entries: u32 = take(rest)?;
         for _ in 0..entries {
-            let tick = self.next_tick();
             match take::<u8>(rest)? {
-                PACKET_ENTRY => {
-                    let slot = PlayerSlot::new(take(rest)?);
-                    let count: u32 = take(rest)?;
-                    inputs.clear();
-                    for _ in 0..count {
-                        let stamp = take(rest)?;
-                        let payload = take(rest)?;
-                        inputs.push(PlayerInput {
-                            slot,
-                            stamp,
-                            payload,
-                        });
-                    }
-                    let signature = take(rest)?;
-                    self.record(inputs.iter().copied(), &signature, applied)
-                        .map_err(|error| LogError::Input { tick, error })?;
-                }
-                SERVER_ENTRY => {
-                    let (input, after) = ServerInput::take(rest).map_err(|error| match error {
-                        ServerInputDecodeError::Malformed(
-                            postcard::Error::DeserializeUnexpectedEnd,
-                        ) => LogError::Truncated,
-                        error => LogError::ServerDecode { tick, error },
-                    })?;
-                    *rest = after;
-                    let signature = take(rest)?;
-                    self.record_server(input, &signature)
-                        .map_err(|error| LogError::Server { tick, error })?;
-                }
+                PACKET_ENTRY => self.record_packet(rest, inputs, applied)?,
+                SERVER_ENTRY => self.record_server_input(rest)?,
                 _ => return Err(LogError::UnknownEntry),
             }
         }
         Ok(())
+    }
+
+    /// Records the packet `put_packet` wrote at the front of `rest`, with `inputs` and `applied`
+    /// as scratch.
+    fn record_packet<'a>(
+        &mut self,
+        rest: &mut &'a [u8],
+        inputs: &mut Vec<PlayerInput<'a>>,
+        applied: &mut Vec<Applied>,
+    ) -> Result<(), LogError> {
+        let tick = self.next_tick();
+        let slot = PlayerSlot::new(take(rest)?);
+        let count: u32 = take(rest)?;
+        inputs.clear();
+        for _ in 0..count {
+            let stamp = take(rest)?;
+            let payload = take(rest)?;
+            inputs.push(PlayerInput {
+                slot,
+                stamp,
+                payload,
+            });
+        }
+        let signature = take(rest)?;
+        self.record(inputs.iter().copied(), &signature, applied)
+            .map_err(|error| LogError::Input { tick, error })
+    }
+
+    /// Records the server input `put_server` wrote at the front of `rest`.
+    fn record_server_input(&mut self, rest: &mut &[u8]) -> Result<(), LogError> {
+        let tick = self.next_tick();
+        let (input, after) = ServerInput::take(rest).map_err(|error| match error {
+            ServerInputDecodeError::Malformed(postcard::Error::DeserializeUnexpectedEnd) => {
+                LogError::Truncated
+            }
+            error => LogError::ServerDecode { tick, error },
+        })?;
+        *rest = after;
+        let signature = take(rest)?;
+        self.record_server(input, &signature)
+            .map_err(|error| LogError::Server { tick, error })
+    }
+
+    /// Records the checkpoint record of segment `segment` that `encode` wrote at the front of
+    /// `rest`, with its signature.
+    fn record_checkpoint_at(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
+        let (record, after) = Checkpoint::take(rest).map_err(|error| match error {
+            CheckpointDecodeError::Malformed(postcard::Error::DeserializeUnexpectedEnd) => {
+                LogError::Truncated
+            }
+            error => LogError::CheckpointDecode { segment, error },
+        })?;
+        *rest = after;
+        let signature = take(rest)?;
+        self.record_checkpoint(record, &signature)
+            .map_err(|error| LogError::Checkpoint { segment, error })
+    }
+
+    /// The log of the session whose journal holds `records`, in order, as the server took them:
+    /// what the server had logged when it wrote the last. An error for a first record that is
+    /// not the header, and for a record that does not decode or that the log refuses.
+    pub fn from_journal<'a>(
+        records: impl IntoIterator<Item = &'a [u8]>,
+    ) -> Result<SessionLog, JournalReplayError> {
+        let failed = |record, error| JournalReplayError::Record { record, error };
+        let mut records = records.into_iter();
+        let first = records.next().ok_or(JournalReplayError::NoHeader)?;
+        let mut rest = first
+            .strip_prefix(&[JOURNAL_HEADER])
+            .ok_or(JournalReplayError::NoHeader)?;
+        let header = take_header(&mut rest).map_err(|error| failed(0, error))?;
+        if !rest.is_empty() {
+            return Err(failed(0, LogError::Trailing));
+        }
+        let mut log =
+            SessionLog::new(header).map_err(|error| failed(0, LogError::Header(error)))?;
+        let mut inputs = Vec::new();
+        let mut applied = Vec::new();
+        for (index, record) in (1..).zip(records) {
+            log.apply_journal(record, &mut inputs, &mut applied)
+                .map_err(|error| failed(index, error))?;
+        }
+        Ok(log)
+    }
+
+    /// Takes the journal record `record`, past the header, with `inputs` and `applied` as
+    /// scratch.
+    fn apply_journal<'a>(
+        &mut self,
+        record: &'a [u8],
+        inputs: &mut Vec<PlayerInput<'a>>,
+        applied: &mut Vec<Applied>,
+    ) -> Result<(), LogError> {
+        let (&kind, mut rest) = record.split_first().ok_or(LogError::Truncated)?;
+        match kind {
+            JOURNAL_PACKET => self.record_packet(&mut rest, inputs, applied)?,
+            JOURNAL_SERVER => self.record_server_input(&mut rest)?,
+            JOURNAL_SEALED => drop(self.seal_tick()),
+            JOURNAL_CHECKPOINT => {
+                let segment = self.segment().saturating_add(1);
+                self.record_checkpoint_at(&mut rest, segment)?;
+            }
+            JOURNAL_RESULT => {
+                let LoggedResult { result, signature } = take(&mut rest)?;
+                self.record_result(result, &signature)
+                    .map_err(LogError::Result)?;
+            }
+            _ => return Err(LogError::UnknownEntry),
+        }
+        if !rest.is_empty() {
+            return Err(LogError::Trailing);
+        }
+        Ok(())
+    }
+
+    /// Keeps `journal`, a new one, and writes into it the records of what the log holds: the
+    /// header, then each entry, each sealed tick, each checkpoint and the result, as the log took
+    /// them; from then on each record the log takes goes to it as it takes it.
+    pub fn keep_journal(&mut self, journal: Journal) {
+        assert!(self.journal.is_none(), "a log keeps one journal");
+        debug_assert!(
+            self.to_replay.is_empty(),
+            "a log that replays keeps no journal"
+        );
+        journal.append(|out| {
+            out.push(JOURNAL_HEADER);
+            self.put_header(out);
+        });
+        let mut start = 0;
+        let mut segments = self.segments.iter().skip(1).peekable();
+        for (tick, &end) in (0..).zip(&self.tick_ends) {
+            if let Some(segment) = segments.next_if(|segment| segment.tick == Tick::new(tick)) {
+                segment.journal(&journal);
+            }
+            for at in start..end {
+                self.journal_entry(&journal, at);
+            }
+            journal.append(|out| out.push(JOURNAL_SEALED));
+            start = end;
+        }
+        if let Some(segment) = segments.next() {
+            segment.journal(&journal);
+        }
+        for at in start..offset(self.entries.len()) {
+            self.journal_entry(&journal, at);
+        }
+        if let Some(result) = &self.result {
+            journal.append(|out| {
+                out.push(JOURNAL_RESULT);
+                put(out, result);
+            });
+        }
+        self.journal = Some(journal);
+    }
+
+    /// The journal the log writes to, once it keeps one.
+    pub const fn journal(&self) -> Option<&Journal> {
+        self.journal.as_ref()
+    }
+
+    /// Writes the entry the log took last into its journal, when it keeps one.
+    fn journal_last_entry(&self) {
+        if let Some(journal) = &self.journal {
+            self.journal_entry(journal, offset(self.entries.len() - 1));
+        }
+    }
+
+    /// Writes the entry `at` into `journal`.
+    fn journal_entry(&self, journal: &Journal, at: u32) {
+        journal.append(|out| match self.entries[at as usize] {
+            Entry::Packet(packet) => {
+                out.push(JOURNAL_PACKET);
+                self.put_packet(out, packet);
+            }
+            Entry::Server(server) => {
+                out.push(JOURNAL_SERVER);
+                self.put_server(out, server);
+            }
+        });
     }
 
     /// Keeps a clone of `delegation`, a join's or a renewal's, and gives its index.

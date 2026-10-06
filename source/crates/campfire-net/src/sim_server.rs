@@ -16,7 +16,7 @@ use campfire_capabilities::{
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, ServerSeeds, SessionLog};
+use campfire_protocol::{Applied, Journal, ServerSeeds, SessionLog};
 use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StableId, TickRate};
 use lightyear::core::tick::TickDuration;
@@ -38,6 +38,7 @@ use crate::lobby::Lobby;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
+use crate::session_journal::SessionJournal;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
@@ -126,13 +127,15 @@ impl SimServer {
     /// at least, so a burst after a stall makes no on-time input late; a longer frame's time past
     /// that is dropped, and logged. `clients` are the links of the players, by slot; each learns
     /// its slot and the start tick. From the first tick on, every unit replicates to the clients
-    /// whose team sees it, and the owner's client predicts it, but a projectile or an area.
+    /// whose team sees it, and the owner's client predicts it, but a projectile or an area. With
+    /// a `journal`, the log goes into it as the server logs it, and `SessionJournal` watches it.
     pub fn start_match(
         world: &mut World,
         log: SessionLog,
         seeds: ServerSeeds,
         packages: &ModePackages,
         clients: &[Entity],
+        journal: Option<Journal>,
     ) -> Result<(), StartError> {
         assert_eq!(
             clients.len(),
@@ -157,6 +160,10 @@ impl SimServer {
             .resource_mut::<Time<Virtual>>()
             .set_max_delta(tick * burst);
         Session::start(world, log, seeds, packages)?;
+        if let Some(journal) = journal {
+            world.insert_resource(SessionJournal(journal.watch()));
+            world.resource_mut::<Session>().keep_journal(journal);
+        }
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
         let next = world.resource::<Session>().log().next_tick();

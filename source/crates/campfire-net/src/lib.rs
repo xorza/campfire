@@ -17,6 +17,7 @@ mod match_start;
 mod net_protocol;
 mod offer;
 mod order_script;
+mod session_journal;
 mod sim_client;
 mod sim_server;
 
@@ -26,6 +27,7 @@ pub use events::input_message_refused::InputMessageRefused;
 pub use events::input_message_unfit::InputMessageUnfit;
 pub use events::input_never_applied::{InputNeverApplied, Unapplied};
 pub use events::join_refused::JoinRefused;
+pub use events::journal_failed::JournalFailed;
 pub use events::link_lost::LinkLost;
 pub use events::listening::Listening;
 pub use events::match_started::MatchStarted;
@@ -44,6 +46,7 @@ pub use match_clock::MatchClock;
 pub use net_protocol::{InputChannel, NetProtocol};
 
 pub use order_script::OrderScript;
+pub use session_journal::SessionJournal;
 pub use sim_client::bot_script::BotScript;
 pub use sim_client::join_state::JoinState;
 pub use sim_client::server_pin::ServerPin;

@@ -2,7 +2,7 @@ use bevy_ecs::world::World;
 use campfire_common::StateHash;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointError, InputError, Outcome, PlayerInput, ResultError,
+    Applied, Checkpoint, CheckpointError, InputError, Journal, Outcome, PlayerInput, ResultError,
     ServerInput, ServerSeeds, SessionLog, SessionResult, Signature,
 };
 
@@ -56,6 +56,11 @@ impl Runner {
 
     pub fn run_tick(&mut self) {
         Session::run_tick(&mut self.world);
+    }
+
+    /// See `Session::keep_journal`.
+    pub fn keep_journal(&mut self, journal: Journal) {
+        self.world.resource_mut::<Session>().keep_journal(journal);
     }
 
     /// See `Session::checkpoint`.
