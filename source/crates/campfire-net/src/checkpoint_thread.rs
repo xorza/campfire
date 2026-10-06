@@ -5,11 +5,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 
 use bevy_ecs::world::World;
-use campfire_protocol::{
-    Checkpoint, CheckpointBegun, DurableError, DurableFile, SessionId, Signature,
-    SnapshotFingerprint,
-};
+use campfire_protocol::{Checkpoint, CheckpointBegun, SessionId, Signature, SnapshotFingerprint};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
+use campfire_store::{DurableError, DurableFile};
 
 use crate::server_signer::ServerSigner;
 

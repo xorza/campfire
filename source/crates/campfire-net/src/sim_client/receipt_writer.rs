@@ -4,7 +4,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 
 use bevy_ecs::resource::Resource;
-use campfire_protocol::{DurableError, DurableFile, SignedReceipt};
+use campfire_protocol::SignedReceipt;
+use campfire_store::{DurableError, DurableFile};
 
 /// Writes the newest receipt a client keeps to its data directory, as
 /// `receipts/<session id>.receipt`, on a thread of its own, so no frame waits for a sync: the

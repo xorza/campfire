@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 
-use campfire_protocol::KeyFileError;
+use crate::key_file::error::KeyFileError;
 
 /// Why a data directory did not open.
 #[derive(Debug)]

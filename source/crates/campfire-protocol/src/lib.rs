@@ -1,5 +1,6 @@
 //! Session log format: headers, input chains, checkpoints, results; the connect handshake that
-//! binds a player's identity to the transport; and the key files and durable files they rest on.
+//! binds a player's identity to the transport; and the text of a key file. The crate does no IO:
+//! the log frames its journal's records into a sink it is given.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
@@ -8,11 +9,10 @@ mod connect;
 mod controller;
 mod decoded;
 mod delegation;
-mod durable_file;
 mod input_chain;
 mod input_hash;
 mod journal;
-mod key_file;
+mod nsec;
 mod player_input;
 mod receipt;
 mod seed_chain;
@@ -41,17 +41,13 @@ pub use controller::Controller;
 
 pub use delegation::error::{DelegationError, ScopeError};
 pub use delegation::{Delegation, DelegationTerms};
-pub use durable_file::DurableFile;
-pub use durable_file::error::DurableError;
 pub use input_chain::InputChain;
 pub use input_hash::InputHash;
-pub use journal::Journal;
-pub use journal::error::{JournalError, JournalReplayError};
-pub use journal::journal_file::JournalFile;
+pub use journal::error::{JournalReplayError, NotJournal};
 pub use journal::journal_frames::JournalFrames;
-pub use journal::journal_watch::JournalWatch;
-pub use key_file::KeyFile;
-pub use key_file::error::KeyFileError;
+pub use journal::record_sink::RecordSink;
+pub use nsec::Nsec;
+pub use nsec::error::NsecError;
 pub use player_input::PlayerInput;
 pub use receipt::error::ReceiptFileError;
 pub use receipt::{Receipt, SignedReceipt};

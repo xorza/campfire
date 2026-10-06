@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::{fs, thread};
 
 use campfire_net::internals::{LinkModel, LocalMatch, MatchSetup};
-use campfire_net::{JoinState, PlayerLink, SessionDir, SessionJournal};
+use campfire_net::{JoinState, JournalWatch, PlayerLink, SessionDir};
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Controller, SignedReceipt};
 use campfire_runner::Session;
@@ -26,12 +26,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     for _ in 0..150 {
         local.step();
     }
-    let watch = local
-        .server()
-        .world()
-        .resource::<SessionJournal>()
-        .0
-        .clone();
+    let watch = local.server().world().resource::<JournalWatch>().0.clone();
     while !watch.settled() {
         thread::sleep(Duration::from_millis(1));
     }

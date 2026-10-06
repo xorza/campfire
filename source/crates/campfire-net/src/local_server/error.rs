@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use campfire_protocol::{DurableError, JournalError};
+use campfire_store::{AppendOpenError, DurableError};
 
 use crate::data_dir::error::DataDirError;
 use crate::error::LobbyError;
@@ -18,7 +18,7 @@ pub enum LocalServerError {
     /// The session's slots do not open: a bot names slot 0, the client's, or none the mode has.
     Lobby(LobbyError),
     NewSession(DurableError),
-    NewJournal(JournalError),
+    NewJournal(AppendOpenError),
 }
 
 impl fmt::Display for LocalServerError {
@@ -33,7 +33,7 @@ impl fmt::Display for LocalServerError {
             LocalServerError::NewSession(error) => {
                 write!(f, "could not make the session's directory: {error}")
             }
-            LocalServerError::NewJournal(error) => write!(f, "{error}"),
+            LocalServerError::NewJournal(error) => write!(f, "the journal: {error}"),
         }
     }
 }

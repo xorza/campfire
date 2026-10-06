@@ -5,8 +5,8 @@ use campfire_common::{SegmentSeed, StateHash, Tick, Ticks};
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
-    AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal,
-    LoadError, Outcome, PlayerInput, ResultError, SeedError, ServerInput, ServerSeeds,
+    AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LoadError,
+    Outcome, PlayerInput, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds,
     SessionHeader, SessionLog, SessionResult, SessionTerms, Signature, SlotChangeKind,
     SnapshotFingerprint,
 };
@@ -326,19 +326,20 @@ impl Session {
     }
 
     /// See `SessionLog::advance_durable`.
-    pub fn advance_durable(&mut self) {
-        self.log.advance_durable();
+    pub fn advance_durable(&mut self, durable: u64) {
+        self.log.advance_durable(durable);
     }
 
-    /// Keeps `journal`, a new one, for the session's log: see `SessionLog::keep_journal`.
-    pub fn keep_journal(&mut self, journal: Journal) {
-        self.log.keep_journal(journal);
+    /// Keeps `sink` as the journal of the session's log, a new one: see
+    /// `SessionLog::keep_journal`.
+    pub fn keep_journal(&mut self, sink: Box<dyn RecordSink + Send + Sync>) {
+        self.log.keep_journal(sink);
     }
 
-    /// Keeps `journal`, which holds every record of the session's log; see
+    /// Keeps `sink` as the journal of the session's log, which holds every record of it; see
     /// `SessionLog::resume_journal`.
-    pub fn resume_journal(&mut self, journal: Journal) {
-        self.log.resume_journal(journal);
+    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink + Send + Sync>) {
+        self.log.resume_journal(sink);
     }
 
     /// Begins a checkpoint at the boundary before the next tick, which starts the segment after

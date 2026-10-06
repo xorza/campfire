@@ -2,7 +2,8 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use campfire_protocol::{CertificateHash, DurableFile};
+use campfire_protocol::CertificateHash;
+use campfire_store::DurableFile;
 use wtransport::Identity;
 use wtransport::tls::{Certificate, CertificateChain, PrivateKey};
 

@@ -1,10 +1,10 @@
 use std::fs::{DirBuilder, File, TryLockError};
 use std::path::Path;
 
-use campfire_protocol::KeyFile;
 use campfire_protocol::secp256k1::Keypair;
 
 use crate::data_dir::error::DataDirError;
+use crate::key_file::KeyFile;
 
 pub(crate) mod error;
 

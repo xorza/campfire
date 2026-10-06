@@ -17,7 +17,7 @@ flowchart TB
     subgraph services["Services"]
         net
         content:::planned
-        store:::planned
+        store
         identity:::planned
         ownership:::planned
         payments:::planned
@@ -38,6 +38,7 @@ flowchart TB
     verifier --> runner
     lancheck --> verifier
     lancheck --> net
+    server --> store
     net --> store
     runner --> package
     runner --> protocol
@@ -61,7 +62,7 @@ Each layer uses the layers below it.
 | --- | --- | --- |
 | `common` | built | The vocabulary that crates which do not depend on each other share: the player slot, ticks, segment seed and 32-byte values written as hex, and a package's fingerprint |
 | `math` | built | Fixed-point numbers, 3D vectors, trig, exact 256-bit products, counter-based RNG |
-| `protocol` | built | The open protocol: signatures, session key delegations, the connection's handshake, input chains, the seed chain and the session log ([Protocol Spec](05-protocol-spec.md)) |
+| `protocol` | built | The open protocol: signatures, session key delegations, the connection's handshake, input chains, the seed chain and the session log, with no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | built | The Rhai host: compiles scripts, and runs each call under its limits; the script API itself is in `capabilities` ([Script API](08-script-api.md)) |
 | `capabilities` | built | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
@@ -72,7 +73,7 @@ Each layer uses the layers below it.
 | `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | built | Lightyear over QUIC (WebTransport): handshake, replication; internal |
 | `log` | built | The binaries' log output: text on standard error, and JSON lines into a file; the events a tool reads back from those lines |
-| `store` | planned | Durable and secret files, data directories and their locks, and the worker threads that write them, each with its failure ([Storage and workers](11-storage.md)) |
+| `store` | built | Durable and secret files, data directories and their locks, and the worker threads that write them, each with its failure ([Storage and workers](11-storage.md)) |
 | `launcher` | planned | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | built | Bevy app: rendering, input, UI, audio, prediction |
 | `content` | planned | Package signatures, pinning, cache, Blossom fetch |
@@ -87,7 +88,7 @@ A module is built when the workspace has its crate, `campfire-<module>` in `sour
 
 `lan-check` is a check, not an engine crate: it lives in `source/checks/`, apart from `source/crates/`, and nothing depends on it. Each crate's folder has its package's name, `campfire-` and the module: `source/crates/campfire-math/`, `source/checks/campfire-lan-check/`.
 
-Dependencies: `server` and `client` → `net` → `runner`; `verifier` → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `log` depends on no engine crate; the binaries, `net`, `runner` and `verifier` use it, and the tests of `sim` and `capabilities` use its internals. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
+Dependencies: `server` and `client` → `net` → `runner`; `server` and `net` → `store`; `verifier` → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `store` depends on no engine crate, and no crate of the deterministic core depends on it. `log` depends on no engine crate; the binaries, `net`, `runner` and `verifier` use it, and the tests of `sim` and `capabilities` use its internals. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
 
 Outside the engine crates: the reference MOBA and bots. The tests of `package` and `runner`, and `lan-check`, use them as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 

@@ -2,8 +2,9 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 
-use campfire_protocol::{DurableError, JournalError, JournalReplayError, SessionPrivateError};
+use campfire_protocol::{JournalReplayError, NotJournal, SessionPrivateError};
 use campfire_runner::StartError;
+use campfire_store::{AppendOpenError, DurableError};
 
 /// Why a server's data directory does not say which session to restore.
 #[derive(Debug)]
@@ -38,7 +39,8 @@ pub enum RestoreError {
     Private(SessionPrivateError),
     /// The session runs on another engine release than this one, which restores it.
     OtherRelease(String),
-    Journal(JournalError),
+    NotJournal(NotJournal),
+    Journal(AppendOpenError),
     Replay(JournalReplayError),
 }
 
@@ -53,7 +55,8 @@ impl fmt::Display for RestoreError {
                     "the session runs on release {release}, which restores it"
                 )
             }
-            RestoreError::Journal(error) => write!(f, "{error}"),
+            RestoreError::NotJournal(error) => write!(f, "the journal file: {error}"),
+            RestoreError::Journal(error) => write!(f, "the journal: {error}"),
             RestoreError::Replay(error) => write!(f, "{error}"),
         }
     }
@@ -65,6 +68,7 @@ impl Error for RestoreError {
             RestoreError::Read(error) => Some(error),
             RestoreError::Private(error) => Some(error),
             RestoreError::OtherRelease(_) => None,
+            RestoreError::NotJournal(error) => Some(error),
             RestoreError::Journal(error) => Some(error),
             RestoreError::Replay(error) => Some(error),
         }

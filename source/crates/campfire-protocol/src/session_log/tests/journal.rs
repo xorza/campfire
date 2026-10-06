@@ -1,9 +1,6 @@
-use std::thread;
-use std::time::Duration;
-
 use super::*;
 use crate::journal::journal_frames::JournalFrames;
-use crate::journal::tests::MemoryFile;
+use crate::journal::tests::MemorySink;
 
 /// The records of the journal `file` holds.
 fn records(file: &[u8]) -> Vec<&[u8]> {
@@ -14,8 +11,8 @@ fn records(file: &[u8]) -> Vec<&[u8]> {
 fn a_journal_rebuilds_the_log_it_followed() {
     // Kept from the start: each record goes to the journal as the log takes it.
     let mut log = new_log();
-    let file = MemoryFile::new();
-    log.keep_journal(Journal::start(file.clone()));
+    let file = MemorySink::new();
+    log.keep_journal(file.boxed());
     play_minimal(&mut log);
     let bytes = encoded(&log);
     drop(log);
@@ -30,8 +27,8 @@ fn a_journal_rebuilds_the_log_it_followed() {
     // Kept at the end: the log writes what it holds, the same records.
     let mut log = new_log();
     play_minimal(&mut log);
-    let late = MemoryFile::new();
-    log.keep_journal(Journal::start(late.clone()));
+    let late = MemorySink::new();
+    log.keep_journal(late.boxed());
     drop(log);
     assert_eq!(late.bytes(), journal);
 
@@ -83,24 +80,22 @@ fn a_journal_rebuilds_the_log_it_followed() {
 #[test]
 fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     let mut log = new_log();
-    let file = MemoryFile::new();
-    let journal = Journal::start(file.clone());
-    let watch = journal.watch();
-    log.keep_journal(journal);
+    let file = MemorySink::new();
+    log.keep_journal(file.boxed());
     play_minimal(&mut log);
-    // No chain is durable before the log notes the synced records; once the writer synced all 8,
-    // player 1's is.
+    // The header, a packet and a server input, the seal, the checkpoint's begin and its record,
+    // a packet, the result. No chain is durable before the log notes the synced records; once
+    // the first two are, player 1's chain stands at their first packet, a and b, seq 1; once
+    // all 8 are, at c, seq 2, the last, signed under their delegation.
     let slot = PlayerSlot::new(1);
     assert_eq!(log.durable_head(slot), None);
-    for _ in 0..1000 {
-        if watch.durable() == 8 {
-            break;
-        }
-        thread::sleep(Duration::from_millis(1));
-    }
-    assert_eq!(watch.durable(), 8);
-    log.advance_durable();
-    // Player 1's chain holds a, b and c: c, seq 2, the last, signed under their delegation.
+    log.advance_durable(1);
+    assert_eq!(log.durable_head(slot), None);
+    log.advance_durable(2);
+    assert_eq!(log.durable_head(slot).map(|head| head.seq), Some(1));
+    log.advance_durable(6);
+    assert_eq!(log.durable_head(slot).map(|head| head.seq), Some(1));
+    log.advance_durable(8);
     let mut chain = InputChain::new(slot, root(1));
     for (stamp, payload) in [(0, b"a"), (1, b"b"), (1, b"c")] {
         chain.extend(Tick::new(stamp), payload);
@@ -118,7 +113,7 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     let journal = file.bytes();
     let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
     assert_eq!(rebuilt.durable_head(slot), None);
-    rebuilt.resume_journal(Journal::start(MemoryFile::new()));
+    rebuilt.resume_journal(MemorySink::new().boxed());
     assert_eq!(rebuilt.durable_head(slot), Some(head));
     assert_eq!(rebuilt.durable_head(PlayerSlot::new(0)), None);
 }
@@ -127,25 +122,13 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
 fn a_renewal_forgets_where_the_chain_stands_durably() {
     // Player 1 sends a and b, which the journal syncs.
     let mut log = new_log();
-    let file = MemoryFile::new();
-    let journal = Journal::start(file.clone());
-    let watch = journal.watch();
-    log.keep_journal(journal);
+    let file = MemorySink::new();
+    log.keep_journal(file.boxed());
     let mut applied = Vec::new();
     resent(1, &[&[(0, b"a"), (1, b"b")]], 1)[0]
         .submit(&mut log, &mut applied)
         .unwrap();
-    let synced = |records| {
-        for _ in 0..1000 {
-            if watch.durable() == records {
-                break;
-            }
-            thread::sleep(Duration::from_millis(1));
-        }
-        assert_eq!(watch.durable(), records);
-    };
-    synced(2);
-    log.advance_durable();
+    log.advance_durable(2);
     let slot = PlayerSlot::new(1);
     assert_eq!(log.durable_head(slot).map(|head| head.seq), Some(1));
 
@@ -163,10 +146,11 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
     )
     .unwrap();
     assert_eq!(log.durable_head(slot), None);
-    synced(3);
+    log.advance_durable(3);
+    assert_eq!(log.durable_head(slot), None);
     drop(log);
     let journal = file.bytes();
     let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
-    rebuilt.resume_journal(Journal::start(MemoryFile::new()));
+    rebuilt.resume_journal(MemorySink::new().boxed());
     assert_eq!(rebuilt.durable_head(slot), None);
 }

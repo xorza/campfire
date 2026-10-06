@@ -1,0 +1,18 @@
+//! How the engine writes files and runs threads: durable and secret files, and the worker
+//! threads that write them, each with its failure. The bytes of each file are its owner's: this
+//! crate depends on no engine crate, and decides no policy for a failure.
+
+mod append_writer;
+mod durable_file;
+mod secret_file;
+mod worker;
+
+pub use append_writer::AppendWriter;
+pub use append_writer::append_file::AppendFile;
+pub use append_writer::append_watch::AppendWatch;
+pub use append_writer::error::{AppendError, AppendOpenError};
+pub use durable_file::DurableFile;
+pub use durable_file::error::DurableError;
+pub use secret_file::SecretFile;
+pub use secret_file::error::SecretReadError;
+pub use worker::Worker;

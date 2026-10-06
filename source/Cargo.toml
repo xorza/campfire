@@ -73,6 +73,7 @@ campfire-protocol = { path = "crates/campfire-protocol" }
 campfire-runner = { path = "crates/campfire-runner" }
 campfire-script = { path = "crates/campfire-script" }
 campfire-sim = { path = "crates/campfire-sim" }
+campfire-store = { path = "crates/campfire-store" }
 campfire-verifier = { path = "crates/campfire-verifier" }
 
 # Warn, not deny: the check chain runs clippy with `-D warnings`, and builds keep working mid-edit.

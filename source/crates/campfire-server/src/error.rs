@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 
 use campfire_net::{AbortError, LobbyError, WaitingError};
-use campfire_protocol::{DurableError, JournalError};
+use campfire_store::{AppendOpenError, DurableError};
 use wtransport::tls::error::InvalidCertificate;
 
 /// Why a server did not start a session from its data directory.
@@ -15,7 +15,7 @@ pub(crate) enum OpeningError {
     Lobby(LobbyError),
     /// The new session's directory or private record was not made.
     NewSession(DurableError),
-    NewJournal(JournalError),
+    NewJournal(AppendOpenError),
 }
 
 impl fmt::Display for OpeningError {
@@ -25,7 +25,7 @@ impl fmt::Display for OpeningError {
             OpeningError::Abort(error) => write!(f, "could not end the session: {error}"),
             OpeningError::Lobby(error) => write!(f, "the session does not open: {error}"),
             OpeningError::NewSession(error) => write!(f, "could not make the session: {error}"),
-            OpeningError::NewJournal(error) => write!(f, "{error}"),
+            OpeningError::NewJournal(error) => write!(f, "the journal: {error}"),
         }
     }
 }

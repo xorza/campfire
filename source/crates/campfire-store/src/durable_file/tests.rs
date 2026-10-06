@@ -22,6 +22,13 @@ impl Drop for ScratchDir {
     }
 }
 
+/// The permission bits of the file at `path`.
+#[cfg(unix)]
+pub(crate) fn mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
 #[test]
 fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
     let dir = ScratchDir::new("durable");
@@ -35,11 +42,23 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
         .collect();
     assert_eq!(names, ["state"]);
     #[cfg(unix)]
+    assert_eq!(mode(&path), 0o600);
+
+    // A crash left a temporary file, which others may read: the write makes its own, so the file
+    // is its owner's only.
+    let stale = dir.0.join("state.part");
+    fs::write(&stale, b"stale and longer").unwrap();
+    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
+        fs::set_permissions(&stale, fs::Permissions::from_mode(0o644)).unwrap();
     }
+    DurableFile::write(&path, b"third").unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"third");
+    assert!(!stale.exists());
+    #[cfg(unix)]
+    assert_eq!(mode(&path), 0o600);
+
     // A path with no file name, and a directory that is not there.
     assert!(matches!(
         DurableFile::write(Path::new("/"), b""),
@@ -62,11 +81,7 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
     DurableFile::create_dir(&path).unwrap();
     assert_eq!(fs::read(path.join("kept")).unwrap(), b"kept");
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o700);
-    }
+    assert_eq!(mode(&path), 0o700);
     // A file in its place is no directory.
     assert!(matches!(
         DurableFile::create_dir(&path.join("kept")),

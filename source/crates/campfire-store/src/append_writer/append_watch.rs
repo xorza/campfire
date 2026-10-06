@@ -1,15 +1,15 @@
-use std::io;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crate::journal::Shared;
+use crate::append_writer::Shared;
+use crate::append_writer::error::AppendError;
 
-/// What another part of the server sees of a journal: how many of its records are durable, and
-/// its failure.
+/// What another part of the program sees of an append writer: how many of its records are
+/// durable, and its failure.
 #[derive(Debug, Clone)]
-pub struct JournalWatch(pub(crate) Arc<Shared>);
+pub struct AppendWatch(pub(crate) Arc<Shared>);
 
-impl JournalWatch {
+impl AppendWatch {
     /// How many records the writer synced.
     pub fn durable(&self) -> u64 {
         self.0.durable.load(Ordering::Acquire)
@@ -18,21 +18,17 @@ impl JournalWatch {
     /// Whether the writer synced every record appended so far, or stopped at a failure, after
     /// which it keeps none.
     pub fn settled(&self) -> bool {
-        let pending = self
-            .0
-            .pending
-            .lock()
-            .expect("the journal's writer does not panic");
+        let pending = self.0.lock();
         pending.stopped || self.durable() == pending.records
     }
 
     /// The write or sync that failed, the first time it is asked after the failure; none
     /// before it, and after.
-    pub fn take_failure(&self) -> Option<io::Error> {
+    pub fn take_failure(&self) -> Option<AppendError> {
         self.0
             .failure
             .lock()
-            .expect("the journal's writer does not panic")
+            .expect("no thread panics holding the failure")
             .take()
     }
 }

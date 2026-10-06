@@ -14,6 +14,8 @@ mod error;
 mod events;
 mod input_message;
 mod join;
+mod journal_watch;
+mod key_file;
 mod leave_match;
 mod lobby;
 #[cfg(feature = "internals")]
@@ -89,6 +91,9 @@ pub use net_protocol::{InputChannel, NetProtocol};
 
 pub use data_dir::DataDir;
 pub use data_dir::error::DataDirError;
+pub use journal_watch::JournalWatch;
+pub use key_file::KeyFile;
+pub use key_file::error::KeyFileError;
 pub use order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
 pub use server_bots::{ServerBots, SlotBot};
 pub use server_exit::ServerExit;

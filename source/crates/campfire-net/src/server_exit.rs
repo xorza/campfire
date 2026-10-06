@@ -9,9 +9,9 @@ use tracing::error;
 use crate::events::checkpoint_failed::CheckpointFailed;
 use crate::events::journal_failed::JournalFailed;
 use crate::events::session_written::SessionWritten;
+use crate::journal_watch::JournalWatch;
 use crate::match_clock::MatchClock;
 use crate::session_dir::SessionDir;
-use crate::session_journal::SessionJournal;
 use crate::sim_server::SimServer;
 
 /// When a session's server exits, a dedicated one or a local one.
@@ -32,7 +32,7 @@ impl ServerExit {
     /// not written, as the session it holds is lost.
     pub fn due(world: &mut World, data: &Path, stop: bool) -> Option<AppExit> {
         if let Some(failure) = world
-            .get_resource::<SessionJournal>()
+            .get_resource::<JournalWatch>()
             .and_then(|journal| journal.0.take_failure())
         {
             JournalFailed {
@@ -91,19 +91,19 @@ mod tests {
     use std::num::{NonZeroU8, NonZeroU32};
 
     use campfire_package::{ModePackages, PackageDir};
-    use campfire_protocol::{
-        Journal, JournalFile, SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart,
-    };
+    use campfire_protocol::{SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
     use campfire_runner::{InputRules, SessionRules};
+    use campfire_store::{AppendFile, AppendWriter};
 
     use super::*;
     use crate::local_match;
+    use crate::session_journal::SessionJournal;
 
     /// A journal's file whose every sync fails.
     #[derive(Debug)]
     struct FailingFile;
 
-    impl JournalFile for FailingFile {
+    impl AppendFile for FailingFile {
         fn append(&mut self, _: &[u8]) -> io::Result<()> {
             Ok(())
         }
@@ -133,12 +133,12 @@ mod tests {
             slots: vec![SlotStart::Open],
         };
         let mut log = SessionLog::new(header).unwrap();
-        let journal = Journal::start(FailingFile);
+        let journal = SessionJournal(AppendWriter::start("journal", FailingFile));
         let mut world = World::new();
-        world.insert_resource(SessionJournal(journal.watch()));
+        world.insert_resource(JournalWatch(journal.watch()));
         let data = Path::new("unused");
         assert_eq!(ServerExit::due(&mut world, data, false), None);
-        log.keep_journal(journal);
+        log.keep_journal(Box::new(journal));
         // Dropped, the log's journal waits for its writer, which stopped at the failed sync.
         drop(log);
         let code = NonZeroU8::new(ServerExit::JOURNAL_FAILED).unwrap();

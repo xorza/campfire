@@ -18,7 +18,7 @@ use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{
-    AfterLeave, Applied, Journal, JournalFrames, LeaveReason, Outcome, SeedError, ServerInput,
+    AfterLeave, Applied, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError, ServerInput,
     ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
     SlotPlan, SnapshotFingerprint, Taken,
 };
@@ -27,6 +27,7 @@ use campfire_runner::{
     InputRules, ResultMismatch, Runner, ServerInputRefused, SlotRuleError, StartError, TermsError,
 };
 use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_store::AppendWriter;
 use campfire_verifier::{Replay, ReplayError, SnapshotCheckError, Verified};
 use tempfile::TempDir;
 
@@ -204,6 +205,17 @@ fn replayed(fixed: &FixedMatch) -> (Replay, HashTrail, Result<(), ReplayError>) 
     (replay, trail, end)
 }
 
+/// A journal on disk, as a server keeps one: the store's append writer, which the log frames its
+/// records into.
+#[derive(Debug)]
+struct FileJournal(AppendWriter);
+
+impl RecordSink for FileJournal {
+    fn append(&self, write: &mut dyn FnMut(&mut Vec<u8>)) {
+        self.0.append(write);
+    }
+}
+
 #[test]
 fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
     // The orders' match, journaled from its start, checkpointed before tick 40 and ended before
@@ -211,9 +223,9 @@ fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
     let scratch = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let path = scratch.path().join("journal");
     let mut fixed = session().start();
-    fixed
-        .runner_mut()
-        .keep_journal(Journal::create(&path).unwrap());
+    fixed.runner_mut().keep_journal(Box::new(FileJournal(
+        AppendWriter::create("journal", &path, JournalFrames::TAG).unwrap(),
+    )));
     let mut trail = HashTrail::default();
     let orders = ORDERS.each_ref();
     play(&mut fixed, &orders, 0..40, &mut trail);

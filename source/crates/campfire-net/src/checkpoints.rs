@@ -6,9 +6,10 @@ use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::SaveBy;
 use campfire_common::{Tick, Ticks};
 use campfire_log::LogEvent;
-use campfire_protocol::{CheckpointBegun, CheckpointError, DurableError, Outcome};
+use campfire_protocol::{CheckpointBegun, CheckpointError, Outcome};
 use campfire_runner::{CheckpointBeginError, Session};
 use campfire_sim::StateDelta;
+use campfire_store::DurableError;
 use lightyear::prelude::MessageReceiver;
 
 use crate::checkpoint_thread::{CheckpointThread, Returned, SignedCheckpoint};

@@ -1,8 +1,8 @@
 use std::fs::File;
 use std::io::{self, Write};
 
-/// What a journal's writer thread appends to and syncs: its file, or a stand-in under test.
-pub trait JournalFile: Send + 'static {
+/// What an append writer's thread appends to and syncs: a file, or a stand-in under test.
+pub trait AppendFile: Send + 'static {
     fn append(&mut self, bytes: &[u8]) -> io::Result<()>;
 
     /// Makes what was appended durable.
@@ -10,7 +10,7 @@ pub trait JournalFile: Send + 'static {
 }
 
 /// `sync_data`, which is `F_FULLFSYNC` on Apple systems: a filesystem without it fails the sync.
-impl JournalFile for File {
+impl AppendFile for File {
     fn append(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.write_all(bytes)
     }

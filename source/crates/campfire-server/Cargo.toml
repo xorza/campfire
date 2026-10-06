@@ -11,6 +11,7 @@ campfire-package.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
+campfire-store.workspace = true
 
 bevy_app.workspace = true
 bevy_ecs.workspace = true

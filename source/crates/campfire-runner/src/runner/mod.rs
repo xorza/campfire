@@ -2,8 +2,8 @@ use bevy_ecs::world::World;
 use campfire_common::StateHash;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal, Outcome,
-    PlayerInput, ResultError, ServerInput, ServerSeeds, SessionLog, SessionResult, Signature,
+    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Outcome, PlayerInput,
+    RecordSink, ResultError, ServerInput, ServerSeeds, SessionLog, SessionResult, Signature,
 };
 use campfire_sim::StateCopy;
 
@@ -93,13 +93,13 @@ impl Runner {
     }
 
     /// See `Session::keep_journal`.
-    pub fn keep_journal(&mut self, journal: Journal) {
-        self.world.resource_mut::<Session>().keep_journal(journal);
+    pub fn keep_journal(&mut self, sink: Box<dyn RecordSink + Send + Sync>) {
+        self.world.resource_mut::<Session>().keep_journal(sink);
     }
 
     /// See `Session::resume_journal`.
-    pub fn resume_journal(&mut self, journal: Journal) {
-        self.world.resource_mut::<Session>().resume_journal(journal);
+    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink + Send + Sync>) {
+        self.world.resource_mut::<Session>().resume_journal(sink);
     }
 
     /// See `Session::save_due`.

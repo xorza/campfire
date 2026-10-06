@@ -2,8 +2,9 @@ use std::error::Error;
 use std::{fmt, io};
 
 use campfire_common::PlayerSlot;
-use campfire_protocol::{ConnectError, DelegationError, DurableError};
+use campfire_protocol::{ConnectError, DelegationError};
 use campfire_runner::{ResumeError, ServerInputRefused, StartError, TermsError};
+use campfire_store::DurableError;
 use toml::de::Error as TomlError;
 
 /// Why the server refused a player's join.

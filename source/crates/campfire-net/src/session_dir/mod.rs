@@ -7,16 +7,15 @@ use bevy_ecs::world::{Mut, World};
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::Keypair;
-use campfire_protocol::{
-    DurableError, DurableFile, Journal, JournalError, JournalFrames, Outcome, SessionId,
-    SessionLog, SessionPrivate,
-};
+use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
 use campfire_runner::Session;
+use campfire_store::{AppendOpenError, DurableError, DurableFile};
 
 use crate::checkpoints::Checkpoints;
 use crate::events::session_aborted::SessionAborted;
 use crate::server_signer::ServerSigner;
 use crate::session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
+use crate::session_journal::SessionJournal;
 
 pub(crate) mod error;
 
@@ -34,7 +33,7 @@ pub struct SessionDir {
 /// go to, each named by its fingerprint in hex.
 #[derive(Debug)]
 pub struct SessionFiles {
-    pub journal: Journal,
+    pub journal: SessionJournal,
     pub snapshots: PathBuf,
 }
 
@@ -63,9 +62,9 @@ impl SessionDir {
     }
 
     /// The session's files: its new journal, and where its snapshots go.
-    pub fn start(&self) -> Result<SessionFiles, JournalError> {
+    pub fn start(&self) -> Result<SessionFiles, AppendOpenError> {
         Ok(SessionFiles {
-            journal: Journal::create(&self.path.join("journal"))?,
+            journal: SessionJournal::create(&self.path.join("journal"))?,
             snapshots: self.snapshots(),
         })
     }
@@ -138,14 +137,14 @@ impl SessionDir {
         let modified = fs::metadata(&path)
             .and_then(|metadata| metadata.modified())
             .map_err(RestoreError::Read)?;
-        let mut frames = JournalFrames::new(&bytes).map_err(RestoreError::Journal)?;
+        let mut frames = JournalFrames::new(&bytes).map_err(RestoreError::NotJournal)?;
         let records: Vec<&[u8]> = frames.by_ref().collect();
         if records.is_empty() {
             return Ok(None);
         }
         let log = SessionLog::from_journal(records).map_err(RestoreError::Replay)?;
         let whole = u64::try_from(frames.whole()).expect("a file's length fits u64");
-        let journal = Journal::reopen(&path, whole).map_err(RestoreError::Journal)?;
+        let journal = SessionJournal::reopen(&path, whole).map_err(RestoreError::Journal)?;
         Ok(Some(RestoredSession {
             private,
             log,
@@ -209,7 +208,7 @@ impl RestoredSession {
             .map_err(AbortError::Start)?;
         world
             .resource_mut::<Session>()
-            .resume_journal(self.files.journal);
+            .resume_journal(Box::new(self.files.journal));
         let signer = ServerSigner::new(server_key, entropy);
         loop {
             Checkpoints::take_again(&mut world, &self.files.snapshots, &signer)
