@@ -56,6 +56,14 @@ impl DurableFile {
         DurableFile::sync_directory(parent).map_err(DurableError::SyncDirectory)
     }
 
+    /// Removes the directory `path` and all it holds, and syncs its parent, so it does not come
+    /// back after a crash.
+    pub fn remove_dir(path: &Path) -> Result<(), DurableError> {
+        let parent = path.parent().ok_or(DurableError::NoName)?;
+        fs::remove_dir_all(path).map_err(DurableError::Remove)?;
+        DurableFile::sync_directory(parent).map_err(DurableError::SyncDirectory)
+    }
+
     /// A new file at `path`, its owner's only on Unix; an error when there is a file, whose mode
     /// would stay what it was.
     fn create(path: &Path) -> io::Result<File> {

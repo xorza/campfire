@@ -87,4 +87,11 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
         DurableFile::create_dir(&path.join("kept")),
         Err(DurableError::Create(_))
     ));
+    // Removed, it goes with all it holds; a directory that is not there is not removed.
+    DurableFile::remove_dir(&path).unwrap();
+    assert!(!path.exists());
+    assert!(matches!(
+        DurableFile::remove_dir(&path),
+        Err(DurableError::Remove(_))
+    ));
 }

@@ -14,6 +14,8 @@ pub enum DurableError {
     Write(io::Error),
     Sync(io::Error),
     Rename(io::Error),
+    /// A directory was not removed.
+    Remove(io::Error),
     SyncDirectory(io::Error),
 }
 
@@ -30,6 +32,7 @@ impl fmt::Display for DurableError {
             DurableError::Rename(error) => {
                 write!(f, "could not rename the temporary file: {error}")
             }
+            DurableError::Remove(error) => write!(f, "could not remove the directory: {error}"),
             DurableError::SyncDirectory(error) => {
                 write!(f, "could not sync the directory: {error}")
             }
@@ -46,6 +49,7 @@ impl Error for DurableError {
             | DurableError::Write(error)
             | DurableError::Sync(error)
             | DurableError::Rename(error)
+            | DurableError::Remove(error)
             | DurableError::SyncDirectory(error) => Some(error),
         }
     }

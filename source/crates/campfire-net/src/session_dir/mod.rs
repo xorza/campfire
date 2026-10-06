@@ -180,8 +180,8 @@ impl SessionDir {
     }
 
     /// Removes the directory of a session whose match never started, which logged nothing.
-    pub fn remove(self) -> io::Result<()> {
-        fs::remove_dir_all(&self.path)
+    pub fn remove(self) -> Result<(), DurableError> {
+        DurableFile::remove_dir(&self.path)
     }
 
     /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
@@ -247,6 +247,10 @@ impl RestoredSession {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test makes and removes the files of its fixtures"
+)]
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU32;

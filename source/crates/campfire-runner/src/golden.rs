@@ -136,6 +136,10 @@ impl Golden {
             writeln!(lines, "{tick} {state} {behaviour}").expect("text writes into a string");
         }
         if env::var_os("CAMPFIRE_BLESS").is_some() {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "a test's golden file, which only `CAMPFIRE_BLESS` writes again"
+            )]
             fs::write(&path, &lines).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
             return;
         }

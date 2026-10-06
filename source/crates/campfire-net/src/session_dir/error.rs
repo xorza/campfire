@@ -120,7 +120,7 @@ pub enum WaitingError {
     Find(FindError),
     Restore(RestoreError),
     /// The directory of a session whose match never started did not go.
-    Remove(io::Error),
+    Remove(DurableError),
 }
 
 impl fmt::Display for WaitingError {

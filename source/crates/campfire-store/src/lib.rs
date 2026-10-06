@@ -1,6 +1,12 @@
 //! How the engine writes files and runs threads: durable and secret files, data directories and
-//! their locks, and the worker threads that write them, each with its failure. The bytes of each file are its owner's: this
-//! crate depends on no engine crate, and decides no policy for a failure.
+//! their locks, and the worker threads that write them, each with its failure. The bytes of each
+//! file are its owner's: this crate depends on no engine crate, and decides no policy for a
+//! failure.
+
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the one crate that writes files and starts threads, which clippy.toml denies the others"
+)]
 
 mod append_writer;
 mod data_dir;

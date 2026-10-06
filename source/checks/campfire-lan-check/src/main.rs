@@ -138,6 +138,10 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
                 .len(),
         );
         let path = dir.join(format!("{}.toml", Process::Bot(index).file_stem()));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the LAN check writes its run directory, which a run of it reads and keeps"
+        )]
         fs::write(&path, text).map_err(|error| CheckError::File {
             path: path.clone(),
             error,

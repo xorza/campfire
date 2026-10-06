@@ -272,6 +272,10 @@ impl LanMatch<'_> {
     /// a file beside it.
     fn start(&self, process: Process, command: &mut Command) -> Result<Child, CheckError> {
         let text = self.dir.join(format!("{}.log", process.file_stem()));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the LAN check writes its run directory, which a run of it reads and keeps"
+        )]
         let text = File::create(&text).map_err(|error| CheckError::File { path: text, error })?;
         command
             .current_dir(self.dir)
