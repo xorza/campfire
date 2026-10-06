@@ -15,8 +15,8 @@ fn logged(slot: u32, stamp: u64, tick: u64) -> InputLogged {
     }
 }
 
-/// The process of bot `index`, of a script of 2 orders, which started in `slot` and sent `sent`,
-/// by stamp, and ran to its end.
+/// The process of bot `index`, of a script of 2 orders, which started in `slot` and sent and kept
+/// `sent`, by stamp, and ran to its end.
 fn bot(index: usize, slot: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
     BotEvents {
         bot: index,
@@ -25,6 +25,13 @@ fn bot(index: usize, slot: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
             start_tick: 5,
         }),
         sent: sent
+            .iter()
+            .map(|&(stamp, orders)| OrdersSent {
+                stamp: Tick::new(stamp),
+                orders,
+            })
+            .collect(),
+        kept: sent
             .iter()
             .map(|&(stamp, orders)| OrdersSent {
                 stamp: Tick::new(stamp),
@@ -176,9 +183,11 @@ fn a_match_fails_by_each_flaw_it_has() {
         outcome: failed,
     };
     assert_eq!(found(&verdict), [no_log, verifier_failed.clone()]);
-    verdict.process(Process::Server, Outcome::Overran, &empty(Process::Server));
+    // The server that writes the log is the one the check started again.
+    let again = Process::ServerAgain;
+    verdict.process(again, Outcome::Overran, &empty(again));
     let server_overran = Failure::Ended {
-        process: Process::Server,
+        process: again,
         outcome: Outcome::Overran,
     };
     assert_eq!(found(&verdict), [verifier_failed, server_overran]);

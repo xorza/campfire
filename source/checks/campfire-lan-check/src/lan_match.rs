@@ -6,7 +6,7 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use campfire_common::Bytes32;
+use campfire_common::{Bytes32, Tick};
 use campfire_net::{InputLogged, Listening, MatchStarted};
 
 use crate::binaries::Binaries;
@@ -16,7 +16,7 @@ use crate::process::Process;
 use crate::process_log::ProcessLog;
 
 /// How long the server gets to listen, and then the whole match to end, before the check stops
-/// what still runs: a match of 3 s ends in a few more.
+/// what still runs: a match of 11 s, with a restart its clients notice in 5 s, ends in a few more.
 const DEADLINE: Duration = Duration::from_secs(30);
 /// How often the check looks at the processes while it waits.
 const POLL: Duration = Duration::from_millis(50);
@@ -28,6 +28,9 @@ pub(crate) const LOCAL_DATA: &str = "local-data";
 /// The bot the check stops once the server logged its first order, and starts again with its key
 /// file.
 pub(crate) const RESTARTED: usize = 1;
+/// The check stops the server once it logged an input of this stamp or a later one, which the
+/// second orders of the scripts are, and starts it again on its data directory.
+const SERVER_STOP: Tick = Tick::new(50);
 
 /// A match of the real server and one bot per script, each a process on `127.0.0.1`, each
 /// logging JSON to a file in the run's directory; beside them, an impostor bot that pins the
@@ -43,63 +46,57 @@ pub(crate) struct LanMatch<'a> {
     pub(crate) scripts: &'a [PathBuf],
 }
 
-/// How each process of a match ended: the bot `RESTARTED`'s first process among the bots, and
-/// the one the check started again after it.
+/// How each process of a match ended: the server's first process and the one the check started
+/// again after it, the bot `RESTARTED`'s first process among the bots, and the one the check
+/// started again after it.
 #[derive(Debug)]
 pub(crate) struct Played {
     pub(crate) server: Outcome,
+    pub(crate) server_again: Outcome,
     pub(crate) bots: Vec<Outcome>,
     pub(crate) rejoined: Outcome,
     pub(crate) impostor: Outcome,
 }
 
+/// What the first server's start came to: it listened, or it ended as the outcome says.
+#[derive(Debug)]
+enum Listened {
+    Yes(Listening),
+    No(Outcome),
+}
+
+impl Played {
+    /// A match whose server never listened, which ended as `server` says, of `bots` bots none of
+    /// which started.
+    fn unplayed(server: Outcome, bots: usize) -> Played {
+        Played {
+            server,
+            server_again: Outcome::NotStarted,
+            bots: vec![Outcome::NotStarted; bots],
+            rejoined: Outcome::NotStarted,
+            impostor: Outcome::NotStarted,
+        }
+    }
+}
+
 impl LanMatch<'_> {
     /// Starts the server, waits until it listens, starts the bots and the impostor; once the
     /// server logged the first order of bot `RESTARTED`, stops that bot and starts it again with
-    /// its key file; and waits until every process ended or the deadline passed.
+    /// its key file; once it logged an input stamped `SERVER_STOP` or later, stops the server
+    /// and starts it again on its data directory; and waits until every process ended or the
+    /// deadline passed.
     pub(crate) fn play(&self) -> Result<Played, CheckError> {
         let deadline = Instant::now() + DEADLINE;
         let address = SocketAddr::from(([127, 0, 0, 1], free_port()?));
-        let mut server = self.start(
-            Process::Server,
-            Command::new(&self.binaries.server)
-                .arg("--data")
-                .arg(self.dir.join(SERVER_DATA))
-                .arg(self.mode)
-                .arg(address.to_string()),
-        )?;
-        let log = Process::Server.log_path(self.dir);
-        let listening = loop {
-            let listening = ProcessLog::read(Process::Server, &log)?.first::<Listening>()?;
-            if listening.is_some() || Instant::now() >= deadline {
-                break listening;
-            }
-            if let Some(status) = server.try_wait().map_err(|error| CheckError::Wait {
-                process: Process::Server,
-                error,
-            })? {
-                return Ok(Played {
-                    server: Outcome::of(status),
-                    bots: vec![Outcome::NotStarted; self.scripts.len()],
-                    rejoined: Outcome::NotStarted,
-                    impostor: Outcome::NotStarted,
-                });
-            }
-            thread::sleep(POLL);
-        };
-        let Some(Listening {
+        let mut server = self.server(Process::Server, address)?;
+        let Listening {
             certificate,
             server_key,
             tick_hz,
             ..
-        }) = listening
-        else {
-            return Ok(Played {
-                server: stop(Process::Server, &mut server)?,
-                bots: vec![Outcome::NotStarted; self.scripts.len()],
-                rejoined: Outcome::NotStarted,
-                impostor: Outcome::NotStarted,
-            });
+        } = match self.listen(&mut server, deadline)? {
+            Listened::Yes(listening) => listening,
+            Listened::No(outcome) => return Ok(Played::unplayed(outcome, self.scripts.len())),
         };
         let mut children = vec![(Process::Server, server)];
         let wrong = Bytes32::new(certificate.as_bytes().map(|byte| !byte)).to_string();
@@ -140,8 +137,22 @@ impl LanMatch<'_> {
         } else {
             None
         };
+        let restored = if self.logged_by(SERVER_STOP, deadline)? {
+            kill(Process::Server, &mut children[0].1)?;
+            children[0] = (
+                Process::ServerAgain,
+                self.server(Process::ServerAgain, address)?,
+            );
+            true
+        } else {
+            false
+        };
         let mut ended = wait(&mut children, deadline)?;
-        let server = ended.remove(0);
+        let (server, server_again) = if restored {
+            (Outcome::Stopped, ended.remove(0))
+        } else {
+            (ended.remove(0), Outcome::NotStarted)
+        };
         let impostor = ended.pop().expect("the impostor ran");
         let rejoined = match stopped {
             Some(outcome) => mem::replace(&mut ended[RESTARTED], outcome),
@@ -149,10 +160,60 @@ impl LanMatch<'_> {
         };
         Ok(Played {
             server,
+            server_again,
             bots: ended,
             rejoined,
             impostor,
         })
+    }
+
+    /// Waits until the first server, `server`, listens, ends, or the deadline passed, when the
+    /// check stops it.
+    fn listen(&self, server: &mut Child, deadline: Instant) -> Result<Listened, CheckError> {
+        let log = Process::Server.log_path(self.dir);
+        loop {
+            if let Some(listening) =
+                ProcessLog::read(Process::Server, &log)?.first::<Listening>()?
+            {
+                return Ok(Listened::Yes(listening));
+            }
+            if Instant::now() >= deadline {
+                return Ok(Listened::No(stop(Process::Server, server)?));
+            }
+            if let Some(status) = server.try_wait().map_err(|error| CheckError::Wait {
+                process: Process::Server,
+                error,
+            })? {
+                return Ok(Listened::No(Outcome::of(status)));
+            }
+            thread::sleep(POLL);
+        }
+    }
+
+    /// Starts the server as `process`, on its data directory, listening on `address`.
+    fn server(&self, process: Process, address: SocketAddr) -> Result<Child, CheckError> {
+        self.start(
+            process,
+            Command::new(&self.binaries.server)
+                .arg("--data")
+                .arg(self.dir.join(SERVER_DATA))
+                .arg(self.mode)
+                .arg(address.to_string()),
+        )
+    }
+
+    /// Waits until the server logged an input stamped `stamp` or later, or the deadline passed;
+    /// whether it did.
+    fn logged_by(&self, stamp: Tick, deadline: Instant) -> Result<bool, CheckError> {
+        let path = Process::Server.log_path(self.dir);
+        while Instant::now() < deadline {
+            let logged = ProcessLog::read(Process::Server, &path)?.read_all::<InputLogged>()?;
+            if logged.iter().any(|input| input.stamp >= stamp) {
+                return Ok(true);
+            }
+            thread::sleep(POLL);
+        }
+        Ok(false)
     }
 
     /// Waits until the server logged an input of the slot that `bot` learned it plays, or the

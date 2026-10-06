@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::Level;
 use campfire_net::{
-    InputLogged, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten, TicksCaughtUp,
+    InputLogged, InputsDiscarded, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten,
+    TicksCaughtUp,
 };
 use campfire_verifier::Verified;
 
@@ -22,12 +23,14 @@ pub(crate) struct Verdict {
 }
 
 /// What a bot process logged of its match, the bot's index, the number of orders its script
-/// holds, and whether it ran to its end: one the check stopped sent only some.
+/// holds, and whether it ran to its end: one the check stopped sent only some. Of the orders it
+/// sent, those it kept are the ones no resume discarded.
 #[derive(Debug)]
 pub(crate) struct BotEvents {
     pub(crate) bot: usize,
     pub(crate) started: Option<MatchStarted>,
     pub(crate) sent: Vec<OrdersSent>,
+    pub(crate) kept: Vec<OrdersSent>,
     pub(crate) scripted: usize,
     pub(crate) whole: bool,
 }
@@ -45,6 +48,7 @@ impl BotEvents {
             bot,
             started: log.first::<MatchStarted>()?,
             sent: log.read_all::<OrdersSent>()?,
+            kept: log.kept_orders()?,
             scripted,
             whole,
         })
@@ -60,10 +64,11 @@ impl Verdict {
         self.warned(process, log);
     }
 
-    /// Checks that `process` logged no warning or error.
+    /// Checks that `process` logged no warning or error but the inputs a resume discarded, which
+    /// the orders' check counts.
     fn warned(&mut self, process: Process, log: &ProcessLog) {
         for line in log.lines() {
-            if line.level >= Level::Warn {
+            if line.level >= Level::Warn && line.read::<InputsDiscarded>().is_none() {
                 self.failures.push(Failure::Warned {
                     process,
                     level: line.level,
@@ -102,9 +107,9 @@ impl Verdict {
     }
 
     /// Checks that each bot process learned its slot and, when it ran to its end, sent every
-    /// order of its script, and that the server logged exactly the inputs the bots sent, each
-    /// taking effect in its stamp tick, or after the ticks of a frame that `caught_up` with a
-    /// stall and that it waited for.
+    /// order of its script, and that the session's log, `logged`, holds exactly the inputs the
+    /// bots sent and kept, each taking effect in its stamp tick, or after the ticks of a frame
+    /// that `caught_up` with a stall and that it waited for.
     pub(crate) fn orders(
         &mut self,
         logged: &[InputLogged],
@@ -118,11 +123,10 @@ impl Verdict {
                 self.failures.push(Failure::NoSlot { bot });
                 continue;
             };
-            let mut count = 0;
-            for &OrdersSent { stamp, orders } in &events.sent {
+            for &OrdersSent { stamp, orders } in &events.kept {
                 *sent.entry((slot, stamp)).or_default() += orders;
-                count += orders;
             }
+            let count: usize = events.sent.iter().map(|sent| sent.orders).sum();
             if events.whole && count != events.scripted {
                 self.failures.push(Failure::OrderCount {
                     bot,

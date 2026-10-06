@@ -13,7 +13,7 @@ impl SessionKind {
     /// The process that wrote the session's log.
     pub(crate) const fn host(self) -> Process {
         match self {
-            SessionKind::Lan => Process::Server,
+            SessionKind::Lan => Process::ServerAgain,
             SessionKind::Local => Process::Local,
         }
     }

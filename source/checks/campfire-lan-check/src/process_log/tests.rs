@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_net::MatchStarted;
 
 use super::*;
@@ -55,4 +55,32 @@ fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
             .lines()
             .is_empty()
     );
+}
+
+#[test]
+fn a_bot_keeps_the_orders_it_sent_but_the_last_each_resume_discarded() {
+    let sent = |stamp: u64, orders: usize| {
+        format!(
+            r#"{{"level":"DEBUG","target":"t","fields":{{"message":"{}","stamp":{stamp},"orders":{orders}}}}}"#,
+            OrdersSent::MESSAGE
+        )
+    };
+    let discarded = |count: u64| {
+        format!(
+            r#"{{"level":"WARN","target":"t","fields":{{"message":"{}","slot":0,"count":{count}}}}}"#,
+            InputsDiscarded::MESSAGE
+        )
+    };
+    // 2 orders at 20 and 1 at 50, then a resume that drops 2 inputs: the order at 50 and the
+    // second at 20. Then 1 at 60, and a resume that drops 5, more than it holds: none stays.
+    let lines = [sent(20, 2), sent(50, 1), discarded(2), sent(60, 1)];
+    let log = ProcessLog::parse(Process::Bot(0), &format!("{}\n", lines.join("\n"))).unwrap();
+    let kept = |stamp, orders| OrdersSent {
+        stamp: Tick::new(stamp),
+        orders,
+    };
+    assert_eq!(log.kept_orders().unwrap(), [kept(20, 1), kept(60, 1)]);
+    let all = [lines.join("\n"), discarded(5)].join("\n");
+    let log = ProcessLog::parse(Process::Bot(0), &format!("{all}\n")).unwrap();
+    assert_eq!(log.kept_orders().unwrap(), []);
 }

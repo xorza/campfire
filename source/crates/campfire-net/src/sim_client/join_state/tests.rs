@@ -416,20 +416,33 @@ fn a_client_refuses_a_receipt_not_signed_over_its_own_chain() {
 fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
     let verifier = Secp256k1::verification_only();
     let (mut state, mut signer, heads, delegation, receipt) = receipted();
-    // Seq 1 is kept; seq 1 again and seq 0 are older; seq 2 replaces it.
+    // Seq 1 is kept; seq 1 again, as a restored server gives it at a later tick, is kept in its
+    // place, and with another head refused; seq 0 is older; seq 2 replaces it.
     assert_eq!(state.take_receipt(&signed(receipt), &verifier), Ok(()));
     assert_eq!(state.receipt(), Some(&signed(receipt)));
+    let again = Receipt {
+        tick: Tick::new(9),
+        ..receipt
+    };
+    assert_eq!(state.take_receipt(&signed(again), &verifier), Ok(()));
+    assert_eq!(state.receipt(), Some(&signed(again)));
+    let other = Receipt {
+        head: heads[1],
+        ..again
+    };
+    assert_eq!(
+        state.take_receipt(&signed(other), &verifier),
+        Err(ReceiptRefusal::OtherHead)
+    );
     let first = Receipt {
         seq: 0,
         head: heads[1],
         ..receipt
     };
-    for older in [receipt, first] {
-        assert_eq!(
-            state.take_receipt(&signed(older), &verifier),
-            Err(ReceiptRefusal::Older)
-        );
-    }
+    assert_eq!(
+        state.take_receipt(&signed(first), &verifier),
+        Err(ReceiptRefusal::Older)
+    );
     let third = Receipt {
         tick: Tick::new(6),
         seq: 2,

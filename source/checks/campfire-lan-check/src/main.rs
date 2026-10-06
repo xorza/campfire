@@ -1,13 +1,16 @@
 //! LAN check on request: builds and starts the real `campfire-server` and two
-//! `campfire-client --bot` processes over WebTransport on `127.0.0.1`, for a match of about 3 s
+//! `campfire-client --bot` processes over WebTransport on `127.0.0.1`, for a match of about 11 s
 //! of the test lane mode, and a third bot that pins the wrong certificate; once the server logged
-//! the second bot's first order, it stops that bot and starts it again with its key file. Then it
+//! the second bot's first order, it stops that bot and starts it again with its key file; once it
+//! logged an input stamped 50 or later, it kills the server and starts it again on its data
+//! directory, which restores the session, and the bots come back to it. Then it
 //! plays a client bot of the first script against a server bot of the second on a local server,
 //! `campfire-client --local`, with no network. It reads their JSON logs and runs
-//! `campfire-verifier` on each session log. It passes when every process succeeded, the bot it
-//! stopped ran until it did, and none logged a warning or an error; every order a bot process
-//! sent was logged and took effect in its stamp tick, or right after a frame of several ticks it
-//! waited for, the second bot started again sending each order of its script, late or not; each
+//! `campfire-verifier` on each session log. It passes when every process succeeded, the bot and
+//! the server it stopped ran until it did, and none logged a warning or an error but the inputs
+//! a resume discarded; every order a bot process sent and kept is in the published log and took
+//! effect in its stamp tick, or right after a frame of several ticks it waited for, the second
+//! bot started again sending each order of its script, late or not; each
 //! verifier gives its host's final hash; and the third bot exited with failure and logged why.
 //!
 //! Run it with `cargo run -p campfire-lan-check [-- <run root>]`. Each run's logs and session log
@@ -26,6 +29,7 @@ use campfire_net::{
     InputLogged, LinkLost, Listening, OrderScript, SessionDir, SessionWritten, TicksCaughtUp,
 };
 use campfire_package::PackageDir;
+use campfire_protocol::SessionLog;
 use campfire_verifier::Verified;
 use tracing::{error, info};
 
@@ -57,15 +61,16 @@ mod verdict;
 const MODE: &str = "test/modes/lane";
 /// The packages the verifier holds, the lane mode's among them.
 const PACKAGES: &str = "test";
-/// Each bot's orders: two steps near its spawn and a cast of its first ability, then it leaves
-/// after tick 90, 3 s into the match. The walker's cast hits whoever stands within 2 m; the
-/// runner's names no target, which its ability needs, so the sim refuses it, but the order is an
-/// input all the same.
+/// Each bot's orders: two steps near its spawn and a cast of its first ability, a third step at
+/// tick 300, after the server's restart, then it leaves after tick 330, 11 s into the match: a
+/// client notices a server that stopped by QUIC's idle timeout, 5 s, and comes back to it before
+/// its script ends. The walker's cast hits whoever stands within 2 m; the runner's names no
+/// target, which its ability needs, so the sim refuses it, but the order is an input all the same.
 const SCRIPTS: [&str; 2] = [
-    "end = 90\n[[order]]\ntick = 20\nmove = [2, 0]\n[[order]]\ntick = 50\nmove = [-1, 2]\n\
-     [[order]]\ntick = 70\ncast = 0\n",
-    "end = 90\n[[order]]\ntick = 20\nmove = [-2, 0]\n[[order]]\ntick = 50\nmove = [1, -2]\n\
-     [[order]]\ntick = 70\ncast = 0\n",
+    "end = 330\n[[order]]\ntick = 20\nmove = [2, 0]\n[[order]]\ntick = 50\nmove = [-1, 2]\n\
+     [[order]]\ntick = 70\ncast = 0\n[[order]]\ntick = 300\nmove = [0, 1]\n",
+    "end = 330\n[[order]]\ntick = 20\nmove = [-2, 0]\n[[order]]\ntick = 50\nmove = [1, -2]\n\
+     [[order]]\ntick = 70\ncast = 0\n[[order]]\ntick = 300\nmove = [0, -1]\n",
 ];
 
 fn main() -> ExitCode {
@@ -148,8 +153,11 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     let played = lan.play()?;
     let mut verdict = Verdict::default();
     let server = ProcessLog::read(Process::Server, &Process::Server.log_path(dir))?;
-    verdict.process(Process::Server, played.server, &server);
+    verdict.stopped(Process::Server, played.server, &server);
     verdict.listened(&server.read_all::<Listening>()?);
+    let again = Process::ServerAgain;
+    let server_again = ProcessLog::read(again, &again.log_path(dir))?;
+    verdict.process(again, played.server_again, &server_again);
     let mut bots = Vec::with_capacity(played.bots.len() + 1);
     for ((bot, &outcome), &scripted) in played.bots.iter().enumerate().zip(&scripted) {
         let process = Process::Bot(bot);
@@ -165,8 +173,9 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     let log = ProcessLog::read(again, &again.log_path(dir))?;
     verdict.process(again, played.rejoined, &log);
     bots.push(BotEvents::of(RESTARTED, &log, scripted[RESTARTED], true)?);
-    let caught_up = server.read_all::<TicksCaughtUp>()?;
-    verdict.orders(&server.read_all::<InputLogged>()?, &caught_up, &bots);
+    let mut caught_up = server.read_all::<TicksCaughtUp>()?;
+    caught_up.extend(server_again.read_all::<TicksCaughtUp>()?);
+    verdict.orders(&published_inputs(dir, &server_again)?, &caught_up, &bots);
     let impostor = ProcessLog::read(Process::Impostor, &Process::Impostor.log_path(dir))?;
     verdict.impostor(played.impostor, &impostor.read_all::<LinkLost>()?);
     verify(&binaries, dir, SessionKind::Lan, &mut verdict)?;
@@ -176,6 +185,29 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     verdict.process(Process::Local, local, &log);
     verify(&binaries, dir, SessionKind::Local, &mut verdict)?;
     Ok(verdict)
+}
+
+/// The inputs of the session log that the server whose log is `server` published in `dir`, each
+/// with the tick it took effect in; none when it published none.
+fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<InputLogged>, CheckError> {
+    let Some(written) = server.first::<SessionWritten>()? else {
+        return Ok(Vec::new());
+    };
+    let path = SessionDir::published(&dir.join(SERVER_DATA), written.session);
+    let bytes = fs::read(&path).map_err(|error| CheckError::File { path, error })?;
+    let published = SessionLog::decode(&bytes).map_err(CheckError::SessionLog)?;
+    let ticks = published.next_tick();
+    let mut log = published.rewound();
+    let mut inputs = Vec::new();
+    while log.next_tick() < ticks {
+        let tick = log.next_tick();
+        inputs.extend(log.seal_tick().map(|input| InputLogged {
+            slot: input.slot,
+            stamp: input.stamp,
+            tick,
+        }));
+    }
+    Ok(inputs)
 }
 
 /// Verifies the session logs of the matches played in `dir` with this machine's verifier, and

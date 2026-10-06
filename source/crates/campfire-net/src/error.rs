@@ -64,7 +64,7 @@ pub enum ReceiptRefusal {
     Other,
     /// It names a seq the client's history does not hold, or a head that is not the player's.
     OtherHead,
-    /// It names no later seq than the one the client keeps.
+    /// It names an earlier seq than the one the client keeps.
     Older,
 }
 
@@ -144,7 +144,7 @@ impl fmt::Display for ReceiptRefusal {
             ReceiptRefusal::BadSignature => "the server key did not sign it",
             ReceiptRefusal::Other => "it names another session, slot or delegation",
             ReceiptRefusal::OtherHead => "it names a head that is not the player's at its seq",
-            ReceiptRefusal::Older => "it names no later seq than the kept receipt",
+            ReceiptRefusal::Older => "it names an earlier seq than the kept receipt",
         })
     }
 }

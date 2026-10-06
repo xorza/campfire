@@ -398,8 +398,9 @@ impl JoinState {
     }
 
     /// Takes `receipt`, when the server key signed it over this player's chain as it stood at
-    /// its seq, under their delegation or the one it renewed, a later seq than the one the client
-    /// keeps: the client keeps it, and forgets its chain's history before it.
+    /// its seq, under their delegation or the one it renewed, no earlier seq than the one the
+    /// client keeps, as a restored server gives the same head again: the client keeps it, and
+    /// forgets its chain's history before it.
     pub(crate) fn take_receipt(
         &mut self,
         receipt: &SignedReceipt,
@@ -422,7 +423,7 @@ impl JoinState {
         }
         if member
             .receipt
-            .is_some_and(|kept| kept.receipt.seq >= signed.seq)
+            .is_some_and(|kept| kept.receipt.seq > signed.seq)
         {
             return Err(ReceiptRefusal::Older);
         }
