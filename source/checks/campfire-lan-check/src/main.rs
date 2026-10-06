@@ -19,8 +19,8 @@ use std::time::SystemTime;
 
 use campfire_log::Logging;
 use campfire_net::{
-    InputLogged, LinkLost, Listening, MatchStarted, OrderScript, OrdersSent, SessionWritten,
-    TicksCaughtUp,
+    InputLogged, LinkLost, Listening, MatchStarted, OrderScript, OrdersSent, SessionDir,
+    SessionWritten, TicksCaughtUp,
 };
 use campfire_package::PackageDir;
 use campfire_verifier::Verified;
@@ -28,7 +28,7 @@ use tracing::{error, info};
 
 use crate::binaries::Binaries;
 use crate::error::CheckError;
-use crate::lan_match::LanMatch;
+use crate::lan_match::{LanMatch, SERVER_DATA};
 use crate::mode::Mode;
 use crate::outcome::Outcome;
 use crate::process::Process;
@@ -192,10 +192,13 @@ fn verify(
     let written = server.first::<SessionWritten>()?;
     let verified = match &written {
         Some(written) => {
+            // The log in the run's directory: `written.file` is a path on the machine that played
+            // the run, in that system's syntax, which another may not read.
+            let file = SessionDir::published(&dir.join(SERVER_DATA), written.session);
             let path = Process::Verifier.log_path(dir);
             let status = Command::new(&binaries.verifier)
                 .arg(PackageDir::workspace(PACKAGES))
-                .arg(&written.file)
+                .arg(file)
                 .current_dir(dir)
                 .env("CAMPFIRE_LOG", &path)
                 .stdout(Stdio::null())

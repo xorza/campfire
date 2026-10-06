@@ -19,6 +19,8 @@ use crate::process_log::ProcessLog;
 const DEADLINE: Duration = Duration::from_secs(30);
 /// How often the check looks at the processes while it waits.
 const POLL: Duration = Duration::from_millis(50);
+/// The server's data directory, in the run's directory.
+pub(crate) const SERVER_DATA: &str = "server-data";
 
 /// A match of the real server and one bot per script, each a process on `127.0.0.1`, each
 /// logging JSON to a file in the run's directory; beside them, an impostor bot that pins the
@@ -52,7 +54,7 @@ impl LanMatch<'_> {
             Process::Server,
             Command::new(&self.binaries.server)
                 .arg("--data")
-                .arg(self.dir.join("server-data"))
+                .arg(self.dir.join(SERVER_DATA))
                 .arg(self.mode)
                 .arg(address.to_string()),
         )?;

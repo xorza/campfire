@@ -7,8 +7,8 @@ use bevy_ecs::world::{Mut, World};
 use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{
-    DurableError, DurableFile, Journal, JournalError, JournalFrames, Outcome, SessionLog,
-    SessionPrivate,
+    DurableError, DurableFile, Journal, JournalError, JournalFrames, Outcome, SessionId,
+    SessionLog, SessionPrivate,
 };
 use campfire_runner::Session;
 
@@ -134,6 +134,11 @@ impl SessionDir {
         }))
     }
 
+    /// Where the log of the session `session` is published under `data`.
+    pub fn published(data: &Path, session: SessionId) -> PathBuf {
+        data.join("logs").join(format!("{session}.campfire-log"))
+    }
+
     /// Removes the directory of a session whose match never started, which logged nothing.
     pub fn remove(self) -> io::Result<()> {
         fs::remove_dir_all(&self.path)
@@ -142,9 +147,8 @@ impl SessionDir {
     /// Publishes `log`, its seed revealed, as `logs/<session id>.campfire-log` under `data`,
     /// written durably; the file's path.
     pub fn publish(data: &Path, log: &SessionLog) -> Result<PathBuf, DurableError> {
-        let logs = data.join("logs");
-        DurableFile::create_dir(&logs)?;
-        let file = logs.join(format!("{}.campfire-log", log.session_id()));
+        DurableFile::create_dir(&data.join("logs"))?;
+        let file = SessionDir::published(data, log.session_id());
         let mut bytes = Vec::new();
         log.encode(&mut bytes);
         DurableFile::write(&file, &bytes)?;
