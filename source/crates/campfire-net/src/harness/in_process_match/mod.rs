@@ -74,10 +74,12 @@ fn unix_now() -> u64 {
 /// What an `InProcessMatch` runs: how many players join, and how.
 #[derive(Debug, Clone, Copy)]
 pub struct MatchSetup {
-    /// 1 or 2: the lane mode has a slot a side.
+    /// The players, a client each, in the slots from 0: one or two in the lane mode, a slot a
+    /// side, and at most `MAX_PLAYERS`.
     pub players: usize,
-    /// When the clients roll their state back.
-    pub rollback: RollbackMode,
+    /// When each player's client rolls its state back, by player; those past the players go
+    /// unused.
+    pub rollbacks: [RollbackMode; MatchSetup::MAX_PLAYERS],
     /// Server frames a tick: a real server runs frames faster than ticks.
     pub server_frames: u32,
     /// How each link carries packets, both ways.
@@ -90,8 +92,8 @@ pub struct MatchSetup {
     pub rules: PlayersData,
     /// The lane mode's `[saves]`.
     pub saves: SavesData,
-    /// The script of the server's bot in the slot after the players', when it plays one.
-    pub bot: Option<&'static str>,
+    /// The order script of the server's bot in each slot after the players', in slot order.
+    pub bots: &'static [&'static str],
     /// The script of the server's bot in a slot its player left, when it plays one.
     pub takeover: Option<&'static str>,
 }
@@ -129,6 +131,9 @@ pub enum End {
 }
 
 impl MatchSetup {
+    /// The most players a setup holds: the reference 3v3's six.
+    pub const MAX_PLAYERS: usize = 6;
+
     /// One player through a perfect link, whose client rolls back only on a misprediction, with
     /// a server that runs a frame a tick.
     pub const SOLO: MatchSetup =
@@ -142,7 +147,7 @@ impl MatchSetup {
     ) -> MatchSetup {
         MatchSetup {
             players: 1,
-            rollback,
+            rollbacks: [rollback; MatchSetup::MAX_PLAYERS],
             server_frames,
             link: LinkModel::PERFECT,
             seed_chain,
@@ -152,7 +157,7 @@ impl MatchSetup {
                 by: SaveBy::Player,
                 autosave_ms: None,
             },
-            bot: None,
+            bots: &[],
             takeover: None,
         }
     }
@@ -162,7 +167,7 @@ impl MatchSetup {
     pub const fn duo(link: LinkModel, seed_chain: SeedChain) -> MatchSetup {
         MatchSetup {
             players: 2,
-            rollback: RollbackMode::Check,
+            rollbacks: [RollbackMode::Check; MatchSetup::MAX_PLAYERS],
             server_frames: 3,
             link,
             seed_chain,
@@ -172,7 +177,7 @@ impl MatchSetup {
                 by: SaveBy::Player,
                 autosave_ms: None,
             },
-            bot: None,
+            bots: &[],
             takeover: None,
         }
     }
@@ -220,16 +225,26 @@ impl InProcessMatch {
 
     /// A match of the test lane mode at its default rate, its clients connected and synced.
     pub fn new(setup: MatchSetup) -> InProcessMatch {
-        let log = LogCheck::start();
         assert!(
             (1..=2).contains(&setup.players),
             "the lane mode takes 1 or 2 players"
+        );
+        InProcessMatch::of_mode(setup, InProcessMatch::lane_mode(setup.rules, setup.saves))
+    }
+
+    /// A match of `packages` at their default rate, its clients connected and synced.
+    pub fn of_mode(setup: MatchSetup, packages: ModePackages) -> InProcessMatch {
+        let log = LogCheck::start();
+        assert!(
+            setup.players <= MatchSetup::MAX_PLAYERS,
+            "a setup holds at most {} players",
+            MatchSetup::MAX_PLAYERS
         );
         assert!(
             setup.server_frames > 0,
             "the server runs a frame a tick at least"
         );
-        let packages = Arc::new(InProcessMatch::lane_mode(setup.rules, setup.saves));
+        let packages = Arc::new(packages);
         let tick_hz = packages.manifest().tick_hz.default();
         let tick = TickRate::new(tick_hz).length();
 
@@ -416,15 +431,17 @@ impl InProcessMatch {
         }
     }
 
-    /// The bots of the setup: its bot in the slot after the players', and its takeover bot.
+    /// The bots of the setup: its bots in the slots after the players', and its takeover bot.
     fn server_bots(&self) -> ServerBots {
         let script = |text| OrderScript::parse(text).expect("a test's bot script reads");
-        let slots = self.setup.bot.map(|text| SlotBot {
-            slot: PlayerSlot::new(u32::try_from(self.setup.players).expect("a small count")),
-            script: script(text),
-        });
+        let slots = (self.setup.players..)
+            .zip(self.setup.bots)
+            .map(|(slot, &text)| SlotBot {
+                slot: PlayerSlot::new(u32::try_from(slot).expect("a small count")),
+                script: script(text),
+            });
         ServerBots {
-            slots: slots.into_iter().collect(),
+            slots: slots.collect(),
             takeover: self.setup.takeover.map(script),
         }
     }
@@ -496,19 +513,25 @@ impl InProcessMatch {
         }
     }
 
-    /// Opens the session for every client, and steps until each joined, every end runs the
-    /// match, and each client holds its player's avatar; see `Lobby`. The players take slots in the
-    /// order their joins arrive. A client runs match ticks from the match start's message, and
-    /// its avatar comes in the replication after the server's first tick, in another packet: which
+    /// `open_match`, then `await_avatars` for `CONNECT_FRAMES`, as the lane mode's avatars come
+    /// with its first tick. A client runs match ticks from the match start's message, and its
+    /// avatar comes in the replication after the server's first tick, in another packet: which
     /// arrives first varies with how Lightyear packs and resends them, by the wall clock.
     pub fn start_match(&mut self) {
+        self.open_match();
+        self.await_avatars(CONNECT_FRAMES);
+    }
+
+    /// Opens the session for every client, and steps until each joined and every end runs the
+    /// match; see `Lobby`. The players take slots in the order their joins arrive.
+    pub fn open_match(&mut self) {
         let packages = Arc::clone(&self.packages);
         let mut lobby = Lobby::new(LobbySetup {
             tick_hz: packages.manifest().tick_hz.default(),
             packages,
             seed_chain: self.setup.seed_chain,
             inputs: InputRules::LAN,
-            slots: self.setup.players + usize::from(self.setup.bot.is_some()),
+            slots: self.setup.players + self.setup.bots.len(),
             bots: self.server_bots(),
             open: Vec::new(),
             server: self.server_setup(),
@@ -528,7 +551,6 @@ impl InProcessMatch {
             let playing = |client: &App| client.world().resource::<JoinState>().clock().is_some();
             if self.server.world().contains_resource::<MatchClock>()
                 && self.clients.iter().all(playing)
-                && (0..self.clients.len()).all(|client| self.holds_hero(client))
             {
                 return;
             }
@@ -537,13 +559,23 @@ impl InProcessMatch {
         panic!("the match did not start in {CONNECT_FRAMES} frames");
     }
 
-    /// Whether `client` holds its player's avatar.
-    fn holds_hero(&self, client: usize) -> bool {
+    /// Steps until each client holds its player's avatar, for at most `frames` frames: a mode
+    /// may spawn the avatars only after its pick.
+    pub fn await_avatars(&mut self, frames: usize) {
+        for _ in 0..frames {
+            if (0..self.clients.len()).all(|client| self.holds_avatar(client)) {
+                return;
+            }
+            self.step();
+        }
+        panic!("the clients did not hold their avatars in {frames} frames");
+    }
+
+    /// Whether `client` holds its player's avatar, which the server spawned.
+    fn holds_avatar(&self, client: usize) -> bool {
         let world = self.clients[client].world();
-        world
-            .resource::<EntityIndex>()
-            .get(self.avatar(client))
-            .is_some()
+        self.spawned_avatar(client)
+            .is_some_and(|avatar| world.resource::<EntityIndex>().get(avatar).is_some())
     }
 
     /// One frame of the server alone, which shifts where in a step its ticks fall.
@@ -620,6 +652,12 @@ impl InProcessMatch {
 
     /// `client`'s player's avatar, as the server holds it.
     pub fn avatar(&self, client: usize) -> StableId {
+        self.spawned_avatar(client)
+            .expect("the match started, with the player's avatar")
+    }
+
+    /// `client`'s player's avatar, as the server holds it, once the server spawned it.
+    fn spawned_avatar(&self, client: usize) -> Option<StableId> {
         let world = self.server.world();
         let slot = world
             .get::<PlayerLink>(self.links[client])
@@ -633,7 +671,6 @@ impl InProcessMatch {
                     .is_some_and(|owner| owner.slot() == slot)
             })
             .map(|(id, _)| id)
-            .expect("the match started, with the player's avatar")
     }
 
     /// Makes each client play the script of its avatar's team, by team index, as a bot does; gives
@@ -785,7 +822,7 @@ impl ClientApp {
             .world_mut()
             .resource_mut::<PredictionManager>()
             .rollback_policy
-            .state = setup.rollback;
+            .state = setup.rollbacks[player];
         pass_through_delay_lines(&mut client);
         let entity = SimClient::spawn_client(client.world_mut());
         ClientApp {

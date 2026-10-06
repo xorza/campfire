@@ -34,10 +34,8 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
     // One player in slot 0, the server's bot in slot 1: it picks "runner" in tick 5, and walks to
     // (3, 2) in tick 10.
     let mut setup = MatchSetup::SOLO;
-    setup.bot = Some(
-        "[[input]]\ntick = 5\nname = \"pick\"\nvalue = \"runner\"\n\
-         [[order]]\ntick = 10\nmove = [3, 2]\n",
-    );
+    setup.bots = &["[[input]]\ntick = 5\nname = \"pick\"\nvalue = \"runner\"\n\
+         [[order]]\ntick = 10\nmove = [3, 2]\n"];
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let bot = PlayerSlot::new(1);

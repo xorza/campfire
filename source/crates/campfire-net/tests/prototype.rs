@@ -13,13 +13,15 @@ use campfire_capabilities::{
 };
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_net::internals::{End, InProcessMatch, MatchSetup};
+use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{InputChannel, InputMessage, InputMessageRefused, PlayerLink, TickHashes};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_runner::internals::HashTrail;
 use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, Unpredicted};
-use lightyear::prelude::{Client, Connected, MessageSender, Predicted, RollbackMode};
+use lightyear::prelude::{
+    Client, Connected, MessageSender, Predicted, PredictionManager, RollbackMode,
+};
 
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
@@ -467,4 +469,21 @@ fn the_client_takes_the_relations_a_script_sets() {
     let set = relations(local.server());
     assert_ne!(set, Relations::default());
     assert_eq!(relations(local.client(0)), set);
+}
+
+#[test]
+fn each_players_client_rolls_back_as_the_setup_gives_for_that_player() {
+    let mut setup = MatchSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN);
+    setup.rollbacks[1] = RollbackMode::Always;
+    let local = InProcessMatch::new(setup);
+    let mode = |client: usize| {
+        let world = local.client(client).world();
+        world.resource::<PredictionManager>().rollback_policy.state
+    };
+    // `RollbackMode` compares by no `PartialEq`, so by its pattern.
+    let modes = [mode(0), mode(1)];
+    assert!(
+        matches!(modes, [RollbackMode::Check, RollbackMode::Always]),
+        "{modes:?}"
+    );
 }
