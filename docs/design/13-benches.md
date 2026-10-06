@@ -16,7 +16,7 @@ Proposal: one shape for every bench, by tier, and the benches the hottest paths 
   - An **end** case runs the reference packages as a match plays them, and times one end: the server's tick or frame, or the client's frame. The 3v3 for the server's tick and its stages; the lane 1v1 for the frames of both ends, through `InProcessMatch`.
   - A **kernel** case runs one capability's work for a tick on a made scene of 1,000 units, the count design 04 sets for an RTS battle ([Genres](04-capabilities/genres.md)): crowded into 40 m square and spread over 120 m square when its cost grows with how close the units stand, as `collision` is now. One scene builder serves every kernel of `capabilities`.
   - A **primitive** case runs one operation over 4,096 inputs drawn from `split_mix`, or over one input when the operation costs more than a microsecond, as a signature does.
-- **B2. One rule for a case's id.** The group is the path measured, a noun: `server_tick`, `server_stage`, `server_frame`, `client_frame`, `collision`, `fog`, `script`, `state_hash`, `chain_head`, `num`, `rng`, `vec3`. The case is the workload: an end case's is its statistic and scenario, `mean_3v3`, `worst_3v3`, `walk`, `worst_1v1`; a kernel case's is its scene, `crowded` or `spread`, or its variant when density does not change its cost; a primitive's is its operation. An end has a `mean` and a `worst` case where a match has both, since the worst tick is the budget ([Tick rate](04-capabilities/00-overview.md#tick-rate)).
+- **B2. One rule for a case's id.** The group is the path measured, a noun: `server_tick`, `server_stage`, `server_frame`, `client_frame`, `collision`, `fog`, `script`, `state_hash`, `snapshot`, `chain_head`, `num`, `rng`, `vec3`. The case is the workload: an end case's is its statistic and scenario, `mean_3v3`, `worst_3v3`, `walk`, `worst_1v1`; a kernel case's is its scene, `crowded` or `spread`, or its variant when density does not change its cost; a primitive's is its operation. An end has a `mean` and a `worst` case where a match has both, since the worst tick is the budget ([Tick rate](04-capabilities/00-overview.md#tick-rate)).
 - **B3. Every case states its unit.** A case whose iteration runs more than one of its cost unit, units, calls or inputs, states `Throughput::Elements` of that count, so criterion reports each one's cost. Each bench function's doc comment names the path, the scale and the cost unit.
 - **B4. An end case times one end.** A client case times only `client_frame`, a server case only `server_frame` or the runner's tick, by `iter_custom`, never a step that runs both.
 - **B5. A stage case times one stage of the real tick.** `sim`'s `StageClock::install`, which its `internals` give, adds to a built `SimUpdate` schedule a probe at each of the ten edges around the nine stages, each ordered between its two stages, which writes the time into the `StageClock` resource, outside the sim's state: it touches no component and no hashed resource, so the match and its hashes stay the same. A stage's time in a tick is between its two probes. The proving match plays to both goldens with the probes in its schedule, beside the reverse query order. The ten probes of a tick cost about 0.2 µs, 0.1 % of a 3v3 tick.
@@ -42,6 +42,7 @@ Proposal: one shape for every bench, by tier, and the benches the hottest paths 
 | Kernel | `script` | `script/call` | new | 1,000 calls of an empty hook through `ScriptHost::call`: what each AI think pays before its script runs |
 | Kernel | `script` | `script/native` | new | 1,000 calls of a hook that makes one call to a function the host registered, as each `ctx` query is |
 | Kernel | `sim` | `state_hash/all`, `state_hash/by_type` | `state_hash/moba_300`, `moba_300_by_type` | The state hash of 1,000 units |
+| Kernel | `sim` | `snapshot/all` | new | The snapshot of the same 1,000 units, as a checkpoint writes it |
 | Primitive | `protocol` | `chain_head/sign`, `chain_head/check` | the same | One packet's signature, made and checked |
 | Primitive | `math` | `num/*`, `vec3/*`, `rng/*` | the same | Each operation over 4,096 inputs |
 
@@ -49,7 +50,36 @@ The nine stages are `inputs`, `think`, `act`, `move`, `collide`, `hit`, `resolve
 
 ## Cost in CI
 
-CI runs each case once ([U13](12-structure.md#decisions)). Each `worst` case of an end plays a whole match: the 3v3's take about 1.5 s each in the dev profile, so the nine `server_stage/worst_3v3_*` add about 14 s to each platform's step, now 3.4 s, and `server_frame/worst_1v1` less than 0.3 s, what `net`'s three cases take now. That stays under the 30 s a suite may take; a shorter match would measure the pick and the first wave only.
+CI runs each case once ([U13](12-structure.md#decisions)). Each `worst` case of an end plays a whole match. Run 37518789388 measured the step: after a build of 4 to 12 s, its cases ran 30.2 s on Ubuntu, 31.8 s on macOS and 34.2 s on Windows, of which about 20 s is the eleven cases that each play a whole 3v3 in the dev profile. That passes the 30 s a suite may take, where this design estimated 17 s; [PLAN_QUESTIONS.md](../../PLAN_QUESTIONS.md) holds the choice.
+
+## Record
+
+The whole suite on one core of a Ryzen 7 6800U, criterion's median of each case, with `cargo bench --workspace --features bench --bench '*'`:
+
+| Case | Median | Case | Median |
+| --- | --- | --- | --- |
+| `server_tick/mean_3v3` | 155.8 µs | `server_stage/mean_3v3_inputs` | 6.9 µs |
+| `server_tick/worst_3v3` | 3.13 ms | `server_stage/mean_3v3_think` | 70.7 µs |
+| `server_tick/worst_3v3_checkpointed` | 3.15 ms | `server_stage/mean_3v3_act` | 4.4 µs |
+| `server_frame/walk` | 52.1 µs | `server_stage/mean_3v3_move` | 11.5 µs |
+| `server_frame/worst_1v1` | 303.3 µs | `server_stage/mean_3v3_collide` | 5.9 µs |
+| `client_frame/walk` | 45.8 µs | `server_stage/mean_3v3_hit` | 11.2 µs |
+| `client_frame/walk_rollback` | 88.8 µs | `server_stage/mean_3v3_resolve` | 20.0 µs |
+| `client_frame/worst_1v1` | 301.1 µs | `server_stage/mean_3v3_mode` | 2.4 µs |
+| `collision/crowded` | 306.3 µs | `server_stage/mean_3v3_vision` | 26.3 µs |
+| `collision/spread` | 79.1 µs | `server_stage/worst_3v3_inputs` | 1.66 ms |
+| `fog/sight` | 443.9 µs | `server_stage/worst_3v3_think` | 233.6 µs |
+| `script/call` | 59.5 µs | `server_stage/worst_3v3_act` | 20.0 µs |
+| `script/native` | 392.4 µs | `server_stage/worst_3v3_move` | 903.9 µs |
+| `state_hash/all` | 263.3 µs | `server_stage/worst_3v3_collide` | 25.9 µs |
+| `state_hash/by_type` | 264.9 µs | `server_stage/worst_3v3_hit` | 62.5 µs |
+| `snapshot/all` | 202.0 µs | `server_stage/worst_3v3_resolve` | 125.4 µs |
+| `chain_head/sign` | 17.5 µs | `server_stage/worst_3v3_mode` | 167.3 µs |
+| `chain_head/check` | 25.6 µs | `server_stage/worst_3v3_vision` | 74.6 µs |
+
+`num`, `vec3` and `rng` run 4,096 inputs a case: `num/mul` 7.5 µs, `num/div` 15.9 µs, `num/sqrt` 35.2 µs, `num/sin_cos` 75.4 µs, `num/sin_cos_huge` 75.7 µs, `num/atan2` 85.7 µs, `num/atan2_near_axis` 85.2 µs; `vec3/dot` 13.8 µs, `vec3/distance` 51.0 µs, `vec3/within` 11.0 µs, `vec3/normalized` 132.7 µs, `vec3/rotated_y` 19.0 µs; `rng/open` 175.4 µs, `rng/next_u64` 30.4 µs, `rng/below` 32.0 µs, `rng/chance` 31.7 µs.
+
+**The stages past 10 % of a tick** ([B6](#decisions)). Of the mean tick, 155.8 µs: Think, 70.7 µs, 45 %; Vision, 26.3 µs, 17 %; Resolve, 20.0 µs, 13 %. Of the worst tick, 3.13 ms: Inputs, 1.66 ms, 53 %, and Move, 0.90 ms, 29 %. Think has its kernel in `script`, Vision in `fog`; Resolve, Inputs and Move have none yet. The worst tick is 20 times the mean, and two stages that cost little on average make most of it.
 
 ## Plan
 

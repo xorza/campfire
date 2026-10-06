@@ -136,15 +136,7 @@ fn units_world() -> World {
 /// by state type, as the copy checks take it to name the type that differs.
 pub(crate) fn state_hash(c: &mut Criterion) {
     let world = units_world();
-    let mut registry = StateRegistry::new();
-    registry.register_component::<Position>();
-    registry.register_component::<Velocity>();
-    registry.register_component::<Health>();
-    registry.register_component::<Mana>();
-    registry.register_component::<Team>();
-    registry.register_component::<Target>();
-    registry.register_component::<Cooldowns>();
-    registry.register_component::<Stats>();
+    let registry = units_registry();
     let mut per_type = Vec::new();
 
     let mut group = c.benchmark_group("state_hash");
@@ -156,4 +148,35 @@ pub(crate) fn state_hash(c: &mut Criterion) {
         b.iter(|| black_box(registry.hash_by_type(black_box(&world), &mut per_type)));
     });
     group.finish();
+}
+
+/// The snapshot of a world of `UNITS` units, as a checkpoint writes it.
+pub(crate) fn snapshot(c: &mut Criterion) {
+    let world = units_world();
+    let registry = units_registry();
+    let mut out = Vec::new();
+
+    let mut group = c.benchmark_group("snapshot");
+    group.throughput(Throughput::Elements(UNITS.unsigned_abs()));
+    group.bench_function("all", |b| {
+        b.iter(|| {
+            registry.snapshot(black_box(&world), &mut out);
+            black_box(&out);
+        });
+    });
+    group.finish();
+}
+
+/// The registry of `units_world`'s state types.
+fn units_registry() -> StateRegistry {
+    let mut registry = StateRegistry::new();
+    registry.register_component::<Position>();
+    registry.register_component::<Velocity>();
+    registry.register_component::<Health>();
+    registry.register_component::<Mana>();
+    registry.register_component::<Team>();
+    registry.register_component::<Target>();
+    registry.register_component::<Cooldowns>();
+    registry.register_component::<Stats>();
+    registry
 }

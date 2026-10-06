@@ -6,4 +6,8 @@ The concrete steps of the current stages of the [roadmap](ROADMAP.md), in order,
 
 The design is [Benches](docs/design/13-benches.md): three tiers, one rule for a case's id, a case for each stage of the tick, and a kernel for each path past 10 % of a tick. Each step ends with `-- --list` printing its ids, and the check chain with `cargo test --bench '*'` passing for its crates.
 
-1. **B6. The record** ([B6](docs/design/13-benches.md#decisions)): the whole suite measured on one machine, named; each figure the design states names its case id; the stages past 10 % of the mean or the worst tick listed in 13, with a kernel step for each new one.
+Steps B7 to B9 wait for review: [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#kernels-for-the-new-hot-stages).
+
+1. **B7. The Inputs stage's worst** (B6 of [Benches](docs/design/13-benches.md#record)): it takes 1.66 ms of the 3.13 ms worst 3v3 tick, against 6.9 µs on average. Profile the ticks where it peaks, name the path, and give it a kernel and its capability's Cost figure.
+2. **B8. The Move stage's worst** (the same): 0.90 ms of the worst tick, against 11.5 µs on average. The same work.
+3. **B9. The Resolve stage** (the same): 20.0 µs, 13 % of the mean tick. The same work.

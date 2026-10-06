@@ -60,5 +60,6 @@ pub mod bench {
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         state_registry::bench::state_hash(c);
+        state_registry::bench::snapshot(c);
     }
 }
