@@ -8,6 +8,7 @@
 mod bot_driver;
 mod checkpoint_thread;
 mod checkpoints;
+mod data_dir;
 mod door;
 mod error;
 mod events;
@@ -17,12 +18,15 @@ mod leave_match;
 mod lobby;
 #[cfg(feature = "internals")]
 mod local_match;
+mod local_pace;
+mod local_server;
 mod match_clock;
 mod match_start;
 mod net_protocol;
 mod offer;
 mod offering;
 mod order_script;
+mod pace;
 mod receipts;
 mod seats;
 mod server_bots;
@@ -65,10 +69,16 @@ pub use events::time_dropped::TimeDropped;
 pub use input_message::InputMessage;
 
 pub use lobby::{Lobby, LobbySetup};
+pub use local_pace::LocalPace;
+pub use local_server::error::LocalServerError;
+pub use local_server::{LocalServer, LocalServerSetup};
 pub use match_clock::MatchClock;
+pub use pace::{Pace, Speed};
 
 pub use net_protocol::{InputChannel, NetProtocol};
 
+pub use data_dir::DataDir;
+pub use data_dir::error::DataDirError;
 pub use order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
 pub use server_bots::{ServerBots, SlotBot};
 pub use server_setup::ServerSetup;

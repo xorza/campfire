@@ -114,6 +114,7 @@ impl Opening {
             inputs: InputRules::LAN,
             slots,
             bots: setup.bots,
+            open: Vec::new(),
             server: setup.server,
         })
         .expect("a mode runs at its default rate");

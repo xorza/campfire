@@ -54,8 +54,11 @@ pub struct LobbySetup {
     pub inputs: InputRules,
     /// How many slots the session plays.
     pub slots: usize,
-    /// The bots the server plays: their slots are the bots', the rest the players'.
+    /// The bots the server plays: their slots are the bots'.
     pub bots: ServerBots,
+    /// The slots no one takes at the start, which a late join may take; the rest but the bots'
+    /// are the players'.
+    pub open: Vec<PlayerSlot>,
     pub server: ServerSetup,
 }
 
@@ -70,11 +73,15 @@ impl Lobby {
             inputs,
             slots,
             bots,
+            open,
             server,
         } = setup;
         let mut plan = vec![SlotPlan::Player; slots];
         for bot in &bots.slots {
             plan[bot.slot.index()] = SlotPlan::Bot;
+        }
+        for slot in open {
+            plan[slot.index()] = SlotPlan::Open;
         }
         let players = plan
             .iter()
@@ -277,6 +284,7 @@ mod tests {
             inputs: InputRules::LAN,
             slots: 2,
             bots: ServerBots::default(),
+            open: Vec::new(),
             server: ServerSetup {
                 key: local_match::server_keypair(),
                 certificate: CertificateHash::new([3; 32]),

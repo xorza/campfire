@@ -33,8 +33,9 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    CheckpointFailed, JournalFailed, Listening, MatchClock, NetProtocol, OrderScript, ServerBots,
-    ServerSetup, SessionDir, SessionJournal, SessionTimes, SessionWritten, SimServer, SlotBot,
+    CheckpointFailed, DataDir, JournalFailed, Listening, MatchClock, NetProtocol, OrderScript,
+    ServerBots, ServerSetup, SessionDir, SessionJournal, SessionTimes, SessionWritten, SimServer,
+    SlotBot,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
@@ -45,13 +46,11 @@ use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportSe
 use lightyear::prelude::{Identity, LinkOf, Linked, LocalAddr, ReplicationSender};
 use tracing::{error, info};
 
-use crate::data_dir::DataDir;
 use crate::data_path::DataPath;
 use crate::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, Restore};
 use crate::server_config::ServerConfig;
 
-mod data_dir;
 mod data_path;
 mod error;
 mod opening;

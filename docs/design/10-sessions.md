@@ -98,6 +98,9 @@ About once a second, for each player whose durable seq advanced, the server sign
 
 A singleplayer client starts the server as a thread, linked by Lightyear's in-process transport, with its data in the client's data directory and the client's player in slot 0; bots or open slots fill the rest as the command line says. The pause key pauses `Time<Virtual>` on both; the speed keys set the tick length of both to the session's tick length over 0.5, 1, 2 or 4. Neither enters the log.
 
+- **Command line.** `campfire-client --local --data <directory> [--server-bot <slot>=<orders file>]... <mode>`: each `--server-bot` gives the server a bot in its slot, and every other slot but slot 0 is open for a late join. The server's data directory is `server` under the client's, with what a dedicated server's holds: its key, its lock, its sessions and its logs. A session an earlier start left ends `aborted`, its log published, and each start opens a new one; a session ends, and its log is published, once every player left or the client exits.
+- **Pace.** P pauses and plays on; the keys 1 to 4 set the speed to 0.5, 1, 2 or 4 times. A `Pace` the two ends share holds both, and each end applies it to its own clock at the start of each frame: Lightyear's `SetTickDuration` sets `Time<Fixed>` and the timelines, and the most time a frame advances scales with the tick, so a frame runs as many ticks at most at every speed. The time the fixed clock holds over is kept, so the first frame at a higher speed may run one tick more.
+
 ## Protocol changes
 
 - **Terms.** The session id appends `u64 slot count ‖ u8 per slot` (0 player, 1 bot, 2 open) to what it hashes.

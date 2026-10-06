@@ -1,34 +1,25 @@
-use std::error::Error;
-use std::fmt;
 use std::fs::{self, File, TryLockError};
-use std::io;
 use std::path::Path;
 
+use campfire_protocol::KeyFile;
 use campfire_protocol::secp256k1::Keypair;
-use campfire_protocol::{KeyFile, KeyFileError};
+
+use crate::data_dir::error::DataDirError;
+
+pub(crate) mod error;
 
 /// A server's data directory, which it holds locked while it runs, so no second server writes
 /// what it writes: its key, `server.nsec`, made when missing, and its sessions.
 #[derive(Debug)]
-pub(crate) struct DataDir {
-    pub(crate) key: Keypair,
+pub struct DataDir {
+    pub key: Keypair,
     /// Holds the lock on `lock` until the server ends.
     _lock: File,
 }
 
-/// Why a data directory did not open.
-#[derive(Debug)]
-pub(crate) enum DataDirError {
-    Create(io::Error),
-    Lock(io::Error),
-    /// Another server holds it.
-    Locked,
-    Key(KeyFileError),
-}
-
 impl DataDir {
     /// The data directory at `path`, made when missing, its new key's bytes from `fill`.
-    pub(crate) fn open(path: &Path, fill: fn(&mut [u8; 32])) -> Result<DataDir, DataDirError> {
+    pub fn open(path: &Path, fill: fn(&mut [u8; 32])) -> Result<DataDir, DataDirError> {
         fs::create_dir_all(path).map_err(DataDirError::Create)?;
         let lock = File::options()
             .write(true)
@@ -44,27 +35,6 @@ impl DataDir {
         let key =
             KeyFile::read_or_create(&path.join("server.nsec"), fill).map_err(DataDirError::Key)?;
         Ok(DataDir { key, _lock: lock })
-    }
-}
-
-impl fmt::Display for DataDirError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DataDirError::Create(error) => write!(f, "could not make the data directory: {error}"),
-            DataDirError::Lock(error) => write!(f, "could not lock the data directory: {error}"),
-            DataDirError::Locked => f.write_str("another server holds the data directory"),
-            DataDirError::Key(error) => write!(f, "server.nsec: {error}"),
-        }
-    }
-}
-
-impl Error for DataDirError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            DataDirError::Create(error) | DataDirError::Lock(error) => Some(error),
-            DataDirError::Locked => None,
-            DataDirError::Key(error) => Some(error),
-        }
     }
 }
 

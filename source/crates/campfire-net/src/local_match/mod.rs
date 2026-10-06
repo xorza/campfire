@@ -35,9 +35,11 @@ use lightyear::transport::plugin::TransportSystems;
 use crate::lobby::{Lobby, LobbySetup};
 use crate::local_match::delay_line::DelayLine;
 use crate::local_match::link_model::LinkModel;
+use crate::local_pace::LocalPace;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
+use crate::pace::Pace;
 use crate::server_bots::{ServerBots, SlotBot};
 use crate::server_setup::ServerSetup;
 use crate::session_dir::SessionDir;
@@ -159,6 +161,8 @@ pub struct LocalMatch {
     packages: Arc<ModePackages>,
     /// The server's data directory, where it keeps its session, once a test gives it one.
     data: Option<PathBuf>,
+    /// The pause and the speed every end follows.
+    pace: Arc<Pace>,
     /// Last, so it drops after the apps and sees what they log as they drop.
     log: LogCheck,
 }
@@ -192,7 +196,8 @@ impl LocalMatch {
         let tick_hz = packages.manifest().tick_hz.default();
         let tick = TickRate::new(tick_hz).length();
 
-        let mut server = LocalMatch::server_app(&setup, tick);
+        let pace = Arc::new(Pace::default());
+        let mut server = LocalMatch::server_app(&setup, tick, &pace);
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
@@ -208,6 +213,7 @@ impl LocalMatch {
             setup,
             packages,
             data: None,
+            pace,
             log,
         };
         for player in 0..setup.players {
@@ -235,13 +241,17 @@ impl LocalMatch {
     }
 
     /// The server's app, its frames `setup.server_frames` a tick of `tick`, before any link.
-    fn server_app(setup: &MatchSetup, tick: Duration) -> App {
+    fn server_app(setup: &MatchSetup, tick: Duration, pace: &Arc<Pace>) -> App {
         let mut server = App::new();
         server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         server.add_plugins(ServerPlugins {
             tick_duration: tick,
         });
         server.add_plugins((NetProtocol, SimServer));
+        server.add_plugins(LocalPace {
+            pace: Arc::clone(pace),
+            tick,
+        });
         server.init_resource::<TickHashes>();
         let frame = tick / setup.server_frames;
         assert_eq!(
@@ -264,7 +274,7 @@ impl LocalMatch {
     pub fn add_client(&mut self, player: usize) -> usize {
         let tick_hz = self.packages.manifest().tick_hz.default();
         let ClientApp { mut app, entity } =
-            ClientApp::new(&self.setup, player, &self.packages, tick_hz);
+            ClientApp::new(&self.setup, player, &self.packages, tick_hz, &self.pace);
         app.finish();
         app.cleanup();
         run_in_order(&mut app);
@@ -408,7 +418,7 @@ impl LocalMatch {
             .unwrap_or_else(|error| panic!("{error}"))
             .expect("a session whose match started");
         let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
-        let mut server = LocalMatch::server_app(&self.setup, tick);
+        let mut server = LocalMatch::server_app(&self.setup, tick, &self.pace);
         self.server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
         server.cleanup();
@@ -442,6 +452,7 @@ impl LocalMatch {
             inputs: InputRules::LAN,
             slots: self.setup.players + usize::from(self.setup.bot.is_some()),
             bots: self.server_bots(),
+            open: Vec::new(),
             server: self.server_setup(),
         })
         .expect("the lane mode runs at its default rate");
@@ -641,6 +652,11 @@ impl LocalMatch {
         self.links[client]
     }
 
+    /// The pause and the speed every end follows.
+    pub fn pace(&self) -> &Pace {
+        &self.pace
+    }
+
     /// The events at Warn and Error that the match logged and no test took yet.
     pub const fn log(&self) -> &LogCheck {
         &self.log
@@ -660,12 +676,13 @@ struct ClientApp {
 }
 
 impl ClientApp {
-    /// The app of `player`, whose link to the server is `io`, through a delay line of `stream`.
+    /// The app of `player`, following `pace`.
     fn new(
         setup: &MatchSetup,
         player: usize,
         packages: &Arc<ModePackages>,
         tick_hz: NonZeroU32,
+        pace: &Arc<Pace>,
     ) -> ClientApp {
         let secret = u8::try_from(2 * player + 1).expect("a small player");
         let sim_client = SimClient {
@@ -688,6 +705,10 @@ impl ClientApp {
             tick_duration: tick,
         });
         client.add_plugins((NetProtocol, sim_client));
+        client.add_plugins(LocalPace {
+            pace: Arc::clone(pace),
+            tick,
+        });
         client.insert_resource(InputTimelineConfig::new(
             SyncConfig::default(),
             InputDelayConfig::no_input_delay(),
