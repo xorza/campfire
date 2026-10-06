@@ -1,3 +1,4 @@
+use std::cell::LazyCell;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
@@ -20,16 +21,17 @@ const CHECKPOINT_EVERY: u64 = 100;
 /// a checkpoint every `CHECKPOINT_EVERY` ticks, the copy of the state that changed. A rollback
 /// re-simulates whole ticks, so it costs its depth times these.
 pub(crate) fn tick_3v3(c: &mut Criterion) {
-    let reference = Reference3v3::load();
+    let reference = LazyCell::new(Reference3v3::load);
     let mut group = c.benchmark_group("tick_3v3");
     group.sample_size(10);
-    let mut fixed = reference.start();
+    let mut fixed = None;
     group.bench_function("mean", |b| {
+        let fixed = fixed.get_or_insert_with(|| reference.start());
         b.iter_custom(|ticks| {
             let mut spent = Duration::ZERO;
             for _ in 0..ticks {
                 if fixed.runner().log().next_tick() == Tick::new(TICKS) {
-                    fixed = reference.start();
+                    *fixed = reference.start();
                 }
                 spent += timed_tick(fixed.runner_mut());
             }

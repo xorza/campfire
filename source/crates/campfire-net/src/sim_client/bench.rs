@@ -26,10 +26,15 @@ pub(crate) fn rollback(c: &mut Criterion) {
         ("frame_without_rollback", RollbackMode::Check),
         ("frame_with_rollback", RollbackMode::Always),
     ] {
-        let mut local = InProcessMatch::new(MatchSetup::solo(mode, 1, InProcessMatch::SEED_CHAIN));
-        local.start_match();
+        let mut local = None;
         let mut frame: u64 = 0;
         group.bench_function(name, |b| {
+            let local = local.get_or_insert_with(|| {
+                let mut local =
+                    InProcessMatch::new(MatchSetup::solo(mode, 1, InProcessMatch::SEED_CHAIN));
+                local.start_match();
+                local
+            });
             b.iter(|| {
                 if frame.is_multiple_of(LEG_FRAMES) {
                     let z = if frame.is_multiple_of(2 * LEG_FRAMES) {
@@ -47,7 +52,7 @@ pub(crate) fn rollback(c: &mut Criterion) {
                 }
                 local.step();
                 frame += 1;
-                black_box(&local);
+                black_box(&*local);
             });
         });
     }

@@ -6,5 +6,4 @@ The concrete steps of the current stages of the [roadmap](ROADMAP.md), in order,
 
 The design is [Structure and names](docs/design/12-structure.md), U13: one bench target for each crate, named for its module, whose cases criterion's filter chooses by their `<group>/<case>` id; CI runs each case once.
 
-1. **B2. A heavy fixture in the first case that needs it** (runner, net; [U13](docs/design/12-structure.md#decisions)): the runner's `Reference3v3` in a `LazyCell`, and its `mean` case's match in an `Option`; each of `net`'s two rollback matches in an `Option` of its case. Check: `-- --list` for the runner and for `net` returns at once, and `-- --test` runs each case once.
-2. **B3. Each case once in CI** (CI; [U13](docs/design/12-structure.md#decisions)): a step `Benches` after `Test`, `cargo test --workspace --benches --all-features --locked`, on every platform. Check: the step passes on the three platforms, and a case made to panic fails it.
+1. **B3. Each case once in CI** (CI; [U13](docs/design/12-structure.md#decisions)): a step `Benches` after `Test`, `cargo test --workspace --benches --all-features --locked`, on every platform. Check: the step passes on the three platforms, and a case made to panic fails it.
