@@ -17,6 +17,7 @@ campfire-verifier.workspace = true
 derive_more.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+clap.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

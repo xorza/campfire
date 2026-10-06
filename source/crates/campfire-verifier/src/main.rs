@@ -3,7 +3,6 @@
 //! also checks the snapshot of each checkpoint. It logs as `campfire_log::Logging` says, `info`
 //! by default.
 
-use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
@@ -14,7 +13,12 @@ use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
 use campfire_verifier::{Replay, Verified};
+use clap::Parser;
 use tracing::{error, warn};
+
+use crate::args::Args;
+
+mod args;
 
 fn main() -> ExitCode {
     Logging {
@@ -22,32 +26,37 @@ fn main() -> ExitCode {
         file: "info,campfire_runner=debug,campfire_script=debug",
     }
     .start();
-    let mut args = env::args_os().skip(1);
-    let (Some(packages), Some(path), snapshots, None) =
-        (args.next(), args.next(), args.next(), args.next())
-    else {
-        error!(
-            "usage: campfire-verifier <packages directory> <session log file> \
-             [<snapshots directory>]"
-        );
-        return ExitCode::from(ExitStatus::Usage);
+    let args = match Args::try_parse() {
+        Ok(args) => args,
+        Err(output) if !output.use_stderr() => return shown(&output),
+        Err(error) => {
+            error!(error = %error, "the command line is refused");
+            return ExitCode::from(ExitStatus::Usage);
+        }
     };
-    let path = Path::new(&path);
-    match verify(
-        Path::new(&packages),
-        path,
-        snapshots.as_deref().map(Path::new),
-    ) {
+    match verify(&args.packages, &args.log, args.snapshots.as_deref()) {
         Ok(hash) => {
             Verified {
-                file: path.to_owned(),
+                file: args.log,
                 hash,
             }
             .log();
             ExitCode::from(ExitStatus::Success)
         }
         Err(error) => {
-            error!(file = %path.display(), error = %ErrorReport::of(&*error), "the log does not verify");
+            error!(file = %args.log.display(), error = %ErrorReport::of(&*error), "the log does not verify");
+            ExitCode::from(ExitStatus::Failure)
+        }
+    }
+}
+
+/// Ends the verifier once clap printed the help or the version `output` asked for, to standard
+/// output: with success, or with failure when it does not print.
+fn shown(output: &clap::Error) -> ExitCode {
+    match output.print() {
+        Ok(()) => ExitCode::from(ExitStatus::Success),
+        Err(error) => {
+            error!(error = %ErrorReport::of(&error), "the help does not print");
             ExitCode::from(ExitStatus::Failure)
         }
     }

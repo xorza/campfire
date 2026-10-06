@@ -2,6 +2,8 @@ use std::env;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use clap::{Parser, Subcommand};
+
 /// What the command line asks for.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
@@ -12,24 +14,47 @@ pub(crate) enum Mode {
     Verify { dir: PathBuf },
 }
 
+/// Plays a LAN match of the real server and clients and checks it, or verifies a run's session
+/// log.
+#[derive(Debug, Parser)]
+#[command(
+    version,
+    args_conflicts_with_subcommands = true,
+    disable_help_subcommand = true
+)]
+struct CommandLine {
+    /// The directory below which each run's directory goes; `campfire-lan-check` in the temporary
+    /// directory by default
+    root: Option<PathBuf>,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+/// The check's subcommands.
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Verifies the session log of a run, perhaps from another machine, with this machine's
+    /// verifier, and compares the server's final hash
+    Verify {
+        /// The run's directory
+        dir: PathBuf,
+    },
+}
+
 impl Mode {
-    /// The mode `args` name: `[<run root>]`, or `verify <run directory>`; `None` for any other
-    /// command line. The run root is `campfire-lan-check` in the temporary directory when the
-    /// command line names none.
-    pub(crate) fn parse(mut args: impl Iterator<Item = OsString>) -> Option<Mode> {
-        let mode = match (args.next(), args.next()) {
-            (None, _) => Mode::Play {
-                root: env::temp_dir().join("campfire-lan-check"),
+    /// The mode the command line `args`, the program first, names: `[<run root>]`, or `verify
+    /// <run directory>`; clap's error for any other command line, or for a request for the help
+    /// or the version.
+    pub(crate) fn read(args: impl IntoIterator<Item = OsString>) -> Result<Mode, clap::Error> {
+        let line = CommandLine::try_parse_from(args)?;
+        Ok(match line.command {
+            Some(Command::Verify { dir }) => Mode::Verify { dir },
+            None => Mode::Play {
+                root: line
+                    .root
+                    .unwrap_or_else(|| env::temp_dir().join("campfire-lan-check")),
             },
-            (Some(verify), Some(dir)) if verify == "verify" => Mode::Verify {
-                dir: PathBuf::from(dir),
-            },
-            (Some(root), None) if root != "verify" => Mode::Play {
-                root: PathBuf::from(root),
-            },
-            _ => return None,
-        };
-        args.next().is_none().then_some(mode)
+        })
     }
 }
 

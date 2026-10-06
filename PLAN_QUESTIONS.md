@@ -10,4 +10,4 @@ Each binary's `main` handles the `clap::Error` its `Args::read` gives the same w
 | B. `log` holds it, with no exit codes | `log` takes `clap`; it gives an enum of how the command line ended, which each binary maps to `ExitStatus` | A small mapping is copied in each binary, and a second enum names the same three ends |
 | C. Each binary keeps its copy | Nothing | Four copies, which U3 rules out |
 
-Blocked: nothing. C1 keeps a copy in the client and the server, and C2 in the verifier and the LAN check, until this is decided; option A or B then replaces the four.
+Blocked: nothing. C1 and C2 are done with option C, a copy in each of the four binaries; option A or B, when chosen, replaces the four with one.
