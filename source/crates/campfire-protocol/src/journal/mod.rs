@@ -8,13 +8,13 @@ pub(crate) mod record_sink;
 /// A session log's journal: the sink its records go to, framed, and how many it wrote there.
 #[derive(Debug)]
 pub(crate) struct Journal {
-    sink: Box<dyn RecordSink + Send + Sync>,
+    sink: Box<dyn RecordSink>,
     /// The records written into the sink since the log was given it.
     written: u64,
 }
 
 impl Journal {
-    pub(crate) fn new(sink: Box<dyn RecordSink + Send + Sync>) -> Journal {
+    pub(crate) fn new(sink: Box<dyn RecordSink>) -> Journal {
         Journal { sink, written: 0 }
     }
 

@@ -41,7 +41,7 @@ fn each_fault_is_logged_once_and_ends_the_server_as_its_policy_says() {
     world
         .resource_mut::<Faults>()
         .report(Fault::Receipt(DurableError::NoName));
-    let code = NonZeroU8::new(ServerExit::JOURNAL_FAILED).unwrap();
+    let code = NonZeroU8::new(ServerExit::STORAGE_FAILED).unwrap();
     assert_eq!(Faults::apply(&mut world), Some(AppExit::Error(code)));
     let failed = log.take::<CheckpointFailed>();
     assert_eq!(failed.len(), 1);

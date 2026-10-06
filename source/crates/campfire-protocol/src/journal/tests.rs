@@ -19,7 +19,7 @@ impl MemorySink {
     }
 
     /// A box of a sink into the same bytes, for a log to keep.
-    pub(crate) fn boxed(&self) -> Box<dyn RecordSink + Send + Sync> {
+    pub(crate) fn boxed(&self) -> Box<dyn RecordSink> {
         Box::new(self.clone())
     }
 }

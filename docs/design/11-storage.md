@@ -41,7 +41,7 @@ Three gaps of today's code the design closes:
 
 ## Protocol without IO
 
-- **Sink.** `SessionLog::keep_journal` and `resume_journal` take a `Box<dyn RecordSink + Send + Sync>`; `runner` passes it through, as it passes the journal now. For each record, the log calls the sink with a function that frames the record into the buffer the sink passes, so the bytes go once, straight into the writer's buffer, as they do now.
+- **Sink.** `SessionLog::keep_journal` and `resume_journal` take a `Box<dyn RecordSink>`; `runner` passes it through, as it passes the journal now. For each record, the log calls the sink with a function that frames the record into the buffer the sink passes, so the bytes go once, straight into the writer's buffer, as they do now.
 - **Durable heads.** The log counts the records it wrote into its sink from the one it was given; `SessionLog::advance_durable` takes how many of them are durable from its caller, which reads it from the `AppendWriter`. The receipts' rules do not change ([Receipts](10-sessions.md#receipts)).
 - **Reading back.** `JournalFrames` and `SessionLog::from_journal` stay in `protocol`, as they parse bytes; cutting the file to its whole frames and reopening it to append move to `store`.
 
@@ -63,7 +63,7 @@ Two rules join design 02's table. Clippy enforces each at compile time: `source/
 | Only `store` writes a file: no other crate writes, syncs, renames or removes a file, or makes a directory, but tests, the log crate's file of JSON lines, the LAN check's run directory, and a test's golden file in `runner`'s `internals`. So the deterministic core, `common`, `math`, `sim`, `script`, `capabilities`, `package`, `protocol` and `runner`, writes no file. | `disallowed-methods`: `std::fs::write`, `copy`, `rename`, `hard_link`, `remove_file`, `remove_dir`, `remove_dir_all`, `create_dir`, `create_dir_all`, `set_permissions`, `DirBuilder::new`, `File::create`, `File::create_new`, `File::options`, `File::set_len`, `File::sync_all`, `File::sync_data`, `File::set_permissions`, `OpenOptions::new` |
 | Every thread starts through `store`'s `Worker`, but in tests. | `disallowed-methods`: `std::thread::spawn`, `std::thread::scope`, `std::thread::Builder::spawn`, `std::thread::Builder::spawn_scoped` |
 
-A test beside the manifest test of `common` checks that `clippy.toml` lists each of these paths, and that no source allows the lint, or expects it for a crate or a module other than as above.
+A test beside the manifest test of `common` checks that `clippy.toml` lists each of these paths, and that no source allows the lint, turns it off in a `cfg_attr` or through a group that holds it, `clippy::style` or `clippy::all`, or expects it for a crate or a module other than as above.
 
 ## Tests
 

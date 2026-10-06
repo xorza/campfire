@@ -205,7 +205,7 @@ fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     // The fault reaches `Faults`, a snapshot's, which ends the server.
     let world = local.server_mut().world_mut();
     SimServer::settle_checkpoint(world);
-    let code = NonZeroU8::new(ServerExit::JOURNAL_FAILED).unwrap();
+    let code = NonZeroU8::new(ServerExit::STORAGE_FAILED).unwrap();
     assert_eq!(ServerExit::due(world, false), Some(AppExit::Error(code)));
     assert_eq!(ServerExit::due(world, false), None);
     assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);

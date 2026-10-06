@@ -100,59 +100,75 @@ fn unlisted<'a>(clippy: &str, rules: &[&'a str]) -> Vec<&'a str> {
     rules.iter().copied().filter(|path| !named(path)).collect()
 }
 
-/// The lint the storage rules' list feeds, named in two parts so that this file's own samples
-/// hold no attribute of it.
+/// The lint the storage rules' list feeds, and the groups that hold it, named in parts so that
+/// this file's own samples hold no attribute of them.
 const LINT: &str = concat!("clippy::", "disallowed_methods");
+const GROUPS: [&str; 2] = [concat!("clippy::", "style"), concat!("clippy::", "all")];
 
 /// The lines of `text`, the source at `path` under `source/`, whose attribute exempts code from
-/// the lint other than as the rules let it: only `expect`, never `allow`, so a stale one fails;
-/// for a whole crate only in `store`, which owns the rules, and in an integration test's root;
-/// for a module only on one of `#[cfg(test)]`; else on an item or a statement.
+/// the lint other than as the rules let it: only `expect` of the lint itself, never `allow`, a
+/// `cfg_attr` or a group that holds it, so a stale one fails and none hides; for a whole crate
+/// only in `store`, which owns the rules, and in an integration test's root; for a module only
+/// on one of `#[cfg(test)]`; else on an item or a statement.
 fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
     let line_of = |at: usize| text[..at].matches('\n').count() + 1;
     let mut misplaced = Vec::new();
-    for (at, _) in text.match_indices(LINT) {
-        // Only an attribute counts, `#[kind(` or `#![kind(` right before the lint; else it is a
-        // mention, in a comment or a string.
-        let Some(start) = text[..at].rfind('#') else {
-            continue;
-        };
-        let inner = text[start..].starts_with("#![");
-        let Some(kind) = text[start..at]
-            .strip_prefix(if inner { "#![" } else { "#[" })
-            .and_then(|opening| opening.trim_end().strip_suffix('('))
-            .filter(|kind| kind.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-        else {
-            continue;
-        };
-        if kind != "expect" {
-            misplaced.push(line_of(at));
-            continue;
-        }
-        if inner {
-            let crate_wide =
-                path == "crates/campfire-store/src/lib.rs" || path.ends_with("/tests/mod.rs");
-            if !crate_wide {
+    for name in [LINT].iter().chain(&GROUPS) {
+        for (at, _) in text.match_indices(name) {
+            if text[at + name.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            {
+                continue;
+            }
+            // Only an attribute counts: `#[` or `#![` before the name, with no `]` between, so
+            // the attribute is still open; else it is a mention, in a comment or a string.
+            let Some(start) = text[..at].rfind('#') else {
+                continue;
+            };
+            let opening = &text[start..at];
+            let inner = opening.starts_with("#![");
+            let Some(kind) = opening
+                .strip_prefix(if inner { "#![" } else { "#[" })
+                .filter(|_| !opening.contains(']'))
+                .and_then(|head| head.split_once('('))
+                .map(|(kind, _)| kind.trim())
+            else {
+                continue;
+            };
+            if ["warn", "deny", "forbid"].contains(&kind) {
+                continue;
+            }
+            if *name != LINT || kind != "expect" {
+                misplaced.push(line_of(at));
+                continue;
+            }
+            if inner {
+                let integration_root = matches!(
+                    path.split('/').collect::<Vec<_>>()[..],
+                    [_, _, "tests", "mod.rs"]
+                );
+                if path != "crates/campfire-store/src/lib.rs" && !integration_root {
+                    misplaced.push(line_of(at));
+                }
+                continue;
+            }
+            // The attributes after it, then the item they belong to.
+            let mut rest = &text[at..];
+            rest = &rest[rest.find(']').expect("an attribute closes") + 1..];
+            let mut test_only = false;
+            while let Some(next) = rest.trim_start().strip_prefix("#[") {
+                test_only |= next.starts_with("cfg(test)]");
+                rest = &next[next.find(']').expect("an attribute closes") + 1..];
+            }
+            let item = rest.trim_start();
+            let module = ["mod ", "pub mod ", "pub(crate) mod "]
+                .iter()
+                .any(|kind| item.starts_with(kind));
+            if module && !test_only {
                 misplaced.push(line_of(at));
             }
-            continue;
-        }
-        // The attributes after it, then the item they belong to.
-        let mut rest = &text[at..];
-        rest = &rest[rest.find(']').expect("an attribute closes") + 1..];
-        let mut test_only = false;
-        while let Some(next) = rest.trim_start().strip_prefix("#[") {
-            test_only |= next.starts_with("cfg(test)]");
-            rest = &next[next.find(']').expect("an attribute closes") + 1..];
-        }
-        let item = rest.trim_start();
-        let module = ["mod ", "pub mod ", "pub(crate) mod "]
-            .iter()
-            .any(|kind| item.starts_with(kind));
-        if module && !test_only {
-            misplaced.push(line_of(at));
         }
     }
+    misplaced.sort_unstable();
     misplaced
 }
 
@@ -193,9 +209,11 @@ fn only_store_writes_a_file_or_starts_a_thread() {
         read.iter()
             .any(|path| path == "crates/campfire-store/src/lib.rs")
     );
+}
 
-    // Each check fails on what breaks it: a list that misses a path, and each misplaced
-    // exemption.
+#[test]
+fn the_storage_rules_checks_fail_on_what_breaks_them() {
+    // A list that misses a path, and each misplaced exemption.
     let one = "disallowed-methods = [\n    { path = \"std::fs::write\", reason = \"r\" },\n]\n";
     assert_eq!(
         unlisted(one, &["std::fs::write", "std::fs::copy"]),
@@ -221,7 +239,7 @@ fn only_store_writes_a_file_or_starts_a_thread() {
         ),
         ("crates/x/src/lib.rs", format!("//! x\n{inner}"), vec![2]),
         ("crates/campfire-store/src/lib.rs", inner.clone(), vec![]),
-        ("crates/x/tests/mod.rs", inner, vec![]),
+        ("crates/x/tests/mod.rs", inner.clone(), vec![]),
         ("crates/x/src/a.rs", format!("{expect}mod io;\n"), vec![1]),
         (
             "crates/x/src/a.rs",
@@ -238,6 +256,39 @@ fn only_store_writes_a_file_or_starts_a_thread() {
             format!("/// Mentions `{LINT}`.\nfn f() {{}}\n"),
             vec![],
         ),
+        // Turned off under a condition, or with another lint on a module: both found.
+        (
+            "crates/x/src/a.rs",
+            format!("#[cfg_attr(test, allow({LINT}))]\nfn f() {{}}\n"),
+            vec![1],
+        ),
+        (
+            "crates/x/src/a.rs",
+            format!("#[expect(clippy::other, {LINT}, reason = \"r\")]\nmod io;\n"),
+            vec![1],
+        ),
+        // A group that holds the lint, but a longer name that starts with one's.
+        (
+            "crates/x/src/a.rs",
+            format!(
+                "#![allow({})]\n#[expect({})]\nfn f() {{}}\n",
+                GROUPS[1], GROUPS[0]
+            ),
+            vec![1, 2],
+        ),
+        (
+            "crates/x/src/a.rs",
+            format!("#[expect({}ow_attributes)]\nfn f() {{}}\n", GROUPS[1]),
+            vec![],
+        ),
+        // A level that does not turn the lint off.
+        (
+            "crates/x/src/a.rs",
+            format!("#[deny({LINT})]\nmod io;\n"),
+            vec![],
+        ),
+        // A unit test's directory is no integration test's root.
+        ("crates/x/src/a/tests/mod.rs", inner, vec![1]),
     ];
     for (path, text, lines) in cases {
         assert_eq!(misplaced_exemptions(path, &text), lines, "{text}");

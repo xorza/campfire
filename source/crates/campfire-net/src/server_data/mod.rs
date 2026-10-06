@@ -5,9 +5,9 @@ use campfire_protocol::SessionId;
 use campfire_store::{DataDir, DataDirError};
 
 /// A server's data directory, which it holds locked while it runs, so no second server writes
-/// what it writes, and the one place its paths are named: its key, `server.nsec`; its TLS
-/// identity, `tls`; each session's directory, `sessions/<session id>`; and each ended session's
-/// log, `logs/<session id>.campfire-log`.
+/// what it writes, and the one place its own paths are named: its key, `server.nsec`; its TLS
+/// identity, `tls`; each session's directory, `sessions/<session id>`, whose files `SessionDir`
+/// names; and each ended session's log, `logs/<session id>.campfire-log`.
 #[derive(Resource, Debug)]
 pub struct ServerData(DataDir);
 

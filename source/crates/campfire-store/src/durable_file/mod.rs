@@ -10,8 +10,8 @@ pub(crate) mod error;
 /// bytes go to a temporary file beside it, which is synced and renamed over its name, and on Unix
 /// the directory is synced too, so the new name survives a crash as well as the bytes. The
 /// temporary file is always made new, a stale one a crash left removed first, so on Unix the
-/// file is its owner's only, mode 0600, whatever mode the stale one had. Windows syncs no directory, and its rename is the
-/// last step.
+/// file is its owner's only, mode 0600, whatever mode the stale one had. Windows syncs no
+/// directory, and its rename is the last step.
 #[derive(Debug)]
 pub struct DurableFile;
 

@@ -27,7 +27,7 @@ pub(crate) enum FaultSource {
 /// What a fault does, beyond its log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FaultPolicy {
-    /// The server exits with `ServerExit::JOURNAL_FAILED`, as it keeps no record past the fault;
+    /// The server exits with `ServerExit::STORAGE_FAILED`, as it keeps no record past the fault;
     /// its host's supervisor starts it again, which restores the session.
     EndServer,
     /// The fault is logged, and play goes on.

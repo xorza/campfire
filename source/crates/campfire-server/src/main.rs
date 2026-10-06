@@ -195,7 +195,7 @@ impl Started {
                     error: error.to_string(),
                 }
                 .log();
-                ExitCode::from(ServerExit::JOURNAL_FAILED)
+                ExitCode::from(ServerExit::STORAGE_FAILED)
             }
             error => no_session(error),
         })?;

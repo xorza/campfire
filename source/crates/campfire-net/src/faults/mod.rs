@@ -45,7 +45,7 @@ impl Faults {
             fault.log();
             match fault.source().policy() {
                 FaultPolicy::EndServer => {
-                    exit = Some(AppExit::from_code(ServerExit::JOURNAL_FAILED));
+                    exit = Some(AppExit::from_code(ServerExit::STORAGE_FAILED));
                 }
                 FaultPolicy::Log => {}
             }

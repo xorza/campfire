@@ -1565,7 +1565,7 @@ impl SessionLog {
     /// Keeps `sink` as its journal, a new one, and writes into it the records of what the log
     /// holds: the header, then each entry, each sealed tick, each checkpoint and the result, as
     /// the log took them; from then on each record the log takes goes to it as it takes it.
-    pub fn keep_journal(&mut self, sink: Box<dyn RecordSink + Send + Sync>) {
+    pub fn keep_journal(&mut self, sink: Box<dyn RecordSink>) {
         assert!(self.journal.is_none(), "a log keeps one journal");
         debug_assert!(
             self.to_replay.is_empty(),
@@ -1609,7 +1609,7 @@ impl SessionLog {
     /// rebuilt from it: from then on each record the log takes goes to it as it takes it. Every
     /// chain whose head its player's current delegation signed stands durably where the log
     /// holds it, as the journal was read back from the disk.
-    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink + Send + Sync>) {
+    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>) {
         assert!(self.journal.is_none(), "a log keeps one journal");
         self.journal = Some(Journal::new(sink));
         for (durable, held) in self.durable.iter_mut().zip(&self.slots) {

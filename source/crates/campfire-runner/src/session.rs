@@ -332,13 +332,13 @@ impl Session {
 
     /// Keeps `sink` as the journal of the session's log, a new one: see
     /// `SessionLog::keep_journal`.
-    pub fn keep_journal(&mut self, sink: Box<dyn RecordSink + Send + Sync>) {
+    pub fn keep_journal(&mut self, sink: Box<dyn RecordSink>) {
         self.log.keep_journal(sink);
     }
 
     /// Keeps `sink` as the journal of the session's log, which holds every record of it; see
     /// `SessionLog::resume_journal`.
-    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink + Send + Sync>) {
+    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>) {
         self.log.resume_journal(sink);
     }
 
