@@ -24,8 +24,9 @@ fn each_fault_is_logged_once_and_ends_the_server_as_its_policy_says() {
             FaultPolicy::Log
         ]
     );
-    // None reported: nothing happens, and the surface is made.
+    // None reported: nothing happens.
     let mut world = World::new();
+    world.init_resource::<Faults>();
     assert_eq!(Faults::apply(&mut world), None);
     // A receipt not written is logged, and play goes on.
     let receipt = Fault::Receipt(DurableError::NoName);

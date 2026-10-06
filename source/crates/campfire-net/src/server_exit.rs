@@ -120,6 +120,7 @@ mod tests {
         let mut log = SessionLog::new(header).unwrap();
         let journal = SessionJournal(AppendWriter::start("journal", FailingFile));
         let mut world = World::new();
+        world.init_resource::<Faults>();
         world.insert_resource(JournalWatch(journal.watch()));
         assert_eq!(ServerExit::due(&mut world, false), None);
         log.keep_journal(Box::new(journal));

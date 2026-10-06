@@ -38,7 +38,7 @@ impl Faults {
         if let Some(writer) = world.get_resource::<ReceiptWriter>() {
             gathered.extend(writer.failures().into_iter().map(Fault::Receipt));
         }
-        let mut faults = world.get_resource_or_init::<Faults>();
+        let mut faults = world.resource_mut::<Faults>();
         faults.pending.extend(gathered);
         let mut exit = None;
         for fault in faults.pending.drain(..) {

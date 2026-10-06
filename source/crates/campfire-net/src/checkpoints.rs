@@ -201,7 +201,7 @@ impl Checkpoints {
         let record = session
             .checkpoint(world, &mut snapshot)
             .expect("a checkpoint begun");
-        CheckpointThread::write_snapshot(snapshots, &snapshot)?;
+        snapshots.write(&snapshot)?;
         let signature = signer.sign_checkpoint(&record, session.log().session_id());
         Checkpoints::log(world, SignedCheckpoint { record, signature });
         Ok(())

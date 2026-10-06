@@ -141,13 +141,15 @@ fn main() -> ExitCode {
         Ok(key) => key,
         Err(code) => return code,
     };
-    let data = match args.data.as_deref().map(ClientData::open).transpose() {
-        Ok(data) => data.map(Arc::new),
-        Err(error) => {
-            let path = args.data.as_deref().unwrap_or(Path::new(""));
-            error!(data = %path.display(), %error, "the data directory does not open");
-            return ExitCode::FAILURE;
-        }
+    let data = match &args.data {
+        None => None,
+        Some(path) => match ClientData::open(path) {
+            Ok(data) => Some(Arc::new(data)),
+            Err(error) => {
+                error!(data = %path.display(), %error, "the data directory does not open");
+                return ExitCode::FAILURE;
+            }
+        },
     };
     let pace = Arc::new(Pace::default());
     let mut connection = match Connection::open(&args, data.as_deref(), &packages, &pace) {

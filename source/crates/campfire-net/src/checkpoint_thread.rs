@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
-use campfire_protocol::{Checkpoint, CheckpointBegun, SessionId, Signature, SnapshotFingerprint};
+use campfire_protocol::{Checkpoint, CheckpointBegun, SessionId, Signature};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
-use campfire_store::{DurableError, DurableFile, Exchange};
+use campfire_store::{DurableError, Exchange};
 
 use crate::server_signer::ServerSigner;
 use crate::session_dir::snapshots::Snapshots;
@@ -82,18 +82,6 @@ impl CheckpointThread {
         CheckpointThread { exchange }
     }
 
-    /// Writes `snapshot` durably into `snapshots`, made when missing, named by its fingerprint;
-    /// the fingerprint.
-    pub(crate) fn write_snapshot(
-        snapshots: &Snapshots,
-        snapshot: &[u8],
-    ) -> Result<SnapshotFingerprint, DurableError> {
-        let fingerprint = SnapshotFingerprint::of(snapshot);
-        DurableFile::create_dir(snapshots.dir())?;
-        DurableFile::write(&snapshots.file(fingerprint), snapshot)?;
-        Ok(fingerprint)
-    }
-
     /// Whether a delta was sent and has not come back.
     pub(crate) const fn pending(&self) -> bool {
         self.exchange.pending()
@@ -139,7 +127,7 @@ impl CheckpointCopy {
     /// The record of `begun`, of the copy as it stands, signed once its snapshot is written.
     fn take(&mut self, begun: CheckpointBegun) -> Result<SignedCheckpoint, DurableError> {
         self.registry.snapshot(&self.world, &mut self.snapshot);
-        let fingerprint = CheckpointThread::write_snapshot(&self.snapshots, &self.snapshot)?;
+        let fingerprint = self.snapshots.write(&self.snapshot)?;
         let record = Checkpoint {
             segment: begun.segment,
             tick: begun.tick,
