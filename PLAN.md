@@ -6,5 +6,4 @@ The concrete steps of the current stages of the [roadmap](ROADMAP.md), in order,
 
 The design is [Benches](docs/design/13-benches.md): three tiers, one rule for a case's id, a case for each stage of the tick, and a kernel for each path past 10 % of a tick. Each step ends with `-- --list` printing its ids, and the check chain with `cargo test --bench '*'` passing for its crates.
 
-1. **B5. The script host's kernel** (script; [B6](docs/design/13-benches.md#decisions)): `script` gets its `bench` feature, `criterion` as its optional dependency, its `[[bench]]` and `lib.rs`'s `bench` facade; `script/call` and `script/native`. Design 02's scripting section names them, with their figures.
-2. **B6. The record** ([B6](docs/design/13-benches.md#decisions)): the whole suite measured on one machine, named; each figure the design states names its case id; the stages past 10 % of the mean or the worst tick listed in 13, with a kernel step for each new one.
+1. **B6. The record** ([B6](docs/design/13-benches.md#decisions)): the whole suite measured on one machine, named; each figure the design states names its case id; the stages past 10 % of the mean or the worst tick listed in 13, with a kernel step for each new one.

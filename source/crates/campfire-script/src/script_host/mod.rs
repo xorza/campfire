@@ -13,6 +13,8 @@ use crate::script_host::budget::Budget;
 use crate::script_host::error::ScriptError;
 use crate::script_host::num_api::NumApi;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
 pub(crate) mod budget;
 pub(crate) mod error;
 mod num_api;
