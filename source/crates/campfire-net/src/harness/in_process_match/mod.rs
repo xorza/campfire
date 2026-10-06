@@ -928,7 +928,8 @@ pub(crate) mod bench {
 
         /// The worst of the clients' costs.
         pub(crate) fn worst_client(&self) -> Duration {
-            self.clients.iter().copied().max().unwrap_or_default()
+            let worst = self.clients.iter().copied().max();
+            worst.expect("a cost of a match with clients")
         }
     }
 
