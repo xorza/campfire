@@ -65,6 +65,8 @@ use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
 use crate::sim_server::session_journal::SessionJournal;
 use crate::sim_server::tick_hashes::TickHashes;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
 pub(crate) mod bot_driver;
 pub(crate) mod checkpoint_thread;
 pub(crate) mod checkpoints;

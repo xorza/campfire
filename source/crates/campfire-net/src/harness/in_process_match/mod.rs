@@ -785,3 +785,121 @@ fn pass_through_delay_lines(app: &mut App) {
     app.add_systems(First, DelayLine::pin_round_trip);
     app.add_systems(Update, DelayLine::pin_round_trip);
 }
+
+#[cfg(feature = "bench")]
+pub(crate) mod bench {
+    use std::env;
+    use std::process;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, Instant};
+
+    use campfire_capabilities::Action;
+    use campfire_math::Num;
+    use campfire_store::DurableFile;
+    use lightyear::prelude::RollbackMode;
+
+    use crate::harness::in_process_match::link_model::LinkModel;
+    use crate::harness::in_process_match::{InProcessMatch, MatchSetup};
+    use crate::sim_server::SimServer;
+
+    /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
+    /// order every 40 frames keeps the avatar walking and the server sending updates.
+    const LEG_FRAMES: u64 = 40;
+    /// The ticks of the lane 1v1 a worst case plays.
+    const MATCH_TICKS: u64 = 600;
+
+    /// The data directories the benches of this process made, each a new one.
+    static DATA_DIRS: AtomicU64 = AtomicU64::new(0);
+
+    /// What one step cost each end: the worst of the clients' frames, and the worst of the
+    /// server's.
+    #[derive(Debug, Clone, Copy, Default)]
+    pub(crate) struct StepCost {
+        pub(crate) client: Duration,
+        pub(crate) server: Duration,
+    }
+
+    impl StepCost {
+        /// Each end's worse of `self` and `other`.
+        fn worst(self, other: StepCost) -> StepCost {
+            StepCost {
+                client: self.client.max(other.client),
+                server: self.server.max(other.server),
+            }
+        }
+    }
+
+    impl InProcessMatch {
+        /// A solo match whose client rolls back as `rollback` says, started, for `walk_step`.
+        pub(crate) fn walking(rollback: RollbackMode) -> InProcessMatch {
+            let mut local =
+                InProcessMatch::new(MatchSetup::solo(rollback, 1, InProcessMatch::SEED_CHAIN));
+            local.start_match();
+            local
+        }
+
+        /// Frame `frame` of a walk: the avatar's order to the other target every `LEG_FRAMES`
+        /// frames, then a timed step.
+        pub(crate) fn walk_step(&mut self, frame: u64) -> StepCost {
+            if frame.is_multiple_of(LEG_FRAMES) {
+                let z = if frame.is_multiple_of(2 * LEG_FRAMES) {
+                    5
+                } else {
+                    -5
+                };
+                self.order(
+                    0,
+                    Action::Move {
+                        x: Num::ZERO,
+                        z: Num::from_int(z).expect("a small integer"),
+                    },
+                );
+            }
+            self.timed_step()
+        }
+
+        /// One step, as `step` runs it, with each end's frames timed.
+        pub(crate) fn timed_step(&mut self) -> StepCost {
+            let mut cost = StepCost::default();
+            for client in 0..self.clients.len() {
+                let start = Instant::now();
+                self.client_frame(client);
+                cost.client = cost.client.max(start.elapsed());
+            }
+            for _ in 0..self.setup.server_frames {
+                let start = Instant::now();
+                self.server_frame();
+                cost.server = cost.server.max(start.elapsed());
+            }
+            if SimServer::reload_wanted(self.server.world()) {
+                self.restart_server();
+            }
+            cost
+        }
+
+        /// Each end's worst step of `MATCH_TICKS` ticks of the lane 1v1, as the match scenario
+        /// plays it: the rollback of each avatar's death falls in the clients'. The server and
+        /// the clients keep their data, in a new directory under the system's temporary one, so
+        /// the journal and the receipts write as a real match's do; it is removed after.
+        pub(crate) fn worst_1v1() -> StepCost {
+            let dir = env::temp_dir().join(format!(
+                "campfire-bench-{}-{}",
+                process::id(),
+                DATA_DIRS.fetch_add(1, Ordering::Relaxed)
+            ));
+            let mut local = InProcessMatch::new(MatchSetup::duo(
+                LinkModel::PERFECT,
+                InProcessMatch::SEED_CHAIN,
+            ));
+            local.keep_data(dir.clone());
+            local.start_match();
+            local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
+            let worst = (0..MATCH_TICKS)
+                .map(|_| local.timed_step())
+                .fold(StepCost::default(), StepCost::worst);
+            drop(local);
+            DurableFile::remove_dir(&dir).expect("the bench's own data directory");
+            worst
+        }
+    }
+}
