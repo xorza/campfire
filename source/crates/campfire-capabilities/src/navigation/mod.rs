@@ -7,8 +7,8 @@ use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{
-    Capability, EntityIndex, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry,
-    TickRate, Unpredicted,
+    Capability, EntityIndex, Keyed, Ordered, Position, SimEdge, SimSet, SimTick, StableId,
+    StateRegistry, TickRate, Unpredicted,
 };
 
 use crate::actions::effect_queues::EffectQueues;
@@ -129,7 +129,7 @@ impl Navigation {
             (track_static_bodies, collide)
                 .chain()
                 .in_set(SimSet::Collide),
-            keep_in_bounds.after(SimSet::Collide).before(SimSet::Hit),
+            keep_in_bounds.in_set(SimEdge::After(SimSet::Collide)),
         ));
         registry.register_component::<Destination>();
         registry.register_component::<PathWalker>();

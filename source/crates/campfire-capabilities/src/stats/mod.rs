@@ -7,7 +7,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_sim::{EntityIndex, SimSet, SimTick, StableId, StateRegistry, TickRate};
+use campfire_sim::{EntityIndex, SimEdge, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::scripts::ctx::Ctx;
 use crate::stats::applier::Applier;
@@ -101,11 +101,11 @@ pub(crate) enum StatsSet {
 }
 
 impl Stats {
-    /// Adds stats to a match: before the first stage and after each, every unit whose level or
-    /// modifiers changed, or that is new, has its stats and states derived again, and the
-    /// components that hold their effect follow them; as each tick starts, the living units'
-    /// pools regenerate. With no stat book, as before a mode loads one or on a client, which
-    /// loads none, nothing changes.
+    /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,
+    /// every unit whose level or modifiers changed, or that is new, has its stats and states
+    /// derived again, and the components that hold their effect follow them; as each tick
+    /// starts, the living units' pools regenerate. With no stat book, as before a mode loads one
+    /// or on a client, which loads none, nothing changes.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(StatsColumn::default());
@@ -134,21 +134,15 @@ impl Stats {
                 .in_set(StatsSet::Hold),
             (Refresh::give_parts, Refresh::run)
                 .chain()
-                .before(SimSet::Inputs),
+                .in_set(SimEdge::Start),
         ));
-        for pair in SimSet::ALL.windows(2) {
+        for stage in SimSet::ALL {
             schedule.add_systems(
                 (Refresh::give_parts, Refresh::run)
                     .chain()
-                    .after(pair[0])
-                    .before(pair[1]),
+                    .in_set(SimEdge::After(stage)),
             );
         }
-        schedule.add_systems(
-            (Refresh::give_parts, Refresh::run)
-                .chain()
-                .after(SimSet::Vision),
-        );
     }
 
     /// Gives the match the mode's stat book and pool book, whose names its scripts read.

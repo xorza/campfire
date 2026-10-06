@@ -285,4 +285,7 @@ fn every_order_the_proving_match_relies_on_is_stated() {
     if let Err(ambiguity) = target.build_without_sync_points() {
         panic!("{ambiguity}");
     }
+    // A system ordered between two stages in no edge set runs before or after the probe there,
+    // as Bevy picks, so a stage's time holds it or not.
+    assert_eq!(target.systems_outside_stages(), Vec::<String>::new());
 }

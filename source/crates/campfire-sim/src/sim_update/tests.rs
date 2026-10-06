@@ -4,7 +4,9 @@ use std::panic;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::schedule::{ScheduleBuildError, ScheduleBuildWarning, ScheduleConfigs};
+use bevy_ecs::schedule::{
+    ApplyDeferred, ScheduleBuildError, ScheduleBuildWarning, ScheduleConfigs,
+};
 use bevy_ecs::system::{Commands, Query, ScheduleSystem};
 use bevy_ecs::world::CommandQueue;
 use campfire_common::{PlayerSlot, StateHash};
@@ -299,6 +301,73 @@ fn redundant_set_membership_fails_the_build() {
             SimUpdate::build_without_sync_points(&mut world).is_err(),
             !expected.is_empty(),
             "{name}: without sync points"
+        );
+    }
+}
+
+/// Systems added to the sim's schedule, and those the check finds in no stage and no edge set.
+#[derive(Debug)]
+struct PlacementCase {
+    name: &'static str,
+    add: fn(&mut Schedule),
+    outside: &'static [&'static str],
+}
+
+#[test]
+fn a_system_in_no_stage_and_no_edge_is_found() {
+    let cases = [
+        PlacementCase {
+            name: "in stages, with commands, so a sync point follows the spawn",
+            add: |s| {
+                s.add_systems((spawn_unit.in_set(SimSet::Inputs), push.in_set(SimSet::Move)));
+            },
+            outside: &[],
+        },
+        PlacementCase {
+            name: "in the gap after a stage",
+            add: |s| {
+                s.add_systems(push.in_set(SimEdge::After(SimSet::Move)));
+            },
+            outside: &[],
+        },
+        PlacementCase {
+            name: "in the gap before the first stage",
+            add: |s| {
+                s.add_systems(push.in_set(SimEdge::Start));
+            },
+            outside: &[],
+        },
+        PlacementCase {
+            name: "ordered between two stages",
+            add: |s| {
+                s.add_systems(push.after(SimSet::Move).before(SimSet::Collide));
+            },
+            outside: &["push"],
+        },
+        PlacementCase {
+            name: "a sync point the code added between two stages",
+            add: |s| {
+                s.add_systems(ApplyDeferred.after(SimSet::Move).before(SimSet::Collide));
+            },
+            outside: &["apply_deferred"],
+        },
+        PlacementCase {
+            name: "ordered after the last stage",
+            add: |s| {
+                s.add_systems(push.after(SimSet::Vision));
+            },
+            outside: &["push"],
+        },
+    ];
+    for PlacementCase { name, add, outside } in cases {
+        let mut world = new_world(SEED);
+        let mut schedule = SimUpdate::schedule();
+        add(&mut schedule);
+        world.add_schedule(schedule);
+        assert_eq!(
+            SimUpdate::systems_outside_stages(&mut world),
+            outside,
+            "{name}"
         );
     }
 }

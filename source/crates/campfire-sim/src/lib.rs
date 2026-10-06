@@ -34,7 +34,7 @@ pub use crate::position::Position;
 pub use crate::sim_rng::SimRng;
 pub use crate::sim_state::{SimComponent, SimResource};
 pub use crate::sim_tick::SimTick;
-pub use crate::sim_update::{SimSet, SimUpdate};
+pub use crate::sim_update::{SimEdge, SimSet, SimUpdate};
 pub use crate::slot_event::{SlotEvent, SlotEventKind};
 pub use crate::stable_id::StableId;
 pub use crate::state_copy::StateCopy;

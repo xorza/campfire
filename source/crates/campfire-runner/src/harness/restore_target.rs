@@ -83,6 +83,12 @@ pub(crate) mod internals {
             SimUpdate::build_without_sync_points(&mut self.world)
         }
 
+        /// The systems of the match's schedule in no stage and no edge set, as
+        /// `SimUpdate::systems_outside_stages` names them.
+        pub fn systems_outside_stages(&mut self) -> Vec<String> {
+            SimUpdate::systems_outside_stages(&mut self.world)
+        }
+
         /// The name of each state type the match registers.
         pub fn state_names(&self) -> Vec<&'static str> {
             self.registry.names().collect()
