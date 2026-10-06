@@ -1,5 +1,4 @@
 use std::env;
-use std::ffi::OsString;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -22,7 +21,7 @@ pub(crate) enum Mode {
     args_conflicts_with_subcommands = true,
     disable_help_subcommand = true
 )]
-struct CommandLine {
+pub(crate) struct CommandLine {
     /// The directory below which each run's directory goes; `campfire-lan-check` in the temporary
     /// directory by default
     root: Option<PathBuf>,
@@ -42,19 +41,17 @@ enum Command {
 }
 
 impl Mode {
-    /// The mode the command line `args`, the program first, names: `[<run root>]`, or `verify
-    /// <run directory>`; clap's error for any other command line, or for a request for the help
-    /// or the version.
-    pub(crate) fn read(args: impl IntoIterator<Item = OsString>) -> Result<Mode, clap::Error> {
-        let line = CommandLine::try_parse_from(args)?;
-        Ok(match line.command {
+    /// The mode the command line clap read as `line` names: `[<run root>]`, or `verify <run
+    /// directory>`.
+    pub(crate) fn of(line: CommandLine) -> Mode {
+        match line.command {
             Some(Command::Verify { dir }) => Mode::Verify { dir },
             None => Mode::Play {
                 root: line
                     .root
                     .unwrap_or_else(|| env::temp_dir().join("campfire-lan-check")),
             },
-        })
+        }
     }
 }
 

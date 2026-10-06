@@ -13,8 +13,8 @@ campfire-protocol.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
 
-serde.workspace = true
 clap.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

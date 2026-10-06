@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::ffi::OsString;
 
 use campfire_common::NotHex;
 use campfire_net::SlotBotFileError;
@@ -6,16 +7,18 @@ use clap::error::ErrorKind;
 
 use super::*;
 
+/// What clap reads from `args`; its error when it refuses them.
+fn line(args: &[&str]) -> Result<CommandLine, clap::Error> {
+    CommandLine::try_parse_from(["campfire-client"].iter().chain(args).map(OsString::from))
+}
+
 fn read(args: &[&str]) -> Result<Args, ArgsError> {
-    Args::read(["campfire-client"].iter().chain(args).map(OsString::from))
+    Args::of(line(args).unwrap())
 }
 
 /// The error clap gives for `args`, which it refuses.
 fn refused(args: &[&str]) -> clap::Error {
-    match read(args) {
-        Err(ArgsError::CommandLine(error)) => error,
-        other => panic!("{args:?}: {other:?}"),
-    }
+    line(args).unwrap_err()
 }
 
 /// The error clap gives for `args`, whose value its parser refuses with the error under it.

@@ -1,14 +1,17 @@
+use std::ffi::OsString;
+
 use clap::error::ErrorKind;
 
 use super::*;
 
 fn read(args: &[&str]) -> Result<Mode, clap::Error> {
-    Mode::read(
+    CommandLine::try_parse_from(
         ["campfire-lan-check"]
             .iter()
             .chain(args)
             .map(OsString::from),
     )
+    .map(Mode::of)
 }
 
 #[test]

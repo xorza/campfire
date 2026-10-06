@@ -81,13 +81,9 @@ fn main() -> ExitCode {
         file: "info",
     }
     .start();
-    let mode = match Mode::read(env::args_os()) {
-        Ok(mode) => mode,
-        Err(output) if !output.use_stderr() => return shown(&output),
-        Err(error) => {
-            error!(error = %error, "the command line is refused");
-            return ExitCode::from(ExitStatus::Usage);
-        }
+    let mode = match Logging::command_line(env::args_os()) {
+        Ok(line) => Mode::of(line),
+        Err(status) => return ExitCode::from(status),
     };
     let dir = match &mode {
         Mode::Play { root } => match RunDir::create(root, SystemTime::now()) {
@@ -126,18 +122,6 @@ fn report(result: Result<Verdict, CheckError>, dir: &Path) -> ExitCode {
     } else {
         error!(failures, dir = %dir.display(), "the LAN check failed");
         ExitCode::from(ExitStatus::Failure)
-    }
-}
-
-/// Ends the check once clap printed the help or the version `output` asked for, to standard
-/// output: with success, or with failure when it does not print.
-fn shown(output: &clap::Error) -> ExitCode {
-    match output.print() {
-        Ok(()) => ExitCode::from(ExitStatus::Success),
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the help does not print");
-            ExitCode::from(ExitStatus::Failure)
-        }
     }
 }
 

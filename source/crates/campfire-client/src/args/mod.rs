@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -41,7 +40,7 @@ pub(crate) enum Server {
 /// Joins a session on a server, or plays a mode alone on a local server.
 #[derive(Debug, Parser)]
 #[command(version)]
-struct CommandLine {
+pub(crate) struct CommandLine {
     /// Plays the orders file's script as a bot, with no window
     #[arg(long, value_name = "ORDERS FILE")]
     bot: Option<PathBuf>,
@@ -78,10 +77,8 @@ struct CommandLine {
 }
 
 impl Args {
-    /// What the command line `args`, the program first, names; an error for each flaw, or for a
-    /// request for the help or the version.
-    pub(crate) fn read(args: impl IntoIterator<Item = OsString>) -> Result<Args, ArgsError> {
-        let line = CommandLine::try_parse_from(args).map_err(ArgsError::CommandLine)?;
+    /// What the command line clap read as `line` names; an error for a flaw clap cannot state.
+    pub(crate) fn of(line: CommandLine) -> Result<Args, ArgsError> {
         let server = if line.local {
             if line
                 .server_bots

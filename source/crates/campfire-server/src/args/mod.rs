@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -23,7 +22,7 @@ pub(crate) struct Args {
 /// every player left.
 #[derive(Debug, Parser)]
 #[command(version)]
-struct CommandLine {
+pub(crate) struct CommandLine {
     /// The data directory, held locked while the server runs: its key, its journal and its logs
     #[arg(long, value_name = "DIRECTORY")]
     data: PathBuf,
@@ -46,11 +45,9 @@ struct CommandLine {
 }
 
 impl Args {
-    /// What the command line `args`, the program first, names; clap's error for each flaw, or
-    /// for a request for the help or the version.
-    pub(crate) fn read(args: impl IntoIterator<Item = OsString>) -> Result<Args, clap::Error> {
-        let line = CommandLine::try_parse_from(args)?;
-        Ok(Args {
+    /// What the command line clap read as `line` names.
+    pub(crate) fn of(line: CommandLine) -> Args {
+        Args {
             data: line.data,
             times: SessionTimes {
                 grace: Duration::from_secs(line.grace),
@@ -60,7 +57,7 @@ impl Args {
             takeover: line.takeover,
             mode: line.mode,
             address: line.address,
-        })
+        }
     }
 
     /// The server's bots, their scripts read from their files; an error naming a file that does

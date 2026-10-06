@@ -69,13 +69,9 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Args::read(env::args_os()) {
-        Ok(args) => args,
-        Err(output) if !output.use_stderr() => return shown(&output),
-        Err(error) => {
-            error!(error = %error, "the command line is refused");
-            return ExitCode::from(ExitStatus::Usage);
-        }
+    let args = match Logging::command_line(env::args_os()) {
+        Ok(line) => Args::of(line),
+        Err(status) => return ExitCode::from(status),
     };
     let bots = match args.server_bots() {
         Ok(bots) => bots,
@@ -137,18 +133,6 @@ fn main() -> ExitCode {
         .id();
     app.world_mut().trigger(Start { entity: server });
     ProcessExit::code(app.run())
-}
-
-/// Ends the server once clap printed the help or the version `output` asked for, to standard
-/// output: with success, or with failure when it does not print.
-fn shown(output: &clap::Error) -> ExitCode {
-    match output.print() {
-        Ok(()) => ExitCode::from(ExitStatus::Success),
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the help does not print");
-            ExitCode::from(ExitStatus::Failure)
-        }
-    }
 }
 
 /// What the server starts with: its session, its setup, and its TLS identity.

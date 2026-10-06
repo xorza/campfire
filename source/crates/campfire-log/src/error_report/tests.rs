@@ -51,7 +51,7 @@ fn a_report_writes_each_error_down_to_the_root() {
 
 /// The lines that write an error's message alone and pass: Rhai's `EvalAltResult` has no source,
 /// so its message is all of it; and clap writes its value parser's error into its own message,
-/// which the binaries log as their usage error.
+/// which `Logging::command_line` logs as the usage error.
 const ALONE: [&str; 2] = [
     "_ => ScriptError::Runtime(error.to_string()),",
     "error!(error = %error, \"the command line is refused\");",

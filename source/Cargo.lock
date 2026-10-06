@@ -2072,6 +2072,8 @@ dependencies = [
 name = "campfire-log"
 version = "0.1.0"
 dependencies = [
+ "campfire-common",
+ "clap",
  "serde",
  "serde_json",
  "tracing",

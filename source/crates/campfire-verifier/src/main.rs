@@ -3,6 +3,7 @@
 //! also checks the snapshot of each checkpoint. It logs as `campfire_log::Logging` says, `info`
 //! by default.
 
+use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
@@ -13,7 +14,6 @@ use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
 use campfire_verifier::{Replay, Verified};
-use clap::Parser;
 use tracing::{error, warn};
 
 use crate::args::Args;
@@ -26,13 +26,9 @@ fn main() -> ExitCode {
         file: "info,campfire_runner=debug,campfire_script=debug",
     }
     .start();
-    let args = match Args::try_parse() {
+    let args: Args = match Logging::command_line(env::args_os()) {
         Ok(args) => args,
-        Err(output) if !output.use_stderr() => return shown(&output),
-        Err(error) => {
-            error!(error = %error, "the command line is refused");
-            return ExitCode::from(ExitStatus::Usage);
-        }
+        Err(status) => return ExitCode::from(status),
     };
     match verify(&args.packages, &args.log, args.snapshots.as_deref()) {
         Ok(hash) => {
@@ -45,18 +41,6 @@ fn main() -> ExitCode {
         }
         Err(error) => {
             error!(file = %args.log.display(), error = %ErrorReport::of(&*error), "the log does not verify");
-            ExitCode::from(ExitStatus::Failure)
-        }
-    }
-}
-
-/// Ends the verifier once clap printed the help or the version `output` asked for, to standard
-/// output: with success, or with failure when it does not print.
-fn shown(output: &clap::Error) -> ExitCode {
-    match output.print() {
-        Ok(()) => ExitCode::from(ExitStatus::Success),
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the help does not print");
             ExitCode::from(ExitStatus::Failure)
         }
     }

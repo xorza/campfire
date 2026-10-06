@@ -1,6 +1,8 @@
 //! The binaries' log output: text on standard error, and JSON lines into a file on request. The
 //! libraries emit `tracing` events; a binary starts `Logging` once, first thing in `main`. The
-//! events a tool reads back from the JSON lines are `LogEvent`s, and `LogLine` reads them.
+//! events a tool reads back from the JSON lines are `LogEvent`s, and `LogLine` reads them. A
+//! binary reads its command line through `Logging::command_line`, which prints clap's help and
+//! logs its refusal.
 
 mod error_report;
 mod log_event;

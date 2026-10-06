@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::ffi::OsString;
 
 use campfire_common::PlayerSlot;
 use campfire_net::SlotBotFileError;
@@ -7,7 +8,8 @@ use clap::error::ErrorKind;
 use super::*;
 
 fn read(args: &[&str]) -> Result<Args, clap::Error> {
-    Args::read(["campfire-server"].iter().chain(args).map(OsString::from))
+    CommandLine::try_parse_from(["campfire-server"].iter().chain(args).map(OsString::from))
+        .map(Args::of)
 }
 
 #[test]
