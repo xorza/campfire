@@ -108,6 +108,19 @@ B12 of the plan; the review chose option 1. Design 02 bounds an 8-tick rollback 
 
 **Decision.** Option 1: the bound in design 02 is about what a client's rollback costs, and only the client's own frames, with what replication sent and Lightyear's restore, measure that.
 
+**How the harness plays it.** Proposal for review. `InProcessMatch` plays only the test lane mode, with one or two players and at most one server bot; it waits for each client to hold its avatar within 300 frames of the start; it times the worst of the clients' frames in a step, not each client's; and its walk goes around (0, 0). The changes:
+
+- **Any mode.** `InProcessMatch::of_mode(setup, packages)` plays the packages it is given; `new(setup)` plays the lane mode, and keeps its check of one or two players.
+- **Bots in any slots.** `MatchSetup.bots`, an order script for each slot after the players', in place of `bot`, one script for the one slot after them; the takeover bot stays. The reference 3v3's bots pick through their scripts' `[[input]]`s: a hero each, at tick 1, none twice, and its two spells, at tick 2, as `Reference3v3` picks.
+- **A rollback for each player.** `MatchSetup.rollbacks`, one mode for each player's client, in place of `rollback`, one for all. One match then holds a client that rolls back only on a misprediction and one that rolls back on every confirmed update, so the two cases share one fixture, the expensive part.
+- **The start and the avatars apart.** `start_match` becomes `open_match`, which opens the session and steps until every end runs the match, and `await_avatars(frames)`, which steps until each client holds its avatar: the lane's heroes come with its first tick, the 3v3's at the end of its pick, 1,800 ticks at 30 Hz. The lane's callers call both, as `start_match` did.
+- **Each client's time.** A timed step keeps each client's frame time in a buffer the match keeps, and the server's worst frame, so a case reads its own client.
+- **A walk around a point.** The walk goes 5 m each side of a point the case gives: (0, 0) in the lane, the avatar's spawn in the 3v3.
+
+The cases, in `net`'s `client_frame` group: the reference 3v3 at its default 30 Hz, from `PackageDir::workspace("moba/modes/3v3")`, with two players and four bots, every one picking; stepped, untimed, to its first wave, tick 3,600, the waves' units in it as `server_tick`'s are; then `client_frame/walk_3v3` times the client that rolls back only on a misprediction, and `client_frame/walk_rollback_3v3` the one that rolls back on every update, each walking around its spawn, a new order every 40 frames. A re-simulated tick is their difference divided by the ticks a rollback re-simulated, which Lightyear's `PredictionMetrics` counts, `rollback_ticks` over `rollbacks`, in place of the lane's assumed 4. Design 02's bound of an 8-tick rollback then comes from that figure.
+
+**Cost.** The fixture plays 3,600 networked ticks once a run, and once in CI's test mode. The runner's dev profile plays a 3v3 tick in about 0.25 ms; a networked step adds the server's replication to two clients and their frames, so the fixture takes a few seconds, which the bench step's limit of 60 s must hold. The step measures it, and stops for review if it does not fit.
+
 ## Plan
 
 The steps are in [PLAN.md](../../PLAN.md#benches).
