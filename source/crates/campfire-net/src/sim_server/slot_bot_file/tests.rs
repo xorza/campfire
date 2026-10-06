@@ -1,6 +1,5 @@
 use std::fs;
 
-use campfire_common::PlayerSlot;
 use tempfile::TempDir;
 
 use super::*;
@@ -12,7 +11,7 @@ fn a_bot_is_read_from_its_slot_and_its_file() {
     assert_eq!(
         bot,
         SlotBotFile {
-            slot: 3,
+            slot: PlayerSlot::new(3),
             path: PathBuf::from("bots/a=b.toml"),
         }
     );
@@ -29,11 +28,14 @@ fn a_bot_is_read_from_its_slot_and_its_file() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("bot.toml");
     fs::write(&path, "end = 1").unwrap();
-    let file = SlotBotFile { slot: 2, path };
+    let file = SlotBotFile {
+        slot: PlayerSlot::new(2),
+        path,
+    };
     let read = file.read().unwrap();
     assert_eq!(read.slot, PlayerSlot::new(2));
     let missing = SlotBotFile {
-        slot: 2,
+        slot: PlayerSlot::new(2),
         path: dir.path().join("none.toml"),
     };
     assert!(matches!(

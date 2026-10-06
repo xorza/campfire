@@ -12,7 +12,7 @@ use crate::args::Flag;
 /// Why the command line names nothing the client runs.
 #[derive(Debug, Error)]
 pub(crate) enum ArgsError {
-    #[error("{}: no such option", .0.display())]
+    #[error("{}: no such flag", .0.display())]
     UnknownFlag(OsString),
     #[error("{} needs a value", .0.name())]
     NoValue(Flag),
@@ -25,7 +25,7 @@ pub(crate) enum ArgsError {
     /// A server bot of slot 0, which the client plays.
     #[error("slot 0 is the client's")]
     BotInClientSlot,
-    #[error("the mode is needed after the options")]
+    #[error("the mode is needed after the flags")]
     NoMode,
     #[error("--local needs --data")]
     LocalWithoutData,

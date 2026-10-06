@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use campfire_common::PlayerSlot;
+
 use crate::order_script::OrderScript;
 use crate::order_script::error::OrderScriptReadError;
 use crate::sim_server::server_bots::SlotBot;
@@ -8,18 +10,21 @@ use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 
 pub(crate) mod error;
 
-/// A server's bot as a command line names it, `<slot>=<orders file>`: the index of the slot it
-/// plays, and the file of its order script.
+/// A server's bot as a command line names it, `<slot>=<orders file>`: the slot it plays, by its
+/// index, and the file of its order script.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlotBotFile {
-    pub slot: u32,
+    pub slot: PlayerSlot,
     pub path: PathBuf,
 }
 
 impl SlotBotFile {
     /// The bot, its script read from its file.
     pub fn read(&self) -> Result<SlotBot, OrderScriptReadError> {
-        Ok(SlotBot::new(self.slot, OrderScript::read(&self.path)?))
+        Ok(SlotBot {
+            slot: self.slot,
+            script: OrderScript::read(&self.path)?,
+        })
     }
 }
 
@@ -35,7 +40,7 @@ impl FromStr for SlotBotFile {
             error,
         })?;
         Ok(SlotBotFile {
-            slot,
+            slot: PlayerSlot::new(slot),
             path: PathBuf::from(path),
         })
     }

@@ -31,7 +31,7 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     let bots: Vec<(u32, PathBuf)> = args
         .bots
         .into_iter()
-        .map(|bot| (bot.slot, bot.path))
+        .map(|bot| (bot.slot.get(), bot.path))
         .collect();
     assert_eq!(bots, [(1, PathBuf::from("bot.toml"))]);
     assert_eq!(args.takeover, Some(PathBuf::from("takeover.toml")));

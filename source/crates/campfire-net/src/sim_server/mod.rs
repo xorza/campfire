@@ -483,16 +483,17 @@ fn record_inputs(
                 continue;
             };
             if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
+                let report = ErrorReport::of(&error).to_string();
                 InputMessageRefused {
                     slot: link.slot(),
                     next_tick,
-                    error: ErrorReport::of(&error).to_string(),
+                    error: report.clone(),
                 }
                 .log();
                 link.refuse();
                 commands.trigger(Unlink {
                     entity,
-                    reason: UnlinkReason::UserRequested(Some(ErrorReport::of(&error).to_string())),
+                    reason: UnlinkReason::UserRequested(Some(report)),
                 });
                 continue;
             }

@@ -105,14 +105,14 @@ impl Connection {
         bots: &[SlotBotFile],
         pace: &Arc<Pace>,
     ) -> Result<LocalServer, ExitCode> {
-        let mut slots = Vec::with_capacity(bots.len());
-        for bot in bots {
-            let bot = bot.read().map_err(|error| {
+        let slots = bots
+            .iter()
+            .map(SlotBotFile::read)
+            .collect::<Result<_, _>>()
+            .map_err(|error| {
                 error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
                 ExitCode::from(ExitStatus::Failure)
             })?;
-            slots.push(bot);
-        }
         let data = data.expect("--local has --data").local_server_dir();
         LocalServer::start(LocalServerSetup {
             packages: Arc::clone(packages),

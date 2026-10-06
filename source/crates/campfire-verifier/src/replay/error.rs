@@ -10,8 +10,8 @@ pub enum ReplayError {
     /// The state at the boundary before `tick`, where segment `segment` starts, is not the one its
     /// checkpoint records.
     #[error(
-        "segment {segment} starts before tick {tick} at state {logged}, and the replay \
-                 reaches {replayed}"
+        "segment {segment} starts before tick {tick} at state {logged}, and the replay reaches \
+         {replayed}"
     )]
     Checkpoint {
         segment: u32,

@@ -4,6 +4,7 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use campfire_common::PlayerSlot;
 use campfire_net::SlotBotFile;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
@@ -61,13 +62,16 @@ impl Args {
             let flag = Flag::of(&arg).ok_or(ArgsError::UnknownFlag(arg))?;
             let held = match flag {
                 Flag::Local => {
+                    if local {
+                        return Err(ArgsError::Twice(flag));
+                    }
                     local = true;
                     continue;
                 }
                 Flag::ServerBot => {
                     let value = args.next().ok_or(ArgsError::NoValue(flag))?;
                     let bot: SlotBotFile = Args::text(&value)?.parse().map_err(ArgsError::Bot)?;
-                    if bot.slot == 0 {
+                    if bot.slot == PlayerSlot::new(0) {
                         return Err(ArgsError::BotInClientSlot);
                     }
                     bots.push(bot);

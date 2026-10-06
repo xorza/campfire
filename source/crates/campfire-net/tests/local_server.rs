@@ -12,8 +12,8 @@ use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
-    JoinState, LocalRelink, LocalServer, LocalServerSetup, Pace, PendingSaves, SaveCommand,
-    ServerDir, SessionDir, SimClient,
+    JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace, PendingSaves,
+    SaveCommand, ServerDir, SessionDir, SimClient,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
@@ -67,7 +67,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let frame = |client: &mut App| {
         assert!(start.elapsed() < DEADLINE, "the client did not play on");
         client.update();
-        thread::sleep(Duration::from_millis(2));
+        thread::sleep(NetProtocol::FRAME);
     };
     let playing = |client: &App| client.world().resource::<JoinState>().clock().is_some();
     let mut played = 0;

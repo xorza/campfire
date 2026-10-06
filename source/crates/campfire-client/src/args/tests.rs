@@ -42,7 +42,10 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
     let Server::Local { bots } = local.server else {
         panic!("a local server");
     };
-    let bots: Vec<(u32, PathBuf)> = bots.into_iter().map(|bot| (bot.slot, bot.path)).collect();
+    let bots: Vec<(u32, PathBuf)> = bots
+        .into_iter()
+        .map(|bot| (bot.slot.get(), bot.path))
+        .collect();
     assert_eq!(bots, [(1, "a.toml".into()), (2, "b.toml".into())]);
 
     for (args, problem) in [
@@ -63,10 +66,14 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
             &["--local", "--data", "d", "--server-bot", "a.toml", "mode"],
             "a.toml: not <slot>=<orders file>",
         ),
-        (&["--fast", "mode"], "--fast: no such option"),
+        (&["--fast", "mode"], "--fast: no such flag"),
         (&["--key"], "--key needs a value"),
         (&["--key", "a", "--key", "b", "mode"], "--key given twice"),
-        (&["--key", "a"], "the mode is needed after the options"),
+        (
+            &["--local", "--data", "d", "--local", "mode"],
+            "--local given twice",
+        ),
+        (&["--key", "a"], "the mode is needed after the flags"),
         (
             &["mode", "a", "b"],
             "four arguments are needed after the mode",
