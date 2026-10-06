@@ -6,14 +6,6 @@ The stages to 1.0, in order, open items only: remove an item when it is done, an
 
 The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashed match restored; the game model proven on a tiny mode of every target genre. Players use local Nostr key files; no relays, listings, launcher or payments.
 
-### 6. Sessions
-
-- Checkpoints, crash restore within the restore window, reconnect with the same session key, late join, receipts.
-- Players joining and leaving, with their hooks, as the log records them.
-- The local server on a client thread, pause and game speed; saves and loads on one release ([Singleplayer and saves](docs/design/01-campfire-design.md#singleplayer-and-saves)).
-
-Done when a LAN match whose server is killed restores and ends, its log verifying; a client that leaves comes back; and a match against bots runs on a local server with no network.
-
 ### 7. Genre proofs: RTS and campaign
 
 - Summons: the `spawn` effect of an avatar's or a loadout's action, and unit types in packages other than the mode ([Effects](docs/design/04-capabilities/actions.md#effects)).
