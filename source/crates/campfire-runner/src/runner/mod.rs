@@ -2,12 +2,14 @@ use bevy_ecs::world::World;
 use campfire_common::StateHash;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointError, InputError, Journal, Outcome, PlayerInput, ResultError,
-    ServerInput, ServerSeeds, SessionLog, SessionResult, Signature,
+    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal, Outcome,
+    PlayerInput, ResultError, ServerInput, ServerSeeds, SessionLog, SessionResult, Signature,
 };
 use campfire_sim::StateCopy;
 
-use crate::error::{ResultMismatch, ResumeError, ServerInputRefused, StartError};
+use crate::error::{
+    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
+};
 use crate::session::Session;
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.
@@ -80,6 +82,11 @@ impl Runner {
     /// See `Session::resume_journal`.
     pub fn resume_journal(&mut self, journal: Journal) {
         self.world.resource_mut::<Session>().resume_journal(journal);
+    }
+
+    /// See `Session::begin_checkpoint`.
+    pub fn begin_checkpoint(&mut self) -> Result<CheckpointBegun, CheckpointBeginError> {
+        self.world.resource_mut::<Session>().begin_checkpoint()
     }
 
     /// See `Session::checkpoint`.

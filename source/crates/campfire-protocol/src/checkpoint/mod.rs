@@ -8,6 +8,7 @@ use crate::session_id::SessionId;
 use crate::signature::Signature;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
 
+pub(crate) mod checkpoint_begun;
 pub(crate) mod error;
 pub(crate) mod log_carry;
 

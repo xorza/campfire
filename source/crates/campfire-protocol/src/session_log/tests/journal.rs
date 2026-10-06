@@ -22,9 +22,10 @@ fn a_journal_rebuilds_the_log_it_followed() {
     let journal = file.bytes();
     let rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
     assert_eq!(encoded(&rebuilt), bytes);
-    // The header, a packet and a server input, the seal, the checkpoint, a packet, the result.
+    // The header, a packet and a server input, the seal, the checkpoint's begin and its record,
+    // a packet, the result.
     let kinds: Vec<u8> = records(&journal).iter().map(|record| record[0]).collect();
-    assert_eq!(kinds, [0, 1, 2, 3, 4, 1, 5]);
+    assert_eq!(kinds, [0, 1, 2, 3, 6, 4, 1, 5]);
 
     // Kept at the end: the log writes what it holds, the same records.
     let mut log = new_log();
@@ -43,6 +44,12 @@ fn a_journal_rebuilds_the_log_it_followed() {
             "{len}"
         );
     }
+    // Cut after the checkpoint's begin: its segment starts, its record still to come.
+    let begun = SessionLog::from_journal(all[..5].iter().copied()).unwrap();
+    let pending = begun.begun_checkpoint().unwrap();
+    assert_eq!((pending.segment, pending.tick), (1, Tick::new(1)));
+    assert_eq!(begun.segment_starting(Tick::new(1)), Some(1));
+    assert_eq!(begun.checkpoint_at(Tick::new(1)), None);
 
     // A journal with no header, or a record past it that the log refuses: the packet again,
     // whose first stamp, 0, goes back from its last, 1.
@@ -71,17 +78,17 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     let watch = journal.watch();
     log.keep_journal(journal);
     play_minimal(&mut log);
-    // No chain is durable before the log notes the synced records; once the writer synced all 7,
+    // No chain is durable before the log notes the synced records; once the writer synced all 8,
     // player 1's is.
     let slot = PlayerSlot::new(1);
     assert_eq!(log.durable_head(slot), None);
     for _ in 0..1000 {
-        if watch.durable() == 7 {
+        if watch.durable() == 8 {
             break;
         }
         thread::sleep(Duration::from_millis(1));
     }
-    assert_eq!(watch.durable(), 7);
+    assert_eq!(watch.durable(), 8);
     log.advance_durable();
     // Player 1's chain holds a, b and c: c, seq 2, the last, signed under their delegation.
     let mut chain = InputChain::new(slot, root(1));

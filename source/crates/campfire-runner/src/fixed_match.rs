@@ -79,6 +79,9 @@ impl FixedMatch {
     /// Checkpoints the match at the boundary before the next tick, as its server would, its
     /// snapshot written into `snapshot`; the record, signed and logged.
     pub fn checkpoint(&mut self, snapshot: &mut Vec<u8>) -> Checkpoint {
+        self.runner
+            .begin_checkpoint()
+            .unwrap_or_else(|error| panic!("the match's own checkpoint: {error}"));
         let record = self
             .runner
             .checkpoint(snapshot)

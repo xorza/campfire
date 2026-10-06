@@ -76,6 +76,8 @@ impl Error for RestoreError {
 pub enum AbortError {
     /// The log does not start a match of the server's mode.
     Start(StartError),
+    /// A checkpoint taken again did not write its snapshot.
+    Snapshot(DurableError),
     Publish(DurableError),
 }
 
@@ -83,6 +85,7 @@ impl fmt::Display for AbortError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AbortError::Start(error) => write!(f, "the session's match does not start: {error}"),
+            AbortError::Snapshot(error) => write!(f, "could not write a snapshot: {error}"),
             AbortError::Publish(error) => write!(f, "could not publish the log: {error}"),
         }
     }
@@ -92,7 +95,7 @@ impl Error for AbortError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             AbortError::Start(error) => Some(error),
-            AbortError::Publish(error) => Some(error),
+            AbortError::Snapshot(error) | AbortError::Publish(error) => Some(error),
         }
     }
 }

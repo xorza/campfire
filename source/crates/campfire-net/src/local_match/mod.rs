@@ -451,10 +451,8 @@ impl LocalMatch {
                 terms: lobby.terms().clone(),
             };
             let dir = SessionDir::create(data, &private).unwrap_or_else(|error| panic!("{error}"));
-            let journal = dir
-                .start_journal()
-                .unwrap_or_else(|error| panic!("{error}"));
-            lobby.keep_journal(journal);
+            let files = dir.start().unwrap_or_else(|error| panic!("{error}"));
+            lobby.keep_files(files);
         }
         self.server.world_mut().insert_resource(lobby);
         for _ in 0..CONNECT_FRAMES {

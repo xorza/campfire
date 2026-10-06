@@ -84,14 +84,30 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     };
     assert_eq!(log.carry(), expected);
 
-    // The checkpoint at tick 2 starts segment 1; y still applies in tick 2, and the log runs on.
+    // The checkpoint at tick 2 starts segment 1 as it begins, its record still to come; y still
+    // applies in tick 2, and the log runs on. The record comes after tick 2.
     let record = checkpoint(&log, 3);
+    let begun = log.begin_checkpoint().unwrap();
+    assert_eq!(
+        begun,
+        CheckpointBegun {
+            segment: 1,
+            tick: Tick::new(2),
+            carry: expected,
+        }
+    );
+    assert_eq!(log.begun_checkpoint(), Some(&begun));
+    assert_eq!(log.segment(), 1);
+    assert_eq!(log.segment_starting(Tick::new(2)), Some(1));
+    assert_eq!(log.segment_starting(Tick::new(0)), None);
+    assert_eq!(log.segment_starting(Tick::new(1)), None);
+    assert_eq!(log.checkpoint_at(Tick::new(2)), None);
+    assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
     log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
         .unwrap();
-    assert_eq!(log.segment(), 1);
+    assert_eq!(log.begun_checkpoint(), None);
     assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));
     assert_eq!(log.checkpoint_at(Tick::new(1)), None);
-    assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
     let mut applied = Vec::new();
     resent(0, &[&[(3, b"z")]], 0)[0]
         .submit(&mut log, &mut applied)
@@ -145,20 +161,23 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
             CheckpointError::Carry,
         ),
     ];
+    // A record with no checkpoint begun, and a second begin before the first's record.
+    let signature = signed_by(&record, &server_keypair());
+    assert_eq!(
+        log.record_checkpoint(record.clone(), &signature),
+        Err(CheckpointError::NotBegun)
+    );
+    log.begin_checkpoint().unwrap();
+    assert_eq!(log.begin_checkpoint(), Err(CheckpointError::Pending));
     for (record, key, error) in flawed {
         let signature = signed_by(&record, &key);
         assert_eq!(log.record_checkpoint(record, &signature), Err(error));
-        assert_eq!(log.segment(), 0);
+        assert_eq!(log.checkpoint_at(Tick::new(2)), None);
     }
     // Once taken, a second checkpoint at the same tick would end a segment of no tick.
     log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
         .unwrap();
-    let again = checkpoint(&log, 4);
-    let signature = signed_by(&again, &server_keypair());
-    assert_eq!(
-        log.record_checkpoint(again, &signature),
-        Err(CheckpointError::Empty)
-    );
+    assert_eq!(log.begin_checkpoint(), Err(CheckpointError::Empty));
 
     // A result signed by another key, or at another tick than the next.
     let ended = result(&log, Outcome::Draw);
@@ -183,6 +202,7 @@ fn flawed_segments_in_a_log_file_are_refused() {
     // another key, or revealing the first segment's seed, it does not.
     let mut log = two_ticks();
     let record = checkpoint(&log, 3);
+    log.begin_checkpoint().unwrap();
     log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
         .unwrap();
     log.reveal_seed(SEED_CHAIN.seed(1));
@@ -239,6 +259,7 @@ fn flawed_segments_in_a_log_file_are_refused() {
 fn revealing_an_earlier_segments_seed_is_a_bug() {
     let mut log = two_ticks();
     let record = checkpoint(&log, 3);
+    log.begin_checkpoint().unwrap();
     log.record_checkpoint(record.clone(), &signed_by(&record, &server_keypair()))
         .unwrap();
     log.reveal_seed(SEED_CHAIN.seed(0));

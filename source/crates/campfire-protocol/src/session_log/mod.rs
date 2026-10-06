@@ -9,6 +9,7 @@ use secp256k1::{Secp256k1, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
 use crate::checkpoint::Checkpoint;
+use crate::checkpoint::checkpoint_begun::CheckpointBegun;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot, LogCarry};
 use crate::controller::Controller;
@@ -49,8 +50,9 @@ const JOURNAL_HEADER: u8 = 0;
 const JOURNAL_PACKET: u8 = 1;
 const JOURNAL_SERVER: u8 = 2;
 const JOURNAL_SEALED: u8 = 3;
-const JOURNAL_CHECKPOINT: u8 = 4;
+const JOURNAL_CHECKPOINT_DONE: u8 = 4;
 const JOURNAL_RESULT: u8 = 5;
+const JOURNAL_CHECKPOINT_BEGUN: u8 = 6;
 
 /// What the log fixes before the first tick: the session's terms, and how each of its slots
 /// starts.
@@ -132,6 +134,8 @@ pub struct SessionLog {
     delegations: Vec<Delegation>,
     /// Each segment's start, in order: the first at tick 0, every other at its checkpoint.
     segments: Vec<SegmentStart>,
+    /// The checkpoint that starts the last segment, while its record has not come.
+    begun: Option<CheckpointBegun>,
     /// How the session ended, once it did.
     result: Option<LoggedResult>,
     inputs: Vec<LoggedInput>,
@@ -248,7 +252,7 @@ struct LoggedServer {
 }
 
 /// Where a segment starts: the first tick it holds, and the checkpoint it starts from, which
-/// every segment but the first has.
+/// every segment but the first has once its record came.
 #[derive(Debug)]
 struct SegmentStart {
     tick: Tick,
@@ -334,16 +338,23 @@ impl Spill {
 }
 
 impl SegmentStart {
-    /// Writes the checkpoint the segment starts from into `journal`.
-    fn journal(&self, journal: &Journal) {
-        let logged = self
-            .checkpoint
-            .as_ref()
-            .expect("every segment but the first starts from a checkpoint");
+    /// Writes the begin of the checkpoint that starts segment `segment` into `journal`.
+    fn journal_begun(&self, journal: &Journal, segment: u32) {
         journal.append(|out| {
-            out.push(JOURNAL_CHECKPOINT);
-            logged.record.encode(out);
-            put(out, &logged.signature);
+            out.push(JOURNAL_CHECKPOINT_BEGUN);
+            put(out, &segment);
+            put(out, &self.tick);
+        });
+    }
+}
+
+impl LoggedCheckpoint {
+    /// Writes the record into `journal`, as the checkpoint is done.
+    fn journal(&self, journal: &Journal) {
+        journal.append(|out| {
+            out.push(JOURNAL_CHECKPOINT_DONE);
+            self.record.encode(out);
+            put(out, &self.signature);
         });
     }
 }
@@ -413,6 +424,7 @@ impl SessionLog {
                 tick: Tick::new(0),
                 checkpoint: None,
             }],
+            begun: None,
             result: None,
             header,
             revealed: None,
@@ -472,14 +484,27 @@ impl SessionLog {
         offset(self.segments.len() - 1)
     }
 
-    /// The checkpoint record of the segment that starts at `tick`, when one does.
+    /// The checkpoint record of the segment that starts at `tick`, when one does and its record
+    /// came.
     pub fn checkpoint_at(&self, tick: Tick) -> Option<&Checkpoint> {
-        let at = self.segments.partition_point(|segment| segment.tick < tick);
-        let segment = self
-            .segments
-            .get(at)
-            .filter(|segment| segment.tick == tick)?;
+        let at = self.segment_starting(tick)?;
+        let segment = &self.segments[usize::try_from(at).expect("segments fit usize")];
         segment.checkpoint.as_ref().map(|logged| &logged.record)
+    }
+
+    /// The segment that starts at `tick`, its record come or not; none at tick 0, where the
+    /// first starts from no checkpoint.
+    pub fn segment_starting(&self, tick: Tick) -> Option<u32> {
+        let at = self.segments.partition_point(|segment| segment.tick < tick);
+        self.segments
+            .get(at)
+            .filter(|segment| at > 0 && segment.tick == tick)?;
+        Some(offset(at))
+    }
+
+    /// The checkpoint the log began and has no record of yet.
+    pub const fn begun_checkpoint(&self) -> Option<&CheckpointBegun> {
+        self.begun.as_ref()
     }
 
     /// Every checkpoint record, by segment from the second.
@@ -831,20 +856,16 @@ impl SessionLog {
         Ok(())
     }
 
-    /// Ends the last segment at the boundary before the next tick, and starts the next from
-    /// `record`, with the server key's `signature` over it: from then on the sim draws from the
-    /// new segment's seed. The record must start the segment after the last, at the next tick,
-    /// after at least one tick of the last, and carry the log's own state there, so a segment
-    /// verifies from its checkpoint alone. A refused record leaves the log unchanged. A
-    /// checkpoint comes at a tick boundary, before any entry of the tick after it.
-    pub fn record_checkpoint(
-        &mut self,
-        record: Checkpoint,
-        signature: &Signature,
-    ) -> Result<(), CheckpointError> {
+    /// Ends the last segment at the boundary before the next tick, and starts the next there, as
+    /// a checkpoint begins: from then on the sim draws from the new segment's seed. Its record,
+    /// which the server signs once its snapshot is written, comes later by `record_checkpoint`;
+    /// until it does, the log begins no other. The last segment must hold a tick. The segment,
+    /// the tick, and the log's own state there, which the record must carry. A checkpoint comes
+    /// at a tick boundary, before any entry of the tick after it.
+    pub fn begin_checkpoint(&mut self) -> Result<CheckpointBegun, CheckpointError> {
         debug_assert!(
             self.to_replay.is_empty(),
-            "a log that replays takes no checkpoint"
+            "a log that replays begins no checkpoint"
         );
         assert!(
             self.result.is_none(),
@@ -855,33 +876,64 @@ impl SessionLog {
             self.tick_ends.last().map_or(0, |&end| end as usize),
             "a checkpoint comes before any entry of its first tick"
         );
+        if self.begun.is_some() {
+            return Err(CheckpointError::Pending);
+        }
+        let tick = self.next_tick();
+        if self.segments.last().is_some_and(|last| last.tick == tick) {
+            return Err(CheckpointError::Empty);
+        }
+        let segment = SegmentStart {
+            tick,
+            checkpoint: None,
+        };
+        let number = offset(self.segments.len());
+        if let Some(journal) = &self.journal {
+            segment.journal_begun(journal, number);
+        }
+        self.segments.push(segment);
+        let begun = CheckpointBegun {
+            segment: number,
+            tick,
+            carry: self.carry(),
+        };
+        self.begun = Some(begun.clone());
+        Ok(begun)
+    }
+
+    /// Logs `record`, with the server key's `signature` over it, as the record of the checkpoint
+    /// the log began and has none of yet, as many ticks after its boundary as it took: it must
+    /// start that segment, at its tick, and carry the log's own state there, so a segment
+    /// verifies from its checkpoint alone. A refused record leaves the log unchanged.
+    pub fn record_checkpoint(
+        &mut self,
+        record: Checkpoint,
+        signature: &Signature,
+    ) -> Result<(), CheckpointError> {
+        let begun = self.begun.as_ref().ok_or(CheckpointError::NotBegun)?;
         let server_key = &self.header.terms.server_key;
         if !record.signed_by(&self.secp, server_key, self.session_id, signature) {
             return Err(CheckpointError::BadSignature);
         }
-        if self.segment().checked_add(1) != Some(record.segment) {
+        if record.segment != begun.segment {
             return Err(CheckpointError::Segment);
         }
-        let tick = self.next_tick();
-        if record.tick != tick {
+        if record.tick != begun.tick {
             return Err(CheckpointError::Tick);
         }
-        if self.segments.last().is_some_and(|last| last.tick == tick) {
-            return Err(CheckpointError::Empty);
-        }
-        if record.carry != self.carry() {
+        if record.carry != begun.carry {
             return Err(CheckpointError::Carry);
         }
-        self.segments.push(SegmentStart {
-            tick,
-            checkpoint: Some(LoggedCheckpoint {
-                record,
-                signature: *signature,
-            }),
-        });
-        if let (Some(journal), Some(segment)) = (&self.journal, self.segments.last()) {
-            segment.journal(journal);
+        let logged = LoggedCheckpoint {
+            record,
+            signature: *signature,
+        };
+        if let Some(journal) = &self.journal {
+            logged.journal(journal);
         }
+        let segment = usize::try_from(begun.segment).expect("segments fit usize");
+        self.segments[segment].checkpoint = Some(logged);
+        self.begun = None;
         Ok(())
     }
 
@@ -1047,6 +1099,10 @@ impl SessionLog {
         self.put_header(out);
         put(out, &offset(self.segments.len()));
         let mut start = 0;
+        assert!(
+            self.begun.is_none(),
+            "a log is written once every checkpoint it began has its record"
+        );
         for (at, segment) in self.segments.iter().enumerate() {
             if let Some(logged) = &segment.checkpoint {
                 logged.record.encode(out);
@@ -1228,9 +1284,17 @@ impl SessionLog {
             .map_err(|error| LogError::Server { tick, error })
     }
 
-    /// Records the checkpoint record of segment `segment` that `encode` wrote at the front of
-    /// `rest`, with its signature.
+    /// Begins the checkpoint of segment `segment`, and records its record that `encode` wrote at
+    /// the front of `rest`, with its signature.
     fn record_checkpoint_at(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
+        self.begin_checkpoint()
+            .map_err(|error| LogError::Checkpoint { segment, error })?;
+        self.record_done(rest, segment)
+    }
+
+    /// Records the record of the checkpoint begun, of segment `segment`, that `encode` wrote at
+    /// the front of `rest`, with its signature.
+    fn record_done(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
         let (record, after) = Checkpoint::take(rest).map_err(|error| match error {
             CheckpointDecodeError::Malformed(postcard::Error::DeserializeUnexpectedEnd) => {
                 LogError::Truncated
@@ -1283,9 +1347,24 @@ impl SessionLog {
             JOURNAL_PACKET => self.record_packet(&mut rest, inputs, applied)?,
             JOURNAL_SERVER => self.record_server_input(&mut rest)?,
             JOURNAL_SEALED => drop(self.seal_tick()),
-            JOURNAL_CHECKPOINT => {
-                let segment = self.segment().saturating_add(1);
-                self.record_checkpoint_at(&mut rest, segment)?;
+            JOURNAL_CHECKPOINT_BEGUN => {
+                let segment: u32 = take(&mut rest)?;
+                let tick: Tick = take(&mut rest)?;
+                let begun = self
+                    .begin_checkpoint()
+                    .map_err(|error| LogError::Checkpoint { segment, error })?;
+                if (begun.segment, begun.tick) != (segment, tick) {
+                    let error = if begun.segment == segment {
+                        CheckpointError::Tick
+                    } else {
+                        CheckpointError::Segment
+                    };
+                    return Err(LogError::Checkpoint { segment, error });
+                }
+            }
+            JOURNAL_CHECKPOINT_DONE => {
+                let segment = self.segment();
+                self.record_done(&mut rest, segment)?;
             }
             JOURNAL_RESULT => {
                 let LoggedResult { result, signature } = take(&mut rest)?;
@@ -1314,10 +1393,17 @@ impl SessionLog {
             self.put_header(out);
         });
         let mut start = 0;
-        let mut segments = self.segments.iter().skip(1).peekable();
+        let mut segments = (1..).zip(self.segments.iter().skip(1)).peekable();
+        let journal_segment = |(number, segment): (u32, &SegmentStart)| {
+            segment.journal_begun(&journal, number);
+            if let Some(logged) = &segment.checkpoint {
+                logged.journal(&journal);
+            }
+        };
         for (tick, &end) in (0..).zip(&self.tick_ends) {
-            if let Some(segment) = segments.next_if(|segment| segment.tick == Tick::new(tick)) {
-                segment.journal(&journal);
+            if let Some(segment) = segments.next_if(|(_, segment)| segment.tick == Tick::new(tick))
+            {
+                journal_segment(segment);
             }
             for at in start..end {
                 self.journal_entry(&journal, at);
@@ -1326,7 +1412,7 @@ impl SessionLog {
             start = end;
         }
         if let Some(segment) = segments.next() {
-            segment.journal(&journal);
+            journal_segment(segment);
         }
         for at in start..offset(self.entries.len()) {
             self.journal_entry(&journal, at);

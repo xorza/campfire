@@ -40,7 +40,7 @@ const BODY_LEN_BYTES: usize = size_of::<u64>();
 /// restore, and copy what changed to another world. Each type walks entities in stable-id order,
 /// and a snapshot's section for a type holds exactly the bytes its hash consumes, so a snapshot
 /// and its hash cannot disagree.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StateRegistry {
     entries: Vec<Entry>,
     foreign: Vec<ForeignCheck>,
@@ -48,13 +48,13 @@ pub struct StateRegistry {
 
 /// A rule of the registered state type `name` that a capability other than its owner knows,
 /// checked as the type's own check is.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ForeignCheck {
     name: &'static str,
     check: fn(&World) -> bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Entry {
     name: &'static str,
     encode: fn(&World, &mut dyn Sink),

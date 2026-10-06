@@ -6,6 +6,8 @@
 )]
 
 mod bot_driver;
+mod checkpoint_thread;
+mod checkpoints;
 mod door;
 mod error;
 mod events;
@@ -33,8 +35,10 @@ mod sim_client;
 mod sim_server;
 mod superseded;
 
-pub use error::{JoinError, OrderScriptError, ReceiptRefusal, TermsMismatch};
+pub use error::{JoinError, OrderScriptError, ReceiptRefusal, RestoreMatchError, TermsMismatch};
 pub use events::avatar_missing::AvatarMissing;
+pub use events::checkpoint_failed::CheckpointFailed;
+pub use events::checkpoint_taken::CheckpointTaken;
 pub use events::input_dropped::InputDropped;
 pub use events::input_logged::InputLogged;
 pub use events::input_message_refused::InputMessageRefused;
@@ -50,6 +54,7 @@ pub use events::order_dropped::OrderDropped;
 pub use events::orders_sent::OrdersSent;
 pub use events::receipt_refused::ReceiptRefused;
 pub use events::receipt_unsaved::ReceiptUnsaved;
+pub use events::seeds_ran_out::SeedsRanOut;
 pub use events::session_aborted::SessionAborted;
 pub use events::session_refused::SessionRefused;
 pub use events::session_restored::SessionRestored;
@@ -68,7 +73,7 @@ pub use order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue}
 pub use server_bots::{ServerBots, SlotBot};
 pub use server_setup::ServerSetup;
 pub use session_dir::error::{AbortError, FindError, RestoreError};
-pub use session_dir::{RestoredSession, SessionDir};
+pub use session_dir::{RestoredSession, SessionDir, SessionFiles};
 pub use session_journal::SessionJournal;
 pub use session_times::SessionTimes;
 pub use sim_client::bot_script::BotScript;

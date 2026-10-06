@@ -5,7 +5,9 @@ use std::num::NonZeroU32;
 use campfire_capabilities::CallError;
 use campfire_common::StateHash;
 use campfire_package::StoreError;
-use campfire_protocol::{AfterLeave, Outcome, SeedError, ServerInputError, SlotChange};
+use campfire_protocol::{
+    AfterLeave, CheckpointError, Outcome, SeedError, ServerInputError, SlotChange,
+};
 use campfire_sim::SnapshotError;
 
 /// Why a session log does not start a match. A published log is untrusted, and so are packages,
@@ -91,6 +93,34 @@ impl Error for ResumeError {
             ResumeError::Start(error) => Some(error),
             ResumeError::Snapshot(error) => Some(error),
             ResumeError::NoCheckpoint | ResumeError::Fingerprint | ResumeError::StateHash => None,
+        }
+    }
+}
+
+/// Why a session begins no checkpoint at a boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckpointBeginError {
+    /// The seed chain has no segment after the log's last: the session runs out of chain.
+    PastSeeds,
+    Log(CheckpointError),
+}
+
+impl fmt::Display for CheckpointBeginError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CheckpointBeginError::PastSeeds => {
+                f.write_str("the seed chain has no segment after the last")
+            }
+            CheckpointBeginError::Log(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl Error for CheckpointBeginError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            CheckpointBeginError::Log(error) => Some(error),
+            CheckpointBeginError::PastSeeds => None,
         }
     }
 }

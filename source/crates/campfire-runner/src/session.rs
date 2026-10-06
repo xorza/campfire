@@ -5,16 +5,18 @@ use campfire_common::{SegmentSeed, StateHash, Tick};
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
-    AfterLeave, Applied, Checkpoint, CheckpointError, InputError, Journal, Outcome, PlayerInput,
-    ResultError, SeedError, ServerInput, ServerSeeds, SessionHeader, SessionLog, SessionResult,
-    SessionTerms, Signature, SlotChangeKind, SnapshotFingerprint,
+    AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal,
+    Outcome, PlayerInput, ResultError, SeedError, ServerInput, ServerSeeds, SessionHeader,
+    SessionLog, SessionResult, SessionTerms, Signature, SlotChangeKind, SnapshotFingerprint,
 };
 use campfire_sim::{
-    SimRng, SimTick, SimUpdate, SlotEvent, SlotEventKind, SnapshotError, StateCopy, StateRegistry,
-    TickInput, TickInputs, TickRate,
+    SimRng, SimTick, SimUpdate, SlotEvent, SlotEventKind, SnapshotError, StateCopy, StateDelta,
+    StateRegistry, TickInput, TickInputs, TickRate,
 };
 
-use crate::error::{ResultMismatch, ResumeError, ServerInputRefused, StartError};
+use crate::error::{
+    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
+};
 use crate::match_build::MatchBuild;
 use crate::script_call_failed::ScriptCallFailed;
 use crate::session_rules::SessionRules;
@@ -228,8 +230,7 @@ impl Session {
             let next = session.log.next_tick();
             if let Some(segment) = session
                 .log
-                .checkpoint_at(next)
-                .map(|record| record.segment)
+                .segment_starting(next)
                 .filter(|&segment| segment > session.segment)
             {
                 let server_seed = session
@@ -298,24 +299,44 @@ impl Session {
         self.log.resume_journal(journal);
     }
 
-    /// The checkpoint record of the boundary before the next tick, which starts the segment after
-    /// the log's last, its snapshot of `world` written into `snapshot`, which is cleared first;
-    /// none when the seed chain has no segment after the last.
+    /// Begins a checkpoint at the boundary before the next tick, which starts the segment after
+    /// the log's last: the next tick draws from its seed. An error past the seed chain's last
+    /// segment, and as `SessionLog::begin_checkpoint` gives one.
+    pub fn begin_checkpoint(&mut self) -> Result<CheckpointBegun, CheckpointBeginError> {
+        let segment = self.log.segment().checked_add(1);
+        if segment
+            .and_then(|segment| self.seeds.seed(segment))
+            .is_none()
+        {
+            return Err(CheckpointBeginError::PastSeeds);
+        }
+        self.log
+            .begin_checkpoint()
+            .map_err(CheckpointBeginError::Log)
+    }
+
+    /// The record of the checkpoint the log began and has no record of, of the state of `world`
+    /// at its boundary, its snapshot written into `snapshot`, which is cleared first; none when
+    /// the log began none.
     pub fn checkpoint(&self, world: &World, snapshot: &mut Vec<u8>) -> Option<Checkpoint> {
-        let segment = self.log.segment().checked_add(1)?;
-        self.seeds.seed(segment)?;
+        let begun = self.log.begun_checkpoint()?;
+        debug_assert_eq!(
+            world.resource::<SimTick>().start(),
+            begun.tick,
+            "the state stands at the checkpoint's boundary"
+        );
         self.state.snapshot(world, snapshot);
         Some(Checkpoint {
-            segment,
-            tick: self.log.next_tick(),
+            segment: begun.segment,
+            tick: begun.tick,
             state_hash: self.state.hash(world),
             snapshot: SnapshotFingerprint::of(snapshot),
-            carry: self.log.carry(),
+            carry: begun.carry.clone(),
         })
     }
 
-    /// Logs a checkpoint record with the server key's `signature` over it; see
-    /// `SessionLog::record_checkpoint`. The next tick draws from the new segment's seed.
+    /// Logs the record of the checkpoint begun, with the server key's `signature` over it; see
+    /// `SessionLog::record_checkpoint`.
     pub fn record_checkpoint(
         &mut self,
         record: Checkpoint,
@@ -394,6 +415,27 @@ impl Session {
 
     pub fn state_hash(&self, world: &World) -> StateHash {
         self.state.hash(world)
+    }
+
+    /// The registry of the match's state types.
+    pub const fn registry(&self) -> &StateRegistry {
+        &self.state
+    }
+
+    /// Starts recording the changes of the state of the session in `world`, and writes its whole
+    /// state into `delta`; see `StateRegistry::track`.
+    pub fn track(world: &mut World, delta: &mut StateDelta) {
+        world.resource_scope(|world, session: Mut<'_, Session>| {
+            session.state.track(world, delta);
+        });
+    }
+
+    /// Writes into `delta` the state of the session in `world` that changed since the last
+    /// copy; see `StateRegistry::changes`.
+    pub fn changes(world: &mut World, delta: &mut StateDelta) {
+        world.resource_scope(|world, session: Mut<'_, Session>| {
+            session.state.changes(world, delta);
+        });
     }
 
     /// A copy of the state of the session in `world`, which follows it by what changed: see

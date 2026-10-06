@@ -30,6 +30,7 @@ mod slot_start;
 mod snapshot_fingerprint;
 
 pub use checkpoint::Checkpoint;
+pub use checkpoint::checkpoint_begun::CheckpointBegun;
 pub use checkpoint::error::CheckpointDecodeError;
 pub use checkpoint::log_carry::LogCarry;
 pub use connect::ConnectChallenge;

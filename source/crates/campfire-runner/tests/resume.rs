@@ -154,6 +154,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     let session_id = fixed.runner().log().session_id();
     let checkpoint = |fixed: &mut FixedMatch, flaw: fn(&mut Checkpoint, &mut Vec<u8>)| {
         let mut snapshot = Vec::new();
+        fixed.runner_mut().begin_checkpoint().unwrap();
         let mut record = fixed.runner().checkpoint(&mut snapshot).unwrap();
         flaw(&mut record, &mut snapshot);
         let signature = FixedSession::checkpoint_signature(&record, session_id);

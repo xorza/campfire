@@ -1,4 +1,5 @@
 mod bots;
+mod checkpoints;
 mod fog;
 mod lane;
 mod prototype;

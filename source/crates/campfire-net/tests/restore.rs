@@ -84,7 +84,7 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
     let session = dir.restore().unwrap().unwrap();
     let key = LocalMatch::server_keypair();
     let file = session
-        .abort(&data.0, local.packages(), &key, &[6; 32])
+        .abort(&data.0, local.packages(), key, |aux| aux.fill(6))
         .unwrap();
     assert!(SessionDir::find(&data.0).unwrap().is_none());
     let log = SessionLog::decode(&fs::read(&file).unwrap()).unwrap();

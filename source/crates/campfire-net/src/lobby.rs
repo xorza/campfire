@@ -9,8 +9,8 @@ use campfire_common::PlayerSlot;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    ConnectChallenge, Delegation, Journal, SeedChain, SessionHeader, SessionLog, SessionTerms,
-    SlotPlan, SlotStart,
+    ConnectChallenge, Delegation, SeedChain, SessionHeader, SessionLog, SessionTerms, SlotPlan,
+    SlotStart,
 };
 use campfire_runner::{InputRules, SessionRules, TermsError};
 use lightyear::prelude::{Connected, LocalTimeline};
@@ -22,6 +22,7 @@ use crate::join::Join;
 use crate::offering::{JoinLinks, Joined, OfferLinks, Offering, Refused, Superseding};
 use crate::server_bots::ServerBots;
 use crate::server_setup::ServerSetup;
+use crate::session_dir::SessionFiles;
 use crate::sim_server::{SessionStart, SimServer};
 
 /// A session open for players to join: the server offers each connected client the terms and a
@@ -39,8 +40,8 @@ pub struct Lobby {
     setup: ServerSetup,
     /// The links that joined, by slot, with their delegations.
     joined: Vec<(Entity, Delegation)>,
-    /// Where the session's log goes as the server logs it, once the server keeps one.
-    journal: Option<Journal>,
+    /// Where the session's log and snapshots go as the server writes them, once it keeps them.
+    files: Option<SessionFiles>,
 }
 
 /// What a server opens a session with.
@@ -95,14 +96,15 @@ impl Lobby {
             bots,
             setup: server,
             joined: Vec::with_capacity(players),
-            journal: None,
+            files: None,
         })
     }
 
-    /// Keeps `journal`, a new one, for the session: it follows the log from the match's start.
-    pub fn keep_journal(&mut self, journal: Journal) {
-        assert!(self.journal.is_none(), "a session keeps one journal");
-        self.journal = Some(journal);
+    /// Keeps `files`, a new journal and where snapshots go, for the session: the journal follows
+    /// the log from the match's start.
+    pub fn keep_files(&mut self, files: SessionFiles) {
+        assert!(self.files.is_none(), "a session keeps one journal");
+        self.files = Some(files);
     }
 
     pub const fn terms(&self) -> &SessionTerms {
@@ -195,7 +197,7 @@ impl Lobby {
             log,
             seeds,
             packages: &lobby.packages,
-            journal: lobby.journal,
+            files: lobby.files,
             server: &lobby.setup,
             bots: lobby.bots,
         };

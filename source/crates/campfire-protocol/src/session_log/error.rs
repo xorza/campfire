@@ -135,6 +135,10 @@ pub enum CheckpointError {
     Empty,
     /// The record carries another state than the log's own at the boundary.
     Carry,
+    /// A checkpoint the log began has no record yet.
+    Pending,
+    /// The log began no checkpoint that the record would complete.
+    NotBegun,
 }
 
 impl fmt::Display for CheckpointError {
@@ -145,6 +149,8 @@ impl fmt::Display for CheckpointError {
             CheckpointError::Tick => "checkpoint at another tick than the next",
             CheckpointError::Empty => "checkpoint ends a segment of no tick",
             CheckpointError::Carry => "checkpoint carries another state than the log's",
+            CheckpointError::Pending => "a checkpoint begun has no record yet",
+            CheckpointError::NotBegun => "no checkpoint begun for the record",
         })
     }
 }

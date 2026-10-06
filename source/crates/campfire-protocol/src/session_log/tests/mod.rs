@@ -938,6 +938,7 @@ fn play_minimal(log: &mut SessionLog) {
     serve(log, connected).unwrap();
     drop(log.seal_tick());
     let secp = Secp256k1::new();
+    log.begin_checkpoint().unwrap();
     let record = Checkpoint {
         segment: 1,
         tick: log.next_tick(),

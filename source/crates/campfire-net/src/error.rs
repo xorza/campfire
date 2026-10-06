@@ -1,8 +1,8 @@
 use std::error::Error;
-use std::fmt;
+use std::{fmt, io};
 
-use campfire_protocol::{ConnectError, DelegationError};
-use campfire_runner::{ServerInputRefused, TermsError};
+use campfire_protocol::{ConnectError, DelegationError, DurableError};
+use campfire_runner::{ResumeError, ServerInputRefused, StartError, TermsError};
 use toml::de::Error as TomlError;
 
 /// Why the server refused a player's join.
@@ -150,3 +150,42 @@ impl fmt::Display for ReceiptRefusal {
 }
 
 impl Error for ReceiptRefusal {}
+
+/// Why a session a stop ended does not restore its match.
+#[derive(Debug)]
+pub enum RestoreMatchError {
+    /// The log does not start a match of the server's mode.
+    Start(StartError),
+    /// The latest checkpoint's snapshot does not read.
+    ReadSnapshot(io::Error),
+    /// The latest checkpoint's snapshot does not resume the match.
+    Resume(ResumeError),
+    /// A checkpoint taken again did not write its snapshot.
+    WriteSnapshot(DurableError),
+}
+
+impl fmt::Display for RestoreMatchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RestoreMatchError::Start(error) => write!(f, "the match does not start: {error}"),
+            RestoreMatchError::ReadSnapshot(error) => {
+                write!(f, "the latest checkpoint's snapshot does not read: {error}")
+            }
+            RestoreMatchError::Resume(error) => write!(f, "the match does not resume: {error}"),
+            RestoreMatchError::WriteSnapshot(error) => {
+                write!(f, "a checkpoint's snapshot was not written: {error}")
+            }
+        }
+    }
+}
+
+impl Error for RestoreMatchError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            RestoreMatchError::Start(error) => Some(error),
+            RestoreMatchError::ReadSnapshot(error) => Some(error),
+            RestoreMatchError::Resume(error) => Some(error),
+            RestoreMatchError::WriteSnapshot(error) => Some(error),
+        }
+    }
+}

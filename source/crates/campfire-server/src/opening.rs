@@ -87,10 +87,13 @@ impl Opening {
             return Ok(Some(session));
         }
         let id = session.log.session_id();
-        let mut aux = [0; 32];
-        (setup.server.entropy)(&mut aux);
         let file = session
-            .abort(data, &setup.packages, &setup.server.key, &aux)
+            .abort(
+                data,
+                &setup.packages,
+                setup.server.key,
+                setup.server.entropy,
+            )
             .map_err(OpeningError::Abort)?;
         SessionAborted { session: id, file }.log();
         Ok(None)
@@ -119,8 +122,8 @@ impl Opening {
             terms: lobby.terms().clone(),
         };
         let dir = SessionDir::create(setup.data, &private).map_err(OpeningError::NewSession)?;
-        let journal = dir.start_journal().map_err(OpeningError::NewJournal)?;
-        lobby.keep_journal(journal);
+        let files = dir.start().map_err(OpeningError::NewJournal)?;
+        lobby.keep_files(files);
         Ok(lobby)
     }
 }

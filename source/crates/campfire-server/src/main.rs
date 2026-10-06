@@ -33,12 +33,12 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, Listening, MatchClock, NetProtocol, OrderScript, ServerBots, ServerSetup,
-    SessionDir, SessionJournal, SessionTimes, SessionWritten, SimServer, SlotBot,
+    CheckpointFailed, JournalFailed, Listening, MatchClock, NetProtocol, OrderScript, ServerBots,
+    ServerSetup, SessionDir, SessionJournal, SessionTimes, SessionWritten, SimServer, SlotBot,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1};
+use campfire_protocol::secp256k1::Keypair;
 use campfire_runner::Session;
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
@@ -215,7 +215,9 @@ fn server_app(
         (
             Restore::run.run_if(resource_exists::<Restore>),
             exit_on_journal_failure,
+            exit_on_checkpoint_failure,
             end_when_everyone_left,
+            publish_when_ended,
         )
             .chain(),
     );
@@ -383,25 +385,46 @@ fn exit_on_journal_failure(
     exit.write(AppExit::from_code(JOURNAL_FAILED));
 }
 
+/// Exits, with `JOURNAL_FAILED`, once a checkpoint's snapshot was not written, as on a failed
+/// journal: its host's supervisor starts it again, which takes the checkpoint again.
+fn exit_on_checkpoint_failure(world: &mut World) {
+    if let Some(error) = SimServer::checkpoint_failure(world) {
+        CheckpointFailed {
+            error: error.to_string(),
+        }
+        .log();
+        world.write_message(AppExit::from_code(JOURNAL_FAILED));
+    }
+}
+
 /// Once the match started, every slot a player controlled has left, and no player holds a link,
-/// ends the session with its result, as the mode ended the match or aborted when it did not,
-/// reveals the seed, writes the session log durably into the data directory's `logs` and exits:
-/// with an error when the log is not written, as the session it holds is lost.
+/// ends the session with its result, as the mode ended the match or aborted when it did not.
 fn end_when_everyone_left(world: &mut World) {
-    if !world.contains_resource::<MatchClock>() || !SimServer::players_gone(world) {
+    if !world.contains_resource::<MatchClock>()
+        || world.resource::<Session>().log().result().is_some()
+        || !SimServer::players_gone(world)
+    {
         return;
     }
-    let session = world.resource::<Session>();
-    let result = session.result(world, Session::outcome(world));
-    let id = session.log().session_id();
-    let key = &world.resource::<ServerConfig>().0.key;
-    let signature = result.sign(&Secp256k1::new(), key, id, &random());
-    let mut session = world.resource_mut::<Session>();
-    session
-        .record_result(result, &signature)
-        .expect("the server's own result holds");
-    session.reveal_seed();
-    let session = world.resource::<Session>();
+    let outcome = Session::outcome(world);
+    if let Err(error) = SimServer::end_session(world, outcome) {
+        CheckpointFailed {
+            error: error.to_string(),
+        }
+        .log();
+        world.write_message(AppExit::from_code(JOURNAL_FAILED));
+    }
+}
+
+/// Once the session ended, writes its log durably into the data directory's `logs` and exits:
+/// with an error when the log is not written, as the session it holds is lost.
+fn publish_when_ended(world: &mut World) {
+    let Some(session) = world.get_resource::<Session>() else {
+        return;
+    };
+    if session.log().result().is_none() {
+        return;
+    }
     let hash = session.state_hash(world);
     let id = session.log().session_id();
     let data = &world.resource::<DataPath>().0;
@@ -423,12 +446,6 @@ fn end_when_everyone_left(world: &mut World) {
     world.write_message(exit);
 }
 
-fn random() -> [u8; 32] {
-    let mut bytes = [0; 32];
-    fill(&mut bytes);
-    bytes
-}
-
 fn fill(bytes: &mut [u8; 32]) {
     getrandom::fill(bytes).expect("the OS gives random bytes");
 }
@@ -446,7 +463,7 @@ mod tests {
     use std::num::NonZeroU8;
 
     use campfire_protocol::SeedChain;
-    use campfire_protocol::secp256k1::SecretKey;
+    use campfire_protocol::secp256k1::{Secp256k1, SecretKey};
     use campfire_protocol::{Journal, JournalFile, SessionHeader, SessionLog, SlotPlan, SlotStart};
     use campfire_runner::{InputRules, SessionRules};
 

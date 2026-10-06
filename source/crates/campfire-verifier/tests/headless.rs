@@ -171,6 +171,7 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
     let mut trail = HashTrail::default();
     let orders = ORDERS.each_ref();
     play(&mut fixed, &orders, 0..40, &mut trail);
+    fixed.runner_mut().begin_checkpoint().unwrap();
     let mut record = fixed.runner().checkpoint(snapshot).unwrap();
     record.state_hash = hash.unwrap_or(record.state_hash);
     let id = fixed.runner().log().session_id();

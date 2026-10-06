@@ -3,25 +3,36 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use bevy_ecs::world::{Mut, World};
 use campfire_package::{ModePackages, RELEASE};
-use campfire_protocol::secp256k1::{Keypair, Secp256k1};
+use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{
     DurableError, DurableFile, Journal, JournalError, JournalFrames, Outcome, SessionLog,
     SessionPrivate,
 };
-use campfire_runner::Runner;
+use campfire_runner::Session;
 
+use crate::checkpoints::Checkpoints;
+use crate::server_signer::ServerSigner;
 use crate::session_dir::error::{AbortError, FindError, RestoreError};
 
 pub(crate) mod error;
 
 /// A session's directory under a server's data directory, `sessions/<session id>`: its `private`
-/// record, written once before the first offer, and its `journal`. Each is synced into its parent
-/// as it is made, so a crash loses neither. Once the session ends, its log goes to the data
+/// record, written once before the first offer, its `journal`, and its checkpoints' `snapshots`.
+/// Each is synced into its parent as it is made, so a crash loses none. Once the session ends, its log goes to the data
 /// directory's `logs`, `<session id>.campfire-log`, which marks it done.
 #[derive(Debug)]
 pub struct SessionDir {
     path: PathBuf,
+}
+
+/// What a session writes as it runs: its journal, and the directory its checkpoints' snapshots
+/// go to, each named by its fingerprint in hex.
+#[derive(Debug)]
+pub struct SessionFiles {
+    pub journal: Journal,
+    pub snapshots: PathBuf,
 }
 
 /// A session read back from its directory, as a server that starts again finds it.
@@ -30,8 +41,8 @@ pub struct RestoredSession {
     pub private: SessionPrivate,
     /// The log its journal rebuilds: what the server held when it wrote the last record.
     pub log: SessionLog,
-    /// Its journal, cut to its whole frames, open to append.
-    pub journal: Journal,
+    /// Its journal, cut to its whole frames, open to append, and its snapshots.
+    pub files: SessionFiles,
     /// When the journal was last written.
     pub modified: SystemTime,
 }
@@ -48,9 +59,16 @@ impl SessionDir {
         Ok(SessionDir { path })
     }
 
-    /// The session's new journal.
-    pub fn start_journal(&self) -> Result<Journal, JournalError> {
-        Journal::create(&self.path.join("journal"))
+    /// The session's files: its new journal, and where its snapshots go.
+    pub fn start(&self) -> Result<SessionFiles, JournalError> {
+        Ok(SessionFiles {
+            journal: Journal::create(&self.path.join("journal"))?,
+            snapshots: self.snapshots(),
+        })
+    }
+
+    fn snapshots(&self) -> PathBuf {
+        self.path.join("snapshots")
     }
 
     /// The directory of the one session under `data` whose log is not published; none when
@@ -108,7 +126,10 @@ impl SessionDir {
         Ok(Some(RestoredSession {
             private,
             log,
-            journal,
+            files: SessionFiles {
+                journal,
+                snapshots: self.snapshots(),
+            },
             modified,
         }))
     }
@@ -134,33 +155,44 @@ impl SessionDir {
 impl RestoredSession {
     /// Ends the session aborted, as a server back past the restore window does, unless it
     /// ended before the crash: replays the log, of the mode `packages` holds, to the state its
-    /// last tick left; logs an aborted result there, which `server_key` signs with the auxiliary
-    /// randomness `aux`, into the journal too; and publishes the log under `data`, its seed
-    /// revealed. The published file's path.
+    /// last tick left, taking again a checkpoint begun with no record as it reaches its
+    /// boundary; logs an aborted result there, into the journal too; and publishes the log under
+    /// `data`, its seed revealed. `server_key` signs what it logs, with auxiliary randomness from
+    /// `entropy`. The published file's path.
     pub fn abort(
         self,
         data: &Path,
         packages: &ModePackages,
-        server_key: &Keypair,
-        aux: &[u8; 32],
+        server_key: Keypair,
+        entropy: fn(&mut [u8; 32]),
     ) -> Result<PathBuf, AbortError> {
         let ticks = self.log.next_tick();
         let seeds = self.private.seed_chain.seeds();
-        let mut runner =
-            Runner::new(self.log.rewound(), seeds, packages).map_err(AbortError::Start)?;
-        runner.resume_journal(self.journal);
-        while runner.log().next_tick() < ticks {
-            runner.run_tick();
+        let mut world = World::new();
+        Session::start(&mut world, self.log.rewound(), seeds, packages)
+            .map_err(AbortError::Start)?;
+        world
+            .resource_mut::<Session>()
+            .resume_journal(self.files.journal);
+        let signer = ServerSigner::new(server_key, entropy);
+        loop {
+            Checkpoints::take_again(&mut world, &self.files.snapshots, &signer)
+                .map_err(AbortError::Snapshot)?;
+            if world.resource::<Session>().log().next_tick() >= ticks {
+                break;
+            }
+            Session::run_tick(&mut world);
         }
-        if runner.log().result().is_none() {
-            let result = runner.result_as(Outcome::Aborted);
-            let id = runner.log().session_id();
-            let signature = result.sign(&Secp256k1::new(), server_key, id, aux);
-            runner
-                .record_result(result, &signature)
-                .expect("the server's own result holds");
-        }
-        runner.reveal_seed();
-        SessionDir::publish(data, runner.log()).map_err(AbortError::Publish)
+        world.resource_scope(|world, mut session: Mut<'_, Session>| {
+            if session.log().result().is_none() {
+                let result = session.result(world, Outcome::Aborted);
+                let signature = signer.sign_result(&result, session.log().session_id());
+                session
+                    .record_result(result, &signature)
+                    .expect("the server's own result holds");
+            }
+            session.reveal_seed();
+        });
+        SessionDir::publish(data, world.resource::<Session>().log()).map_err(AbortError::Publish)
     }
 }
