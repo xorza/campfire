@@ -56,12 +56,14 @@ Three gaps of today's code the design closes:
 
 ## Structural rules
 
-Two rules join design 02's table, each with its test:
+Two rules join design 02's table. Clippy enforces each at compile time: `source/clippy.toml` lists their functions under `disallowed-methods`, and a call of one fails the check chain, which runs Clippy with `-D warnings`. A lint resolves the path a call names, so an alias or a re-export does not hide it, as a scan of the source text would let it. The list applies to the whole workspace, as Clippy takes one configuration for each crate and merges none: each call the rule allows carries `#[expect(clippy::disallowed_methods, reason = "…")]` at the call, and no crate allows the lint for all its code.
 
 | Rule | Enforced by |
 | --- | --- |
-| The deterministic core writes no file and starts no thread: `common`, `math`, `sim`, `script`, `capabilities`, `package`, `protocol` and `runner`, but their tests and their `internals`. | A scan of each core crate's sources for the file system's writes, syncs, renames and removals, and for threads, which lists each file it exempts |
-| Every thread starts through `store`'s `Worker`. | A scan of the workspace's sources for `std::thread`, outside `store` and tests |
+| Only `store` writes a file: no other crate writes, syncs, renames or removes a file, or makes a directory, but the log crate's file of JSON lines, the LAN check's run directory, and tests, each at its call. So the deterministic core, `common`, `math`, `sim`, `script`, `capabilities`, `package`, `protocol` and `runner`, writes no file. | `disallowed-methods`: `std::fs::write`, `copy`, `rename`, `hard_link`, `remove_file`, `remove_dir`, `remove_dir_all`, `create_dir`, `create_dir_all`, `set_permissions`, `DirBuilder::new`, `File::create`, `File::create_new`, `File::options`, `File::set_len`, `File::sync_all`, `File::sync_data`, `File::set_permissions`, `OpenOptions::new` |
+| Every thread starts through `store`'s `Worker`, but in tests. | `disallowed-methods`: `std::thread::spawn`, `std::thread::scope`, `std::thread::Builder::spawn`, `std::thread::Builder::spawn_scoped` |
+
+The manifest test of `common` checks that `clippy.toml` lists each of these paths, and that no source file of the workspace allows `clippy::disallowed_methods` for a crate or a module.
 
 ## Tests
 
