@@ -68,3 +68,90 @@ impl KernelScene {
         Num::from_bits((cm << Num::FRAC_BITS) / 100)
     }
 }
+
+#[cfg(any(test, feature = "bench"))]
+mod walls {
+    use campfire_math::Num;
+
+    use crate::values::kernel_scene::KernelScene;
+    use crate::values::polygon::Polygon;
+
+    impl KernelScene {
+        /// The walls that split a scene of `span` meters' half side into two lanes and a jungle,
+        /// as the 3v3's map does: on each side, halfway out, a wall 4 m thick in two pieces,
+        /// with a 10 m gap between them at the middle, both ending 10 m short of the scene's
+        /// ends, where lanes and jungle meet.
+        pub(crate) fn walls(span: u64) -> Vec<Polygon> {
+            let span = span.cast_signed();
+            let meters = |at: i64| Num::from_int(at).unwrap();
+            let mut walls = Vec::with_capacity(4);
+            for side in [-1, 1] {
+                let (west, east) = (meters(side * span / 2 - 2), meters(side * span / 2 + 2));
+                for [south, north] in [[-(span - 10), -5], [5, span - 10]] {
+                    let (south, north) = (meters(south), meters(north));
+                    let corners = vec![[west, south], [east, south], [east, north], [west, north]];
+                    walls.push(Polygon::new(corners).unwrap());
+                }
+            }
+            walls
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_sim::Position;
+
+    use super::*;
+    use crate::navigation::terrain::Terrain;
+    use crate::navigation::wall::Wall;
+    use crate::units::layer::Layer;
+    use crate::values::bounds::Bounds;
+    use crate::values::grid::Grid;
+
+    #[test]
+    fn the_walls_split_a_scene_into_two_lanes_and_a_jungle() {
+        // Half side 60 m: the walls stand at x from -32 to -28 and from 28 to 32, each from
+        // z = -50 to -5 and from 5 to 50, on a grid of 1 m cells over 120 m square.
+        let edge = Num::int(60);
+        let grid = Grid::new(Num::ONE, Bounds::new([-edge; 2], [edge; 2]).unwrap()).unwrap();
+        let walls: Vec<Wall> = KernelScene::walls(60)
+            .into_iter()
+            .map(|area| Wall {
+                layer: Layer::FIRST,
+                area,
+            })
+            .collect();
+        let terrain = Terrain::new(&grid, &walls);
+        let blocked = terrain.blocked(Layer::FIRST).unwrap();
+        let at = |x: i64, z: i64| {
+            let pos = Position::new(Vec3::new(
+                Num::int(x) + Num::HALF,
+                Num::ZERO,
+                Num::int(z) + Num::HALF,
+            ));
+            let cell = grid.cell_of(pos.unwrap()).unwrap();
+            blocked[cell / 64] & 1 << (cell % 64) != 0
+        };
+        // Inside each of the four pieces.
+        for (x, z) in [(-30, -20), (-30, 20), (30, -20), (30, 20)] {
+            assert!(at(x, z), "({x}, {z}) is walled");
+        }
+        // Just past each face, the lanes, the jungle, the gaps and the ends where all meet.
+        for (x, z) in [
+            (-33, -20),
+            (-28, -20),
+            (27, 20),
+            (32, 20),
+            (-45, 0),
+            (0, 0),
+            (45, 0),
+            (-30, 0),
+            (30, 0),
+            (-30, 51),
+            (30, -52),
+        ] {
+            assert!(!at(x, z), "({x}, {z}) is open");
+        }
+    }
+}

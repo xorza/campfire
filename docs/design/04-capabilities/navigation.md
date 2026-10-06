@@ -77,7 +77,7 @@ Positions go to everyone who sees the unit. A client predicts its own units' rou
 
 ## Cost
 
-Long and short routes cost up to as many units of work a tick as the grid has cells, in total, past which only the plan that meets the limit runs. Each walking unit costs a step, a steering test and its bucket's contacts a tick. A change of static bodies costs the chunks it touches.
+Long and short routes cost up to as many units of work a tick as the grid has cells, in total, past which only the plan that meets the limit runs. A unit takes 42 ns on one core of a Ryzen 7 6800U, `route_planner/walled`: 100 routes of a hero's size across the spread scene, from its south end to its north, around its static bodies and through walls that split it into two lanes and a jungle, 1,327,677 units in 55.8 ms. So a tick's limit takes about 2.6 ms on a grid of half-meter cells over 124 m square, 61,504 cells, 7.7 % of a tick at 30 Hz, and about 2.2 ms on the 3v3's map, 52,224 cells, where a wave's routes stay under it: `plan_routes` takes about 0.95 ms of a wave's tick. Each walking unit costs a step, a steering test and its bucket's contacts a tick. A change of static bodies costs the chunks it touches.
 
 The Collide stage, for 1,000 bodies on one core of a Ryzen 7 6800U, finds and parts their contacts in 0.31 ms when they crowd into 40 m square, `collision/crowded`, and in 0.08 ms when they spread over 120 m square, `collision/spread`: 0.9 % and 0.2 % of a tick at 30 Hz.
 

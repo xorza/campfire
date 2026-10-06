@@ -199,6 +199,7 @@ pub mod bench {
     pub fn run(c: &mut Criterion) {
         navigation::bench::collision(c);
         navigation::bench::pathing_grid(c);
+        navigation::bench::route_planner(c);
         vision::bench::fog(c);
     }
 }
