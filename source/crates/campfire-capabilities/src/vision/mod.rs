@@ -18,15 +18,17 @@ use crate::units::unit_tags::UnitTags;
 use crate::values::grid::Grid;
 use crate::values::polygon::Polygon;
 use crate::vision::brush_map::BrushMap;
+use crate::vision::fog::Fog;
 use crate::vision::reveals::Reveals;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
-use crate::vision::sight_maps::SightMaps;
 use crate::vision::vision_column::VisionColumn;
 use crate::vision::vision_grid::VisionGrid;
-use crate::vision::vision_groups::VisionGroups;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
 pub(crate) mod brush_map;
+pub(crate) mod fog;
 pub(crate) mod reveals;
 pub(crate) mod seen_by;
 pub(crate) mod sight;
@@ -119,46 +121,25 @@ fn see(
         ),
     >,
     mut commands: Commands<'_, '_>,
-    (mut groups, mut maps): (Local<'_, VisionGroups>, Local<'_, SightMaps>),
+    mut fog: Local<'_, Fog>,
 ) {
     let Some(grid) = grid else {
         return;
     };
     if relations.is_changed() || grid.is_changed() {
-        groups.rebuild(grid.teams, &relations);
-        maps.reset(grid.grid.cells(), groups.count());
+        fog.rebuild(&grid, &relations);
     }
-    maps.begin_tick();
+    fog.begin_tick();
     for (&pos, &team, sight, tags) in &seers {
-        let group = groups.of(team);
         let detects = UnitTags::properties_of(tags).detects();
-        let stands = grid
-            .grid
-            .cell_of(pos)
-            .expect("every unit stands within the bounds, which the grid covers");
-        let hidden = grid.brush.hidden_from(stands);
-        grid.grid.spans_within(pos, sight.range(), |cells| {
-            maps.reveal(group, cells, detects, hidden);
-        });
+        fog.sight(&grid, pos, team, sight.range(), detects);
     }
     reveals.run(tick.start(), |reveal| {
-        let group = groups.of(reveal.team);
-        grid.grid.spans_within(reveal.pos, reveal.radius, |cells| {
-            maps.reveal(group, cells, false, None);
-        });
+        fog.reveal(&grid, reveal.pos, reveal.team, reveal.radius);
     });
     for (entity, &pos, &team, tags, seen) in &mut units {
-        let mut teams = groups.members(groups.of(team));
-        let cell = grid
-            .grid
-            .cell_of(pos)
-            .expect("every unit stands within the bounds, which the grid covers");
         let hidden = UnitTags::properties_of(tags).hidden();
-        for group in 0..groups.count() {
-            if maps.sees(group, cell, hidden) {
-                teams = teams.union(groups.members(group));
-            }
-        }
+        let teams = fog.seen_by(&grid, pos, team, hidden);
         match seen {
             Some(mut seen) if seen.get() != teams => *seen = SeenBy::new(teams),
             Some(_) => {}

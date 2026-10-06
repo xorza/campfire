@@ -49,6 +49,10 @@ tempfile.workspace = true
 name = "tests"
 path = "tests/mod.rs"
 
+# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
+[lib]
+bench = false
+
 [[bench]]
 name = "net"
 harness = false

@@ -8,7 +8,7 @@ use campfire_capabilities::{
 };
 use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, ProvingMatch, RestoreTarget};
-use campfire_sim::internals::Draws;
+use campfire_sim::internals::{Draws, StageClock};
 use campfire_sim::{EntityIndex, Position};
 
 /// What the match showed over its ticks.
@@ -162,14 +162,16 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
 #[derive(Component, Debug)]
 struct Inert;
 
-/// The match plays alike whatever order Bevy's queries give units in. A query walks each
-/// archetype's units in the order they joined it; so each tick, before it runs, every unit joins
-/// the archetype with `Inert` anew, from the highest stable id down, and queries meet the units of
-/// one archetype in reverse id order. Both goldens must still hold.
+/// The match plays alike whatever order Bevy's queries give units in, and with a bench's stage
+/// probes in its schedule. A query walks each archetype's units in the order they joined it; so
+/// each tick, before it runs, every unit joins the archetype with `Inert` anew, from the highest
+/// stable id down, and queries meet the units of one archetype in reverse id order. Both goldens
+/// must still hold.
 #[test]
-fn the_proving_match_plays_alike_in_reverse_query_order() {
+fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() {
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
+    StageClock::install(fixed.runner_mut().world_mut());
     let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
     let mut copy = CopyCheck::new(fixed.runner_mut());
     let mut units = Vec::new();

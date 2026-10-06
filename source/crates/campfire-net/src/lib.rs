@@ -101,12 +101,12 @@ pub use crate::sim_server::tick_hashes::TickHashes;
 pub mod bench {
     use criterion::Criterion;
 
-    use crate::sim_client;
+    use crate::{sim_client, sim_server};
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
-        sim_client::bench::rollback(c);
-        sim_client::bench::worst_client_frame(c);
+        sim_client::bench::client_frame(c);
+        sim_server::bench::server_frame(c);
     }
 }
 

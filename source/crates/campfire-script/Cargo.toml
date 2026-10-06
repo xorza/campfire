@@ -4,12 +4,25 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+bench = ["dep:criterion"]
+
 [dependencies]
 campfire-math.workspace = true
 
+criterion = { workspace = true, optional = true }
 rhai.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 [lints]
 workspace = true
+
+# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
+[lib]
+bench = false
+
+[[bench]]
+name = "script"
+harness = false
+required-features = ["bench"]

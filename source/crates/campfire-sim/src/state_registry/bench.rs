@@ -4,7 +4,7 @@ use std::hint::black_box;
 use bevy_ecs::component::Component;
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
-use criterion::Criterion;
+use criterion::{Criterion, Throughput};
 use serde::{Deserialize, Serialize};
 
 use crate::entity_index::EntityIndex;
@@ -13,8 +13,8 @@ use crate::sim_state::SimComponent;
 use crate::stable_id::StableId;
 use crate::state_registry::StateRegistry;
 
-/// Heroes, creeps, structures and projectiles of a 3v3 match at its busiest.
-const ENTITIES: i64 = 300;
+/// The units of a kernel case, as an RTS battle holds them.
+const UNITS: i64 = 1000;
 
 #[derive(Component, Debug, Serialize, Deserialize)]
 struct Position(Vec3);
@@ -104,11 +104,13 @@ impl SimComponent for Stats {
     }
 }
 
-fn moba_world() -> World {
+/// `UNITS` units, each with a position, a velocity, life, a team and a target, and one in 50
+/// with mana, cooldowns and a row of stats, as a hero or a tower has.
+fn units_world() -> World {
     let mut world = World::new();
     world.init_resource::<EntityIndex>();
     world.init_resource::<IdAllocator>();
-    for i in 0..ENTITIES {
+    for i in 0..UNITS {
         let at = Num::from_int(i).unwrap();
         let id = world.resource_mut::<IdAllocator>().allocate();
         let mut entity = world.spawn((
@@ -130,8 +132,43 @@ fn moba_world() -> World {
     world
 }
 
+/// The state hash of a world of `UNITS` units: over all of it, as a checkpoint takes it, and split
+/// by state type, as the copy checks take it to name the type that differs.
 pub(crate) fn state_hash(c: &mut Criterion) {
-    let world = moba_world();
+    let world = units_world();
+    let registry = units_registry();
+    let mut per_type = Vec::new();
+
+    let mut group = c.benchmark_group("state_hash");
+    group.throughput(Throughput::Elements(UNITS.unsigned_abs()));
+    group.bench_function("all", |b| {
+        b.iter(|| black_box(registry.hash(black_box(&world))));
+    });
+    group.bench_function("by_type", |b| {
+        b.iter(|| black_box(registry.hash_by_type(black_box(&world), &mut per_type)));
+    });
+    group.finish();
+}
+
+/// The snapshot of a world of `UNITS` units, as a checkpoint writes it.
+pub(crate) fn snapshot(c: &mut Criterion) {
+    let world = units_world();
+    let registry = units_registry();
+    let mut out = Vec::new();
+
+    let mut group = c.benchmark_group("snapshot");
+    group.throughput(Throughput::Elements(UNITS.unsigned_abs()));
+    group.bench_function("all", |b| {
+        b.iter(|| {
+            registry.snapshot(black_box(&world), &mut out);
+            black_box(&out);
+        });
+    });
+    group.finish();
+}
+
+/// The registry of `units_world`'s state types.
+fn units_registry() -> StateRegistry {
     let mut registry = StateRegistry::new();
     registry.register_component::<Position>();
     registry.register_component::<Velocity>();
@@ -141,14 +178,5 @@ pub(crate) fn state_hash(c: &mut Criterion) {
     registry.register_component::<Target>();
     registry.register_component::<Cooldowns>();
     registry.register_component::<Stats>();
-    let mut per_type = Vec::new();
-
-    let mut group = c.benchmark_group("state_hash");
-    group.bench_function("moba_300", |b| {
-        b.iter(|| black_box(registry.hash(black_box(&world))));
-    });
-    group.bench_function("moba_300_by_type", |b| {
-        b.iter(|| black_box(registry.hash_by_type(black_box(&world), &mut per_type)));
-    });
-    group.finish();
+    registry
 }

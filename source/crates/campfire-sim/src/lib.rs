@@ -47,6 +47,7 @@ pub use crate::unpredicted::Unpredicted;
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    pub use crate::sim_update::stage_clock::StageClock;
     pub use crate::state_registry::internals::Draws;
 }
 
@@ -59,5 +60,6 @@ pub mod bench {
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         state_registry::bench::state_hash(c);
+        state_registry::bench::snapshot(c);
     }
 }

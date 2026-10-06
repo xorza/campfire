@@ -111,6 +111,9 @@ fn end_tick(mut tick: ResMut<'_, SimTick>, mut inputs: ResMut<'_, TickInputs>) {
 }
 
 #[cfg(any(test, feature = "internals"))]
+pub(crate) mod stage_clock;
+
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use bevy_ecs::schedule::ScheduleBuildSettings;
     use bevy_ecs::world::World;
