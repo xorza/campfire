@@ -11,7 +11,7 @@ use campfire_protocol::{
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
-use crate::in_process_match;
+use crate::harness::in_process_match;
 use crate::match_start::ChainHead;
 
 const NOW: u64 = 1_700_000_000;

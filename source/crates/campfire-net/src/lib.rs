@@ -5,43 +5,22 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-mod bot_driver;
-mod checkpoint_thread;
-mod checkpoints;
-mod client_dir;
-mod door;
 mod error;
 mod events;
 mod faults;
 #[cfg(feature = "internals")]
-mod in_process_match;
+mod harness;
 mod input_message;
 mod join;
-mod journal_watch;
-mod key_file;
 mod leave_match;
-mod lobby;
-mod local_pace;
-mod local_relink;
-mod local_server;
-mod local_session;
+mod local;
 mod match_clock;
 mod match_start;
 mod net_protocol;
 mod offer;
-mod offering;
 mod order_script;
 mod pace;
-mod receipts;
 mod save_command;
-mod seats;
-mod server_bots;
-mod server_dir;
-mod server_exit;
-mod server_setup;
-mod server_signer;
-mod session_dir;
-mod session_journal;
 mod session_times;
 mod sim_client;
 mod sim_server;
@@ -81,35 +60,35 @@ pub use events::time_dropped::TimeDropped;
 
 pub use input_message::InputMessage;
 
-pub use lobby::{Lobby, LobbySetup};
-pub use local_pace::LocalPace;
-pub use local_relink::LocalRelink;
-pub use local_server::error::LocalServerError;
-pub use local_server::{LocalServer, LocalServerSetup, Relinks};
+pub use local::local_pace::LocalPace;
+pub use local::local_relink::LocalRelink;
+pub use local::local_server::error::LocalServerError;
+pub use local::local_server::{LocalServer, LocalServerSetup, Relinks};
 pub use match_clock::MatchClock;
 pub use pace::{Pace, PaceSpeed};
 pub use save_command::SaveCommand;
+pub use sim_server::lobby::{Lobby, LobbySetup};
 
 pub use net_protocol::{InputChannel, NetProtocol};
 
-pub use client_dir::ClientDir;
-pub use journal_watch::JournalWatch;
-pub use key_file::KeyFile;
-pub use key_file::error::KeyFileError;
 pub use order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
-pub use server_bots::{ServerBots, SlotBot};
-pub use server_dir::ServerDir;
-pub use server_exit::ServerExit;
-pub use server_setup::ServerSetup;
-pub use session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
-pub use session_dir::snapshot_dir::SnapshotDir;
-pub use session_dir::{RestoredSession, SessionDir, SessionFiles};
-pub use session_journal::SessionJournal;
 pub use session_times::SessionTimes;
 pub use sim_client::bot_script::BotScript;
+pub use sim_client::client_dir::ClientDir;
 pub use sim_client::join_state::{JoinState, Loss};
 pub use sim_client::server_pin::ServerPin;
 pub use sim_client::{LeaveRequest, PendingOrders, PendingSaves, SimClient};
+pub use sim_server::journal_watch::JournalWatch;
+pub use sim_server::key_file::KeyFile;
+pub use sim_server::key_file::error::KeyFileError;
+pub use sim_server::server_bots::{ServerBots, SlotBot};
+pub use sim_server::server_dir::ServerDir;
+pub use sim_server::server_exit::ServerExit;
+pub use sim_server::server_setup::ServerSetup;
+pub use sim_server::session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
+pub use sim_server::session_dir::snapshot_dir::SnapshotDir;
+pub use sim_server::session_dir::{RestoredSession, SessionDir, SessionFiles};
+pub use sim_server::session_journal::SessionJournal;
 pub use sim_server::{PlayerLink, SimServer, TickHashes};
 
 #[cfg(feature = "bench")]
@@ -119,6 +98,6 @@ pub mod bench {
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::in_process_match::link_model::LinkModel;
-    pub use crate::in_process_match::{End, InProcessMatch, MatchSetup};
+    pub use crate::harness::in_process_match::link_model::LinkModel;
+    pub use crate::harness::in_process_match::{End, InProcessMatch, MatchSetup};
 }

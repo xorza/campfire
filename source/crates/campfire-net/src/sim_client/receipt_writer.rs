@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_protocol::SignedReceipt;
 use campfire_store::{DurableError, DurableFile, LatestWriter};
 
-use crate::client_dir::ClientDir;
+use crate::sim_client::client_dir::ClientDir;
 
 /// Writes the newest receipt a client keeps to its data directory, on a worker of its own, so no
 /// frame waits for a sync: the main thread hands over each receipt it keeps, which replaces one

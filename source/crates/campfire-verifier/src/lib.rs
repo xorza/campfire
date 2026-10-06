@@ -4,9 +4,9 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod error;
+mod events;
 mod replay;
-mod verified;
 
 pub use error::{ReplayError, SnapshotCheckError};
+pub use events::verified::Verified;
 pub use replay::Replay;
-pub use verified::Verified;

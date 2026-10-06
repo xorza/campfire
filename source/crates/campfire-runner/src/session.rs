@@ -18,8 +18,8 @@ use campfire_sim::{
 use crate::error::{
     CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
 };
+use crate::events::script_call_failed::ScriptCallFailed;
 use crate::match_build::MatchBuild;
-use crate::script_call_failed::ScriptCallFailed;
 use crate::session_rules::SessionRules;
 use crate::slot_rules::SlotRules;
 

@@ -3,9 +3,9 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 
 use crate::faults::fault::{Fault, FaultPolicy};
-use crate::journal_watch::JournalWatch;
-use crate::server_exit::ServerExit;
 use crate::sim_client::receipt_writer::ReceiptWriter;
+use crate::sim_server::journal_watch::JournalWatch;
+use crate::sim_server::server_exit::ServerExit;
 
 pub(crate) mod fault;
 

@@ -5,7 +5,7 @@ use campfire_common::Tick;
 use campfire_sim::StateDelta;
 use criterion::Criterion;
 
-use crate::reference_3v3::Reference3v3;
+use crate::harness::reference_3v3::Reference3v3;
 use crate::runner::Runner;
 use crate::session::Session;
 

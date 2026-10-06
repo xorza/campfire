@@ -6,8 +6,8 @@ use campfire_math::Num;
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
-use crate::in_process_match::link_model::LinkModel;
-use crate::in_process_match::{InProcessMatch, MatchSetup};
+use crate::harness::in_process_match::link_model::LinkModel;
+use crate::harness::in_process_match::{InProcessMatch, MatchSetup};
 
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new order
 /// every 40 frames keeps the avatar walking and the server sending updates.
