@@ -959,6 +959,20 @@ impl SessionLog {
     /// Closes the next tick to new entries and gives the inputs applied in it, by slot, then in
     /// the order logged; `sealed_changes` then gives the changes of a slot's controller in it.
     pub fn seal_tick(&mut self) -> impl ExactSizeIterator<Item = PlayerInput<'_>> {
+        self.seal();
+        self.due.iter().map(|&index| self.input(index))
+    }
+
+    /// Seals each tick before `tick`, the log's own state only, as a replay does that a
+    /// checkpoint's snapshot starts at `tick`.
+    pub fn seal_until(&mut self, tick: Tick) {
+        while self.next_tick() < tick {
+            self.seal();
+        }
+    }
+
+    /// Closes the next tick to new entries, and puts the inputs applied in it in `due`.
+    fn seal(&mut self) {
         let tick = self.next_tick();
         if self.to_replay.is_empty()
             && let Some(journal) = &self.journal
@@ -997,7 +1011,6 @@ impl SessionLog {
             self.due.push(due.index);
             self.pending.pop();
         }
-        self.due.iter().map(|&index| self.input(index))
     }
 
     /// This log with its ticks unsealed, to replay them: sealing each again gives the inputs it

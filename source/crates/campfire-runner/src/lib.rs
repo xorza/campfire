@@ -34,7 +34,9 @@ mod session;
 mod session_rules;
 mod slot_rules;
 
-pub use error::{ResultMismatch, ServerInputRefused, SlotRuleError, StartError, TermsError};
+pub use error::{
+    ResultMismatch, ResumeError, ServerInputRefused, SlotRuleError, StartError, TermsError,
+};
 pub use input_rules::InputRules;
 pub use runner::Runner;
 pub use script_call_failed::ScriptCallFailed;

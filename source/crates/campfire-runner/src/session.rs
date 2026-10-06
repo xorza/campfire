@@ -14,7 +14,7 @@ use campfire_sim::{
     TickInput, TickInputs, TickRate,
 };
 
-use crate::error::{ResultMismatch, ServerInputRefused, StartError};
+use crate::error::{ResultMismatch, ResumeError, ServerInputRefused, StartError};
 use crate::match_build::MatchBuild;
 use crate::script_call_failed::ScriptCallFailed;
 use crate::session_rules::SessionRules;
@@ -58,6 +58,64 @@ impl Session {
             Tick::new(0),
             "a session starts before its first tick"
         );
+        let session = Session::build(world, log, seeds, packages, 0)?;
+        Mode::start(world).map_err(StartError::MatchStart)?;
+        world.insert_resource(session);
+        Ok(())
+    }
+
+    /// Prepares `world` for the match of `log`, rewound to replay its ticks, from the checkpoint
+    /// of it that starts `segment`, as a restore does: builds the match as `start` does, but
+    /// starts no mode, as the state is the checkpoint's `snapshot`; and seals the log's ticks
+    /// before the checkpoint without running them, so the next tick the session runs is the
+    /// checkpoint's. An error as `start` gives one, and when the log holds no such checkpoint,
+    /// when `snapshot` is not the one the checkpoint fingerprints, when it does not restore,
+    /// or restores to another state hash than the checkpoint's.
+    pub fn resume(
+        world: &mut World,
+        log: SessionLog,
+        seeds: ServerSeeds,
+        packages: &ModePackages,
+        segment: u32,
+        snapshot: &[u8],
+    ) -> Result<(), ResumeError> {
+        assert_eq!(
+            log.next_tick(),
+            Tick::new(0),
+            "a resumed log replays from its first tick"
+        );
+        let record = log
+            .checkpoints()
+            .find(|record| record.segment == segment)
+            .ok_or(ResumeError::NoCheckpoint)?;
+        let (tick, state_hash) = (record.tick, record.state_hash);
+        if SnapshotFingerprint::of(snapshot) != record.snapshot {
+            return Err(ResumeError::Fingerprint);
+        }
+        let mut session =
+            Session::build(world, log, seeds, packages, segment).map_err(ResumeError::Start)?;
+        session
+            .state
+            .restore(snapshot, world)
+            .map_err(ResumeError::Snapshot)?;
+        if session.state.hash(world) != state_hash {
+            return Err(ResumeError::StateHash);
+        }
+        session.log.seal_until(tick);
+        world.insert_resource(session);
+        Ok(())
+    }
+
+    /// Builds the match of `log`'s header in `world`, of the mode `packages` holds, at the
+    /// header's tick rate and with the randomness of `segment`'s seed; the session of `log`,
+    /// drawing from `segment`. An error as `start` gives one, but for the mode's start.
+    fn build(
+        world: &mut World,
+        log: SessionLog,
+        seeds: ServerSeeds,
+        packages: &ModePackages,
+        segment: u32,
+    ) -> Result<Session, StartError> {
         let header = log.header();
         SessionRules::of(packages)
             .check(&header.terms)
@@ -65,8 +123,12 @@ impl Session {
         if seeds.last() < log.segment() {
             return Err(StartError::Seed(SeedError::NotRevealed));
         }
-        let first = seeds.seed(0).expect("every chain has a first segment");
-        let seed = header.segment_seed(0, &first).map_err(StartError::Seed)?;
+        let server_seed = seeds
+            .seed(segment)
+            .expect("the seeds reach the log's last segment");
+        let seed = header
+            .segment_seed(segment, &server_seed)
+            .map_err(StartError::Seed)?;
         SimUpdate::prepare(world, seed, TickRate::new(header.terms.tick_hz));
         let mut schedule = SimUpdate::schedule();
         let mut state = StateRegistry::new();
@@ -79,15 +141,13 @@ impl Session {
         let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         MatchBuild::run(packages, world, &mut schedule, &mut state, players);
         world.add_schedule(schedule);
-        Mode::start(world).map_err(StartError::MatchStart)?;
-        world.insert_resource(Session {
+        Ok(Session {
             seeds,
-            segment: 0,
+            segment,
             state,
             log,
             rules,
-        });
-        Ok(())
+        })
     }
 
     /// The state hash of `snapshot` restored in a match of the mode `packages` holds, as the

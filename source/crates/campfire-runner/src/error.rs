@@ -6,6 +6,7 @@ use campfire_capabilities::CallError;
 use campfire_common::StateHash;
 use campfire_package::StoreError;
 use campfire_protocol::{AfterLeave, Outcome, SeedError, ServerInputError, SlotChange};
+use campfire_sim::SnapshotError;
 
 /// Why a session log does not start a match. A published log is untrusted, and so are packages,
 /// so each is an expected failure.
@@ -50,6 +51,46 @@ impl Error for StartError {
             StartError::Packages(error) => Some(error),
             StartError::MatchStart(error) => Some(error),
             StartError::SlotRule { error, .. } => Some(error),
+        }
+    }
+}
+
+/// Why a session log and a snapshot do not resume a match from a checkpoint. A restore reads
+/// both from the disk, and a verifier from a published log, so each is an expected failure.
+#[derive(Debug)]
+pub enum ResumeError {
+    Start(StartError),
+    /// The log holds no checkpoint that starts the segment.
+    NoCheckpoint,
+    /// The snapshot is not the one the checkpoint fingerprints.
+    Fingerprint,
+    Snapshot(SnapshotError),
+    /// The snapshot restores to another state hash than the checkpoint's.
+    StateHash,
+}
+
+impl fmt::Display for ResumeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResumeError::Start(error) => write!(f, "{error}"),
+            ResumeError::NoCheckpoint => f.write_str("the log holds no such checkpoint"),
+            ResumeError::Fingerprint => {
+                f.write_str("the snapshot is not the one the checkpoint fingerprints")
+            }
+            ResumeError::Snapshot(error) => write!(f, "the snapshot does not restore: {error}"),
+            ResumeError::StateHash => {
+                f.write_str("the snapshot restores to another state than the checkpoint's")
+            }
+        }
+    }
+}
+
+impl Error for ResumeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ResumeError::Start(error) => Some(error),
+            ResumeError::Snapshot(error) => Some(error),
+            ResumeError::NoCheckpoint | ResumeError::Fingerprint | ResumeError::StateHash => None,
         }
     }
 }

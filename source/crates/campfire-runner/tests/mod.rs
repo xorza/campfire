@@ -5,3 +5,4 @@ mod match_3v3;
 mod proving_match;
 mod reference;
 mod reference_abilities;
+mod resume;

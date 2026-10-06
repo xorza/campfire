@@ -7,7 +7,7 @@ use campfire_protocol::{
 };
 use campfire_sim::StateCopy;
 
-use crate::error::{ResultMismatch, ServerInputRefused, StartError};
+use crate::error::{ResultMismatch, ResumeError, ServerInputRefused, StartError};
 use crate::session::Session;
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.
@@ -25,6 +25,19 @@ impl Runner {
     ) -> Result<Runner, StartError> {
         let mut world = World::new();
         Session::start(&mut world, log, seeds, packages)?;
+        Ok(Runner { world })
+    }
+
+    /// See `Session::resume`.
+    pub fn resume(
+        log: SessionLog,
+        seeds: ServerSeeds,
+        packages: &ModePackages,
+        segment: u32,
+        snapshot: &[u8],
+    ) -> Result<Runner, ResumeError> {
+        let mut world = World::new();
+        Session::resume(&mut world, log, seeds, packages, segment, snapshot)?;
         Ok(Runner { world })
     }
 
