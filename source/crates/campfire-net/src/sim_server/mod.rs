@@ -1,9 +1,12 @@
 use std::fs;
+use std::time::Duration;
 
 use bevy_app::{
     App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
 };
 use bevy_ecs::entity::Entity;
+use bevy_ecs::lifecycle::Add;
+use bevy_ecs::observer::On;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
@@ -24,9 +27,10 @@ use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StableId, TickRate};
 use campfire_store::DurableError;
 use lightyear::core::tick::TickDuration;
+use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
-    LinkSystems, LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget,
-    Replicate, Unlink, UnlinkReason, VisibilityExt,
+    LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, NetworkTarget,
+    PredictionTarget, Replicate, ReplicationSender, Unlink, UnlinkReason, VisibilityExt,
 };
 use tracing::{debug, info, trace, trace_span};
 
@@ -42,7 +46,7 @@ use crate::faults::fault::Fault;
 use crate::input_message::InputMessage;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
-use crate::net_protocol::MatchChannel;
+use crate::net_protocol::{MatchChannel, NetProtocol};
 use crate::pace::PaceSpeed;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
@@ -85,12 +89,25 @@ pub(crate) mod tick_hashes;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
-/// its team sees. It hashes the state after a tick only while the world holds `TickHashes`.
+/// its team sees. It hashes the state after a tick only while the world holds `TickHashes`. It
+/// adds Lightyear's server at the tick's length `tick`, the protocol, and the replication to each
+/// new link; its app adds its frame loop or clock, and its session.
 #[derive(Debug)]
-pub struct SimServer;
+pub struct SimServer {
+    pub tick: Duration,
+}
 
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
+        app.add_plugins(ServerPlugins {
+            tick_duration: self.tick,
+        });
+        app.add_plugins(NetProtocol);
+        app.add_observer(
+            |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
+                commands.entity(added.entity).insert(ReplicationSender);
+            },
+        );
         app.init_resource::<Faults>();
         app.add_systems(
             Update,

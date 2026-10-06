@@ -21,10 +21,11 @@ use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
 };
-use lightyear::prelude::client::{InputDelayConfig, InputTimelineConfig};
+use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
 use lightyear::prelude::{
     Client, Connect, Disconnect, LocalTimeline, MessageReceiver, MessageSender, Predicted,
-    PredictionManager, Replicated, SyncConfig, UnlinkReason, Unlinked, is_in_rollback,
+    PredictionManager, Replicated, ReplicationReceiver, SyncConfig, UnlinkReason, Unlinked,
+    is_in_rollback,
 };
 use tracing::{debug, info};
 
@@ -41,7 +42,7 @@ use crate::input_message::InputMessage;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
-use crate::net_protocol::{InputChannel, JoinChannel};
+use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
 use crate::offer::Offer;
 use crate::order_script::ScriptedInput;
 use crate::save_command::SaveCommand;
@@ -71,7 +72,8 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
 /// Plays a session on a Lightyear client: answers the server's offer with a delegation of a
 /// session key, sends the player's orders as chained inputs, signed once per message with the
 /// session key, and runs the sim in every fixed tick, rollbacks included, with the player's own
-/// inputs, on the units the client predicts.
+/// inputs, on the units the client predicts. It adds Lightyear's client at the server's tick, the
+/// protocol, and the prediction; its app adds its frame loop or clock, and its link.
 #[derive(Debug)]
 pub struct SimClient {
     /// The player's Nostr identity, which signs the delegation.
@@ -143,10 +145,22 @@ impl PendingOrders {
     }
 }
 
+impl SimClient {
+    /// Spawns the client's entity in `world`, which its link and its connect name.
+    pub fn spawn_client(world: &mut World) -> Entity {
+        world.spawn((Client, RawClient, ReplicationReceiver)).id()
+    }
+}
+
 impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
-        let world = app.world_mut();
         let rate = TickRate::new(self.server.tick_hz);
+        app.add_plugins(ClientPlugins {
+            tick_duration: rate.length(),
+        });
+        app.add_plugins(NetProtocol);
+        app.insert_resource(PredictionManager::default());
+        let world = app.world_mut();
         SimUpdate::prepare(world, PREDICTION_SEED, rate);
         let mut schedule = SimUpdate::schedule();
         // A client hashes no state, so the registry the capabilities fill is not kept.

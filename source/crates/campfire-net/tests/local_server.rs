@@ -12,15 +12,14 @@ use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
-    JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace, PendingSaves,
-    SaveCommand, ServerDir, SessionDir, SimClient,
+    JoinState, LocalRelink, LocalServer, LocalServerSetup, Pace, PendingSaves, SaveCommand,
+    ServerDir, SessionDir, SimClient,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{Outcome, SessionLog};
 use campfire_sim::TickRate;
-use lightyear::prelude::client::{ClientPlugins, RawClient};
-use lightyear::prelude::{Client, Connect, PredictionManager, ReplicationReceiver};
+use lightyear::prelude::Connect;
 
 use crate::Scratch;
 
@@ -39,7 +38,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let data = Scratch::new("local-server");
     let packages =
         Arc::new(ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap());
-    let tick = TickRate::new(packages.manifest().tick_hz.default()).length();
+    let _tick = TickRate::new(packages.manifest().tick_hz.default()).length();
     let pace = Arc::new(Pace::default());
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),
@@ -53,32 +52,26 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
 
     let mut client = App::new();
     client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-    client.add_plugins(ClientPlugins {
-        tick_duration: tick,
+    client.add_plugins(SimClient {
+        main_key: keypair(1),
+        session_key: keypair(2),
+        server: server.pin(),
+        local: true,
+        packages,
+        clock: || 1_700_000_000,
+        entropy: |bytes| bytes.fill(4),
+        data: None,
     });
-    client.add_plugins((
-        NetProtocol,
-        SimClient {
-            main_key: keypair(1),
-            session_key: keypair(2),
-            server: server.pin(),
-            local: true,
-            packages,
-            clock: || 1_700_000_000,
-            entropy: |bytes| bytes.fill(4),
-            data: None,
-        },
-    ));
     client.add_plugins(LocalRelink {
         relinks: server.relinks(),
     });
-    client.insert_resource(PredictionManager::default());
     client.finish();
     client.cleanup();
-    let entity = client
+    let entity = SimClient::spawn_client(client.world_mut());
+    client
         .world_mut()
-        .spawn((Client, RawClient, ReplicationReceiver, server.take_link()))
-        .id();
+        .entity_mut(entity)
+        .insert(server.take_link());
     client.world_mut().trigger(Connect { entity });
     let start = Instant::now();
     let frame = |client: &mut App| {

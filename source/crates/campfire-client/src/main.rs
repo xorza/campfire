@@ -39,8 +39,7 @@ use campfire_protocol::RandomKey;
 use campfire_protocol::secp256k1::Keypair;
 use campfire_runner::SessionRules;
 use campfire_sim::TickRate;
-use lightyear::prelude::client::{ClientPlugins, RawClient};
-use lightyear::prelude::{Client, Connect, PredictionManager, ReplicationReceiver};
+use lightyear::prelude::Connect;
 use tracing::error;
 
 use crate::args::{Args, Server};
@@ -62,8 +61,6 @@ mod orders;
 mod pointer;
 mod view;
 
-/// How often a bot's app loop runs: often enough that no fixed tick waits long for its frame.
-const BOT_FRAME: Duration = Duration::from_millis(2);
 /// What the terminal shows when `RUST_LOG` does not say: the renderer's validation layers report
 /// through `wgpu_hal`, loudly, in debug builds.
 const TERMINAL_FILTER: &str = "info,wgpu=error,wgpu_hal=off,naga=warn";
@@ -130,13 +127,6 @@ fn main() -> ExitCode {
     let local = matches!(connection, Connection::Local(_));
     add_ends(&mut app, script, local.then_some(&pace), tick);
     app.add_plugins((
-        ClientPlugins {
-            tick_duration: tick,
-        },
-        LinkWatch,
-    ));
-    app.add_plugins((
-        NetProtocol,
         SimClient {
             main_key,
             session_key: RandomKey::generate(Os::fill),
@@ -147,12 +137,9 @@ fn main() -> ExitCode {
             entropy: Os::fill,
             data,
         },
+        LinkWatch,
     ));
-    app.insert_resource(PredictionManager::default());
-    let client = app
-        .world_mut()
-        .spawn((Client, RawClient, ReplicationReceiver))
-        .id();
+    let client = SimClient::spawn_client(app.world_mut());
     connection.link(&mut app, client, &pace, tick);
     app.world_mut().trigger(Connect { entity: client });
     let exit = app.run();
@@ -169,7 +156,7 @@ fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>
             TaskPoolPlugin::default(),
             TimePlugin,
             StatesPlugin,
-            ScheduleRunnerPlugin::run_loop(BOT_FRAME),
+            ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
             Bot { script },
         ));
         return;

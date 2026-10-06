@@ -8,10 +8,7 @@ use std::time::Duration;
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::Add;
-use bevy_ecs::observer::On;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor};
-use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{
@@ -25,12 +22,10 @@ use campfire_protocol::{CertificateHash, SeedChain, ServerInput, SessionPrivate}
 use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
-use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
-use lightyear::prelude::server::{RawServer, ServerPlugins};
+use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{
-    Client, Connect, Connected, Link, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
-    PredictionManager, PredictionMetrics, ReplicationReceiver, ReplicationSender, RollbackMode,
-    SyncConfig, SyncSystems, Unlink, UnlinkReason,
+    Connect, Connected, Link, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
+    PredictionManager, PredictionMetrics, RollbackMode, SyncSystems, Unlink, UnlinkReason,
 };
 use lightyear::transport::plugin::TransportSystems;
 
@@ -39,7 +34,6 @@ use crate::harness::in_process_match::link_model::LinkModel;
 use crate::local::local_pace::LocalPace;
 use crate::local::local_session::LocalSession;
 use crate::match_clock::MatchClock;
-use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
@@ -262,10 +256,7 @@ impl InProcessMatch {
     fn server_app(setup: &MatchSetup, tick: Duration, pace: &Arc<Pace>) -> App {
         let mut server = App::new();
         server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-        server.add_plugins(ServerPlugins {
-            tick_duration: tick,
-        });
-        server.add_plugins((NetProtocol, SimServer));
+        server.add_plugins(SimServer { tick });
         server.insert_resource(LocalSession);
         server.add_plugins(LocalPace {
             pace: Arc::clone(pace),
@@ -279,11 +270,6 @@ impl InProcessMatch {
             "the frames make a whole tick"
         );
         server.insert_resource(TimeUpdateStrategy::ManualDuration(frame));
-        server.add_observer(
-            |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
-                commands.entity(added.entity).insert(ReplicationSender);
-            },
-        );
         pass_through_delay_lines(&mut server);
         server
     }
@@ -769,27 +755,19 @@ impl ClientApp {
         let tick = TickRate::new(tick_hz).length();
         let mut client = App::new();
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-        client.add_plugins(ClientPlugins {
-            tick_duration: tick,
-        });
-        client.add_plugins((NetProtocol, sim_client));
+        client.add_plugins(sim_client);
         client.add_plugins(LocalPace {
             pace: Arc::clone(pace),
             tick,
         });
-        client.insert_resource(InputTimelineConfig::new(
-            SyncConfig::default(),
-            InputDelayConfig::no_input_delay(),
-        ));
         client.insert_resource(TimeUpdateStrategy::ManualDuration(tick));
-        let mut prediction = PredictionManager::default();
-        prediction.rollback_policy.state = setup.rollback;
-        client.insert_resource(prediction);
-        pass_through_delay_lines(&mut client);
-        let entity = client
+        client
             .world_mut()
-            .spawn((Client, RawClient, ReplicationReceiver))
-            .id();
+            .resource_mut::<PredictionManager>()
+            .rollback_policy
+            .state = setup.rollback;
+        pass_through_delay_lines(&mut client);
+        let entity = SimClient::spawn_client(client.world_mut());
         ClientApp {
             app: client,
             entity,

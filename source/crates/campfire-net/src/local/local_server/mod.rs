@@ -7,12 +7,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
-use bevy_ecs::lifecycle::Add;
-use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
-use bevy_ecs::system::Commands;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
@@ -24,8 +21,8 @@ use campfire_runner::InputRules;
 use campfire_sim::TickRate;
 use campfire_store::Worker;
 use lightyear::crossbeam::CrossbeamIo;
-use lightyear::prelude::server::{RawServer, ServerPlugins};
-use lightyear::prelude::{Link, LinkOf, Linked, PeerAddr, ReplicationSender};
+use lightyear::prelude::server::RawServer;
+use lightyear::prelude::{Link, LinkOf, Linked, PeerAddr};
 use tracing::error;
 
 use crate::local::local_pace::LocalPace;
@@ -50,8 +47,6 @@ pub(crate) mod error;
 const CERTIFICATE: CertificateHash = CertificateHash::new([0; 32]);
 /// The segments of a local session's seed chain, as a dedicated server's.
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
-/// How often the server's app loop runs, as a dedicated server's.
-const FRAME: Duration = Duration::from_millis(2);
 
 /// A session's server on a thread of a singleplayer client's process, linked to the client by
 /// in-process channels: the client's player in slot 0, in each other slot the server's bot its
@@ -333,24 +328,15 @@ impl Runs {
             TaskPoolPlugin::default(),
             TimePlugin,
             StatesPlugin,
-            ScheduleRunnerPlugin::run_loop(FRAME),
+            ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
         ));
-        app.add_plugins(ServerPlugins {
-            tick_duration: self.tick,
-        });
         app.add_plugins((
-            NetProtocol,
-            SimServer,
+            SimServer { tick: self.tick },
             LocalPace {
                 pace: Arc::clone(&self.pace),
                 tick: self.tick,
             },
         ));
-        app.add_observer(
-            |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
-                commands.entity(added.entity).insert(ReplicationSender);
-            },
-        );
         app.insert_resource(LocalSession);
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
