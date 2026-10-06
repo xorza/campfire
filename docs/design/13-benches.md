@@ -28,8 +28,9 @@ Proposal: one shape for every bench, by tier, and the benches the hottest paths 
 | Tier | Crate | Case | Now | Measures |
 | --- | --- | --- | --- | --- |
 | End | `runner` | `server_tick/mean_3v3` | `tick_3v3/mean` | The mean tick of a 3v3 match of 6,000 ticks, a whole match each iteration |
-| End | `runner` | `server_tick/worst_3v3` | `tick_3v3/worst_of_a_match` | The worst tick of a 3v3 match |
+| End | `runner` | `server_tick/worst_3v3` | `tick_3v3/worst_of_a_match` | The worst tick of a 3v3 match after its first |
 | End | `runner` | `server_tick/worst_3v3_checkpointed` | `tick_3v3/worst_of_a_match_checkpointed` | The same, with the main thread's part of a checkpoint every 100 ticks |
+| End | `runner` | `server_tick/first_3v3` | new | A 3v3 match's first tick, which builds the sim schedule and the pathing grid's labels |
 | End | `runner` | `server_stage/mean_3v3_<stage>`, 9 | new | Each stage's mean time a tick in a 3v3 match, a whole match each iteration |
 | End | `runner` | `server_stage/worst_3v3_<stage>`, 9 | new | Each stage's worst time in a 3v3 match |
 | End | `net` | `server_frame/walk` | new | The server's frame while the solo avatar walks |
@@ -84,7 +85,7 @@ The whole suite on one core of a Ryzen 7 6800U, criterion's median of each case,
 
 **The mean cases.** Each iteration of a mean case plays a whole match and states its 6,000 ticks as its throughput, so its median is a match's mean tick: `server_tick/mean_3v3` measured 154.9 µs and 154.0 µs in two runs. Before, each sample timed a stretch of ticks that criterion sized, so each covered a different part of a match: the ten samples of one run gave 75.8 µs to 245.5 µs a tick. The nine stage means add up to 154.8 µs and 152.8 µs, under the tick's in both runs: the parts of a tick outside the stages, the session log's, the tick's start and end and `SimEdge::Start`, cost about 1 µs, within the cases' spread.
 
-**The worst cases.** The worst tick of every match is its first, 3.9 ms to 4.5 ms in three matches: the schedule's first build and the pathing grid's first labels, three times the next, the waves' ticks at about 1.3 ms. So `server_tick/worst_3v3` and `worst_3v3_checkpointed` measure only tick 0, where no checkpoint copies, and the checkpointed case cannot show the copy's cost; [PLAN_QUESTIONS.md](../../PLAN_QUESTIONS.md) holds the choice.
+**The worst cases.** The worst tick of every match is its first, 3.9 ms to 4.5 ms in three matches: the schedule's first build and the pathing grid's first labels, three times the next, the waves' ticks at about 1.3 ms. So `server_tick/worst_3v3` and `worst_3v3_checkpointed` measure only tick 0, where no checkpoint copies, and the checkpointed case cannot show the copy's cost. They take the worst of ticks 1 to 5,999, the match as it runs, and `server_tick/first_3v3` times tick 0 alone; the stage cases' worst stays as it is.
 
 **The stages past 10 % of a tick** ([B6](#decisions)). Of the mean tick, 154.9 µs: Think, 68.9 µs, 44 %; Vision, 24.7 µs, 16 %; Resolve, 19.0 µs, 12 %. Of the worst tick, 3.22 ms, as a budget: the worst Inputs stage, 1.66 ms, 51 %, and the worst Move stage, 0.90 ms, 28 %, each in a tick of its own. Think has its kernel in `script`, Vision in `fog`; Resolve, Inputs and Move have none yet. The worst tick is 21 times the mean, and two stages that cost little on average make most of it.
 
