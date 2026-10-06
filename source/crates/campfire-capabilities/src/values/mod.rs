@@ -25,3 +25,6 @@ pub(crate) mod script_enum;
 pub(crate) mod share;
 pub(crate) mod speed;
 pub(crate) mod stat;
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod scene;

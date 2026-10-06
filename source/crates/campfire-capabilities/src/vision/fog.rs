@@ -1,0 +1,84 @@
+use campfire_math::Num;
+use campfire_sim::Position;
+
+use crate::units::relations::Relations;
+use crate::units::team::Team;
+use crate::units::team_set::TeamSet;
+use crate::vision::sight_maps::SightMaps;
+use crate::vision::vision_grid::VisionGrid;
+use crate::vision::vision_groups::VisionGroups;
+
+/// The grid fog's work in a tick, kept between ticks: the vision groups, and the bitmaps of the
+/// cells each sees. `vision::see` drives it over the match's units, a bench over a scene.
+#[derive(Debug, Default)]
+pub(crate) struct Fog {
+    groups: VisionGroups,
+    maps: SightMaps,
+}
+
+impl Fog {
+    /// Builds the groups of `grid`'s teams again from `relations`, and empty bitmaps for them.
+    pub(crate) fn rebuild(&mut self, grid: &VisionGrid, relations: &Relations) {
+        self.groups.rebuild(grid.teams, relations);
+        self.maps.reset(grid.grid.cells(), self.groups.count());
+    }
+
+    /// Clears what the tick before revealed.
+    pub(crate) fn begin_tick(&mut self) {
+        self.maps.begin_tick();
+    }
+
+    /// Reveals the cells within `range` of a unit of `team` at `pos` to its group, but the cells
+    /// of every brush other than the one it stands in, and to its group's detection too when it
+    /// `detects`.
+    pub(crate) fn sight(
+        &mut self,
+        grid: &VisionGrid,
+        pos: Position,
+        team: Team,
+        range: Num,
+        detects: bool,
+    ) {
+        let group = self.groups.of(team);
+        let stands = grid
+            .grid
+            .cell_of(pos)
+            .expect("every unit stands within the bounds, which the grid covers");
+        let hidden = grid.brush.hidden_from(stands);
+        let maps = &mut self.maps;
+        grid.grid.spans_within(pos, range, |cells| {
+            maps.reveal(group, cells, detects, hidden);
+        });
+    }
+
+    /// Reveals the cells within `radius` of `pos`, brush included, to `team`'s group.
+    pub(crate) fn reveal(&mut self, grid: &VisionGrid, pos: Position, team: Team, radius: Num) {
+        let group = self.groups.of(team);
+        let maps = &mut self.maps;
+        grid.grid.spans_within(pos, radius, |cells| {
+            maps.reveal(group, cells, false, None);
+        });
+    }
+
+    /// The teams that see a unit of `team` at `pos`: its own group's, and those of each group
+    /// whose cells hold it, or, for a unit its tags hide, `hidden`, whose detection does.
+    pub(crate) fn seen_by(
+        &self,
+        grid: &VisionGrid,
+        pos: Position,
+        team: Team,
+        hidden: bool,
+    ) -> TeamSet {
+        let mut teams = self.groups.members(self.groups.of(team));
+        let cell = grid
+            .grid
+            .cell_of(pos)
+            .expect("every unit stands within the bounds, which the grid covers");
+        for group in 0..self.groups.count() {
+            if self.maps.sees(group, cell, hidden) {
+                teams = teams.union(self.groups.members(group));
+            }
+        }
+        teams
+    }
+}

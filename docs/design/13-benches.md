@@ -38,7 +38,7 @@ Proposal: one shape for every bench, by tier, and the benches the hottest paths 
 | End | `net` | `client_frame/walk_rollback` | `rollback/frame_with_rollback` | The same, rolling back on every confirmed update |
 | End | `net` | `client_frame/worst_1v1` | `match_1v1/worst_client_frame` | Either client's worst frame in the lane 1v1, with its receipts |
 | Kernel | `capabilities` | `collision/crowded`, `collision/spread` | the same | The Collide stage for 1,000 bodies |
-| Kernel | `capabilities` | `fog/crowded`, `fog/spread` | new | The Vision stage's grid fog for 1,000 units with sight: their spans, the bitmaps, and each unit's `SeenBy` |
+| Kernel | `capabilities` | `fog/sight` | new | The Vision stage's grid fog for 1,000 units with sight: their spans, the bitmaps, and the teams that see each. One case: it measured 446 µs crowded and 452 µs spread, as each sight reveals as many cells however close the units stand |
 | Kernel | `script` | `script/call` | new | 1,000 calls of an empty hook through `ScriptHost::call`: what each AI think pays before its script runs |
 | Kernel | `script` | `script/native` | new | 1,000 calls of a hook that makes one call to a function the host registered, as each `ctx` query is |
 | Kernel | `sim` | `state_hash/all`, `state_hash/by_type` | `state_hash/moba_300`, `moba_300_by_type` | The state hash of 1,000 units |
