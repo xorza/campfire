@@ -6,6 +6,4 @@ The concrete steps of the current stages of the [roadmap](ROADMAP.md), in order,
 
 The design is [Benches](docs/design/13-benches.md): three tiers, one rule for a case's id, a case for each stage of the tick, and a kernel for each path past 10 % of a tick. Each step ends with `-- --list` printing its ids, and the check chain with `cargo test --bench '*'` passing for its crates.
 
-B12's case waits for review: [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#a-clients-re-simulated-3v3-tick-b12).
-
-1. **B12. A client's re-simulated 3v3 tick** (net; [A client's re-simulated 3v3 tick](docs/design/13-benches.md#a-clients-re-simulated-3v3-tick)): the case of the reviewed option; design 02's bound of an 8-tick rollback from its figure, in place of eight of the server's worst ticks after the first, 10 ms.
+1. **B12. A client's re-simulated 3v3 tick** (net; [A client's re-simulated 3v3 tick](docs/design/13-benches.md#a-clients-re-simulated-3v3-tick), option 1): `InProcessMatch` plays any mode's packages, with one predicting client and the server's bots in the other slots; `client_frame/walk_3v3` and `client_frame/walk_rollback_3v3` over the reference 3v3, from its first wave on; design 02's bound of an 8-tick rollback from their difference, in place of eight of the server's worst ticks after the first, 10 ms. Check: the step's CI time against the bench step's limit of 60 s.
