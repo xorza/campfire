@@ -30,13 +30,26 @@ Proposal: one exact integer root in `math`, faster than `core`'s at every width,
 ## Decisions
 
 - **R1. One exact floor root, in `math`, in two paths.** `FloorRoot::floor_root` for `u128`, exact for every value, `u128::MAX` included.
-  - **Below 2⁶⁴**, on `u64`: the f64 guess of a value below 2⁵³ is exact, and above it one rounding leaves the root within 1, which the integer steps correct, each square checked with `checked_mul`.
-  - **At 2⁶⁴ and above**, on `u128`, as `from_root_of_bits` does now: for a root above 2⁵², the guess can be off by up to 2¹⁰, and one Newton step, one 128-by-64 division, brings it within 1. A guess past 2⁶⁴ − 1, which only a value near 2¹²⁸ gives, is held to 2⁶⁴ − 1, and the square of the root plus one is checked with `checked_mul`.
+  - **Below 2⁶⁴**, on `u64`: the f64 guess of a value below 2⁵³ is exact, and above it one rounding leaves the root within 1, which the integer steps correct: down while the root's square, checked with `checked_mul` for a root of 2³², passes the value, then up while value − root² > 2·root, which is (root + 1)² ≤ value with no overflow.
+  - **At 2⁶⁴ and above**, the value on `u128` and the root on `u64`: for a root above 2⁵², the guess can be off by up to 2¹⁰, and one Newton step, one 128-by-64 division, brings it within 1. The guess's cast saturates, so a guess of 2⁶⁴, which only a value near 2¹²⁸ gives, becomes 2⁶⁴ − 1, the largest root, and so does a Newton step's 2⁶⁴. Each square is one widening multiply of the `u64` root, which no overflow check slows, where a `u128` root's square takes three multiplies.
 - **R2. `Num`'s roots on the same root.** `Num::from_root_of_bits` becomes the floor root and its rounding step, so the f64 code exists once. `Num::sqrt` and `Vec3::length` keep their bits, and most of their values take the `u64` path: the root of a `Num` below 65,536, whose bits squared stay below 2⁶⁴, and the length of a vector shorter than 256 m.
 - **R3. A trait, as `num-integer`'s `Roots` is.** `u128` is not `math`'s type, so a method on it needs a trait of `math`'s own; a call reads `square.floor_root()`, as `square.isqrt()` reads now. A free function, `root::floor(square)`, would be the only free function `math` exports.
 - **R4. The callers keep their floor.** Both callers take the floor, and so does the new root, so every result keeps its bits: the proving match's goldens and the golden digests stay the same, and a change of either shows a defect.
 - **R5. The trig tables keep `isqrt`.** They are built in `const` code at compile time, where the f64 root cannot run, and cost nothing at run time.
 - **R6. A primitive case, `root/floor`.** 4,096 values drawn from `split_mix`, their widths spread evenly from 1 to 128 bits, so that each path counts: the `u64` path, the `u128` guess alone, and the Newton step above 2¹⁰⁴. [Benches](13-benches.md#decisions) B2 gains the group `root`.
+
+## Built
+
+**M1.** On one core of the Ryzen 7 6800U, each case's median against the code before, in one session:
+
+| Case | Before | After | Change |
+| --- | --- | --- | --- |
+| `root/floor` | 49.7 µs, `u128::isqrt` | 22.6 µs | −55 % |
+| `num/sqrt` | 36.1 µs | 20.4 µs | −43 % |
+| `vec3/distance` | 53.4 µs | 43.6 µs | −19 % |
+| `vec3/normalized` | 132.4 µs | 125.3 µs | −5.5 % |
+
+Three steps the first version lacked made these figures. A root of a `u128` that is below 2⁶⁴ squares with three multiplies, and a checked `*` adds an overflow test to each, as the release profile checks overflow; the `u64` root and its widening square take one multiply and no test, and the f64 guess converts to a `u64` with no library call. A version with them still made `vec3/normalized` 11 % slower, from 20 million mispredicted branches to 203 million: `unit_component`'s rounding and sign, as random as its components, compiled to branches beside the new root. They are arithmetic now, a carry and a negation by mask, so no layout of the code can make them branches; with them it is 5.5 % faster. With its points within ±100 m, where every square is below 2⁶⁴, `vec3/distance` is 27 % faster and `vec3/normalized` 7 %. A first correction step in each direction without a branch made every case slower, 20 % for `root/floor`, and is not kept.
 
 ## Cost
 
