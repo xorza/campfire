@@ -103,12 +103,6 @@ lto = "thin"
 strip = "none"
 incremental = true
 
-[profile.bench]
-inherits = "release-max"
-debug = "line-tables-only"
-strip = "none"
-incremental = true
-
 [profile.release-max]
 inherits = "release"
 lto = "fat"
@@ -116,6 +110,12 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 debug = false
+
+[profile.bench]
+inherits = "release-max"
+debug = "line-tables-only"
+strip = "none"
+incremental = true
 
 
 # Warn, not deny: the check chain runs clippy with `-D warnings`, and builds keep working mid-edit.
