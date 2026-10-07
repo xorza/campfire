@@ -53,6 +53,8 @@ Three steps the first version lacked made these figures. A root of a `u128` that
 
 **M2.** `Grid::spans_within` and `spans_closer` take `floor_root`. In one session on the same core: `fog/sight` from 457.7 µs to 331.4 µs, −27.7 %, and `server_tick/mean_3v3` from 159.0 µs to 152.4 µs a tick, −4.2 %, both past the estimate below, as the root at a sight's widths takes less than the scratch program's 4.2 ns. `collision/*` stays within 0.6 %.
 
+**M3.** `Collider::part` takes `floor_root`. In one session on the same core: `collision/crowded` from 312.0 µs to 304.9 µs, −2.3 %, and `collision/spread` from 80.6 µs to 79.8 µs, −1.3 %.
+
 ## Cost
 
 From the profiles, with the root at 4.2 ns in place of 9.5 ns: `fog/sight` about 14 % faster, `collision/crowded` about 2 %, and `server_tick/mean_3v3` about 1.6 %; `num/sqrt` and `vec3/distance` gain too. Each step measures its cases before and after, in one run on one core, and the Cost section of the capability it changes takes the new figure.
@@ -64,4 +66,4 @@ From the profiles, with the root at 4.2 ns in place of 9.5 ns: `fog/sight` about
 
 ## Plan
 
-The steps are in [PLAN.md](../../PLAN.md#integer-roots).
+Every step of the plan is done.

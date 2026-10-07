@@ -74,8 +74,8 @@ The whole suite on one core of a Ryzen 7 6800U, criterion's median of each case,
 | `client_frame/walk` | 45.8 µs | `server_stage/mean_3v3_hit` | 12.1 µs |
 | `client_frame/walk_rollback` | 88.8 µs | `server_stage/mean_3v3_resolve` | 19.0 µs |
 | `client_frame/worst_1v1` | 301.1 µs | `server_stage/mean_3v3_mode` | 3.1 µs |
-| `collision/crowded` | 306.3 µs | `server_stage/mean_3v3_vision` | 24.7 µs |
-| `collision/spread` | 79.1 µs | `server_stage/worst_3v3_inputs` | 1.66 ms |
+| `collision/crowded` | 304.9 µs | `server_stage/mean_3v3_vision` | 24.7 µs |
+| `collision/spread` | 79.8 µs | `server_stage/worst_3v3_inputs` | 1.66 ms |
 | `fog/sight` | 331.4 µs | `server_stage/worst_3v3_think` | 178.7 µs |
 | `script/call` | 59.5 µs | `server_stage/worst_3v3_act` | 17.3 µs |
 | `script/native` | 392.4 µs | `server_stage/worst_3v3_move` | 901.5 µs |
@@ -87,7 +87,7 @@ The whole suite on one core of a Ryzen 7 6800U, criterion's median of each case,
 
 `client_frame/walk_3v3`, `walk_rollback_3v3` and `walk_no_rollback_3v3`, in a run of their own on the same core: 152.0 µs, 136.3 µs and 67.4 µs. `pathing_grid/one`, in a run of its own on the same core, 124.1 µs; `route_planner/walled`, in another, 55.8 ms for 1,327,677 units of work, 42.0 ns a unit. `script_view/read` and `script_view/reread`, in a run of their own on the same core, 1.23 ms each for 1,014 units, 1.21 µs a unit.
 
-`num`, `vec3` and `rng` run 4,096 inputs a case: `num/mul` 7.5 µs, `num/div` 15.9 µs, `num/sqrt` 20.4 µs, `num/sin_cos` 75.4 µs, `num/sin_cos_huge` 75.7 µs, `num/atan2` 85.7 µs, `num/atan2_near_axis` 85.2 µs; `vec3/dot` 13.8 µs, `vec3/distance` 43.6 µs, `vec3/within` 11.0 µs, `vec3/normalized` 125.3 µs, `vec3/rotated_y` 19.0 µs; `rng/open` 175.4 µs, `rng/next_u64` 30.4 µs, `rng/below` 32.0 µs, `rng/chance` 31.7 µs; `root/floor` 22.6 µs. `num/sqrt`, `vec3/distance`, `vec3/normalized` and `root/floor` are from after [Integer roots](14-integer-roots.md#built)' M1, and `fog/sight` from after its M2, each in a session of its own.
+`num`, `vec3` and `rng` run 4,096 inputs a case: `num/mul` 7.5 µs, `num/div` 15.9 µs, `num/sqrt` 20.4 µs, `num/sin_cos` 75.4 µs, `num/sin_cos_huge` 75.7 µs, `num/atan2` 85.7 µs, `num/atan2_near_axis` 85.2 µs; `vec3/dot` 13.8 µs, `vec3/distance` 43.6 µs, `vec3/within` 11.0 µs, `vec3/normalized` 125.3 µs, `vec3/rotated_y` 19.0 µs; `rng/open` 175.4 µs, `rng/next_u64` 30.4 µs, `rng/below` 32.0 µs, `rng/chance` 31.7 µs; `root/floor` 22.6 µs. `num/sqrt`, `vec3/distance`, `vec3/normalized` and `root/floor` are from after [Integer roots](14-integer-roots.md#built)' M1, `fog/sight` from after its M2, and `collision/*` from after its M3, each in a session of its own.
 
 **The mean cases.** Each iteration of a mean case plays a whole match and states its 6,000 ticks as its throughput, so its median is a match's mean tick: `server_tick/mean_3v3` measured 154.9 µs and 154.0 µs in two runs. Before, each sample timed a stretch of ticks that criterion sized, so each covered a different part of a match: the ten samples of one run gave 75.8 µs to 245.5 µs a tick. The nine stage means add up to 154.8 µs and 152.8 µs, under the tick's in both runs: the parts of a tick outside the stages, the session log's, the tick's start and end and `SimEdge::Start`, cost about 1 µs, within the cases' spread.
 

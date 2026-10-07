@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use campfire_math::{Num, Vec3};
+use campfire_math::{FloorRoot, Num, Vec3};
 use campfire_sim::StableId;
 
 use crate::navigation::broadphase::Contact;
@@ -80,7 +80,7 @@ impl Collider {
         else {
             return;
         };
-        let distance = square.cast_unsigned().isqrt().cast_signed();
+        let distance = square.cast_unsigned().floor_root().cast_signed();
         let overlap = reach - distance;
         let (dx, dz, distance) = if distance == 0 {
             (1, 0, 1)

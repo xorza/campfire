@@ -10,4 +10,3 @@ Design: [Navigation](../design/04-capabilities/navigation.md). Rules: [Issue log
 
 ## Ready
 
-- **Plan: M3.** `Collider::part` takes each contact's distance with `u128::isqrt`, 4.0 % of `collision/crowded`, where `math`'s exact root takes less than half the time ([Integer roots](../design/14-integer-roots.md)).
