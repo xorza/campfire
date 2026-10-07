@@ -229,3 +229,30 @@ fn on_player_leave(ctx, player) {
             .is_empty()
     );
 }
+
+#[test]
+fn a_method_of_a_value_read_through_a_field_costs_no_write_back() {
+    // `ctx.map.markers("spawn")` reads the map through its field, then calls a method of it, as
+    // 8 operations: the statement, its expression, the chain's two links of arguments, the
+    // literal, `ctx`, the getter of `map` and `markers`. The method takes the map as a copy, so
+    // Rhai does not feed it back through a setter of `map`, which `Ctx` lacks, and then through
+    // an indexer: those would cost one operation more each, 10 in all.
+    let script = r#"
+fn on_mode_input(ctx, player, name, value) {
+    if name == "rich" {
+        ctx.map.markers("spawn");
+        ctx.map.markers("spawn");
+    } else {
+        ctx.map.markers("spawn");
+    }
+}
+"#;
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
+    let mut spent = |name: &str| {
+        game.tick(&[(0, input(name, ""))]);
+        let mut budgets = game.sim.world.resource_mut::<ScriptBudgets>();
+        ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left()
+    };
+    let (once, twice) = (spent("phase"), spent("rich"));
+    assert_eq!(twice - once, 8);
+}

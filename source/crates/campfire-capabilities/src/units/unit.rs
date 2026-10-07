@@ -116,7 +116,7 @@ impl Unit {
                 "whether it has the tag, of its type or a modifier",
             )
             .name(0, NameKind::Tag),
-            |unit: &mut Unit, name: &str| -> Checked<bool> {
+            |unit: Unit, name: &str| -> Checked<bool> {
                 let tag = unit.view.tag_named(name).map_err(ApiError::fail)?;
                 Ok(unit.row().tags.tags.contains(tag))
             },
@@ -127,7 +127,7 @@ impl Unit {
                 "(unit)",
                 "whether its team may attack the other's, hostile or neutral",
             ),
-            |unit: &mut Unit, other: Unit| {
+            |unit: Unit, other: Unit| {
                 let attitude = unit.view.attitude(unit.row().team, other.row().team);
                 attitude.may_attack()
             },
