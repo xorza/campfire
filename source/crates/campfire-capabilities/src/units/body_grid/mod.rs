@@ -6,8 +6,10 @@ use campfire_sim::{Position, StableId};
 /// reach into the box, each once, and few others. A sort, not a grid over the map, as a map may
 /// be wide and its bodies few, as the broadphase finds its pairs. A cell is twice the widest
 /// body's radius, a meter at least. Its buffer stays between builds, so a build allocates nothing
-/// once it has grown, and costs `n log n`; a query costs a search for each row of cells it
-/// covers, and never more than a pass over every body.
+/// once it has grown, and costs `n log n`; a query finds the bodies of each row of cells it
+/// covers from where each row starts, searches only those, and never costs more than a pass over
+/// every body. A grid whose rows spread far wider than its bodies keeps no row starts, and a
+/// query searches all its bodies for each row.
 #[derive(Debug)]
 pub(crate) struct BodyGrid<K> {
     /// A cell's side, in raw units.
@@ -15,6 +17,11 @@ pub(crate) struct BodyGrid<K> {
     widest: Num,
     /// Sorted by row, then column, then stable id.
     entries: Vec<GridBody<K>>,
+    /// The first entry of each row from `first_row` to `last_row`, the bodies' first and last,
+    /// and one past the last row's last; empty when it keeps none.
+    first_row: i64,
+    last_row: i64,
+    starts: Vec<u32>,
 }
 
 /// A body of the grid: its unit, the key its reader finds the unit by, where it stands, its
@@ -45,11 +52,19 @@ impl<K> Default for BodyGrid<K> {
             cell: 0,
             widest: Num::ZERO,
             entries: Vec::new(),
+            first_row: 0,
+            last_row: 0,
+            starts: Vec::new(),
         }
     }
 }
 
 impl<K: Copy> BodyGrid<K> {
+    /// How much wider than its bodies the rows may spread for the grid to keep their starts.
+    const SPREAD: u64 = 4;
+    /// The rows the grid may always keep the starts of.
+    const ROWS: u64 = 64;
+
     /// Indexes `bodies` in place of what it held.
     pub(crate) fn rebuild(&mut self, bodies: impl IntoIterator<Item = Placed<K>>) {
         self.entries.clear();
@@ -81,6 +96,28 @@ impl<K: Copy> BodyGrid<K> {
         }
         self.entries
             .sort_unstable_by_key(|body| (body.row, body.column, body.id));
+        self.starts.clear();
+        let (Some(first), Some(last)) = (self.entries.first(), self.entries.last()) else {
+            return;
+        };
+        let (first, last) = (first.row, last.row);
+        let count = self.entries.len() as u64;
+        if last.abs_diff(first) >= BodyGrid::<K>::SPREAD * count + BodyGrid::<K>::ROWS {
+            return;
+        }
+        (self.first_row, self.last_row) = (first, last);
+        let rows = usize::try_from(last.abs_diff(first)).expect("rows within the spread") + 1;
+        self.starts.reserve_exact(rows + 1);
+        let mut at = 0;
+        for row in first..=last {
+            self.starts
+                .push(u32::try_from(at).expect("a grid's bodies fit u32"));
+            while self.entries.get(at).is_some_and(|body| body.row == row) {
+                at += 1;
+            }
+        }
+        self.starts
+            .push(u32::try_from(at).expect("a grid's bodies fit u32"));
     }
 
     /// Calls `visit` with each body whose disc may reach into the box of the ground plane from
@@ -104,14 +141,27 @@ impl<K: Copy> BodyGrid<K> {
             self.entries.iter().filter(inside).for_each(visit);
             return;
         }
-        for row in rows.clone() {
-            let start = self
-                .entries
-                .partition_point(|body| (body.row, body.column) < (row, *columns.start()));
-            let run = self.entries[start..]
-                .iter()
-                .take_while(|body| body.row == row && body.column <= *columns.end());
-            run.for_each(&mut visit);
+        let in_columns = |run: &[GridBody<K>]| {
+            let start = run.partition_point(|body| body.column < *columns.start());
+            let end = run.partition_point(|body| body.column <= *columns.end());
+            start..end.max(start)
+        };
+        if self.starts.is_empty() {
+            for row in rows {
+                let start = self
+                    .entries
+                    .partition_point(|body| (body.row, body.column) < (row, *columns.start()));
+                let run = self.entries[start..]
+                    .iter()
+                    .take_while(|body| body.row == row && body.column <= *columns.end());
+                run.for_each(&mut visit);
+            }
+            return;
+        }
+        for row in *rows.start().max(&self.first_row)..=*rows.end().min(&self.last_row) {
+            let at = usize::try_from(row - self.first_row).expect("a row within the starts");
+            let run = &self.entries[self.starts[at] as usize..self.starts[at + 1] as usize];
+            run[in_columns(run)].iter().for_each(&mut visit);
         }
     }
 
