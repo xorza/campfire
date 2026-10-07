@@ -70,6 +70,8 @@ pub struct ScriptHost {
     /// Operations of the running call, as the progress callback last saw them.
     counted: Rc<Cell<u64>>,
     properties: PropertyForwards,
+    /// The scope each call runs in, which Rhai empties again after it, kept so its buffers stay.
+    scope: Scope<'static>,
 }
 
 impl ScriptHost {
@@ -120,6 +122,7 @@ impl ScriptHost {
             allowed,
             counted,
             properties: PropertyForwards::new(),
+            scope: Scope::new(),
         };
         NumApi::register(&mut host.engine);
         host
@@ -182,11 +185,12 @@ impl ScriptHost {
         self.counted.set(0);
         let result = self.engine.call_fn_with_options::<Dynamic>(
             CallFnOptions::new().eval_ast(false),
-            &mut Scope::new(),
+            &mut self.scope,
             &self.scripts[script.index()],
             hook,
             args,
         );
+        debug_assert!(self.scope.is_empty(), "a call rewinds its scope");
         budget.spend(self.counted.get());
         result.map_err(|error| ScriptError::from_eval(&error))
     }
