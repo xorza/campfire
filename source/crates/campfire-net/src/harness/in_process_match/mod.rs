@@ -105,6 +105,14 @@ pub(crate) struct StepCost {
     pub(crate) server: Duration,
 }
 
+impl StepCost {
+    /// Clears it, for a step, or a bench's `add` and `keep_worst`, to fill.
+    pub(crate) fn clear(&mut self) {
+        self.clients.clear();
+        self.server = Duration::ZERO;
+    }
+}
+
 /// An app of a match: the server's, or a client's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum End {
@@ -217,7 +225,7 @@ impl InProcessMatch {
     }
 
     /// A match of `packages` at their default rate, its clients connected and synced.
-    pub fn of_mode(setup: MatchSetup, packages: ModePackages) -> InProcessMatch {
+    pub(crate) fn of_mode(setup: MatchSetup, packages: ModePackages) -> InProcessMatch {
         let log = LogCheck::start();
         assert!(
             setup.players <= MatchSetup::MAX_PLAYERS,
@@ -509,7 +517,7 @@ impl InProcessMatch {
 
     /// Opens the session for every client, and steps until each joined and every end runs the
     /// match; see `Lobby`. The players take slots in the order their joins arrive.
-    pub fn open_match(&mut self) {
+    pub(crate) fn open_match(&mut self) {
         let packages = Arc::clone(&self.packages);
         let mut lobby = Lobby::new(LobbySetup {
             tick_hz: packages.manifest().tick_hz.default(),
@@ -546,7 +554,7 @@ impl InProcessMatch {
 
     /// Steps until each client holds its player's avatar, for at most `frames` frames: a mode
     /// may spawn the avatars only after its pick.
-    pub fn await_avatars(&mut self, frames: usize) {
+    pub(crate) fn await_avatars(&mut self, frames: usize) {
         for _ in 0..frames {
             if (0..self.clients.len()).all(|client| self.holds_avatar(client)) {
                 return;
@@ -576,20 +584,17 @@ impl InProcessMatch {
 
     /// `step`, which keeps what each end's frames cost in `step_cost`.
     pub(crate) fn timed_step(&mut self) {
-        let mut cost = mem::take(&mut self.step_cost);
-        cost.clients.clear();
+        self.step_cost.clear();
         for client in 0..self.clients.len() {
             let start = Instant::now();
             self.client_frame(client);
-            cost.clients.push(start.elapsed());
+            self.step_cost.clients.push(start.elapsed());
         }
-        cost.server = Duration::ZERO;
         for _ in 0..self.setup.server_frames {
             let start = Instant::now();
             self.server_frame();
-            cost.server = cost.server.max(start.elapsed());
+            self.step_cost.server = self.step_cost.server.max(start.elapsed());
         }
-        self.step_cost = cost;
         if SimServer::reload_wanted(self.server.world()) {
             self.restart_server();
         }
@@ -902,12 +907,6 @@ pub(crate) mod bench {
     ];
 
     impl StepCost {
-        /// Clears it, for `add` and `keep_worst` to fill.
-        pub(crate) fn clear(&mut self) {
-            self.clients.clear();
-            self.server = Duration::ZERO;
-        }
-
         /// Adds each end's cost in `step` to its own.
         fn add(&mut self, step: &StepCost) {
             self.clients.resize(step.clients.len(), Duration::ZERO);

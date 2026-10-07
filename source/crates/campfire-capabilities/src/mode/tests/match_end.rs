@@ -159,9 +159,9 @@ fn on_mode_input(ctx, player, name, value) {
     });
 
     // Team b wins in the Inputs stage of tick 2, so no later stage of tick 2 runs: a's grunt,
-    // 1, sent 5 m away, stands where it is, and the timer counts no more. Of the gaps, only the
-    // one before Inputs runs in tick 2. In tick 3 nothing runs, the input to end again
-    // included.
+    // 1, sent 5 m away, stands where it is, and the timer counts no more. Of the gaps, the one
+    // before Inputs runs in tick 2, and the one after it, Inputs' closing set: 2 runs. In tick 3
+    // nothing runs, the input to end again included.
     let grunt = game.entity(1);
     let mut destination = game.sim.world.get_mut::<Destination>(grunt).unwrap();
     destination.set(Some(at(5, 0)));
@@ -175,7 +175,7 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(game.units(), before);
     assert_eq!(game.field("count"), StateValue::Int(2));
     assert_eq!(game.sim.world.resource::<SimTick>().start(), Tick::new(4));
-    assert_eq!(game.sim.world.resource::<GapRuns>().0, 1);
+    assert_eq!(game.sim.world.resource::<GapRuns>().0, 2);
 
     // The grunt walks, so `keep_in_bounds`, in the gap after Collide, would clamp it back into
     // the bounds; past the end it stays where it is put.
@@ -184,7 +184,7 @@ fn on_mode_input(ctx, player, name, value) {
     *game.sim.world.get_mut::<Position>(grunt).unwrap() = away;
     game.tick(&[]);
     assert_eq!(game.sim.world.get::<Position>(grunt), Some(&away));
-    assert_eq!(game.sim.world.resource::<GapRuns>().0, 1);
+    assert_eq!(game.sim.world.resource::<GapRuns>().0, 2);
 
     // `end(())` is a draw.
     let mut game = Game::new(script, ScriptLimits::ROOMY);
