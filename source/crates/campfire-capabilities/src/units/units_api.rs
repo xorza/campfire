@@ -32,25 +32,25 @@ impl UnitsApi {
                     "(pos)",
                     "the distance to `pos` in the map's metric",
                 ),
-                |call: NativeCallContext<'_>, from: &mut Position, to: Position| {
+                |call: NativeCallContext<'_>, from: Position, to: Position| {
                     Ctx::of_call(&call)
                         .view()
                         .metric()
-                        .offset(*from, to)
+                        .offset(from, to)
                         .checked_length()
                         .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
                 },
             )
             .bind(
                 within,
-                |call: NativeCallContext<'_>, from: &mut Position, to: Position, radius: Num| {
-                    UnitsApi::within(&call, *from, to, radius)
+                |call: NativeCallContext<'_>, from: Position, to: Position, radius: Num| {
+                    UnitsApi::within(&call, from, to, radius)
                 },
             )
             .bind(
                 within,
-                |call: NativeCallContext<'_>, from: &mut Position, to: Position, radius: INT| {
-                    UnitsApi::within(&call, *from, to, ApiError::num(radius)?)
+                |call: NativeCallContext<'_>, from: Position, to: Position, radius: INT| {
+                    UnitsApi::within(&call, from, to, ApiError::num(radius)?)
                 },
             )
             .bind(
@@ -59,11 +59,11 @@ impl UnitsApi {
                     "(pos)",
                     "the unit vector towards `pos` in the map's metric, `()` for the same point",
                 ),
-                |call: NativeCallContext<'_>, from: &mut Position, to: Position| {
+                |call: NativeCallContext<'_>, from: Position, to: Position| {
                     Ctx::of_call(&call)
                         .view()
                         .metric()
-                        .offset(*from, to)
+                        .offset(from, to)
                         .normalized()
                         .map_or(Dynamic::UNIT, Dynamic::from)
                 },
@@ -77,11 +77,11 @@ impl UnitsApi {
             "the vector turned by `degrees` about the vertical, counter-clockwise seen from above",
         );
         api.ty::<Vec3>("Vector")
-            .bind(rotated, |vector: &mut Vec3, degrees: Num| {
-                UnitsApi::rotated(*vector, degrees)
+            .bind(rotated, |vector: Vec3, degrees: Num| {
+                UnitsApi::rotated(vector, degrees)
             })
-            .bind(rotated, |vector: &mut Vec3, degrees: INT| {
-                UnitsApi::rotated(*vector, ApiError::num(degrees)?)
+            .bind(rotated, |vector: Vec3, degrees: INT| {
+                UnitsApi::rotated(vector, ApiError::num(degrees)?)
             });
         let scaled = MemberSpec::operator(
             ApiOwner::Vector,

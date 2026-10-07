@@ -661,14 +661,14 @@ impl View {
 
     /// The living targets whose bodies come within `radius` of `pos` in the map's metric, as an
     /// area of that radius reaches, that `filter` selects relative to `of`, and `seen` lets by
-    /// their rows, by stable id.
+    /// the view's columns and their rows, by stable id.
     pub(crate) fn find(
         &self,
         of: &Unit,
         pos: Position,
         radius: Num,
         filter: &str,
-        seen: impl Fn(usize) -> bool,
+        seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> Checked<Array> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
@@ -685,7 +685,7 @@ impl View {
             let reaches = view
                 .metric
                 .reaches(pos, Num::ZERO, radius, body.at, body.radius);
-            if reaches && filter.selects(attitude, row.tags.tags) && seen(body.key) {
+            if reaches && filter.selects(attitude, row.tags.tags) && seen(&view.columns, body.key) {
                 found.push(body.key);
             }
         });
@@ -696,14 +696,14 @@ impl View {
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
     /// metric, as a weapon's range does, that `filter` selects relative to it and `seen` lets by
-    /// its row, by exact distance between centres, the lower stable id on a tie; `()` when there
-    /// is none.
+    /// the view's columns and its row, by exact distance between centres, the lower stable id on
+    /// a tie; `()` when there is none.
     pub(crate) fn nearest(
         &self,
         of: &Unit,
         radius: Num,
         filter: &str,
-        seen: impl Fn(usize) -> bool,
+        seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> Checked<Dynamic> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
@@ -720,7 +720,10 @@ impl View {
             let reaches = view
                 .metric
                 .reaches(of.pos, of.radius, radius, body.at, body.radius);
-            if !(reaches && filter.selects(attitude, row.tags.tags) && seen(body.key)) {
+            if !(reaches
+                && filter.selects(attitude, row.tags.tags)
+                && seen(&view.columns, body.key))
+            {
                 return;
             }
             let distance = view.metric.offset(of.pos, body.at).length_squared_bits();
@@ -745,14 +748,14 @@ impl View {
         api.bind(
             find,
             |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
-                ctx.view().find(&of, pos, radius, filter, |_| true)
+                ctx.view().find(&of, pos, radius, filter, |_, _| true)
             },
         )
         .bind(
             find,
             |ctx: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
                 let radius = ApiError::num(radius)?;
-                ctx.view().find(&of, pos, radius, filter, |_| true)
+                ctx.view().find(&of, pos, radius, filter, |_, _| true)
             },
         );
     }

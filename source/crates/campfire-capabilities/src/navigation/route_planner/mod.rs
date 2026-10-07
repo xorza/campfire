@@ -86,10 +86,11 @@ struct Open {
     cell: u32,
 }
 
-/// One search's target and marks.
+/// One search's target, its column and row, and its marks.
 #[derive(Debug, Clone, Copy)]
 struct Search {
     to: usize,
+    at: [usize; 2],
     seen: u64,
     done: u64,
 }
@@ -252,6 +253,7 @@ impl RoutePlanner {
         self.routes += 1;
         let search = Search {
             to: target,
+            at: RoutePlanner::place(grid, target),
             seen: 2 * self.routes,
             done: 2 * self.routes + 1,
         };
@@ -259,14 +261,17 @@ impl RoutePlanner {
         self.marks[from] = search.seen;
         self.costs[from] = 0;
         self.came_from[from] = RoutePlanner::number(from);
-        let estimate = RoutePlanner::estimate(grid, from, target);
+        let estimate = RoutePlanner::estimate(RoutePlanner::place(grid, from), search.at);
         self.open.push(Reverse(Open {
             total: estimate,
             estimate,
             cell: RoutePlanner::number(from),
         }));
         let mut expanded = 0;
-        let mut nearest = from;
+        // The expanded cell nearest the goal, by its center's distance, then its cost, then its
+        // number: a cell's cost is final once it is expanded.
+        let key = |cell: usize, cost: u32| (grid.center_distance(cell, goal), cost, cell);
+        let mut nearest = key(from, 0);
         let mut found = false;
         while let Some(Reverse(Open { cell, .. })) = self.open.pop() {
             let at = cell as usize;
@@ -275,17 +280,14 @@ impl RoutePlanner {
             }
             self.marks[at] = search.done;
             expanded += 1;
-            let key = |cell: usize| (grid.center_distance(cell, goal), self.costs[cell], cell);
-            if key(at) < key(nearest) {
-                nearest = at;
-            }
+            nearest = nearest.min(key(at, self.costs[at]));
             if at == target {
                 found = true;
                 break;
             }
             self.expand(walkable, at, search);
         }
-        let end = if found { target } else { nearest };
+        let end = if found { target } else { nearest.2 };
         self.cells.clear();
         let mut at = end;
         self.cells.push(RoutePlanner::number(at));
@@ -508,9 +510,9 @@ impl RoutePlanner {
             } else {
                 RoutePlanner::STRAIGHT
             };
-            reached[slot] = Some((z * columns + x, step));
+            reached[slot] = Some((z * columns + x, [x, z], step));
         }
-        for (next, step) in reached.into_iter().flatten() {
+        for (next, place, step) in reached.into_iter().flatten() {
             let cost = self.costs[at] + step;
             let mark = self.marks[next];
             if mark == search.done || (mark == search.seen && self.costs[next] <= cost) {
@@ -519,7 +521,7 @@ impl RoutePlanner {
             self.marks[next] = search.seen;
             self.costs[next] = cost;
             self.came_from[next] = RoutePlanner::number(at);
-            let estimate = RoutePlanner::estimate(grid, next, search.to);
+            let estimate = RoutePlanner::estimate(place, search.at);
             self.open.push(Reverse(Open {
                 total: cost + estimate,
                 estimate,
@@ -528,12 +530,16 @@ impl RoutePlanner {
         }
     }
 
-    /// The octile distance from cell `a` to cell `b`: diagonal steps while both axes differ,
-    /// then straight ones.
-    fn estimate(grid: &Grid, a: usize, b: usize) -> u32 {
-        let columns = grid.columns();
-        let dx = (a % columns).abs_diff(b % columns);
-        let dz = (a / columns).abs_diff(b / columns);
+    /// The column and row of `cell`.
+    const fn place(grid: &Grid, cell: usize) -> [usize; 2] {
+        [cell % grid.columns(), cell / grid.columns()]
+    }
+
+    /// The octile distance between the cells at `a` and `b`, each its column and row: diagonal
+    /// steps while both axes differ, then straight ones.
+    fn estimate(a: [usize; 2], b: [usize; 2]) -> u32 {
+        let dx = a[0].abs_diff(b[0]);
+        let dz = a[1].abs_diff(b[1]);
         let (long, short) = (dx.max(dz), dx.min(dz));
         RoutePlanner::STRAIGHT * RoutePlanner::number(long - short)
             + RoutePlanner::DIAGONAL * RoutePlanner::number(short)

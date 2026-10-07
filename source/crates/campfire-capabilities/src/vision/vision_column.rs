@@ -8,7 +8,7 @@ use crate::units::kept_rows::KeptRows;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
-use crate::units::view_column::ViewColumn;
+use crate::units::view_column::{ViewColumn, ViewColumns};
 
 /// What vision adds to the script view: the teams that see each unit, a row each.
 #[derive(Debug, Default)]
@@ -41,25 +41,27 @@ impl VisionColumn {
         self.rows.now_mut().push(seen_by);
     }
 
-    /// Whether `team` sees the unit of row `row` of `unit`'s view; every team does in a view with
-    /// no vision.
-    fn sees(unit: &Unit, row: usize, team: Team) -> bool {
-        let seen = unit
-            .view()
-            .column(|column: &VisionColumn| column.rows.now()[row].contains(team));
-        seen.unwrap_or(true)
+    /// Whether `team` sees the unit of row `row` of the view of `columns`; every team does in a
+    /// view with no vision.
+    fn sees(columns: &ViewColumns, row: usize, team: Team) -> bool {
+        let column = columns.get::<VisionColumn>();
+        column.is_none_or(|column| column.rows.now()[row].contains(team))
     }
 
     /// `unit.can_see(other)`: whether `unit`'s team sees `other`.
     pub(crate) fn can_see(unit: &Unit, other: &Unit) -> bool {
-        VisionColumn::sees(unit, other.row_index(), unit.row().team)
+        let team = unit.row().team;
+        let seen = unit
+            .view()
+            .column(|column: &VisionColumn| column.rows.now()[other.row_index()].contains(team));
+        seen.unwrap_or(true)
     }
 
     /// `ctx.find_visible`: `ctx.find`, of the units `of`'s team sees.
     pub(crate) fn find(of: &Unit, pos: Position, radius: Num, filter: &str) -> Checked<Array> {
         let team = of.row().team;
-        of.view().find(of, pos, radius, filter, |row| {
-            VisionColumn::sees(of, row, team)
+        of.view().find(of, pos, radius, filter, |columns, row| {
+            VisionColumn::sees(columns, row, team)
         })
     }
 
@@ -67,7 +69,8 @@ impl VisionColumn {
     /// reaches that `filter` selects and `of`'s team sees.
     pub(crate) fn nearest(of: &Unit, radius: Num, filter: &str) -> Checked<Dynamic> {
         let team = of.row().team;
-        of.view()
-            .nearest(of, radius, filter, |row| VisionColumn::sees(of, row, team))
+        of.view().nearest(of, radius, filter, |columns, row| {
+            VisionColumn::sees(columns, row, team)
+        })
     }
 }
