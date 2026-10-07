@@ -95,9 +95,12 @@ opt-level = 3
 opt-level = 1
 debug = "full"
 overflow-checks = true
+[profile.dev]
+debug = "full"
 
 [profile.release]
 debug = "full"
+split-debuginfo = "off"
 overflow-checks = true
 lto = "thin"
 strip = "none"
@@ -108,14 +111,13 @@ inherits = "release"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = "symbols"
 debug = false
+strip = "symbols"
 
 [profile.bench]
 inherits = "release-max"
 debug = "line-tables-only"
 strip = "none"
-incremental = true
 
 
 # Warn, not deny: the check chain runs clippy with `-D warnings`, and builds keep working mid-edit.
