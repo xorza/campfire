@@ -87,7 +87,7 @@ impl Actions {
     pub(crate) fn install(world: &mut World, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(ActionsColumn::default());
-        view.add_source::<RowParts>(world, fill_row);
+        view.add_source::<RowParts, _>(world, fill_row);
         world.insert_resource(ActionBook::default());
         world.insert_resource(SlotKinds::default());
         world.insert_resource(EffectQueues::default());
@@ -215,8 +215,8 @@ fn hold_passives(
 type RowParts = Option<&'static ActionSlots>;
 
 /// Adds a unit's actions to the actions' column of the script view.
-fn fill_row(slots: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
-    fill.column::<ActionsColumn>().push(slots);
+fn fill_row(slots: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_, ActionsColumn>) {
+    fill.column.push(slots);
 }
 
 #[cfg(any(test, feature = "internals"))]

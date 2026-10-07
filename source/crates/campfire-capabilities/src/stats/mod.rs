@@ -109,7 +109,7 @@ impl Stats {
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(StatsColumn::default());
-        view.add_source::<RowParts>(world, fill_row);
+        view.add_source::<RowParts, _>(world, fill_row);
         world.insert_resource(ModifierBook::default());
         world.insert_resource(ParamBook::default());
         if let Some(ctx) = world.get_non_send::<Ctx>() {
@@ -287,10 +287,10 @@ type RowParts = (
 );
 
 /// Adds the unit's level, pools, stats and modifiers to the stats' column of the script view.
-fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_, StatsColumn>) {
     let (level, pools, stats, modifiers, clocks) = parts;
     let stats = stats.map_or(&[][..], UnitStats::values);
-    fill.column::<StatsColumn>().push(
+    fill.column.push(
         level.map(|level| level.get()),
         pools.copied(),
         stats,

@@ -1,6 +1,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
@@ -14,6 +15,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stats_call::StatsCall;
 use crate::units::action_id::ActionId;
+use crate::units::kept_rows::{ColumnRows, KeptRows};
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
 use crate::units::view_column::ViewColumn;
@@ -30,6 +32,12 @@ pub(crate) struct StatsColumn {
     /// The pools the mode declares, by pool id.
     pool_names: Arc<[DeclaredName]>,
     modifier_book: ModifierBook,
+    rows: KeptRows<StatsRows>,
+}
+
+/// The rows of one read of the stats column.
+#[derive(Debug, Default, PartialEq)]
+struct StatsRows {
     rows: Vec<StatsRow>,
     stats: Vec<Num>,
     modifiers: Vec<ModifierRow>,
@@ -57,6 +65,25 @@ struct ModifierRow {
 }
 
 impl ViewColumn for StatsColumn {
+    fn begin(&mut self, _: &World) -> bool {
+        self.rows.begin();
+        false
+    }
+
+    fn keep(&mut self, row: usize) {
+        self.rows.keep(row);
+    }
+
+    fn rows(&self) -> usize {
+        self.rows.len()
+    }
+
+    fn same_as_kept(&self) -> bool {
+        self.rows.same_as_kept()
+    }
+}
+
+impl ColumnRows for StatsRows {
     fn clear(&mut self) {
         self.rows.clear();
         self.stats.clear();
@@ -64,8 +91,66 @@ impl ViewColumn for StatsColumn {
         self.modifier_state.clear();
     }
 
-    fn rows(&self) -> usize {
+    fn push_from(&mut self, from: &Self, row: usize) {
+        let kept = &from.rows[row];
+        let carried = from
+            .run(row)
+            .iter()
+            .map(|held| (held.id, held.source, held.stacks, from.state(held)));
+        self.push(kept.level, kept.pools, from.stats(row), carried);
+    }
+
+    fn len(&self) -> usize {
         self.rows.len()
+    }
+}
+
+impl StatsRows {
+    /// Adds the row of a unit at `level`, with `pools`, the values `stats`, and the modifiers
+    /// `carried`, each by its id, its source, its stacks and its script state.
+    fn push<'a>(
+        &mut self,
+        level: Option<u32>,
+        pools: Option<Pools>,
+        stats: &[Num],
+        carried: impl Iterator<Item = (ModifierId, Option<StableId>, u32, &'a [StateValue])>,
+    ) {
+        let stats_start = len(self.stats.len());
+        self.stats.extend_from_slice(stats);
+        let modifiers_start = len(self.modifiers.len());
+        for (id, source, stacks, state) in carried {
+            let start = len(self.modifier_state.len());
+            self.modifier_state.extend_from_slice(state);
+            self.modifiers.push(ModifierRow {
+                id,
+                source,
+                stacks,
+                state: start..len(self.modifier_state.len()),
+            });
+        }
+        self.rows.push(StatsRow {
+            level,
+            pools,
+            stats: stats_start..len(self.stats.len()),
+            modifiers: modifiers_start..len(self.modifiers.len()),
+        });
+    }
+
+    /// The values of the stats of the unit in row `row`.
+    fn stats(&self, row: usize) -> &[Num] {
+        let run = &self.rows[row].stats;
+        &self.stats[run.start as usize..run.end as usize]
+    }
+
+    /// The modifiers the unit in row `row` carries.
+    fn run(&self, row: usize) -> &[ModifierRow] {
+        let run = &self.rows[row].modifiers;
+        &self.modifiers[run.start as usize..run.end as usize]
+    }
+
+    /// The script state of `held`.
+    fn state(&self, held: &ModifierRow) -> &[StateValue] {
+        &self.modifier_state[held.state.start as usize..held.state.end as usize]
     }
 }
 
@@ -80,32 +165,19 @@ impl StatsColumn {
         modifiers: Option<&Modifiers>,
         clocks: Option<&ModifierClocks>,
     ) {
-        let stats_start = len(self.stats.len());
-        self.stats.extend_from_slice(stats);
-        let modifiers_start = len(self.modifiers.len());
         let carried = modifiers.zip(clocks).into_iter();
         let carried = carried.flat_map(|(modifiers, clocks)| {
-            modifiers
-                .iter()
-                .enumerate()
-                .map(move |(at, instance)| (instance, clocks.state(at)))
+            let held = modifiers.iter().enumerate();
+            held.map(move |(at, instance)| {
+                (
+                    instance.id,
+                    instance.source,
+                    instance.stacks,
+                    clocks.state(at),
+                )
+            })
         });
-        for (instance, state) in carried {
-            let start = len(self.modifier_state.len());
-            self.modifier_state.extend_from_slice(state);
-            self.modifiers.push(ModifierRow {
-                id: instance.id,
-                source: instance.source,
-                stacks: instance.stacks,
-                state: start..len(self.modifier_state.len()),
-            });
-        }
-        self.rows.push(StatsRow {
-            level,
-            pools,
-            stats: stats_start..len(self.stats.len()),
-            modifiers: modifiers_start..len(self.modifiers.len()),
-        });
+        self.rows.now_mut().push(level, pools, stats, carried);
     }
 
     /// Names the stats the mode declares to scripts, in the order units' runs hold them.
@@ -132,7 +204,7 @@ impl StatsColumn {
     /// The level of the unit in row `row`; an error for a unit with no stats.
     pub(crate) fn level(view: &View, row: usize) -> Checked<u32> {
         StatsColumn::read(view, |column| {
-            Ok(column.rows[row]
+            Ok(column.rows.now().rows[row]
                 .level
                 .ok_or_else(|| ApiError::NoStats.fail())?)
         })
@@ -147,8 +219,10 @@ impl StatsColumn {
                 .binary_search_by(|stat| stat.order_to(name))
                 .ok()
                 .ok_or_else(|| ApiError::UnknownStat.fail())?;
-            let run = &column.rows[row].stats;
-            column.stats[run.start as usize..run.end as usize]
+            column
+                .rows
+                .now()
+                .stats(row)
                 .get(at)
                 .copied()
                 .ok_or_else(|| ApiError::NoStats.fail().into())
@@ -165,7 +239,7 @@ impl StatsColumn {
     ) -> Checked<Num> {
         let pool = StatsColumn::pool_named(view, name)?;
         StatsColumn::read(view, |column| {
-            column.rows[row]
+            column.rows.now().rows[row]
                 .pools
                 .and_then(|pools| read(&pools, pool))
                 .ok_or_else(|| ApiError::NoPool.fail().into())
@@ -259,7 +333,7 @@ impl StatsColumn {
                 let (stacks, state) = match held {
                     Some(held) => (
                         spec.reapply.stacks(held.stacks, spec.max_stacks),
-                        &column.modifier_state[held.state.start as usize..held.state.end as usize],
+                        column.rows.now().state(held),
                     ),
                     None => (1, &spec.initial[..]),
                 };
@@ -308,8 +382,7 @@ impl StatsColumn {
 
     /// The modifiers the unit in row `row` carries.
     fn run(&self, row: usize) -> &[ModifierRow] {
-        let run = &self.rows[row].modifiers;
-        &self.modifiers[run.start as usize..run.end as usize]
+        self.rows.now().run(row)
     }
 }
 

@@ -1,8 +1,10 @@
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::rhai::{Array, Dynamic};
 use campfire_sim::Position;
 
 use crate::scripts::error::Checked;
+use crate::units::kept_rows::KeptRows;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
@@ -11,23 +13,32 @@ use crate::units::view_column::ViewColumn;
 /// What vision adds to the script view: the teams that see each unit, a row each.
 #[derive(Debug, Default)]
 pub(crate) struct VisionColumn {
-    rows: Vec<TeamSet>,
+    rows: KeptRows<Vec<TeamSet>>,
 }
 
 impl ViewColumn for VisionColumn {
-    fn clear(&mut self) {
-        self.rows.clear();
+    fn begin(&mut self, _: &World) -> bool {
+        self.rows.begin();
+        false
+    }
+
+    fn keep(&mut self, row: usize) {
+        self.rows.keep(row);
     }
 
     fn rows(&self) -> usize {
         self.rows.len()
+    }
+
+    fn same_as_kept(&self) -> bool {
+        self.rows.same_as_kept()
     }
 }
 
 impl VisionColumn {
     /// Adds the row of a unit `seen_by` sees.
     pub(crate) fn push(&mut self, seen_by: TeamSet) {
-        self.rows.push(seen_by);
+        self.rows.now_mut().push(seen_by);
     }
 
     /// Whether `team` sees the unit of row `row` of `unit`'s view; every team does in a view with
@@ -35,7 +46,7 @@ impl VisionColumn {
     fn sees(unit: &Unit, row: usize, team: Team) -> bool {
         let seen = unit
             .view()
-            .column(|column: &VisionColumn| column.rows[row].contains(team));
+            .column(|column: &VisionColumn| column.rows.now()[row].contains(team));
         seen.unwrap_or(true)
     }
 

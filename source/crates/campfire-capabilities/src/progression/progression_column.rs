@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
@@ -8,6 +9,7 @@ use crate::progression::points::Points;
 use crate::progression::track_book::TrackBook;
 use crate::scripts::error::{ApiError, Checked};
 use crate::stats::level::Level;
+use crate::units::kept_rows::{ColumnRows, KeptRows};
 use crate::units::script_view::View;
 use crate::units::track_id::TrackId;
 use crate::units::view_column::ViewColumn;
@@ -17,6 +19,12 @@ use crate::units::view_column::ViewColumn;
 #[derive(Debug, Default)]
 pub(crate) struct ProgressionColumn {
     book: TrackBook,
+    rows: KeptRows<ProgressionRows>,
+}
+
+/// The rows of one read of the progression column.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ProgressionRows {
     rows: Vec<TracksRow>,
     held: Vec<HeldTrack>,
 }
@@ -38,13 +46,51 @@ struct HeldTrack {
 }
 
 impl ViewColumn for ProgressionColumn {
+    fn begin(&mut self, _: &World) -> bool {
+        self.rows.begin();
+        false
+    }
+
+    fn keep(&mut self, row: usize) {
+        self.rows.keep(row);
+    }
+
+    fn rows(&self) -> usize {
+        self.rows.len()
+    }
+
+    fn same_as_kept(&self) -> bool {
+        self.rows.same_as_kept()
+    }
+}
+
+impl ColumnRows for ProgressionRows {
     fn clear(&mut self) {
         self.rows.clear();
         self.held.clear();
     }
 
-    fn rows(&self) -> usize {
+    fn push_from(&mut self, from: &Self, row: usize) {
+        let held = from.held(row);
+        let start = u32::try_from(self.held.len()).expect("tracks fit u32");
+        self.held.extend_from_slice(held);
+        let end = u32::try_from(self.held.len()).expect("tracks fit u32");
+        self.rows.push(TracksRow {
+            held: start..end,
+            points: from.rows[row].points,
+        });
+    }
+
+    fn len(&self) -> usize {
         self.rows.len()
+    }
+}
+
+impl ProgressionRows {
+    /// The run of tracks of the unit in row `row`.
+    fn held(&self, row: usize) -> &[HeldTrack] {
+        let run = &self.rows[row].held;
+        &self.held[run.start as usize..run.end as usize]
     }
 }
 
@@ -57,8 +103,9 @@ impl ProgressionColumn {
         level: Option<&Level>,
         points: Option<&Points>,
     ) {
-        let start = u32::try_from(self.held.len()).expect("tracks fit u32");
-        self.held.extend(
+        let rows = self.rows.now_mut();
+        let start = u32::try_from(rows.held.len()).expect("tracks fit u32");
+        rows.held.extend(
             experience
                 .into_iter()
                 .flat_map(Experience::iter)
@@ -73,8 +120,8 @@ impl ProgressionColumn {
                     }
                 }),
         );
-        let end = u32::try_from(self.held.len()).expect("tracks fit u32");
-        self.rows.push(TracksRow {
+        let end = u32::try_from(rows.held.len()).expect("tracks fit u32");
+        rows.rows.push(TracksRow {
             held: start..end,
             points: points.copied(),
         });
@@ -119,7 +166,7 @@ impl ProgressionColumn {
     /// The unspent points of the unit in row `row`; an error for a unit without the `level`
     /// track.
     pub(crate) fn points(view: &View, row: usize) -> Checked<Points> {
-        let points = view.column(|column: &ProgressionColumn| column.rows[row].points);
+        let points = view.column(|column: &ProgressionColumn| column.rows.now().rows[row].points);
         Ok(points.flatten().ok_or_else(|| ApiError::NoTrack.fail())?)
     }
 
@@ -130,8 +177,7 @@ impl ProgressionColumn {
 
     /// The unit in row `row`'s progress on `track`, when it has the track.
     fn find(&self, row: usize, track: TrackId) -> Option<HeldTrack> {
-        let run = &self.rows[row].held;
-        let run = &self.held[run.start as usize..run.end as usize];
-        run.iter().find(|held| held.track == track).copied()
+        let held = self.rows.now().held(row);
+        held.iter().find(|held| held.track == track).copied()
     }
 }

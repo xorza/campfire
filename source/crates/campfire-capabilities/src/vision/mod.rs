@@ -54,7 +54,7 @@ impl Vision {
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(VisionColumn::default());
-        view.add_source::<RowParts>(world, fill_row);
+        view.add_source::<RowParts, _>(world, fill_row);
         schedule.add_systems(see.in_set(SimSet::Vision));
         world.insert_resource(ByType::<Sight>::default());
         world.insert_resource(Reveals::default());
@@ -90,9 +90,9 @@ impl Vision {
 type RowParts = (Option<&'static SeenBy>, Option<&'static Team>);
 
 /// Fills a row of the script view with the teams that see the unit.
-fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
-    let seen_by = Vision::seen_by(parts, fill.world.resource::<Relations>());
-    fill.column::<VisionColumn>().push(seen_by);
+fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_, VisionColumn>) {
+    let seen_by = Vision::seen_by(parts, fill.relations);
+    fill.column.push(seen_by);
 }
 
 /// Reveals the cells each living unit with a sight sees to its vision group, but the cells of every

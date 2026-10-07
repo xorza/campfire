@@ -280,6 +280,43 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
 }
 
 #[test]
+fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
+    // A read keeps the row of each unit whose parts did not change since the last read, and a
+    // debug build checks every read against one that fills every row. A part that only goes
+    // away, and a team an entity gains, change no part's tick, only the unit's archetype.
+    let mut scene = Scene::new();
+    let of = scene.unit(at(0, 0, 0), 0, ());
+    let other = scene.unit(at(3, 0, 4), 1, ());
+    let loose = scene.sim.spawn(at(1, 0, 0), ());
+    let value =
+        |scene: &mut Scene, unit, expression: &str| scene.sim.read(expression, unit).unwrap();
+    let enemies =
+        |scene: &mut Scene| Unit::ids(value(scene, of, r#"ctx.find(of, of.pos, 100, "enemies")"#));
+    assert_eq!(enemies(&mut scene), [other]);
+    assert!(value(&mut scene, other, "of.alive").as_bool().unwrap());
+
+    let entity = scene.sim.entity(other);
+    scene.sim.world.entity_mut(entity).insert(Dead);
+    assert!(!value(&mut scene, other, "of.alive").as_bool().unwrap());
+    assert_eq!(enemies(&mut scene), []);
+    scene.sim.world.entity_mut(entity).remove::<Dead>();
+    assert!(value(&mut scene, other, "of.alive").as_bool().unwrap());
+    assert_eq!(enemies(&mut scene), [other]);
+
+    // The entity with no team is no unit until it gains one; one that loses its team is none.
+    let loose_entity = scene.sim.entity(loose);
+    scene
+        .sim
+        .world
+        .entity_mut(loose_entity)
+        .insert(Team::new(1));
+    assert!(value(&mut scene, loose, "of.alive").as_bool().unwrap());
+    scene.sim.world.entity_mut(entity).remove::<Team>();
+    assert_eq!(enemies(&mut scene), []);
+    assert!(scene.sim.world.non_send::<View>().row(other).is_none());
+}
+
+#[test]
 fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let mut scene = Scene::new();
     let window = ("help_window_ms", Scalar::Int(2000));

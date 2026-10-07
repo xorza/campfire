@@ -35,7 +35,7 @@ impl Progression {
     pub fn install(world: &mut World, _: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(ProgressionColumn::default());
-        view.add_source::<RowParts>(world, fill_row);
+        view.add_source::<RowParts, _>(world, fill_row);
         world.insert_resource(TrackBook::default());
         world.insert_resource(LevelUps::default());
         world
@@ -105,9 +105,11 @@ type RowParts = (
 );
 
 /// Fills a row of the script view with a unit's tracks, its progress on each, and its points.
-fn fill_row((experience, level, points): ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
-    fill.column::<ProgressionColumn>()
-        .push(experience, level, points);
+fn fill_row(
+    (experience, level, points): ROQueryItem<'_, '_, RowParts>,
+    fill: &mut RowFill<'_, ProgressionColumn>,
+) {
+    fill.column.push(experience, level, points);
 }
 
 #[cfg(test)]
