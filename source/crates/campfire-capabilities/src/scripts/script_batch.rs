@@ -73,3 +73,16 @@ impl ScriptBatch<'_> {
         self.world
     }
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::units::script_view::View;
+
+    /// Reads the units of `world` into its script view, as each batch of script calls does.
+    pub fn read_view(world: &mut World) {
+        let view = world.non_send::<View>().clone();
+        view.read(world);
+    }
+}

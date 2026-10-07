@@ -180,9 +180,12 @@ pub use crate::vision::seen_by::SeenBy;
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::combat::internals::{Arms, queue_damage};
+    pub use crate::mode::internals::spawn_typed;
+    pub use crate::scripts::script_batch::internals::read_view;
     pub use crate::stats::internals::{carried, give_modifier};
     pub use crate::stats::pools::internals::spent;
     pub use crate::units::relations::internals::set_relation;
+    pub use crate::values::kernel_scene::{Density, KernelScene};
     pub use crate::vision::seen_by::internals::seen_by_all;
 }
 
@@ -195,6 +198,8 @@ pub mod bench {
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         navigation::bench::collision(c);
+        navigation::bench::pathing_grid(c);
+        navigation::bench::route_planner(c);
         vision::bench::fog(c);
     }
 }

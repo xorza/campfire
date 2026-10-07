@@ -14,6 +14,9 @@ use crate::harness::match_units::MatchUnits;
 use crate::harness::scripted::{Aim, Plan, Scripted, TICK_HZ};
 use crate::input_rules::InputRules;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// The reference 3v3 as its packages hold it, at its slowest rate, which plays a match in the
 /// fewest ticks, with six players of fixed keys.
 #[derive(Debug)]

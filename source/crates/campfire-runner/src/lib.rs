@@ -28,11 +28,13 @@ pub use crate::slot_rules::error::SlotRuleError;
 pub mod bench {
     use criterion::Criterion;
 
+    use crate::harness::reference_3v3;
     use crate::runner;
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         runner::bench::server(c);
+        reference_3v3::bench::script_view(c);
     }
 }
 

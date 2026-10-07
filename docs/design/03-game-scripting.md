@@ -62,7 +62,7 @@ One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only wait
 - **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use; how hooks are named and called is [Script API](08-script-api.md#rules)'s. A rule that runs each tick or interval over many units is a scripted system ([Scripted systems](04-capabilities/00-overview.md#scripted-systems)).
 - **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes and relations, players' choices, named per-player resources (e.g. `gold`), scoreboard data.
 - **Timers** never fire early, so modes behave the same at any tick rate to within one tick ([Mode calls](08-script-api.md#ctx)).
-- **End:** `ctx.end(team)` names the winning team, and `ctx.end(())` a draw; callable once. The result is sim state, so the final state hash proves it, and from the next stage on no stage runs. Optional: a persistent world never calls it.
+- **End:** `ctx.end(team)` names the winning team, and `ctx.end(())` a draw; callable once. The result is sim state, so the final state hash proves it, and from the next stage on no stage runs, nor any pass between two stages, `SimEdge::Start` and each `SimEdge::After`, but the closing set of the stage that ended it, which belongs to that stage ([Benches](13-benches.md#decisions), B5). Optional: a persistent world never calls it.
 - **Saves and carry:** `ctx.save()` asks for a save at the end of the tick; `ctx.carry` reads what the session loaded and writes what it hands on, in the mode's declared `[carry]` schema ([Saves](02-engine-core.md#saves)).
 
 ## Capabilities
