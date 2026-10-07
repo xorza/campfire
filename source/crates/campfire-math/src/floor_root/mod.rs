@@ -4,7 +4,7 @@ pub(crate) mod bench;
 /// The exact integer square root, rounded down. A float gives only the first estimate, which
 /// integer steps correct whatever it is, so the result never depends on the float.
 pub trait FloorRoot {
-    /// The largest integer whose square is at most `self`.
+    /// The largest integer whose square is at most `self`, lane by lane for lanes.
     #[must_use]
     fn floor_root(self) -> Self;
 }

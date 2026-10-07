@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use campfire_math::{FloorRoot, Num, Vec3};
+use campfire_math::{FloorRoot, I64x4, Num, Vec3};
 use campfire_sim::Position;
 
 use crate::values::bounds::Bounds;
@@ -133,7 +133,8 @@ impl Grid {
     }
 
     /// The runs of `spans_within`, or of `spans_closer` when `strict`: with whole half-bits, a
-    /// square below `reach²` is one at most `reach² − 1`.
+    /// square below `reach²` is one at most `reach² − 1`. Four rows a step in lanes when every
+    /// square fits them, else one row at a time.
     fn spans(
         &self,
         pos: Position,
@@ -141,6 +142,16 @@ impl Grid {
         strict: bool,
         mut reveal: impl FnMut(Range<usize>),
     ) {
+        let rows = self.disc_rows(pos, radius, strict);
+        if rows.fit_lanes(self.cell.to_bits()) {
+            self.rows_in_lanes(&rows, &mut reveal);
+        } else {
+            self.rows_one_by_one(&rows, &mut reveal);
+        }
+    }
+
+    /// The rows a disc of `radius` around `pos` may reach, in halves of a bit.
+    fn disc_rows(&self, pos: Position, radius: Num, strict: bool) -> Rows {
         let at = pos.get();
         let cell = self.cell.to_bits();
         // In halves of a bit, so each cell's center, half a cell from its edge, is whole. A
@@ -149,12 +160,29 @@ impl Grid {
         // squares.
         let twice = |value: Num| 2 * value.to_bits();
         let reach = 2 * radius.to_bits().min(8 * Position::BOUND.to_bits());
-        let size = self.size.map(i64::from);
         let min = self.bounds.min();
         let from = [twice(at.x) - twice(min[0]), twice(at.z) - twice(min[1])];
-        let low_row = (from[1] - reach).div_euclid(2 * cell).max(0);
-        let high_row = (from[1] + reach).div_euclid(2 * cell).min(size[1] - 1);
-        for z in low_row..=high_row {
+        Rows {
+            from,
+            reach,
+            strict,
+            first: (from[1] - reach).div_euclid(2 * cell).max(0),
+            last: (from[1] + reach)
+                .div_euclid(2 * cell)
+                .min(i64::from(self.size[1]) - 1),
+        }
+    }
+
+    fn rows_one_by_one(&self, rows: &Rows, reveal: &mut impl FnMut(Range<usize>)) {
+        let cell = self.cell.to_bits();
+        let Rows {
+            from,
+            reach,
+            strict,
+            first,
+            last,
+        } = *rows;
+        for z in first..=last {
             let dz = i128::from(from[1] - cell * (2 * z + 1));
             let rest = i128::from(reach).pow(2) - i128::from(strict) - dz * dz;
             if rest < 0 {
@@ -166,12 +194,61 @@ impl Grid {
             let low_odd = -(half - from[0]).div_euclid(cell);
             let high_odd = (from[0] + half).div_euclid(cell);
             let low = (-(1 - low_odd).div_euclid(2)).max(0);
-            let high = (high_odd - 1).div_euclid(2).min(size[0] - 1);
-            if low <= high {
-                let start = z * size[0];
-                let cells = |x: i64| usize::try_from(start + x).expect("a cell of the grid");
-                reveal(cells(low)..cells(high) + 1);
+            let high = (high_odd - 1)
+                .div_euclid(2)
+                .min(i64::from(self.size[0]) - 1);
+            self.reveal_run(z, low, high, reveal);
+        }
+    }
+
+    /// The rows of `rows_one_by_one`, four a step. The center of column x lies within `half` of
+    /// `from[0]` when x is from ⌈(from₀ − half − cell) / 2·cell⌉ to ⌊(from₀ + half − cell) / 2·cell⌋.
+    fn rows_in_lanes(&self, rows: &Rows, reveal: &mut impl FnMut(Range<usize>)) {
+        let cell = self.cell.to_bits();
+        let Rows {
+            from,
+            reach,
+            strict,
+            first,
+            last,
+        } = *rows;
+        let pitch = 2 * cell;
+        let zero = I64x4::splat(0);
+        let top = I64x4::splat(reach * reach - i64::from(strict));
+        let along = I64x4::from_array([0, pitch, 2 * pitch, 3 * pitch]);
+        let right = I64x4::splat(i64::from(self.size[0]) - 1);
+        let mut z = first;
+        while z <= last {
+            let dz = I64x4::splat(from[1] - cell * (2 * z + 1)).wrapping_sub(along);
+            let rest = top.wrapping_sub(dz.mul_narrow(dz));
+            let half = rest.max(zero).cast_unsigned().floor_root().cast_signed();
+            let low = zero
+                .wrapping_sub(
+                    half.wrapping_add(I64x4::splat(cell - from[0]))
+                        .div_euclid(pitch),
+                )
+                .max(zero);
+            let high = half
+                .wrapping_add(I64x4::splat(from[0] - cell))
+                .div_euclid(pitch)
+                .min(right);
+            let open = zero.simd_le(rest).to_bits();
+            let (low, high) = (low.to_array(), high.to_array());
+            for (lane, row) in (z..=last).take(4).enumerate() {
+                if open >> lane & 1 == 1 {
+                    self.reveal_run(row, low[lane], high[lane], reveal);
+                }
             }
+            z += 4;
+        }
+    }
+
+    /// Calls `reveal` with the cells of row `z` from column `low` to `high`, when they are any.
+    fn reveal_run(&self, z: i64, low: i64, high: i64, reveal: &mut impl FnMut(Range<usize>)) {
+        if low <= high {
+            let start = z * i64::from(self.size[0]);
+            let cells = |x: i64| usize::try_from(start + x).expect("a cell of the grid");
+            reveal(cells(low)..cells(high) + 1);
         }
     }
 
@@ -241,6 +318,26 @@ impl Grid {
         let offset = at.to_bits() - self.bounds.min()[axis].to_bits();
         let index = (offset / self.cell.to_bits()).min(i64::from(self.size[axis]) - 1);
         usize::try_from(index).expect("a point within the bounds is past their min")
+    }
+}
+
+/// The rows a disc may reach on a grid, in halves of a bit: its center from the grid's min, its
+/// reach, whether a center at the reach is out, and the first and last row.
+#[derive(Debug, Clone, Copy)]
+struct Rows {
+    from: [i64; 2],
+    reach: i64,
+    strict: bool,
+    first: i64,
+    last: i64,
+}
+
+impl Rows {
+    /// Whether every lane of `Grid::rows_in_lanes` stays in its domain on cells of `cell` bits: a
+    /// row past the last of a step lies at most 7 cells beyond the reach, so each offset fits an
+    /// `i32` and each square 62 bits.
+    const fn fit_lanes(&self, cell: i64) -> bool {
+        self.reach + 8 * cell < 1 << 31
     }
 }
 
