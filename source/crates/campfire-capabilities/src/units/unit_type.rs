@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::units::script_view::View;
 
 /// A unit's type, by its place in the match's unit types.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct UnitType(u16);
 

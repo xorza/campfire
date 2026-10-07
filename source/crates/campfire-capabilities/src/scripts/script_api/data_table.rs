@@ -21,6 +21,9 @@ pub enum DataTable {
     Aura,
     Combat,
     Production,
+    Supply,
+    ModeSupply,
+    Requires,
     Vision,
     Collision,
     Ai,
@@ -30,7 +33,7 @@ pub enum DataTable {
     Shop,
 }
 impl DataTable {
-    pub const ALL: [DataTable; 27] = [
+    pub const ALL: [DataTable; 30] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -51,6 +54,9 @@ impl DataTable {
         DataTable::Aura,
         DataTable::Combat,
         DataTable::Production,
+        DataTable::Supply,
+        DataTable::ModeSupply,
+        DataTable::Requires,
         DataTable::Vision,
         DataTable::Collision,
         DataTable::Ai,
@@ -83,6 +89,9 @@ impl DataTable {
             DataTable::Aura => "A modifier's `aura`",
             DataTable::Combat => "A unit type's `combat`",
             DataTable::Production => "A unit type's `production`",
+            DataTable::Supply => "A unit type's `supply`",
+            DataTable::ModeSupply => "The mode's `[supply]`",
+            DataTable::Requires => "A train's `requires`",
             DataTable::Vision => "A unit type's `vision`",
             DataTable::Collision => "A unit type's `collision`",
             DataTable::Ai => "A unit type's `orders`",

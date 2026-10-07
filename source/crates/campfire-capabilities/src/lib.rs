@@ -104,6 +104,8 @@ pub use crate::orders::order::{Action, Order};
 pub use crate::players::player_resources::PlayerResources;
 pub use crate::players::resource_id::ResourceId;
 pub use crate::production::Production;
+pub use crate::production::rally::Rally;
+pub use crate::production::rally_target::RallyTarget;
 pub use crate::production::train_queue::TrainQueue;
 pub use crate::progression::Progression;
 pub use crate::progression::experience::Experience;

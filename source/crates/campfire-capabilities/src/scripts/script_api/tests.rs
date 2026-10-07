@@ -9,6 +9,7 @@ use super::*;
 use crate::actions::action_data::ActionData;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
+use crate::actions::requires_data::RequiresData;
 use crate::actions::slot_kinds::SlotKindData;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::CapabilitySet;
@@ -23,6 +24,8 @@ use crate::mode::relation_data::RelationData;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::orders::ai_data::AiData;
 use crate::production::production_data::ProductionData;
+use crate::production::supply_data::SupplyData;
+use crate::production::supply_rules::SupplyRules;
 use crate::progression::track_data::TrackData;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::stats::modifier_data::{AuraData, ModifierData};
@@ -250,6 +253,9 @@ fn the_data_fields_are_the_schemas() {
         (DataTable::Aura, serde_fields::<AuraData>()),
         (DataTable::Combat, serde_fields::<CombatData>()),
         (DataTable::Production, serde_fields::<ProductionData>()),
+        (DataTable::Supply, serde_fields::<SupplyData>()),
+        (DataTable::ModeSupply, serde_fields::<SupplyRules>()),
+        (DataTable::Requires, serde_fields::<RequiresData>()),
         (DataTable::Vision, serde_fields::<VisionData>()),
         (DataTable::Collision, serde_fields::<CollisionData>()),
         (DataTable::Ai, serde_fields::<AiData>()),

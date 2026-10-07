@@ -581,6 +581,7 @@ fn mode_files() -> ModeFiles {
             shop: None,
             players: PlayersData::default(),
             saves: SavesData::default(),
+            supply: None,
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),

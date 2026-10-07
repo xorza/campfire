@@ -59,6 +59,7 @@ pub(crate) mod purse;
 pub(crate) mod range;
 pub(crate) mod rank_values;
 pub(crate) mod ready_waits;
+pub(crate) mod requires_data;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kinds;
 pub(crate) mod targets;

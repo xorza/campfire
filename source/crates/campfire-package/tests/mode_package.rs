@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 246] = [
+static FLAWS: [Flaw; 250] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -2360,6 +2360,44 @@ static FLAWS: [Flaw; 246] = [
         ],
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::TrainStands(action) if action == "recruit"),
+    },
+    // A train's `requires` names unit types of its package that stand, and modifiers of its
+    // package; a cast takes none. A unit type's `supply` needs the mode's `[supply]`.
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\nrequires = { units = [\"tower_bolt\"] }\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "recruit" && name == "tower_bolt"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\nrequires = { units = [\"tower\"], modifiers = [\"drill\"] }\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Action(action), name } if action == "recruit" && name == "drill"),
+    },
+    flaw(
+        HUSK,
+        Edit::Replace("[actions.dread]\n", "[actions.dread]\nrequires = {}\n"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Requires } if action == "dread"),
+    ),
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            r#"slots = { weapon = ["tower_attack"] }"#,
+            "slots = { weapon = [\"tower_attack\"] }\nsupply = { provides = 10 }",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::SupplyUncounted(Place::UnitType(name)) if name == "tower"),
     },
     flaw(
         UNITS,

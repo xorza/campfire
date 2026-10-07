@@ -43,6 +43,7 @@ use crate::stats::move_step::MoveStep;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::body_grid::Placed;
+use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove, Goal};
 use crate::units::row_fill::RowFill;
@@ -120,6 +121,7 @@ impl Navigation {
         world.insert_resource(Bounds::WORLD);
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
         world.insert_resource(StaticChanges::default());
+        world.insert_resource(ByType::<Walker>::default());
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Navigation, NavigationEffect::queue_listed);
@@ -218,6 +220,22 @@ impl Navigation {
             };
             NavigationEffect::put(world, walker, place, now);
         }
+    }
+
+    /// The center of the cell nearest `point` among those `walker` may stand in, at `point`'s
+    /// height, as a teleport finds its cell, with the static bodies as the tick began; `None`
+    /// with no pathing grid, or on a grid with no such cell.
+    pub(crate) fn open_cell(world: &World, walker: Walker, point: Position) -> Option<Position> {
+        let grid = world.get_resource::<PathingGrid>()?;
+        let planner = world.get_resource::<RoutePlanner>()?;
+        let clearance = grid.serving(walker)?;
+        let walkable = Walkable {
+            clearance,
+            statics: world.resource::<BodyIndex>(),
+            short: None,
+        };
+        let cell = planner.nearest_open(walkable, point, &mut 0)?;
+        Some(clearance.grid().center(cell, point.get().y))
     }
 }
 

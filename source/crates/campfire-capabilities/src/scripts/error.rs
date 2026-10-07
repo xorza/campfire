@@ -185,6 +185,9 @@ pub enum ApiError {
     /// A player's resource past what an integer holds.
     #[error("player resource overflows")]
     ResourceOverflow,
+    /// A count of supply in a mode that counts none.
+    #[error("the mode counts no supply")]
+    NoSupply,
     /// A unit to respawn that is alive.
     #[error("unit to respawn is alive")]
     RespawnAlive,

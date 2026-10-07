@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::actions::action_target::ActionTarget;
 use crate::items::item_id::ItemId;
 use crate::orders::order::order_units::OrderUnits;
+use crate::production::rally_target::RallyTarget;
 
 pub(crate) mod order_units;
 
@@ -37,6 +38,10 @@ pub enum Action {
     Swap { from: u8, to: u8 },
     /// End what is under way, drop the target and the destination, and stand.
     Stop,
+    /// Cancel the entry at `place` of a producer's train queue, the head 0.
+    CancelTrain { place: u8 },
+    /// Set where a producer's trained units go, or clear it with `None`.
+    Rally { target: Option<RallyTarget> },
 }
 
 impl Order {

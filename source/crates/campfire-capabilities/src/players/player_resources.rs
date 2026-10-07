@@ -27,6 +27,20 @@ impl PlayerResources {
         }
     }
 
+    /// How many resources each player holds an amount of.
+    pub(crate) const fn resources(&self) -> usize {
+        self.resources
+    }
+
+    /// Whether adding each of `amounts` to player `slot`'s keeps every amount within an `i64`.
+    pub(crate) fn takes(&self, slot: PlayerSlot, amounts: &[ResourceAmount]) -> bool {
+        amounts.iter().all(|add| {
+            self.amount(slot, add.resource)
+                .checked_add(add.amount)
+                .is_some()
+        })
+    }
+
     /// The amount of `resource` player `slot` holds.
     pub fn amount(&self, slot: PlayerSlot, resource: ResourceId) -> i64 {
         self.amounts[self.at(slot, resource)]

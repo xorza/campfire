@@ -17,7 +17,12 @@ use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_units::ModeUnits;
 use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
+use crate::production::production_column::ProductionColumn;
 use crate::production::production_data::ProductionData;
+use crate::production::requirements::Requirements;
+use crate::production::supply_costs::SupplyCosts;
+use crate::production::supply_data::SupplyData;
+use crate::production::supply_rules::SupplyRules;
 use crate::progression::progression_column::ProgressionColumn;
 use crate::progression::track_book::TrackBook;
 use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -67,6 +72,11 @@ pub(crate) struct BookParts {
     /// The sights of the delivery types with a `vision` section.
     sights: ByType<Sight>,
     producers: ByType<ProductionData>,
+    supplies: ByType<SupplyData>,
+    requirements: Requirements,
+    /// The kind of walker of each unit type that walks.
+    walkers: ByType<Walker>,
+    supply_rules: Option<SupplyRules>,
     /// The mode's item types.
     items: ItemBook,
     units: ModeUnits,
@@ -108,6 +118,7 @@ impl Books {
             world.insert_resource(tracks);
         }
         ActionsColumn::share(&view, parts.actions.clone());
+        let costs = SupplyCosts::new(parts.supplies, &parts.actions);
         replace(world, parts.modifiers);
         replace(world, parts.actions);
         replace(world, parts.effects);
@@ -116,6 +127,13 @@ impl Books {
         replace(world, parts.areas);
         replace(world, parts.sights);
         replace(world, parts.producers);
+        replace(world, parts.requirements);
+        replace(world, parts.walkers);
+        ProductionColumn::share(&view, parts.supply_rules, costs.clone());
+        replace(world, costs);
+        if let Some(rules) = parts.supply_rules {
+            world.insert_resource(rules);
+        }
         replace(world, parts.items);
         ModeInputs {
             units: parts.units,

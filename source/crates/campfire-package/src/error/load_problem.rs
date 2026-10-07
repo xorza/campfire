@@ -88,6 +88,9 @@ pub enum LoadProblem {
     /// A train makes a unit type that does not walk, so no trained unit leaves its producer.
     #[error("action \"{0}\": a train makes a unit type that walks")]
     TrainStands(DeclaredName),
+    /// A unit type's `supply` in a mode with no `[supply]`, which counts none.
+    #[error("{0}: a supply in a mode that counts none")]
+    SupplyUncounted(Place),
     /// A unit type's box body that its type or its map does not let it have.
     #[error("{at}: {problem}")]
     BoxBody { at: Place, problem: BoxProblem },

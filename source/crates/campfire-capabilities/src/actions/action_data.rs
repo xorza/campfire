@@ -11,6 +11,7 @@ use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
 use crate::actions::range::Range;
+use crate::actions::requires_data::RequiresData;
 use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::stats::pool_cost::PoolCost;
@@ -63,8 +64,10 @@ pub struct ActionData {
     pub damage: Option<Stat>,
     /// The kind of damage a weapon deals, an `attack`'s alone.
     pub damage_kind: Option<DeclaredName>,
-    /// The mode's unit type a `train` makes, a train's alone.
+    /// The unit type of its package a `train` makes, a train's alone.
     pub unit_type: Option<DeclaredName>,
+    /// What its player must hold for a `train` to join a queue.
+    pub requires: Option<RequiresData>,
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,
@@ -500,6 +503,7 @@ pub(crate) mod internals {
                 damage: None,
                 damage_kind: None,
                 unit_type: None,
+                requires: None,
                 params: BTreeMap::new(),
                 on_resolve: Vec::new(),
                 on_hit: Vec::new(),

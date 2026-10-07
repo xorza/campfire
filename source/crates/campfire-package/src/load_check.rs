@@ -413,6 +413,7 @@ impl<'a> LoadCheck<'a> {
         for (id, ability) in actions {
             let at = Place::Action(id.clone());
             self.kind(id, ability, units)?;
+            requires(id, ability, units, names.modifiers)?;
             self.ranked(id, ability, ranks(id.as_str()))?;
             let scope = EffectScope { units };
             self.effects(id, ability, scope)?;
@@ -1263,13 +1264,9 @@ impl<'a> LoadCheck<'a> {
         })
     }
 
-    fn unit_type(
-        &self,
-        unit_type: &UnitTypeFile,
-        at: &Place,
-        actions: &BTreeMap<DeclaredName, ActionData>,
-        modifiers: &BTreeMap<DeclaredName, ModifierData>,
-    ) -> Result<(), LoadProblem> {
+    /// The capability of each section `unit_type` holds, at `at`, the mode declares; and a
+    /// `supply` needs the mode's `[supply]`.
+    fn sections(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
         let sections = [
             (unit_type.stats.is_some(), Capability::Stats),
             (unit_type.combat.is_some(), Capability::Combat),
@@ -1278,6 +1275,7 @@ impl<'a> LoadCheck<'a> {
             (!unit_type.slots.is_empty(), Capability::Abilities),
             (!unit_type.tracks.is_empty(), Capability::Progression),
             (unit_type.production.is_some(), Capability::Production),
+            (unit_type.supply.is_some(), Capability::Production),
             (unit_type.projectile.is_some(), Capability::Projectiles),
             (unit_type.area.is_some(), Capability::Areas),
             (unit_type.inventory.is_some(), Capability::Items),
@@ -1287,6 +1285,20 @@ impl<'a> LoadCheck<'a> {
                 self.require(capability, at)?;
             }
         }
+        if unit_type.supply.is_some() && self.packages.data.supply.is_none() {
+            return Err(LoadProblem::SupplyUncounted(at.clone()));
+        }
+        Ok(())
+    }
+
+    fn unit_type(
+        &self,
+        unit_type: &UnitTypeFile,
+        at: &Place,
+        actions: &BTreeMap<DeclaredName, ActionData>,
+        modifiers: &BTreeMap<DeclaredName, ModifierData>,
+    ) -> Result<(), LoadProblem> {
+        self.sections(unit_type, at)?;
         own_tags(&unit_type.core.tags, at)?;
         self.body_box(unit_type, at)?;
         if unit_type.delivers() && !unit_type.delivery_only() {
@@ -2043,6 +2055,31 @@ fn declares<'n>(mut names: impl Iterator<Item = &'n DeclaredName>, name: &str) -
 }
 
 /// The problem of `name`, of `of`, unknown at `at`.
+/// The `requires` of `action`, `id`: unit types of its package, `units`, that stand, and modifiers
+/// of its package, `modifiers`.
+fn requires(
+    id: &DeclaredName,
+    action: &ActionData,
+    units: &BTreeMap<DeclaredName, UnitTypeFile>,
+    modifiers: &BTreeMap<DeclaredName, ModifierData>,
+) -> Result<(), LoadProblem> {
+    let Some(requires) = &action.requires else {
+        return Ok(());
+    };
+    let at = Place::Action(id.clone());
+    if let Some(name) = requires
+        .units
+        .iter()
+        .find(|name| units.get(*name).is_none_or(UnitTypeFile::delivers))
+    {
+        return Err(unknown(&at, name, NameKind::UnitType));
+    }
+    for name in &requires.modifiers {
+        modifier_exists(modifiers, name.as_str(), &at)?;
+    }
+    Ok(())
+}
+
 fn unknown(at: &Place, name: &DeclaredName, of: NameKind) -> LoadProblem {
     LoadProblem::Unknown {
         at: at.clone(),

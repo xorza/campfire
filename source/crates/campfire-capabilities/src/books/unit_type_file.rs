@@ -7,6 +7,7 @@ use crate::combat::combat_data::CombatData;
 use crate::items::inventory_data::InventoryData;
 use crate::orders::ai_data::AiData;
 use crate::production::production_data::ProductionData;
+use crate::production::supply_data::SupplyData;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::stats::stats_data::StatsData;
@@ -36,6 +37,7 @@ pub struct UnitTypeFile {
     /// The mode's tracks it gains experience on.
     pub tracks: Vec<DeclaredName>,
     pub production: Option<ProductionData>,
+    pub supply: Option<SupplyData>,
     /// It is a projectile type: actions deliver its units.
     pub projectile: Option<ProjectileData>,
     /// It is an area type: actions deliver its units.
@@ -75,6 +77,7 @@ impl UnitTypeFile {
             collision,
             tracks,
             production,
+            supply,
             projectile,
             area,
             inventory,
@@ -89,6 +92,7 @@ impl UnitTypeFile {
             && collision.is_none()
             && tracks.is_empty()
             && production.is_none()
+            && supply.is_none()
             && inventory.is_none()
     }
 }
@@ -118,6 +122,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             #[serde(default)]
             tracks: Vec<DeclaredName>,
             production: Option<ProductionData>,
+            supply: Option<SupplyData>,
             projectile: Option<ProjectileData>,
             area: Option<AreaData>,
             inventory: Option<InventoryData>,
@@ -139,6 +144,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             collision: fields.collision,
             tracks: fields.tracks,
             production: fields.production,
+            supply: fields.supply,
             projectile: fields.projectile,
             area: fields.area,
             inventory: fields.inventory,

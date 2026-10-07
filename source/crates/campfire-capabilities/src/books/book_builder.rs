@@ -23,6 +23,7 @@ use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::{SlotAction, UnitTypeSetup};
 use crate::mode::unit_kit::{InventorySpec, KitSections, UnitKit};
+use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -116,7 +117,10 @@ impl<'a> BookBuilder<'a> {
             script_starts.push(start);
             start += package.scripts.len();
         }
-        let mut books = BookParts::default();
+        let mut books = BookParts {
+            supply_rules: data.supply,
+            ..BookParts::default()
+        };
         for name in &input.tag_names {
             books.types.declare(name);
         }
@@ -392,6 +396,19 @@ impl<'a> BookBuilder<'a> {
             books
                 .actions
                 .load(self.input.scripts, index, id.as_str(), data, script, parts);
+        if let Some(requires) = &data.requires {
+            let (types, modifiers) = (&books.types, &books.modifiers);
+            let scope = TypeScope::of_package(index);
+            let units = requires
+                .units
+                .iter()
+                .map(|name| types.named(scope, name.as_str()).expect(CHECKED));
+            let held = requires
+                .modifiers
+                .iter()
+                .map(|name| modifiers.named(index, name.as_str()).expect(CHECKED));
+            books.requirements.push(action, units, held);
+        }
         let run = books
             .params
             .push_action(&data.params, |stat| self.stats.named(stat).expect(CHECKED));
@@ -498,6 +515,14 @@ impl<'a> BookBuilder<'a> {
             })?;
         if let Some(production) = file.production {
             books.producers.set(unit_type, production);
+        }
+        if let Some(supply) = file.supply {
+            books.supplies.set(unit_type, supply);
+        }
+        if file.walks() {
+            let form = data.navigation.form(file.collision.as_ref());
+            let walker = Walker::of_form(form).expect("a unit type that walks has no box");
+            books.walkers.set(unit_type, walker);
         }
         let mut slots = Vec::new();
         for (kind, ids) in &file.slots {

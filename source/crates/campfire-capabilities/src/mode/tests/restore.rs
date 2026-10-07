@@ -78,8 +78,9 @@ fn a_restore_check_refuses_what_the_match_lacks() {
         action: strike,
         rank: 1,
         time: Ticks::new(1),
+        paid: 0,
     };
-    queue.push(queued, Tick::new(0));
+    queue.push(queued, &[], Tick::new(0));
     assert!(
         !queue.check(world, grunt),
         "a cast is no train, and a grunt trains none"

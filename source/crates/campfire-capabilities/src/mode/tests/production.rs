@@ -1,4 +1,8 @@
 use super::*;
+use crate::production::production_column::ProductionColumn;
+use crate::production::supply_costs::SupplyCosts;
+use crate::production::supply_data::SupplyData;
+use crate::production::supply_rules::SupplyRules;
 
 #[test]
 fn a_train_pays_at_once_joins_the_queue_and_spawns_its_unit_when_its_time_ends() {
@@ -111,4 +115,73 @@ fn on_mode_input(ctx, player, name, value) {
             .is_empty()
     );
     assert_eq!(game.failures(), []);
+}
+
+#[test]
+fn a_script_reads_each_players_supply_as_the_view_read_the_match() {
+    let script = r#"
+fn on_mode_input(ctx, player, name, value) {
+    if name == "hero" {
+        pick(ctx, player, value);
+    } else {
+        ctx.state.count = ctx.supply_used(player);
+        ctx.state.seen = ctx.supply_cap(player);
+    }
+}
+"#;
+    // Hero X uses 2 and gives 6, of a most of 5; a grunt uses 1.
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
+    game.tick(&[(0, input("hero", "hero-x"))]);
+    let world = &mut game.sim.world;
+    let view = world.non_send::<View>().clone();
+    let named = |name: &str| view.unit_type_named(name).unwrap();
+    let (hero, grunt) = (named("hero-x"), named("grunt"));
+    let mut types = ByType::default();
+    types.set(
+        hero,
+        SupplyData {
+            cost: 2,
+            provides: 6,
+        },
+    );
+    types.set(
+        grunt,
+        SupplyData {
+            cost: 1,
+            provides: 0,
+        },
+    );
+    let costs = SupplyCosts::new(types, world.resource::<ActionBook>());
+    ProductionColumn::share(&view, Some(SupplyRules { max: 5 }), costs);
+    // Player 0 owns three grunts, one of them dead; player 1 one.
+    for (slot, dead) in [(0, false), (0, false), (0, true), (1, false)] {
+        let id = world.resource_mut::<IdAllocator>().allocate();
+        let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+        let mut unit = world.spawn((
+            id,
+            at,
+            grunt,
+            Team::new(0),
+            Owner::new(PlayerSlot::new(slot)),
+        ));
+        if dead {
+            unit.insert(Dead);
+        }
+    }
+    // Player 0 uses 2 + 1 + 1 = 4 of a cap of 6 at most 5; player 1 uses 1 of none.
+    game.tick(&[(0, input("phase", "read"))]);
+    assert_eq!(
+        (game.field("count"), game.field("seen")),
+        (StateValue::Int(4), StateValue::Int(5))
+    );
+    game.tick(&[(1, input("phase", "read"))]);
+    assert_eq!(
+        (game.field("count"), game.field("seen")),
+        (StateValue::Int(1), StateValue::Int(0))
+    );
+    assert_eq!(game.failures(), []);
+    // A mode that counts no supply fails the call.
+    ProductionColumn::share(&view, None, SupplyCosts::default());
+    game.tick(&[(0, input("phase", "read"))]);
+    assert_eq!(game.failures(), [FailureKind::Api(ApiError::NoSupply)]);
 }

@@ -41,6 +41,9 @@ use crate::orders::resetting::Resetting;
 use crate::orders::tick_orders::TickOrders;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::players::player_resources::PlayerResources;
+use crate::production::rally::Rally;
+use crate::production::rally_target::RallyTarget;
+use crate::production::train_queue::TrainQueue;
 use crate::progression::points::Points;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
@@ -85,7 +88,7 @@ pub struct Orders;
 
 impl Orders {
     /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
-    /// are learned and, on the server, items trade; in Think, the resets whose units arrived end, then the units due this
+    /// are learned, trains are cancelled and rally points set, and, on the server, items trade; in Think, the resets whose units arrived end, then the units due this
     /// tick think; in Act, before combat starts attacks, units walk their paths and chase their
     /// targets. It builds on the core `Units` installs, on combat and on navigation. Without the
     /// core's scripts, as on a client, no unit thinks.
@@ -98,6 +101,7 @@ impl Orders {
                 check_player_orders,
                 apply_player_orders,
                 learn_ranks,
+                apply_production_orders,
             )
                 .chain()
                 .in_set(SimSet::Inputs)
@@ -124,7 +128,7 @@ impl Orders {
             trade_items
                 .in_set(SimSet::Inputs)
                 .in_set(OrdersSet::Orders)
-                .after(learn_ranks),
+                .after(apply_production_orders),
             (end_dead_resets, think).chain().in_set(SimSet::Think),
         ));
     }
@@ -141,7 +145,7 @@ impl Orders {
 
     /// Applies `order`, which its source checked, to the unit of `entity` in `now`, as every
     /// order applies; a unit that resets takes none.
-    fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
+    pub(crate) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
         let bounds = *world.resource::<Bounds>();
         let mut unit = world.entity_mut(entity);
         if unit.contains::<Resetting>() {
@@ -290,7 +294,9 @@ fn check_player_orders(
                 | Action::Learn { .. }
                 | Action::Buy { .. }
                 | Action::Sell { .. }
-                | Action::Swap { .. } => None,
+                | Action::Swap { .. }
+                | Action::CancelTrain { .. }
+                | Action::Rally { .. } => None,
             };
             checked.0.extend(unit_order.map(|order| (entity, order)));
         }
@@ -353,6 +359,84 @@ fn learn_ranks(
             }
             points.spend();
             slots.learn(slot);
+        }
+    }
+}
+
+/// Applies each cancel and rally order of the tick, in input order, to each of its units by
+/// stable id that its player controls and that has a train queue, dead or not, as production's
+/// orders apply. A cancel names an
+/// entry by its place in the queue as it stands; a place past its end is ignored. Its entry leaves
+/// the queue and its player gets back the player resources it paid, unless one would carry an
+/// amount past an `i64`, which refuses the cancel; a head's leaving starts the next one's time in
+/// this tick. A rally sets the producer's rally point, a point taken into the bounds, or a unit,
+/// or clears it.
+fn apply_production_orders(
+    (tick, bounds, orders, index): (
+        Res<'_, SimTick>,
+        Res<'_, Bounds>,
+        Res<'_, TickOrders>,
+        Res<'_, EntityIndex>,
+    ),
+    mut resources: Option<ResMut<'_, PlayerResources>>,
+    mut producers: Query<'_, '_, (&Owner, &mut TrainQueue)>,
+    mut commands: Commands<'_, '_>,
+) {
+    let now = tick.start();
+    for order in orders.iter() {
+        for &unit in order.units {
+            let Some(entity) = index.get(unit) else {
+                continue;
+            };
+            let Ok((owner, mut queue)) = producers.get_mut(entity) else {
+                continue;
+            };
+            if owner.slot() != order.slot {
+                continue;
+            }
+            match order.action {
+                Action::CancelTrain { place } => {
+                    let place = usize::from(place);
+                    let Some(paid) = queue.paid(place) else {
+                        continue;
+                    };
+                    if !paid.is_empty() {
+                        let resources = resources
+                            .as_deref_mut()
+                            .expect("a train that paid resources runs in a match with them");
+                        if !resources.takes(order.slot, paid) {
+                            continue;
+                        }
+                        for refund in paid {
+                            resources
+                                .add(order.slot, refund.resource, refund.amount)
+                                .expect("a refund the player's amounts take");
+                        }
+                    }
+                    queue.remove(place, now);
+                }
+                Action::Rally { target } => {
+                    let target = target.map(|target| match target {
+                        RallyTarget::Point { x, z } => {
+                            let [x, z] = bounds.clamp_ground([x, z]);
+                            RallyTarget::Point { x, z }
+                        }
+                        unit @ RallyTarget::Unit(_) => unit,
+                    });
+                    match target {
+                        Some(target) => commands.entity(entity).insert(Rally::new(target)),
+                        None => commands.entity(entity).remove::<Rally>(),
+                    };
+                }
+                Action::Move { .. }
+                | Action::Attack { .. }
+                | Action::Slot { .. }
+                | Action::Learn { .. }
+                | Action::Buy { .. }
+                | Action::Sell { .. }
+                | Action::Swap { .. }
+                | Action::Stop => {}
+            }
         }
     }
 }

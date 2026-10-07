@@ -13,6 +13,7 @@ use crate::mode::relation_data::RelationData;
 use crate::mode::saves_data::SavesData;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::players::resource_id::ResourceId;
+use crate::production::supply_rules::SupplyRules;
 use crate::progression::track_data::TrackData;
 use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::stats::pool_data::PoolData;
@@ -75,6 +76,8 @@ pub struct ModeData {
     /// Who may ask for a save, and how often the mode saves.
     #[serde(default)]
     pub saves: SavesData,
+    /// Whether it counts supply, and its most.
+    pub supply: Option<SupplyRules>,
 }
 
 impl ModeData {

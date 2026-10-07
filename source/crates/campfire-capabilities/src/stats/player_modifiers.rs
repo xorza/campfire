@@ -29,6 +29,13 @@ impl PlayerModifiers {
         }
     }
 
+    /// Whether `player` holds `modifier`.
+    pub(crate) fn holds(&self, player: PlayerSlot, modifier: ModifierId) -> bool {
+        self.0
+            .binary_search(&PlayerModifier { player, modifier })
+            .is_ok()
+    }
+
     /// The modifiers `player` holds, in order.
     pub(crate) fn of(&self, player: PlayerSlot) -> impl Iterator<Item = ModifierId> + '_ {
         let first = self.0.partition_point(|held| held.player < player);

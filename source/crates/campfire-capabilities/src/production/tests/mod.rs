@@ -7,15 +7,20 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, IdAllocator, Position, SimComponent, StableId};
 use serde::Serialize;
 
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_book::internals;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
+use crate::navigation::destination::Destination;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::production::production_data::ProductionData;
+use crate::production::supply_costs::SupplyCosts;
+use crate::production::supply_data::SupplyData;
+use crate::production::supply_rules::SupplyRules;
 use crate::production::train_queue::{Queued, TrainQueue};
 use crate::units::Units;
 use crate::units::action_id::ActionId;
@@ -40,29 +45,56 @@ struct Spawned {
     owner: Option<PlayerSlot>,
 }
 
-/// A match of production alone, whose spawner records each spawn, with a grunt type to train
-/// and a producer type of a queue of 3.
+/// A match of production, whose spawner records each spawn and gives it its owner and a
+/// destination, with a grunt type to train, a producer type of a queue of 3, and a depot and a
+/// forge type for supply and requirements to count.
 #[derive(Debug)]
 struct Shop {
     sim: TestMatch,
     spawned: Rc<RefCell<Vec<Spawned>>>,
     grunt: UnitType,
     barracks: UnitType,
+    depot: UnitType,
+    forge: UnitType,
 }
 
 impl Shop {
+    /// A match of production alone.
     fn new() -> Shop {
-        let mut sim = TestMatch::client(&[Capability::Production]);
+        Shop::with(&[Capability::Production])
+    }
+
+    /// A match of production with the orders that cancel its trains and set its rally points,
+    /// and the capabilities they build on.
+    fn ordering() -> Shop {
+        Shop::with(&[
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Navigation,
+            Capability::Orders,
+            Capability::Production,
+        ])
+    }
+
+    fn with(declared: &[Capability]) -> Shop {
+        let mut sim = TestMatch::client(declared);
         let world = &mut sim.world;
         let spawned = Rc::new(RefCell::new(Vec::new()));
         let log = Rc::clone(&spawned);
         world.insert_non_send(Spawner::new(move |world, at, owner| {
             log.borrow_mut().push(Spawned { at, owner });
-            world.spawn((at.id, at.unit_type, at.team, at.pos)).id()
+            let parts = (at.id, at.unit_type, at.team, at.pos, Destination::default());
+            let mut unit = world.spawn(parts);
+            if let Some(owner) = owner {
+                unit.insert(Owner::new(owner));
+            }
+            unit.id()
         }));
         let data = UnitTypeData::default();
         let grunt = Units::load_type(world, TypeScope::Mode, "grunt", &data);
         let barracks = Units::load_type(world, TypeScope::Mode, "barracks", &data);
+        let depot = Units::load_type(world, TypeScope::Mode, "depot", &data);
+        let forge = Units::load_type(world, TypeScope::Mode, "forge", &data);
         let production = ProductionData {
             queue: NonZeroU8::new(3).unwrap(),
         };
@@ -73,7 +105,32 @@ impl Shop {
             spawned,
             grunt,
             barracks,
+            depot,
+            forge,
         }
+    }
+
+    /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.
+    fn count_supply(&mut self, max: u32, supplies: &[(UnitType, SupplyData)]) {
+        let world = &mut self.sim.world;
+        let mut types = ByType::default();
+        for &(unit_type, supply) in supplies {
+            types.set(unit_type, supply);
+        }
+        let costs = SupplyCosts::new(types, world.resource::<ActionBook>());
+        world.insert_resource(costs);
+        world.insert_resource(SupplyRules { max });
+    }
+
+    /// A unit of `unit_type` owned by `owner`, at the origin.
+    fn owned(&mut self, unit_type: UnitType, owner: PlayerSlot) -> StableId {
+        let parts = (unit_type, Team::new(1), Owner::new(owner));
+        self.sim.spawn(at(0), parts)
+    }
+
+    /// The trains in `producer`'s queue.
+    fn queued(&self, producer: StableId) -> usize {
+        self.sim.get::<TrainQueue>(producer).entries().len()
     }
 
     /// A producer `id` of `team` at `x` meters, owned by `owner`, with `train` in its slot 0
@@ -128,8 +185,9 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
             action: train,
             rank: 1,
             time: Ticks::new(time),
+            paid: 0,
         };
-        queue.push(queued, Tick::new(0));
+        queue.push(queued, &[], Tick::new(0));
     }
     queue
 }
@@ -221,29 +279,43 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
 }
 
 #[test]
-fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head() {
+fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid_runs() {
     #[derive(Debug, Serialize)]
     struct Fields {
         entries: Vec<Queued>,
         head_done: Option<Tick>,
+        paid: Vec<ResourceAmount>,
     }
-    let decode = |entries: Vec<Queued>, head_done: Option<u64>| {
+    let decode = |entries: Vec<Queued>, head_done: Option<u64>, paid: Vec<ResourceAmount>| {
         let head_done = head_done.map(Tick::new);
-        let bytes = postcard::to_allocvec(&Fields { entries, head_done }).unwrap();
-        postcard::from_bytes::<TrainQueue>(&bytes)
+        let fields = Fields {
+            entries,
+            head_done,
+            paid,
+        };
+        postcard::from_bytes::<TrainQueue>(&postcard::to_allocvec(&fields).unwrap())
+    };
+    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let five = ResourceAmount {
+        resource: gold,
+        amount: 5,
     };
     let queued = Queued {
         action: ActionId::nth(0),
         rank: 1,
         time: Ticks::new(30),
+        paid: 1,
     };
-    // Pushed at tick 5, a train of 30 ticks is done at tick 35.
+    // Pushed at tick 5, a train of 30 ticks, which paid 5 gold, is done at tick 35.
     let mut queue = TrainQueue::default();
-    queue.push(queued, Tick::new(5));
-    assert_eq!(decode(vec![queued], Some(35)), Ok(queue));
-    assert_eq!(decode(vec![], None), Ok(TrainQueue::default()));
-    assert!(decode(vec![], Some(35)).is_err());
-    assert!(decode(vec![queued], None).is_err());
+    queue.push(queued, &[five], Tick::new(5));
+    assert_eq!(decode(vec![queued], Some(35), vec![five]), Ok(queue));
+    assert_eq!(decode(vec![], None, vec![]), Ok(TrainQueue::default()));
+    assert!(decode(vec![], Some(35), vec![]).is_err());
+    assert!(decode(vec![queued], None, vec![five]).is_err());
+    // A paid run longer or shorter than the entries say.
+    assert!(decode(vec![queued], Some(35), vec![]).is_err());
+    assert!(decode(vec![queued], Some(35), vec![five, five]).is_err());
 }
 
 #[test]
@@ -267,8 +339,9 @@ fn a_train_queue_is_state_and_restores() {
             action: train,
             rank: 1,
             time: Ticks::new(time),
+            paid: 0,
         };
-        queue.push(queued, Tick::new(pushed));
+        queue.push(queued, &[], Tick::new(pushed));
         queue.check(&restored.sim.world, entity)
     };
     assert!(check(0, Tick::LIMIT.get()));
@@ -278,3 +351,6 @@ fn a_train_queue_is_state_and_restores() {
         shop.sim.get::<TrainQueue>(id)
     );
 }
+
+mod orders;
+mod supply;

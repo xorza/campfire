@@ -56,6 +56,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path, `from` a `PathEnd` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from` of `path`, walking it from there |
 | `spawn_unit` | `(type, team, pos) or (type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` and its `.state` |
 | `state` | read | mode | core | since 1.0 | the mode's state fields, by name, to read and write |
+| `supply_cap` | `(player)` | every role | production | since 1.0 | what `player`'s living, complete units give of supply, at most the mode's `max` |
+| `supply_used` | `(player)` | every role | production | since 1.0 | what `player`'s living units and queued trains use of its supply |
 | `team_of` | `(player)` | mode | core | since 1.0 | the name of `player`'s team |
 | `teams` | read | every role | core | since 1.0 | the playing teams' names, the teams with slots |
 | `teleport` | `(unit, pos)` | every role | navigation | since 1.0 | puts `unit` at `pos` at once, or at the nearest place it may stand |
@@ -235,6 +237,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Status |
 | --- | --- |
 | `tracks` | since 1.0 |
+| `supply` | since 1.0 |
 | `items` | since 1.0 |
 | `shop` | since 1.0 |
 | `script` | since 1.0 |
@@ -347,6 +350,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `charges` | since 1.0 |
 | `charge` | since 1.0 |
 | `unit_type` | since 1.0 |
+| `requires` | since 1.0 |
 
 ### An effect of an action's `on_resolve`, `on_hit` or `on_end`
 
@@ -449,6 +453,26 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Status |
 | --- | --- |
 | `queue` | since 1.0 |
+
+### A unit type's `supply`
+
+| Field | Status |
+| --- | --- |
+| `cost` | since 1.0 |
+| `provides` | since 1.0 |
+
+### The mode's `[supply]`
+
+| Field | Status |
+| --- | --- |
+| `max` | since 1.0 |
+
+### A train's `requires`
+
+| Field | Status |
+| --- | --- |
+| `units` | since 1.0 |
+| `modifiers` | since 1.0 |
 
 ### A unit type's `vision`
 

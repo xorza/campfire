@@ -1,7 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use crate::values::declared_name::DeclaredName;
 
 /// A player resource, by its place in the mode's `resources`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ResourceId(u8);
 
 impl ResourceId {

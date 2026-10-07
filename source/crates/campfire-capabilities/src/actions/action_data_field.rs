@@ -30,6 +30,7 @@ pub enum ActionDataField {
     Damage,
     DamageKind,
     UnitType,
+    Requires,
     Params,
     OnResolve,
     OnHit,
@@ -76,7 +77,7 @@ impl ActionDataField {
             })
     }
 
-    pub const ALL: [ActionDataField; 24] = [
+    pub const ALL: [ActionDataField; 25] = [
         ActionDataField::Kind,
         ActionDataField::Script,
         ActionDataField::Targeting,
@@ -97,6 +98,7 @@ impl ActionDataField {
         ActionDataField::Damage,
         ActionDataField::DamageKind,
         ActionDataField::UnitType,
+        ActionDataField::Requires,
         ActionDataField::Params,
         ActionDataField::OnResolve,
         ActionDataField::OnHit,
@@ -153,6 +155,12 @@ impl ActionDataField {
                 Some(Production),
                 true,
                 [Refuses, Refuses, Needs],
+            ),
+            ActionDataField::Requires => (
+                "requires",
+                Some(Production),
+                true,
+                [Refuses, Refuses, Takes],
             ),
             ActionDataField::Params => ("params", None, true, [Takes, Takes, Refuses]),
             ActionDataField::OnResolve => ("on_resolve", None, true, [Takes, Refuses, Refuses]),
@@ -214,6 +222,7 @@ impl ActionDataField {
             ActionDataField::Damage => data.damage.is_some(),
             ActionDataField::DamageKind => data.damage_kind.is_some(),
             ActionDataField::UnitType => data.unit_type.is_some(),
+            ActionDataField::Requires => data.requires.is_some(),
             ActionDataField::Params => !data.params.is_empty(),
             ActionDataField::OnResolve => !data.on_resolve.is_empty(),
             ActionDataField::OnHit => !data.on_hit.is_empty(),
