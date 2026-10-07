@@ -50,7 +50,7 @@ impl PropertyForwards {
     }
 }
 
-/// A forward prints only its count.
+/// A forward is a closure, so the forwards print only their count.
 impl fmt::Debug for PropertyForwards {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PropertyForwards")

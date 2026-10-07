@@ -26,7 +26,7 @@ pub(crate) struct BodyIndex {
     bucket: Num,
     /// The bodies, by stable id.
     bodies: Vec<IndexedBody>,
-    /// Each body once in each bucket its box covers, sorted, and where each row's start.
+    /// Each body once in each bucket its box covers, sorted, and where each row of buckets starts.
     entries: Vec<Entry>,
     rows: RowDirectory,
     /// The bodies the last update took away, and those it put in, by stable id: a body that

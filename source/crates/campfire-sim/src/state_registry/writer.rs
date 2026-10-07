@@ -3,7 +3,7 @@ use std::fmt;
 use postcard::ser_flavors::Flavor;
 use serde::Serialize;
 
-/// Postcard writes a byte at a time; batching them keeps BLAKE3 from paying per byte.
+/// Postcard writes a byte at a time; batching them spares the sink a call per byte.
 const BUFFER: usize = 64;
 
 /// Where encoded state goes: a hash sink for the state hash, bytes for a snapshot.
@@ -28,15 +28,7 @@ pub(crate) struct Writer<'a> {
 impl Writer<'_> {
     /// Writes the postcard encoding of `value` into `sink`.
     pub(crate) fn write<T: Serialize>(sink: &mut dyn Sink, value: &T) {
-        postcard::serialize_with_flavor(
-            value,
-            Writer {
-                sink,
-                buffer: [0; BUFFER],
-                len: 0,
-            },
-        )
-        .expect("postcard into a sink cannot fail");
+        Writer::write_each(sink, [value]);
     }
 
     /// Writes the postcard encoding of each of `values` into `sink`, one after another, through

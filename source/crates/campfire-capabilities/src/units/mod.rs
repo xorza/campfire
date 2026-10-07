@@ -1,7 +1,9 @@
+use bevy_ecs::change_detection::CheckChangeTicks;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::observer::On;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Commands, NonSendMut, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, NonSend, NonSendMut, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
@@ -123,6 +125,9 @@ impl Units {
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
         world.insert_resource(Metric::default());
+        world.add_observer(|_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>| {
+            view.refill_next();
+        });
         let Some(budgets) = budgets else {
             world.insert_non_send(view);
             return;

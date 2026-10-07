@@ -13,7 +13,7 @@ pub(crate) struct KeptRows<R> {
 pub(crate) trait ColumnRows: Default + PartialEq {
     fn clear(&mut self);
 
-    /// Adds the rows `rows` of `from`.
+    /// Adds the rows `rows` of `from`, a run that is not empty.
     fn push_from(&mut self, from: &Self, rows: Range<usize>);
 
     fn len(&self) -> usize;

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::bundle::Bundle;
+use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
@@ -314,6 +315,19 @@ fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     scene.sim.world.entity_mut(entity).remove::<Team>();
     assert_eq!(enemies(&mut scene), []);
     assert!(scene.sim.world.non_send::<View>().row(other).is_none());
+
+    // Bevy's check of the world's change ticks, once they advanced past its threshold, makes the
+    // next read fill every row, as it clamps old ticks but not the view's last read: a move
+    // that hid from change detection shows then, where a debug read's check would fail.
+    let world = &mut scene.sim.world;
+    let mut pos = world.get_mut::<Position>(loose_entity).unwrap();
+    *pos.bypass_change_detection() = at(2, 0, 0);
+    for _ in 0..CHECK_TICK_THRESHOLD {
+        world.increment_change_tick();
+    }
+    assert!(world.check_change_ticks().is_some());
+    let moved = value(&mut scene, loose, "of.pos");
+    assert_eq!(moved.cast::<Position>(), at(2, 0, 0));
 }
 
 #[test]

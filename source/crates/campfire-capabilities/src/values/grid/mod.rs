@@ -312,7 +312,7 @@ impl Grid {
         let mut rows = |column: i128, low: Quotient, high: Quotient| {
             let first = index((low.ceil() - 1).max(0));
             let end = index((high.floor.min(last(1)) + 1).max(0));
-            hit(index(column), first..end)
+            hit(index(column), first..end.max(first))
         };
         if dx == 0 {
             let (low, high) = (a[1].min(b[1]), a[1].max(b[1]));

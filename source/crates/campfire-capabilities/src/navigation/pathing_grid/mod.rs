@@ -265,7 +265,7 @@ impl Clearance<'_> {
             let rows = self.grid.rows();
             let (from, to) = (segment.start(), segment.end());
             self.grid.touches_columns(from, to, |column, run| {
-                let cells = column * rows + run.start..column * rows + run.end.max(run.start);
+                let cells = column * rows + run.start..column * rows + run.end;
                 let hit = Clearance::first_set(walled, cells.clone());
                 let visited = hit.map_or(cells.end, |at| at + 1) - cells.start;
                 *work += u32::try_from(visited).expect("a column's rows fit u32");

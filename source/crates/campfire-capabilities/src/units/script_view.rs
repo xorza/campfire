@@ -267,11 +267,6 @@ impl SourceRead {
     }
 }
 
-/// A read fills every row again once the last read is this many ticks old, long before Bevy's
-/// change ticks could wrap past it: a tick advances the world's change tick by a few hundred,
-/// and Bevy compares ticks exactly within `MAX_CHANGE_AGE`, about 3.3 · 10⁹ of them.
-const STALE_READ: u64 = 1 << 16;
-
 impl ScriptView {
     /// Reads the units of `world`: fills the rows of units whose parts changed since the last
     /// read, or that are new to it, and keeps the others. A debug build reads again, every row
@@ -292,10 +287,7 @@ impl ScriptView {
     fn begin_read(&mut self, world: &World, full: bool) -> bool {
         let now = world.resource::<SimTick>().start();
         let relations = world.resource::<Relations>();
-        let refill = mem::take(&mut self.refill)
-            || full
-            || *relations != self.relations
-            || now.get().abs_diff(self.now.get()) > STALE_READ;
+        let refill = mem::take(&mut self.refill) || full || *relations != self.relations;
         self.now = now;
         self.relations.clone_from(relations);
         self.metric = *world.resource::<Metric>();
@@ -666,6 +658,13 @@ impl View {
             write(column);
             view.refill = true;
         }
+    }
+
+    /// Makes the next read fill every row. Bevy clamps each change tick older than it compares
+    /// exactly as it checks the world's ticks, but not the last read of the view's queries of
+    /// changed parts, so after a check those queries may miss a change.
+    pub(crate) fn refill_next(&self) {
+        self.0.borrow_mut().refill = true;
     }
 
     /// Changes the rows of the column of type `C` by `write`, as a call's effect changes the
