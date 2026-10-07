@@ -15,6 +15,7 @@ use crate::navigation::route::Route;
 use crate::orders::Orders;
 use crate::production::build_target::BuildTarget;
 use crate::production::builder::{BuildOrder, Builder};
+use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::values::bounds::Bounds;
@@ -43,6 +44,9 @@ pub(crate) enum UnitOrder {
     Stop,
     /// Build with the build in `slot` at `target`, off any path; the build walks the unit.
     Build { slot: u8, target: BuildTarget },
+    /// Gather with the gather in `slot` at `target`, a node, or a drop-off for the load it
+    /// carries, off any path; the loop walks the unit.
+    Gather { slot: u8, target: StableId },
 }
 
 /// The parts of a unit that an order reads and changes: where it stands and where it spawned,
@@ -57,6 +61,7 @@ pub(crate) struct OrderedUnit<'a> {
     pub(crate) route: Option<Mut<'a, Route>>,
     pub(crate) progress: Option<Mut<'a, Progress>>,
     pub(crate) builder: Option<Mut<'a, Builder>>,
+    pub(crate) gatherer: Option<Mut<'a, Gatherer>>,
 }
 
 /// For the unit that thinks in the call, which checked the order against the units as the phase
@@ -83,9 +88,9 @@ impl UnitOrder {
     /// a slot's cast or train replaces an action not resolved yet, or releases the charge of its
     /// own slot. A stop ends what is under way, with nothing spent, drops the target and the
     /// destination, and leaves the path; a queue of trains stays. A build becomes the unit's
-    /// build order, its point taken into the bounds, and drops the target and the destination;
-    /// every other order ends one. Every order cuts a channel and ends a cast that walks in
-    /// range, with its walk, and an attack cancels a charge.
+    /// build order, its point taken into the bounds, and a gather its gather loop, each dropping
+    /// the target and the destination; every other order ends both. Every order cuts a channel
+    /// and ends a cast that walks in range, with its walk, and an attack cancels a charge.
     /// Whether the unit now resets, and takes no order until it is home.
     pub(crate) fn apply(self, unit: OrderedUnit<'_>, bounds: &Bounds, now: Tick) -> bool {
         let OrderedUnit {
@@ -97,6 +102,7 @@ impl UnitOrder {
             route,
             progress,
             mut builder,
+            mut gatherer,
         } = unit;
         if let Some(slots) = &mut slots {
             slots.cut_channel();
@@ -107,24 +113,7 @@ impl UnitOrder {
                 }
             }
         }
-        let build = match self {
-            UnitOrder::Build { slot, target } => {
-                let target = match target {
-                    BuildTarget::Point { x, z, angle } => {
-                        let [x, z] = bounds.clamp_ground([x, z]);
-                        BuildTarget::Point { x, z, angle }
-                    }
-                    site @ BuildTarget::Site(_) => site,
-                };
-                Some(BuildOrder { slot, target })
-            }
-            _ => None,
-        };
-        if let Some(builder) = &mut builder
-            && (build.is_some() || builder.order().is_some())
-        {
-            builder.set(build);
-        }
+        self.set_loops(builder.as_mut(), gatherer.as_mut(), bounds, at);
         let ground = |x, z| bounds.ground_point([x, z], at);
         let to = match self {
             UnitOrder::Attack { target } => {
@@ -164,7 +153,7 @@ impl UnitOrder {
                 }
                 None
             }
-            UnitOrder::Build { .. } => None,
+            UnitOrder::Build { .. } | UnitOrder::Gather { .. } => None,
         };
         if let Some(slots) = &mut slots {
             slots.set_attack_target(None);
@@ -183,5 +172,48 @@ impl UnitOrder {
             progress.restart();
         }
         self == UnitOrder::Reset
+    }
+
+    /// Sets the unit's build order and gather loop: a build's, its point taken into the bounds,
+    /// or a gather's, aimed at the node as the unit stands at `at`; any other order ends both.
+    /// A unit with neither keeps its parts untouched.
+    fn set_loops(
+        self,
+        builder: Option<&mut Mut<'_, Builder>>,
+        gatherer: Option<&mut Mut<'_, Gatherer>>,
+        bounds: &Bounds,
+        at: Position,
+    ) {
+        let build = match self {
+            UnitOrder::Build { slot, target } => {
+                let target = match target {
+                    BuildTarget::Point { x, z, angle } => {
+                        let [x, z] = bounds.clamp_ground([x, z]);
+                        BuildTarget::Point { x, z, angle }
+                    }
+                    site @ BuildTarget::Site(_) => site,
+                };
+                Some(BuildOrder { slot, target })
+            }
+            _ => None,
+        };
+        if let Some(builder) = builder
+            && (build.is_some() || builder.order().is_some())
+        {
+            builder.set(build);
+        }
+        let gather = match self {
+            UnitOrder::Gather { slot, target } => Some(GatherOrder {
+                slot,
+                node: NodeAt { node: target, at },
+                step: GatherStep::Ordered,
+            }),
+            _ => None,
+        };
+        if let Some(gatherer) = gatherer
+            && (gather.is_some() || gatherer.order().is_some())
+        {
+            gatherer.set(gather);
+        }
     }
 }

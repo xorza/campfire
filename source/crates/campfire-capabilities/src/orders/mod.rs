@@ -15,6 +15,7 @@ use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_target::ActionTarget;
 use crate::actions::range::Range;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
@@ -45,6 +46,7 @@ use crate::players::resource_amount::ResourceAmount;
 use crate::production::ProductionSet;
 use crate::production::build_specs::BuildSpecs;
 use crate::production::builder::Builder;
+use crate::production::gatherer::Gatherer;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
 use crate::production::site::Site;
@@ -167,7 +169,7 @@ impl Orders {
 
     /// The unit an order reads and changes, of its `parts`.
     fn ordered<'a>(
-        (&at, spawn, slots, walker, destination, route, progress, builder): QueryItem<
+        (&at, spawn, slots, walker, destination, route, progress, builder, gatherer): QueryItem<
             'a,
             '_,
             Ordered,
@@ -182,6 +184,7 @@ impl Orders {
             route,
             progress,
             builder,
+            gatherer,
         }
     }
 }
@@ -297,8 +300,15 @@ fn check_player_orders(
                         .and_then(|slots| slots.slot(slot))
                         .and_then(|held| book.get(held.action?))
                         .map(|action| action.kind.kind());
-                    matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
-                        .then_some(UnitOrder::Slot { slot, target })
+                    match (kind, target) {
+                        (Some(ActionKind::Cast | ActionKind::Train), _) => {
+                            Some(UnitOrder::Slot { slot, target })
+                        }
+                        (Some(ActionKind::Gather), ActionTarget::Unit(target)) => {
+                            Some(UnitOrder::Gather { slot, target })
+                        }
+                        _ => None,
+                    }
                 }
                 Action::Build { slot, target } => {
                     let kind = slots
@@ -332,6 +342,7 @@ type Ordered = (
     Option<&'static mut Route>,
     Option<&'static mut Progress>,
     Option<&'static mut Builder>,
+    Option<&'static mut Gatherer>,
 );
 
 /// Applies the tick's checked player orders, in input order, each as every order applies; a

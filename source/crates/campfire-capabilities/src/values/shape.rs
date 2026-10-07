@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +31,22 @@ impl Shape {
         match self {
             Shape::Circle(radius) => [*radius; 2],
             Shape::Box(body) => body.extent(),
+        }
+    }
+
+    /// The point of the shape at `at` nearest `to` on the ground plane, at `at`'s height: `to`
+    /// itself inside; a box's nearest point, each coordinate rounded to the nearest bit; a
+    /// circle's, a step of its radius from its centre toward `to`, as a walker steps.
+    pub(crate) fn nearest_point(&self, at: Position, to: Position) -> Position {
+        let ground = Position::new(Vec3::new(to.get().x, at.get().y, to.get().z))
+            .expect("a point within the bound");
+        match self {
+            Shape::Box(body) => body.nearest_point(at, ground),
+            Shape::Circle(radius) if at.within_ground(ground, *radius) => ground,
+            Shape::Circle(radius) => {
+                let step = at.get().step_toward(ground.get(), *radius);
+                Position::new(step).expect("a step within a body's radius stays within the bound")
+            }
         }
     }
 

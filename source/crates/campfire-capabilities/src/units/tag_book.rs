@@ -135,12 +135,12 @@ mod tests {
         // The engine's tags hold the first places, and to declare one finds it.
         assert_eq!(
             [stunned, slowed, slow_immune, sight].map(Tag::index),
-            [4, 5, 6, 7]
+            [7, 8, 9, 10]
         );
         let engine = EngineTag::ALL.map(|tag| types.declare(tag.name()));
         assert_eq!(engine, EngineTag::ALL.map(EngineTag::tag));
-        assert_eq!(engine.map(Tag::index), [0, 1, 2, 3]);
-        assert_eq!(types.declare("tower").index(), 8);
+        assert_eq!(engine.map(Tag::index), [0, 1, 2, 3, 4, 5, 6]);
+        assert_eq!(types.declare("tower").index(), 11);
         let tower = UnitTypeData {
             tags: vec![DeclaredName::new("true_sight").unwrap()],
             params: BTreeMap::new(),

@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use super::*;
@@ -63,6 +62,8 @@ fn kit_of<'a>(
         tracks: TrackSet::default(),
         production: None,
         builds: false,
+        node: None,
+        gathers: false,
         inventory: None,
     };
     UnitKit::new(&book, TYPE, sections, Some(PoolId::FIRST), rate)

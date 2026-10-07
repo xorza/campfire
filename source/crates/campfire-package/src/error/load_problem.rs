@@ -12,6 +12,7 @@ use crate::error::build_problem::BuildProblem;
 use crate::error::choice_problem::ChoiceProblem;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
+use crate::error::gather_problem::GatherProblem;
 use crate::error::item_problem::ItemProblem;
 use crate::error::limit::Limit;
 use crate::error::locale_problem::LocaleProblem;
@@ -92,6 +93,9 @@ pub enum LoadProblem {
     /// A build that does not hold.
     #[error(transparent)]
     Build(BuildProblem),
+    /// A gather that does not hold.
+    #[error(transparent)]
+    Gather(GatherProblem),
     /// A unit type's `supply` in a mode with no `[supply]`, which counts none.
     #[error("{0}: a supply in a mode that counts none")]
     SupplyUncounted(Place),

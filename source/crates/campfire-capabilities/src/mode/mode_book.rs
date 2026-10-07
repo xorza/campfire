@@ -26,6 +26,8 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::production::builder::Builder;
+use crate::production::gatherer::Gatherer;
+use crate::production::node::Node;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::experience::Experience;
 use crate::progression::points::Points;
@@ -225,6 +227,12 @@ impl ModeBook {
         }
         if kit.builds {
             unit.insert(Builder::default());
+        }
+        if let Some(amount) = kit.node {
+            unit.insert(Node::new(amount.get()));
+        }
+        if kit.gathers {
+            unit.insert(Gatherer::default());
         }
         let actions = self.actions(unit_type);
         if !actions.is_empty() || kit.inventory.is_some() {

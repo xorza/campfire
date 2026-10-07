@@ -23,6 +23,8 @@ use crate::mode::mode_data::ModeData;
 use crate::mode::relation_data::RelationData;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::orders::ai_data::AiData;
+use crate::production::drop_off_data::DropOffData;
+use crate::production::node_data::NodeData;
 use crate::production::production_data::ProductionData;
 use crate::production::supply_data::SupplyData;
 use crate::production::supply_rules::SupplyRules;
@@ -256,6 +258,8 @@ fn the_data_fields_are_the_schemas() {
         (DataTable::Supply, serde_fields::<SupplyData>()),
         (DataTable::ModeSupply, serde_fields::<SupplyRules>()),
         (DataTable::Requires, serde_fields::<RequiresData>()),
+        (DataTable::Node, serde_fields::<NodeData>()),
+        (DataTable::DropOff, serde_fields::<DropOffData>()),
         (DataTable::Vision, serde_fields::<VisionData>()),
         (DataTable::Collision, serde_fields::<CollisionData>()),
         (DataTable::Ai, serde_fields::<AiData>()),

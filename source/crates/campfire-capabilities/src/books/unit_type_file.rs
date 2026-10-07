@@ -6,6 +6,8 @@ use crate::areas::area_data::AreaData;
 use crate::combat::combat_data::CombatData;
 use crate::items::inventory_data::InventoryData;
 use crate::orders::ai_data::AiData;
+use crate::production::drop_off_data::DropOffData;
+use crate::production::node_data::NodeData;
 use crate::production::production_data::ProductionData;
 use crate::production::supply_data::SupplyData;
 use crate::projectiles::projectile_data::ProjectileData;
@@ -38,6 +40,10 @@ pub struct UnitTypeFile {
     pub tracks: Vec<DeclaredName>,
     pub production: Option<ProductionData>,
     pub supply: Option<SupplyData>,
+    /// It is a node workers gather from.
+    pub node: Option<NodeData>,
+    /// Workers' loads of its resources join their player's there.
+    pub drop_off: Option<DropOffData>,
     /// It is a projectile type: actions deliver its units.
     pub projectile: Option<ProjectileData>,
     /// It is an area type: actions deliver its units.
@@ -78,6 +84,8 @@ impl UnitTypeFile {
             tracks,
             production,
             supply,
+            node,
+            drop_off,
             projectile,
             area,
             inventory,
@@ -93,6 +101,8 @@ impl UnitTypeFile {
             && tracks.is_empty()
             && production.is_none()
             && supply.is_none()
+            && node.is_none()
+            && drop_off.is_none()
             && inventory.is_none()
     }
 }
@@ -123,6 +133,8 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             tracks: Vec<DeclaredName>,
             production: Option<ProductionData>,
             supply: Option<SupplyData>,
+            node: Option<NodeData>,
+            drop_off: Option<DropOffData>,
             projectile: Option<ProjectileData>,
             area: Option<AreaData>,
             inventory: Option<InventoryData>,
@@ -145,6 +157,8 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             tracks: fields.tracks,
             production: fields.production,
             supply: fields.supply,
+            node: fields.node,
+            drop_off: fields.drop_off,
             projectile: fields.projectile,
             area: fields.area,
             inventory: fields.inventory,

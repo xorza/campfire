@@ -10,7 +10,6 @@ use serde::Deserialize;
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
 use crate::actions::action_slots::{InProgress, OrderPhase, SlotAim};
-use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::internals::Armed;

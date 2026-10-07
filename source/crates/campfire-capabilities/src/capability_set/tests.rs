@@ -610,6 +610,8 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
         Some(Capability::Production),
         &[
             "production.builder",
+            "production.gatherer",
+            "production.node",
             "production.rally",
             "production.site",
             "production.train_queue",

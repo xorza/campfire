@@ -15,15 +15,24 @@ pub enum EngineTag {
     /// Of a site, a building under construction: it blocks its attacks, casts and uses, so no
     /// action of its starts.
     Constructing,
+    /// Of node types, which workers gather from.
+    Node,
+    /// Of drop-off types, which workers take their loads to.
+    DropOff,
+    /// Of a worker in its gather loop, which another such worker passes through.
+    Gathering,
 }
 
 impl EngineTag {
     /// In the order of their places, the first of the match's tags.
-    pub const ALL: [EngineTag; 4] = [
+    pub const ALL: [EngineTag; 7] = [
         EngineTag::Avatar,
         EngineTag::Projectile,
         EngineTag::Area,
         EngineTag::Constructing,
+        EngineTag::Node,
+        EngineTag::DropOff,
+        EngineTag::Gathering,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -32,13 +41,21 @@ impl EngineTag {
             EngineTag::Projectile => "projectile",
             EngineTag::Area => "area",
             EngineTag::Constructing => "constructing",
+            EngineTag::Node => "node",
+            EngineTag::DropOff => "drop_off",
+            EngineTag::Gathering => "gathering",
         }
     }
 
     /// What it does, beside what a filter reads of it.
     pub(crate) const fn properties(self) -> TagProperties {
         match self {
-            EngineTag::Avatar | EngineTag::Projectile | EngineTag::Area => TagProperties::NONE,
+            EngineTag::Avatar
+            | EngineTag::Projectile
+            | EngineTag::Area
+            | EngineTag::Node
+            | EngineTag::DropOff
+            | EngineTag::Gathering => TagProperties::NONE,
             EngineTag::Constructing => TagProperties::NONE
                 .with_block(Block::Attack)
                 .with_block(Block::Cast)
@@ -72,7 +89,10 @@ mod tests {
         assert_eq!(Block::ALL[cast], Block::Cast);
         assert_eq!(Block::ALL[used], Block::Use);
         assert_eq!(blocks(EngineTag::Constructing), site);
-        for tag in [EngineTag::Avatar, EngineTag::Projectile, EngineTag::Area] {
+        let others = EngineTag::ALL
+            .into_iter()
+            .filter(|&tag| tag != EngineTag::Constructing);
+        for tag in others {
             assert_eq!(blocks(tag), [false; Block::ALL.len()], "{tag:?}");
         }
     }

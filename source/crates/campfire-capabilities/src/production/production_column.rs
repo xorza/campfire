@@ -2,11 +2,13 @@ use std::ops::Range;
 
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
+use campfire_script::rhai::INT;
 
 use crate::production::supply_costs::{SupplyCosts, UnitSupply};
 use crate::production::supply_rules::SupplyRules;
 use crate::units::kept_rows::KeptRows;
 use crate::units::script_view::View;
+use crate::units::unit::Unit;
 use crate::units::view_column::ViewColumn;
 
 /// What production adds to the script view: what each unit counts for of its player's supply, a
@@ -19,12 +21,13 @@ pub(crate) struct ProductionColumn {
     rules: Option<SupplyRules>,
 }
 
-/// A unit's row of the production column: its player, none for a unit no player owns, and what
-/// it counts for.
+/// A unit's row of the production column: its player, none for a unit no player owns, what it
+/// counts for, and the amount it carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SupplyRow {
     owner: Option<PlayerSlot>,
     counted: UnitSupply,
+    load: u32,
 }
 
 /// A player's supply as scripts read it.
@@ -62,9 +65,22 @@ impl ProductionColumn {
         });
     }
 
-    /// Adds the row of a unit owned by `owner`, which counts for `counted`.
-    pub(crate) fn push(&mut self, owner: Option<PlayerSlot>, counted: UnitSupply) {
-        self.rows.now_mut().push(SupplyRow { owner, counted });
+    /// Adds the row of a unit owned by `owner`, which counts for `counted` and carries `load`.
+    pub(crate) fn push(&mut self, owner: Option<PlayerSlot>, counted: UnitSupply, load: u32) {
+        self.rows.now_mut().push(SupplyRow {
+            owner,
+            counted,
+            load,
+        });
+    }
+
+    /// `unit.load`: the amount `unit` carries, 0 with none, or in a view with no production.
+    pub(crate) fn load(unit: &Unit) -> INT {
+        let row = unit.row_index();
+        let load = unit
+            .view()
+            .column(|column: &ProductionColumn| column.rows.now()[row].load);
+        INT::from(load.unwrap_or(0))
     }
 
     pub(crate) const fn costs(&self) -> &SupplyCosts {

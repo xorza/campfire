@@ -24,6 +24,8 @@ pub enum DataTable {
     Supply,
     ModeSupply,
     Requires,
+    Node,
+    DropOff,
     Vision,
     Collision,
     Ai,
@@ -33,7 +35,7 @@ pub enum DataTable {
     Shop,
 }
 impl DataTable {
-    pub const ALL: [DataTable; 30] = [
+    pub const ALL: [DataTable; 32] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -57,6 +59,8 @@ impl DataTable {
         DataTable::Supply,
         DataTable::ModeSupply,
         DataTable::Requires,
+        DataTable::Node,
+        DataTable::DropOff,
         DataTable::Vision,
         DataTable::Collision,
         DataTable::Ai,
@@ -92,6 +96,8 @@ impl DataTable {
             DataTable::Supply => "A unit type's `supply`",
             DataTable::ModeSupply => "The mode's `[supply]`",
             DataTable::Requires => "A train's `requires`",
+            DataTable::Node => "A unit type's `node`",
+            DataTable::DropOff => "A unit type's `drop_off`",
             DataTable::Vision => "A unit type's `vision`",
             DataTable::Collision => "A unit type's `collision`",
             DataTable::Ai => "A unit type's `orders`",

@@ -1,4 +1,5 @@
 use super::*;
+use crate::production::gatherer::{Gatherer, Load};
 use crate::production::production_column::ProductionColumn;
 use crate::production::supply_costs::SupplyCosts;
 use crate::production::supply_data::SupplyData;
@@ -118,11 +119,16 @@ fn on_mode_input(ctx, player, name, value) {
 }
 
 #[test]
-fn a_script_reads_each_players_supply_as_the_view_read_the_match() {
+fn a_script_reads_each_players_supply_and_each_units_load_as_the_view_read_the_match() {
     let script = r#"
 fn on_mode_input(ctx, player, name, value) {
     if name == "hero" {
         pick(ctx, player, value);
+    } else if value == "load" {
+        ctx.state.count = 0;
+        for unit in ctx.units_tagged("grunt") {
+            ctx.state.count = ctx.state.count * 100 + unit.load;
+        }
     } else {
         ctx.state.count = ctx.supply_used(player);
         ctx.state.seen = ctx.supply_cap(player);
@@ -153,8 +159,14 @@ fn on_mode_input(ctx, player, name, value) {
     );
     let costs = SupplyCosts::new(types, world.resource::<ActionBook>());
     ProductionColumn::share(&view, Some(SupplyRules { max: 5 }), costs);
-    // Player 0 owns three grunts, one of them dead; player 1 one.
-    for (slot, dead) in [(0, false), (0, false), (0, true), (1, false)] {
+    // Player 0 owns three grunts, one of them dead; player 1 one. The second carries 7 gold, the
+    // third gathers and carries nothing.
+    let gold = resource("gold").unwrap();
+    let loads = [None, Some(7), Some(0), None];
+    for ((slot, dead), load) in [(0, false), (0, false), (0, true), (1, false)]
+        .into_iter()
+        .zip(loads)
+    {
         let id = world.resource_mut::<IdAllocator>().allocate();
         let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
         let mut unit = world.spawn((
@@ -167,6 +179,16 @@ fn on_mode_input(ctx, player, name, value) {
         if dead {
             unit.insert(Dead);
         }
+        if let Some(amount) = load {
+            let mut gatherer = Gatherer::default();
+            gatherer.carry((amount > 0).then_some(Load {
+                resource: gold,
+                amount,
+            }));
+            unit.insert(gatherer);
+        }
+        let entity = unit.insert(UnitStats::default()).id();
+        UnitTags::give_type_tags(world, entity);
     }
     // Player 0 uses 2 + 1 + 1 = 4 of a cap of 6 at most 5; player 1 uses 1 of none.
     game.tick(&[(0, input("phase", "read"))]);
@@ -179,6 +201,9 @@ fn on_mode_input(ctx, player, name, value) {
         (game.field("count"), game.field("seen")),
         (StateValue::Int(1), StateValue::Int(0))
     );
+    // The loads by stable id, 0, 7, 0 and 0, two digits each: ((0·100 + 7)·100 + 0)·100 + 0.
+    game.tick(&[(0, input("phase", "load"))]);
+    assert_eq!(game.field("count"), StateValue::Int(70_000));
     assert_eq!(game.failures(), []);
     // A mode that counts no supply fails the call.
     ProductionColumn::share(&view, None, SupplyCosts::default());

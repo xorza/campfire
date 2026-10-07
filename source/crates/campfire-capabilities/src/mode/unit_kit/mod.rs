@@ -1,4 +1,4 @@
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_math::Num;
 use campfire_sim::TickRate;
@@ -22,8 +22,9 @@ use crate::vision::vision_data::VisionData;
 /// What a new unit of a type starts with, in ticks at the match's rate: its pools, full at their
 /// maxima at level 1, whether it stays when it dies, when it has a `combat` section, how far it
 /// walks a tick, how far it sees, its body, the tracks it gains experience on, the most trains
-/// its queue holds, when it has a `production` section, whether its slots hold a build, and its
-/// inventory's slots and slot kind, when it has one.
+/// its queue holds, when it has a `production` section, whether its slots hold a build, what it
+/// holds as a node, whether its slots hold a gather, and its inventory's slots and slot kind,
+/// when it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
     pub pools: Option<Pools>,
@@ -34,6 +35,9 @@ pub struct UnitKit {
     pub tracks: TrackSet,
     pub queue: Option<NonZeroU8>,
     pub builds: bool,
+    /// What it holds as a node, when it is one.
+    pub node: Option<NonZeroU32>,
+    pub gathers: bool,
     pub inventory: Option<InventorySpec>,
 }
 
@@ -56,6 +60,8 @@ pub(crate) struct KitSections<'a, P> {
     pub(crate) tracks: TrackSet,
     pub(crate) production: Option<&'a ProductionData>,
     pub(crate) builds: bool,
+    pub(crate) node: Option<NonZeroU32>,
+    pub(crate) gathers: bool,
     pub(crate) inventory: Option<InventorySpec>,
 }
 
@@ -80,6 +86,8 @@ impl UnitKit {
             tracks,
             production,
             builds,
+            node,
+            gathers,
             inventory,
         } = sections;
         let values = book.base_values(unit_type, 1);
@@ -120,6 +128,8 @@ impl UnitKit {
             tracks,
             queue: production.map(|production| production.queue),
             builds,
+            node,
+            gathers,
             inventory,
         })
     }

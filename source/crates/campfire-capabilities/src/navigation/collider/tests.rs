@@ -18,6 +18,7 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
             layer: Layer::FIRST,
             movable,
             walking: movable,
+            gathering: false,
         })
         .collect()
 }
@@ -115,4 +116,31 @@ fn overlapping_bodies_part_to_the_sum_of_their_radii() {
         (tenth(3) + bits(7_549_747), tenth(4) + bits(10_066_331)),
     ];
     assert_eq!(places(&slant), expected);
+}
+
+#[test]
+fn two_gatherers_pass_through_each_other_and_part_from_any_other() {
+    // Three walkers 1.5 m apart along x, of radius 1: overlaps of 0.5. The first two gather, and
+    // stay where they stand; the third, which does not, parts from the second by a quarter
+    // meter each way.
+    let half = Num::HALF;
+    let mut colliders = row(&[
+        (Num::ZERO, Num::ZERO, true),
+        (Num::ONE + half, Num::ZERO, true),
+        (Num::int(3), Num::ZERO, true),
+    ]);
+    colliders[0].gathering = true;
+    colliders[1].gathering = true;
+    assert!(!colliders[0].overlaps(&colliders[1]));
+    assert!(colliders[1].overlaps(&colliders[2]));
+    resolve(&mut colliders);
+    let quarter = Num::QUARTER;
+    assert_eq!(
+        places(&colliders),
+        [
+            (Num::ZERO, Num::ZERO),
+            (Num::ONE + quarter, Num::ZERO),
+            (Num::int(3) + quarter, Num::ZERO),
+        ]
+    );
 }

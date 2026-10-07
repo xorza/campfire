@@ -20,6 +20,7 @@ use crate::error::choice_problem::ChoiceProblem;
 use crate::error::ctx_misuse::CtxMisuse;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
+use crate::error::gather_problem::GatherProblem;
 use crate::error::item_problem::ItemProblem;
 use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
@@ -898,6 +899,42 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
+    /// The mode's player resource `name`, as `at` names it.
+    fn resource(&self, name: &DeclaredName, at: &Place) -> Result<ResourceId, LoadProblem> {
+        ResourceId::named(&self.packages.data.resources, name.as_str())
+            .ok_or_else(|| unknown(at, name, NameKind::Resource))
+    }
+
+    /// A `gather` of `production`, `id`: aimed at a unit its filter selects, of a range in
+    /// meters, of a player resource of the mode's, its bounce a distance from 0.
+    fn gather(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
+        let at = Place::Action(id.clone());
+        self.require(Capability::Production, &at)?;
+        let Targeting::Unit(filter) = &action.targeting else {
+            return Err(LoadProblem::Gather(GatherProblem::Aims(id.to_owned())));
+        };
+        self.filter_data(filter, &at)?;
+        let global = action
+            .range
+            .as_ref()
+            .is_some_and(|range| range.values().contains(&RangeField::Range(Range::Global)));
+        if global {
+            return Err(LoadProblem::Gather(GatherProblem::Global(id.to_owned())));
+        }
+        self.resource(
+            action
+                .resource
+                .as_ref()
+                .expect("a gather needs its resource"),
+            &at,
+        )?;
+        let bounce = action.bounce.map_or(Some(Num::ZERO), Scalar::to_num);
+        if bounce.is_none_or(|bounce| bounce < Num::ZERO) {
+            return Err(LoadProblem::Gather(GatherProblem::Bounce(id.to_owned())));
+        }
+        Ok(())
+    }
+
     /// A `build` of `production`, `id`: aimed at a point, of a range in meters, of a unit type of
     /// its package, `units`, with a box body, with a `start_life` above 0 when that type has the
     /// mode's life pool, and its placement's filters of the mode's names.
@@ -966,7 +1003,11 @@ impl<'a> LoadCheck<'a> {
         let at = Place::Action(id.clone());
         let run = matches!(
             action.kind,
-            ActionKind::Cast | ActionKind::Attack | ActionKind::Train | ActionKind::Build
+            ActionKind::Cast
+                | ActionKind::Attack
+                | ActionKind::Train
+                | ActionKind::Build
+                | ActionKind::Gather
         );
         if run && let Some(field) = ActionDataField::misused(action, action.kind) {
             return Err(LoadProblem::KindField {
@@ -1013,6 +1054,7 @@ impl<'a> LoadCheck<'a> {
                 }
             }
             ActionKind::Build => self.build(id, action, units)?,
+            ActionKind::Gather => self.gather(id, action)?,
             ActionKind::Attack => {
                 self.require(Capability::Combat, &at)?;
                 let global = action.range.as_ref().is_some_and(|range| {
@@ -1332,6 +1374,8 @@ impl<'a> LoadCheck<'a> {
             (!unit_type.tracks.is_empty(), Capability::Progression),
             (unit_type.production.is_some(), Capability::Production),
             (unit_type.supply.is_some(), Capability::Production),
+            (unit_type.node.is_some(), Capability::Production),
+            (unit_type.drop_off.is_some(), Capability::Production),
             (unit_type.projectile.is_some(), Capability::Projectiles),
             (unit_type.area.is_some(), Capability::Areas),
             (unit_type.inventory.is_some(), Capability::Items),
@@ -1343,6 +1387,14 @@ impl<'a> LoadCheck<'a> {
         }
         if unit_type.supply.is_some() && self.packages.data.supply.is_none() {
             return Err(LoadProblem::SupplyUncounted(at.clone()));
+        }
+        let node = unit_type.node.iter().map(|node| &node.resource);
+        let taken = unit_type
+            .drop_off
+            .iter()
+            .flat_map(|drop_off| &drop_off.resources);
+        for name in node.chain(taken) {
+            self.resource(name, at)?;
         }
         Ok(())
     }

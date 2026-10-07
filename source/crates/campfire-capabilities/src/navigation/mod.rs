@@ -45,6 +45,7 @@ use crate::units::body::Body;
 use crate::units::body_grid::Placed;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
+use crate::units::engine_tag::EngineTag;
 use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove, Goal};
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
@@ -471,7 +472,14 @@ fn steer(
             at,
             shape: body.shape(),
         });
-    steering.read(&statics, still, walking);
+    let gathering = |tags: Option<&UnitTags>| {
+        tags.is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag()))
+    };
+    let gatherers = bodies
+        .iter()
+        .filter(|&(.., tags)| gathering(tags))
+        .map(|(&id, ..)| id);
+    steering.read(&statics, still, walking, gatherers);
     let stuck_ticks = rate
         .ticks(Steering::STUCK_MS)
         .expect("a fixed time fits")
@@ -492,6 +500,7 @@ fn steer(
             step: step.get(),
             walker: Walker::walking(Some(body)),
             stuck: u64::from(progress.track(at, step.get())) >= stuck_ticks,
+            gathering: gathering(tags),
         };
         if let Some(detour) = steering.steer(planner, &grid, &statics, steered, &route) {
             route.splice(steering.short(), detour.skipped, detour.reached);
@@ -619,6 +628,8 @@ fn collide(
                     layer: body.layer(),
                     movable,
                     walking: walks(destination, tags, false),
+                    gathering: tags
+                        .is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag())),
                 },
             ),
     );

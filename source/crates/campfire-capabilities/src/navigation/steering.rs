@@ -19,6 +19,12 @@ pub(crate) struct Steering {
     standing: Option<BodyIndex>,
     /// The bodies of the units that stand, by stable id.
     still: Vec<IndexedBody>,
+    /// The units in a gather loop, by stable id, which a walker in one passes through.
+    gatherers: Vec<StableId>,
+    /// The index of the units that stand and do not gather, for a walker that gathers; none
+    /// until a unit gathers.
+    apart: Option<BodyIndex>,
+    still_apart: Vec<IndexedBody>,
     /// The bodies of the units that walk, by layer, which a stuck walker searches for those it
     /// touches.
     walking: BodyGrid<Layer>,
@@ -28,8 +34,8 @@ pub(crate) struct Steering {
     short: Vec<Position>,
 }
 
-/// A walker that may steer this tick: its unit, where it stands, its step, its kind, and whether
-/// walkers keep it back.
+/// A walker that may steer this tick: its unit, where it stands, its step, its kind, whether
+/// walkers keep it back, and whether it gathers, which passes through the others that do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Steered {
     pub(crate) id: StableId,
@@ -37,6 +43,7 @@ pub(crate) struct Steered {
     pub(crate) step: Num,
     pub(crate) walker: Walker,
     pub(crate) stuck: bool,
+    pub(crate) gathering: bool,
 }
 
 /// A short route a walker takes: in place of the next `skipped` waypoints of its route, and
@@ -56,12 +63,14 @@ impl Steering {
     pub(crate) const STUCK_MS: u64 = 150;
 
     /// Reads this tick's bodies: `still`, those of the units that stand, into an index with the
-    /// buckets of `statics`, and `walking`, those of the units that walk, into a grid.
+    /// buckets of `statics`, and `walking`, those of the units that walk, into a grid; and
+    /// `gatherers`, the units in a gather loop, whose standing bodies a second index leaves out.
     pub(crate) fn read(
         &mut self,
         statics: &BodyIndex,
         still: impl IntoIterator<Item = IndexedBody>,
         walking: impl IntoIterator<Item = Placed<Layer>>,
+        gatherers: impl IntoIterator<Item = StableId>,
     ) {
         self.still.clear();
         self.still.extend(still);
@@ -69,6 +78,21 @@ impl Steering {
         let standing = self.standing.get_or_insert_with(|| statics.sibling());
         standing.update(&self.still);
         self.walking.rebuild(walking);
+        self.gatherers.clear();
+        self.gatherers.extend(gatherers);
+        self.gatherers.sort_unstable();
+        if self.gatherers.is_empty() {
+            return;
+        }
+        let gatherers = &self.gatherers;
+        self.still_apart.clear();
+        self.still_apart.extend(
+            self.still
+                .iter()
+                .filter(|body| gatherers.binary_search(&body.id).is_err()),
+        );
+        let apart = self.apart.get_or_insert_with(|| statics.sibling());
+        apart.update(&self.still_apart);
     }
 
     /// Steers `steered` along `route`, which has a waypoint ahead, on `grid` round `statics`: the
@@ -92,8 +116,12 @@ impl Steering {
             step,
             walker,
             stuck,
+            gathering,
         } = steered;
-        let standing = self.standing.as_ref().expect("steering read the bodies");
+        let standing = match (gathering && !self.gatherers.is_empty(), &self.apart) {
+            (true, Some(apart)) => apart,
+            _ => self.standing.as_ref().expect("steering read the bodies"),
+        };
         let window_cells = i64::try_from(Steering::WINDOW).expect("a small window");
         let reach = grid.cell() * window_cells;
         let look = at.get().step_toward(route.ahead()[0].get(), reach);
@@ -129,10 +157,12 @@ impl Steering {
             // A walker that keeps this one back counts as standing half their reach to this one's
             // left, so this one goes round it on its right; two that meet head on so pass on
             // opposite sides, whatever the cells make of their sides.
+            let gatherers = &self.gatherers;
             self.walking.visit_near(at, walker.radius + step, |other| {
                 let reach = walker.radius + other.shape.bound();
                 let touching = other.at.within_ground(at, reach + step);
-                if other.id == id || !touching || other.key != walker.layer {
+                let passes = gathering && gatherers.binary_search(&other.id).is_ok();
+                if other.id == id || !touching || other.key != walker.layer || passes {
                     return;
                 }
                 let shift = left * (reach / 2);
@@ -217,7 +247,7 @@ mod tests {
             layer: Layer::FIRST,
         };
         let mut steering = Steering::default();
-        steering.read(&statics, [standing], []);
+        steering.read(&statics, [standing], [], []);
         let goal = at(64, 0);
         let mut route = Route::default();
         route.ask(goal, Tick::new(0), None);
@@ -228,8 +258,55 @@ mod tests {
             step: quarter,
             walker,
             stuck: false,
+            gathering: false,
         };
         steering.steer(&mut planner, &grid, &statics, steered, &route);
         assert_eq!(steering.blockers, [standing]);
+    }
+
+    #[test]
+    fn a_walker_that_gathers_steers_round_no_unit_that_gathers() {
+        // A unit of a quarter meter stands at (1, 0), in the way of a walker of a quarter meter
+        // at the origin bound for (6, 0), which looks 2 m ahead: a walker that gathers, past a
+        // unit that gathers too, sees no blocker and keeps its route; one that does not gather
+        // steers round it, by a short route to (2, 0).
+        let quarter = Num::QUARTER;
+        let walker = Walker {
+            layer: Layer::FIRST,
+            radius: quarter,
+        };
+        let bounds = Bounds::new([Num::int(-8); 2], [Num::int(8); 2]);
+        let cells = Grid::new(quarter, bounds.unwrap()).unwrap();
+        let grid = PathingGrid::new(cells, vec![walker], &Terrain::default());
+        let statics = BodyIndex::new(quarter);
+        let mut ids = IdAllocator::default();
+        let (id, unit) = (ids.allocate(), ids.allocate());
+        let standing = IndexedBody {
+            id: unit,
+            at: at(8, 0),
+            shape: Shape::Circle(quarter),
+            layer: Layer::FIRST,
+        };
+        let goal = at(48, 0);
+        let mut route = Route::default();
+        route.ask(goal, Tick::new(0), None);
+        route.answer(&[goal], true);
+        let detours = [true, false].map(|gathering| {
+            let mut planner = RoutePlanner::new(&cells);
+            let mut steering = Steering::default();
+            steering.read(&statics, [standing], [], [unit]);
+            let steered = Steered {
+                id,
+                at: at(0, 0),
+                step: quarter,
+                walker,
+                stuck: false,
+                gathering,
+            };
+            steering
+                .steer(&mut planner, &grid, &statics, steered, &route)
+                .is_some()
+        });
+        assert_eq!(detours, [false, true]);
     }
 }

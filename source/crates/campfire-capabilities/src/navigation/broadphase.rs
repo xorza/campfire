@@ -207,6 +207,7 @@ pub(crate) mod internals {
                     layer,
                     movable,
                     walking: movable && scene.below(2) == 0,
+                    gathering: false,
                 }
             })
             .collect()

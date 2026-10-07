@@ -55,6 +55,7 @@ pub(crate) mod effect_names;
 pub(crate) mod effect_queues;
 pub(crate) mod error;
 pub(crate) mod fan;
+pub(crate) mod gather_spec;
 pub(crate) mod kind_spec;
 pub(crate) mod placement_data;
 pub(crate) mod purse;

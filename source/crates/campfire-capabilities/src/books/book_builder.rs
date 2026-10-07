@@ -31,6 +31,7 @@ use crate::orders::ai::Ai;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::production::build_specs::{NewBuild, PlacementCheck, Style};
+use crate::production::resource_set::ResourceSet;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -483,6 +484,32 @@ impl<'a> BookBuilder<'a> {
         Ok(())
     }
 
+    /// Production's parts of `unit_type`, of `file`: its queue, its supply, and what it is as a
+    /// node and as a drop-off, each tagged.
+    fn production(&mut self, unit_type: UnitType, file: &UnitTypeFile) {
+        let resources = &self.input.data.resources;
+        let books = &mut self.books;
+        if let Some(production) = file.production {
+            books.producers.set(unit_type, production);
+        }
+        if let Some(supply) = file.supply {
+            books.supplies.set(unit_type, supply);
+        }
+        if let Some(node) = &file.node {
+            let resource = ResourceId::named(resources, node.resource.as_str()).expect(CHECKED);
+            books.types.give_tag(unit_type, EngineTag::Node.tag());
+            books.nodes.nodes.set(unit_type, resource);
+        }
+        if let Some(drop_off) = &file.drop_off {
+            let taken = drop_off
+                .resources
+                .iter()
+                .map(|name| ResourceId::named(resources, name.as_str()).expect(CHECKED));
+            books.types.give_tag(unit_type, EngineTag::DropOff.tag());
+            books.nodes.drop_offs.set(unit_type, ResourceSet::of(taken));
+        }
+    }
+
     /// The unit type `unit` that stands, of the package at `index`, whose slots hold the package's
     /// `actions`: its AI, its kit of the values `stats` gives it, its slots, kind after kind, and
     /// its passive. An avatar's is tagged `avatar`, and stays when it dies.
@@ -529,6 +556,11 @@ impl<'a> BookBuilder<'a> {
             tracks.named(track.as_str()).expect(CHECKED)
         }));
         let rate = self.input.rate;
+        let package = &self.input.packages[usize::from(index)];
+        let slotted = |kind| {
+            let mut slotted = file.slots.values().flatten();
+            slotted.any(|id| package.content.actions[id].kind == kind)
+        };
         let sections = KitSections {
             combat: combat.as_ref(),
             pools,
@@ -536,10 +568,9 @@ impl<'a> BookBuilder<'a> {
             body: data.navigation.form(file.collision.as_ref()),
             tracks,
             production: file.production.as_ref(),
-            builds: file.slots.values().flatten().any(|id| {
-                let package = &self.input.packages[usize::from(index)];
-                package.content.actions[id].kind == ActionKind::Build
-            }),
+            builds: slotted(ActionKind::Build),
+            node: file.node.as_ref().map(|node| node.amount),
+            gathers: slotted(ActionKind::Gather),
             inventory: file.inventory.as_ref().map(|inventory| InventorySpec {
                 slots: inventory.slots,
                 kind: data.slots.named(inventory.kind.as_str()).expect(CHECKED),
@@ -553,12 +584,8 @@ impl<'a> BookBuilder<'a> {
                     error,
                 }
             })?;
-        if let Some(production) = file.production {
-            books.producers.set(unit_type, production);
-        }
-        if let Some(supply) = file.supply {
-            books.supplies.set(unit_type, supply);
-        }
+        self.production(unit_type, file);
+        let books = &mut self.books;
         if file.walks() {
             let form = data.navigation.form(file.collision.as_ref());
             let walker = Walker::of_form(form).expect("a unit type that walks has no box");

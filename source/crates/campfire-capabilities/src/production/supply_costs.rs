@@ -33,7 +33,9 @@ impl SupplyCosts {
             .map_while(|at| actions.get(ActionId::nth(at)))
             .map(|action| match action.kind {
                 KindSpec::Train(made) => types.get(made).map_or(0, |supply| supply.cost),
-                KindSpec::Cast | KindSpec::Attack(_) | KindSpec::Build(_) => 0,
+                KindSpec::Cast | KindSpec::Attack(_) | KindSpec::Build(_) | KindSpec::Gather(_) => {
+                    0
+                }
             })
             .collect();
         SupplyCosts { types, trains }

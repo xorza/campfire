@@ -286,6 +286,8 @@ pub(crate) mod internals {
     use crate::actions::actions_column::ActionsColumn;
     use crate::actions::delivery::{Delivery, DeliveryShape};
     use crate::actions::fan::Fan;
+    #[cfg(any(test, feature = "bench"))]
+    use crate::actions::gather_spec::GatherSpec;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::range::Range;
     use crate::actions::rank_values::RankValues;
@@ -441,6 +443,43 @@ pub(crate) mod internals {
                     charge: None,
                 }],
                 resource_costs: resource_cost.into_iter().collect(),
+                script: None,
+                hooks: HookSet::default(),
+                delivery: None,
+            },
+        )
+    }
+
+    /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
+    /// `time`, to the action book of `world`.
+    #[cfg(any(test, feature = "bench"))]
+    pub(crate) fn gather(
+        world: &mut World,
+        spec: GatherSpec,
+        aim: Filter,
+        range: Num,
+        time: Ticks,
+    ) -> ActionId {
+        push(
+            world,
+            Action {
+                package: 0,
+                name: "gather".into(),
+                kind: KindSpec::Gather(spec),
+                passive: None,
+                hold: None,
+                aim: Aim::Unit(aim),
+                ranks: vec![RankValues {
+                    range: Range::Meters(range),
+                    cooldown: Ticks::ZERO,
+                    cost: PoolCost::default(),
+                    windup: time,
+                    charges: None,
+                    toggle: None,
+                    channel: None,
+                    charge: None,
+                }],
+                resource_costs: Box::default(),
                 script: None,
                 hooks: HookSet::default(),
                 delivery: None,

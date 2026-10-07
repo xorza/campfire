@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_math::Num;
 use serde::de::Error;
@@ -80,6 +80,12 @@ pub struct ActionData {
     pub cancel_refund: Option<Share>,
     /// Where a `build` may place its box.
     pub placement: Option<PlacementData>,
+    /// The mode's player resource a `gather` gathers.
+    pub resource: Option<DeclaredName>,
+    /// The most a `gather`'s trip carries.
+    pub take: Option<NonZeroU32>,
+    /// How far from its node, in meters, a `gather` looks for another, none when absent.
+    pub bounce: Option<Scalar>,
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,
@@ -520,6 +526,9 @@ pub(crate) mod internals {
                 start_life: None,
                 cancel_refund: None,
                 placement: None,
+                resource: None,
+                take: None,
+                bounce: None,
                 params: BTreeMap::new(),
                 on_resolve: Vec::new(),
                 on_hit: Vec::new(),

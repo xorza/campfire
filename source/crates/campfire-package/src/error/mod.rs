@@ -15,6 +15,7 @@ pub(crate) mod choice_problem;
 pub(crate) mod ctx_misuse;
 pub(crate) mod delivery_problem;
 pub(crate) mod effect_problem;
+pub(crate) mod gather_problem;
 pub(crate) mod item_problem;
 pub(crate) mod limit;
 pub(crate) mod load_problem;

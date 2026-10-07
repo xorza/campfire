@@ -12,8 +12,8 @@ use campfire_capabilities::{
 };
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
-    EffectProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageRef, Place,
-    ScriptProblem, Way,
+    EffectProblem, GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages,
+    PackageRef, Place, ScriptProblem, Way,
 };
 use campfire_script::ScriptError;
 use campfire_script::rhai::ParseErrorType;
@@ -81,6 +81,13 @@ const LIVING_YARD: Edit<'static> = Edit::Replace(
 const YARD: Edit<'static> = Edit::Replace(
     "[units.tower]\n",
     "[units.yard]\ncollision = { box = [\"4\", \"2\"] }\n\n[units.tower]\n",
+);
+/// A gather of gold, in reach of 1 m, a trip of 5 in a second, that looks 6 m round a node gone.
+const MINE: &str = "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"gold\"\ntake = 5\nbounce = \"6\"\n\n[actions.melee_creep_attack]";
+/// A mine of 1500 gold, a box.
+const GOLD_MINE: Edit<'static> = Edit::Replace(
+    "[units.tower]\n",
+    "[units.mine]\ncollision = { box = [\"2\", \"2\"] }\nnode = { resource = \"gold\", amount = 1500 }\n\n[units.tower]\n",
 );
 /// The manifest's capabilities with `production`.
 const PRODUCTION: Edit<'static> = Edit::Replace(r#""items"]"#, r#""items", "production"]"#);
@@ -292,15 +299,15 @@ fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
 #[test]
 fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     // The 3v3 names 25 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 8 more of its unit
-    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 4, so 227
-    // layers, each a tag, fill the 256 a match holds, and 228 are past it.
+    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 7, so 224
+    // layers, each a tag, fill the 256 a match holds, and 225 are past it.
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = ModePackages::from_package_dir(&edited([])).unwrap();
     assert_eq!(tags(&packages), 25);
-    let [(path, layers)] = <[_; 1]>::try_from(layers(227)).unwrap();
+    let [(path, layers)] = <[_; 1]>::try_from(layers(224)).unwrap();
     let edit = Edit::Set(&path, &layers);
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
-    assert_eq!(tags(&packages), 252);
+    assert_eq!(tags(&packages), 249);
     // The mode's `[tags]` may give an engine tag properties, and that names no tag of its own.
     let edit = Edit::Replace(
         "[tags.stunned]",
@@ -338,10 +345,10 @@ struct LimitCase {
 #[test]
 fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
     let cases = [
-        // The 3v3's 25 tags and the engine's 4 leave 227 of the 256 a match holds for layers.
+        // The 3v3's 25 tags and the engine's 7 leave 224 of the 256 a match holds for layers.
         LimitCase {
             more: layers,
-            allowed: 227,
+            allowed: 224,
             limit: Limit::Tags,
         },
         // `level` and 31 more fill the 32 tracks a unit holds.
@@ -370,7 +377,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 258] = [
+static FLAWS: [Flaw; 266] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -2501,6 +2508,88 @@ static FLAWS: [Flaw; 258] = [
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::Global(action)) if action == "raise"),
     },
+    // A gather aims at a unit its filter selects, within meters; it gathers a player resource
+    // of the mode's, and its bounce is a distance; a node and a drop-off name the mode's
+    // resources.
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"point\"\nresource = \"gold\"\ntake = 5\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Gather(GatherProblem::Aims(action)) if action == "mine"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.mine]\nkind = \"gather\"\nrange = \"global\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"gold\"\ntake = 5\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Gather(GatherProblem::Global(action)) if action == "mine"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"gold\"\ntake = 5\nbounce = \"-1\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Gather(GatherProblem::Bounce(action)) if action == "mine"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"silver\"\ntake = 5\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, at: Place::Action(action), name } if action == "mine" && name == "silver"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"gold\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Take } if action == "mine"),
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.mine]\nnode = { resource = \"silver\", amount = 1500 }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, at: Place::UnitType(unit), name } if unit == "mine" && name == "silver"),
+    },
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace(
+            "[units.tower]\n",
+            "[units.depot]\ndrop_off = { resources = [\"gold\", \"silver\"] }\n\n[units.tower]\n",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, at: Place::UnitType(unit), name } if unit == "depot" && name == "silver"),
+    },
+    flaw(
+        UNITS,
+        Edit::Replace(
+            "[units.tower]\n",
+            "[units.mine]\nnode = { resource = \"gold\", amount = 1500 }\n\n[units.tower]\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::UnitType(name) } if name == "mine"),
+    ),
     flaw(
         UNITS,
         Edit::Replace(
@@ -2734,9 +2823,10 @@ fn raised(map: &str) -> String {
 }
 
 #[test]
-fn a_build_of_a_box_with_its_rates_and_its_placement_loads() {
+fn a_build_and_a_gather_with_their_nodes_and_drop_offs_load() {
     // A build of a yard, a box with no life pool, so no start life, at a builders' rate table,
-    // placed away from enemies, beside a train: the load and its books take both.
+    // placed away from enemies; a gather of gold from a mine, which the yard takes back: the load
+    // and its books take them all.
     let raise = "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = { builders = [\"1\", \"1.5\"] }\ncancel_refund = \"0.75\"\nplacement = { away = [{ filter = \"enemies\", distance = \"4\" }] }\n\n[actions.melee_creep_attack]";
     let edits = [
         (
@@ -2745,6 +2835,18 @@ fn a_build_of_a_box_with_its_rates_and_its_placement_loads() {
         ),
         (MANIFEST, PRODUCTION),
         (UNITS, YARD),
+        (
+            MODE_DATA,
+            Edit::Replace("[actions.melee_creep_attack]", MINE),
+        ),
+        (UNITS, GOLD_MINE),
+        (
+            UNITS,
+            Edit::Replace(
+                "[units.yard]\n",
+                "[units.yard]\ndrop_off = { resources = [\"gold\"] }\n",
+            ),
+        ),
     ];
     let loaded = ModePackages::from_package_dir(&edited(edits));
     assert!(loaded.is_ok(), "{:?}", loaded.err());

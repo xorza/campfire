@@ -333,6 +333,8 @@ fn grunt() -> UnitKit {
         tracks: TrackSet::default(),
         queue: None,
         builds: false,
+        node: None,
+        gathers: false,
         inventory: None,
     }
 }

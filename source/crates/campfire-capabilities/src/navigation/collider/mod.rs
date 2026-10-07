@@ -8,8 +8,9 @@ use crate::values::body_box::BodyBox;
 use crate::values::shape::Shape;
 
 /// A living unit's body as collision sees it: where it stands, its shape, its layer, whether it
-/// may be pushed, and whether it walks now, to a destination. A unit that cannot walk, such as a
-/// tower or a building, is never pushed; only such a unit has a box.
+/// may be pushed, whether it walks now, to a destination, and whether it gathers, as a worker in
+/// its gather loop, which passes through another. A unit that cannot walk, such as a tower or a
+/// building, is never pushed; only such a unit has a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Collider {
     pub(crate) id: StableId,
@@ -19,6 +20,7 @@ pub(crate) struct Collider {
     pub(crate) layer: Layer,
     pub(crate) movable: bool,
     pub(crate) walking: bool,
+    pub(crate) gathering: bool,
 }
 
 /// How one body lies from another that it overlaps: the offset to it along x and z, its square,
@@ -49,9 +51,10 @@ impl Collider {
 
     /// Whether the bodies of `self` and `other` overlap on the ground plane, exactly: touching is
     /// not overlap. Two that may not be pushed never part, so they have no contact, nor have two
-    /// of other layers.
+    /// of other layers, nor two that both gather.
     pub(crate) fn overlaps(&self, other: &Collider) -> bool {
-        if !self.movable && !other.movable || self.layer != other.layer {
+        let apart = !self.movable && !other.movable || self.gathering && other.gathering;
+        if apart || self.layer != other.layer {
             return false;
         }
         match Collider::boxed(self, other) {

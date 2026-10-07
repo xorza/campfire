@@ -37,6 +37,19 @@ impl<A: RowParts, B: RowParts, C: RowParts, D: RowParts, E: RowParts> RowParts f
     type Changed = Or<(A::Changed, B::Changed, C::Changed, D::Changed, E::Changed)>;
 }
 
+impl<A: RowParts, B: RowParts, C: RowParts, D: RowParts, E: RowParts, F: RowParts> RowParts
+    for (A, B, C, D, E, F)
+{
+    type Changed = Or<(
+        A::Changed,
+        B::Changed,
+        C::Changed,
+        D::Changed,
+        E::Changed,
+        F::Changed,
+    )>;
+}
+
 impl<A: RowParts, B: RowParts, C: RowParts, D: RowParts, E: RowParts, F: RowParts, G: RowParts>
     RowParts for (A, B, C, D, E, F, G)
 {

@@ -35,6 +35,9 @@ pub enum ActionDataField {
     StartLife,
     CancelRefund,
     Placement,
+    Resource,
+    Take,
+    Bounce,
     Params,
     OnResolve,
     OnHit,
@@ -50,11 +53,12 @@ pub(crate) enum FieldUse {
 }
 
 /// The kinds the release runs, in the order of `FieldRule::uses`.
-const KINDS: [ActionKind; 4] = [
+const KINDS: [ActionKind; 5] = [
     ActionKind::Cast,
     ActionKind::Attack,
     ActionKind::Train,
     ActionKind::Build,
+    ActionKind::Gather,
 ];
 
 /// A field's row of the table: its name as data writes it, the capability that runs it, none for
@@ -102,7 +106,7 @@ impl ActionDataField {
             })
     }
 
-    pub const ALL: [ActionDataField; 29] = [
+    pub const ALL: [ActionDataField; 32] = [
         ActionDataField::Kind,
         ActionDataField::Script,
         ActionDataField::Targeting,
@@ -128,6 +132,9 @@ impl ActionDataField {
         ActionDataField::StartLife,
         ActionDataField::CancelRefund,
         ActionDataField::Placement,
+        ActionDataField::Resource,
+        ActionDataField::Take,
+        ActionDataField::Bounce,
         ActionDataField::Params,
         ActionDataField::OnResolve,
         ActionDataField::OnHit,
@@ -139,134 +146,177 @@ impl ActionDataField {
         use Capability::{Abilities, Combat, Production, Projectiles};
         use FieldUse::{Needs, Refuses, Takes};
         let (name, capability, runs, uses) = match self {
-            ActionDataField::Kind => ("kind", None, true, [Takes, Takes, Takes, Takes]),
+            ActionDataField::Kind => ("kind", None, true, [Takes, Takes, Takes, Takes, Takes]),
             ActionDataField::Script => (
                 "script",
                 Some(Abilities),
                 true,
-                [Takes, Refuses, Refuses, Refuses],
+                [Takes, Refuses, Refuses, Refuses, Refuses],
             ),
-            ActionDataField::Targeting => ("targeting", None, true, [Takes, Takes, Takes, Takes]),
-            ActionDataField::Range => ("range", None, true, [Takes, Needs, Refuses, Needs]),
+            ActionDataField::Targeting => {
+                ("targeting", None, true, [Takes, Takes, Takes, Takes, Takes])
+            }
+            ActionDataField::Range => ("range", None, true, [Takes, Needs, Refuses, Needs, Needs]),
             ActionDataField::CooldownMs => (
                 "cooldown_ms",
                 Some(Abilities),
                 true,
-                [Takes, Refuses, Takes, Takes],
+                [Takes, Refuses, Takes, Takes, Refuses],
             ),
-            ActionDataField::Cost => ("cost", None, true, [Takes, Takes, Takes, Takes]),
-            ActionDataField::WindupMs => ("windup_ms", None, true, [Takes, Takes, Takes, Needs]),
+            ActionDataField::Cost => ("cost", None, true, [Takes, Takes, Takes, Takes, Refuses]),
+            ActionDataField::WindupMs => {
+                ("windup_ms", None, true, [Takes, Takes, Takes, Needs, Needs])
+            }
             ActionDataField::ClampToRange => (
                 "clamp_to_range",
                 Some(Abilities),
                 true,
-                [Takes, Refuses, Refuses, Refuses],
+                [Takes, Refuses, Refuses, Refuses, Refuses],
             ),
             ActionDataField::Toggle => (
                 "toggle",
                 Some(Abilities),
                 true,
-                [Takes, Refuses, Refuses, Refuses],
+                [Takes, Refuses, Refuses, Refuses, Refuses],
             ),
             ActionDataField::Channel => (
                 "channel",
                 Some(Abilities),
                 true,
-                [Takes, Refuses, Refuses, Refuses],
+                [Takes, Refuses, Refuses, Refuses, Refuses],
             ),
             ActionDataField::Hold => (
                 "hold",
                 Some(Abilities),
                 true,
-                [Takes, Refuses, Refuses, Refuses],
+                [Takes, Refuses, Refuses, Refuses, Refuses],
             ),
             ActionDataField::Charges => (
                 "charges",
                 Some(Abilities),
                 true,
-                [Takes, Refuses, Refuses, Refuses],
+                [Takes, Refuses, Refuses, Refuses, Refuses],
             ),
             ActionDataField::Charge => (
                 "charge",
                 Some(Abilities),
                 true,
-                [Takes, Refuses, Refuses, Refuses],
+                [Takes, Refuses, Refuses, Refuses, Refuses],
             ),
-            ActionDataField::PassiveModifier => {
-                ("passive_modifier", None, true, [Takes, Takes, Takes, Takes])
-            }
+            ActionDataField::PassiveModifier => (
+                "passive_modifier",
+                None,
+                true,
+                [Takes, Takes, Takes, Takes, Takes],
+            ),
             ActionDataField::PassiveWhileReady => (
                 "passive_while_ready",
                 None,
                 true,
-                [Takes, Takes, Takes, Takes],
+                [Takes, Takes, Takes, Takes, Takes],
             ),
             ActionDataField::Delivery => (
                 "delivery",
                 Some(Projectiles),
                 true,
-                [Takes, Takes, Refuses, Refuses],
+                [Takes, Takes, Refuses, Refuses, Refuses],
             ),
             ActionDataField::Rate => (
                 "rate",
                 Some(Combat),
                 true,
-                [Refuses, Needs, Refuses, Refuses],
+                [Refuses, Needs, Refuses, Refuses, Refuses],
             ),
             ActionDataField::Damage => (
                 "damage",
                 Some(Combat),
                 true,
-                [Refuses, Needs, Refuses, Refuses],
+                [Refuses, Needs, Refuses, Refuses, Refuses],
             ),
             ActionDataField::DamageKind => (
                 "damage_kind",
                 Some(Combat),
                 true,
-                [Refuses, Needs, Refuses, Refuses],
+                [Refuses, Needs, Refuses, Refuses, Refuses],
             ),
             ActionDataField::UnitType => (
                 "unit_type",
                 Some(Production),
                 true,
-                [Refuses, Refuses, Needs, Needs],
+                [Refuses, Refuses, Needs, Needs, Refuses],
             ),
             ActionDataField::Requires => (
                 "requires",
                 Some(Production),
                 true,
-                [Refuses, Refuses, Takes, Takes],
+                [Refuses, Refuses, Takes, Takes, Refuses],
             ),
             ActionDataField::Construct => (
                 "construct",
                 Some(Production),
                 true,
-                [Refuses, Refuses, Refuses, Needs],
+                [Refuses, Refuses, Refuses, Needs, Refuses],
             ),
             ActionDataField::StartLife => (
                 "start_life",
                 Some(Production),
                 true,
-                [Refuses, Refuses, Refuses, Takes],
+                [Refuses, Refuses, Refuses, Takes, Refuses],
             ),
             ActionDataField::CancelRefund => (
                 "cancel_refund",
                 Some(Production),
                 true,
-                [Refuses, Refuses, Refuses, Takes],
+                [Refuses, Refuses, Refuses, Takes, Refuses],
             ),
             ActionDataField::Placement => (
                 "placement",
                 Some(Production),
                 true,
-                [Refuses, Refuses, Refuses, Takes],
+                [Refuses, Refuses, Refuses, Takes, Refuses],
             ),
-            ActionDataField::Params => ("params", None, true, [Takes, Takes, Refuses, Refuses]),
-            ActionDataField::OnResolve => {
-                ("on_resolve", None, true, [Takes, Refuses, Refuses, Refuses])
-            }
-            ActionDataField::OnHit => ("on_hit", None, true, [Takes, Takes, Refuses, Refuses]),
-            ActionDataField::OnEnd => ("on_end", None, true, [Takes, Refuses, Refuses, Refuses]),
+            ActionDataField::Resource => (
+                "resource",
+                Some(Production),
+                true,
+                [Refuses, Refuses, Refuses, Refuses, Needs],
+            ),
+            ActionDataField::Take => (
+                "take",
+                Some(Production),
+                true,
+                [Refuses, Refuses, Refuses, Refuses, Needs],
+            ),
+            ActionDataField::Bounce => (
+                "bounce",
+                Some(Production),
+                true,
+                [Refuses, Refuses, Refuses, Refuses, Takes],
+            ),
+            ActionDataField::Params => (
+                "params",
+                None,
+                true,
+                [Takes, Takes, Refuses, Refuses, Refuses],
+            ),
+            ActionDataField::OnResolve => (
+                "on_resolve",
+                None,
+                true,
+                [Takes, Refuses, Refuses, Refuses, Refuses],
+            ),
+            ActionDataField::OnHit => (
+                "on_hit",
+                None,
+                true,
+                [Takes, Takes, Refuses, Refuses, Refuses],
+            ),
+            ActionDataField::OnEnd => (
+                "on_end",
+                None,
+                true,
+                [Takes, Refuses, Refuses, Refuses, Refuses],
+            ),
         };
         FieldRule::new(name, capability, runs, uses)
     }
@@ -323,6 +373,9 @@ impl ActionDataField {
             ActionDataField::StartLife => data.start_life.is_some(),
             ActionDataField::CancelRefund => data.cancel_refund.is_some(),
             ActionDataField::Placement => data.placement.is_some(),
+            ActionDataField::Resource => data.resource.is_some(),
+            ActionDataField::Take => data.take.is_some(),
+            ActionDataField::Bounce => data.bounce.is_some(),
             ActionDataField::Params => !data.params.is_empty(),
             ActionDataField::OnResolve => !data.on_resolve.is_empty(),
             ActionDataField::OnHit => !data.on_hit.is_empty(),

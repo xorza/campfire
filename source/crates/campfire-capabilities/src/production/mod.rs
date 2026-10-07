@@ -22,7 +22,11 @@ use crate::players::player_resources::PlayerResources;
 use crate::production::build_specs::BuildSpecs;
 use crate::production::builder::Builder;
 use crate::production::construction::Construction;
+use crate::production::gather_loop::GatherLoop;
+use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production::holdings::{Held, Holdings};
+use crate::production::node::Node;
+use crate::production::node_book::NodeBook;
 use crate::production::production_column::ProductionColumn;
 use crate::production::production_data::ProductionData;
 use crate::production::rally::Rally;
@@ -47,13 +51,20 @@ use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
-use crate::values::shape::Shape;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
 pub(crate) mod build_specs;
 pub(crate) mod build_target;
 pub(crate) mod builder;
 pub(crate) mod construction;
+pub(crate) mod drop_off_data;
+pub(crate) mod gather_loop;
+pub(crate) mod gatherer;
 pub(crate) mod holdings;
+pub(crate) mod node;
+pub(crate) mod node_book;
+pub(crate) mod node_data;
 pub(crate) mod placement;
 pub(crate) mod production_api;
 pub(crate) mod production_column;
@@ -61,6 +72,7 @@ pub(crate) mod production_data;
 pub(crate) mod rally;
 pub(crate) mod rally_target;
 pub(crate) mod requirements;
+pub(crate) mod resource_set;
 pub(crate) mod site;
 pub(crate) mod supply;
 pub(crate) mod supply_costs;
@@ -109,19 +121,22 @@ type RowParts = (
     Has<Dead>,
     Option<&'static TrainQueue>,
     Has<Site>,
+    Option<&'static Gatherer>,
 );
 
 impl Production {
     /// Adds production to a match: in Act, after the other orders start, ordered trains pass their
     /// checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains
-    /// whose time ended spawn. With navigation, which tests a box for room, construction too: in
-    /// Inputs, the build orders that changed are checked; in Act, after the trains, builds start;
-    /// in Mode, before the trains finish, sites grow.
+    /// whose time ended spawn. With navigation, which tests a box for room and walks a worker,
+    /// construction and gathering too: in Inputs, the build and gather orders that changed are
+    /// checked; in Act, after the trains, builds start and workers run their loops; in Mode,
+    /// before the trains finish, sites grow; as the tick ends, the nodes that ran out despawn.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.insert_resource(ByType::<ProductionData>::default());
         world.insert_resource(Requirements::default());
         world.insert_resource(SupplyCosts::default());
         world.insert_resource(BuildSpecs::default());
+        world.insert_resource(NodeBook::default());
         let view = world.non_send::<View>().clone();
         view.add_column(ProductionColumn::default());
         view.add_source::<RowParts, _>(world, fill_row);
@@ -131,28 +146,37 @@ impl Production {
                 .in_set(SimSet::Mode)
                 .in_set(ProductionSet::Finish),
         ));
-        // A build places a box, which only navigation tests for room.
+        // A build places a box, which only navigation tests for room, and a worker walks.
         if world.contains_resource::<BodyIndex>() {
             schedule.add_systems((
-                Construction::check_builds
+                (Construction::check_builds, GatherLoop::check_gathers)
+                    .chain()
                     .in_set(SimSet::Inputs)
                     .in_set(ProductionSet::CheckBuilds)
                     .after(StatsSet::Regenerate)
                     .after(NavigationSet::TrackStatics)
                     .after(ActionsSet::HoldAtInputs),
-                (Construction::forget_dead_builds, Construction::start_builds)
+                (
+                    Construction::forget_dead_builds,
+                    Construction::start_builds,
+                    GatherLoop::run,
+                    GatherLoop::tag_gatherers,
+                )
                     .chain()
                     .in_set(SimSet::Act)
                     .after(start_trains),
                 Construction::progress_sites
                     .in_set(SimSet::Mode)
                     .before(ProductionSet::Finish),
+                GatherLoop::despawn_empty_nodes.in_set(SimSet::Vision),
             ));
         }
         registry.register_component::<TrainQueue>();
         registry.register_component::<Rally>();
         registry.register_component::<Builder>();
         registry.register_component::<Site>();
+        registry.register_component::<Node>();
+        registry.register_component::<Gatherer>();
     }
 
     /// Spawns each train whose time ended this tick, of its unit's team and player, by its unit's
@@ -197,16 +221,51 @@ impl Production {
                     angle: Num::ZERO,
                 };
                 let trained = spawner.spawn(world, at, owner);
-                if let Some(to) = rally
+                let gathers = Production::gather_at_rally(world, entity, trained);
+                if gathers.is_none()
+                    && let Some(to) = rally
                     && let Some(mut destination) = world.get_mut::<Destination>(trained)
                 {
                     let to = Vec3::new(to.get().x, pos.get().y, to.get().z);
                     destination.set(Position::new(to));
                 }
+                if let (Some(order), Some(mut gatherer)) =
+                    (gathers, world.get_mut::<Gatherer>(trained))
+                {
+                    gatherer.set(Some(order));
+                }
                 let mut queue = world.get_mut::<TrainQueue>(entity).expect("a producer");
                 queue.remove(0, now);
             }
         }
+    }
+
+    /// The gather loop of `trained`, a unit the producer of `entity` trained, when the producer
+    /// rallies to a node whose resource one of its gathers takes: by the first such gather in its
+    /// slots, to be checked as the next tick's orders are.
+    fn gather_at_rally(world: &World, entity: Entity, trained: Entity) -> Option<GatherOrder> {
+        let RallyTarget::Unit(node) = world.get::<Rally>(entity)?.get() else {
+            return None;
+        };
+        let target = world.entity(world.resource::<EntityIndex>().get(node)?);
+        let resource = world
+            .resource::<NodeBook>()
+            .resource(*target.get::<UnitType>()?)?;
+        let at = *target.get::<Position>()?;
+        let slots = world.get::<ActionSlots>(trained)?;
+        let book = world.resource::<ActionBook>();
+        let slot = (0..).zip(slots.iter()).find_map(|(slot, held)| {
+            let action = book.get(held.action?)?;
+            let KindSpec::Gather(spec) = action.kind else {
+                return None;
+            };
+            (spec.resource == resource).then_some(slot)
+        })?;
+        Some(GatherOrder {
+            slot,
+            node: NodeAt { node, at },
+            step: GatherStep::Ordered,
+        })
     }
 
     /// Where the units the producer of `entity` trains go: its rally point, or where the unit it
@@ -243,15 +302,7 @@ impl Production {
         let (Some(to), Some(walker)) = (rally, walker) else {
             return at;
         };
-        let near = match Body::shape_of(producer.get::<Body>()) {
-            Shape::Box(body) => body.nearest_point(at, to),
-            Shape::Circle(radius) if !at.within_ground(to, radius) => {
-                let to = Vec3::new(to.get().x, at.get().y, to.get().z);
-                let step = at.get().step_toward(to, radius);
-                Position::new(step).expect("a step within a body's radius stays within the bound")
-            }
-            Shape::Circle(_) => to,
-        };
+        let near = Body::shape_of(producer.get::<Body>()).nearest_point(at, to);
         Navigation::open_cell(world, walker, near).unwrap_or(at)
     }
 
@@ -270,15 +321,20 @@ impl Production {
     }
 }
 
-/// Fills a row of the script view with what the unit counts for of its player's supply.
+/// Fills a row of the script view with what the unit counts for of its player's supply, and
+/// what it carries.
 fn fill_row(
-    (owner, unit_type, dead, queue, site): ROQueryItem<'_, '_, RowParts>,
+    (owner, unit_type, dead, queue, site, gatherer): ROQueryItem<'_, '_, RowParts>,
     fill: &mut RowFill<'_, ProductionColumn>,
 ) {
     let counted = unit_type
         .map(|&unit_type| fill.column.costs().unit(unit_type, dead, !site, queue))
         .unwrap_or_default();
-    fill.column.push(owner.map(|owner| owner.slot()), counted);
+    let load = gatherer
+        .and_then(|gatherer| gatherer.load())
+        .map_or(0, |load| load.amount);
+    fill.column
+        .push(owner.map(|owner| owner.slot()), counted, load);
 }
 
 /// Starts each ordered train, in Act, by its unit's stable id: one that passes the core's checks,

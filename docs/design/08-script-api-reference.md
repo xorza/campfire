@@ -79,6 +79,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `is_avatar` | read | core | since 1.0 | whether it is an avatar |
 | `is_enemy_of` | `(unit)` | core | since 1.0 | whether its team may attack the other's, hostile or neutral |
 | `level` | read | stats | since 1.0 | its level |
+| `load` | read | production | since 1.0 | the amount it carries, 0 with none |
 | `owner` | read | core | since 1.0 | its player's slot, `()` with none |
 | `params` | read | core | since 1.0 | its unit type's params, unresolved |
 | `path` | read | navigation | since 1.0 | the name of the path it walks, `()` with none |
@@ -355,6 +356,9 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `start_life` | since 1.0 |
 | `cancel_refund` | since 1.0 |
 | `placement` | since 1.0 |
+| `resource` | since 1.0 |
+| `take` | since 1.0 |
+| `bounce` | since 1.0 |
 
 ### An effect of an action's `on_resolve`, `on_hit` or `on_end`
 
@@ -477,6 +481,19 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | --- | --- |
 | `units` | since 1.0 |
 | `modifiers` | since 1.0 |
+
+### A unit type's `node`
+
+| Field | Status |
+| --- | --- |
+| `resource` | since 1.0 |
+| `amount` | since 1.0 |
+
+### A unit type's `drop_off`
+
+| Field | Status |
+| --- | --- |
+| `resources` | since 1.0 |
 
 ### A unit type's `vision`
 

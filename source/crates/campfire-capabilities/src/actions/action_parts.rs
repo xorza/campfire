@@ -1,3 +1,4 @@
+use campfire_math::Num;
 use campfire_sim::TickRate;
 
 use crate::actions::action::Aim;
@@ -5,16 +6,19 @@ use crate::actions::action::Passive;
 use crate::actions::action_data::{ActionData, Targeting};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_names::ActionNames;
+use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery::Delivery;
 use crate::actions::delivery::DeliveryShape;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::ActionError;
 use crate::actions::fan::Fan;
+use crate::actions::gather_spec::GatherSpec;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::rank_values::LoadedRanks;
 use crate::actions::rank_values::RankValues;
 use crate::actions::weapon::Weapon;
 use crate::units::modifier_id::ModifierId;
+use crate::values::scalar::Scalar;
 
 /// What an action's data gives, resolved against the match: its kind with what the kind needs,
 /// its passive and its hold, its aim, its fields at each rank, and how it delivers.
@@ -67,6 +71,22 @@ impl ActionParts {
                     .as_ref()
                     .expect("the load checked a train's unit");
                 KindSpec::Train(names.unit_type(package, unit))
+            }
+            ActionKind::Gather => {
+                let checked = "the load checked a gather's fields";
+                let name = data.resource.as_ref().expect(checked);
+                let Some(CostTarget::Resource(resource)) = names.cost_target(name) else {
+                    panic!("{checked}");
+                };
+                let bounce = data
+                    .bounce
+                    .map_or(Some(Num::ZERO), Scalar::to_num)
+                    .expect(checked);
+                KindSpec::Gather(GatherSpec {
+                    resource,
+                    take: data.take.expect(checked).get(),
+                    bounce,
+                })
             }
             ActionKind::Build => {
                 let unit = data

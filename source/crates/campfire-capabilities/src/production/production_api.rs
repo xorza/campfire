@@ -6,8 +6,10 @@ use crate::production::production_column::ProductionColumn;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::units::unit::Unit;
 
 /// What `production` gives scripts: each player's supply; and the data of `production` the
 /// release runs: a train's unit type and requirements, a unit type's queue and supply, and the
@@ -23,6 +25,13 @@ impl ProductionApi {
             .data(DataTable::Mode, &["supply"], &[])
             .data(DataTable::ModeSupply, &["max"], &[])
             .data(DataTable::Requires, &["units", "modifiers"], &[])
+            .data(DataTable::Node, &["resource", "amount"], &[])
+            .data(DataTable::DropOff, &["resources"], &[])
+            .bind(
+                MemberSpec::field(ApiOwner::Unit, "load", "the amount it carries, 0 with none")
+                    .capability(Capability::Production),
+                |unit: &mut Unit| ProductionColumn::load(unit),
+            )
             .bind(
                 MemberSpec::call(
                     "supply_used",
