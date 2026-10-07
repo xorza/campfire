@@ -1,6 +1,3 @@
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
-
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
@@ -9,8 +6,11 @@ use campfire_sim::{Position, StableId};
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::Clearance;
 use crate::navigation::regions::Candidate;
+use crate::navigation::route_planner::open_cells::OpenCells;
 use crate::navigation::segment::Segment;
 use crate::values::grid::Grid;
+
+pub(crate) mod open_cells;
 
 /// Plans routes by A* on a clearance of the pathing grid: eight neighbors, a straight step costing
 /// 10 and a diagonal 14, and no diagonal past a blocked cell, so a route never cuts a blocked
@@ -34,7 +34,7 @@ pub(crate) struct RoutePlanner {
     came_from: Vec<u32>,
     /// The number of routes planned.
     routes: u64,
-    open: BinaryHeap<Reverse<Open>>,
+    open: OpenCells,
     /// The cells of the route, the last first.
     cells: Vec<u32>,
     /// The cells the search expanded, in order, for the nearest to the goal when it fails.
@@ -80,11 +80,6 @@ pub(crate) struct Waiting {
     pub(crate) entity: Entity,
 }
 
-/// A cell to expand: by its total, cost plus estimate, then by its estimate, then by its number,
-/// packed in that order into one number, which the heap compares at once.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Open(u128);
-
 /// One search's target, its column and row, and its marks.
 #[derive(Debug, Clone, Copy)]
 struct Search {
@@ -104,20 +99,6 @@ pub(crate) struct Planned {
     /// All the work it did, the cells expanded among it.
     pub(crate) work: u32,
     pub(crate) reached: bool,
-}
-
-impl Open {
-    const fn new(total: u32, estimate: u32, cell: u32) -> Open {
-        Open((total as u128) << 64 | (estimate as u128) << 32 | cell as u128)
-    }
-
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the low 32 bits hold the cell"
-    )]
-    const fn cell(self) -> u32 {
-        self.0 as u32
-    }
 }
 
 impl Window {
@@ -183,7 +164,7 @@ impl RoutePlanner {
             costs: vec![0; cells],
             came_from: vec![0; cells],
             routes: 0,
-            open: BinaryHeap::new(),
+            open: OpenCells::new(),
             cells: Vec::new(),
             expanded: Vec::new(),
             overlay: Vec::new(),
@@ -276,20 +257,17 @@ impl RoutePlanner {
         self.costs[from] = 0;
         self.came_from[from] = RoutePlanner::number(from);
         let estimate = RoutePlanner::estimate(RoutePlanner::place(grid, from), search.at);
-        self.open.push(Reverse(Open::new(
-            estimate,
-            estimate,
-            RoutePlanner::number(from),
-        )));
+        self.open
+            .push(estimate, estimate, RoutePlanner::number(from));
         self.expanded.clear();
         let mut found = false;
-        while let Some(Reverse(open)) = self.open.pop() {
-            let at = open.cell() as usize;
+        while let Some(cell) = self.open.pop() {
+            let at = cell as usize;
             if self.marks[at] == search.done {
                 continue;
             }
             self.marks[at] = search.done;
-            self.expanded.push(open.cell());
+            self.expanded.push(cell);
             if at == target {
                 found = true;
                 break;
@@ -543,8 +521,8 @@ impl RoutePlanner {
             self.costs[next] = cost;
             self.came_from[next] = RoutePlanner::number(at);
             let estimate = RoutePlanner::estimate(place, search.at);
-            let open = Open::new(cost + estimate, estimate, RoutePlanner::number(next));
-            self.open.push(Reverse(open));
+            self.open
+                .push(cost + estimate, estimate, RoutePlanner::number(next));
         }
     }
 

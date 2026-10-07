@@ -479,10 +479,11 @@ fn think(
                     now.after(period)
                 }
             };
-            batch
-                .world()
-                .entity_mut(entity)
-                .insert(NextThink::new(next));
+            let world = batch.world();
+            match world.get_mut::<NextThink>(entity) {
+                Some(mut due) => *due = NextThink::new(next),
+                None => drop(world.entity_mut(entity).insert(NextThink::new(next))),
+            }
         }
     });
 }
