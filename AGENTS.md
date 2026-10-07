@@ -7,7 +7,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
 - `docs/` — the project's documents:
   - `design/` — the design, and the source of truth for every decision. Read it before you change anything:
     - `01-campfire-design.md` — vision, terms, principles, milestones
-    - `02-engine-core.md` — modules, determinism rules, Bevy and Lightyear, libraries
+    - `02-engine-core.md` — modules, structural rules, storage, determinism rules, Bevy and Lightyear, testing and benches, libraries
     - `03-game-scripting.md` — packages, tick pipeline, script state, numbers, network sync
     - `04-capabilities/` — the mechanisms the engine provides (combat, commands, character, navigation, vision, …), which a game combines, and the genres they make
     - `05-protocol-spec.md` — keys, connection, session log, verification, Nostr events, payments
@@ -17,10 +17,6 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
     - `08-script-api-reference.md` — every name of the script API, with its roles, capability and whether it runs; generated from the registry by a test, never edited by hand
     - `09-determinism-core.md` — Stage 1 proposal: numbers, vectors, randomness, stable ids, state hash
     - `10-sessions.md` — Stage 6 proposal: journal, crash restore, slots, reconnect, server bots, receipts, checkpoints, saves, local server
-    - `11-storage.md` — proposal: one crate for durable files and worker threads, one data layout, one fault surface, and a session log with no IO
-    - `12-structure.md` — proposal: one rule for each kind of value, one place for each error, one name for each meaning, and one copy of each piece of wiring
-    - `13-benches.md` — proposal: three tiers of bench, one rule for a case's id, and the benches the hottest paths need
-    - `14-integer-roots.md` — proposal: one exact integer root in `math`, faster than `core`'s, for `math`'s roots and the callers of `u128::isqrt`
   - `issues/` — the issue log: one file for each system, with its open problems ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/<game>/` holds the reference content packages (heroes, spells, modes); `source/packages/test/` holds small packages the tests play
 

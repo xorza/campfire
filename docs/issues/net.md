@@ -6,7 +6,7 @@ Design: [Modules](../design/02-engine-core.md#modules), `net`. Rules: [Issue log
 
 ## Research
 
-- In the reference 3v3, a client that rolls back only on a misprediction rolls back on every confirmed update while its hero walks at its base after the first wave: 2,000 rollbacks of 3 ticks each in 2,000 frames, where the lane mode's walk makes none. Its frame costs 152.0 µs against 67.4 µs for a client that never rolls back ([A client's re-simulated 3v3 tick](../design/13-benches.md#a-clients-re-simulated-3v3-tick)). Which predicted part differs from the server's is not known.
+- In the reference 3v3, a client that rolls back only on a misprediction rolls back on every confirmed update while its hero walks at its base after the first wave: 2,000 rollbacks of 3 ticks each in 2,000 frames, where the lane mode's walk makes none. Its frame costs 152.0 µs against 67.4 µs for a client that never rolls back. Which predicted part differs from the server's is not known.
 
 - A client whose server dropped time after a stall past a frame's bound runs ahead of it, and Lightyear shifts the client's timeline back whole ticks at a time; from then on the client's sim mispredicts its own hero every tick and rolls back every tick, its hero standing where the server no longer has it, in the net scenario of a 2 s server stall.
 
