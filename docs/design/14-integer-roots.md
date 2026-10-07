@@ -51,6 +51,8 @@ Proposal: one exact integer root in `math`, faster than `core`'s at every width,
 
 Three steps the first version lacked made these figures. A root of a `u128` that is below 2⁶⁴ squares with three multiplies, and a checked `*` adds an overflow test to each, as the release profile checks overflow; the `u64` root and its widening square take one multiply and no test, and the f64 guess converts to a `u64` with no library call. A version with them still made `vec3/normalized` 11 % slower, from 20 million mispredicted branches to 203 million: `unit_component`'s rounding and sign, as random as its components, compiled to branches beside the new root. They are arithmetic now, a carry and a negation by mask, so no layout of the code can make them branches; with them it is 5.5 % faster. With its points within ±100 m, where every square is below 2⁶⁴, `vec3/distance` is 27 % faster and `vec3/normalized` 7 %. A first correction step in each direction without a branch made every case slower, 20 % for `root/floor`, and is not kept.
 
+**M2.** `Grid::spans_within` and `spans_closer` take `floor_root`. In one session on the same core: `fog/sight` from 457.7 µs to 331.4 µs, −27.7 %, and `server_tick/mean_3v3` from 159.0 µs to 152.4 µs a tick, −4.2 %, both past the estimate below, as the root at a sight's widths takes less than the scratch program's 4.2 ns. `collision/*` stays within 0.6 %.
+
 ## Cost
 
 From the profiles, with the root at 4.2 ns in place of 9.5 ns: `fog/sight` about 14 % faster, `collision/crowded` about 2 %, and `server_tick/mean_3v3` about 1.6 %; `num/sqrt` and `vec3/distance` gain too. Each step measures its cases before and after, in one run on one core, and the Cost section of the capability it changes takes the new figure.
