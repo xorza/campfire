@@ -20,7 +20,7 @@ A unit type's `vision = { sight_range }`, in meters, not negative. The map's `[g
 
 ### Grid fog of war
 
-The grid divides the map's bounds into square cells of the map's cell size; a point on the max edge lies in the last cell, so every unit stands in a cell. In the Vision stage, the last stage of a tick, each living unit with a `sight_range` reveals to its group every cell whose center is within that range on the ground plane, on either metric: the cells are squares of the ground plane, with no height. A unit is seen by its own group always, from the moment it spawns, before its first Vision stage, and by each group that revealed the cell it stands in. The rule is the same for every unit: a structure, a projectile and an item on the ground too are seen only while in sight.
+The grid divides the map's bounds into square cells of the map's cell size; a point on the max edge lies in the last cell, so every unit stands in a cell. In the Vision stage, the last stage of a tick, each living unit with a `sight_range` reveals to its group every cell whose center is within that range on the ground plane, on either metric: the cells are squares of the ground plane, with no height. A unit is seen by its own group always, from the moment it spawns, before its first Vision stage, and by each group that revealed a cell it stands in. A unit with a box body stands in every cell whose square its box overlaps, by the overlap rule of shapes, touching not counted ([Space and map](00-overview.md#space-and-map)), so a building half in sight is seen. A box never moves, so its cells are found once, as it spawns, and kept as one run of cells for each row; the stage tests each run against a group's bitmap a word at a time. The rule is the same for every unit: a structure, a projectile and an item on the ground too are seen only while in sight.
 
 - **Brush.** A cell whose center lies inside a brush polygon, or on its edge, is that brush's, the first the map lists. A unit reveals a brush's cells only while it stands in that brush, as League of Legends' brush hides who stands in it from everyone outside; it sees out of the brush as from anywhere. A ward in a brush sees into it.
 - **Reveals.** `ctx.reveal(pos, radius, ms)` reveals to the acting unit's group the cells whose centers lie within `radius` of `pos`, brush cells included, from that tick's Vision stage for `ms`, as Farsight and Snow Owl do; it detects no hidden unit. A call with no acting unit, a negative radius, or a time of zero fails.
@@ -30,7 +30,7 @@ What each group sees is state, and so are the reveals under way: they are hashed
 
 ### Hidden units
 
-A unit with a `hidden` tag is seen only by its own group and by a group one of whose units has a `detects` tag and sees the unit's cell within its sight range, as Dota 2's true sight reveals invisible units and StarCraft II's detectors reveal cloaked ones. Detection comes from a unit type's tag, as a tower's, or from a modifier, as a ward's or a consumable's. Wards are units with a sight range and no collision.
+A unit with a `hidden` tag is seen only by its own group and by a group one of whose units has a `detects` tag and sees a cell the unit stands in within its sight range, as Dota 2's true sight reveals invisible units and StarCraft II's detectors reveal cloaked ones. Detection comes from a unit type's tag, as a tower's, or from a modifier, as a ward's or a consumable's. Wards are units with a sight range and no collision.
 
 ### Senses
 

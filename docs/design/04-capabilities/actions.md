@@ -14,9 +14,9 @@ Every action is a table `[actions.<id>]` of a package, in one schema; a field a 
 | `script` | The script of its hooks, if it needs one |
 | `targeting` | `none`, `point`, `direction`, or a filter for a unit target |
 | `range` | Meters in the map's metric, or `"global"` |
-| `windup_ms` | The time between its start and its delivery: an attack's windup, a cast time, a train's time in its unit's queue |
+| `windup_ms` | The time between its start and its delivery: an attack's windup, a cast time, a train's time in its unit's queue, a build's time, a gather's trip at its node |
 | `cooldown_ms`, `charges` | `{ max, recharge_ms }` |
-| `cost` | Per pool of the unit or player resource of its player: `{ mana = 60 }`, `{ rage = 30, combo = 1 }`, `{ minerals = 50, supply = 1 }`; the mode's pools and player resources never share a name |
+| `cost` | Per pool of the unit or player resource of its player: `{ mana = 60 }`, `{ rage = 30, combo = 1 }`, `{ minerals = 50 }`; the mode's pools and player resources never share a name, and supply is no cost ([Supply](production.md#supply)) |
 | `clamp_to_range` | A target beyond range is moved in, instead of the unit walking |
 | `toggle` | `{ cost_per_attack }` or `{ cost_per_second }`, each per pool; on and off by a cast ([Over time](#over-time)) |
 | `channel` | `{ duration_ms, tick_ms }`; starts after the action resolves; `on_channel_tick` each `tick_ms` of it ([Over time](#over-time)) |
@@ -27,7 +27,7 @@ Every action is a table `[actions.<id>]` of a package, in one schema; a field a 
 | `on_resolve`, `on_hit`, `on_end` | Effects in data ([Effects](#effects)) |
 | `[params]` | Script values, read as `ctx.p.<name>` |
 
-A kind adds its own fields: an attack's `rate`, `damage` and `damage_kind`, and it takes `[params]` and `on_hit` alone of the fields above that a cast's script and lists use ([Combat](combat.md#data)), a use's channel and range, a train's unit type and time.
+A kind adds its own fields: an attack's `rate`, `damage` and `damage_kind`, and it takes `[params]` and `on_hit` alone of the fields above that a cast's script and lists use ([Combat](combat.md#data)), a use's channel and range, a train's unit type and time, a build's and a gather's fields ([Production](production.md#data)).
 
 The mode declares its **slot kinds**, where actions sit on a unit, in order:
 
@@ -80,8 +80,8 @@ Values of the fields may be one or one per rank, like params; times become whole
 | `use` | `interaction` | `use` | Aims at a unit with a `use` section; a held use is a channel ([Interaction](interaction.md)) |
 | `enter` | `interaction` | `use` | The unit rides in or garrisons the target |
 | `train` | `production` | `use` | Joins its unit's queue, and spawns a unit type when its time ends ([Production](production.md)) |
-| `build` | `production` | `use` | Aims at a point where a footprint fits, and places a building |
-| `gather` | `production` | `use` | Walks to a node, gathers, and carries the load to a drop-off, again until stopped |
+| `build` | `production` | `use` | Aims at a point, with an angle, where its building's box fits, and places it as a site; or at a site, to build it ([Construction](production.md#construction)) |
+| `gather` | `production` | `use` | Walks to a node, gathers, and carries the load to a drop-off, again until another order ([Gathering](production.md#gathering)) |
 | `craft` | `items` | `use` | Takes a recipe's items and pools, at a station a filter selects or anywhere, and makes an item, or adds modifiers to one, as enchanting does ([Items](items.md)) |
 
 An action in an item's slot is in the `use` group, whatever its kind ([Items](items.md#rules)).
@@ -116,7 +116,7 @@ An effect list is an array of effects, each one table; the effects queue in orde
 | `restore = { pool, amount }` | Adds to one of its pools |
 | `modifier = { id, duration_ms }` | Applies a modifier from the acting unit |
 | `purge = { tag }` | Ends the applications of its modifiers that grant the tag, a tag the mode declares and not the engine's, whatever their source: an instance a passive, an aura, an area or a player holds stays, as its holder would apply it again, as Dota 2's dispels remove applied buffs and never passives or auras |
-| `spawn = { unit_type, duration_ms }` | Spawns a unit of a type of the mode's package that stands, where the unit it applies to stands, or at the point an action's `on_resolve` aimed at, on the source's team and of its player; with `duration_ms`, whole milliseconds, it lives that many ticks, rounded up, from the tick it spawns in, and despawns as the last ends, as a ward does: 2000 ms at 20 a second is 40 ticks. An action of the mode's own package, as its items' are, may spawn; one of an avatar's or a loadout's package waits for summons ([Issue log](../../issues/actions.md)) |
+| `spawn = { unit_type, duration_ms }` | Spawns a unit of a type of the action's package that stands, where the unit it applies to stands, or at the point an action's `on_resolve` aimed at, on the source's team and of its player; with `duration_ms`, whole milliseconds, it lives that many ticks, rounded up, from the tick it spawns in, and despawns as the last ends, as a ward does: 2000 ms at 20 a second is 40 ticks. A mode's, an avatar's and a loadout's actions each spawn the types of their own package, an avatar's summon among them ([RTS skirmish](../11-rts-skirmish.md#decisions), D6) |
 | `launch = { area, on_hit, on_end }` | Lands an area of the action's package where it stands, which runs its own lists |
 | `move = { to, speed }`, `move = { from, distance, ms }` | Forced movement: a dash at the unit `to` names, or a knock back away from the one `from` names, `"source"` or `"reached"`; `ms` whole milliseconds ([Navigation](navigation.md#forced-movement)) |
 | `xp = { track, amount }` | Experience on a track ([Progression](progression.md)) |

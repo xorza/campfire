@@ -12,10 +12,11 @@ A unit type's `orders = { ai = "scripts/creep.rhai", think_ms = 500 }` names its
 
 ### Orders
 
-Units that take orders: move, attack, an action (by its id, with a target), stop, hold, follow a path, and the orders of the action kinds other capabilities add (use, enter, train, build, gather), items' `buy`, `sell` and `swap` ([Items](items.md#rules)), and progression's `learn` ([Progression](progression.md#rules)), which no unit carries out: it applies as the tick's inputs do. Players, bots and AI issue the same orders, and an order names the units it goes to. The capability runs them: it asks `navigation` for a route, and starts the actions through the pipeline.
+Units that take orders: move, attack, an action (by its id, with a target), stop, hold, follow a path, and the orders of the action kinds other capabilities add (use, enter, train, build, gather), production's `cancel_train`, `cancel_build` and `rally` ([Production](production.md#rules)), items' `buy`, `sell` and `swap` ([Items](items.md#rules)), and progression's `learn` ([Progression](progression.md#rules)), which no unit carries out: it applies as the tick's inputs do. Players, bots and AI issue the same orders, and an order names the units it goes to. The capability runs them: it asks `navigation` for a route, and starts the actions through the pipeline.
 
 - **Queues:** an order can wait behind the current ones (shift-click).
-- **Groups:** one order to many units moves them as a group, in a formation, and keeps them together; many units share one path search.
+- **Groups:** one command names the units it goes to, in increasing stable id, and each of them that its player controls carries it out; a command whose list is empty, out of order or names a unit twice is ignored, as one that does not decode is. A move to many units moves them as a group, which keeps its shape on a move away from it and shares one route search ([Groups](navigation.md#groups)); formations and flow fields come later.
+- **Out of sight.** An order's unit target is one its player's vision group sees as the order applies, every unit in a match with no `vision`; an order that aims at any other is ignored, so a stable id never tells a client what its group does not see. A target that leaves sight after the order applies follows its action's rules.
 - **Kept behind a block.** An order a tag blocks waits, and runs when the block ends ([Tags](stats.md#tags)).
 
 ### AI
