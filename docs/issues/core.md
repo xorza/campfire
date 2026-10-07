@@ -10,5 +10,3 @@ Design: [Capabilities](../design/04-capabilities/00-overview.md): the core under
 
 ## Ready
 
-- **Plan: S2.** `Grid::spans` takes a sight's rows one by one, each with a scalar root and two `i64` divisions by the cell, though the rows are independent and fit 64 bits: their arithmetic takes about 60 % of `fog/sight` ([SIMD](../design/11-simd.md)).
-

@@ -6,6 +6,8 @@ Design: [Navigation](../design/04-capabilities/navigation.md). Rules: [Issue log
 
 ## Research
 
+- `pathing_grid/one` moves by 8 % with where the linker places `Regions::label`: the same machine code at offset 32 of its 64-byte line takes 131.7 µs, and at offset 48 121.4 µs, as its instructions a cycle fall from 4.49 to 4.23. A change anywhere in the crate can move it.
+
 - Each creep of a wave's group asks for its own route, from nearly the same cell to the same lane end, so the 3v3's 24 creeps of a wave plan about four distinct routes six times each, up to the planner's work limit for a tick and into the next tick.
 
 ## Ready

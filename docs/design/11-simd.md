@@ -79,6 +79,8 @@ From the scratch kernels: `fog/sight` about 33 % faster, from its rows' 60 % at 
 
 **S1.** On one core of the Ryzen 7 6800U, criterion's median: `root/lanes` 3.00 µs against `root/narrow` 12.50 µs, the same 4,096 values of 1 to 64 bits, 0.73 ns a root against 3.05 ns, 4.2 times as fast; `root/floor` 21.52 µs against 21.49 µs before, unchanged. The bench's binary holds `vsqrtpd` and `vpmuludq` on `ymm` registers.
 
+**S2.** On the same core, against the code before S1: `fog/sight` 265.5 µs against 328.4 µs, 19 % faster, where the scratch kernels gave 33 %; `server_tick/mean_3v3` 878.7 ms a match against 908.8 ms, 146.4 µs a tick against 151.5 µs, 3.3 % faster. `pathing_grid/one` 131.7 µs against 121.4 µs, 8 % slower, all of it in `Regions::label`, which S2 does not change: its machine code is the same in both builds, byte for byte, but its place in its 64-byte line moved from offset 48 to 32, and the case's instructions a cycle fell from 4.49 to 4.23. The grid's rows take less than 1 % of that case, so the lanes stay ([navigation's issue log](../issues/navigation.md)). The capabilities' bench binary holds `vsqrtpd` and `vroundpd` on `ymm` registers.
+
 ## Tests
 
 - Each op against its scalar meaning, on each lane, at the edges of its domain.

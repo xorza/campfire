@@ -116,6 +116,69 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
 }
 
 #[test]
+fn the_rows_in_lanes_are_the_rows_one_by_one() {
+    // The 3v3's map, (−48, −68) to (48, 68), in the fog's 1 m cells and the pathing grid's half
+    // meters. Discs centered on and off the grid, on cell lines and between, of radii from 0 to
+    // the gate's last, within and strictly closer; and the gate's edges.
+    let bounds = Bounds::new([Num::int(-48), Num::int(-68)], [Num::int(48), Num::int(68)]).unwrap();
+    let mut state = 0x5EED_u64;
+    let mut next = move || {
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    };
+    for cell in [Num::ONE, Num::HALF] {
+        let grid = Grid::new(cell, bounds).unwrap();
+        let bits = cell.to_bits();
+        // A reach of 2·radius halves fits while 2·radius + 8·cell < 2³¹.
+        let widest = (1 << 30) - 4 * bits - 1;
+        let rows_of =
+            |radius: i64| grid.disc_rows(at(Num::ZERO, Num::ZERO), Num::from_bits(radius), false);
+        assert!(rows_of(widest).fit_lanes(bits));
+        assert!(!rows_of(widest + 1).fit_lanes(bits));
+        let runs = |rows: &Rows, lanes: bool| {
+            let mut runs = Vec::new();
+            let mut keep = |run: Range<usize>| runs.push(run);
+            if lanes {
+                grid.rows_in_lanes(rows, &mut keep);
+            } else {
+                grid.rows_one_by_one(rows, &mut keep);
+            }
+            runs
+        };
+        let span = 120 * Num::ONE.to_bits().cast_unsigned();
+        for case in 0..4000_u64 {
+            let mut point = || {
+                let along = (next() % span).cast_signed() - 60 * Num::ONE.to_bits();
+                // One case in three on a line between cells or through their centers.
+                if case % 3 == 0 {
+                    along - along % (bits / 2)
+                } else {
+                    along
+                }
+            };
+            let pos = at(Num::from_bits(point()), Num::from_bits(point()));
+            let radius = match case % 4 {
+                0 => widest - (next() % 4).cast_signed(),
+                1 => (next() % (4 * Num::ONE.to_bits().cast_unsigned())).cast_signed(),
+                _ => (next() % widest.cast_unsigned()).cast_signed(),
+            };
+            for strict in [false, true] {
+                let rows = grid.disc_rows(pos, Num::from_bits(radius), strict);
+                assert!(rows.fit_lanes(bits));
+                assert_eq!(
+                    runs(&rows, true),
+                    runs(&rows, false),
+                    "{pos:?} {radius} {strict}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
     // 1 m cells over (0, 0) to (4, 4), numbered 4 × row + column; points in halves of a meter.
     let bounds = Bounds::new([Num::ZERO; 2], [Num::int(4); 2]).unwrap();
