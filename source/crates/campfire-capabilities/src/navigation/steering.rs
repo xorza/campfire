@@ -220,7 +220,7 @@ mod tests {
         steering.read(&statics, [standing], []);
         let goal = at(64, 0);
         let mut route = Route::default();
-        route.ask(goal, Tick::new(0));
+        route.ask(goal, Tick::new(0), None);
         route.answer(&[goal], true);
         let steered = Steered {
             id,

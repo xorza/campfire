@@ -11,8 +11,9 @@ use crate::pointer::Pointer;
 
 /// Turns the player's clicks and keys into orders for their avatar: a right click on an enemy
 /// attacks it, and anywhere else walks there; Q, W, E and R cast the abilities of slots 0 to 3,
-/// at the unit under the cursor when there is one, and with Ctrl held learn their next rank. The
-/// sim ignores a target an ability does not take, so a key needs no knowledge of the ability.
+/// at the unit under the cursor when there is one, and with Ctrl held learn their next rank; S
+/// stops it. The sim ignores a target an ability does not take, so a key needs no knowledge of
+/// the ability.
 #[derive(Debug)]
 pub(crate) struct Orders;
 
@@ -20,10 +21,12 @@ pub(crate) struct Orders;
 const CAST_KEYS: [KeyCode; 4] = [KeyCode::KeyQ, KeyCode::KeyW, KeyCode::KeyE, KeyCode::KeyR];
 /// The keys that, held, make a cast key learn.
 const LEARN_KEYS: [KeyCode; 2] = [KeyCode::ControlLeft, KeyCode::ControlRight];
+/// The key that stops.
+const STOP_KEY: KeyCode = KeyCode::KeyS;
 
 impl Plugin for Orders {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (Orders::click, Orders::cast));
+        app.add_systems(Update, (Orders::click, Orders::cast, Orders::stop));
     }
 }
 
@@ -48,10 +51,7 @@ impl Orders {
                 Action::Move { x, z }
             }
         };
-        orders.push(Order {
-            unit: avatar.id,
-            action,
-        });
+        orders.push(Order::one(avatar.id, action));
     }
 
     fn cast(
@@ -69,10 +69,23 @@ impl Orders {
             }
             let under = pointer.ground().and_then(|point| pointer.unit_at(point));
             let target = under.map_or(ActionTarget::None, |unit| ActionTarget::Unit(unit.id));
-            orders.push(Order {
-                unit: avatar.id,
-                action: Orders::slot_action(slot, learn, target),
-            });
+            orders.push(Order::one(
+                avatar.id,
+                Orders::slot_action(slot, learn, target),
+            ));
+        }
+    }
+
+    fn stop(
+        keys: Res<'_, ButtonInput<KeyCode>>,
+        pointer: Pointer<'_, '_>,
+        mut orders: ResMut<'_, PendingOrders>,
+    ) {
+        if !keys.just_pressed(STOP_KEY) {
+            return;
+        }
+        if let Some(avatar) = pointer.own_avatar() {
+            orders.push(Order::one(avatar.id, Action::Stop));
         }
     }
 

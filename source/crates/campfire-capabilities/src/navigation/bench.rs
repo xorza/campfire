@@ -1,15 +1,20 @@
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
+use bevy_ecs::entity::Entity;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
-use campfire_sim::Position;
-use criterion::{Criterion, Throughput};
+use campfire_sim::{IdAllocator, Position};
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion, Throughput};
 
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::broadphase::internals::{scene, statics};
 use crate::navigation::collider::Collider;
+use crate::navigation::party::{Party, PartyKey};
 use crate::navigation::pathing_grid::PathingGrid;
+use crate::navigation::route_asks::{Member, RouteAsks};
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
@@ -100,7 +105,8 @@ pub(crate) fn pathing_grid(c: &mut Criterion) {
 /// end, between points drawn along each, around the scene's static bodies and across the walls
 /// that split it into two lanes and a jungle, on a grid of half-meter cells. Its throughput is
 /// the planner's units of work, which a tick's limit counts, so criterion's rate is the time of
-/// one.
+/// one. Then `ROUTES` units in a square of 6 m round the first route's start move to its goal,
+/// as one group, `group`, and each by itself, `group_alone`, timed for all of them.
 pub(crate) fn route_planner(c: &mut Criterion) {
     let span = Density::Spread.span();
     let cells = scene_cells(span);
@@ -152,7 +158,114 @@ pub(crate) fn route_planner(c: &mut Criterion) {
             }
         });
     });
+    let scene = GroupScene {
+        grid: &grid,
+        statics: &index,
+        walker,
+    };
+    scene.bench(&mut group, &mut planner, &routes);
     group.finish();
+}
+
+/// The walled scene of `route_planner`, for its routes as one group.
+#[derive(Debug, Clone, Copy)]
+struct GroupScene<'a> {
+    grid: &'a PathingGrid,
+    statics: &'a BodyIndex,
+    walker: Walker,
+}
+
+impl GroupScene<'_> {
+    /// Times `ROUTES` units 0.6 m apart in a square round the first of `routes`' starts moving to
+    /// its goal: as one group, tick after tick until each has its route, as the Move stage plans
+    /// a party, a last member left alone planning by itself; and each by itself.
+    fn bench(
+        self,
+        group: &mut BenchmarkGroup<'_, WallTime>,
+        planner: &mut RoutePlanner,
+        routes: &[[Position; 2]],
+    ) {
+        let [start, goal] = routes[0];
+        let side = ROUTES.isqrt();
+        let step = Num::int(3) / 5;
+        let offset = |at: usize| {
+            let from_middle = at.cast_signed() - (side / 2).cast_signed();
+            step * Num::from_int(i64::try_from(from_middle).unwrap()).unwrap()
+        };
+        let starts: Vec<Position> = (0..ROUTES)
+            .map(|at| {
+                let start = start.get();
+                let x = start.x + offset(at % side);
+                let z = start.z + offset(at / side);
+                Position::new(Vec3::new(x, start.y, z)).unwrap()
+            })
+            .collect();
+        let party = Party {
+            key: PartyKey::Order {
+                tick: Tick::new(0),
+                slot: PlayerSlot::new(0),
+                number: 0,
+            },
+            goal,
+        };
+        let mut ids = IdAllocator::default();
+        let members: Vec<Member> = starts
+            .iter()
+            .map(|&at| Member {
+                id: ids.allocate(),
+                entity: Entity::PLACEHOLDER,
+                at,
+                walker: self.walker,
+                goal,
+            })
+            .collect();
+        let walkable = Walkable {
+            clearance: self.grid.clearance(self.walker),
+            statics: self.statics,
+            short: None,
+        };
+        let mut asks = RouteAsks::default();
+        let mut waypoints = Vec::new();
+        group.throughput(Throughput::Elements(ROUTES as u64));
+        group.bench_function("group", |bench| {
+            bench.iter(|| {
+                let mut left = members.as_slice();
+                while let [first, rest @ ..] = left {
+                    planner.begin_tick();
+                    if rest.is_empty() {
+                        planner.plan(walkable, first.at, first.goal, &mut waypoints);
+                        black_box(&waypoints);
+                        break;
+                    }
+                    let mut answered = 0;
+                    let mut answer = |_: Entity, route: &[Position], _: bool| {
+                        black_box(route);
+                        answered += 1;
+                    };
+                    let members = left.iter().copied();
+                    let planning = asks.plan_group(
+                        self.grid,
+                        self.statics,
+                        planner,
+                        party,
+                        members,
+                        &mut answer,
+                    );
+                    black_box(planning);
+                    left = &left[answered..];
+                }
+            });
+        });
+        group.bench_function("group_alone", |bench| {
+            bench.iter(|| {
+                planner.begin_tick();
+                for &start in &starts {
+                    planner.plan(walkable, start, goal, &mut waypoints);
+                    black_box(&waypoints);
+                }
+            });
+        });
+    }
 }
 
 /// The static bodies of the spread scene's 1,000, one in four, by stable id.

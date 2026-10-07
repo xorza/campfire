@@ -337,13 +337,13 @@ fn run_and_replay_agree_on_every_tick() {
 
 /// The order that moves player `slot`'s hero to (`x`, `z`).
 fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
-    Order::payload(&[Order {
-        unit: MatchUnits::of(fixed).hero(slot),
-        action: Action::Move {
+    Order::payload(&[Order::one(
+        MatchUnits::of(fixed).hero(slot),
+        Action::Move {
             x: Num::int(x),
             z: Num::int(z),
         },
-    }])
+    )])
 }
 
 /// The hero standing at (`x`, `z`), with nowhere to walk.

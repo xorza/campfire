@@ -4,7 +4,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, Command, TickInput};
+use campfire_sim::{Capability, Command, IdAllocator, TickInput};
 use serde::Deserialize;
 
 use super::*;
@@ -20,7 +20,9 @@ use crate::items::item_book::ItemSpec;
 use crate::items::shop::ShopPlace;
 use crate::navigation::Navigation;
 use crate::navigation::path_walker::PathEnd;
+use crate::navigation::route_planner::RoutePlanner;
 use crate::navigation::walker::Walker;
+use crate::orders::order::Order;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::scripts::error::ApiError;
@@ -320,21 +322,23 @@ impl Match {
     }
 }
 
+/// A spawn group of a walker of its own, which shares a route with none.
+fn lone() -> StableId {
+    IdAllocator::default().allocate()
+}
+
 fn move_to(unit: StableId, x: i64, z: i64) -> Vec<u8> {
-    Order::payload(&[Order {
+    Order::payload(&[Order::one(
         unit,
-        action: Action::Move {
+        Action::Move {
             x: Num::int(x),
             z: Num::int(z),
         },
-    }])
+    )])
 }
 
 fn attack(unit: StableId, target: StableId) -> Vec<u8> {
-    Order::payload(&[Order {
-        unit,
-        action: Action::Attack { target },
-    }])
+    Order::payload(&[Order::one(unit, Action::Attack { target })])
 }
 
 /// A match and its two heroes.
@@ -393,13 +397,13 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     slots.grant(SlotKind::new(0), &[train], 1);
     let ordered = |game: &Match| game.slots(hero).in_progress();
     let slot = |slot| {
-        Order::payload(&[Order {
-            unit: hero,
-            action: Action::Slot {
+        Order::payload(&[Order::one(
+            hero,
+            Action::Slot {
                 slot,
                 target: ActionTarget::None,
             },
-        }])
+        )])
     };
     // The weapon's slot and a slot it does not have order nothing; the train's orders a train,
     // which no capability here starts.
@@ -428,32 +432,32 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     assert_eq!(game.destination(first), Some(at(0, 0, -5)));
 
     // Past the world's bound, which bounds a match without a map: it clamps to the edge.
-    let beyond = Order::payload(&[Order {
-        unit: first,
-        action: Action::Move {
+    let beyond = Order::payload(&[Order::one(
+        first,
+        Action::Move {
             x: Position::BOUND + Num::EPSILON,
             z: -Num::int(1),
         },
-    }]);
-    let edge = Order::payload(&[Order {
-        unit: second,
-        action: Action::Move {
+    )]);
+    let edge = Order::payload(&[Order::one(
+        second,
+        Action::Move {
             x: Position::BOUND,
             z: Num::ZERO,
         },
-    }]);
+    )]);
     let not_an_order = Command::encode(&[Command {
         capability: Order::CAPABILITY,
         body: b"not an order",
     }]);
     // A valid order, sent to a capability the mode did not declare.
-    let order = Order {
-        unit: first,
-        action: Action::Move {
+    let order = Order::one(
+        first,
+        Action::Move {
             x: Num::int(9),
             z: Num::int(9),
         },
-    }
+    )
     .encode();
     let undeclared = Command::encode(&[Command {
         capability: Capability::Character,
@@ -911,7 +915,7 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
         game.arm(combatant(100, 1, 1, 5, 0), Team::new(0)),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
-        PathWalker::start(PathEnd::Start),
+        PathWalker::start(PathEnd::Start, lone()),
     );
     let chaser = game.sim.spawn(at(0, 0, 0), walker);
     let prey = game.still(Team::new(1), at(1, 0, 3), dummy(100));
@@ -964,7 +968,7 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
         game.arm(combatant(100, 1, 1, 5, 0), Team::new(0)),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
-        PathWalker::start(PathEnd::Start),
+        PathWalker::start(PathEnd::Start, lone()),
     );
     let walker = game.sim.spawn(waypoints[0], walker);
     game.run_until(3);
@@ -1069,7 +1073,7 @@ fn on_think(ctx, unit) {
         game.arm(dummy(10), Team::new(0)),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
-        PathWalker::start(PathEnd::Start),
+        PathWalker::start(PathEnd::Start, lone()),
     );
     let walker = game.sim.spawn(at(0, 0, 0), parts);
     let post = game.arm(standing(), Team::new(0));
@@ -1121,7 +1125,7 @@ fn on_think(ctx, unit) {
         game.arm(dummy(10), Team::new(0)),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
-        PathWalker::start(PathEnd::Start),
+        PathWalker::start(PathEnd::Start, lone()),
         Owner::new(PlayerSlot::new(0)),
     );
     let led = game.sim.spawn(at(0, 0, 0), parts);
@@ -1139,7 +1143,7 @@ fn a_walker_follows_its_path_in_its_direction() {
             game.arm(dummy(10), team),
             Navigation::walker(meter()),
             OnPath::new(PathId::new(0)),
-            PathWalker::start(direction),
+            PathWalker::start(direction, lone()),
         )
     };
     let forward = path_walker(&mut game, Team::new(0), PathEnd::Start);
@@ -1266,7 +1270,7 @@ impl Match {
 fn trades(unit: StableId, actions: &[Action]) -> Vec<u8> {
     let orders: Vec<Order> = actions
         .iter()
-        .map(|&action| Order { unit, action })
+        .map(|&action| Order::one(unit, action))
         .collect();
     Order::payload(&orders)
 }
@@ -1391,4 +1395,115 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         (game.gold(), game.carried(other)),
         (300, vec![None, None, None])
     );
+}
+
+/// The payload of an order of `action` to `units`, in the order given, as a client may send it.
+fn order_to(units: &[StableId], action: Action) -> Vec<u8> {
+    let body = postcard::to_allocvec(&(units, action)).unwrap();
+    Command::encode(&[Command {
+        capability: Order::CAPABILITY,
+        body: &body,
+    }])
+}
+
+#[test]
+fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_search() {
+    // Player 0's walkers at (1, 2), (4, 6) and (2, 3), player 1's at (3, 3), and player 0's unit
+    // that does not walk at (0, 0), all named by one order, on a pathing grid with no wall. The
+    // box of player 0's walkers runs from (1, 2) to (4, 6), centre (2.5, 4). A move to (20, 10)
+    // sends each to its offset from the centre added to it: (18.5, 8), (21.5, 12) and (19.5, 9);
+    // a move to (3, 4), inside the box, sends each to (3, 4) itself. The others stay. The three
+    // plan one search, where three orders of one unit each plan three.
+    let half =
+        |x: i64, z: i64| Position::new(Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)).unwrap();
+    let away = [half(37, 16), half(43, 24), half(39, 18)];
+    for (goal, goals, one_each) in [
+        ((20, 10), away, false),
+        ((3, 4), [at(3, 0, 4); 3], false),
+        ((20, 10), [at(20, 0, 10); 3], true),
+    ] {
+        let mut game = Match::new();
+        let bounds = Bounds::new([Num::int(-30); 2], [Num::int(30); 2]).unwrap();
+        let walker = Walker {
+            layer: Layer::FIRST,
+            radius: Num::ZERO,
+        };
+        let grid = Grid::new(Num::ONE, bounds).unwrap();
+        Navigation::load_pathing(&mut game.sim.world, grid, &[], vec![walker]);
+        let walkers = [at(1, 0, 2), at(4, 0, 6), at(2, 0, 3)]
+            .map(|at| game.hero(0, Team::new(0), at, dummy(10)));
+        let other = game.hero(1, Team::new(1), at(3, 0, 3), dummy(10));
+        let still = game.still(Team::new(0), at(0, 0, 0), dummy(10));
+        game.sim.insert(still, Owner::new(PlayerSlot::new(0)));
+        let action = Action::Move {
+            x: Num::int(goal.0),
+            z: Num::int(goal.1),
+        };
+        let payload = if one_each {
+            let orders = walkers.map(|unit| Order::one(unit, action));
+            Order::payload(&orders)
+        } else {
+            order_to(&[walkers.as_slice(), &[other, still]].concat(), action)
+        };
+        game.tick(&[(0, &payload)]);
+        assert_eq!(
+            walkers.map(|id| game.destination(id)),
+            goals.map(Some),
+            "{goal:?}"
+        );
+        assert_eq!(game.destination(other), None);
+        let searches = game.sim.world.resource::<RoutePlanner>().searches();
+        assert_eq!(searches, if one_each { 3 } else { 1 }, "{goal:?}");
+    }
+}
+
+#[test]
+fn a_list_of_units_out_of_order_or_twice_orders_nothing() {
+    let TwoHeroes {
+        mut game,
+        heroes: [first, second],
+    } = two_heroes();
+    let to = Action::Move {
+        x: Num::int(0),
+        z: Num::int(5),
+    };
+    for units in [vec![], vec![second, first], vec![first, first]] {
+        game.tick(&[(0, &order_to(&units, to))]);
+        assert_eq!(game.destination(first), None, "{units:?}");
+    }
+    game.tick(&[(0, &order_to(&[first, second], to))]);
+    assert_eq!(game.destination(first), Some(at(0, 0, 5)));
+}
+
+#[test]
+fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
+    // A walker on its path, with an attack target and an attack in its windup, stops: it drops
+    // the target, the attack and the destination, and leaves the path; the stop of another
+    // player's unit does nothing.
+    let waypoints = [at(0, 0, 0), at(8, 0, 0)];
+    let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
+    let parts = (
+        game.arm(fighter_stats(), Team::new(0)),
+        Navigation::walker(meter()),
+        OnPath::new(PathId::new(0)),
+        PathWalker::start(PathEnd::Start, lone()),
+        Owner::new(PlayerSlot::new(0)),
+    );
+    let walker = game.sim.spawn(at(0, 0, 0), parts);
+    let target = game.still(Team::new(1), at(1, 0, 0), dummy(1000));
+    game.set_target(walker, Some(target));
+    game.tick(&[]);
+    assert!(game.strikes_at(walker).is_some());
+    let stop = order_to(&[walker], Action::Stop);
+    game.tick(&[(1, &stop)]);
+    assert!(game.strikes_at(walker).is_some());
+    game.tick(&[(0, &stop)]);
+    assert_eq!(game.target(walker), None);
+    assert_eq!(game.slots(walker).in_progress(), None);
+    assert_eq!(game.destination(walker), None);
+    assert!(game.sim.try_get::<PathWalker>(walker).unwrap().left());
+    let place = game.position(walker);
+    game.tick(&[]);
+    assert_eq!(game.position(walker), place);
+    assert_eq!(game.target(walker), None);
 }

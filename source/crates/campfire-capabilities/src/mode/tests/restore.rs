@@ -132,7 +132,7 @@ fn a_restore_check_keeps_each_time_within_the_limit() {
         attackers.record(unit, at, world.resource::<EntityIndex>());
         assert_eq!(attackers.check(world, grunt), holds, "{at}");
         let mut route = world.get::<Route>(grunt).unwrap().clone();
-        route.ask(*world.get::<Position>(grunt).unwrap(), at);
+        route.ask(*world.get::<Position>(grunt).unwrap(), at, None);
         assert_eq!(route.check(world, grunt), holds, "{at}");
     }
 }

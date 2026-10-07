@@ -8,7 +8,10 @@ use crate::actions::action_slots::ActionSlots;
 
 use crate::actions::action_target::ActionTarget;
 use crate::navigation::destination::Destination;
+use crate::navigation::party::Party;
 use crate::navigation::path_walker::PathWalker;
+use crate::navigation::progress::Progress;
+use crate::navigation::route::Route;
 use crate::orders::Orders;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
@@ -18,8 +21,13 @@ use crate::values::bounds::Bounds;
 /// bot's input, or an order an AI call queued for the unit that thinks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum UnitOrder {
-    /// Drop the target, and walk to the ground point `x`, `z` off any path.
-    Move { x: Num, z: Num },
+    /// Drop the target, and walk to the ground point `x`, `z` off any path, as one of `party`
+    /// when a group moves.
+    Move {
+        x: Num,
+        z: Num,
+        party: Option<Party>,
+    },
     /// Attack `target`, a living enemy a weapon of the unit selects.
     Attack { target: StableId },
     /// Start the action in `slot`, a cast or a train, at `target`, in place of an action not
@@ -29,10 +37,12 @@ pub(crate) enum UnitOrder {
     FollowPath,
     /// Drop the target, walk to the spawn place off any path, and take no order until there.
     Reset,
+    /// End what is under way, drop the target and the destination, and stand off any path.
+    Stop,
 }
 
 /// The parts of a unit that an order reads and changes: where it stands and where it spawned,
-/// its actions, the path it walks and where it walks to.
+/// its actions, the path it walks, where it walks to, and its route there.
 #[derive(Debug)]
 pub(crate) struct OrderedUnit<'a> {
     pub(crate) at: Position,
@@ -40,12 +50,14 @@ pub(crate) struct OrderedUnit<'a> {
     pub(crate) slots: Option<Mut<'a, ActionSlots>>,
     pub(crate) walker: Option<Mut<'a, PathWalker>>,
     pub(crate) destination: Option<Mut<'a, Destination>>,
+    pub(crate) route: Option<Mut<'a, Route>>,
+    pub(crate) progress: Option<Mut<'a, Progress>>,
 }
 
 /// For the unit that thinks in the call, which checked the order against the units as the phase
 /// began; no unit dies within Think.
 impl Effect for UnitOrder {
-    fn apply(self, world: &mut World, frame: &mut Frame, _: Tick) {
+    fn apply(self, world: &mut World, frame: &mut Frame, now: Tick) {
         let unit = frame
             .acting()
             .expect("an order comes from the unit that thinks");
@@ -53,26 +65,30 @@ impl Effect for UnitOrder {
             .resource::<EntityIndex>()
             .get(unit)
             .expect("a unit that thinks lives");
-        Orders::apply_order(world, entity, self);
+        Orders::apply_order(world, entity, self, now);
     }
 }
 
 impl UnitOrder {
-    /// Applies the order, which its source checked, to `unit`, within `bounds`: every order of
-    /// every source applies here. A move or a reset drops the unit's target and leaves its path
-    /// until it is told to follow it again; a move's point clamps to the bounds, and a slot's
-    /// point to the ground within them, at the unit's height. An attack on another target cancels
-    /// one in its windup; a slot's cast or train replaces an action not resolved yet, or releases
-    /// the charge of its own slot. Every order cuts a channel and ends a cast that walks in range,
-    /// with its walk, and an attack cancels a charge.
+    /// Applies the order, which its source checked, to `unit`, within `bounds`, in `now`: every
+    /// order of every source applies here. A move or a reset drops the unit's target and leaves
+    /// its path until it is told to follow it again; a move's point clamps to the bounds, and a
+    /// slot's point to the ground within them, at the unit's height. A group's move asks for its
+    /// route at once, as one of its party. An attack on another target cancels one in its windup;
+    /// a slot's cast or train replaces an action not resolved yet, or releases the charge of its
+    /// own slot. A stop ends what is under way, with nothing spent, drops the target and the
+    /// destination, and leaves the path; a queue of trains stays. Every order cuts a channel and
+    /// ends a cast that walks in range, with its walk, and an attack cancels a charge.
     /// Whether the unit now resets, and takes no order until it is home.
-    pub(crate) fn apply(self, unit: OrderedUnit<'_>, bounds: &Bounds) -> bool {
+    pub(crate) fn apply(self, unit: OrderedUnit<'_>, bounds: &Bounds, now: Tick) -> bool {
         let OrderedUnit {
             at,
             spawn,
             mut slots,
             walker,
             mut destination,
+            route,
+            progress,
         } = unit;
         if let Some(slots) = &mut slots {
             slots.cut_channel();
@@ -114,8 +130,14 @@ impl UnitOrder {
                 }
                 return false;
             }
-            UnitOrder::Move { x, z } => ground(x, z),
-            UnitOrder::Reset => spawn.expect("the call checked the spawn place"),
+            UnitOrder::Move { x, z, .. } => Some(ground(x, z)),
+            UnitOrder::Reset => Some(spawn.expect("the call checked the spawn place")),
+            UnitOrder::Stop => {
+                if let Some(slots) = &mut slots {
+                    slots.stop();
+                }
+                None
+            }
         };
         if let Some(slots) = &mut slots {
             slots.set_attack_target(None);
@@ -124,7 +146,14 @@ impl UnitOrder {
             walker.leave();
         }
         if let Some(mut destination) = destination {
-            destination.set(Some(to));
+            destination.set(to);
+        }
+        if let (UnitOrder::Move { party, .. }, Some(to), Some(mut route), Some(mut progress)) =
+            (self, to, route, progress)
+            && party.is_some()
+        {
+            route.ask(to, now, party);
+            progress.restart();
         }
         self == UnitOrder::Reset
     }

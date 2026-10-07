@@ -944,12 +944,12 @@ fn every_navigation_type_is_state() {
     walk.sim.insert(
         unit,
         (
-            PathWalker::start(PathEnd::Start),
+            PathWalker::start(PathEnd::Start, unit),
             OnPath::new(PathId::new(0)),
         ),
     );
     let mut route = walk.sim.world.get_mut::<Route>(entity).unwrap();
-    route.ask(at(3, 0, 4), Tick::new(2));
+    route.ask(at(3, 0, 4), Tick::new(2), None);
     let lane = || Paths::new([("lane", &[at(0, 0, 0), at(0, 0, 5)][..])]);
     walk.sim.world.insert_resource(lane());
     // A restore loads the map first, as the packages give it.
@@ -960,3 +960,4 @@ fn every_navigation_type_is_state() {
 
 mod boxes;
 mod forced;
+mod groups;

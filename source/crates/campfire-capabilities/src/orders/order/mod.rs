@@ -6,19 +6,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::actions::action_target::ActionTarget;
 use crate::items::item_id::ItemId;
+use crate::orders::order::order_units::OrderUnits;
 
-/// An order to one unit: the body of an `orders` command. Players, bots and AI issue the same
-/// orders; an order to a group is one command per unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) mod order_units;
+
+/// An order to the units it names: the body of an `orders` command. Players, bots and AI issue
+/// the same orders, and an order to a group is one command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Order {
-    pub unit: StableId,
+    pub units: OrderUnits,
     pub action: Action,
 }
 
-/// What an order tells its unit to do.
+/// What an order tells its units to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
-    /// Walk to a point on the ground plane.
+    /// Walk to a point on the ground plane; a group keeps its shape on a move away from it.
     Move { x: Num, z: Num },
     /// Attack a unit until it dies or another order comes.
     Attack { target: StableId },
@@ -32,20 +35,66 @@ pub enum Action {
     Sell { slot: u8 },
     /// Swap inventory slots `from` and `to`.
     Swap { from: u8, to: u8 },
+    /// End what is under way, drop the target and the destination, and stand.
+    Stop,
 }
 
 impl Order {
     /// The capability that orders go to.
     pub const CAPABILITY: Capability = Capability::Orders;
 
+    /// The order of `action` to `unit` alone.
+    pub const fn one(unit: StableId, action: Action) -> Order {
+        Order {
+            units: OrderUnits::one(unit),
+            action,
+        }
+    }
+
     pub fn encode(&self) -> Vec<u8> {
         postcard::to_allocvec(self).expect("an order always encodes")
     }
 
-    /// `None` unless the body is exactly one order: a client can send any bytes.
+    /// `None` unless the body is exactly one order, to units in increasing stable id, each once:
+    /// a client can send any bytes.
     pub fn decode(body: &[u8]) -> Option<Order> {
-        let (order, rest) = postcard::take_from_bytes(body).ok()?;
-        rest.is_empty().then_some(order)
+        let mut units = Vec::new();
+        let action = Order::decode_into(body, &mut units)?;
+        let units = OrderUnits::new(&units).expect("a decoded order's units rise");
+        Some(Order { units, action })
+    }
+
+    /// Appends the units of the order `body` holds to `units`, and gives its action; `None`, with
+    /// `units` as it was, unless the body is exactly one order, to at least one unit, in
+    /// increasing stable id, each once.
+    pub(crate) fn decode_into(body: &[u8], units: &mut Vec<StableId>) -> Option<Action> {
+        let start = units.len();
+        let action = Order::read(body, units);
+        if action.is_none() {
+            units.truncate(start);
+        }
+        action
+    }
+
+    fn read(body: &[u8], units: &mut Vec<StableId>) -> Option<Action> {
+        let (count, mut rest) = postcard::take_from_bytes::<usize>(body).ok()?;
+        // Each id takes a byte at least, so a count past the bytes left is a flaw, found before
+        // it reserves anything.
+        if count == 0 || count > rest.len() {
+            return None;
+        }
+        let start = units.len();
+        units.reserve(count);
+        for _ in 0..count {
+            let (unit, after) = postcard::take_from_bytes::<StableId>(rest).ok()?;
+            units.push(unit);
+            rest = after;
+        }
+        if !OrderUnits::rises(&units[start..]) {
+            return None;
+        }
+        let (action, rest) = postcard::take_from_bytes::<Action>(rest).ok()?;
+        rest.is_empty().then_some(action)
     }
 
     /// A payload of `orders` alone, one command each.

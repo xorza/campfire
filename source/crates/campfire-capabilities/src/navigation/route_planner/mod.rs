@@ -1,7 +1,5 @@
-use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use campfire_common::Tick;
-use campfire_sim::{Position, StableId};
+use campfire_sim::Position;
 
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::Clearance;
@@ -32,7 +30,7 @@ pub(crate) struct RoutePlanner {
     /// Each reached cell's cost from the start, and the cell it was reached from.
     costs: Vec<u32>,
     came_from: Vec<u32>,
-    /// The number of routes planned.
+    /// The number of searches run.
     routes: u64,
     open: OpenCells,
     /// The cells of the route, the last first.
@@ -69,15 +67,6 @@ pub(crate) struct Short<'a> {
 pub(crate) struct Window {
     low: [usize; 2],
     high: [usize; 2],
-}
-
-/// A walker whose route waits for the planner, in the order routes are planned: by the tick it
-/// asked in, then by stable id.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Waiting {
-    pub(crate) tick: Tick,
-    pub(crate) id: StableId,
-    pub(crate) entity: Entity,
 }
 
 /// One search's target, its column and row, and its marks.
@@ -306,6 +295,15 @@ impl RoutePlanner {
             work: work + expanded,
             reached,
         }
+    }
+
+    /// Whether a walker on `walkable` goes along `segment` with nothing in its way, as a route's
+    /// smoothing tests a line; the test's work counts against the tick's.
+    pub(crate) fn sees(&mut self, walkable: Walkable<'_>, segment: Segment) -> bool {
+        let mut work = 1;
+        let blocked = walkable.blocks_counting(segment, &mut work);
+        self.spent += u64::from(work);
+        !blocked
     }
 
     /// Writes into `waypoints` the route's cells from `start` to `last`, at its height, keeping
@@ -542,6 +540,18 @@ impl RoutePlanner {
 
     fn number(cell: usize) -> u32 {
         u32::try_from(cell).expect("a grid has at most 2²² cells")
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::navigation::route_planner::RoutePlanner;
+
+    impl RoutePlanner {
+        /// The searches run so far.
+        pub(crate) const fn searches(&self) -> u64 {
+            self.routes
+        }
     }
 }
 

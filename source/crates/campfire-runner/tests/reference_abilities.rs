@@ -110,18 +110,12 @@ fn arm(arena: &mut Arena, unit: StableId, damage: i64, period: u64) {
 }
 
 const fn attack(unit: StableId, target: StableId) -> Order {
-    Order {
-        unit,
-        action: Action::Attack { target },
-    }
+    Order::one(unit, Action::Attack { target })
 }
 
 /// Player 0's order that `unit` casts the action in its slot 0 at `target`.
 const fn cast(unit: StableId, target: ActionTarget) -> Order {
-    Order {
-        unit,
-        action: Action::Slot { slot: 0, target },
-    }
+    Order::one(unit, Action::Slot { slot: 0, target })
 }
 
 /// Player 0's unit with `action` at `rank` in its one slot, and `mana` and `energy`.

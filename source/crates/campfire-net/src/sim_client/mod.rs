@@ -520,10 +520,7 @@ fn send_orders(
         }
         if let Ok(&unit) = avatar.single() {
             for scripted in bot.due_orders(stamp) {
-                pending.push(Order {
-                    unit,
-                    action: scripted.action,
-                });
+                pending.push(Order::one(unit, scripted.action));
             }
         }
     }
@@ -537,8 +534,10 @@ fn send_orders(
                     order.write_payload(body, out);
                 });
                 if !kept {
+                    let units = order.units.get();
                     OrderDropped {
-                        unit: order.unit,
+                        unit: units[0],
+                        units: units.len(),
                         action: format!("{:?}", order.action),
                     }
                     .log();

@@ -3,11 +3,12 @@ use campfire_sim::StableId;
 use serde::Deserialize;
 use tracing::warn;
 
-/// The client dropped an order to `unit` whose payload passes the session's max length; `action`
-/// is the order's action, as its `Debug` writes it.
+/// The client dropped an order to `units` units, the first of them `unit`, whose payload passes
+/// the session's max length; `action` is the order's action, as its `Debug` writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct OrderDropped {
     pub unit: StableId,
+    pub units: usize,
     pub action: String,
 }
 
@@ -17,6 +18,7 @@ impl LogEvent for OrderDropped {
     fn log(&self) {
         warn!(
             unit = self.unit.get(),
+            units = self.units,
             action = %self.action,
             "{}",
             Self::MESSAGE
@@ -35,6 +37,7 @@ mod tests {
     fn the_event_reads_back_what_it_logs() {
         round_trip(&OrderDropped {
             unit: IdAllocator::default().allocate(),
+            units: 3,
             action: "Stop".to_owned(),
         });
     }

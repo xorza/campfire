@@ -16,6 +16,7 @@ Units that take orders: move, attack, an action (by its id, with a target), stop
 
 - **Queues:** an order can wait behind the current ones (shift-click).
 - **Groups:** one command names the units it goes to, in increasing stable id, and each of them that its player controls carries it out; a command whose list is empty, out of order or names a unit twice is ignored, as one that does not decode is. A move to many units moves them as a group, which keeps its shape on a move away from it and shares one route search ([Groups](navigation.md#groups)); formations and flow fields come later.
+- **Stop:** a unit ends what it has under way, an attack, a cast in its windup or walking in range, or a charge, with nothing spent, cuts a channel, drops its target and its destination, and leaves its path, so it stands; a queue of trains stays.
 - **Out of sight.** An order's unit target is one its player's vision group sees as the order applies, every unit in a match with no `vision`; an order that aims at any other is ignored, so a stable id never tells a client what its group does not see. A target that leaves sight after the order applies follows its action's rules.
 - **Kept behind a block.** An order a tag blocks waits, and runs when the block ends ([Tags](stats.md#tags)).
 

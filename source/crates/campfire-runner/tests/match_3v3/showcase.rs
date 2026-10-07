@@ -272,8 +272,9 @@ pub(crate) fn assert_casts(reference: &Reference3v3, showcase: &Showcase, world:
     // hero walks into range first: the item actives in slot 7, and the abilities in slots 0 to 3.
     // Cyclone, Gale's first, charges as its first cast starts and starts its cooldown as the
     // second releases it; the toggles, Dread and Chill Arrows, start as they turn on; Night Step
-    // spends a charge. Kensho walks to Cinder for Flicker Strike, and Cinder to Veil for
-    // Wildfire.
+    // spends a charge. Kensho walks to Cinder for Flicker Strike, Cinder to Veil for Wildfire,
+    // and Rime toward (0, 10) for Snow Owl, whose first rank, all her level 6 gives, reaches 25 m
+    // of the 30.
     let expected = [
         (0, 2, INVENTORY, false),
         (7, 5, 0, false),
@@ -295,7 +296,7 @@ pub(crate) fn assert_casts(reference: &Reference3v3, showcase: &Showcase, world:
         (26, 3, 1, false),
         (27, 0, 2, true),
         (30, 2, 0, false),
-        (31, 4, 2, false),
+        (31, 4, 2, true),
         (32, 3, 2, false),
         (33, 2, 3, false),
         (34, 0, 3, false),

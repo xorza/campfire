@@ -287,7 +287,7 @@ impl Mode {
                     path,
                     from: Some(from),
                 }) => {
-                    let walker = (OnPath::new(path), PathWalker::start(from));
+                    let walker = (OnPath::new(path), PathWalker::start(from, at.id));
                     book.spawn(world, at, walker)
                 }
             };

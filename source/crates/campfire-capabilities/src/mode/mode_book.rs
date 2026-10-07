@@ -256,7 +256,7 @@ impl ModeBook {
     }
 
     /// Spawns `units` of `team`, each a unit type with the id a call took for it, in order at the
-    /// end `from` of `path`, walking it from there.
+    /// end `from` of `path`, walking it from there as one spawn group.
     pub(crate) fn spawn_group(
         &self,
         world: &mut World,
@@ -269,8 +269,11 @@ impl ModeBook {
             .resource::<Paths>()
             .waypoint(path, 0, from)
             .expect("a path has a waypoint");
+        let Some(first) = units.first() else {
+            return;
+        };
         for &GroupUnit { unit_type, id } in units {
-            let walker = (OnPath::new(path), PathWalker::start(from));
+            let walker = (OnPath::new(path), PathWalker::start(from, first.id));
             let at = SpawnAt {
                 id,
                 unit_type,

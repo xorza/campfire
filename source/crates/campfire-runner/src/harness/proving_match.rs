@@ -173,7 +173,7 @@ impl Plan for ProvingPlan {
                 },
             ),
         };
-        Order { unit, action }
+        Order::one(unit, action)
     }
 }
 

@@ -408,7 +408,7 @@ impl Plan for ReferencePlan {
             ReferencePlan::Sell { slot } => Action::Sell { slot },
             ReferencePlan::Swap { from, to } => Action::Swap { from, to },
         };
-        Order { unit: hero, action }
+        Order::one(hero, action)
     }
 }
 

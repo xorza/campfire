@@ -155,10 +155,7 @@ impl BotDriver {
                     .log();
                     continue;
                 };
-                let order = Order {
-                    unit,
-                    action: scripted.action,
-                };
+                let order = Order::one(unit, scripted.action);
                 let start = self.payloads.len();
                 order.write_payload(&mut self.body, &mut self.payloads);
                 self.waiting.push(Waiting {

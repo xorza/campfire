@@ -48,7 +48,11 @@ impl OrdersApi {
             ),
             |ctx: &mut Ctx, unit: Unit, to: Position| {
                 let to = to.get();
-                OrdersApi::order(ctx, &unit, UnitOrder::Move { x: to.x, z: to.z })
+                OrdersApi::order(ctx, &unit, UnitOrder::Move {
+                        x: to.x,
+                        z: to.z,
+                        party: None,
+                    })
             },
         )
         .bind(

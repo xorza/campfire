@@ -42,10 +42,7 @@ impl Progress {
 
 /// Player 0 sends `action` for the walker, stamped for `tick`.
 fn order(fixed: &mut FixedMatch, walker: StableId, tick: u64, action: Action) {
-    let payload = Order::payload(&[Order {
-        unit: walker,
-        action,
-    }]);
+    let payload = Order::payload(&[Order::one(walker, action)]);
     fixed.send(0, Tick::new(tick), &payload);
 }
 

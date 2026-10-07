@@ -183,10 +183,7 @@ impl Carrier {
     fn order(&mut self, actions: &[Action]) {
         let orders: Vec<Order> = actions
             .iter()
-            .map(|&action| Order {
-                unit: self.unit,
-                action,
-            })
+            .map(|&action| Order::one(self.unit, action))
             .collect();
         let payload = Order::payload(&orders);
         self.sim.world.resource_mut::<TickInputs>().push(TickInput {

@@ -1133,10 +1133,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     let game = &mut reaching.game;
     let far = game.spawn(1, ground(Num::ZERO, Num::int(30)), ());
     let send = |game: &mut Match, action| {
-        let payload = Order::payload(&[Order {
-            unit: mover,
-            action,
-        }]);
+        let payload = Order::payload(&[Order::one(mover, action)]);
         game.sim.world.resource_mut::<TickInputs>().push(TickInput {
             slot: PlayerSlot::new(0),
             payload: &payload,
@@ -2515,10 +2512,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let send = |game: &mut Match, slot: u32, actions: &[Action]| {
         let orders: Vec<_> = actions
             .iter()
-            .map(|&action| Order {
-                unit: caster,
-                action,
-            })
+            .map(|&action| Order::one(caster, action))
             .collect();
         let payload = Order::payload(&orders);
         game.sim.world.resource_mut::<TickInputs>().push(TickInput {

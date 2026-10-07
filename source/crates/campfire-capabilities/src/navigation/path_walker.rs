@@ -1,14 +1,15 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::SimComponent;
+use campfire_sim::{SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::values::engine_enum::EngineEnum;
 use crate::values::script_enum::ScriptEnum;
 
 /// A unit walking the path its `OnPath` names, such as a creep: it walks to the path's waypoints
-/// from the end it starts at while it has no other order, and stays at the last.
+/// from the end it starts at while it has no other order, and stays at the last. It keeps the
+/// spawn group it came from, whose units on their path share their route searches.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PathWalker {
     from: PathEnd,
@@ -16,6 +17,8 @@ pub struct PathWalker {
     next: u32,
     /// Whether it left the path for a place it was ordered to, until it is told to walk it again.
     left: bool,
+    /// The stable id of its spawn group's first unit; a placed unit's own.
+    group: StableId,
 }
 
 /// The end of a path a unit walks it from, as a placed unit's or a spawn group's `from` names it:
@@ -42,17 +45,23 @@ impl ScriptEnum for PathEnd {
 }
 
 impl PathWalker {
-    /// A walker at the end `from` of its path, bound for its second waypoint from there.
-    pub const fn start(from: PathEnd) -> PathWalker {
+    /// A walker of `group` at the end `from` of its path, bound for its second waypoint from
+    /// there.
+    pub const fn start(from: PathEnd, group: StableId) -> PathWalker {
         PathWalker {
             from,
             next: 1,
             left: false,
+            group,
         }
     }
 
     pub const fn walks_from(self) -> PathEnd {
         self.from
+    }
+
+    pub(crate) const fn group(self) -> StableId {
+        self.group
     }
 
     pub const fn next(self) -> u32 {

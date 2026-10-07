@@ -632,7 +632,7 @@ impl InProcessMatch {
         self.clients[client]
             .world_mut()
             .resource_mut::<PendingOrders>()
-            .push(Order { unit, action });
+            .push(Order::one(unit, action));
     }
 
     /// Makes `client` play `script`, as a bot does.

@@ -7,12 +7,13 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::navigation::destination::Destination;
+use crate::navigation::party::Party;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::progress::Progress;
 
-/// A walker's long route to its destination: the goal it serves, with the tick it asked the
-/// planner for a route there while it waits for one, and the waypoints of the route planned last,
-/// the next one first among those left. A unit with no destination has no goal, and so no ask.
+/// A walker's long route to its destination: the goal it serves, with its ask while it waits for
+/// the planner, and the waypoints of the route planned last, the next one first among those left.
+/// A unit with no destination has no goal, and so no ask.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Route {
     goal: Option<Goal>,
@@ -22,11 +23,19 @@ pub struct Route {
     reached: bool,
 }
 
-/// Where a route goes, and the tick it asked for a route there while it waits for one.
+/// Where a route goes, and its ask while it waits for one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct Goal {
     at: Position,
-    asked: Option<Tick>,
+    asked: Option<Ask>,
+}
+
+/// An ask for a route: the tick it was first asked in, and the party whose route search it
+/// shares, if any.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+struct Ask {
+    tick: Tick,
+    party: Option<Party>,
 }
 
 impl Route {
@@ -35,7 +44,14 @@ impl Route {
     }
 
     pub(crate) fn asked(&self) -> Option<Tick> {
-        self.goal.and_then(|goal| goal.asked)
+        self.goal.and_then(|goal| goal.asked).map(|ask| ask.tick)
+    }
+
+    /// The party whose route search the waiting ask shares.
+    pub(crate) fn party(&self) -> Option<Party> {
+        self.goal
+            .and_then(|goal| goal.asked)
+            .and_then(|ask| ask.party)
     }
 
     pub(crate) const fn reached(&self) -> bool {
@@ -55,14 +71,15 @@ impl Route {
         self.goal() == Some(goal) && self.arrived_short()
     }
 
-    /// Asks the planner in `tick` for a route to `goal`; the walker keeps to the route it has
-    /// until the planner answers. An ask while one waits changes the goal and keeps the first
-    /// tick, so a walker whose goal moves each tick keeps its place among the routes that wait.
-    pub(crate) fn ask(&mut self, goal: Position, tick: Tick) {
-        let asked = self.asked().unwrap_or(tick);
+    /// Asks the planner in `tick` for a route to `goal`, as one of `party` when it has one; the
+    /// walker keeps to the route it has until the planner answers. An ask while one waits changes
+    /// the goal and the party and keeps the first tick, so a walker whose goal moves each tick
+    /// keeps its place among the routes that wait.
+    pub(crate) fn ask(&mut self, goal: Position, tick: Tick, party: Option<Party>) {
+        let tick = self.asked().unwrap_or(tick);
         self.goal = Some(Goal {
             at: goal,
-            asked: Some(asked),
+            asked: Some(Ask { tick, party }),
         });
     }
 
@@ -75,7 +92,7 @@ impl Route {
         tick: Tick,
     ) {
         if let Some(goal) = destination.get() {
-            self.ask(goal, tick);
+            self.ask(goal, tick, None);
             progress.restart();
         }
     }

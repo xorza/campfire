@@ -99,6 +99,7 @@ pub use crate::navigation::walker::Walker;
 pub use crate::orders::Orders;
 pub use crate::orders::error::AiError;
 pub use crate::orders::learning::Learning;
+pub use crate::orders::order::order_units::OrderUnits;
 pub use crate::orders::order::{Action, Order};
 pub use crate::players::player_resources::PlayerResources;
 pub use crate::players::resource_id::ResourceId;

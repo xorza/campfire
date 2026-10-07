@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, Has, QueryState, With, Without};
+use bevy_ecs::query::{Added, Has, QueryItem, QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
@@ -24,17 +24,21 @@ use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
 use crate::items::shop::Shop;
 use crate::navigation::destination::Destination;
+use crate::navigation::group_box::GroupBox;
 use crate::navigation::on_path::OnPath;
+use crate::navigation::party::{Party, PartyKey};
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
+use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::orders::ai::Ai;
 use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
 use crate::orders::learning::Learning;
 use crate::orders::next_think::NextThink;
-use crate::orders::order::{Action, Order};
+use crate::orders::order::Action;
 use crate::orders::resetting::Resetting;
+use crate::orders::tick_orders::TickOrders;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::players::player_resources::PlayerResources;
 use crate::progression::points::Points;
@@ -64,6 +68,7 @@ pub(crate) mod next_think;
 pub(crate) mod order;
 pub(crate) mod orders_api;
 pub(crate) mod resetting;
+pub(crate) mod tick_orders;
 pub(crate) mod unit_order;
 
 /// The systems of `orders`, for the mode to order its own against.
@@ -79,15 +84,21 @@ pub(crate) enum OrdersSet {
 pub struct Orders;
 
 impl Orders {
-    /// Adds orders to a match: in Inputs, orders become current, ranks are learned and, on the
-    /// server, items trade; in Think, the resets whose units arrived end, then the units due this
+    /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
+    /// are learned and, on the server, items trade; in Think, the resets whose units arrived end, then the units due this
     /// tick think; in Act, before combat starts attacks, units walk their paths and chase their
     /// targets. It builds on the core `Units` installs, on combat and on navigation. Without the
     /// core's scripts, as on a client, no unit thinks.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.init_resource::<PlayerOrders>();
+        world.init_resource::<TickOrders>();
         schedule.add_systems((
-            (check_player_orders, apply_player_orders, learn_ranks)
+            (
+                read_orders,
+                check_player_orders,
+                apply_player_orders,
+                learn_ranks,
+            )
                 .chain()
                 .in_set(SimSet::Inputs)
                 .in_set(OrdersSet::Orders)
@@ -128,26 +139,34 @@ impl Orders {
         Ok(period)
     }
 
-    /// Applies `order`, which its source checked, to the unit of `entity`, as every order
-    /// applies; a unit that resets takes none.
-    fn apply_order(world: &mut World, entity: Entity, order: UnitOrder) {
+    /// Applies `order`, which its source checked, to the unit of `entity` in `now`, as every
+    /// order applies; a unit that resets takes none.
+    fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
         let bounds = *world.resource::<Bounds>();
         let mut unit = world.entity_mut(entity);
         if unit.contains::<Resetting>() {
             return;
         }
-        let (&at, spawn, slots, walker, destination) = unit
+        let parts = unit
             .get_components_mut::<Ordered>()
             .expect("an ordered unit stands");
-        let ordered = OrderedUnit {
+        if order.apply(Orders::ordered(parts), &bounds, now) {
+            unit.insert(Resetting);
+        }
+    }
+
+    /// The unit an order reads and changes, of its `parts`.
+    fn ordered<'a>(
+        (&at, spawn, slots, walker, destination, route, progress): QueryItem<'a, '_, Ordered>,
+    ) -> OrderedUnit<'a> {
+        OrderedUnit {
             at,
             spawn: spawn.map(|spawn| spawn.get()),
             slots,
             walker,
             destination,
-        };
-        if order.apply(ordered, &bounds) {
-            unit.insert(Resetting);
+            route,
+            progress,
         }
     }
 }
@@ -157,68 +176,124 @@ impl Orders {
 #[derive(Resource, Debug, Default)]
 struct PlayerOrders(Vec<(Entity, UnitOrder)>);
 
-/// Checks each order the tick's inputs give, in input order, so a later order in the tick wins.
-/// An order to a unit its player does not control, that is dead or resets, is dropped, and so are
-/// a body that is not an order, a move of a unit with nowhere to walk, an attack on a unit that is
-/// not a living enemy or that none of its weapons selects, and a slot's action of a kind other
-/// than a cast or a train: a client can send anything.
+/// Reads the orders of the tick's inputs, once, for each system of orders that applies them.
+fn read_orders(inputs: Res<'_, TickInputs>, mut orders: ResMut<'_, TickOrders>) {
+    orders.read(&inputs);
+}
+
+/// The parts of a unit a player's order checks.
+type Commanded = (
+    &'static Owner,
+    Option<&'static Team>,
+    &'static Position,
+    Has<Destination>,
+    Option<&'static ActionSlots>,
+);
+
+/// A unit of a group's move: its entity and where it stands.
+#[derive(Debug, Clone, Copy)]
+struct Mover {
+    entity: Entity,
+    at: Position,
+}
+
+/// Checks each order of the tick, in input order, so a later order in the tick wins, for each of
+/// its units, by stable id. An order to a unit its player does not control, that is dead or
+/// resets, is dropped, and so are a move of a unit with nowhere to walk, an attack on a unit that
+/// is not a living enemy or that none of its weapons selects, and a slot's action of a kind other
+/// than a cast or a train: a client can send anything. A move to two units or more that walk moves
+/// them as a group: each walks to its own goal by the group's box, as one party, the order's.
 fn check_player_orders(
-    inputs: Res<'_, TickInputs>,
-    index: Res<'_, EntityIndex>,
+    (tick, bounds, orders, index): (
+        Res<'_, SimTick>,
+        Res<'_, Bounds>,
+        Res<'_, TickOrders>,
+        Res<'_, EntityIndex>,
+    ),
     book: Res<'_, ActionBook>,
     targets: Targets<'_, '_>,
-    units: Query<
-        '_,
-        '_,
-        (
-            &Owner,
-            Option<&Team>,
-            Has<Destination>,
-            Option<&ActionSlots>,
-        ),
-        (Without<Dead>, Without<Resetting>),
-    >,
+    units: Query<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
     mut checked: ResMut<'_, PlayerOrders>,
+    mut movers: Local<'_, Vec<Mover>>,
 ) {
-    for command in inputs.commands(Order::CAPABILITY) {
-        let Some(order) = Order::decode(command.body) else {
-            continue;
-        };
-        let Some(Ok((owner, team, walks, slots))) =
-            index.get(order.unit).map(|entity| units.get(entity))
-        else {
-            continue;
-        };
-        if owner.slot() != command.slot {
+    let now = tick.start();
+    for order in orders.iter() {
+        let controlled = order
+            .units
+            .iter()
+            .filter_map(|&id| {
+                let entity = index.get(id)?;
+                Some((entity, units.get(entity).ok()?))
+            })
+            .filter(|(_, (owner, ..))| owner.slot() == order.slot);
+        if let Action::Move { x, z } = order.action {
+            movers.clear();
+            movers.extend(
+                controlled
+                    .filter(|(_, (.., walks, _))| *walks)
+                    .map(|(entity, (_, _, &at, ..))| Mover { entity, at }),
+            );
+            let Some(group) = GroupBox::of(movers.iter().map(|mover| mover.at)) else {
+                continue;
+            };
+            if let &[Mover { entity, .. }] = movers.as_slice() {
+                checked
+                    .0
+                    .push((entity, UnitOrder::Move { x, z, party: None }));
+                continue;
+            }
+            let goal = bounds.clamp_ground([x, z]);
+            let key = PartyKey::Order {
+                tick: now,
+                slot: order.slot,
+                number: order.number,
+            };
+            for &Mover { entity, at } in &*movers {
+                let [x, z] = group.goal_of(at, goal, *bounds);
+                let party = Party {
+                    key,
+                    goal: bounds.ground_point(goal, at),
+                };
+                checked.0.push((
+                    entity,
+                    UnitOrder::Move {
+                        x,
+                        z,
+                        party: Some(party),
+                    },
+                ));
+            }
             continue;
         }
-        let checked_order = match order.action {
-            Action::Move { x, z } => walks.then_some(UnitOrder::Move { x, z }),
-            Action::Attack { target } => {
-                let selected = team.and_then(|&team| {
-                    let unit = targets.enemy(team, target)?;
-                    Some((targets.attitude(team, unit.team), unit.tags))
-                });
-                let armed = slots.is_some_and(|slots| {
-                    selected.is_some() && book.weapon_for(slots, selected).is_some()
-                });
-                armed.then_some(UnitOrder::Attack { target })
-            }
-            Action::Slot { slot, target } => {
-                let kind = slots
-                    .and_then(|slots| slots.slot(slot))
-                    .and_then(|held| book.get(held.action?))
-                    .map(|action| action.kind.kind());
-                matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
-                    .then_some(UnitOrder::Slot { slot, target })
-            }
-            Action::Learn { .. }
-            | Action::Buy { .. }
-            | Action::Sell { .. }
-            | Action::Swap { .. } => None,
-        };
-        let entity = index.get(order.unit).expect("a unit the index named");
-        checked.0.extend(checked_order.map(|order| (entity, order)));
+        for (entity, (_, team, _, _, slots)) in controlled {
+            let unit_order = match order.action {
+                Action::Attack { target } => {
+                    let selected = team.and_then(|&team| {
+                        let unit = targets.enemy(team, target)?;
+                        Some((targets.attitude(team, unit.team), unit.tags))
+                    });
+                    let armed = slots.is_some_and(|slots| {
+                        selected.is_some() && book.weapon_for(slots, selected).is_some()
+                    });
+                    armed.then_some(UnitOrder::Attack { target })
+                }
+                Action::Slot { slot, target } => {
+                    let kind = slots
+                        .and_then(|slots| slots.slot(slot))
+                        .and_then(|held| book.get(held.action?))
+                        .map(|action| action.kind.kind());
+                    matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
+                        .then_some(UnitOrder::Slot { slot, target })
+                }
+                Action::Stop => Some(UnitOrder::Stop),
+                Action::Move { .. }
+                | Action::Learn { .. }
+                | Action::Buy { .. }
+                | Action::Sell { .. }
+                | Action::Swap { .. } => None,
+            };
+            checked.0.extend(unit_order.map(|order| (entity, order)));
+        }
     }
 }
 
@@ -229,76 +304,70 @@ type Ordered = (
     Option<&'static mut ActionSlots>,
     Option<&'static mut PathWalker>,
     Option<&'static mut Destination>,
+    Option<&'static mut Route>,
+    Option<&'static mut Progress>,
 );
 
 /// Applies the tick's checked player orders, in input order, each as every order applies; a
 /// player orders no reset.
 fn apply_player_orders(
+    tick: Res<'_, SimTick>,
     bounds: Res<'_, Bounds>,
     mut checked: ResMut<'_, PlayerOrders>,
     mut units: Query<'_, '_, Ordered>,
 ) {
+    let now = tick.start();
     for (entity, order) in checked.0.drain(..) {
-        let (&at, spawn, slots, walker, destination) =
-            units.get_mut(entity).expect("a checked order's unit");
-        let ordered = OrderedUnit {
-            at,
-            spawn: spawn.map(|spawn| spawn.get()),
-            slots,
-            walker,
-            destination,
-        };
-        let resets = order.apply(ordered, &bounds);
+        let parts = units.get_mut(entity).expect("a checked order's unit");
+        let resets = order.apply(Orders::ordered(parts), &bounds, now);
         debug_assert!(!resets, "a player orders no reset");
     }
 }
 
-/// Applies each learn order the tick's inputs give, in input order, so a second learn in a tick
-/// sees the point the first spent: to a unit its player controls, dead or not, the next rank of
-/// the action in the slot, for a point, when the unit's level reaches the one the slot's kind
-/// gives that rank. It changes nothing under way. An order that fails a check is dropped: a
-/// client can send anything.
+/// Applies each learn order of the tick, in input order, to each of its units by stable id, so a
+/// second learn in a tick sees the point the first spent: to a unit its player controls, dead or
+/// not, the next rank of the action in the slot, for a point, when the unit's level reaches the
+/// one the slot's kind gives that rank. It changes nothing under way. An order that fails a check
+/// is dropped: a client can send anything.
 fn learn_ranks(
-    inputs: Res<'_, TickInputs>,
+    orders: Res<'_, TickOrders>,
     index: Res<'_, EntityIndex>,
     learning: Learning<'_>,
     mut units: Query<'_, '_, (&Owner, &mut ActionSlots, &mut Points, &Level)>,
 ) {
-    for command in inputs.commands(Order::CAPABILITY) {
-        let Some(Order {
-            unit,
-            action: Action::Learn { slot },
-        }) = Order::decode(command.body)
-        else {
+    for order in orders.iter() {
+        let Action::Learn { slot } = order.action else {
             continue;
         };
-        let Some(Ok((owner, mut slots, mut points, &level))) =
-            index.get(unit).map(|entity| units.get_mut(entity))
-        else {
-            continue;
-        };
-        let learnable = slots
-            .slot(slot)
-            .is_some_and(|held| learning.learnable(held, *points, level));
-        if owner.slot() != command.slot || !learnable {
-            continue;
+        for &unit in order.units {
+            let Some(Ok((owner, mut slots, mut points, &level))) =
+                index.get(unit).map(|entity| units.get_mut(entity))
+            else {
+                continue;
+            };
+            let learnable = slots
+                .slot(slot)
+                .is_some_and(|held| learning.learnable(held, *points, level));
+            if owner.slot() != order.slot || !learnable {
+                continue;
+            }
+            points.spend();
+            slots.learn(slot);
         }
-        points.spend();
-        slots.learn(slot);
     }
 }
 
-/// Applies each buy, sale and swap the tick's inputs give, in input order, so a later one in the
-/// tick sees what an earlier one changed: to a unit its player controls that carries an
-/// inventory, dead or not. A buy of an item the shop sells, and a sale, need the unit dead or in a
-/// shop of its team; a buy pays its price, which the player affords, and needs room for the item
+/// Applies each buy, sale and swap of the tick, in input order, to each of its units by stable id,
+/// so a later one in the tick sees what an earlier one changed: to a unit its player controls that
+/// carries an inventory, dead or not. A buy of an item the shop sells, and a sale, need the unit
+/// dead or in a shop of its team; a buy pays its price, which the player affords, and needs room for the item
 /// once the components it gives up left; a sale gives back the shop's share of the stack's cost.
 /// A swap swaps two of the unit's slots anywhere. Each slot whose item type changes holds its new
 /// item's action, or none, afresh; a swapped slot keeps its action's cooldown. An order that
 /// fails a check is dropped: a client can send anything. A client predicts no trade, as its
 /// resources and slots come from the server.
 fn trade_items(
-    (inputs, index): (Res<'_, TickInputs>, Res<'_, EntityIndex>),
+    (orders, index): (Res<'_, TickOrders>, Res<'_, EntityIndex>),
     (book, shop, resources): (
         Option<Res<'_, ItemBook>>,
         Option<Res<'_, Shop>>,
@@ -321,57 +390,57 @@ fn trade_items(
     let (Some(book), Some(mut resources)) = (book, resources) else {
         return;
     };
-    for command in inputs.commands(Order::CAPABILITY) {
-        let Some(Order { unit, action }) = Order::decode(command.body) else {
-            continue;
-        };
-        let Some(Ok((owner, &team, &pos, mut inventory, mut slots, dead))) =
-            index.get(unit).map(|entity| units.get_mut(entity))
-        else {
-            continue;
-        };
-        if owner.slot() != command.slot {
-            continue;
-        }
-        inventory.note(&mut before);
-        let shop = shop
-            .as_deref()
-            .filter(|shop| dead || shop.serves(team, pos));
-        match (action, shop) {
-            (Action::Swap { from, to }, _) => {
-                inventory.swap_with(from, to, slots.as_deref_mut());
+    for order in orders.iter() {
+        let action = order.action;
+        for &unit in order.units {
+            let Some(Ok((owner, &team, &pos, mut inventory, mut slots, dead))) =
+                index.get(unit).map(|entity| units.get_mut(entity))
+            else {
+                continue;
+            };
+            if owner.slot() != order.slot {
                 continue;
             }
-            (Action::Buy { item }, Some(shop)) if shop.sells(item) => {
-                let Some(price) = inventory.purchase(&book, item, shop.resource, &mut given_up)
-                else {
-                    continue;
-                };
-                if resources.amount(command.slot, shop.resource) < price {
+            inventory.note(&mut before);
+            let shop = shop
+                .as_deref()
+                .filter(|shop| dead || shop.serves(team, pos));
+            match (action, shop) {
+                (Action::Swap { from, to }, _) => {
+                    inventory.swap_with(from, to, slots.as_deref_mut());
                     continue;
                 }
-                resources
-                    .add(command.slot, shop.resource, -price)
-                    .expect("a price the player affords takes nothing below zero");
-                inventory.complete(&book, item, &given_up);
-            }
-            (Action::Sell { slot }, Some(shop)) => {
-                let Some(carried) = inventory.take(slot) else {
-                    continue;
-                };
-                let cost = book
-                    .get(carried.item)
-                    .expect("a carried item is in the book")
-                    .cost_in(shop.resource);
-                let refund = shop.refund(cost, carried.count.get());
-                if resources.add(command.slot, shop.resource, refund).is_none() {
-                    inventory.restore(slot, carried);
+                (Action::Buy { item }, Some(shop)) if shop.sells(item) => {
+                    let Some(price) = inventory.purchase(&book, item, shop.resource, &mut given_up)
+                    else {
+                        continue;
+                    };
+                    if resources.amount(order.slot, shop.resource) < price {
+                        continue;
+                    }
+                    resources
+                        .add(order.slot, shop.resource, -price)
+                        .expect("a price the player affords takes nothing below zero");
+                    inventory.complete(&book, item, &given_up);
                 }
+                (Action::Sell { slot }, Some(shop)) => {
+                    let Some(carried) = inventory.take(slot) else {
+                        continue;
+                    };
+                    let cost = book
+                        .get(carried.item)
+                        .expect("a carried item is in the book")
+                        .cost_in(shop.resource);
+                    let refund = shop.refund(cost, carried.count.get());
+                    if resources.add(order.slot, shop.resource, refund).is_none() {
+                        inventory.restore(slot, carried);
+                    }
+                }
+                _ => continue,
             }
-            _ => continue,
-        }
-        if let Some(slots) = slots.as_deref_mut() {
-            inventory.follow(&book, slots, &before);
+            if let Some(slots) = slots.as_deref_mut() {
+                inventory.follow(&book, slots, &before);
+            }
         }
     }
 }
