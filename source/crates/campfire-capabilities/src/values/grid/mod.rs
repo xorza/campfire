@@ -320,13 +320,14 @@ impl Grid {
             return (first_column..=last_column).any(|column| rows(column, low, high));
         }
         // The segment's z at `x`, times `dx`, over `scale`: a column's span runs from the line
-        // before it, or `a`, to the line after it, or `b`, which the bounds of the columns make
-        // the first column's and the last column's ends.
+        // before it, or `a`, to the line after it, or `b`. A segment that starts or ends past the
+        // grid's columns spans the first or the last column only to that column's line.
         let scale = dx * cell;
         let at = |x: i128| Quotient::of(a[1] * dx + (x - a[0]) * dz, scale);
         let step = Quotient::of(cell * dz, scale);
-        let (end, mut line) = (at(b[0]), at((first_column + 1) * cell));
-        let mut start = at(a[0]);
+        let mut line = at((first_column + 1) * cell);
+        let mut start = at(a[0].max(first_column * cell));
+        let end = at(b[0].min((last_column + 1) * cell));
         for column in first_column..=last_column {
             let finish = if column == last_column { end } else { line };
             if rows(column, start.min(finish), start.max(finish)) {

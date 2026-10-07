@@ -124,25 +124,31 @@ impl ColumnRows for StatsRows {
 }
 
 impl StatsRows {
-    /// Adds the row of a unit at `level`, with `pools`, the values `stats`, and the modifiers
-    /// `carried`, each by its id, its source, its stacks and its script state.
-    fn push<'a>(
+    /// Adds the row of a unit at `level`, with `pools`, the values `stats` of the stats it
+    /// carries, and `modifiers` with their `clocks`.
+    fn push(
         &mut self,
         level: Option<u32>,
         pools: Option<Pools>,
         stats: &[Num],
-        carried: impl Iterator<Item = (ModifierId, Option<StableId>, u32, &'a [StateValue])>,
+        modifiers: Option<&Modifiers>,
+        clocks: Option<&ModifierClocks>,
     ) {
         let stats_start = len(self.stats.len());
         self.stats.extend_from_slice(stats);
         let modifiers_start = len(self.modifiers.len());
-        for (id, source, stacks, state) in carried {
+        let carried = modifiers.zip(clocks).into_iter();
+        let carried = carried.flat_map(|(modifiers, clocks)| {
+            let held = modifiers.iter().enumerate();
+            held.map(move |(at, instance)| (instance, clocks.state(at)))
+        });
+        for (instance, state) in carried {
             let start = len(self.modifier_state.len());
             self.modifier_state.extend_from_slice(state);
             self.modifiers.push(ModifierRow {
-                id,
-                source,
-                stacks,
+                id: instance.id,
+                source: instance.source,
+                stacks: instance.stacks,
                 state: start..len(self.modifier_state.len()),
             });
         }
@@ -183,19 +189,9 @@ impl StatsColumn {
         modifiers: Option<&Modifiers>,
         clocks: Option<&ModifierClocks>,
     ) {
-        let carried = modifiers.zip(clocks).into_iter();
-        let carried = carried.flat_map(|(modifiers, clocks)| {
-            let held = modifiers.iter().enumerate();
-            held.map(move |(at, instance)| {
-                (
-                    instance.id,
-                    instance.source,
-                    instance.stacks,
-                    clocks.state(at),
-                )
-            })
-        });
-        self.rows.now_mut().push(level, pools, stats, carried);
+        self.rows
+            .now_mut()
+            .push(level, pools, stats, modifiers, clocks);
     }
 
     /// Names the stats the mode declares to scripts, in the order units' runs hold them.

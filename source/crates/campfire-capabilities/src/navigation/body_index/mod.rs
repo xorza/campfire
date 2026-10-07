@@ -6,13 +6,11 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
-use crate::navigation::body_index::row_directory::{RowDirectory, RowEntries};
 use crate::navigation::segment::Segment;
 use crate::navigation::walker::Walker;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
-
-pub(crate) mod row_directory;
+use crate::values::row_directory::{RowDirectory, RowEntries};
 
 /// Bodies that stand, by layer and by the square buckets their bounding boxes cover, so a query
 /// sees only the bodies of its layer. As a resource it holds the
@@ -28,7 +26,7 @@ pub(crate) struct BodyIndex {
     bodies: Vec<IndexedBody>,
     /// Each body once in each bucket its box covers, sorted, and where each row of buckets starts.
     entries: Vec<Entry>,
-    rows: RowDirectory,
+    rows: RowDirectory<Layer>,
     /// The bodies the last update took away, and those it put in, by stable id: a body that
     /// changed is in both.
     removed: Vec<IndexedBody>,

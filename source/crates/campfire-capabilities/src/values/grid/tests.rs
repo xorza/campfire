@@ -249,8 +249,9 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
     assert_eq!(touched([1, 1], [7, 3]), [0, 1, 5, 2, 6, 7]);
     assert_eq!(touched([7, 3], [1, 1]), [0, 1, 5, 2, 6, 7]);
     // On grids of 1 m, half-meter and 0.3 m cells, whose last column and row reach past the
-    // bounds, segments of every slope, on and off the lines between cells, and points, visit
-    // the cells that dividing each column's span gives, in its order.
+    // bounds, segments of every slope, on and off the lines between cells, and points, within
+    // the grid and past each of its sides, visit the cells that dividing each column's span
+    // gives, in its order.
     let mut next = split_mix(0x70C4);
     for cell in [
         Num::ONE,
@@ -272,11 +273,11 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
                 };
                 Num::int(low) + Num::from_bits(offset.cast_signed())
             };
-            let from = at(along(-7, 9), along(-5, 6));
+            let from = at(along(-12, 14), along(-9, 10));
             let to = match case % 5 {
                 0 => from,
                 1 => at(from.get().x, along(-5, 6)),
-                _ => at(along(-7, 9), along(-5, 6)),
+                _ => at(along(-12, 14), along(-9, 10)),
             };
             let mut cells = Vec::new();
             grid.touches(from, to, |cell| {

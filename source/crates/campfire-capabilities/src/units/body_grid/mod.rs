@@ -1,6 +1,8 @@
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
+use crate::values::row_directory::{RowDirectory, RowEntries};
+
 /// The bodies of a stage, as a sorted index of cells of the ground plane: a query of a box visits
 /// the bodies of the cells it covers, grown by the widest body, so it meets every body that may
 /// reach into the box, each once, and few others. A sort, not a grid over the map, as a map may
@@ -15,13 +17,9 @@ pub(crate) struct BodyGrid<K> {
     /// A cell's side, in raw units.
     cell: i64,
     widest: Num,
-    /// Sorted by row, then column, then stable id.
+    /// Sorted by row, then column, then stable id, and where each row starts, as one layer.
     entries: Vec<GridBody<K>>,
-    /// The first entry of each row from `first_row` to `last_row`, the bodies' first and last,
-    /// and one past the last row's last; empty when it keeps none.
-    first_row: i64,
-    last_row: i64,
-    starts: Vec<u32>,
+    rows: RowDirectory<()>,
 }
 
 /// A body of the grid: its unit, the key its reader finds the unit by, where it stands, its
@@ -52,19 +50,12 @@ impl<K> Default for BodyGrid<K> {
             cell: 0,
             widest: Num::ZERO,
             entries: Vec::new(),
-            first_row: 0,
-            last_row: 0,
-            starts: Vec::new(),
+            rows: RowDirectory::default(),
         }
     }
 }
 
 impl<K: Copy> BodyGrid<K> {
-    /// How much wider than its bodies the rows may spread for the grid to keep their starts.
-    const SPREAD: u64 = 4;
-    /// The rows the grid may always keep the starts of.
-    const ROWS: u64 = 64;
-
     /// Indexes `bodies` in place of what it held.
     pub(crate) fn rebuild(&mut self, bodies: impl IntoIterator<Item = Placed<K>>) {
         self.entries.clear();
@@ -96,28 +87,8 @@ impl<K: Copy> BodyGrid<K> {
         }
         self.entries
             .sort_unstable_by_key(|body| (body.row, body.column, body.id));
-        self.starts.clear();
-        let (Some(first), Some(last)) = (self.entries.first(), self.entries.last()) else {
-            return;
-        };
-        let (first, last) = (first.row, last.row);
-        let count = self.entries.len() as u64;
-        if last.abs_diff(first) >= BodyGrid::<K>::SPREAD * count + BodyGrid::<K>::ROWS {
-            return;
-        }
-        (self.first_row, self.last_row) = (first, last);
-        let rows = usize::try_from(last.abs_diff(first)).expect("rows within the spread") + 1;
-        self.starts.reserve_exact(rows + 1);
-        let mut at = 0;
-        for row in first..=last {
-            self.starts
-                .push(u32::try_from(at).expect("a grid's bodies fit u32"));
-            while self.entries.get(at).is_some_and(|body| body.row == row) {
-                at += 1;
-            }
-        }
-        self.starts
-            .push(u32::try_from(at).expect("a grid's bodies fit u32"));
+        self.rows
+            .rebuild(self.entries.iter().map(|body| ((), body.row)));
     }
 
     /// Calls `visit` with each body whose disc may reach into the box of the ground plane from
@@ -141,27 +112,17 @@ impl<K: Copy> BodyGrid<K> {
             self.entries.iter().filter(inside).for_each(visit);
             return;
         }
-        let in_columns = |run: &[GridBody<K>]| {
-            let start = run.partition_point(|body| body.column < *columns.start());
-            let end = run.partition_point(|body| body.column <= *columns.end());
-            start..end.max(start)
-        };
-        if self.starts.is_empty() {
-            for row in rows {
-                let start = self
-                    .entries
-                    .partition_point(|body| (body.row, body.column) < (row, *columns.start()));
-                let run = self.entries[start..]
-                    .iter()
-                    .take_while(|body| body.row == row && body.column <= *columns.end());
-                run.for_each(&mut visit);
-            }
-            return;
-        }
-        for row in *rows.start().max(&self.first_row)..=*rows.end().min(&self.last_row) {
-            let at = usize::try_from(row - self.first_row).expect("a row within the starts");
-            let run = &self.entries[self.starts[at] as usize..self.starts[at + 1] as usize];
-            run[in_columns(run)].iter().for_each(&mut visit);
+        let (first, last) = self.rows.span(()).expect("the grid holds bodies");
+        for row in *rows.start().max(&first)..=*rows.end().min(&last) {
+            let Some(found) = self.rows.row((), row) else {
+                continue;
+            };
+            let (RowEntries::Row(run) | RowEntries::Layer(run)) = found;
+            let run = &self.entries[run];
+            let start =
+                run.partition_point(|body| (body.row, body.column) < (row, *columns.start()));
+            let end = run.partition_point(|body| (body.row, body.column) <= (row, *columns.end()));
+            run[start..end].iter().for_each(&mut visit);
         }
     }
 

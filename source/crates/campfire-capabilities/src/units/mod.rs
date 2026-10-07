@@ -57,6 +57,7 @@ pub(crate) mod row_fill;
 pub(crate) mod row_marks;
 pub(crate) mod row_parts;
 pub(crate) mod script_view;
+mod source_reads;
 pub(crate) mod spawn_point;
 pub(crate) mod spawner;
 pub(crate) mod tag;

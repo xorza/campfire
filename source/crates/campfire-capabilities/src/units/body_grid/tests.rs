@@ -73,7 +73,8 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
         }
         let mut grid = BodyGrid::default();
         grid.rebuild(bodies.iter().copied());
-        assert_eq!(grid.starts.is_empty(), outliers);
+        let kept = grid.rows.row((), 0);
+        assert_eq!(matches!(kept, Some(RowEntries::Layer(_))), outliers);
         for (low, high) in [
             ([0, 0], [0, 0]),
             ([-13, 4], [9, 21]),

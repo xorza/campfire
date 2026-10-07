@@ -19,7 +19,7 @@ pub(crate) mod bench;
 pub(crate) mod budget;
 pub(crate) mod error;
 mod num_api;
-pub(crate) mod property_forwards;
+mod property_forwards;
 
 /// Rhai hashes function signatures to resolve calls. It seeds the hash per process unless set,
 /// so the engine fixes the seed: every build and process resolves calls alike.

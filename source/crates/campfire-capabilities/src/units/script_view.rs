@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::mem;
-use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -33,6 +32,7 @@ use crate::units::relations::Relations;
 use crate::units::row_fill::{FillRow, RowFill, RowSource};
 use crate::units::row_marks::RowMarks;
 use crate::units::row_parts::RowParts;
+use crate::units::source_reads::SourceReads;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag::Tag;
 use crate::units::team::Team;
@@ -181,92 +181,6 @@ struct Seen {
     row: Option<usize>,
 }
 
-/// A source's part of a read: whether it fills every row, and the run of the read before's rows
-/// it keeps next, which grows while the rows it keeps follow one another there.
-#[derive(Debug, Clone)]
-struct SourceRead {
-    refill: bool,
-    kept: Option<Range<usize>>,
-}
-
-/// The sources' parts of a read, and the run of rows that every source keeps, which each takes
-/// at the next row one of them fills, or as the read ends.
-#[derive(Debug, Default)]
-struct SourceReads {
-    each: Vec<SourceRead>,
-    clean: Option<Range<usize>>,
-}
-
-impl SourceReads {
-    /// Starts a read whose sources each fill every row when they `refill`.
-    fn begin(&mut self, refill: impl IntoIterator<Item = bool>) {
-        self.each.clear();
-        self.each.extend(
-            refill
-                .into_iter()
-                .map(|refill| SourceRead { refill, kept: None }),
-        );
-        self.clean = None;
-    }
-
-    /// Whether any source fills every row.
-    fn any_refills(&self) -> bool {
-        self.each.iter().any(|read| read.refill)
-    }
-
-    /// Keeps row `at` of the read before for every source: it joins their run, or each source
-    /// takes the run, and the row starts the next.
-    fn keep_all(&mut self, sources: &[Box<dyn FillRow>], columns: &mut ViewColumns, at: usize) {
-        match &mut self.clean {
-            Some(run) if run.end == at => run.end += 1,
-            _ => {
-                self.take_clean(sources, columns);
-                self.clean = Some(at..at + 1);
-            }
-        }
-    }
-
-    /// Gives each source the run every source keeps.
-    fn take_clean(&mut self, sources: &[Box<dyn FillRow>], columns: &mut ViewColumns) {
-        if let Some(run) = self.clean.take() {
-            for (source, read) in sources.iter().zip(&mut self.each) {
-                read.keep(source.as_ref(), columns, run.clone());
-            }
-        }
-    }
-
-    /// Adds what each source kept to its column, as the read ends.
-    fn finish(&mut self, sources: &[Box<dyn FillRow>], columns: &mut ViewColumns) {
-        self.take_clean(sources, columns);
-        for (source, read) in sources.iter().zip(&mut self.each) {
-            read.flush(source.as_ref(), columns);
-        }
-    }
-}
-
-impl SourceRead {
-    /// Keeps the rows `rows` of the read before: they join the run, or `source` adds the run
-    /// to its column, and they start the next.
-    fn keep(&mut self, source: &dyn FillRow, columns: &mut ViewColumns, rows: Range<usize>) {
-        match &mut self.kept {
-            Some(run) if run.end == rows.start => run.end = rows.end,
-            run => {
-                if let Some(run) = run.replace(rows) {
-                    source.keep(columns, run);
-                }
-            }
-        }
-    }
-
-    /// Adds the run kept so far to `source`'s column: before a row it fills, and as the read
-    /// ends.
-    fn flush(&mut self, source: &dyn FillRow, columns: &mut ViewColumns) {
-        if let Some(run) = self.kept.take() {
-            source.keep(columns, run);
-        }
-    }
-}
-
 impl ScriptView {
     /// Reads the units of `world`: fills the rows of units whose parts changed since the last
     /// read, or that are new to it, and keeps the others. A debug build reads again, every row
@@ -373,10 +287,10 @@ impl ScriptView {
                 });
                 continue;
             };
-            let sources = self.sources.iter().zip(&mut self.reads.each).enumerate();
+            let sources = self.sources.iter().zip(self.reads.each()).enumerate();
             for (at, (source, read)) in sources {
                 match kept {
-                    Some(kept) if !read.refill && !self.marks.marked(entity, at + 1) => {
+                    Some(kept) if !read.refills() && !self.marks.marked(entity, at + 1) => {
                         read.keep(source.as_ref(), &mut self.columns, kept..kept + 1);
                     }
                     _ => {
