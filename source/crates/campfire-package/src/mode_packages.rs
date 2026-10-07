@@ -318,8 +318,9 @@ impl ModePackages {
         self.data.slots.slotted_ranks(slots)
     }
 
-    /// Each kind of unit that walks, of the mode's unit types and avatars that declare a move
-    /// speed, by its layer and its body's radius, 0 for one with no body; in order, each once.
+    /// Each kind of unit that walks, of its packages' unit types and its avatars that declare a
+    /// move speed, by its layer and its body's radius, 0 for one with no body; in order, each
+    /// once.
     /// The pathing grid has a clearance for each.
     pub fn walkers(&self) -> Vec<Walker> {
         let navigation = &self.data.navigation;
@@ -330,9 +331,8 @@ impl ModePackages {
         };
         let avatars = self.avatars().map(|avatar| &avatar.unit);
         let mut walkers: Vec<Walker> = self
-            .content
-            .units
-            .values()
+            .packages()
+            .flat_map(|view| view.content.units.values())
             .chain(avatars)
             .filter_map(walker)
             .collect();

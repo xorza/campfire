@@ -470,9 +470,10 @@ pub(crate) mod internals {
         }
 
         fn standing_type(&self, name: &DeclaredName) -> UnitType {
+            let scope = TypeScope::of_package(self.package);
             self.view
                 .types_mut()
-                .named(TypeScope::Mode, name.as_str())
+                .named(scope, name.as_str())
                 .expect("the load checked a spawn's unit type")
         }
     }

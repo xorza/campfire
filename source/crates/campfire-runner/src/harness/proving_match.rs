@@ -45,13 +45,13 @@ enum ProvingPlan {
 /// - Stamp 2: both of north's barracks order a guard with gold for one, and south's barracks
 ///   orders one: the lower id of north's two trains.
 /// - The heroes walk to the middle and trade their abilities: the lancer's fan, quake and snare,
-///   the sage's orb and nova.
+///   the sage's orb and nova. The sage then posts a wisp, a unit type of its own package.
 /// - North's barracks compete again once the income of tick 100 comes.
 /// - The lancer walks off the boulder's long side, then breaks it: a box turned 30°, a static
 ///   body near the lane, which its weapon reaches from the box's edge.
 /// - North's east barracks posts a ward by the south's barracks, which no unit of north sees
 ///   otherwise.
-const SCRIPT: [Scripted<ProvingPlan>; 19] = [
+const SCRIPT: [Scripted<ProvingPlan>; 20] = [
     Scripted::new(2, 0, ProvingPlan::Train { barracks: 0 }),
     Scripted::new(2, 0, ProvingPlan::Train { barracks: 1 }),
     Scripted::new(2, 1, ProvingPlan::Train { barracks: 0 }),
@@ -62,6 +62,7 @@ const SCRIPT: [Scripted<ProvingPlan>; 19] = [
     cast(60, 0, 1, Aim::HeroPoint { slot: 1 }),
     cast(70, 1, 1, Aim::Nothing),
     cast(80, 0, 2, Aim::Nothing),
+    cast(100, 1, 2, Aim::Point { x: 2, z: 6 }),
     Scripted::new(105, 0, ProvingPlan::Train { barracks: 1 }),
     Scripted::new(105, 0, ProvingPlan::Train { barracks: 0 }),
     Scripted::new(120, 0, ProvingPlan::Move { x: -3, z: 4 }),

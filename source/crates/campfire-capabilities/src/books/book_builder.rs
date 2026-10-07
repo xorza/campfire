@@ -67,28 +67,33 @@ pub(crate) struct BookBuilder<'a> {
     script_starts: Vec<usize>,
 }
 
-/// A unit type that stands, as its package gives it: its name in the mode's scope, its file, and
-/// the name its package declares it by, none for the avatar its package stands as.
+/// A unit type that stands, as its package gives it: its name in its scope, the scope, its file,
+/// and the name its package declares it by, none for the avatar its package stands as.
 #[derive(Debug, Clone, Copy)]
 struct Standing<'f> {
     name: &'f str,
+    scope: TypeScope,
     file: &'f UnitTypeFile,
     declared: Option<&'f DeclaredName>,
 }
 
 impl<'f> Standing<'f> {
-    fn declared(name: &'f DeclaredName, file: &'f UnitTypeFile) -> Standing<'f> {
+    /// The type `name` of the package at `index`: the mode's in its scope, another package's,
+    /// a summon or a faction's unit, in the package's own.
+    fn declared(index: u16, name: &'f DeclaredName, file: &'f UnitTypeFile) -> Standing<'f> {
         Standing {
             name: name.as_str(),
+            scope: TypeScope::of_package(index),
             file,
             declared: Some(name),
         }
     }
 
-    /// The avatar of the package `package` names.
+    /// The avatar of the package `package` names, in the mode's scope.
     const fn avatar(package: &'f str, file: &'f UnitTypeFile) -> Standing<'f> {
         Standing {
             name: package,
+            scope: TypeScope::Mode,
             file,
             declared: None,
         }
@@ -143,30 +148,20 @@ impl<'a> BookBuilder<'a> {
                     let ranks = self.slotted_ranks(units.values());
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
                     self.books.items = self.item_book(index, package, &actions);
-                    for (name, file) in units {
-                        if file.delivers() {
-                            self.delivery(index, name, file)?;
-                        } else {
-                            let unit = Standing::declared(name, file);
-                            self.unit_type(index, unit, &actions)?;
-                        }
-                    }
+                    self.package_units(index, units, &actions)?;
                 }
                 BookKind::Avatar(unit) => {
-                    for (name, file) in units {
-                        self.delivery(index, name, file)?;
-                    }
-                    let ranks = self.slotted_ranks([unit]);
+                    let standing = units.values().filter(|file| !file.delivers());
+                    let ranks = self.slotted_ranks(standing.chain([unit]));
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
+                    self.package_units(index, units, &actions)?;
                     let unit = Standing::avatar(package.name, unit);
                     self.unit_type(index, unit, &actions)?;
                     self.books.units.avatars.push(package.name);
                 }
                 BookKind::Loadout => {
-                    for (name, file) in units {
-                        self.delivery(index, name, file)?;
-                    }
                     let actions = self.actions(index, package, |_| Some(loadout_ranks))?;
+                    self.package_units(index, units, &actions)?;
                     for (id, ability) in actions {
                         self.books.units.loadout.push(id, ability);
                     }
@@ -266,21 +261,22 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`
-    /// section, refreshed in the input's order.
+    /// section, refreshed in the input's order: each package's types that stand, in its scope,
+    /// and each avatar, in the mode's.
     fn stat_book(input: &BookInput<'_>, types: &UnitTypes) -> StatBook {
-        let standing = input.packages.iter().flat_map(|package| {
+        let standing = (0..).zip(&input.packages).flat_map(|(index, package)| {
             let units = package.content.units.iter();
-            let mode = units
-                .filter(|(_, file)| matches!(package.kind, BookKind::Mode) && !file.delivers())
-                .map(|(name, file)| (name.as_str(), file));
+            let declared = units
+                .filter(|(_, file)| !file.delivers())
+                .map(move |(name, file)| (TypeScope::of_package(index), name.as_str(), file));
             let avatar = match package.kind {
-                BookKind::Avatar(unit) => Some((package.name, unit)),
+                BookKind::Avatar(unit) => Some((TypeScope::Mode, package.name, unit)),
                 BookKind::Mode | BookKind::Loadout => None,
             };
-            mode.chain(avatar)
+            declared.chain(avatar)
         });
-        let setups = standing.filter_map(|(name, file)| {
-            let unit_type = types.named(TypeScope::Mode, name).expect(CHECKED);
+        let setups = standing.filter_map(|(scope, name, file)| {
+            let unit_type = types.named(scope, name).expect(CHECKED);
             Some((unit_type, file.stats.as_ref()?))
         });
         let max_move_speed = input.max_move_speed.get();
@@ -289,8 +285,9 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// Declares the unit types of the package at `index` in the order its own load reads them,
-    /// which numbers them: the mode's by name, each a delivery type or one that stands; a
-    /// package's delivery types by name, then its avatar.
+    /// which numbers them: its types by name, each a delivery type or one that stands, then an
+    /// avatar package's avatar. The mode's types that stand are in the mode's scope, with the
+    /// avatars; every other type is in its package's own.
     fn declare_types(types: &mut UnitTypes, index: u16, package: &BookPackage<'_>) {
         for (name, file) in &package.content.units {
             let scope = match package.kind {
@@ -415,6 +412,24 @@ impl<'a> BookBuilder<'a> {
         Ok(action)
     }
 
+    /// Loads the unit types of the package at `index`, `units`, whose actions are `actions`: its
+    /// delivery types, and its types that stand, each with its kit.
+    fn package_units(
+        &mut self,
+        index: u16,
+        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        actions: &BTreeMap<&str, ActionId>,
+    ) -> Result<(), BookError> {
+        for (name, file) in units {
+            if file.delivers() {
+                self.delivery(index, name, file)?;
+            } else {
+                self.unit_type(index, Standing::declared(index, name, file), actions)?;
+            }
+        }
+        Ok(())
+    }
+
     /// The unit type `unit` that stands, of the package at `index`, whose slots hold the package's
     /// `actions`: its AI, its kit of the values `stats` gives it, its slots, kind after kind, and
     /// its passive. An avatar's is tagged `avatar`, and stays when it dies.
@@ -424,11 +439,13 @@ impl<'a> BookBuilder<'a> {
         unit: Standing<'_>,
         actions: &BTreeMap<&str, ActionId>,
     ) -> Result<(), BookError> {
-        let Standing { name, file, .. } = unit;
+        let Standing {
+            name, scope, file, ..
+        } = unit;
         let avatar = unit.declared.is_none();
         let data = self.input.data;
         let books = &mut self.books;
-        let unit_type = books.types.named(TypeScope::Mode, name).expect(CHECKED);
+        let unit_type = books.types.named(scope, name).expect(CHECKED);
         let mut combat = file.combat.clone();
         if avatar {
             books.types.give_tag(unit_type, EngineTag::Avatar.tag());
@@ -652,8 +669,6 @@ impl EffectNames for BuildNames<'_> {
     }
 
     fn standing_type(&self, name: &DeclaredName) -> UnitType {
-        self.types
-            .named(TypeScope::Mode, name.as_str())
-            .expect(CHECKED)
+        self.unit_type(self.package, name)
     }
 }

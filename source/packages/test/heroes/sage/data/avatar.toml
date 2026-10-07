@@ -1,10 +1,10 @@
 name = "hero-name"
 tags = ["test"]
-params = { xp = 80, basics = 2 }
+params = { xp = 80, basics = 3 }
 pools = ["health", "mana"]
 tracks = ["level"]
 passive = "rally"
-slots = { basic = ["orb", "nova"], weapon = ["attack"] }
+slots = { basic = ["orb", "nova", "wisp"], weapon = ["attack"] }
 
 [combat]
 
@@ -43,6 +43,13 @@ windup_ms = 300
 radius = "3.0"
 damage = 50
 
+# A wisp of the sage's own package, which watches a point up to 8 m off for 3 s.
+[actions.wisp]
+targeting = "point"
+range = "8.0"
+cooldown_ms = 10000
+on_resolve = [{ spawn = { unit_type = "wisp", duration_ms = 3000 } }]
+
 [actions.attack]
 kind = "attack"
 targeting = "enemies"
@@ -60,3 +67,7 @@ stats = { attack_damage = { pct = "0.1" } }
 
 [units.orb]
 projectile = { speed = "12", homing = true }
+
+[units.wisp]
+tags = ["test"]
+vision = { sight_range = "4.0" }

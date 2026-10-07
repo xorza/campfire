@@ -19,6 +19,6 @@ pub(crate) trait EffectNames {
     fn tag(&self, name: &DeclaredName) -> Tag;
     /// The projectile or area type `name` of the action's package.
     fn delivery_type(&self, name: &DeclaredName) -> UnitType;
-    /// The mode's unit type `name` that stands, which a spawn makes.
+    /// The unit type `name` of the action's package that stands, which a spawn makes.
     fn standing_type(&self, name: &DeclaredName) -> UnitType;
 }

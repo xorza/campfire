@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 245] = [
+static FLAWS: [Flaw; 246] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -584,15 +584,6 @@ static FLAWS: [Flaw; 245] = [
     flaw(
         HUSK,
         Edit::Replace(
-            "[units.grasping_wraps]\n",
-            "[units.husk_dummy]\ntags = [\"dummy\"]\n\n[units.grasping_wraps]\n",
-        ),
-        "hero-husk",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "husk_dummy"),
-    ),
-    flaw(
-        HUSK,
-        Edit::Replace(
             "[combat]\n",
             "projectile = { speed = \"20\" }\n\n[combat]\n",
         ),
@@ -765,13 +756,27 @@ static FLAWS: [Flaw; 245] = [
         "hero-cinder",
         |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
     ),
-    // An avatar's action spawns nothing until summons come; a mode's spawns a unit type of the
-    // mode's that stands, for a whole number of milliseconds; loot is planned.
+    // An action spawns a unit type of its own package that stands, an avatar's summon among
+    // them, for a whole number of milliseconds: Rime's arrow, a projectile, is none. A summon of
+    // Rime's names only what the mode declares, and one of the spells' loadout slots its actions
+    // only in kinds of the loadout's ranks. Loot is planned.
     flaw(
         RIME,
         Edit::Replace(SLOWS, r#"{ spawn = { unit_type = "frost_arrow" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Summon } if action == "fan_of_frost"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "frost_arrow"),
+    ),
+    flaw(
+        RIME,
+        Edit::Set("units.wisp.stats.nonsense.base", "1"),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "nonsense"),
+    ),
+    flaw(
+        "spells/data/loadout.toml",
+        Edit::Set("units.totem.slots.basic", r#"["blink"]"#),
+        "player-spells",
+        |problem| matches!(problem, LoadProblem::ActionRanks(action) if action.as_str() == "blink"),
     ),
     flaw(
         RIME,

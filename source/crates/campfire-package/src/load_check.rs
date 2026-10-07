@@ -52,20 +52,17 @@ pub(crate) struct LoadCheck<'a> {
     state_fields: BTreeSet<&'a str>,
 }
 
-/// What the action whose effects a check reads may name: its package's unit types, and whether
-/// the package is the mode, whose actions may spawn the mode's unit types.
+/// What the action whose effects a check reads may name: its package's unit types, those it
+/// delivers and those it spawns.
 #[derive(Debug, Clone, Copy)]
 struct EffectScope<'u> {
     units: &'u BTreeMap<DeclaredName, UnitTypeFile>,
-    mode: bool,
 }
 
 /// The facts one package's checks share.
 #[derive(Debug)]
 struct PackageNames<'a> {
     package: &'a Package,
-    /// Whether it is the mode package, whose actions may spawn the mode's unit types.
-    mode: bool,
     /// What data says of each script it names.
     scripts: BTreeMap<&'a PackagePath, ScriptUse<'a>>,
     modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
@@ -277,8 +274,7 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::NoPathingGrid);
         }
-        let mut names =
-            PackageNames::new(&packages.mode, true, &content.modifiers, &content.actions);
+        let mut names = PackageNames::new(&packages.mode, &content.modifiers, &content.actions);
         let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
         names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
         for unit_type in units.values() {
@@ -329,6 +325,14 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::Item(ItemProblem::OutsideMode));
         }
         let (actions, modifiers) = (&content.actions, &content.modifiers);
+        // Its types that stand, an avatar's summons or a loadout's: their slots hold actions of
+        // the package as the avatar's do.
+        let standing = || {
+            content
+                .units
+                .values()
+                .filter(|unit_type| !unit_type.delivers())
+        };
         let slotted = match &dependent.kind {
             DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(package.header.name.clone());
@@ -342,13 +346,10 @@ impl<'a> LoadCheck<'a> {
                 if avatar.unit.orders.is_some() {
                     return Err(LoadProblem::AvatarOrders);
                 }
-                if avatar.unit.delivers() {
-                    return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
-                }
                 self.unit_type(&avatar.unit, &at, actions, modifiers)?;
                 let held = avatar.unit.passive.as_ref().map(|passive| (at, passive));
                 passives_held_once(held.into_iter().chain(action_passives(actions)))?;
-                let ranks = self.slotted_ranks([&avatar.unit])?;
+                let ranks = self.slotted_ranks(standing().chain([&avatar.unit]))?;
                 let unslotted = actions.keys().find(|id| !ranks.contains_key(id.as_str()));
                 if let Some(id) = unslotted {
                     return Err(LoadProblem::Unslotted(id.clone()));
@@ -357,19 +358,31 @@ impl<'a> LoadCheck<'a> {
             }
             DependentKind::Loadout => {
                 passives_held_once(action_passives(actions))?;
+                // A loadout's action loads with the loadout's ranks, so a summon of it places
+                // its actions only in kinds of those ranks.
+                let loadout_ranks = self.packages.data.loadout_ranks();
+                let placed = self.slotted_ranks(standing())?;
+                let other = placed.iter().find(|&(_, &ranks)| ranks != loadout_ranks);
+                if let Some((id, _)) = other {
+                    let id = DeclaredName::new(id).expect("an action's id is a declared name");
+                    return Err(LoadProblem::ActionRanks(id));
+                }
                 None
             }
         };
         for (id, unit_type) in &content.units {
-            let at = Place::UnitType(id.clone());
-            if !unit_type.delivery_only() {
-                return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
-            }
-            self.unit_type(unit_type, &at, actions, modifiers)?;
+            self.unit_type(unit_type, &Place::UnitType(id.clone()), actions, modifiers)?;
         }
         let loadout_ranks = self.packages.data.loadout_ranks();
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
-        let mut names = PackageNames::new(package, false, modifiers, actions);
+        let mut names = PackageNames::new(package, modifiers, actions);
+        let data = &self.packages.data;
+        let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
+        for unit_type in content.units.values() {
+            if let Some(orders) = &unit_type.orders {
+                names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
+            }
+        }
         self.actions(actions, &content.units, ranks, &mut names)?;
         let ways = self.packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, actions, ranks)?;
@@ -399,12 +412,9 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         for (id, ability) in actions {
             let at = Place::Action(id.clone());
-            self.kind(id, ability)?;
+            self.kind(id, ability, units)?;
             self.ranked(id, ability, ranks(id.as_str()))?;
-            let scope = EffectScope {
-                units,
-                mode: names.mode,
-            };
+            let scope = EffectScope { units };
             self.effects(id, ability, scope)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
@@ -886,12 +896,17 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// An action of a kind the release runs, with the capability of its kind and the fields the
-    /// table of action fields lets its kind take: a `cast` of `abilities`; an `attack` of
+    /// An action `id` of a kind the release runs, with the capability of its kind and the fields
+    /// the table of action fields lets its kind take: a `cast` of `abilities`; an `attack` of
     /// `combat`, aimed at a unit, of a range in meters, its stats declared and its damage kind
-    /// the mode's; a `train` of `production`, aimed at nothing, of a unit type of the mode's
-    /// that stands.
-    fn kind(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
+    /// the mode's; a `train` of `production`, aimed at nothing, of a unit type of its package,
+    /// `units`, that stands.
+    fn kind(
+        &self,
+        id: &DeclaredName,
+        action: &ActionData,
+        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+    ) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
         let run = matches!(
             action.kind,
@@ -918,12 +933,11 @@ impl<'a> LoadCheck<'a> {
                 if action.targeting != Targeting::None {
                     return Err(LoadProblem::TrainAims(id.to_owned()));
                 }
-                let unit_types = &self.packages.content.units;
                 let name = action
                     .unit_type
                     .as_ref()
                     .expect("a train needs its unit type");
-                match unit_types.get(name) {
+                match units.get(name) {
                     None => {
                         return Err(LoadProblem::Unknown {
                             of: NameKind::UnitType,
@@ -1029,41 +1043,6 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A spawn of `unit_type` for `duration_ms` by `action`, at `at`, of the mode when `mode`:
-    /// only the mode's actions spawn, a unit type of the mode's that stands, for whole
-    /// milliseconds; `fail` makes the problem of the effect's list.
-    fn spawn(
-        &self,
-        action: &ActionData,
-        unit_type: &DeclaredName,
-        duration_ms: Option<&Number>,
-        mode: bool,
-        at: &Place,
-        fail: impl Fn(EffectProblem) -> LoadProblem,
-    ) -> Result<(), LoadProblem> {
-        if !mode {
-            return Err(fail(EffectProblem::Summon));
-        }
-        let units = &self.packages.content.units;
-        let Some(spawned) = units
-            .get(unit_type)
-            .filter(|unit_type| !unit_type.delivers())
-        else {
-            return Err(unknown(at, unit_type, NameKind::UnitType));
-        };
-        if spawned
-            .collision
-            .as_ref()
-            .is_some_and(|collision| collision.form.is_box())
-        {
-            return Err(fail(EffectProblem::SpawnBox));
-        }
-        if duration_ms.is_some_and(|duration| !whole_ms(action, duration)) {
-            return Err(fail(EffectProblem::Duration));
-        }
-        Ok(())
-    }
-
     /// The list `effects` of `action`, whose id is `id`, which runs before `list` and reaches a
     /// unit when `reaches`: each effect one the release runs, of a capability the mode declares
     /// and a name it declares, to a unit the list reaches; each number at least 0 and a sim
@@ -1160,14 +1139,7 @@ impl<'a> LoadCheck<'a> {
                 Effecting::Spawn {
                     unit_type,
                     duration_ms,
-                } => self.spawn(
-                    action,
-                    unit_type,
-                    duration_ms.as_ref(),
-                    scope.mode,
-                    &at,
-                    fail,
-                )?,
+                } => scope.spawn(action, unit_type, duration_ms.as_ref(), &at, fail)?,
             }
             for number in effect.does.numbers() {
                 number_holds(action, number).map_err(fail)?;
@@ -1815,16 +1787,47 @@ impl<'a> LoadCheck<'a> {
     }
 }
 
+impl EffectScope<'_> {
+    /// A spawn of `unit_type` for `duration_ms` by `action`, at `at`: a unit type of the
+    /// action's package that stands and has no box, for whole milliseconds; `fail` makes the
+    /// problem of the effect's list.
+    fn spawn(
+        self,
+        action: &ActionData,
+        unit_type: &DeclaredName,
+        duration_ms: Option<&Number>,
+        at: &Place,
+        fail: impl Fn(EffectProblem) -> LoadProblem,
+    ) -> Result<(), LoadProblem> {
+        let Some(spawned) = self
+            .units
+            .get(unit_type)
+            .filter(|unit_type| !unit_type.delivers())
+        else {
+            return Err(unknown(at, unit_type, NameKind::UnitType));
+        };
+        if spawned
+            .collision
+            .as_ref()
+            .is_some_and(|collision| collision.form.is_box())
+        {
+            return Err(fail(EffectProblem::SpawnBox));
+        }
+        if duration_ms.is_some_and(|duration| !whole_ms(action, duration)) {
+            return Err(fail(EffectProblem::Duration));
+        }
+        Ok(())
+    }
+}
+
 impl<'a> PackageNames<'a> {
     const fn new(
         package: &'a Package,
-        mode: bool,
         modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
         actions: &'a BTreeMap<DeclaredName, ActionData>,
     ) -> PackageNames<'a> {
         PackageNames {
             package,
-            mode,
             scripts: BTreeMap::new(),
             modifiers,
             actions,

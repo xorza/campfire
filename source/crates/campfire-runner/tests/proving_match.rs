@@ -25,6 +25,8 @@ struct Seen {
     /// The ticks the ward stood after, with its place and the teams that saw it; and the ticks
     /// after which north saw south's barracks.
     ward: Vec<(u64, Position, TeamSet)>,
+    /// The ticks the sage's wisp stood after, with its place.
+    wisp: Vec<(u64, Position)>,
     barracks_watched: Vec<u64>,
     /// The mode's state after each tick that changed it.
     states: Vec<(u64, Vec<StateValue>)>,
@@ -63,8 +65,15 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
         }
         if unit.contains::<Lifespan>() {
             let place = *unit.get::<Position>().unwrap();
-            seen.ward
-                .push((tick, place, unit.get::<SeenBy>().unwrap().get()));
+            if unit
+                .get::<Owner>()
+                .is_some_and(|owner| owner.slot().get() == 1)
+            {
+                seen.wisp.push((tick, place));
+            } else {
+                seen.ward
+                    .push((tick, place, unit.get::<SeenBy>().unwrap().get()));
+            }
         }
         let north = Team::new(0);
         if unit.contains::<TrainQueue>()
@@ -212,6 +221,14 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
             .all(|&(_, place, teams)| place == at && north_alone(teams))
     );
     assert_eq!(seen.barracks_watched, (300..=339).collect::<Vec<_>>());
+    // A summon: the sage's wisp, a unit type its own package declares, posted at (2, 6) in tick
+    // 100, its order's, stands its 3000 ms, 60 ticks, from 100 to 159, so the state after each
+    // of ticks 100 to 158 holds it.
+    let at = Position::new(Vec3::new(Num::int(2), Num::ZERO, Num::int(6))).unwrap();
+    assert_eq!(
+        seen.wisp,
+        (100..=158).map(|tick| (tick, at)).collect::<Vec<_>>()
+    );
     // A save is due after tick 0, whose first wave asked for one, and at each 12 s of 20 Hz,
     // every 240 ticks, from the start.
     assert_eq!(seen.saves, [1, 240, 480]);

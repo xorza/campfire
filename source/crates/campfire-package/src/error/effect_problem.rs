@@ -17,10 +17,6 @@ pub enum EffectProblem {
     /// A number below zero, at some rank.
     #[error("a number below zero")]
     Negative,
-    /// A spawn in an avatar's or a loadout's action, whose package holds no unit type to spawn
-    /// until summons come.
-    #[error("spawns a unit from an avatar's or a loadout's action, which waits for summons")]
-    Summon,
     /// A spawn of a unit type with a box body, which only a placement places, as an effect has
     /// no placement's checks.
     #[error("spawns a unit type with a box body, which only a placement places")]
