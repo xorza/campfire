@@ -81,7 +81,7 @@ pub(crate) struct ScriptView {
     /// The rows each source must fill again in the running read.
     marks: RowMarks,
     /// Each source's part of the running read.
-    reads: Vec<SourceRead>,
+    reads: SourceReads,
     /// Whether the next read must fill every row, as what the rows derive from besides the
     /// units' parts changed.
     refill: bool,
@@ -189,14 +189,69 @@ struct SourceRead {
     kept: Option<Range<usize>>,
 }
 
+/// The sources' parts of a read, and the run of rows that every source keeps, which each takes
+/// at the next row one of them fills, or as the read ends.
+#[derive(Debug, Default)]
+struct SourceReads {
+    each: Vec<SourceRead>,
+    clean: Option<Range<usize>>,
+}
+
+impl SourceReads {
+    /// Starts a read whose sources each fill every row when they `refill`.
+    fn begin(&mut self, refill: impl IntoIterator<Item = bool>) {
+        self.each.clear();
+        self.each.extend(
+            refill
+                .into_iter()
+                .map(|refill| SourceRead { refill, kept: None }),
+        );
+        self.clean = None;
+    }
+
+    /// Whether any source fills every row.
+    fn any_refills(&self) -> bool {
+        self.each.iter().any(|read| read.refill)
+    }
+
+    /// Keeps row `at` of the read before for every source: it joins their run, or each source
+    /// takes the run, and the row starts the next.
+    fn keep_all(&mut self, sources: &[Box<dyn FillRow>], columns: &mut ViewColumns, at: usize) {
+        match &mut self.clean {
+            Some(run) if run.end == at => run.end += 1,
+            _ => {
+                self.take_clean(sources, columns);
+                self.clean = Some(at..at + 1);
+            }
+        }
+    }
+
+    /// Gives each source the run every source keeps.
+    fn take_clean(&mut self, sources: &[Box<dyn FillRow>], columns: &mut ViewColumns) {
+        if let Some(run) = self.clean.take() {
+            for (source, read) in sources.iter().zip(&mut self.each) {
+                read.keep(source.as_ref(), columns, run.clone());
+            }
+        }
+    }
+
+    /// Adds what each source kept to its column, as the read ends.
+    fn finish(&mut self, sources: &[Box<dyn FillRow>], columns: &mut ViewColumns) {
+        self.take_clean(sources, columns);
+        for (source, read) in sources.iter().zip(&mut self.each) {
+            read.flush(source.as_ref(), columns);
+        }
+    }
+}
+
 impl SourceRead {
-    /// Keeps row `kept` of the read before: it joins the run, or `source` adds the run to its
-    /// column, and the row starts the next.
-    fn keep(&mut self, source: &dyn FillRow, columns: &mut ViewColumns, kept: usize) {
+    /// Keeps the rows `rows` of the read before: they join the run, or `source` adds the run
+    /// to its column, and they start the next.
+    fn keep(&mut self, source: &dyn FillRow, columns: &mut ViewColumns, rows: Range<usize>) {
         match &mut self.kept {
-            Some(run) if run.end == kept => run.end += 1,
+            Some(run) if run.end == rows.start => run.end = rows.end,
             run => {
-                if let Some(run) = run.replace(kept..kept + 1) {
+                if let Some(run) = run.replace(rows) {
                     source.keep(columns, run);
                 }
             }
@@ -232,10 +287,9 @@ impl ScriptView {
         }
     }
 
-    /// Reads the units of `world`, every row filled when `full`.
-    fn read_rows(&mut self, world: &mut World, full: bool) {
-        let core = self.core.get_or_insert_with(|| CoreSource::new(world));
-        let world: &World = world;
+    /// Starts a read of `world`: takes what every row reads besides the units, and marks the
+    /// rows each source must fill again. Whether every row must be filled.
+    fn begin_read(&mut self, world: &World, full: bool) -> bool {
         let now = world.resource::<SimTick>().start();
         let relations = world.resource::<Relations>();
         let refill = mem::take(&mut self.refill)
@@ -247,23 +301,37 @@ impl ScriptView {
         self.metric = *world.resource::<Metric>();
         self.bounds = Bounds::of(world);
         self.indexed = false;
+        let core = self
+            .core
+            .as_mut()
+            .expect("a read builds the core's queries");
         core.parts.update_archetypes(world);
         let changed = core.changed.get(world).expect("a query is always valid");
         for entity in &changed {
             self.marks.mark(entity, 0);
         }
-        self.reads.clear();
-        for (at, source) in self.sources.iter_mut().enumerate() {
-            let all = source.begin(world, &mut self.columns, at + 1, &mut self.marks);
-            self.reads.push(SourceRead {
-                refill: refill || all,
-                kept: None,
-            });
-        }
+        let (columns, marks) = (&mut self.columns, &mut self.marks);
+        let sources = self.sources.iter_mut().enumerate();
+        self.reads.begin(
+            sources.map(|(at, source)| source.begin(world, columns, at + 1, marks) || refill),
+        );
+        refill
+    }
+
+    /// Reads the units of `world`, every row filled when `full`.
+    fn read_rows(&mut self, world: &mut World, full: bool) {
+        self.core.get_or_insert_with(|| CoreSource::new(world));
+        let world: &World = world;
+        let refill = self.begin_read(world, full);
+        let core = self
+            .core
+            .as_ref()
+            .expect("a read builds the core's queries");
         mem::swap(&mut self.units, &mut self.kept_units);
         mem::swap(&mut self.seen, &mut self.kept_seen);
         self.units.clear();
         self.seen.clear();
+        let any_refills = self.reads.any_refills();
         let mut before = self.kept_seen.iter().peekable();
         for (id, entity) in world.resource::<EntityIndex>().iter() {
             while before.next_if(|seen| seen.id < id).is_some() {}
@@ -283,6 +351,21 @@ impl ScriptView {
                 Some(&Seen { row, .. }) => row,
                 None => None,
             };
+            if let Some(at) = kept
+                && !any_refills
+                && !self.marks.any(entity)
+            {
+                self.reads.keep_all(&self.sources, &mut self.columns, at);
+                self.seen.push(Seen {
+                    id,
+                    entity,
+                    archetype,
+                    row: Some(self.units.len()),
+                });
+                self.units.push(self.kept_units[at]);
+                continue;
+            }
+            self.reads.take_clean(&self.sources, &mut self.columns);
             let kept_row = kept.map(|at| self.kept_units[at]);
             let row = if kept.is_some() && !self.marks.marked(entity, 0) {
                 kept_row
@@ -298,11 +381,11 @@ impl ScriptView {
                 });
                 continue;
             };
-            let sources = self.sources.iter().zip(&mut self.reads).enumerate();
+            let sources = self.sources.iter().zip(&mut self.reads.each).enumerate();
             for (at, (source, read)) in sources {
                 match kept {
                     Some(kept) if !read.refill && !self.marks.marked(entity, at + 1) => {
-                        read.keep(source.as_ref(), &mut self.columns, kept);
+                        read.keep(source.as_ref(), &mut self.columns, kept..kept + 1);
                     }
                     _ => {
                         read.flush(source.as_ref(), &mut self.columns);
@@ -318,9 +401,7 @@ impl ScriptView {
             });
             self.units.push(row);
         }
-        for (source, read) in self.sources.iter().zip(&mut self.reads) {
-            read.flush(source.as_ref(), &mut self.columns);
-        }
+        self.reads.finish(&self.sources, &mut self.columns);
         self.marks.clear();
         debug_assert!(
             self.columns.hold(self.units.len()),
@@ -370,7 +451,7 @@ impl View {
             seen: Vec::new(),
             kept_seen: Vec::new(),
             marks: RowMarks::default(),
-            reads: Vec::new(),
+            reads: SourceReads::default(),
             refill: true,
             relations: Relations::default(),
             metric: Metric::default(),

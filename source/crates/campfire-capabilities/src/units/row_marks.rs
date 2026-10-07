@@ -33,6 +33,13 @@ impl RowMarks {
         bits.unwrap_or(0) & 1 << source != 0
     }
 
+    /// Whether `entity`'s row is marked for any source.
+    pub(crate) fn any(&self, entity: Entity) -> bool {
+        self.bits
+            .get(entity.index_u32() as usize)
+            .is_some_and(|&bits| bits != 0)
+    }
+
     /// Clears every mark.
     pub(crate) fn clear(&mut self) {
         for &at in &self.marked {
