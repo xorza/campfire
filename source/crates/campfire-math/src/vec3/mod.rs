@@ -232,16 +232,18 @@ const fn unit_component(component: Num, length: u64, reciprocal: u128) -> Num {
         quotient = quotient.wrapping_add(1);
         rest = rest.wrapping_sub(divisor);
     }
+    // The rounding and the sign are as random as the components, so both are arithmetic, which
+    // takes no branch to mispredict.
     let twice_rest = rest << 1;
-    if twice_rest > divisor || (twice_rest == divisor && quotient & 1 == 1) {
-        quotient = quotient.wrapping_add(1);
-    }
-    let quotient = quotient.cast_signed();
-    Num::from_wide_bits(if component.to_bits() < 0 {
-        -quotient
-    } else {
-        quotient
-    })
+    #[expect(
+        clippy::needless_bitwise_bool,
+        reason = "the lazy operators branch on a random rounding"
+    )]
+    let up = (twice_rest > divisor) | ((twice_rest == divisor) & (quotient & 1 == 1));
+    let quotient = quotient.wrapping_add(up as u128).cast_signed();
+    // All ones for a negative component, so the xor and the subtraction negate.
+    let sign = (component.to_bits() >> 63) as i128;
+    Num::from_wide_bits((quotient ^ sign) - sign)
 }
 
 impl Add for Vec3 {

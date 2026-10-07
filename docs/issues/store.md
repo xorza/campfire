@@ -1,6 +1,6 @@
 # Store
 
-Design: [Storage and workers](../design/11-storage.md). Rules: [Issue log](../../AGENTS.md#issue-log).
+Design: [Storage](../design/02-engine-core.md#storage). Rules: [Issue log](../../AGENTS.md#issue-log).
 
 ## Decide
 

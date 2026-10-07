@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
+use crate::floor_root::FloorRoot;
 use crate::num::decimal::Decimal;
 use crate::num::error::ParseNumError;
 
@@ -197,40 +198,16 @@ impl Num {
 
     /// The value whose bits are the integer nearest to √`squared_bits`; `None` when it does not
     /// fit. √ of an integer is never exactly a half, so no tie rule is needed.
-    #[expect(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::float_arithmetic,
-        reason = "the f64 root is only an estimate; the integer steps fix the result exactly"
-    )]
     pub(crate) fn from_root_of_bits(squared_bits: u128) -> Option<Num> {
-        // A root that fits is below 2⁶³, so its square is below 2¹²⁶; below that bound no
-        // product or step here can overflow.
-        if squared_bits >= 1 << 126 {
-            return None;
-        }
-        // An f64 estimate is three times as fast as `u128::isqrt`. Converting the two halves takes
-        // one instruction each, where converting a `u128` is a library call. The integer steps
-        // make the result exact whatever the float returns, so it stays deterministic.
-        let high = (squared_bits >> 64) as u64;
-        let low = squared_bits as u64;
-        let estimate = (high as f64 * TWO_POW_64 + low as f64).sqrt();
-        let mut root = estimate as u128;
-        // Above 2⁵² the estimate can be off by up to 2¹⁰; one Newton step brings it within 1.
-        if root > 1 << 52 {
-            root = root.midpoint(squared_bits / root);
-        }
-        while root.wrapping_mul(root) > squared_bits {
-            root = root.wrapping_sub(1);
-        }
-        while (root + 1).wrapping_mul(root + 1) <= squared_bits {
-            root = root.wrapping_add(1);
-        }
-        if squared_bits.wrapping_sub(root.wrapping_mul(root)) > root {
-            root += 1;
-        }
-        narrow(root.cast_signed())
+        let floor = squared_bits.floor_root();
+        // The floor is below 2⁶⁴ and its square at most the value, so no step can overflow, and
+        // the wrapping ones skip the checks a release build makes.
+        let nearest = if squared_bits.wrapping_sub(floor.wrapping_mul(floor)) > floor {
+            floor + 1
+        } else {
+            floor
+        };
+        narrow(nearest.cast_signed())
     }
 
     #[must_use]
@@ -250,9 +227,6 @@ impl Num {
         trig::atan2(self, x)
     }
 }
-
-/// 2⁶⁴, exact in f64.
-const TWO_POW_64: f64 = 18_446_744_073_709_551_616.0;
 
 /// Narrows an exact result; `None` when it does not fit.
 const fn narrow(bits: i128) -> Option<Num> {

@@ -375,6 +375,15 @@ fn sqrt_exact_cases() {
     assert_eq!(n(-1).checked_sqrt(), None);
     // √(2³⁹ − ε) is 741455.2, 12 439 554 047 902 bits rounded to nearest.
     assert_eq!(Num::MAX.sqrt(), n(12_439_554_047_902));
+    // The widest root that fits: (2⁶³ − ½)² = 2¹²⁶ − 2⁶³ + ¼, so 2¹²⁶ − 2⁶³ rounds down to
+    // 2⁶³ − 1, and one more rounds up to 2⁶³, which does not fit, as no value from 2¹²⁶ on does.
+    assert_eq!(
+        Num::from_root_of_bits((1 << 126) - (1 << 63)),
+        Some(Num::MAX)
+    );
+    assert_eq!(Num::from_root_of_bits((1 << 126) - (1 << 63) + 1), None);
+    assert_eq!(Num::from_root_of_bits(1 << 126), None);
+    assert_eq!(Num::from_root_of_bits(u128::MAX), None);
 }
 
 #[test]

@@ -61,7 +61,7 @@ fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
     assert_eq!(built, crates);
 }
 
-/// The functions only `store` calls (design 11, Structural rules): those that write, sync, rename
+/// The functions only `store` calls (design 02, Storage): those that write, sync, rename
 /// or remove a file or make a directory, and those that start a thread.
 const STORAGE_RULES: [&str; 23] = [
     "std::fs::write",

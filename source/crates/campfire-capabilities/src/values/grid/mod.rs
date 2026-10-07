@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use campfire_math::{Num, Vec3};
+use campfire_math::{FloorRoot, Num, Vec3};
 use campfire_sim::Position;
 
 use crate::values::bounds::Bounds;
@@ -160,7 +160,8 @@ impl Grid {
             if rest < 0 {
                 continue;
             }
-            let half = i64::try_from(rest.cast_unsigned().isqrt()).expect("a root within reach");
+            let half =
+                i64::try_from(rest.cast_unsigned().floor_root()).expect("a root within reach");
             // A center at 2x + 1 half cells is within `half` of `from[0]`.
             let low_odd = -(half - from[0]).div_euclid(cell);
             let high_odd = (from[0] + half).div_euclid(cell);

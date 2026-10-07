@@ -17,7 +17,7 @@ disallowed-methods = [
     { path = "bevy_ecs::schedule::Schedules::configure_schedules", reason = "can switch off the ambiguity and hierarchy checks" },
     { path = "bevy_ecs::world::World::allow_ambiguous_component", reason = "order the systems instead" },
     { path = "bevy_ecs::world::World::allow_ambiguous_resource", reason = "order the systems instead" },
-    # Only `store` writes a file (design 11, Structural rules): a write elsewhere skips its durability and its one fault surface.
+    # Only `store` writes a file (design 02, Storage): a write elsewhere skips its durability and its one fault surface.
     { path = "std::fs::write", reason = "write files through campfire-store" },
     { path = "std::fs::copy", reason = "write files through campfire-store" },
     { path = "std::fs::rename", reason = "write files through campfire-store" },
@@ -37,7 +37,7 @@ disallowed-methods = [
     { path = "std::fs::File::sync_data", reason = "write files through campfire-store" },
     { path = "std::fs::File::set_permissions", reason = "write files through campfire-store" },
     { path = "std::fs::OpenOptions::new", reason = "write files through campfire-store" },
-    # Every thread starts through store's Worker (design 11, Structural rules): it names the thread, closes and joins it, and does not hang a crash.
+    # Every thread starts through store's Worker (design 02, Storage): it names the thread, closes and joins it, and does not hang a crash.
     { path = "std::thread::spawn", reason = "start threads through campfire_store::Worker" },
     { path = "std::thread::scope", reason = "start threads through campfire_store::Worker" },
     { path = "std::thread::Builder::spawn", reason = "start threads through campfire_store::Worker" },

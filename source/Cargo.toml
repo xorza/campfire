@@ -109,9 +109,9 @@ overflow-checks = true
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-debug = "full"
+debug = false
 split-debuginfo = "packed"
-strip = "none"
+strip = "debuginfo"
 
 [profile.bench]
 debug = "line-tables-only"
