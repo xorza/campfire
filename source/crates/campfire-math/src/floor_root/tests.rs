@@ -61,7 +61,7 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(CASES))]
 
     #[test]
-    fn the_root_is_cores_at_every_width(bits in any::<u128>(), shift in 0_u32..128) {
+    fn the_root_is_isqrts_at_every_width(bits in any::<u128>(), shift in 0_u32..128) {
         let value = bits >> shift;
         prop_assert_eq!(value.floor_root(), value.isqrt());
     }

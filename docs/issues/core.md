@@ -10,4 +10,3 @@ Design: [Capabilities](../design/04-capabilities/00-overview.md): the core under
 
 ## Ready
 
-

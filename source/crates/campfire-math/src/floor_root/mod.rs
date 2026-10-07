@@ -60,8 +60,10 @@ fn wide_root(value: u128) -> u64 {
     let estimate = (high as f64 * TWO_POW_64 + low as f64).sqrt();
     // The cast saturates: an estimate of 2⁶⁴, which a value near 2¹²⁸ gives, becomes 2⁶⁴ − 1.
     let mut root = estimate as u64;
-    // Above 2⁵² the estimate can be off by up to 2¹⁰; one Newton step brings it within 1. Its
-    // result is at most 2⁶⁴, held to 2⁶⁴ − 1, the largest root.
+    // The value's conversion and the root each round by at most 2⁻⁵³ of their size, so the
+    // estimate is within 2⁻⁵² of the root, plus the cast's truncation: within 2 for a root up to
+    // 2⁵², and up to 2¹² above it, where one Newton step brings it within 1. Its result is at
+    // most 2⁶⁴, held to 2⁶⁴ − 1, the largest root.
     if root > 1 << 52 {
         let wide = u128::from(root);
         root = u64::try_from(wide.midpoint(value / wide)).unwrap_or(u64::MAX);
