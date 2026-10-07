@@ -243,3 +243,40 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
         assert_eq!(index.blocks(segment, walker), reached, "{from:?} {to:?}");
     }
 }
+
+#[test]
+fn a_layer_whose_rows_spread_wide_still_meets_exactly_its_bodies() {
+    // On the first layer two bodies 2¹⁸ m apart along z, rows far wider than its entries, so
+    // the layer keeps no row starts; on the second, a body near each. Each search meets the
+    // bodies of its layer near it, and a segment along z meets those of its layer within reach.
+    let mut ids = IdAllocator::default();
+    let far = 1 << 18;
+    let mut on = |layer: u8, z: i64| IndexedBody {
+        layer: Layer::new(layer),
+        ..body(ids.allocate(), 0, z, Num::ONE)
+    };
+    let bodies = [on(0, 0), on(1, 2), on(0, far), on(1, far - 2)];
+    let mut index = BodyIndex::new(Num::ONE);
+    assert!(index.update(&bodies));
+    assert_eq!(index.rows.span(Layer::FIRST), Some((-1, far / 2)));
+    for (layer, z, expected) in [
+        (0, 0, vec![bodies[0].id]),
+        (1, 0, vec![bodies[1].id]),
+        (0, far, vec![bodies[2].id]),
+        (1, far, vec![bodies[3].id]),
+        (0, far / 2, vec![]),
+    ] {
+        let met = near_on(&index, Layer::new(layer), 0, z, Num::int(3));
+        assert_eq!(met, expected, "layer {layer} at {z}");
+    }
+    let point =
+        |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
+    let walker = |layer: u8| Walker {
+        layer: Layer::new(layer),
+        radius: Num::ONE,
+    };
+    // 4 m off the bodies' line, past their 1 m and the walker's 1 m; 1 m off, within them.
+    assert!(!index.blocks(Segment::new(point(4, 0), point(4, far)), walker(0)));
+    assert!(index.blocks(Segment::new(point(1, 0), point(1, far)), walker(0)));
+    assert!(!index.blocks(Segment::new(point(0, 10), point(0, 20)), walker(1)));
+}

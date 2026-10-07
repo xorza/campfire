@@ -6,10 +6,13 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::navigation::body_index::row_directory::{RowDirectory, RowEntries};
 use crate::navigation::segment::Segment;
 use crate::navigation::walker::Walker;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
+
+pub(crate) mod row_directory;
 
 /// Bodies that stand, by layer and by the square buckets their bounding boxes cover, so a query
 /// sees only the bodies of its layer. As a resource it holds the
@@ -23,8 +26,9 @@ pub(crate) struct BodyIndex {
     bucket: Num,
     /// The bodies, by stable id.
     bodies: Vec<IndexedBody>,
-    /// Each body once in each bucket its box covers, sorted.
+    /// Each body once in each bucket its box covers, sorted, and where each row's start.
     entries: Vec<Entry>,
+    rows: RowDirectory,
     /// The bodies the last update took away, and those it put in, by stable id: a body that
     /// changed is in both.
     removed: Vec<IndexedBody>,
@@ -79,6 +83,13 @@ impl BucketKey {
     /// rows past them clamp to the ends, whose buckets hold no body.
     const ROWS: i64 = 1 << 55;
 
+    /// Its layer and row.
+    const fn layer_row(self) -> (Layer, i64) {
+        let high = (self.0 >> 64) as u64;
+        let row = (high & ((1 << 56) - 1)).cast_signed() - BucketKey::ROWS;
+        (Layer::new((high >> 56) as u8), row)
+    }
+
     const fn new(layer: Layer, row: i64, column: i64) -> BucketKey {
         let row = if row < -BucketKey::ROWS {
             0
@@ -118,6 +129,7 @@ impl BodyIndex {
             bucket: widest + widest,
             bodies: Vec::new(),
             entries: Vec::new(),
+            rows: RowDirectory::default(),
             removed: Vec::new(),
             added: Vec::new(),
             fresh: Vec::new(),
@@ -209,6 +221,8 @@ impl BodyIndex {
         self.merged.extend_from_slice(&self.entries[kept..]);
         self.merged.extend_from_slice(&self.fresh[put..]);
         mem::swap(&mut self.entries, &mut self.merged);
+        let rows = self.entries.iter().map(|entry| entry.bucket.layer_row());
+        self.rows.rebuild(rows);
         self.bodies.clear();
         self.bodies.extend_from_slice(bodies);
         true
@@ -287,13 +301,21 @@ impl BodyIndex {
         columns: Buckets,
         mut visit: impl FnMut(&IndexedBody) -> ControlFlow<()>,
     ) -> ControlFlow<()> {
-        for row in rows.low..=rows.high {
+        let Some((first, last)) = self.rows.span(layer) else {
+            return ControlFlow::Continue(());
+        };
+        for row in rows.low.max(first)..=rows.high.min(last) {
+            let Some(found) = self.rows.row(layer, row) else {
+                continue;
+            };
+            let (RowEntries::Row(entries) | RowEntries::Layer(entries)) = found;
+            let entries = &self.entries[entries];
             let (low, high) = (
                 BucketKey::new(layer, row, columns.low),
                 BucketKey::new(layer, row, columns.high),
             );
-            let start = self.entries.partition_point(|entry| entry.bucket < low);
-            let run = self.entries[start..]
+            let start = entries.partition_point(|entry| entry.bucket < low);
+            let run = entries[start..]
                 .iter()
                 .take_while(|entry| entry.bucket <= high);
             for entry in run {
