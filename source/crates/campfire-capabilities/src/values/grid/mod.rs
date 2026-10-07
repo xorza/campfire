@@ -267,7 +267,10 @@ impl Grid {
     /// `to` on the ground plane touches, exactly, corners included, so a segment through a corner
     /// touches the four cells round it; cells are visited column by column, and the first hit
     /// ends the visit. Each column's span of the segment gives the rows it touches, from the
-    /// segment's z at the span's ends, a fraction kept whole by its denominator.
+    /// segment's z at the span's ends, a fraction kept whole by its denominator. The z at each
+    /// line between columns grows by the same step, so its quotient by the denominator carries
+    /// from one column to the next: a segment divides at most four times, however many columns
+    /// it crosses.
     pub(crate) fn touches(
         &self,
         from: Position,
@@ -291,24 +294,34 @@ impl Grid {
         let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
         let first_column = (ceil_div(a[0], cell) - 1).max(0);
         let last_column = b[0].div_euclid(cell).min(last(0));
-        for column in first_column..=last_column {
-            let (z_low, z_high, scale) = if dx == 0 {
-                (a[1].min(b[1]), a[1].max(b[1]), cell)
-            } else {
-                // The segment's z at x, times `dx`.
-                let at = |x: i128| a[1] * dx + (x - a[0]) * dz;
-                let start = at(a[0].max(column * cell));
-                let end = at(b[0].min((column + 1) * cell));
-                (start.min(end), start.max(end), dx * cell)
-            };
-            let first_row = (ceil_div(z_low, scale) - 1).max(0);
-            let last_row = z_high.div_euclid(scale).min(last(1));
-            for row in first_row..=last_row {
+        let mut rows = |column: i128, low: Quotient, high: Quotient| {
+            let first_row = (low.ceil() - 1).max(0);
+            let last_row = high.floor.min(last(1));
+            (first_row..=last_row).any(|row| {
                 let at = row * i128::from(self.size[0]) + column;
-                if hit(usize::try_from(at).expect("a cell of the grid")) {
-                    return true;
-                }
+                hit(usize::try_from(at).expect("a cell of the grid"))
+            })
+        };
+        if dx == 0 {
+            let (low, high) = (a[1].min(b[1]), a[1].max(b[1]));
+            let (low, high) = (Quotient::of(low, cell), Quotient::of(high, cell));
+            return (first_column..=last_column).any(|column| rows(column, low, high));
+        }
+        // The segment's z at `x`, times `dx`, over `scale`: a column's span runs from the line
+        // before it, or `a`, to the line after it, or `b`, which the bounds of the columns make
+        // the first column's and the last column's ends.
+        let scale = dx * cell;
+        let at = |x: i128| Quotient::of(a[1] * dx + (x - a[0]) * dz, scale);
+        let step = Quotient::of(cell * dz, scale);
+        let (end, mut line) = (at(b[0]), at((first_column + 1) * cell));
+        let mut start = at(a[0]);
+        for column in first_column..=last_column {
+            let finish = if column == last_column { end } else { line };
+            if rows(column, start.min(finish), start.max(finish)) {
+                return true;
             }
+            start = line;
+            line = line.plus(step, scale);
         }
         false
     }
@@ -338,6 +351,40 @@ impl Rows {
     /// `i32` and each square 62 bits.
     const fn fit_lanes(&self, cell: i64) -> bool {
         self.reach + 8 * cell < 1 << 31
+    }
+}
+
+/// A value over a positive divisor: the floor of their quotient, and what remains, from 0 to
+/// below the divisor, so two values over one divisor order as their quotients do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Quotient {
+    floor: i128,
+    rest: i128,
+}
+
+impl Quotient {
+    /// `value` over `by`, which is positive.
+    const fn of(value: i128, by: i128) -> Quotient {
+        let floor = value.div_euclid(by);
+        Quotient {
+            floor,
+            rest: value - floor * by,
+        }
+    }
+
+    /// The quotient rounded up.
+    const fn ceil(self) -> i128 {
+        self.floor + (self.rest != 0) as i128
+    }
+
+    /// The sum of the values of `self` and `other`, over the same `by`.
+    const fn plus(self, other: Quotient, by: i128) -> Quotient {
+        let rest = self.rest + other.rest;
+        let carry = (rest >= by) as i128;
+        Quotient {
+            floor: self.floor + other.floor + carry,
+            rest: rest - carry * by,
+        }
     }
 }
 
