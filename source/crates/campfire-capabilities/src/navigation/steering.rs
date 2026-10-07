@@ -130,7 +130,7 @@ impl Steering {
             // left, so this one goes round it on its right; two that meet head on so pass on
             // opposite sides, whatever the cells make of their sides.
             self.walking.visit_near(at, walker.radius + step, |other| {
-                let reach = walker.radius + other.radius;
+                let reach = walker.radius + other.shape.bound();
                 let touching = other.at.within_ground(at, reach + step);
                 if other.id == id || !touching || other.key != walker.layer {
                     return;
@@ -140,7 +140,7 @@ impl Steering {
                 self.blockers.push(IndexedBody {
                     id: other.id,
                     at: moved.expect("a shift of a body's reach stays within the bound"),
-                    radius: other.radius,
+                    shape: other.shape,
                     layer: other.key,
                 });
             });
@@ -178,6 +178,7 @@ mod tests {
     use crate::navigation::terrain::Terrain;
     use crate::values::bounds::Bounds;
     use crate::values::grid::Grid;
+    use crate::values::shape::Shape;
 
     /// The point `(x, z)` in eighths of a meter.
     fn at(x: i64, z: i64) -> Position {
@@ -212,7 +213,7 @@ mod tests {
         let standing = IndexedBody {
             id: unit,
             at: at(43, 0),
-            radius: quarter,
+            shape: Shape::Circle(quarter),
             layer: Layer::FIRST,
         };
         let mut steering = Steering::default();

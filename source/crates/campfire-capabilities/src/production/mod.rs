@@ -3,6 +3,7 @@ use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use campfire_math::Num;
 use campfire_sim::{
     IdAllocator, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry,
 };
@@ -92,6 +93,7 @@ impl Production {
                     unit_type,
                     team,
                     pos,
+                    angle: Num::ZERO,
                 };
                 spawner.spawn(world, at, owner);
                 let mut queue = world.get_mut::<TrainQueue>(entity).expect("a producer");

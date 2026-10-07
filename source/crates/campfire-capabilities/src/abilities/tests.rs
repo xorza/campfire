@@ -77,6 +77,7 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::body_box::BodyBox;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
@@ -996,6 +997,28 @@ fn on_resolve(ctx, caster, target) {
     let missed = enemy(&mut game, 4, 0);
     game.cast(caster, point(10, 0));
     assert_eq!(game.sim.health(missed), 500);
+    // A caster with a box of 4 by 2 m at the origin reaches 4 m from the box's edge: an aim at
+    // (10, 0) lands at 6 m, 4 m past its edge at x = 2, exactly, and strikes an enemy at 5.6 m.
+    // One at (9, 12) leaves the box through its top, then nears its corner (2, 1): it lands where
+    // the corner is 4 m off, t = 2 + √15 ≈ 5.873 m along, at about (3.524, 4.698), and strikes an
+    // enemy 0.3 m short of it, at (3.34, 4.46). Measured from the box's bound, 2.24 m round its
+    // center, each would land 4 + 2.24 m along, 0.24 m and 0.36 m further, past both enemies'
+    // half meter.
+    let boxed = |game: &mut Match| {
+        let caster = game.caster(clamped, 1);
+        let body = BodyBox::new([Num::int(4), Num::int(2)], Num::ZERO).unwrap();
+        game.sim.insert(caster, Body::boxed(body));
+        caster
+    };
+    let near = |x: &str, z: &str| ground(x.parse().unwrap(), z.parse().unwrap());
+    let caster = boxed(&mut game);
+    let struck = game.spawn(1, near("5.6", "0"), ());
+    game.cast(caster, point(10, 0));
+    assert_eq!(game.sim.health(struck), 490);
+    let caster = boxed(&mut game);
+    let struck = game.spawn(1, near("3.34", "4.46"), ());
+    game.cast(caster, point(9, 12));
+    assert_eq!(game.sim.health(struck), 490);
     assert_eq!(game.failed_calls(), []);
 }
 

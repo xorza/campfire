@@ -201,6 +201,20 @@ fn knock_back_end(at: Position, from: Position, distance: Num) -> Vec3 {
         .expect("a place and a distance within the bound add")
 }
 
+impl NavigationEffect {
+    /// Puts the unit of `entity` at `place`, at once: it ends its forced move and walks its route
+    /// again from there, as a teleport and a box that spawns over it put a unit.
+    pub(crate) fn put(world: &mut World, entity: Entity, place: Position, now: Tick) {
+        let mut moved = world.entity_mut(entity);
+        *moved.get_mut::<Position>().expect("a unit has a place") = place;
+        moved.remove::<ForcedMove>();
+        let mut walkers = world.query::<(&Destination, &mut Route, &mut Progress)>();
+        if let Ok((destination, mut route, mut progress)) = walkers.get_mut(world, entity) {
+            route.ask_again(destination, &mut progress, now);
+        }
+    }
+}
+
 /// Puts the unit of `entity`, `unit`, at `to`, taken to the nearest point of the bounds, or, where
 /// its walker may not stand on the pathing grid, at the center of the nearest cell it may stand
 /// in, at `to`'s height; on a grid with no such cell, it stays. It ends its forced move and walks
@@ -211,7 +225,7 @@ fn teleport(world: &mut World, entity: Entity, unit: StableId, to: Position, now
         && PathingGrid::serves(world, entity)
     {
         let walkable = Walkable {
-            clearance: grid.clearance(Walker::of(world.get::<Body>(entity))),
+            clearance: grid.clearance(Walker::walking(world.get::<Body>(entity))),
             statics: world.resource::<BodyIndex>(),
             short: None,
         };
@@ -220,13 +234,7 @@ fn teleport(world: &mut World, entity: Entity, unit: StableId, to: Position, now
         };
         place = open;
     }
-    let mut moved = world.entity_mut(entity);
-    *moved.get_mut::<Position>().expect("a unit has a place") = place;
-    moved.remove::<ForcedMove>();
-    let mut walkers = world.query::<(&Destination, &mut Route, &mut Progress)>();
-    if let Ok((destination, mut route, mut progress)) = walkers.get_mut(world, entity) {
-        route.ask_again(destination, &mut progress, now);
-    }
+    NavigationEffect::put(world, entity, place, now);
     let mut projectiles = world.query::<&mut Projectile>();
     for mut projectile in projectiles.iter_mut(world) {
         if projectile.homes_on(unit) {

@@ -22,6 +22,7 @@ use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::values::attitude::Attitude;
+use crate::values::shape::Shape;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the actions, as the
@@ -188,27 +189,50 @@ pub(crate) struct Checked<'a> {
 
 impl Checked<'_> {
     /// Moves a point it aims at beyond its range in to the range, along the line from the unit
-    /// at `position` with a body of `radius`, when its aim clamps, as `targets` measure reach.
-    pub(crate) fn clamp(&mut self, position: Position, radius: Num, targets: &Targets<'_, '_>) {
+    /// at `position` with a body of `shape`, when its aim clamps, as `targets` measure reach: the
+    /// farthest point along the line that it reaches.
+    pub(crate) fn clamp(&mut self, position: Position, shape: Shape, targets: &Targets<'_, '_>) {
         let (Aim::Point { clamp: true }, Range::Meters(range), ActionTarget::Point(at)) =
             (self.action.aim, self.values.range, self.target)
         else {
             return;
         };
-        if targets.reaches_point(position, radius, range, at) {
+        if targets.reaches_point(position, shape, range, at) {
             return;
         }
-        // The step rounds once in each coordinate, so it may end a last bit past the reach;
-        // stepping a bit shorter each time ends within it after a few.
-        let mut step = range
-            .checked_add(radius)
+        let reaches = |step: Num| {
+            targets.reaches_point(position, shape, range, targets.toward(position, at, step))
+        };
+        let most = range
+            .checked_add(shape.bound())
             .expect("a reach past every number reaches every point");
-        let mut clamped = targets.toward(position, at, step);
-        while !targets.reaches_point(position, radius, range, clamped) {
-            step -= Num::from_bits(1);
-            clamped = targets.toward(position, at, step);
-        }
-        self.target = ActionTarget::Point(clamped);
+        let step = match shape {
+            // The step rounds once in each coordinate, so it may end a last bit past the reach;
+            // stepping a bit shorter each time ends within it after a few.
+            Shape::Circle(_) => {
+                let mut step = most;
+                while !reaches(step) {
+                    step -= Num::from_bits(1);
+                }
+                step
+            }
+            // A box's edge lies anywhere within its bound along the line, so the farthest step
+            // that reaches is searched for: the position reaches, as it lies inside the box, and
+            // a step past the bound and the range does not.
+            Shape::Box(_) => {
+                let (mut reaching, mut past) = (Num::ZERO, most + Num::from_bits(1));
+                while past - reaching > Num::from_bits(1) {
+                    let middle = Num::from_bits(i64::midpoint(reaching.to_bits(), past.to_bits()));
+                    if reaches(middle) {
+                        reaching = middle;
+                    } else {
+                        past = middle;
+                    }
+                }
+                reaching
+            }
+        };
+        self.target = ActionTarget::Point(targets.toward(position, at, step));
     }
 
     /// Where a unit walks to come in range of its target: the living unit's place, or the point;
@@ -223,14 +247,14 @@ impl Checked<'_> {
         }
     }
 
-    /// Whether its target is within its range of a unit at `position` with a body of `radius`,
+    /// Whether its target is within its range of a unit at `position` with a body of `shape`,
     /// as `targets` measure reach: a unit's body, or a point it aims at; an action of global
     /// reach, one that aims at a direction, or one with no target always is. The range counts
     /// only when an action starts.
     pub(crate) fn in_range(
         &self,
         position: Position,
-        radius: Num,
+        shape: Shape,
         targets: &Targets<'_, '_>,
     ) -> bool {
         let Range::Meters(range) = self.values.range else {
@@ -239,9 +263,9 @@ impl Checked<'_> {
         match (self.action.aim, self.target) {
             (Aim::Unit(_), ActionTarget::Unit(target)) => targets
                 .living(target)
-                .is_some_and(|unit| targets.reaches(position, radius, range, &unit)),
+                .is_some_and(|unit| targets.reaches(position, shape, range, &unit)),
             (Aim::Point { .. }, ActionTarget::Point(at)) => {
-                targets.reaches_point(position, radius, range, at)
+                targets.reaches_point(position, shape, range, at)
             }
             _ => true,
         }

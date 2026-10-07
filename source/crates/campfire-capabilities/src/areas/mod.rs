@@ -31,6 +31,7 @@ use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 
 use crate::values::hit::Hit;
+use crate::values::shape::Shape;
 
 pub(crate) mod area;
 pub(crate) mod area_data;
@@ -163,7 +164,7 @@ fn trigger(
                 };
                 let attitude = targets.attitude(team, unit.team);
                 if spec.affects.selects(attitude, unit.tags)
-                    && targets.reaches(pos, Num::ZERO, spec.radius, &unit)
+                    && targets.reaches(pos, Shape::POINT, spec.radius, &unit)
                 {
                     reached.push(unit.id);
                 }
@@ -238,7 +239,7 @@ fn hold_inside(
             continue;
         };
         grid.visit_near(pos, spec.radius, |body| {
-            let reaches = |unit: &_| targets.reaches(pos, Num::ZERO, spec.radius, unit);
+            let reaches = |unit: &_| targets.reaches(pos, Shape::POINT, spec.radius, unit);
             let Some(unit) = targets.body_of(body.id).filter(reaches) else {
                 return;
             };

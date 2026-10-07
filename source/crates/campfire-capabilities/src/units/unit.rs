@@ -9,6 +9,7 @@ use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
 use crate::units::unit_state_access::UnitStateAccess;
+use crate::values::shape::Shape;
 
 /// A unit as a script holds it, `Unit` in scripts: its values as the view read them.
 #[derive(Debug, Clone)]
@@ -57,8 +58,14 @@ impl Unit {
                 unit.row().pos
             })
             .bind(
-                field("radius", "its body's radius, 0 with no body"),
-                |unit: &mut Unit| unit.row().radius,
+                field(
+                    "radius",
+                    "its body's radius, 0 with no body, `()` for a box",
+                ),
+                |unit: &mut Unit| match unit.row().shape {
+                    Shape::Circle(radius) => Dynamic::from(radius),
+                    Shape::Box(_) => Dynamic::UNIT,
+                },
             )
             .bind(field("alive", "whether it lives"), |unit: &mut Unit| {
                 unit.row().alive

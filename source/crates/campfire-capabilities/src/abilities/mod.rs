@@ -418,18 +418,18 @@ fn start_casts(
             owner: owner.map(|owner| owner.slot()),
         };
         let attitude = |other| targets.attitude(team, other);
-        let radius = Body::radius_of(body);
+        let shape = Body::shape_of(body);
         let checked = book
             .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
             .map(|mut checked| {
-                checked.clamp(position, radius, &targets);
+                checked.clamp(position, shape, &targets);
                 checked
             });
         let Some(checked) = checked else {
             drop_cast(&mut slots, destination.as_mut(), route, approached);
             continue;
         };
-        if !checked.in_range(position, radius, &targets) {
+        if !checked.in_range(position, shape, &targets) {
             match (destination.is_some(), checked.aimed_at(&targets)) {
                 (true, Some(to)) => {
                     walk(destination.as_mut(), route, Some(to));

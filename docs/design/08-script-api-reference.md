@@ -84,7 +84,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `pool` | `(name)`, `name` a pool | stats | since 1.0 | the current amount of its pool `name` |
 | `pool_max` | `(name)`, `name` a pool | stats | since 1.0 | the maximum of its pool `name` |
 | `pos` | read | core | since 1.0 | where it stands |
-| `radius` | read | core | since 1.0 | its body's radius, 0 with no body |
+| `radius` | read | core | since 1.0 | its body's radius, 0 with no body, `()` for a box |
 | `recent_attackers` | `(ms)` | combat | since 1.0 | the living units that struck it within the last `ms`, rounded up to whole ticks |
 | `spawn_pos` | read | core | since 1.0 | where it spawned, where it respawns; `()` with none |
 | `stat` | `(name)`, `name` a stat | stats | since 1.0 | its value of a stat the mode declares |
@@ -461,6 +461,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Status |
 | --- | --- |
 | `radius` | since 1.0 |
+| `box` | since 1.0 |
 | `layer` | since 1.0 |
 
 ### A unit type's `orders`

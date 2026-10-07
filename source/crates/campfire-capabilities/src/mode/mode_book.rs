@@ -6,6 +6,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
+use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId};
 
 use crate::actions::action_slots::ActionSlots;
@@ -168,6 +169,7 @@ impl ModeBook {
             unit_type,
             team,
             pos,
+            angle,
         } = at;
         let kit = self
             .kit(unit_type)
@@ -204,7 +206,8 @@ impl ModeBook {
         if let Some(sight) = kit.sight {
             unit.insert(sight);
         }
-        if let Some(body) = kit.body {
+        let body = kit.body.map(|form| form.at(angle));
+        if let Some(body) = body {
             unit.insert(body);
         }
         if let Some(step) = kit.step {
@@ -246,6 +249,9 @@ impl ModeBook {
             };
             Stats::apply_effect(world, add, applier);
         }
+        if body.is_some_and(|body| body.half_edges().is_some()) {
+            Navigation::make_room(world, entity);
+        }
         entity
     }
 
@@ -270,6 +276,7 @@ impl ModeBook {
                 unit_type,
                 team,
                 pos,
+                angle: Num::ZERO,
             };
             self.spawn(world, at, walker);
         }

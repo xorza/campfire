@@ -1,7 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_math::Num;
 use campfire_sim::{Position, SimTick, StableId, TickRate};
 
 use crate::stats::applier::Applier;
@@ -27,6 +26,7 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
+use crate::values::shape::Shape;
 
 /// The living units whose held modifiers `HeldPass::run` writes.
 type HeldUnits<'w, 's> = Query<
@@ -102,7 +102,7 @@ impl HeldPass {
                         id,
                         key: entity,
                         at,
-                        radius: Body::radius_of(body),
+                        shape: Body::shape_of(body),
                     });
                     grid.rebuild(placed);
                     indexed = true;
@@ -113,7 +113,7 @@ impl HeldPass {
                         units.get(body.key).expect("an indexed unit");
                     let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                     let attitude = relations.between(team, other);
-                    let reaches = metric.reaches(at, Num::ZERO, radius, body.at, body.radius);
+                    let reaches = metric.reaches(at, Shape::POINT, radius, body.at, body.shape);
                     if reaches && filter.selects(attitude, tags) {
                         held.push(Held {
                             target,

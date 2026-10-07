@@ -12,8 +12,8 @@ use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::Navigation;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::paths::Paths;
-use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
+use crate::navigation::wall::Wall;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
@@ -48,8 +48,8 @@ pub(crate) struct MapGround {
     bounds: Bounds,
     relations: Relations,
     pathing: Option<Grid>,
-    /// The cells the walls block on the pathing grid; none without it.
-    terrain: Terrain,
+    /// The map's walls, which block cells on the pathing grid; none without it.
+    walls: Vec<Wall>,
 }
 
 /// A marker of the map, names resolved: its name, its tags, its point, its region and its team
@@ -121,7 +121,6 @@ impl ModeMap {
         }
         let pathing = map.pathing()?;
         let walls = map.walls(rules)?;
-        let terrain = pathing.map_or_else(Terrain::default, |grid| Terrain::new(&grid, &walls));
         let point = |point: &MapPoint| map.point(point);
         let mut points = Vec::with_capacity(map.paths.len());
         for (at, path) in map.paths.iter().enumerate() {
@@ -154,6 +153,7 @@ impl ModeMap {
                 team: team(&unit.team)?,
                 path,
                 pos: point(&unit.pos)?,
+                angle: unit.angle,
             });
         }
         let markers = ModeMap::markers(map, team)?;
@@ -163,7 +163,7 @@ impl ModeMap {
                 bounds: map.bounds,
                 relations: resolved,
                 pathing,
-                terrain,
+                walls,
             },
             paths,
             placed,
@@ -226,13 +226,13 @@ impl MapGround {
             bounds,
             relations,
             pathing,
-            terrain,
+            walls,
         } = self;
         world.insert_resource(metric);
         world.insert_resource(bounds);
         world.insert_resource(relations);
         if let Some(pathing) = pathing {
-            Navigation::load_pathing(world, pathing, &terrain, walkers);
+            Navigation::load_pathing(world, pathing, &walls, walkers);
         }
     }
 }

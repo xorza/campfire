@@ -518,7 +518,7 @@ fn follow_paths(
         }
         let path = path.get();
         let mut waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
-        if waypoint.is_some_and(|at| position.within_ground(at, Body::radius_of(body))) {
+        if waypoint.is_some_and(|at| position.within_ground(at, Body::shape_of(body).bound())) {
             walker.advance();
             waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
         }
@@ -565,7 +565,7 @@ fn chase(
                 Destination::walk_to(&mut destination, route, None);
             }
             Some((unit, Range::Meters(range)))
-                if !targets.reaches(position, Body::radius_of(body), range, &unit) =>
+                if !targets.reaches(position, Body::shape_of(body), range, &unit) =>
             {
                 Destination::walk_to(&mut destination, route, Some(unit.pos));
             }

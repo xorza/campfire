@@ -3,6 +3,7 @@ use campfire_sim::IdAllocator;
 
 use super::*;
 use crate::units::layer::Layer;
+use crate::values::shape::Shape;
 
 fn at(x: i64, z: i64) -> Position {
     let num = |value: i64| Num::from_int(value).unwrap();
@@ -19,7 +20,7 @@ fn a_route_is_blocked_only_by_a_body_of_its_layer_put_in_since_the_last_check() 
     let mut post = |x, z, layer| IndexedBody {
         id: ids.allocate(),
         at: at(x, z),
-        radius: Num::ONE,
+        shape: Shape::Circle(Num::ONE),
         layer,
     };
     let (far, touching, near, above) = (

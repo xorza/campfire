@@ -4,18 +4,21 @@ use std::rc::Rc;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
+use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 
-/// A unit to spawn: the id it takes, its unit type, its team and where.
+/// A unit to spawn: the id it takes, its unit type, its team, where, and the angle in degrees a
+/// box body turns by, which a circle ignores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SpawnAt {
     pub(crate) id: StableId,
     pub(crate) unit_type: UnitType,
     pub(crate) team: Team,
     pub(crate) pos: Position,
+    pub(crate) angle: Num,
 }
 
 /// How the match spawns a unit of a type, with the parts its type's kit gives, owned by a player

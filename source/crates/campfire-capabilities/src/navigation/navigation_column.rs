@@ -2,19 +2,26 @@ use std::ops::Range;
 
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::StableId;
+use campfire_sim::{Position, StableId};
 
+use crate::navigation::body_index::IndexedBody;
+use crate::navigation::walls::Walls;
+use crate::units::body::Body;
 use crate::units::kept_rows::KeptRows;
+use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
 use crate::units::unit::Unit;
 use crate::units::view_column::ViewColumn;
+use crate::values::shape::Shape;
 
 /// What navigation adds to the script view, a row each: the path each unit walks or stands on,
-/// and whether it walks, as a unit with a step does.
+/// whether it walks, as a unit with a step does, and the layer it moves on; and the map's walls,
+/// which a box tests its room against.
 #[derive(Debug, Default)]
 pub(crate) struct NavigationColumn {
     rows: KeptRows<Vec<NavigationRow>>,
+    walls: Walls,
 }
 
 /// A unit's row of the navigation column.
@@ -22,11 +29,17 @@ pub(crate) struct NavigationColumn {
 struct NavigationRow {
     path: Option<PathId>,
     walks: bool,
+    layer: Layer,
 }
 
 impl ViewColumn for NavigationColumn {
-    fn begin(&mut self, _: &World) -> bool {
+    fn begin(&mut self, world: &World) -> bool {
         self.rows.begin();
+        if let Some(walls) = world.get_resource::<Walls>()
+            && !walls.same(&self.walls)
+        {
+            self.walls = walls.clone();
+        }
         false
     }
 
@@ -44,9 +57,53 @@ impl ViewColumn for NavigationColumn {
 }
 
 impl NavigationColumn {
-    /// Adds the row of a unit on `path`, which walks when `walks`.
-    pub(crate) fn push(&mut self, path: Option<PathId>, walks: bool) {
-        self.rows.now_mut().push(NavigationRow { path, walks });
+    /// Adds the row of a unit on `path`, which walks when `walks`, on `layer`.
+    pub(crate) fn push(&mut self, path: Option<PathId>, walks: bool, layer: Layer) {
+        self.rows
+            .now_mut()
+            .push(NavigationRow { path, walks, layer });
+    }
+
+    /// Whether `body`, a box that would spawn at `at`, has room there, as `view` read the match:
+    /// within the bounds, clear of the walls of its layer, of the living units of its layer that
+    /// stand, and of `spawning`, the boxes the call already spawns; with no navigation, of the
+    /// bounds and `spawning` alone.
+    pub(crate) fn room_for(
+        view: &View,
+        at: Position,
+        body: Body,
+        spawning: &[IndexedBody],
+    ) -> bool {
+        let Shape::Box(boxed) = body.shape() else {
+            return true;
+        };
+        let layer = body.layer();
+        let spawning = spawning
+            .iter()
+            .filter(|other| other.layer == layer)
+            .copied();
+        let room = view.column(|column: &NavigationColumn| {
+            let rows = column.rows.now();
+            let mut statics = Vec::new();
+            view.each_row(|place, row| {
+                let stands = !rows[place].walks && rows[place].layer == layer;
+                if stands && row.alive && row.shape != Shape::POINT {
+                    statics.push(IndexedBody {
+                        id: row.id,
+                        at: row.pos,
+                        shape: row.shape,
+                        layer,
+                    });
+                }
+            });
+            let statics = statics.into_iter().chain(spawning.clone());
+            column
+                .walls
+                .room_for(view.bounds(), at, &boxed, layer, statics)
+        });
+        room.unwrap_or_else(|| {
+            Walls::default().room_for(view.bounds(), at, &boxed, layer, spawning)
+        })
     }
 
     /// `unit.path`: the name of the path `unit` walks or stands on, `()` with none, or in a view

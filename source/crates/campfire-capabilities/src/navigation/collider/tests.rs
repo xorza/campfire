@@ -14,7 +14,7 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
             id: ids.allocate(),
             entity: world.spawn_empty().id(),
             at: Vec3::new(x, Num::int(2), z),
-            radius: Num::ONE,
+            shape: Shape::Circle(Num::ONE),
             layer: Layer::FIRST,
             movable,
             walking: movable,

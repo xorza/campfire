@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::units::body::Body;
+use crate::units::body::BodyForm;
 use crate::units::collision_data::CollisionData;
 use crate::units::layer::Layer;
 use crate::values::declared_name::DeclaredName;
@@ -23,11 +23,11 @@ impl NavigationRules {
 
     /// The body of a unit type of `collision`, if it has the section: on the layer it names,
     /// which the load checked the mode declares, or on the first.
-    pub fn body(&self, collision: Option<&CollisionData>) -> Option<Body> {
+    pub fn form(&self, collision: Option<&CollisionData>) -> Option<BodyForm> {
         let collision = collision?;
         let layer = collision.layer.as_ref().map_or(Layer::FIRST, |name| {
             self.layer_named(name).expect("the load checked the layer")
         });
-        Some(collision.body.on(layer))
+        Some(collision.form.on(layer))
     }
 }

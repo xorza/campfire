@@ -13,7 +13,8 @@ use crate::stats::Stats;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
-use crate::units::body::Body;
+use crate::units::body::BodyForm;
+use crate::units::layer::Layer;
 use crate::units::script_view::View;
 use crate::units::tag_book::TagBook;
 use crate::units::unit_types::UnitTypes;
@@ -91,7 +92,7 @@ impl ModeBooks {
         let life = data.combat.life_pool(&data.pools).map(LifePool);
         let layers = &data.navigation.layers;
         for unit_type in unit_types {
-            let layer = Body::layer_of(unit_type.kit.body.as_ref());
+            let layer = unit_type.kit.body.map_or(Layer::FIRST, BodyForm::layer);
             if let Some(name) = layers.get(usize::from(layer.index())) {
                 let tag = types
                     .tag_named(name.as_str())

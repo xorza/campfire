@@ -1,6 +1,13 @@
 use super::*;
 use crate::values::metric::Approach;
 
+impl BodyBox {
+    /// Whether `at` lies inside the box at `centre` or on its edge.
+    fn holds(&self, centre: Position, at: Position) -> bool {
+        self.frame().holds(sub(flat(at), flat(centre)))
+    }
+}
+
 fn num(text: &str) -> Num {
     text.parse().unwrap()
 }
@@ -21,6 +28,7 @@ fn halves(body: &BodyBox) -> [[i64; 2]; 2] {
 fn polygon(body: &BodyBox, centre: Position) -> Polygon {
     let at = flat(centre);
     let points = body
+        .frame()
         .corners()
         .map(|corner| add(corner, at).map(|bits| Num::from_bits(i64::try_from(bits).unwrap())));
     Polygon::new(points.to_vec()).unwrap()
@@ -107,9 +115,44 @@ fn a_box_has_the_least_size_and_the_longest_diagonal() {
     assert!(BodyBox::new([num("126"), least], Num::ZERO).is_none());
     assert!(BodyBox::new([num("126"), Num::ZERO], Num::ZERO).is_none());
     let longest = made("125.9", "1", "45");
-    let [a, b] = longest.halves();
+    let [a, b] = longest.frame().halves;
     let reach = (64 * i128::from(Num::ONE.to_bits())).pow(2);
     assert!(dot(add(a, b), add(a, b)) <= reach && dot(sub(a, b), sub(a, b)) <= reach);
+}
+
+#[test]
+fn a_box_has_a_bound_and_decodes_only_as_a_box() {
+    // A 4 × 2 box reaches √5 m from its position at every corner: its bound is that, rounded
+    // up to a bit.
+    let body = made("4", "2", "0");
+    let five = 5 * (1_i128 << 48);
+    let bound = i128::from(body.bound().to_bits());
+    assert!(
+        bound * bound >= five && (bound - 1) * (bound - 1) < five,
+        "{bound}"
+    );
+    // Quarters turn it whole, so its bound stays.
+    assert_eq!(made("4", "2", "90").bound(), body.bound());
+    // A snapshot's box decodes to the same box, its bound derived again; half edges that turn
+    // clockwise, lie flat, or reach past 64 m do not decode.
+    let decoded: BodyBox = postcard::from_bytes(&postcard::to_allocvec(&body).unwrap()).unwrap();
+    assert_eq!(decoded, body);
+    let encode =
+        |half: [[&str; 2]; 2]| postcard::to_allocvec(&half.map(|edge| edge.map(num))).unwrap();
+    for half in [
+        [["0", "1"], ["2", "0"]],
+        [["2", "0"], ["4", "0"]],
+        [["50", "0"], ["0", "40"]],
+    ] {
+        assert!(
+            postcard::from_bytes::<BodyBox>(&encode(half)).is_err(),
+            "{half:?}"
+        );
+    }
+    // A component as large as a number holds is refused, with no product of it.
+    let huge = postcard::to_allocvec(&[[Num::MAX, Num::ZERO], [Num::ZERO, Num::MAX]]).unwrap();
+    assert!(postcard::from_bytes::<BodyBox>(&huge).is_err());
+    assert!(postcard::from_bytes::<BodyBox>(&encode([["2", "0"], ["0", "1"]])).is_ok());
 }
 
 #[test]
@@ -171,6 +214,47 @@ fn a_distance_runs_to_the_nearest_edge_or_corner() {
         upright.nearest(centre, at("4", "0"), num("3")),
         Ordering::Equal
     );
+}
+
+#[test]
+fn the_nearest_point_lies_on_the_nearest_edge_or_corner() {
+    let body = made("4", "2", "0");
+    let centre = at("0", "0");
+    assert_eq!(body.nearest_point(centre, at("5", "0")), at("2", "0"));
+    assert_eq!(body.nearest_point(centre, at("5", "4")), at("2", "1"));
+    assert_eq!(body.nearest_point(centre, at("1", "0.5")), at("1", "0.5"));
+    // Turned 45°, the point nearest one beside its edge lies on that edge, within a bit, and as
+    // far from it as the box is, within the bit it rounds by.
+    let turned = made("4", "2", "45");
+    let probe = at("3", "-3");
+    let point = turned.nearest_point(centre, probe);
+    assert_eq!(turned.nearest(centre, point, Num::EPSILON), Ordering::Less);
+    // Each coordinate rounds by half a bit at most, so the way to the point is within a bit of
+    // the exact distance d, and its square within 2d + 1 of d².
+    let way = dot(sub(flat(point), flat(probe)), sub(flat(point), flat(probe))).unsigned_abs();
+    let slack = 2 * (way.floor_root() + 1) + 1;
+    let gap = turned.distance(centre, probe);
+    assert!(SquaredDistance::whole(way - slack) < gap && gap < SquaredDistance::whole(way + slack));
+}
+
+#[test]
+fn twice_the_scale_sees_halves_of_a_bit() {
+    let body = made("2", "2", "0");
+    let twice = |meters: i128, halves: i128| (meters << 25) + halves;
+    // 1.5 m along x lies half a meter off the edge: not closer than half a meter, closer than a
+    // bit more.
+    let off = [twice(1, 1 << 24), 0];
+    assert!(!body.closer_twice(off, Num::HALF));
+    assert!(body.closer_twice(off, Num::HALF + Num::EPSILON));
+    // Half a bit past the edge: closer than a bit, not than nothing.
+    let off = [twice(1, 1), 0];
+    assert!(body.closer_twice(off, Num::EPSILON));
+    assert!(!body.closer_twice(off, Num::ZERO));
+    // A square of 1 m centred 1.5 m along x touches the box's edge; half a bit nearer, it
+    // overlaps.
+    let half = 1 << 24;
+    assert!(!body.overlaps_square_twice([twice(1, 1 << 24), 0], half));
+    assert!(body.overlaps_square_twice([twice(1, (1 << 24) - 1), 0], half));
 }
 
 #[test]
@@ -421,7 +505,7 @@ fn by_approaches(paths: impl Iterator<Item = (Flat, Flat)>, reach: Num) -> Order
 
 /// The approaches of `point`, from the box's position, to each of the box's edges.
 fn to_edges(body: &BodyBox, point: Flat) -> impl Iterator<Item = (Flat, Flat)> {
-    let corners = body.corners();
+    let corners = body.frame().corners();
     (0..4).map(move |edge| {
         let start = corners[edge];
         (sub(corners[(edge + 1) % 4], start), sub(point, start))
@@ -455,7 +539,7 @@ fn check_point(body: &BodyBox, centre: Position, probe: Position, reach: Num) {
 fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, reach: Num) {
     let approach = body.approach(centre, from, to, reach);
     let (start, path) = (sub(flat(from), flat(centre)), sub(flat(to), flat(from)));
-    let corners = body.corners();
+    let corners = body.frame().corners();
     let enters = (0..4)
         .filter_map(|edge| crossing(start, path, corners[edge], corners[(edge + 1) % 4]))
         .min();
@@ -511,10 +595,12 @@ fn check_pair(body: &BodyBox, centre: Position, other: &BodyBox, at: Position, r
     } else {
         let apart = sub(flat(at), flat(centre));
         let ours = body
+            .frame()
             .corners()
             .into_iter()
             .flat_map(|corner| to_edges(other, sub(corner, apart)));
         let theirs = other
+            .frame()
             .corners()
             .into_iter()
             .flat_map(|corner| to_edges(body, add(corner, apart)));

@@ -14,7 +14,7 @@ fn placed(ids: &mut IdAllocator, [x, z]: [i64; 2], radius: i64) -> Placed<()> {
         id: ids.allocate(),
         key: (),
         at: Position::new(Vec3::new(m(x), Num::ZERO, m(z))).unwrap(),
-        radius: m(radius),
+        shape: Shape::Circle(m(radius)),
     }
 }
 
@@ -89,7 +89,7 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
             let overlaps = |body: &&Placed<()>| {
                 let at = body.at.get();
                 let near = |axis: Num, low: i64, high: i64| {
-                    m(low) <= axis + body.radius && axis - body.radius <= m(high)
+                    m(low) <= axis + body.shape.bound() && axis - body.shape.bound() <= m(high)
                 };
                 near(at.x, low[0], high[0]) && near(at.z, low[1], high[1])
             };

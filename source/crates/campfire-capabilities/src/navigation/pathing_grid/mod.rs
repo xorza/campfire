@@ -16,7 +16,8 @@ use crate::values::grid::Grid;
 /// The map's pathing grid: its bounds in square cells, and for each kind of walker the mode has,
 /// its clearance: the cells it cannot stand in, those the walls of its layer block and those whose
 /// centers come closer than its radius to one of them, and those whose centers come closer to a
-/// static body of its layer, of a living unit that cannot walk, than the two radii together.
+/// static body of its layer, of a living unit that cannot walk, than the two radii together, or
+/// than its radius to a box.
 /// Derived from the map and the static bodies, not state: a change of the bodies marks again only
 /// the cells of the bodies it touched.
 #[derive(Resource, Debug)]
@@ -106,7 +107,7 @@ impl PathingGrid {
             let ours = |body: &&IndexedBody| body.layer == layer;
             for body in index.removed().iter().filter(ours) {
                 cleared.clear();
-                grid.spans_closer(body.at, radius + body.radius, |cells| {
+                body.spans_closer(grid, radius, |cells| {
                     regions.touch(cells.clone(), dirty);
                     for cell in cells.clone() {
                         let bit = 1 << (cell % 64);
@@ -114,11 +115,11 @@ impl PathingGrid {
                     }
                     cleared.push(cells);
                 });
-                // A cell another body blocks too lies within both reaches, so the bodies' centers
-                // are closer than the two reaches together.
-                let reach = body.radius + radius + radius;
+                // A cell another body blocks too lies within the walker's radius of each, so the
+                // other's bounding box comes within this one's bound and twice the radius.
+                let reach = body.shape.bound() + radius + radius;
                 index.near(layer, body.at.get(), reach, |other| {
-                    grid.spans_closer(other.at, radius + other.radius, |cells| {
+                    other.spans_closer(grid, radius, |cells| {
                         let at = cleared.partition_point(|run| run.end <= cells.start);
                         let Some(run) = cleared.get(at) else {
                             return;
@@ -130,7 +131,7 @@ impl PathingGrid {
                 });
             }
             for body in index.added().iter().filter(ours) {
-                grid.spans_closer(body.at, radius + body.radius, |cells| {
+                body.spans_closer(grid, radius, |cells| {
                     regions.touch(cells.clone(), dirty);
                     for cell in cells {
                         words[cell / 64] |= 1 << (cell % 64);
@@ -152,8 +153,8 @@ impl PathingGrid {
     /// routes and steering read its cells by; every unit does in a match with no pathing grid.
     pub(crate) fn serves(world: &World, entity: Entity) -> bool {
         world.get_resource::<PathingGrid>().is_none_or(|grid| {
-            let walker = Walker::of(world.get::<Body>(entity));
-            grid.walkers.binary_search(&walker).is_ok()
+            Walker::of(world.get::<Body>(entity))
+                .is_some_and(|walker| grid.walkers.binary_search(&walker).is_ok())
         })
     }
 

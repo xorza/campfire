@@ -6,6 +6,7 @@ use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
 use crate::values::polygon::Polygon;
+use crate::values::shape::Shape;
 /// A walker of `radius` on the first layer.
 fn ground(radius: Num) -> Walker {
     Walker {
@@ -80,7 +81,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     let tower = IndexedBody {
         id: ids.allocate(),
         at: at(Num::ZERO, Num::ZERO),
-        radius: Num::ONE,
+        shape: Shape::Circle(Num::ONE),
         layer: Layer::FIRST,
     };
     follow(&mut grid, &mut index, &[tower]);
@@ -96,13 +97,13 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     let post = IndexedBody {
         id: ids.allocate(),
         at: at(Num::int(2), -(Num::int(1) + Num::HALF)),
-        radius: Num::HALF,
+        shape: Shape::Circle(Num::HALF),
         layer: Layer::FIRST,
     };
     let corner = IndexedBody {
         id: ids.allocate(),
         at: at(-(Num::int(2) + Num::HALF), Num::int(2) + Num::HALF),
-        radius: Num::HALF,
+        shape: Shape::Circle(Num::HALF),
         layer: Layer::FIRST,
     };
     follow(&mut grid, &mut index, &[tower, post, corner]);
@@ -197,7 +198,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     let tower = IndexedBody {
         id: IdAllocator::default().allocate(),
         at: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap(),
-        radius: Num::ONE,
+        shape: Shape::Circle(Num::ONE),
         layer: Layer::FIRST,
     };
     index.update(&[tower]);

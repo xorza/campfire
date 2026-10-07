@@ -7,6 +7,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_sim::{Position, SimSet, SimTick, StateRegistry};
 
+use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::relations::Relations;
@@ -17,6 +18,7 @@ use crate::units::team_set::TeamSet;
 use crate::units::unit_tags::UnitTags;
 use crate::values::grid::Grid;
 use crate::values::polygon::Polygon;
+use crate::values::shape::Shape;
 use crate::vision::brush_map::BrushMap;
 use crate::vision::fog::Fog;
 use crate::vision::reveals::Reveals;
@@ -117,6 +119,7 @@ fn see(
             Entity,
             &Position,
             &Team,
+            Option<&Body>,
             Option<&UnitTags>,
             Option<&mut SeenBy>,
         ),
@@ -139,9 +142,14 @@ fn see(
     reveals.run(tick.start(), |reveal| {
         fog.reveal(&grid, reveal.pos, reveal.team, reveal.radius);
     });
-    for (entity, &pos, &team, tags, seen) in &mut units {
+    for (entity, &pos, &team, body, tags, seen) in &mut units {
         let hidden = UnitTags::properties_of(tags).hidden();
-        let teams = fog.seen_by(&grid, pos, team, hidden);
+        let boxed = match Body::shape_of(body) {
+            Shape::Box(body) => Some(body),
+            Shape::Circle(_) => None,
+        };
+        let slot = entity.index_u32() as usize;
+        let teams = fog.seen_by(&grid, slot, pos, boxed, team, hidden);
         match seen {
             Some(mut seen) if seen.get() != teams => *seen = SeenBy::new(teams),
             Some(_) => {}

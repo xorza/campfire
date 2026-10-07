@@ -143,11 +143,10 @@ impl Walkable<'_> {
         self.statics.blocks(segment, walker)
             || self.clearance.walled(segment, work)
             || self.short.is_some_and(|short| {
-                let reach = |body: &IndexedBody| radius + body.radius;
                 short
                     .blockers
                     .iter()
-                    .any(|body| segment.comes_within(body.at, reach(body)))
+                    .any(|body| body.comes_within(segment, radius))
             })
     }
 }
@@ -360,7 +359,7 @@ impl RoutePlanner {
         let window = short.window;
         let columns = grid.columns();
         for body in short.blockers {
-            grid.spans_closer(body.at, radius + body.radius, |cells| {
+            body.spans_closer(grid, radius, |cells| {
                 let row = cells.start / columns;
                 if row < window.low[1] || window.high[1] < row {
                     return;

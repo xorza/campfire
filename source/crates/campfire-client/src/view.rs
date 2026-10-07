@@ -17,8 +17,8 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_added;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
-use bevy::math::primitives::{Capsule3d, Plane3d, Sphere};
-use bevy::math::{Quat, Vec3};
+use bevy::math::primitives::{Capsule3d, Cuboid, Plane3d, Sphere};
+use bevy::math::{Quat, Vec2, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
@@ -122,25 +122,94 @@ pub(crate) struct Look {
     shape: Shape,
 }
 
-/// The shape of a unit: an avatar is under a player's control, a structure does not walk.
+/// The shape of a unit: an avatar is under a player's control, a structure does not walk. A
+/// capsule of `radius` and `length`, or, for a box body, a cuboid as tall standing on its
+/// `footing`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Shape {
     radius: f32,
     length: f32,
+    footing: Footing,
+}
+
+/// What a unit's drawing covers of the ground round its center: a circle of a radius, or a box
+/// of half sides `half` along its turned axes, turned `yaw` radians about the vertical, as Bevy
+/// turns a transform.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Footing {
+    Circle(f32),
+    Box { half: [f32; 2], yaw: f32 },
 }
 
 impl Shape {
     /// The shape of a unit that is under a player's control if `owned`, walks if `walks`, and has
-    /// `body`: its kind's height, at its body's radius, or its kind's own with no body.
+    /// `body`: its kind's height, at its body's radius, or on its box, or its kind's own with no
+    /// body.
     fn of(owned: bool, walks: bool, body: Option<&Body>) -> Shape {
         let kind = match (owned, walks) {
             (true, _) => AVATAR,
             (false, true) => CREEP,
             (false, false) => STRUCTURE,
         };
+        let footing = match (
+            body.and_then(|body| body.radius()),
+            body.and_then(|body| body.half_edges()),
+        ) {
+            (Some(radius), _) => Footing::Circle(View::float(radius)),
+            (None, Some([a, b])) => {
+                let [a, b] =
+                    [a, b].map(|edge| Vec2::new(View::float(edge[0]), View::float(edge[1])));
+                Footing::Box {
+                    half: [a.length(), b.length()],
+                    yaw: (-a.y).atan2(a.x),
+                }
+            }
+            (None, None) => Footing::Circle(kind.radius),
+        };
+        let radius = match footing {
+            Footing::Circle(radius) => radius,
+            Footing::Box { .. } => kind.radius,
+        };
         Shape {
-            radius: body.map_or(kind.radius, |body| View::float(body.radius())),
+            radius,
+            footing,
             ..kind
+        }
+    }
+
+    /// How tall it stands.
+    fn height(&self) -> f32 {
+        self.length + 2.0 * self.radius
+    }
+}
+
+impl Footing {
+    /// Whether it covers the point `offset` from its center, edge included.
+    pub(crate) fn covers(self, offset: Vec2) -> bool {
+        match self {
+            Footing::Circle(radius) => offset.length_squared() <= radius * radius,
+            Footing::Box { half, yaw } => {
+                // The point in the box's own axes: Bevy turns x by `yaw` to (cos, −sin).
+                let along = Vec2::new(yaw.cos(), -yaw.sin());
+                let across = Vec2::new(yaw.sin(), yaw.cos());
+                offset.dot(along).abs() <= half[0] && offset.dot(across).abs() <= half[1]
+            }
+        }
+    }
+
+    /// The radius of the least circle round its center that holds it.
+    fn bound(self) -> f32 {
+        match self {
+            Footing::Circle(radius) => radius,
+            Footing::Box { half, .. } => Vec2::from(half).length(),
+        }
+    }
+
+    /// The turn it stands at: a box's yaw, none for a circle.
+    fn upright(self) -> Quat {
+        match self {
+            Footing::Circle(_) => Quat::IDENTITY,
+            Footing::Box { yaw, .. } => Quat::from_rotation_y(yaw),
         }
     }
 }
@@ -148,14 +217,17 @@ impl Shape {
 const AVATAR: Shape = Shape {
     radius: 0.5,
     length: 1.0,
+    footing: Footing::Circle(0.5),
 };
 const CREEP: Shape = Shape {
     radius: 0.35,
     length: 0.5,
+    footing: Footing::Circle(0.35),
 };
 const STRUCTURE: Shape = Shape {
     radius: 0.9,
     length: 2.0,
+    footing: Footing::Circle(0.9),
 };
 
 /// A projectile in flight: a ball at the height of a unit's chest.
@@ -250,13 +322,24 @@ impl View {
         units: NewUnits<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut capsules: Local<'_, BTreeMap<[u32; 2], Handle<Mesh>>>,
+        mut cuboids: Local<'_, BTreeMap<[u32; 3], Handle<Mesh>>>,
         mut commands: Commands<'_, '_>,
     ) {
         for (unit, &pos, team, walks, owned, own, dead, body) in &units {
             let shape = Shape::of(owned, walks, body);
-            let mesh = capsules
-                .entry([shape.radius.to_bits(), shape.length.to_bits()])
-                .or_insert_with(|| meshes.add(Capsule3d::new(shape.radius, shape.length).mesh()));
+            let mesh = match shape.footing {
+                Footing::Circle(_) => capsules
+                    .entry([shape.radius.to_bits(), shape.length.to_bits()])
+                    .or_insert_with(|| {
+                        meshes.add(Capsule3d::new(shape.radius, shape.length).mesh())
+                    }),
+                Footing::Box { half, .. } => {
+                    let size = [2.0 * half[0], shape.height(), 2.0 * half[1]];
+                    cuboids.entry(size.map(f32::to_bits)).or_insert_with(|| {
+                        meshes.add(Cuboid::new(size[0], size[1], size[2]).mesh())
+                    })
+                }
+            };
             let material = if own {
                 &palette.own
             } else {
@@ -307,7 +390,7 @@ impl View {
     fn lean(
         index: Res<'_, EntityIndex>,
         units: Attackers<'_, '_>,
-        mut drawings: Query<'_, '_, (&Glide, &mut Transform), With<Look>>,
+        mut drawings: Query<'_, '_, (&Glide, &Look, &mut Transform)>,
     ) {
         for (&Drawn(drawing), slots, dead) in &units {
             if dead {
@@ -318,12 +401,13 @@ impl View {
                 .and_then(|target| index.get(target))
                 .and_then(|target| units.get(target).ok())
                 .and_then(|(&Drawn(target), ..)| drawings.get(target).ok())
-                .map(|(glide, transform)| glide.ground(transform));
-            let Ok((glide, mut transform)) = drawings.get_mut(drawing) else {
+                .map(|(glide, _, transform)| glide.ground(transform));
+            let Ok((glide, look, mut transform)) = drawings.get_mut(drawing) else {
                 continue;
             };
             let from = glide.ground(&transform);
-            let rotation = aim.map_or(Quat::IDENTITY, |to| lean_toward(from, to));
+            let lean = aim.map_or(Quat::IDENTITY, |to| lean_toward(from, to));
+            let rotation = lean * look.shape.footing.upright();
             if transform.rotation != rotation {
                 transform.rotation = rotation;
             }
@@ -459,14 +543,20 @@ impl Drawn {
 }
 
 impl Look {
-    /// How far the drawing reaches from its axis.
-    pub(crate) const fn radius(&self) -> f32 {
-        self.shape.radius
+    /// How far the drawing reaches from its axis: the radius of the least circle that holds what
+    /// it covers of the ground.
+    pub(crate) fn radius(&self) -> f32 {
+        self.shape.footing.bound()
+    }
+
+    /// What the drawing covers of the ground.
+    pub(crate) const fn footing(&self) -> Footing {
+        self.shape.footing
     }
 
     /// How tall the drawing stands while its unit lives.
     pub(crate) fn height(&self) -> f32 {
-        self.shape.length + 2.0 * self.shape.radius
+        self.shape.height()
     }
 
     /// Sets a drawing's material, pose and lift for a unit that is `dead` or alive.
@@ -478,14 +568,22 @@ impl Look {
         transform: &mut Transform,
         glide: &mut Glide,
     ) {
-        let Shape { radius, length } = self.shape;
-        if dead {
-            material.0 = palette.dead.clone();
+        let Shape {
+            radius,
+            length,
+            footing,
+        } = self.shape;
+        material.0 = if dead {
+            palette.dead.clone()
+        } else {
+            self.alive.clone()
+        };
+        // A capsule lies down when its unit dies; a box stands where it stood, as a ruin.
+        if dead && matches!(footing, Footing::Circle(_)) {
             transform.rotation = Quat::from_rotation_z(FRAC_PI_2);
             glide.lift = radius;
         } else {
-            material.0 = self.alive.clone();
-            transform.rotation = Quat::IDENTITY;
+            transform.rotation = footing.upright();
             glide.lift = radius + length / 2.0;
         }
     }
@@ -510,6 +608,8 @@ fn ground(pos: Position) -> Vec3 {
 
 #[cfg(test)]
 mod tests {
+    use campfire_capabilities::BodyForm;
+
     use super::*;
 
     #[test]
@@ -533,11 +633,40 @@ mod tests {
         let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
         let avatar = Shape {
             radius: 0.75,
+            footing: Footing::Circle(0.75),
             ..AVATAR
         };
         assert_eq!(Shape::of(true, true, Some(&body)), avatar);
         assert_eq!(Shape::of(false, true, None), CREEP);
         assert_eq!(Shape::of(false, false, None), STRUCTURE);
+        // A box of 4 × 2 m turned a quarter: its first half edge points along +z, which Bevy's
+        // turn of -π/2 about y takes x to; it stands as tall as a structure, and reaches √5 m.
+        let form = BodyForm::boxed([Num::int(4), Num::int(2)]).unwrap();
+        let boxed = Shape::of(false, false, Some(&form.at(Num::int(90))));
+        let expected = Footing::Box {
+            half: [2.0, 1.0],
+            yaw: -FRAC_PI_2,
+        };
+        assert_eq!(boxed.footing, expected);
+        assert_eq!(boxed.height(), STRUCTURE.height());
+        assert!(
+            (Look {
+                alive: Handle::default(),
+                shape: boxed
+            }
+            .radius()
+                - 5.0_f32.sqrt())
+            .abs()
+                < 1e-6
+        );
+        assert!(
+            Quat::from_rotation_y(-FRAC_PI_2)
+                .mul_vec3(Vec3::X)
+                .abs_diff_eq(Vec3::Z, 1e-6)
+        );
+        // It covers a point 1.9 m along z and 0.9 m along x from its center, and not 1.1 m along x.
+        assert!(expected.covers(Vec2::new(0.9, 1.9)));
+        assert!(!expected.covers(Vec2::new(1.1, 0.0)));
     }
 
     #[test]

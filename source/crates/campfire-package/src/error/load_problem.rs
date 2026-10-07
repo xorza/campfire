@@ -7,6 +7,7 @@ use campfire_sim::Capability;
 use thiserror::Error;
 
 use crate::error::ContentError;
+use crate::error::box_problem::BoxProblem;
 use crate::error::choice_problem::ChoiceProblem;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
@@ -84,6 +85,12 @@ pub enum LoadProblem {
     /// A train aims at something: it takes no target.
     #[error("action \"{0}\": a train takes no target")]
     TrainAims(DeclaredName),
+    /// A train makes a unit type that does not walk, so no trained unit leaves its producer.
+    #[error("action \"{0}\": a train makes a unit type that walks")]
+    TrainStands(DeclaredName),
+    /// A unit type's box body that its type or its map does not let it have.
+    #[error("{at}: {problem}")]
+    BoxBody { at: Place, problem: BoxProblem },
     /// An action clamps its aim to its range, and aims at no point.
     #[error("action \"{0}\": only a point aim clamps to the range")]
     ClampAims(DeclaredName),

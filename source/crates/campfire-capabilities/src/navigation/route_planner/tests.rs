@@ -13,6 +13,7 @@ use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
+use crate::values::shape::Shape;
 
 /// The point `(x, z)` in quarters of a meter.
 fn at(x: i64, z: i64) -> Position {
@@ -56,7 +57,7 @@ fn walled(rows: &[&str]) -> Walled {
                 posts.push(IndexedBody {
                     id: ids.allocate(),
                     at: at(center(column), center(row)),
-                    radius: quarter,
+                    shape: Shape::Circle(quarter),
                     layer: Layer::FIRST,
                 });
             }
@@ -300,7 +301,7 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
             IndexedBody {
                 id: ids.allocate(),
                 at: at(x, z),
-                radius: Num::from_bits(quarters << (Num::FRAC_BITS - 2)),
+                shape: Shape::Circle(Num::from_bits(quarters << (Num::FRAC_BITS - 2))),
                 layer: Layer::FIRST,
             }
         });
@@ -317,7 +318,7 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
         planner.mark_blockers(walkable);
         let mut spanned = vec![false; window.cells()];
         for body in &blockers {
-            cells.spans_closer(body.at, radius + body.radius, |run| {
+            cells.spans_closer(body.at, radius + body.shape.bound(), |run| {
                 for cell in run {
                     let (x, z) = (cell % columns, cell / columns);
                     if window.contains(x, z) {

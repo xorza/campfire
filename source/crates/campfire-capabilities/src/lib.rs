@@ -141,7 +141,7 @@ pub use crate::stats::stat_graph::StatGraph;
 pub use crate::stats::stats_data::StatsData;
 pub use crate::units::Units;
 pub use crate::units::action_id::ActionId;
-pub use crate::units::body::Body;
+pub use crate::units::body::{Body, BodyForm};
 pub use crate::units::collision_data::CollisionData;
 pub use crate::units::dead::Dead;
 pub use crate::units::engine_tag::EngineTag;
@@ -184,6 +184,7 @@ pub mod internals {
     pub use crate::scripts::script_batch::internals::read_view;
     pub use crate::stats::internals::{carried, give_modifier};
     pub use crate::stats::pools::internals::spent;
+    pub use crate::units::body::internals::{reaches, reaches_bound, sinks_into};
     pub use crate::units::relations::internals::set_relation;
     pub use crate::values::kernel_scene::{Density, KernelScene};
     pub use crate::vision::seen_by::internals::seen_by_all;

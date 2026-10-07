@@ -13,6 +13,7 @@ use crate::stats::pools::Pools;
 use crate::units::tag_properties::TagProperties;
 use crate::units::unit::Unit;
 use crate::values::attitude::Attitude;
+use crate::values::body_box::BodyBox;
 use crate::values::bounds::Bounds;
 
 fn at(x: i64, z: i64) -> Position {
@@ -327,4 +328,47 @@ fn a_unit_in_brush_is_seen_only_from_its_brush_and_by_a_reveal() {
     *scene.sim.get_mut::<Position>(watcher) = at(2, 1);
     scene.sim.step();
     assert_eq!(seen(&scene)[0], and(1, 2).with(Team::new(0)));
+}
+
+#[test]
+fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
+    // A box of 6 by 2 m at (5, 0) covers the 1 m cells from column 2 to 7 and rows -1 and 0; its
+    // own cell, (5, 0), lies 5.5 m and more from (-1, 0). A seer of team 0 there sees 4 m: the
+    // center of cell (2, 0), (2.5, 0.5), lies √12.5 ≈ 3.54 m off, in sight, and that of (3, 0),
+    // (3.5, 0.5), √20.5 ≈ 4.53 m off, out of it. So team 0 sees the box by its edge's cells alone,
+    // where a unit seen by the cell of its position would stay hidden.
+    let mut scene = Scene::new();
+    let team = |index| TeamSet::of(Team::new(index));
+    let building = scene.spawn(1, 5, 0, None);
+    let body = BodyBox::new([Num::int(6), Num::int(2)], Num::ZERO).unwrap();
+    scene.sim.insert(building, Body::boxed(body));
+    let seer = scene.spawn(0, -1, 0, Some(4));
+    scene.sim.step();
+    assert_eq!(scene.seen_by(building), team(1).with(Team::new(0)));
+    // A script's query reaches the box from its edge too, 3 m from the seer: within 3 m, not
+    // within 3 m less a bit. Its radius reads `()`, as a box has none.
+    let read = |scene: &mut Scene, expression: &str, of| scene.sim.read(expression, of).unwrap();
+    let find = |radius: &str| format!(r#"ctx.find(of, of.pos, {radius}, "enemies")"#);
+    assert_eq!(Unit::ids(read(&mut scene, &find("3"), seer)), [building]);
+    let short = find("3 - num(1) / 16777216");
+    assert_eq!(
+        Unit::ids(read(&mut scene, &short, seer)),
+        [] as [StableId; 0]
+    );
+    assert!(read(&mut scene, "of.radius", building).is_unit());
+    // A step west, to (-2, 0), and the edge's centers lie √20.5 m off: no cell of it is seen.
+    let entity = scene.sim.entity(seer);
+    *scene.sim.world.get_mut::<Position>(entity).unwrap() = at(-2, 0);
+    scene.sim.step();
+    assert_eq!(scene.seen_by(building), team(1));
+    // Hidden, it is seen only by detection: a detector of team 0 at (-1, 0), seeing 4 m, detects
+    // the edge's cells, and the seer, which does not detect, back there too, does not.
+    scene.set_properties(building, TagProperties::default().with_hidden());
+    *scene.sim.world.get_mut::<Position>(entity).unwrap() = at(-1, 0);
+    scene.sim.step();
+    assert_eq!(scene.seen_by(building), team(1));
+    let ward = scene.spawn(0, -1, 1, Some(4));
+    scene.set_properties(ward, TagProperties::default().with_detects());
+    scene.sim.step();
+    assert_eq!(scene.seen_by(building), team(1).with(Team::new(0)));
 }

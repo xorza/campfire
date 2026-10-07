@@ -27,7 +27,7 @@ impl StaticChanges {
     }
 
     /// Whether a body put in blocks `walker` on its way from `from` along `waypoints`: one of its
-    /// layer that comes closer to a leg than the two radii together.
+    /// layer that comes closer to a leg than the walker's radius.
     pub(crate) fn blocks_route(
         &self,
         from: Position,
@@ -39,7 +39,7 @@ impl StaticChanges {
         waypoints.iter().any(|&next| {
             let leg = Segment::new(at, next);
             at = next;
-            ours().any(|body| leg.comes_within(body.at, walker.radius + body.radius))
+            ours().any(|body| body.comes_within(leg, walker.radius))
         })
     }
 

@@ -313,10 +313,10 @@ fn start_attacks(
                     owner: owner.map(|owner| owner.slot()),
                 };
                 let attitude = |other| targets.attitude(team, other);
-                let radius = Body::radius_of(body);
+                let shape = Body::shape_of(body);
                 let started = book
                     .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
-                    .filter(|checked| checked.in_range(position, radius, &targets))
+                    .filter(|checked| checked.in_range(position, shape, &targets))
                     .map(|checked| now.after(checked.values.windup));
                 if let Some(resolves_at) = started {
                     slots.start_attack(slot, resolves_at);

@@ -278,6 +278,7 @@ impl Mode {
                 unit_type: placed.unit_type,
                 team: placed.team,
                 pos: placed.pos,
+                angle: placed.angle,
             };
             match placed.path {
                 None => book.spawn(world, at, ()),
@@ -566,6 +567,7 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
+    use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position, StableId};
 
     use crate::mode::mode_book::ModeBook;
@@ -592,6 +594,7 @@ pub(crate) mod internals {
                 unit_type,
                 team,
                 pos,
+                angle: Num::ZERO,
             },
             None,
         );

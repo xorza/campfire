@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_math::U256;
+use campfire_math::{Num, U256};
 
 /// A rational number `num / den` with a positive denominator, compared exactly: a share of a
 /// straight path, where a box first comes nearest it.
@@ -25,6 +25,21 @@ impl Fraction {
         } else {
             Fraction { num, den }
         }
+    }
+}
+
+impl Fraction {
+    /// The share of `value` the fraction gives, from 0 to 1 of it, rounded to the nearest bit,
+    /// ties to even.
+    pub(crate) fn of(self, value: Num) -> Num {
+        debug_assert!(Fraction::ZERO <= self && self <= Fraction::ONE && value >= Num::ZERO);
+        let bits = U256::product(
+            value.to_bits().unsigned_abs().into(),
+            self.num.unsigned_abs(),
+        )
+        .round_div(self.den.unsigned_abs())
+        .expect("a share of a number fits it");
+        Num::from_bits(i64::try_from(bits).expect("a share of a number fits it"))
     }
 }
 
@@ -82,5 +97,10 @@ mod tests {
         assert!(f(big + 1, big) > Fraction::ONE);
         assert!(f(big - 1, big) < Fraction::ONE);
         assert!(f(-(big + 1), big) < f(-(big - 1), big));
+        // A share of a number: 2/5 of 10 m is 4 m; 1/3 of a bit rounds to none, 2/3 to one.
+        assert_eq!(f(2, 5).of(Num::int(10)), Num::int(4));
+        assert_eq!(f(1, 3).of(Num::EPSILON), Num::ZERO);
+        assert_eq!(f(2, 3).of(Num::EPSILON), Num::EPSILON);
+        assert_eq!(Fraction::ONE.of(Num::int(7)), Num::int(7));
     }
 }

@@ -21,6 +21,10 @@ pub enum EffectProblem {
     /// until summons come.
     #[error("spawns a unit from an avatar's or a loadout's action, which waits for summons")]
     Summon,
+    /// A spawn of a unit type with a box body, which only a placement places, as an effect has
+    /// no placement's checks.
+    #[error("spawns a unit type with a box body, which only a placement places")]
+    SpawnBox,
     /// A number past what a sim number holds, at some rank.
     #[error("a number past a sim number")]
     Overflow,

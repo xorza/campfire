@@ -26,6 +26,7 @@ use crate::units::dead::Dead;
 use crate::units::forced_move::DashTo;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::body_box::BodyBox;
 use crate::values::damage_kind::DamageKind;
 use crate::values::filter_data::FilterData;
 use crate::values::grid::Grid;
@@ -452,6 +453,24 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     assert_eq!(volley.projectiles(), []);
     let healths = [first, second, behind].map(|unit| volley.sim.health(unit));
     assert_eq!(healths, [90, 100, 100]);
+
+    // An enemy with a box of 2 by 1 m at (3.5, 0.3), whose near edge, x = 2.5, the dart's path
+    // enters before it comes to a point enemy at 2.6: the box is met first, where the path enters
+    // it, though its center lies past the point, in tick 6, and the dart ends on it.
+    let mut volley = Volley::new();
+    let source = volley.unit(0, at(0, -9), target());
+    let near = |x: &str, z: &str| point(x.parse().unwrap(), z.parse().unwrap());
+    let block = volley.unit(1, near("3.5", "0.3"), target());
+    let body = BodyBox::new([Num::int(2), Num::ONE], Num::ZERO).unwrap();
+    volley.sim.insert(block, Body::boxed(body));
+    let dot = volley.unit(1, near("2.6", "0"), target());
+    volley.fire_line(source, volley.dart);
+    for _ in 0..7 {
+        volley.sim.step();
+    }
+    assert_eq!(volley.projectiles(), []);
+    let healths = [block, dot].map(|unit| volley.sim.health(unit));
+    assert_eq!(healths, [90, 100]);
 }
 
 #[test]

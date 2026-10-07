@@ -33,6 +33,7 @@ use crate::units::by_type::ByType;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
+use crate::values::fraction::Fraction;
 use crate::values::metric::Metric;
 
 pub(crate) mod flights;
@@ -235,7 +236,7 @@ fn fly(
     >,
     (mut order, mut met, mut flying): (
         Local<'_, Ordered>,
-        Local<'_, Vec<(u128, StableId)>>,
+        Local<'_, Vec<(Fraction, StableId)>>,
         Local<'_, Vec<StableId>>,
     ),
     mut grid: Local<'_, BodyGrid<()>>,

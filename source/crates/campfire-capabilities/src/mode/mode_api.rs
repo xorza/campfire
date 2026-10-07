@@ -1,3 +1,4 @@
+use campfire_math::Num;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, Position, StableId};
 
@@ -12,6 +13,8 @@ use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_effect::ModeEffect;
+use crate::navigation::body_index::IndexedBody;
+use crate::navigation::navigation_column::NavigationColumn;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -602,14 +605,34 @@ impl ModeApi {
             return Err(ApiError::OutOfBounds.fail().into());
         }
         let unit_type = ModeApi::unit_type(ctx, book, unit_type)?;
+        let boxed = book
+            .kit(unit_type)
+            .and_then(|kit| kit.body)
+            .filter(|form| form.is_box());
+        let body = boxed.map(|form| form.at(Num::ZERO));
+        if let Some(body) = body {
+            let room = {
+                let frame = ctx.frame();
+                let spawning = &ModeCall::of(&frame).boxes;
+                NavigationColumn::room_for(ctx.view(), pos, body, spawning)
+            };
+            if !room {
+                return Err(ApiError::NoRoom.fail().into());
+            }
+        }
         let team = ModeApi::team(book, team)?;
         let owner = player.map(|player| book.teams.player(player)).transpose()?;
         let id = ctx.write()?.take_id();
+        if let Some(body) = body {
+            let spawning = IndexedBody::of(id, pos, &body);
+            ModeCall::of_mut(&mut *ctx.write()?).boxes.push(spawning);
+        }
         let at = SpawnAt {
             id,
             unit_type,
             team,
             pos,
+            angle: Num::ZERO,
         };
         ctx.queue(ModeEffect::SpawnUnit { at, owner })?;
         Ok(NewUnit { id, unit_type })

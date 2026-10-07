@@ -16,7 +16,8 @@ use crate::navigation::segment::Segment;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
-use crate::units::body::Body;
+use crate::navigation::walls::Walls;
+use crate::units::body::BodyForm;
 use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
@@ -24,6 +25,7 @@ use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::polygon::Polygon;
 use crate::values::scalar::Scalar;
+use crate::values::shape::Shape;
 
 /// The mode's `map/map.toml`: its metric, its bounds, its grids, its paths, the units placed on it
 /// from the start, and its markers.
@@ -89,14 +91,17 @@ pub struct PathData {
     pub points: Vec<MapPoint>,
 }
 
-/// A unit that stands on the map from the start, of a team; on a path if it guards one, and
-/// walking it from the end `from` names if it walks one.
+/// A unit that stands on the map from the start, of a team; turned by `angle` degrees if it has
+/// a box body; on a path if it guards one, and walking it from the end `from` names if it walks
+/// one.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlacedUnitData {
     pub unit_type: DeclaredName,
     pub team: DeclaredName,
     pub pos: MapPoint,
+    #[serde(default, deserialize_with = "Scalar::num")]
+    pub angle: Num,
     pub path: Option<DeclaredName>,
     pub from: Option<PathEnd>,
 }
@@ -136,43 +141,60 @@ pub enum MapPoint {
 }
 
 impl MapData {
-    /// Checks that the map can be walked by every kind of unit that walks, of `walkers`, for the
-    /// widest of each layer, among the map's placed units that cannot walk, whose bodies
-    /// `body_of` gives by unit type, and none for a type that walks: every marker's point and
-    /// waypoint is a place that walker may stand, and every waypoint is in a reachable set of the
-    /// one before it, by the regions a match plans its routes with. A narrower walker of the
-    /// layer has every cell the widest has open. A map with no `[navigation]` cells, or a mode
-    /// with no walker, has nothing to check. The book build checked its points.
+    /// Checks that each placed box has room, and that the map can be walked by every kind of
+    /// unit that walks, of `walkers`, for the widest of each layer, among the map's placed units
+    /// that cannot walk, whose bodies `body_of` gives by unit type, and none for a type that
+    /// walks. A box has room as a placement needs it: within the bounds, its inside clear of the
+    /// walls of its layer and of every other placed unit of its layer that cannot walk. Every
+    /// marker's point and waypoint is a place that walker may stand, and every waypoint is in a
+    /// reachable set of the one before it, by the regions a match plans its routes with. A
+    /// narrower walker of the layer has every cell the widest has open. A map with no
+    /// `[navigation]` cells, or a mode with no walker, has nothing more to check. The book build
+    /// checked its points.
     pub fn check_walkable(
         &self,
         walkers: &[Walker],
         rules: &NavigationRules,
-        body_of: impl Fn(&str) -> Option<Body>,
+        body_of: impl Fn(&str) -> Option<BodyForm>,
     ) -> Result<(), MapProblem> {
+        let walls = self.walls(rules).expect("the book build checked the map");
+        let point = |point: &MapPoint| point.position().expect("the book build checked the map");
+        let mut ids = IdAllocator::default();
+        let structures: Vec<(usize, IndexedBody)> = self
+            .units
+            .iter()
+            .enumerate()
+            .filter_map(|(at, unit)| {
+                let body = body_of(unit.unit_type.as_str())?.at(unit.angle);
+                Some((at, IndexedBody::of(ids.allocate(), point(&unit.pos), &body)))
+            })
+            .collect();
+        let placed_walls = Walls::new(&walls);
+        for &(at, body) in &structures {
+            let Shape::Box(boxed) = body.shape else {
+                continue;
+            };
+            let others = structures
+                .iter()
+                .filter(|(other, held)| *other != at && held.layer == body.layer)
+                .map(|&(_, held)| held);
+            if !placed_walls.room_for(self.bounds, body.at, &boxed, body.layer, others) {
+                let unit_type = self.units[at].unit_type.clone();
+                return Err(MapProblem::BoxBlocked {
+                    unit: at,
+                    unit_type,
+                });
+            }
+        }
+        let structures: Vec<IndexedBody> = structures.into_iter().map(|(_, body)| body).collect();
         let Some(cells) = self.pathing().expect("the book build checked the map") else {
             return Ok(());
         };
-        let walls = self.walls(rules).expect("the book build checked the map");
         let terrain = Terrain::new(&cells, &walls);
         debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
         let widest = walkers
             .chunk_by(|a, b| a.layer == b.layer)
             .map(|layer| *layer.last().expect("a chunk is never empty"));
-        let point = |point: &MapPoint| point.position().expect("the book build checked the map");
-        let mut ids = IdAllocator::default();
-        let structures: Vec<IndexedBody> = self
-            .units
-            .iter()
-            .filter_map(|unit| {
-                let body = body_of(unit.unit_type.as_str())?;
-                Some(IndexedBody {
-                    id: ids.allocate(),
-                    at: point(&unit.pos),
-                    radius: body.radius(),
-                    layer: body.layer(),
-                })
-            })
-            .collect();
         let widest_radius = walkers.iter().map(|walker| walker.radius).max();
         let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
         statics.update(&structures);
@@ -331,6 +353,8 @@ pub(crate) mod internals {
 
     use crate::mode::map_data::{MapData, MapPoint, MarkerData, PlacedUnitData};
     use crate::values::bounds::Bounds;
+    use campfire_math::Num;
+
     use crate::values::declared_name::DeclaredName;
     use crate::values::metric::Metric;
     use crate::values::scalar::Scalar;
@@ -367,6 +391,7 @@ pub(crate) mod internals {
                 unit_type: name(unit_type),
                 team: name(team),
                 pos,
+                angle: Num::ZERO,
                 path: None,
                 from: None,
             }

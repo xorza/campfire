@@ -26,17 +26,22 @@ const HERO_RADIUS: i64 = 50;
 /// The routes a run of the route planner's case plans, as four waves' creeps plan theirs.
 const ROUTES: usize = 100;
 
-/// The Collide stage's work for `KernelScene::UNITS` bodies, at each density: finding the
-/// contacts, then parting them, from the same scene every run.
+/// The Collide stage's work for `KernelScene::UNITS` bodies, at each density, and in the crowded
+/// scene with its static bodies boxes: finding the contacts, then parting them, from the same
+/// scene every run.
 pub(crate) fn collision(c: &mut Criterion) {
     let mut group = c.benchmark_group("collision");
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
-    for density in Density::ALL {
-        let bodies = scene(9, KernelScene::UNITS, density.span(), 1);
+    let cases = Density::ALL
+        .map(|density| (density.name(), density.span(), false))
+        .into_iter()
+        .chain([("boxes", Density::Crowded.span(), true)]);
+    for (name, span, boxes) in cases {
+        let bodies = scene(9, KernelScene::UNITS, span, 1, boxes);
         let index = statics(&bodies);
         let mut broadphase = Broadphase::default();
         let mut colliders = bodies.clone();
-        group.bench_function(density.name(), |bench| {
+        group.bench_function(name, |bench| {
             bench.iter(|| {
                 colliders.clone_from(&bodies);
                 let contacts = broadphase.contacts(black_box(&colliders), &index);
@@ -152,13 +157,13 @@ pub(crate) fn route_planner(c: &mut Criterion) {
 
 /// The static bodies of the spread scene's 1,000, one in four, by stable id.
 fn scene_statics(span: u64) -> Vec<IndexedBody> {
-    scene(9, KernelScene::UNITS, span, 1)
+    scene(9, KernelScene::UNITS, span, 1, false)
         .iter()
         .filter(|body| !body.movable)
         .map(|body| IndexedBody {
             id: body.id,
             at: Position::new(body.at).unwrap(),
-            radius: body.radius,
+            shape: body.shape,
             layer: body.layer,
         })
         .collect()

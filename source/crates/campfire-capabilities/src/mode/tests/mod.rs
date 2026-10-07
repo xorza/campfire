@@ -84,7 +84,7 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
-use crate::units::body::Body;
+use crate::units::body::{Body, BodyForm};
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::layer::Layer;
@@ -606,17 +606,18 @@ fn mode_files() -> ModeFiles {
     }
 }
 
-/// The test mode's setup from `files`, of `script`: its grunt, tower and two heroes' unit types,
-/// the heroes on both tracks, its one spell, and hero X's one ability, `strike`.
+/// The test mode's setup from `files`, of `script`: its grunt, tower, two heroes' and crate's unit
+/// types, the heroes on both tracks, the crate a box of 2 by 2 m, its one spell, and hero X's one
+/// ability, `strike`.
 fn setup(
     files: &ModeFiles,
     script: ScriptId,
-    types: [UnitType; 4],
+    types: [UnitType; 5],
     spell: LoadoutSetup,
     strike: ActionId,
     blessing: ModifierId,
 ) -> ModeSetup<'_> {
-    let [grunt_type, tower_type, x, y] = types;
+    let [grunt_type, tower_type, x, y, crate_type] = types;
     let hero = UnitKit {
         tracks: TrackSet::of([0, 1].map(|at| TrackId::new(at).unwrap())),
         ..grunt()
@@ -651,7 +652,15 @@ fn setup(
                     tower_type,
                     UnitKit {
                         step: None,
-                        body: Body::new(Num::int(1)).map(|body| body.on(Layer::new(1))),
+                        body: BodyForm::circle(Num::int(1)).map(|form| form.on(Layer::new(1))),
+                        ..grunt()
+                    },
+                ),
+                unit(
+                    crate_type,
+                    UnitKit {
+                        step: None,
+                        body: BodyForm::boxed([Num::int(2), Num::int(2)]),
                         ..grunt()
                     },
                 ),
@@ -659,7 +668,7 @@ fn setup(
             avatars: ["hero-x", "hero-y"].into_iter().collect(),
             loadout: spell,
         },
-        walkers: vec![Walker::of(grunt().body.as_ref())],
+        walkers: vec![Walker::of_form(grunt().body).unwrap()],
     }
 }
 
@@ -725,6 +734,7 @@ impl Game {
         };
         let tower_type = load("tower", "tower");
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
+        let crate_type = load("crate", "crate");
         // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does
         // not.
         load("bolt", "projectile");
@@ -737,7 +747,7 @@ impl Game {
         let blink = Actions::load(world, 0, "blink", &blink, None, 1).unwrap();
         let mut spell = LoadoutSetup::default();
         spell.push("blink", blink);
-        let types = [grunt_type, tower_type, x, y];
+        let types = [grunt_type, tower_type, x, y, crate_type];
         Progression::load(world, &files.data.tracks);
         for (name, data) in &files.modifiers {
             Stats::load_modifier(world, 0, name, data, None);

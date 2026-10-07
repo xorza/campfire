@@ -4,7 +4,7 @@ use std::{iter, slice};
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
-    Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, ModifierData,
+    Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, Metric, ModifierData,
     ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
     ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Status,
     Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
@@ -14,6 +14,7 @@ use campfire_sim::{Capability, TickRate};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
+use crate::error::box_problem::BoxProblem;
 use crate::error::choice_problem::ChoiceProblem;
 use crate::error::ctx_misuse::CtxMisuse;
 use crate::error::delivery_problem::DeliveryProblem;
@@ -212,8 +213,8 @@ impl<'a> LoadCheck<'a> {
         let walkers = packages.walkers();
         let body_of = |unit_type: &str| {
             let unit_type = packages.content.units.get(unit_type)?;
-            let body = packages.data.navigation.body(unit_type.collision.as_ref());
-            body.filter(|_| !unit_type.walks())
+            let form = packages.data.navigation.form(unit_type.collision.as_ref());
+            form.filter(|_| !unit_type.walks())
         };
         packages
             .map
@@ -935,6 +936,9 @@ impl<'a> LoadCheck<'a> {
                             id.to_owned(),
                         )));
                     }
+                    Some(unit_type) if !unit_type.walks() => {
+                        return Err(LoadProblem::TrainStands(id.to_owned()));
+                    }
                     Some(_) => {}
                 }
             }
@@ -1041,8 +1045,18 @@ impl<'a> LoadCheck<'a> {
             return Err(fail(EffectProblem::Summon));
         }
         let units = &self.packages.content.units;
-        if units.get(unit_type).is_none_or(UnitTypeFile::delivers) {
+        let Some(spawned) = units
+            .get(unit_type)
+            .filter(|unit_type| !unit_type.delivers())
+        else {
             return Err(unknown(at, unit_type, NameKind::UnitType));
+        };
+        if spawned
+            .collision
+            .as_ref()
+            .is_some_and(|collision| collision.form.is_box())
+        {
+            return Err(fail(EffectProblem::SpawnBox));
         }
         if duration_ms.is_some_and(|duration| !whole_ms(action, duration)) {
             return Err(fail(EffectProblem::Duration));
@@ -1256,6 +1270,27 @@ impl<'a> LoadCheck<'a> {
     /// passive one of `modifiers`; and a projectile or an area type a delivery type alone: a
     /// homing projectile faster than the cap, its filter of the match's tags, and an area's
     /// `inside` modifiers of `modifiers`.
+    /// A box body only on a type that does not walk, on a planar map.
+    fn body_box(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
+        let boxed = unit_type
+            .collision
+            .as_ref()
+            .is_some_and(|collision| collision.form.is_box());
+        let problem = if !boxed {
+            None
+        } else if unit_type.walks() {
+            Some(BoxProblem::Walks)
+        } else if self.packages.map.metric == Metric::Spatial {
+            Some(BoxProblem::Spatial)
+        } else {
+            None
+        };
+        problem.map_or(Ok(()), |problem| {
+            let at = at.clone();
+            Err(LoadProblem::BoxBody { at, problem })
+        })
+    }
+
     fn unit_type(
         &self,
         unit_type: &UnitTypeFile,
@@ -1281,6 +1316,7 @@ impl<'a> LoadCheck<'a> {
             }
         }
         own_tags(&unit_type.core.tags, at)?;
+        self.body_box(unit_type, at)?;
         if unit_type.delivers() && !unit_type.delivery_only() {
             return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
                 at.clone(),

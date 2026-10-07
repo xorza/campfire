@@ -11,7 +11,7 @@ use campfire_capabilities::{Dead, Owner, Team};
 use campfire_sim::{StableId, Unpredicted};
 use lightyear::prelude::Predicted;
 
-use crate::view::{Drawn, Look};
+use crate::view::{Drawn, Footing, Look};
 
 /// What the cursor points at, as the player sees the match: the ground point under it, and the
 /// living unit drawn there.
@@ -68,23 +68,23 @@ impl Pointer<'_, '_> {
             .filter_map(|(&id, &team, drawn)| {
                 let (transform, look) = self.drawings.get(drawn.drawing()).ok()?;
                 let center = Vec2::new(transform.translation.x, transform.translation.z);
-                Some((Pointed { id, team }, center, look.radius()))
+                Some((Pointed { id, team }, center, look.footing()))
             });
         nearest_over(Vec2::new(point.x, point.z), drawn)
     }
 }
 
-/// Of the circles on the ground, each a unit's center and radius, the unit whose circle holds
-/// `point` and whose center is nearest it; the lower stable id on a tie.
+/// Of the drawings on the ground, each a unit's center and what it covers, the unit whose drawing
+/// covers `point` and whose center is nearest it; the lower stable id on a tie.
 fn nearest_over(
     point: Vec2,
-    circles: impl Iterator<Item = (Pointed, Vec2, f32)>,
+    drawings: impl Iterator<Item = (Pointed, Vec2, Footing)>,
 ) -> Option<Pointed> {
-    circles
-        .map(|(unit, center, radius)| (unit, point.distance_squared(center), radius))
-        .filter(|&(_, distance, radius)| distance <= radius * radius)
+    drawings
+        .filter(|&(_, center, footing)| footing.covers(point - center))
+        .map(|(unit, center, _)| (unit, point.distance_squared(center)))
         .min_by(|a, b| a.1.total_cmp(&b.1).then(a.0.id.cmp(&b.0.id)))
-        .map(|(unit, _, _)| unit)
+        .map(|(unit, _)| unit)
 }
 
 /// A system param holds borrows of the world, whose queries print nothing of use.
@@ -96,6 +96,8 @@ impl fmt::Debug for Pointer<'_, '_> {
 
 #[cfg(test)]
 mod tests {
+    use std::f32::consts::FRAC_PI_2;
+
     use campfire_sim::IdAllocator;
 
     use super::*;
@@ -110,12 +112,13 @@ mod tests {
         // An avatar of 0.5 m at the origin, a unit of 1 m at x = 1, a creep of 0.35 m at x = 0.25,
         // an avatar at x = 4, and a unit of a higher id drawn where the first stands.
         let [avatar, wide, creep, far, twin] = [unit(), unit(), unit(), unit(), unit()];
+        let circle = Footing::Circle;
         let circles = [
-            (avatar, Vec2::new(0.0, 0.0), 0.5),
-            (wide, Vec2::new(1.0, 0.0), 1.0),
-            (creep, Vec2::new(0.25, 0.0), 0.35),
-            (far, Vec2::new(4.0, 0.0), 0.5),
-            (twin, Vec2::new(0.0, 0.0), 0.5),
+            (avatar, Vec2::new(0.0, 0.0), circle(0.5)),
+            (wide, Vec2::new(1.0, 0.0), circle(1.0)),
+            (creep, Vec2::new(0.25, 0.0), circle(0.35)),
+            (far, Vec2::new(4.0, 0.0), circle(0.5)),
+            (twin, Vec2::new(0.0, 0.0), circle(0.5)),
         ];
         let at = |x: f32, z: f32| nearest_over(Vec2::new(x, z), circles.into_iter());
         // At x = 0.2: inside the avatar (0.2 away), the wide unit (0.8) and the creep (0.05); the
@@ -131,5 +134,16 @@ mod tests {
         assert_eq!(at(4.5, 0.0), Some(far));
         assert_eq!(at(4.5, 0.25), None);
         assert_eq!(at(3.0, 0.0), None);
+        // A box of half sides 2 and 0.5 at (10, 0), turned a quarter: Bevy turns its x axis to
+        // (0, -1), so it reaches 2 along z and 0.5 along x. It covers (10.4, 1.9), not (11, 0).
+        let building = unit();
+        let boxed = Footing::Box {
+            half: [2.0, 0.5],
+            yaw: FRAC_PI_2,
+        };
+        let drawings = [(building, Vec2::new(10.0, 0.0), boxed)];
+        let at = |x: f32, z: f32| nearest_over(Vec2::new(x, z), drawings.into_iter());
+        assert_eq!(at(10.4, 1.9), Some(building));
+        assert_eq!(at(11.0, 0.0), None);
     }
 }

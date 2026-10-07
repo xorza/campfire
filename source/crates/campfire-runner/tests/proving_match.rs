@@ -2,14 +2,15 @@
 //! there to prove: each capability it names takes part.
 
 use bevy_ecs::component::Component;
+use campfire_capabilities::internals::{reaches, reaches_bound, sinks_into};
 use campfire_capabilities::{
-    Area, Dead, Experience, Level, Lifespan, ModeState, Modifiers, Owner, Projectile,
-    ScriptFailures, SeenBy, StateValue, Team, TeamSet, TrainQueue,
+    ActionSlots, Area, Body, Dead, Experience, Level, Lifespan, ModeState, Modifiers, MoveStep,
+    Owner, Projectile, ScriptFailures, SeenBy, StateValue, Team, TeamSet, TrainQueue,
 };
 use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, ProvingMatch, RestoreTarget};
 use campfire_sim::internals::{Draws, StageClock};
-use campfire_sim::{EntityIndex, Position};
+use campfire_sim::{EntityIndex, Position, StableId};
 
 /// What the match showed over its ticks.
 #[derive(Debug, Default)]
@@ -29,10 +30,21 @@ struct Seen {
     states: Vec<(u64, Vec<StateValue>)>,
     /// The boundaries a save was due at, each by the tick it comes before.
     saves: Vec<u64>,
+    /// Whether the lancer, after each tick, reached the boulder's box with its weapon, and the
+    /// least circle that holds it, while the boulder stood.
+    lancer_reach: Vec<(u64, bool, bool)>,
+    /// The tick the lancer first wound up an attack on the boulder.
+    first_strike: Option<u64>,
+    /// The walkers left inside the boulder's box after a tick, by more than a push rounds.
+    sunk: Vec<(u64, StableId)>,
 }
+
+/// The lancer's weapon's range, its `attack` action's in its package.
+const LANCER_RANGE: Num = Num::int(4);
 
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
     let world = fixed.runner().world();
+    look_at_boulder(fixed, tick, seen);
     let state = world.resource::<ModeState>().get();
     if seen.states.last().is_none_or(|(_, last)| last != state) {
         seen.states.push((tick, state.to_vec()));
@@ -70,6 +82,53 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
         {
             seen.trained[usize::try_from(owner.slot().get()).unwrap()] += 1;
         }
+    }
+}
+
+/// What the boulder, a box of 2.4 by 1.2 m turned 30°, saw of the units round it after `tick`.
+fn look_at_boulder(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
+    let world = fixed.runner().world();
+    let units = || {
+        world
+            .resource::<EntityIndex>()
+            .iter()
+            .map(|(id, entity)| (id, world.entity(entity)))
+    };
+    let Some((boulder, stone)) = units()
+        .find(|(_, unit)| unit.get::<Team>() == Some(&Team::new(2)) && !unit.contains::<Dead>())
+    else {
+        return;
+    };
+    let (at, body) = (
+        *stone.get::<Position>().unwrap(),
+        stone.get::<Body>().unwrap(),
+    );
+    // A push ends within a bit and a half of touching; two bits of slack hold every rounding.
+    let slack = Num::from_bits(2);
+    for (id, unit) in units() {
+        let walks = unit.contains::<MoveStep>() && !unit.contains::<Dead>();
+        if let (true, Some(walker)) = (walks, unit.get::<Body>())
+            && sinks_into(*unit.get::<Position>().unwrap(), walker, slack, at, body)
+        {
+            seen.sunk.push((tick, id));
+        }
+    }
+    let lancer = units().find(|(_, unit)| {
+        unit.contains::<Experience>()
+            && unit
+                .get::<Owner>()
+                .is_some_and(|owner| owner.slot().get() == 0)
+    });
+    let Some((_, lancer)) = lancer.filter(|(_, unit)| !unit.contains::<Dead>()) else {
+        return;
+    };
+    let (from, own) = (*lancer.get::<Position>().unwrap(), lancer.get::<Body>());
+    let box_reach = reaches(from, own, LANCER_RANGE, at, Some(body));
+    let bound_reach = reaches_bound(from, own, LANCER_RANGE, at, Some(body));
+    seen.lancer_reach.push((tick, box_reach, bound_reach));
+    let strikes = lancer.get::<ActionSlots>().and_then(ActionSlots::attacking) == Some(boulder);
+    if strikes && seen.first_strike.is_none() {
+        seen.first_strike = Some(tick);
     }
 }
 
@@ -156,6 +215,23 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // A save is due after tick 0, whose first wave asked for one, and at each 12 s of 20 Hz,
     // every 240 ticks, from the start.
     assert_eq!(seen.saves, [1, 240, 480]);
+    // The boulder is a box: the lancer, sent off its long side to (-3, 4) and back at it in tick
+    // 150, walked 0.25 m a tick into reach. The least circle that holds the box, 1.34 m round its
+    // center, came into its weapon's 4 m after tick 157; the long side, 0.6 m from the center,
+    // 0.74 m nearer, three steps later, after tick 160; and the lancer stopped there and wound up
+    // in tick 161. So the reach measured the box, not its bound. No walker stood inside the box
+    // after any tick.
+    let reach_from = |pick: fn(&(u64, bool, bool)) -> bool| {
+        let after_order = seen.lancer_reach.iter().filter(|&&(tick, ..)| tick >= 150);
+        after_order
+            .filter(|entry| pick(entry))
+            .map(|&(tick, ..)| tick)
+            .next()
+    };
+    assert_eq!(reach_from(|&(_, _, bound)| bound), Some(157));
+    assert_eq!(reach_from(|&(_, boxed, _)| boxed), Some(160));
+    assert_eq!(seen.first_strike, Some(161));
+    assert_eq!(seen.sunk, []);
 }
 
 /// A component no system reads, which moves the unit that carries it to another archetype.

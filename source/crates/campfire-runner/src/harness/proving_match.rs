@@ -47,10 +47,11 @@ enum ProvingPlan {
 /// - The heroes walk to the middle and trade their abilities: the lancer's fan, quake and snare,
 ///   the sage's orb and nova.
 /// - North's barracks compete again once the income of tick 100 comes.
-/// - The lancer breaks the boulder, a static body near the lane.
+/// - The lancer walks off the boulder's long side, then breaks it: a box turned 30°, a static
+///   body near the lane, which its weapon reaches from the box's edge.
 /// - North's east barracks posts a ward by the south's barracks, which no unit of north sees
 ///   otherwise.
-const SCRIPT: [Scripted<ProvingPlan>; 18] = [
+const SCRIPT: [Scripted<ProvingPlan>; 19] = [
     Scripted::new(2, 0, ProvingPlan::Train { barracks: 0 }),
     Scripted::new(2, 0, ProvingPlan::Train { barracks: 1 }),
     Scripted::new(2, 1, ProvingPlan::Train { barracks: 0 }),
@@ -63,7 +64,8 @@ const SCRIPT: [Scripted<ProvingPlan>; 18] = [
     cast(80, 0, 2, Aim::Nothing),
     Scripted::new(105, 0, ProvingPlan::Train { barracks: 1 }),
     Scripted::new(105, 0, ProvingPlan::Train { barracks: 0 }),
-    Scripted::new(120, 0, ProvingPlan::AttackBoulder),
+    Scripted::new(120, 0, ProvingPlan::Move { x: -3, z: 4 }),
+    Scripted::new(150, 0, ProvingPlan::AttackBoulder),
     Scripted::new(160, 1, ProvingPlan::Move { x: -6, z: -1 }),
     cast(200, 0, 0, Aim::HeroPoint { slot: 1 }),
     cast(260, 1, 0, Aim::Hero { slot: 0 }),

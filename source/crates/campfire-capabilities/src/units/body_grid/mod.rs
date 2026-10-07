@@ -2,12 +2,13 @@ use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
 use crate::values::row_directory::{RowDirectory, RowEntries};
+use crate::values::shape::Shape;
 
 /// The bodies of a stage, as a sorted index of cells of the ground plane: a query of a box visits
-/// the bodies of the cells it covers, grown by the widest body, so it meets every body that may
-/// reach into the box, each once, and few others. A sort, not a grid over the map, as a map may
-/// be wide and its bodies few, as the broadphase finds its pairs. A cell is twice the widest
-/// body's radius, a meter at least. Its buffer stays between builds, so a build allocates nothing
+/// the bodies of the cells it covers, grown by the widest body's bound, the radius of the least
+/// circle that holds it, so it meets every body that may reach into the box, each once, and few
+/// others. A sort, not a grid over the map, as a map may be wide and its bodies few, as the
+/// broadphase finds its pairs. A cell is twice the widest bound, a meter at least. Its buffer stays between builds, so a build allocates nothing
 /// once it has grown, and costs `n log n`; a query finds the bodies of each row of cells it
 /// covers from where each row starts, searches only those, and never costs more than a pass over
 /// every body. A grid whose rows spread far wider than its bodies keeps no row starts, and a
@@ -23,25 +24,25 @@ pub(crate) struct BodyGrid<K> {
 }
 
 /// A body of the grid: its unit, the key its reader finds the unit by, where it stands, its
-/// radius and its cell.
+/// shape and its cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GridBody<K> {
     pub(crate) id: StableId,
     pub(crate) key: K,
     pub(crate) at: Position,
-    pub(crate) radius: Num,
+    pub(crate) shape: Shape,
     row: i64,
     column: i64,
 }
 
 /// A body to index: its unit, the key its reader finds the unit by, where it stands, and its
-/// radius, 0 for a point.
+/// shape, a point's for a unit with no body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Placed<K> {
     pub(crate) id: StableId,
     pub(crate) key: K,
     pub(crate) at: Position,
-    pub(crate) radius: Num,
+    pub(crate) shape: Shape,
 }
 
 impl<K> Default for BodyGrid<K> {
@@ -64,20 +65,20 @@ impl<K: Copy> BodyGrid<K> {
                 id: placed.id,
                 key: placed.key,
                 at: placed.at,
-                radius: placed.radius,
+                shape: placed.shape,
                 row: 0,
                 column: 0,
             }));
         self.widest = self
             .entries
             .iter()
-            .map(|body| body.radius)
+            .map(|body| body.shape.bound())
             .max()
             .unwrap_or(Num::ZERO);
         let side = self
             .widest
             .checked_mul_int(2)
-            .expect("a body's radius is bounded");
+            .expect("a body's bound is within 64 m");
         self.cell = side.max(Num::ONE).to_bits();
         let cell = self.cell;
         for body in &mut self.entries {
@@ -91,8 +92,8 @@ impl<K: Copy> BodyGrid<K> {
             .rebuild(self.entries.iter().map(|body| ((), body.row)));
     }
 
-    /// Calls `visit` with each body whose disc may reach into the box of the ground plane from
-    /// `low` to `high`, `[x, z]` each, each body once, in no order a caller may rely on.
+    /// Calls `visit` with each body whose bound's disc may reach into the box of the ground plane
+    /// from `low` to `high`, `[x, z]` each, each body once, in no order a caller may rely on.
     pub(crate) fn visit(&self, low: [Num; 2], high: [Num; 2], mut visit: impl FnMut(&GridBody<K>)) {
         if self.entries.is_empty() {
             return;
@@ -126,8 +127,8 @@ impl<K: Copy> BodyGrid<K> {
         }
     }
 
-    /// Calls `visit` with each body whose disc may come within `reach` of `at` on the ground
-    /// plane, as `visit` does.
+    /// Calls `visit` with each body whose bound's disc may come within `reach` of `at` on the
+    /// ground plane, as `visit` does.
     pub(crate) fn visit_near(&self, at: Position, reach: Num, visit: impl FnMut(&GridBody<K>)) {
         let at = at.get();
         let low = [at.x, at.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));

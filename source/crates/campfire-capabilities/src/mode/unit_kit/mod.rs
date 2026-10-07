@@ -13,7 +13,7 @@ use crate::stats::move_step::MoveStep;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
-use crate::units::body::Body;
+use crate::units::body::BodyForm;
 use crate::units::unit_type::UnitType;
 use crate::values::stat::{EngineStat, Stat};
 use crate::vision::sight::Sight;
@@ -30,7 +30,7 @@ pub struct UnitKit {
     pub on_death: Option<OnDeath>,
     pub step: Option<MoveStep>,
     pub sight: Option<Sight>,
-    pub body: Option<Body>,
+    pub body: Option<BodyForm>,
     pub tracks: TrackSet,
     pub queue: Option<NonZeroU8>,
     pub inventory: Option<InventorySpec>,
@@ -51,7 +51,7 @@ pub(crate) struct KitSections<'a, P> {
     pub(crate) combat: Option<&'a CombatData>,
     pub(crate) pools: P,
     pub(crate) vision: Option<&'a VisionData>,
-    pub(crate) body: Option<Body>,
+    pub(crate) body: Option<BodyForm>,
     pub(crate) tracks: TrackSet,
     pub(crate) production: Option<&'a ProductionData>,
     pub(crate) inventory: Option<InventorySpec>,

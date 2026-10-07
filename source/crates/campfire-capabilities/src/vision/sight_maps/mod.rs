@@ -109,6 +109,35 @@ impl SightMaps {
     }
 }
 
+impl SightMaps {
+    /// Whether `group` sees a cell of `cells`, a run: with its sight, or for a unit its tags
+    /// hide, with its detection. A word at a time.
+    pub(crate) fn sees_any(&self, group: usize, cells: Range<usize>, hidden: bool) -> bool {
+        if cells.is_empty() {
+            return false;
+        }
+        let (map, run) = if hidden {
+            let Some(slot) = self.detection[group] else {
+                return false;
+            };
+            (&self.detected, slot * self.words)
+        } else {
+            (&self.revealed, group * self.words)
+        };
+        let (first, last) = (cells.start / 64, (cells.end - 1) / 64);
+        (first..=last).any(|word| {
+            let mut bits = u64::MAX;
+            if word == first {
+                bits &= u64::MAX << (cells.start % 64);
+            }
+            if word == last {
+                bits &= u64::MAX >> (63 - (cells.end - 1) % 64);
+            }
+            map[run + word] & bits != 0
+        })
+    }
+}
+
 /// One bitmap of the bitmaps `words`, at `run`, and the words of them a tick set, a bit a word.
 #[derive(Debug)]
 struct Bitmap<'a> {

@@ -3,6 +3,7 @@ use std::ops::Range;
 use campfire_math::{FloorRoot, I64x4, Num, Vec3};
 use campfire_sim::Position;
 
+use crate::values::body_box::BodyBox;
 use crate::values::bounds::Bounds;
 
 /// A map's ground grid: square cells of `cell` meters over its bounds, whole cells from their min
@@ -130,6 +131,94 @@ impl Grid {
     /// `pos` on the ground plane, exactly: a center at `radius` is not closer. Rows in order.
     pub(crate) fn spans_closer(&self, pos: Position, radius: Num, mark: impl FnMut(Range<usize>)) {
         self.spans(pos, radius, true, mark);
+    }
+
+    /// Calls `mark` with each row's run of the cells whose centers come closer than `reach` to
+    /// `body` at `pos` on the ground plane, exactly: a center at `reach` is not closer. A box and
+    /// a disc round it are convex, so each row's cells are one run. Rows in order. It tests each
+    /// cell of the box's bounding rectangle grown by `reach`, which a body that never moves pays
+    /// only as it spawns or goes.
+    pub(crate) fn box_spans_closer(
+        &self,
+        pos: Position,
+        body: &BodyBox,
+        reach: Num,
+        mut mark: impl FnMut(Range<usize>),
+    ) {
+        let twice = |value: Num| 2 * i128::from(value.to_bits());
+        let at = pos.get();
+        let centre = [twice(at.x), twice(at.z)];
+        let extent = body.extent();
+        let min = self.bounds.min();
+        let cell = i128::from(self.cell.to_bits());
+        let last = |axis: usize| i128::from(self.size[axis]) - 1;
+        // The cells whose centres lie within the rectangle, along `axis`: a centre at
+        // `2 min + cell (2 i + 1)` halves.
+        let span = |axis: usize| {
+            let grow = twice(extent[axis]) + twice(reach);
+            let from = centre[axis] - grow - twice(min[axis]) - cell;
+            let to = centre[axis] + grow - twice(min[axis]) - cell;
+            let first = ceil_div(from, 2 * cell).max(0);
+            let end = to.div_euclid(2 * cell).min(last(axis));
+            first..=end
+        };
+        let index = |value: i128| usize::try_from(value).expect("a cell of the grid");
+        for row in span(1) {
+            let mut run: Option<(usize, usize)> = None;
+            for column in span(0) {
+                let cell_at = index(row) * self.columns() + index(column);
+                let [x, z] = self.center_twice(cell_at);
+                if body.closer_twice([x - centre[0], z - centre[1]], reach) {
+                    run = Some(run.map_or((cell_at, cell_at), |(first, _)| (first, cell_at)));
+                } else if run.is_some() {
+                    break;
+                }
+            }
+            if let Some((first, held)) = run {
+                mark(first..held + 1);
+            }
+        }
+    }
+
+    /// Calls `mark` with each row's run of the cells whose squares a box's inside shares a point
+    /// with, `body` at `pos`: the cells it covers, touching not counted. Rows in order.
+    pub(crate) fn box_covers(
+        &self,
+        pos: Position,
+        body: &BodyBox,
+        mut mark: impl FnMut(Range<usize>),
+    ) {
+        let twice = |value: Num| 2 * i128::from(value.to_bits());
+        let at = pos.get();
+        let centre = [twice(at.x), twice(at.z)];
+        let extent = body.extent();
+        let min = self.bounds.min();
+        let cell = i128::from(self.cell.to_bits());
+        let last = |axis: usize| i128::from(self.size[axis]) - 1;
+        // The cells whose squares, from `2 min + 2 cell i` to the next, the rectangle meets.
+        let span = |axis: usize| {
+            let from = centre[axis] - twice(extent[axis]) - twice(min[axis]);
+            let to = centre[axis] + twice(extent[axis]) - twice(min[axis]);
+            let first = from.div_euclid(2 * cell).max(0);
+            let end = to.div_euclid(2 * cell).min(last(axis));
+            first..=end
+        };
+        let index = |value: i128| usize::try_from(value).expect("a cell of the grid");
+        for row in span(1) {
+            let mut run: Option<(usize, usize)> = None;
+            for column in span(0) {
+                let cell_at = index(row) * self.columns() + index(column);
+                let [x, z] = self.center_twice(cell_at);
+                if body.overlaps_square_twice([x - centre[0], z - centre[1]], cell) {
+                    run = Some(run.map_or((cell_at, cell_at), |(first, _)| (first, cell_at)));
+                } else if run.is_some() {
+                    break;
+                }
+            }
+            if let Some((first, held)) = run {
+                mark(first..held + 1);
+            }
+        }
     }
 
     /// The runs of `spans_within`, or of `spans_closer` when `strict`: with whole half-bits, a

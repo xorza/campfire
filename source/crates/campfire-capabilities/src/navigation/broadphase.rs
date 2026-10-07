@@ -122,7 +122,7 @@ impl Broadphase {
             }
         }
         for (index, collider) in walkers {
-            statics.near(collider.layer, collider.at, collider.radius, |body| {
+            statics.near(collider.layer, collider.at, collider.radius(), |body| {
                 let other = colliders
                     .binary_search_by_key(&body.id, |collider| collider.id)
                     .expect("a static body of the index is among the colliders");
@@ -140,7 +140,7 @@ impl Broadphase {
         let widest = colliders
             .iter()
             .filter(|collider| collider.movable)
-            .map(|collider| collider.radius)
+            .map(Collider::radius)
             .max()?;
         Some(widest + widest)
     }
@@ -165,12 +165,21 @@ pub(crate) mod internals {
     use crate::navigation::body_index::{BodyIndex, IndexedBody};
     use crate::navigation::collider::Collider;
     use crate::units::layer::Layer;
+    use crate::values::body_box::BodyBox;
     use crate::values::kernel_scene::KernelScene;
+    use crate::values::shape::Shape;
 
     /// `count` bodies from `seed`: each at a whole centimeter within `span` meters of the origin
     /// on both axes, of a radius from 0.2 to 1.19 m, on one of `layers` layers, and that may be
-    /// pushed, and walks, at random. A scene of one layer draws no layer.
-    pub(crate) fn scene(seed: u64, count: usize, span: u64, layers: u8) -> Vec<Collider> {
+    /// pushed, and walks, at random. A scene of one layer draws no layer. With `boxes`, a body
+    /// that may not be pushed is a box as wide and as deep as its circle, at a whole degree.
+    pub(crate) fn scene(
+        seed: u64,
+        count: usize,
+        span: u64,
+        layers: u8,
+        boxes: bool,
+    ) -> Vec<Collider> {
         let mut scene = KernelScene::new(seed);
         let mut ids = IdAllocator::default();
         let mut world = World::new();
@@ -183,11 +192,18 @@ pub(crate) mod internals {
                     1 => Layer::FIRST,
                     _ => Layer::new(u8::try_from(scene.below(layers.into())).unwrap()),
                 };
+                let shape = if boxes && !movable {
+                    let angle = Num::from_int(scene.below(360).cast_signed()).unwrap();
+                    let side = radius + radius;
+                    Shape::Box(BodyBox::new([side, side], angle).unwrap())
+                } else {
+                    Shape::Circle(radius)
+                };
                 Collider {
                     id: ids.allocate(),
                     entity: world.spawn_empty().id(),
                     at,
-                    radius,
+                    shape,
                     layer,
                     movable,
                     walking: movable && scene.below(2) == 0,
@@ -201,7 +217,7 @@ pub(crate) mod internals {
         let widest = colliders
             .iter()
             .filter(|collider| collider.movable)
-            .map(|collider| collider.radius)
+            .map(Collider::radius)
             .max();
         let mut index = BodyIndex::new(widest.unwrap_or(Num::ONE));
         let bodies: Vec<IndexedBody> = colliders
@@ -210,7 +226,7 @@ pub(crate) mod internals {
             .map(|collider| IndexedBody {
                 id: collider.id,
                 at: Position::new(collider.at).unwrap(),
-                radius: collider.radius,
+                shape: collider.shape,
                 layer: collider.layer,
             })
             .collect();
@@ -225,6 +241,7 @@ mod tests {
 
     use super::internals::{scene, statics};
     use super::*;
+    use crate::values::shape::Shape;
 
     /// The pairs a check of every pair finds, in its order.
     fn every_pair(colliders: &[Collider]) -> Vec<Contact> {
@@ -246,16 +263,19 @@ mod tests {
         // seeds, each with the buffers the scene before left; the last two over two and three
         // layers, where bodies of other layers that overlap on the ground plane have no contact.
         let mut crowded = 0;
-        for (seed, count, span, layers) in [
-            (1, 300, 8, 1),
-            (2, 300, 8, 1),
-            (3, 500, 40, 1),
-            (4, 60, 3, 1),
-            (5, 2, 1, 1),
-            (8, 300, 8, 2),
-            (9, 300, 8, 3),
+        // Two crowded scenes hold boxes for the bodies that may not be pushed.
+        for (seed, count, span, layers, boxes) in [
+            (1, 300, 8, 1, false),
+            (2, 300, 8, 1, false),
+            (3, 500, 40, 1, false),
+            (4, 60, 3, 1, false),
+            (5, 2, 1, 1, false),
+            (8, 300, 8, 2, false),
+            (9, 300, 8, 3, false),
+            (10, 300, 8, 1, true),
+            (11, 300, 8, 2, true),
         ] {
-            let colliders = scene(seed, count, span, layers);
+            let colliders = scene(seed, count, span, layers, boxes);
             let expected = every_pair(&colliders);
             let mut flat = colliders.clone();
             for collider in &mut flat {
@@ -281,12 +301,12 @@ mod tests {
         // which about half of them overlap: the cells stay 0.7 m wide.
         let walker = Num::from_bits((35 << Num::FRAC_BITS) / 100);
         for seed in [6, 7] {
-            let mut colliders = scene(seed, 400, 80, 1);
+            let mut colliders = scene(seed, 400, 80, 1, false);
             for collider in colliders.iter_mut().filter(|collider| collider.movable) {
-                collider.radius = walker;
+                collider.shape = Shape::Circle(walker);
             }
             colliders[0].at = Vec3::ZERO;
-            colliders[0].radius = Num::from_int(64).unwrap();
+            colliders[0].shape = Shape::Circle(Num::from_int(64).unwrap());
             colliders[0].movable = false;
             colliders[0].walking = false;
             let expected = every_pair(&colliders);

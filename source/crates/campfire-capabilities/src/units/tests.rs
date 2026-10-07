@@ -382,7 +382,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
         let source = "fn probe(ctx, of) { of.radius }";
         scene.sim.probe(source, unit).unwrap().cast::<Num>()
     };
-    assert_eq!(radius(&mut scene, of), body.radius());
+    assert_eq!(radius(&mut scene, of), body.radius().unwrap());
     assert_eq!(radius(&mut scene, near), Num::ZERO);
     // Where it spawned, which a unit the mode did not spawn has none of.
     let spawn_pos = |scene: &mut Scene, unit| {

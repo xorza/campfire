@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
@@ -33,6 +35,8 @@ use crate::navigation::static_changes::StaticChanges;
 use crate::navigation::steering::{Steered, Steering};
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
+use crate::navigation::wall::Wall;
+use crate::navigation::walls::Walls;
 use crate::stats::move_step::MoveStep;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -45,6 +49,7 @@ use crate::units::unit_tags::UnitTags;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
 use crate::values::hit::Hit;
+use crate::values::shape::Shape;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -71,6 +76,7 @@ pub(crate) mod steering;
 pub(crate) mod terrain;
 pub(crate) mod walker;
 pub(crate) mod wall;
+pub(crate) mod walls;
 
 /// The systems of `navigation`, for the systems of other capabilities to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -140,19 +146,73 @@ impl Navigation {
         registry.register_component::<ForcedMove>();
     }
 
-    /// Gives the match the map's pathing grid over `cells`, with the cells `terrain`'s walls
-    /// block, for the kinds of `walkers`, a static index for the widest of them, and a planner of
-    /// routes on the grid; the static bodies fill the grid and the index from the first tick on.
+    /// Gives the match the map's pathing grid over `cells`, with the cells `walls` block, for the
+    /// kinds of `walkers`, a static index for the widest of them, a planner of routes on the
+    /// grid, and the walls for placements to test; the static bodies fill the grid and the index
+    /// from the first tick on.
     pub(crate) fn load_pathing(
         world: &mut World,
         cells: Grid,
-        terrain: &Terrain,
+        walls: &[Wall],
         walkers: Vec<Walker>,
     ) {
+        let terrain = Terrain::new(&cells, walls);
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&cells));
-        world.insert_resource(PathingGrid::new(cells, walkers, terrain));
+        world.insert_resource(PathingGrid::new(cells, walkers, &terrain));
+        world.insert_resource(Walls::new(walls));
+    }
+
+    /// Makes room for the box of `entity`, which just spawned: each walker of its layer whose
+    /// body the box overlaps goes at once to the nearest cell its walker may stand in, by stable
+    /// id, as a teleport places a unit but with no disjoint. The static index and the pathing
+    /// grid take the box first, so the cell is clear of every static body, and no push of
+    /// collision can hold the walker between two. With no pathing grid, the box pushes it out
+    /// as collision would.
+    pub(crate) fn make_room(world: &mut World, entity: Entity) {
+        world
+            .run_system_cached(track_static_bodies)
+            .expect("the static bodies' tracking runs on any world");
+        let unit = world.entity(entity);
+        let at = *unit.get::<Position>().expect("a unit has a place");
+        let body = *unit.get::<Body>().expect("a box makes room");
+        let Shape::Box(boxed) = body.shape() else {
+            return;
+        };
+        let now = world.resource::<SimTick>().start();
+        let mut walkers =
+            world.query_filtered::<(Entity, &StableId, &Position, &Body), (With<MoveStep>, Without<Dead>)>();
+        let mut inside: Vec<Keyed> = walkers
+            .iter(world)
+            .filter(|&(_, _, &pos, other)| {
+                let radius = Walker::walking(Some(other)).radius;
+                other.layer() == body.layer() && boxed.nearest(at, pos, radius) == Ordering::Less
+            })
+            .map(|(entity, &id, ..)| Keyed { id, entity })
+            .collect();
+        inside.sort_unstable_by_key(|keyed| keyed.id);
+        for Keyed { entity: walker, .. } in inside {
+            let unit = world.entity(walker);
+            let pos = *unit.get::<Position>().expect("a walker has a place");
+            let kind = Walker::walking(unit.get::<Body>());
+            let grid = world.get_resource::<PathingGrid>();
+            let planner = world.get_resource::<RoutePlanner>();
+            let place = if let (Some(grid), Some(planner)) = (grid, planner) {
+                let walkable = Walkable {
+                    clearance: grid.clearance(kind),
+                    statics: world.resource::<BodyIndex>(),
+                    short: None,
+                };
+                planner.stand_at(walkable, pos).unwrap_or(pos)
+            } else {
+                let out = boxed
+                    .push_out(at, pos.get(), kind.radius)
+                    .unwrap_or(pos.get());
+                Position::new(out).expect("a push stays near the bounds")
+            };
+            NavigationEffect::put(world, walker, place, now);
+        }
     }
 }
 
@@ -189,17 +249,22 @@ fn track_static_bodies(
     }
 }
 
-/// The parts of a unit navigation reads into its row: the path it is on, and whether it walks.
-type RowParts = (Option<&'static OnPath>, Has<MoveStep>);
+/// The parts of a unit navigation reads into its row: the path it is on, whether it walks, and
+/// its body, for its layer.
+type RowParts = (
+    Option<&'static OnPath>,
+    Has<MoveStep>,
+    Option<&'static Body>,
+);
 
-/// Fills a row of the script view with the path the unit walks or stands on, and whether it
-/// walks.
+/// Fills a row of the script view with the path the unit walks or stands on, whether it walks,
+/// and its layer.
 fn fill_row(
-    (path, walks): ROQueryItem<'_, '_, RowParts>,
+    (path, walks, body): ROQueryItem<'_, '_, RowParts>,
     fill: &mut RowFill<'_, NavigationColumn>,
 ) {
     let path = path.map(|path| path.get());
-    fill.column.push(path, walks);
+    fill.column.push(path, walks, Body::layer_of(body));
 }
 
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route
@@ -235,7 +300,7 @@ fn route_units(
     let planned = grid.is_some();
     let opened = planned && changes.removed();
     for (&at, mut destination, mut route, mut progress, body) in &mut units {
-        let walker = Walker::of(body);
+        let walker = Walker::walking(body);
         match destination.get() {
             None if route.arrived_short() => {
                 if opened {
@@ -335,7 +400,7 @@ fn plan_routes(
             break;
         }
         let walkable = Walkable {
-            clearance: grid.clearance(Walker::of(body)),
+            clearance: grid.clearance(Walker::walking(body)),
             statics: &statics,
             short: None,
         };
@@ -409,7 +474,7 @@ fn steer(
             id,
             key: body.layer(),
             at,
-            radius: body.radius(),
+            shape: body.shape(),
         });
     steering.read(&statics, still, walking);
     let stuck_ticks = rate
@@ -430,7 +495,7 @@ fn steer(
             id,
             at,
             step: step.get(),
-            walker: Walker::of(Some(body)),
+            walker: Walker::walking(Some(body)),
             stuck: u64::from(progress.track(at, step.get())) >= stuck_ticks,
         };
         if let Some(detour) = steering.steer(planner, &grid, &statics, steered, &route) {
@@ -555,7 +620,7 @@ fn collide(
                     id,
                     entity,
                     at: position.get(),
-                    radius: body.radius(),
+                    shape: body.shape(),
                     layer: body.layer(),
                     movable,
                     walking: walks(destination, tags, false),
@@ -639,7 +704,7 @@ fn force_units(
             let (_, _, &at, &forced, body) = moving.get(entity).expect("a unit in the order");
             (at, forced, body.copied())
         };
-        let walker = Walker::of(body.as_ref());
+        let walker = Walker::walking(body.as_ref());
         let ground = |place: Vec3| Vec3::new(place.x, at.get().y, place.z);
         let goal = match forced {
             ForcedMove::Dash {
@@ -655,9 +720,16 @@ fn force_units(
             } => {
                 let targets = units.p0();
                 let found = index.get(target).and_then(|unit| targets.get(unit).ok());
-                found.map(|(place, body)| Goal {
-                    at: ground(place.get()),
-                    reach: walker.radius + Body::radius_of(body),
+                // A dash at a box makes for its nearest point, as at a point it must touch.
+                found.map(|(&place, body)| match Body::shape_of(body) {
+                    Shape::Circle(radius) => Goal {
+                        at: ground(place.get()),
+                        reach: walker.radius + radius,
+                    },
+                    Shape::Box(body) => Goal {
+                        at: ground(body.nearest_point(place, at).get()),
+                        reach: walker.radius,
+                    },
                 })
             }
             ForcedMove::KnockBack { to, .. } => Some(Goal {

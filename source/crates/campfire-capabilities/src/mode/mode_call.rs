@@ -7,6 +7,7 @@ use crate::mode::choices::Choices;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_state::ModeState;
+use crate::navigation::body_index::IndexedBody;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
@@ -16,13 +17,15 @@ use crate::scripts::state_value::StateValue;
 
 /// What the mode adds to the call frame: the mode's params, which a mode's or an AI's call reads;
 /// and as a mode call sees them, the mode's state and the players' choices, which it writes and
-/// reads back, and whether the match ended, before the call or in it.
+/// reads back, whether the match ended, before the call or in it, and the boxes it spawned, which
+/// a box it spawns next needs room from.
 #[derive(Debug)]
 pub(crate) struct ModeCall {
     book: Rc<ModeBook>,
     pub(crate) state: Vec<StateValue>,
     pub(crate) choices: Choices,
     pub(crate) ended: bool,
+    pub(crate) boxes: Vec<IndexedBody>,
 }
 
 impl CallPart for ModeCall {
@@ -37,6 +40,7 @@ impl CallPart for ModeCall {
             .extend_from_slice(&world.resource::<ModeState>().0);
         self.choices.clone_from(world.resource::<Choices>());
         self.ended = world.contains_resource::<MatchEnd>();
+        self.boxes.clear();
         Ok(())
     }
 
@@ -59,6 +63,7 @@ impl ModeCall {
             state: Vec::new(),
             choices: Choices::default(),
             ended: false,
+            boxes: Vec::new(),
         }
     }
 

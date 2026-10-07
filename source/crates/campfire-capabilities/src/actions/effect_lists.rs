@@ -289,6 +289,7 @@ impl EffectLists {
                     unit_type,
                     team: source.team,
                     pos,
+                    angle: Num::ZERO,
                 };
                 let life = duration_ms.map(|ms| duration(ms, frame));
                 frame.effects.push(ActionsEffect {

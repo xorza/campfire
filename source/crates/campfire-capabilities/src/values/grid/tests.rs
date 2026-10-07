@@ -302,3 +302,71 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
     );
     assert_eq!(seen, 2);
 }
+
+/// The cells of `grid` that `test` keeps, from the runs `spans` gives, which must be in rows in
+/// order, each run of one row, none empty.
+fn from_runs(grid: &Grid, spans: impl FnOnce(&mut dyn FnMut(Range<usize>))) -> Vec<usize> {
+    let mut cells = Vec::new();
+    let mut last_row = None;
+    spans(&mut |run| {
+        assert!(!run.is_empty());
+        let row = run.start / grid.columns();
+        assert_eq!(
+            (run.end - 1) / grid.columns(),
+            row,
+            "a run stays in its row"
+        );
+        assert!(
+            last_row.is_none_or(|last| last < row),
+            "one run a row, rows in order"
+        );
+        last_row = Some(row);
+        cells.extend(run);
+    });
+    cells
+}
+
+#[test]
+fn a_box_marks_exactly_the_cells_it_comes_closer_to_and_those_it_covers() {
+    // Cells of 0.3 m over ±6 m, which puts centres at odd halves of a bit's grid; boxes at any
+    // angle and place, some by the bounds' edge: each run is a cell a brute test of every cell
+    // keeps, and none is missed.
+    let bounds = Bounds::new([Num::int(-6); 2], [Num::int(6); 2]).unwrap();
+    let cell = Num::from_bits(3 * (1 << Num::FRAC_BITS) / 10);
+    let grid = Grid::new(cell, bounds).unwrap();
+    let mut next = split_mix(0xB0E5);
+    let mut draw =
+        |low: i64, span: i64| low + i64::try_from(next() % span.cast_unsigned()).unwrap();
+    let one = Num::ONE.to_bits();
+    let (mut marked, mut covered) = (0, 0);
+    for _ in 0..40 {
+        let size = [draw(one / 4, 4 * one), draw(one / 4, 4 * one)].map(Num::from_bits);
+        let body = BodyBox::new(size, Num::from_bits(draw(0, 360 * one))).unwrap();
+        let centre = at(
+            Num::from_bits(draw(-6 * one, 12 * one)),
+            Num::from_bits(draw(-6 * one, 12 * one)),
+        );
+        let reach = Num::from_bits(draw(0, one));
+        let twice = |num: Num| 2 * i128::from(num.to_bits());
+        let off = |cell: usize| {
+            let [x, z] = grid.center_twice(cell);
+            [x - twice(centre.get().x), z - twice(centre.get().z)]
+        };
+        let closer = from_runs(&grid, |mark| {
+            grid.box_spans_closer(centre, &body, reach, mark);
+        });
+        let expected: Vec<usize> = (0..grid.cells())
+            .filter(|&cell| body.closer_twice(off(cell), reach))
+            .collect();
+        assert_eq!(closer, expected, "{body:?} at {centre:?} within {reach:?}");
+        let half = i128::from(cell.to_bits());
+        let covers = from_runs(&grid, |mark| grid.box_covers(centre, &body, mark));
+        let expected: Vec<usize> = (0..grid.cells())
+            .filter(|&cell| body.overlaps_square_twice(off(cell), half))
+            .collect();
+        assert_eq!(covers, expected, "{body:?} at {centre:?}");
+        marked += closer.len();
+        covered += covers.len();
+    }
+    assert!(marked > 1000 && covered > 1000, "{marked} {covered}");
+}

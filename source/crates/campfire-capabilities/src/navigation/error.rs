@@ -27,4 +27,14 @@ pub enum MapProblem {
                  from the one before it"
     )]
     WaypointUnreachable { path: DeclaredName, waypoint: usize },
+    /// Placed unit `unit`, of `unit_type`, a box, reaches past the bounds, or overlaps a wall of
+    /// its layer or another placed unit of its layer that cannot walk.
+    #[error(
+        "placed unit {unit}, a \"{unit_type}\" box, reaches past the bounds or overlaps a wall \
+                 or another placed unit that cannot walk"
+    )]
+    BoxBlocked {
+        unit: usize,
+        unit_type: DeclaredName,
+    },
 }

@@ -25,6 +25,7 @@ pub(crate) mod relation;
 pub(crate) mod row_directory;
 pub(crate) mod scalar;
 pub(crate) mod script_enum;
+pub(crate) mod shape;
 pub(crate) mod share;
 pub(crate) mod speed;
 pub(crate) mod squared_distance;

@@ -129,6 +129,10 @@ pub enum ApiError {
     /// A point outside the map's bounds.
     #[error("point is outside the map's bounds")]
     OutOfBounds,
+    /// A box with no room where it would spawn: past the bounds, or over a wall or a body that
+    /// stands.
+    #[error("the box has no room there: past the bounds, or over a wall or a body that stands")]
+    NoRoom,
     /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
     #[error("team has no one enemy team")]
     NoEnemyTeam,

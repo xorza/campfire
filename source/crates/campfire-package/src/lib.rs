@@ -24,6 +24,7 @@ mod package_view;
 mod script_facts;
 mod texts;
 
+pub use crate::error::box_problem::BoxProblem;
 pub use crate::error::choice_problem::ChoiceProblem;
 pub use crate::error::ctx_misuse::CtxMisuse;
 pub use crate::error::delivery_problem::DeliveryProblem;

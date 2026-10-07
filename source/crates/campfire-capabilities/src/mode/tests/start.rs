@@ -150,3 +150,71 @@ fn a_map_with_vision_holds_at_most_64_teams() {
     assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
     assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
 }
+
+#[test]
+fn a_box_spawns_only_where_it_has_room() {
+    // Crates of 2 by 2 m on the first layer, where the map's tower is not, at markers. The start
+    // spawns one at (0, 2). An input then asks for one at (1, 2), over it; for two in one call, at
+    // (4, 2) and (5, 2), the second over the first; for one at (10, 0), past the bounds at
+    // x = 10; and for one at (2, 2), which touches the first, and has room. Each refused call
+    // fails, and spawns nothing.
+    let script = r#"
+fn crate_at(ctx, marker) {
+    ctx.spawn_unit("crate", "a", ctx.map.markers(marker)[0].pos)
+}
+
+fn on_match_start(ctx) {
+    crate_at(ctx, "c0");
+}
+
+fn on_input(ctx, player, name, value) {
+    if value == "twice" {
+        crate_at(ctx, "c4");
+        crate_at(ctx, "c5");
+    } else {
+        crate_at(ctx, value);
+    }
+}
+"#;
+    let mut files = mode_files();
+    for (name, (x, z)) in [("c0", (0, 2)), ("c1", (1, 2)), ("c2", (2, 2))]
+        .into_iter()
+        .chain([("c4", (4, 2)), ("c5", (5, 2)), ("c10", (10, 0))])
+    {
+        files
+            .map
+            .markers
+            .push(MarkerData::tagged(name, &[name], MapPoint::ground(x, z)));
+    }
+    let mut game = Game::start(&format!("{script}{PICKING}"), ScriptLimits::ROOMY, files).unwrap();
+    let crates = |game: &Game| {
+        let world = &game.sim.world;
+        let mut at: Vec<Position> = world
+            .resource::<EntityIndex>()
+            .iter()
+            .map(|(_, entity)| world.entity(entity))
+            .filter(|unit| {
+                unit.get::<Body>()
+                    .is_some_and(|body| body.half_edges().is_some())
+            })
+            .map(|unit| *unit.get::<Position>().unwrap())
+            .collect();
+        at.sort_unstable_by_key(|pos| (pos.get().x, pos.get().z));
+        at
+    };
+    let ground =
+        |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
+    assert_eq!(crates(&game), [ground(0, 2)]);
+    for value in ["c1", "twice", "c10"] {
+        game.tick(&[(0, input("phase", value))]);
+        assert_eq!(crates(&game), [ground(0, 2)], "{value}");
+        assert_eq!(
+            game.failures().last(),
+            Some(&FailureKind::Api(ApiError::NoRoom)),
+            "{value}"
+        );
+    }
+    game.tick(&[(0, input("phase", "c2"))]);
+    assert_eq!(crates(&game), [ground(0, 2), ground(2, 2)]);
+    assert!(game.failures().is_empty());
+}

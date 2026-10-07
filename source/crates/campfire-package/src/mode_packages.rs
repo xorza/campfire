@@ -323,9 +323,10 @@ impl ModePackages {
     /// The pathing grid has a clearance for each.
     pub fn walkers(&self) -> Vec<Walker> {
         let navigation = &self.data.navigation;
+        // A box never walks, which the load checked of each type that declares a move speed.
         let walker = |unit_type: &UnitTypeFile| {
-            let body = navigation.body(unit_type.collision.as_ref());
-            unit_type.walks().then(|| Walker::of(body.as_ref()))
+            let form = navigation.form(unit_type.collision.as_ref());
+            unit_type.walks().then(|| Walker::of_form(form)).flatten()
         };
         let avatars = self.avatars().map(|avatar| &avatar.unit);
         let mut walkers: Vec<Walker> = self

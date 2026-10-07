@@ -6,6 +6,8 @@ use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::units::body::Body;
+
 /// How far a unit walks in one tick, never negative: the effect of its move speed, which its
 /// stats give.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -29,9 +31,12 @@ impl MoveStep {
 impl SimComponent for MoveStep {
     const NAME: &'static str = "navigation.move_step";
 
-    // Its decode keeps it at 0 or more.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        true
+    // Its decode keeps it at 0 or more; a unit that walks has a circle for a body, or none, as
+    // a box never walks.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        world
+            .get::<Body>(entity)
+            .is_none_or(|body| body.radius().is_some())
     }
 }
 

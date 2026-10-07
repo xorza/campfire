@@ -1,11 +1,11 @@
 use campfire_common::PlayerSlot;
-use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
 use crate::units::engine_tag::EngineTag;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
+use crate::values::shape::Shape;
 
 /// A unit as the view read it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,8 +13,8 @@ pub(crate) struct UnitRow {
     pub(crate) id: StableId,
     pub(crate) pos: Position,
     pub(crate) team: Team,
-    /// Its body's radius, 0 for a unit with no body.
-    pub(crate) radius: Num,
+    /// Its body's shape, a point for a unit with no body.
+    pub(crate) shape: Shape,
     /// Where it spawned, if it did as a unit of the mode.
     pub(crate) spawn: Option<Position>,
     pub(crate) unit_type: Option<UnitType>,

@@ -59,11 +59,9 @@ pub(crate) fn fog(c: &mut Criterion) {
             fog.sight(&vision, slot, pos, team, range, false);
         }
         seen.clear();
-        seen.extend(
-            units
-                .iter()
-                .map(|&(pos, team)| fog.seen_by(&vision, pos, team, false)),
-        );
+        for (slot, &(pos, team)) in units.iter().enumerate() {
+            seen.push(fog.seen_by(&vision, slot, pos, None, team, false));
+        }
         black_box(&seen);
     };
 

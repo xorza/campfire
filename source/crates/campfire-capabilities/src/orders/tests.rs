@@ -20,7 +20,6 @@ use crate::items::item_book::ItemSpec;
 use crate::items::shop::ShopPlace;
 use crate::navigation::Navigation;
 use crate::navigation::path_walker::PathEnd;
-use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -954,7 +953,7 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     Navigation::load_pathing(
         &mut game.sim.world,
         Grid::new(Num::ONE, bounds).unwrap(),
-        &Terrain::default(),
+        &[],
         vec![ground],
     );
     for z in 0..3 {

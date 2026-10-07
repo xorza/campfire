@@ -1,19 +1,21 @@
 use bevy_ecs::entity::Entity;
 use campfire_math::{FloorRoot, Num, Vec3};
-use campfire_sim::StableId;
+use campfire_sim::{Position, StableId};
 
 use crate::navigation::broadphase::Contact;
 use crate::units::layer::Layer;
+use crate::values::body_box::BodyBox;
+use crate::values::shape::Shape;
 
-/// A living unit's body as collision sees it: where it stands, its radius, its layer, whether it
+/// A living unit's body as collision sees it: where it stands, its shape, its layer, whether it
 /// may be pushed, and whether it walks now, to a destination. A unit that cannot walk, such as a
-/// tower, is never pushed.
+/// tower or a building, is never pushed; only such a unit has a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Collider {
     pub(crate) id: StableId,
     pub(crate) entity: Entity,
     pub(crate) at: Vec3,
-    pub(crate) radius: Num,
+    pub(crate) shape: Shape,
     pub(crate) layer: Layer,
     pub(crate) movable: bool,
     pub(crate) walking: bool,
@@ -49,18 +51,44 @@ impl Collider {
     /// not overlap. Two that may not be pushed never part, so they have no contact, nor have two
     /// of other layers.
     pub(crate) fn overlaps(&self, other: &Collider) -> bool {
-        self.overlap(other).is_some()
+        if !self.movable && !other.movable || self.layer != other.layer {
+            return false;
+        }
+        match Collider::boxed(self, other) {
+            Some((body, at, mover)) => body.push_out(at, mover.at, mover.radius()).is_some(),
+            None => self.overlap(other).is_some(),
+        }
     }
 
-    /// How `other` lies from `self`, when the two overlap and may part, in bits of a `Num`: a
-    /// position and a radius are within 2⁴⁵ bits, so squares fit i128.
+    /// The radius of a body that may be pushed, which is a circle.
+    pub(crate) fn radius(&self) -> Num {
+        match self.shape {
+            Shape::Circle(radius) => radius,
+            Shape::Box(_) => panic!("a box is never pushed, so it has no radius to reach by"),
+        }
+    }
+
+    /// The box of the two, where it stands, and the other, which may be pushed: none when
+    /// neither is a box. Only a body that may not be pushed is one.
+    fn boxed<'a>(a: &'a Collider, b: &'a Collider) -> Option<(BodyBox, Position, &'a Collider)> {
+        let (body, at, mover) = match (a.shape, b.shape) {
+            (Shape::Box(body), _) => (body, a.at, b),
+            (_, Shape::Box(body)) => (body, b.at, a),
+            _ => return None,
+        };
+        let at = Position::new(at).expect("a static body stands within the bound");
+        Some((body, at, mover))
+    }
+
+    /// How `other` lies from `self`, two circles, when the two overlap and may part, in bits of a
+    /// `Num`: a position and a radius are within 2⁴⁵ bits, so squares fit i128.
     fn overlap(&self, other: &Collider) -> Option<Overlap> {
         if !self.movable && !other.movable || self.layer != other.layer {
             return None;
         }
         let dx = i128::from(other.at.x.to_bits() - self.at.x.to_bits());
         let dz = i128::from(other.at.z.to_bits() - self.at.z.to_bits());
-        let reach = i128::from(self.radius.to_bits() + other.radius.to_bits());
+        let reach = i128::from(self.shape.bound().to_bits() + other.shape.bound().to_bits());
         let square = dx * dx + dz * dz;
         (square < reach * reach).then_some(Overlap {
             dx,
@@ -71,6 +99,16 @@ impl Collider {
     }
 
     fn part(a: &mut Collider, b: &mut Collider) {
+        if a.layer != b.layer {
+            return;
+        }
+        if let Some((body, at, _)) = Collider::boxed(a, b) {
+            let mover = if b.movable { b } else { a };
+            if let Some(moved) = body.push_out(at, mover.at, mover.radius()) {
+                mover.at = moved;
+            }
+            return;
+        }
         let Some(Overlap {
             dx,
             dz,

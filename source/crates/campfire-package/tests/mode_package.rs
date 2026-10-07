@@ -11,8 +11,8 @@ use campfire_capabilities::{
     UnitKitError,
 };
 use campfire_package::{
-    ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
-    LoadProblem, LocaleProblem, ModePackages, PackageRef, Place, ScriptProblem, Way,
+    BoxProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit,
+    LoadError, LoadProblem, LocaleProblem, ModePackages, PackageRef, Place, ScriptProblem, Way,
 };
 use campfire_script::ScriptError;
 use campfire_script::rhai::ParseErrorType;
@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 242] = [
+static FLAWS: [Flaw; 245] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -2315,6 +2315,47 @@ static FLAWS: [Flaw; 242] = [
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::NoQueue(action) if action == "recruit"),
     },
+    // A box on a creep, which walks; on a ward, which an effect spawns; and a train of a tower,
+    // which does not walk.
+    flaw(
+        UNITS,
+        Edit::Replace(
+            r#"collision = { radius = "0.35" }"#,
+            r#"collision = { box = ["1", "1"] }"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::BoxBody { at: Place::UnitType(name), problem: BoxProblem::Walks } if name == "melee_creep"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(
+            r#"tags = ["ward", "stealthed"]"#,
+            "tags = [\"ward\", \"stealthed\"]\ncollision = { box = [\"0.5\", \"0.5\"] }",
+        ),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Effect {
+                    problem: EffectProblem::SpawnBox,
+                    ..
+                }
+            )
+        },
+    ),
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
+        also: &[
+            (MANIFEST, PRODUCTION),
+            (
+                MODE_DATA,
+                Edit::Replace(r#"unit_type = "melee_creep""#, r#"unit_type = "tower""#),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::TrainStands(action) if action == "recruit"),
+    },
     flaw(
         UNITS,
         Edit::Replace(
@@ -2503,4 +2544,68 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
     // A hero is no mode.
     let husk = ModePackages::from_dir(&moba().join("heroes/husk")).unwrap_err();
     assert!(matches!(*husk.problem, LoadProblem::WrongKind), "{husk}");
+}
+
+/// Every ground point of `map` raised to `[x, y, z]`, and the map made spatial: each point of a
+/// `pos` and a `points` list to y = 0, and a region from y = 0 to 10, as a spatial region is a
+/// box with height; not the bounds, which stay on the ground plane.
+fn raised(map: &str) -> String {
+    fn raise(value: &mut toml::Value, height: Option<i64>) {
+        match value {
+            toml::Value::Table(table) => {
+                let region = table.contains_key("min") && !table.contains_key("cell");
+                for (key, inner) in table.iter_mut() {
+                    let height = match key.as_str() {
+                        "pos" | "points" => Some(0),
+                        "min" if region => Some(0),
+                        "max" if region => Some(10),
+                        _ => None,
+                    };
+                    raise(inner, height);
+                }
+            }
+            toml::Value::Array(items) => match height {
+                Some(y) if !items[0].is_array() => items.insert(1, toml::Value::Integer(y)),
+                _ => {
+                    for item in items {
+                        raise(item, height);
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
+    let mut table = toml::from_str::<toml::Table>(map).unwrap();
+    for (key, value) in &mut table {
+        if key != "bounds" {
+            raise(value, None);
+        }
+    }
+    table.insert(
+        "metric".to_owned(),
+        toml::Value::String("spatial".to_owned()),
+    );
+    toml::to_string(&table).unwrap()
+}
+
+#[test]
+fn a_box_lies_only_on_a_planar_map() {
+    // The 3v3 with its towers' bodies boxes: a planar map loads, and the same map made spatial
+    // fails, at the first tower, as a box lies on the ground plane.
+    let tower = Edit::Replace(
+        r#"collision = { radius = "0.9" }"#,
+        r#"collision = { box = ["1.8", "1.8"] }"#,
+    );
+    assert!(ModePackages::from_package_dir(&edited([(UNITS, tower)])).is_ok());
+    let map = String::from_utf8(moba_files()[Path::new(MAP)].clone()).unwrap();
+    let raised: &'static str = Box::leak(raised(&map).into_boxed_str());
+    let spatial = [(MAP, Edit::Create(raised)), (UNITS, tower)];
+    let error = ModePackages::from_package_dir(&edited(spatial)).unwrap_err();
+    assert!(
+        matches!(&*error.problem, LoadProblem::BoxBody { at: Place::UnitType(name), problem: BoxProblem::Spatial } if name == "tower"),
+        "{error:?}"
+    );
+    // The raised map alone loads: the points it raised are its only change.
+    let alone = ModePackages::from_package_dir(&edited([(MAP, Edit::Create(raised))]));
+    assert!(alone.is_ok(), "{:?}", alone.err());
 }

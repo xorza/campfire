@@ -51,6 +51,7 @@ use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
 use crate::values::name_list::NameList;
+use crate::values::shape::Shape;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
 /// phase of the tick began. The units are read again before each phase that runs
@@ -160,7 +161,7 @@ impl CoreSource {
             id,
             pos,
             team,
-            radius: Body::radius_of(body),
+            shape: Body::shape_of(body),
             spawn: spawn.map(|spawn| spawn.get()),
             alive,
             targetable,
@@ -335,7 +336,7 @@ impl ScriptView {
             id: row.id,
             key: at,
             at: row.pos,
-            radius: row.radius,
+            shape: row.shape,
         }));
         self.indexed = true;
     }
@@ -670,6 +671,14 @@ impl View {
         self.0.borrow().units[at]
     }
 
+    /// Calls `visit` with each row the view read, and its place, in order of stable id.
+    pub(crate) fn each_row(&self, mut visit: impl FnMut(usize, &UnitRow)) {
+        let view = self.0.borrow();
+        for (at, row) in view.units.iter().enumerate() {
+            visit(at, row);
+        }
+    }
+
     /// The handle of unit `id`, when the view read it.
     pub(crate) fn unit(&self, id: StableId) -> Option<Unit> {
         let at = self.row_index(id)?;
@@ -683,7 +692,7 @@ impl View {
             id,
             pos: row.pos,
             team: row.team,
-            radius: row.radius,
+            shape: row.shape,
             tags: row.tags.tags,
         })
     }
@@ -720,7 +729,7 @@ impl View {
             let attitude = view.relations.between(of, row.team);
             let reaches = view
                 .metric
-                .reaches(pos, Num::ZERO, radius, body.at, body.radius);
+                .reaches(pos, Shape::POINT, radius, body.at, body.shape);
             if reaches && filter.selects(attitude, row.tags.tags) && seen(&view.columns, body.key) {
                 found.push(body.key);
             }
@@ -748,14 +757,14 @@ impl View {
         let view = self.0.borrow();
         let of = of.row();
         let filter = Filter::parse(filter, &view.types).map_err(ApiError::fail)?;
-        let reach = of.radius.checked_add(radius).unwrap_or(Num::MAX);
+        let reach = of.shape.bound().checked_add(radius).unwrap_or(Num::MAX);
         let mut nearest = None;
         view.bodies.visit_near(of.pos, reach, |body| {
             let row = &view.units[body.key];
             let attitude = view.relations.between(of.team, row.team);
             let reaches = view
                 .metric
-                .reaches(of.pos, of.radius, radius, body.at, body.radius);
+                .reaches(of.pos, of.shape, radius, body.at, body.shape);
             if !(reaches
                 && filter.selects(attitude, row.tags.tags)
                 && seen(&view.columns, body.key))

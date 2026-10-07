@@ -63,3 +63,4 @@ pos = [9, 3]
 unit_type = "boulder"
 team = "camps"
 pos = [1, -2]
+angle = 30

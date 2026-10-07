@@ -1,4 +1,4 @@
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 
 use super::*;
 fn at(x: i64, z: i64) -> Position {

@@ -1,4 +1,4 @@
-use campfire_math::{Num, U256, Vec3};
+use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
 use crate::actions::targets::Targets;
@@ -12,7 +12,9 @@ use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::struck_units::{Struck, StruckUnits};
 use crate::units::body_grid::BodyGrid;
 use crate::units::team::Team;
+use crate::values::fraction::Fraction;
 use crate::values::hit::Hit;
+use crate::values::shape::Shape;
 
 /// The flights of a tick: where their hits and ends go, the units each line struck while it
 /// flies, the bodies a line may meet, indexed as the stage began, and a scratch list
@@ -23,7 +25,7 @@ pub(crate) struct Flights<'a> {
     pub(crate) deliveries: &'a mut Deliveries,
     pub(crate) struck: &'a mut StruckUnits,
     pub(crate) grid: &'a BodyGrid<()>,
-    pub(crate) met: &'a mut Vec<(u128, StableId)>,
+    pub(crate) met: &'a mut Vec<(Fraction, StableId)>,
 }
 
 /// A projectile in flight this tick: its stable id, its team, its type's spec, where it is, and
@@ -104,7 +106,13 @@ impl Flights<'_> {
         let moved = metric.step_toward(from, unit.pos, spec.speed);
         let offset = metric.offset(from, moved);
         let flown = flown + offset.length();
-        if !metric.reaches(moved, spec.width / 2, Num::ZERO, unit.pos, unit.radius) {
+        if !metric.reaches(
+            moved,
+            Shape::Circle(spec.width / 2),
+            Num::ZERO,
+            unit.pos,
+            unit.shape,
+        ) {
             *position = moved;
             projectile.fly_to(flown);
             return false;
@@ -172,26 +180,16 @@ impl Flights<'_> {
                 if !selects || struck.contains(Struck { by, unit: unit.id }) {
                     return;
                 }
-                if let Some(share) = metric.meets(from, to, unit.pos, half + unit.radius) {
-                    met.push((share.along, unit.id));
+                if let Some(share) = metric.meets(from, to, unit.pos, unit.shape, half) {
+                    met.push((share, unit.id));
                 }
             });
         }
-        // Every share of a step has the step's squared length below it, so the raw `along`
-        // orders the nearest points exactly.
+        // The shares of the step order where it meets each unit exactly, then the unit's id.
         self.met.sort_unstable();
-        let length = metric.offset(from, to).length_squared_bits();
         for at in 0..self.met.len() {
-            let (along, unit) = self.met[at];
-            let travelled = if length == 0 {
-                Num::ZERO
-            } else {
-                let step_bits = u128::try_from(step.to_bits()).expect("a step is never negative");
-                let bits = U256::product(step_bits, along)
-                    .round_div(length)
-                    .expect("a share of a step fits");
-                Num::from_bits(i64::try_from(bits).expect("a share of a step fits"))
-            };
+            let (share, unit) = self.met[at];
+            let travelled = share.of(step);
             let pos = from
                 .get()
                 .checked_add(direction.checked_scale(travelled).expect("within a step"))

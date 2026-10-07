@@ -11,6 +11,7 @@ use crate::navigation::error::MapProblem;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::wall::Wall;
+use crate::units::body::BodyForm;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::values::declared_name::DeclaredName;
@@ -61,8 +62,7 @@ impl Walk {
     ) {
         let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
         let grid = Grid::new(cell, bounds).unwrap();
-        let terrain = Terrain::new(&grid, walls);
-        Navigation::load_pathing(&mut self.sim.world, grid, &terrain, walkers);
+        Navigation::load_pathing(&mut self.sim.world, grid, walls, walkers);
     }
 
     /// A unit at `at` walking a meter a tick to `to`.
@@ -738,8 +738,8 @@ fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
 }
 
 /// The corridor's bodies: a tower of 0.9 m on the ground, a cloud of the same width in the air.
-fn corridor_body(unit_type: &str) -> Option<Body> {
-    let tower = Body::new(Num::from_bits((9 << Num::FRAC_BITS) / 10)).unwrap();
+fn corridor_body(unit_type: &str) -> Option<BodyForm> {
+    let tower = BodyForm::circle(Num::from_bits((9 << Num::FRAC_BITS) / 10)).unwrap();
     match unit_type {
         "tower" => Some(tower),
         "cloud" => Some(tower.on(AIR)),
@@ -958,4 +958,5 @@ fn every_navigation_type_is_state() {
     walk.sim.restore_into(&mut restored.sim);
 }
 
+mod boxes;
 mod forced;

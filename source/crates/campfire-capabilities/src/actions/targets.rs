@@ -17,6 +17,7 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
+use crate::values::shape::Shape;
 
 /// The units an attack may target: living units with the life pool whose tags let them be
 /// targets, those a client holds and does not predict among them, where the server last had
@@ -69,29 +70,29 @@ impl Targets<'_, '_> {
         self.relations.between(of, other)
     }
 
-    /// Whether `range` from a unit at `from` of body radius `radius` reaches `target`: within
-    /// range in the map's metric, exactly, from the edge of the one body to the edge of the other.
+    /// Whether `range` from a unit at `from` of body `shape` reaches `target`: within range in
+    /// the map's metric, exactly, from the edge of the one body to the edge of the other.
     pub(crate) fn reaches(
         &self,
         from: Position,
-        radius: Num,
+        shape: Shape,
         range: Num,
         target: &LivingUnit,
     ) -> bool {
         self.metric
-            .reaches(from, radius, range, target.pos, target.radius)
+            .reaches(from, shape, range, target.pos, target.shape)
     }
 
-    /// Whether `range` from a unit at `from` of body radius `radius` reaches the point `at`, from
-    /// the edge of its body, exactly.
+    /// Whether `range` from a unit at `from` of body `shape` reaches the point `at`, from the
+    /// edge of its body, exactly.
     pub(crate) fn reaches_point(
         &self,
         from: Position,
-        radius: Num,
+        shape: Shape,
         range: Num,
         at: Position,
     ) -> bool {
-        self.metric.reaches(from, radius, range, at, Num::ZERO)
+        self.metric.reaches(from, shape, range, at, Shape::POINT)
     }
 
     /// The point `step` from `from` toward `to` in the map's metric, or `to` when it is nearer.
@@ -125,7 +126,7 @@ impl Targets<'_, '_> {
                     id,
                     key: (),
                     at,
-                    radius: Body::radius_of(body),
+                    shape: Body::shape_of(body),
                 })
             })
     }
@@ -143,7 +144,7 @@ impl Targets<'_, '_> {
             id,
             pos,
             team,
-            radius: Body::radius_of(body),
+            shape: Body::shape_of(body),
             tags: tags.map_or(TagSet::default(), |tags| tags.tags),
         })
     }

@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::mem;
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
@@ -10,7 +10,10 @@ use crate::navigation::segment::Segment;
 use crate::navigation::walker::Walker;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
+use crate::values::body_box::BodyBox;
+use crate::values::grid::Grid;
 use crate::values::row_directory::{RowDirectory, RowEntries};
+use crate::values::shape::Shape;
 
 /// Bodies that stand, by layer and by the square buckets their bounding boxes cover, so a query
 /// sees only the bodies of its layer. As a resource it holds the
@@ -41,7 +44,7 @@ pub(crate) struct BodyIndex {
 pub(crate) struct IndexedBody {
     pub(crate) id: StableId,
     pub(crate) at: Position,
-    pub(crate) radius: Num,
+    pub(crate) shape: Shape,
     pub(crate) layer: Layer,
 }
 
@@ -108,8 +111,33 @@ impl IndexedBody {
         IndexedBody {
             id,
             at,
-            radius: body.radius(),
+            shape: body.shape(),
             layer: body.layer(),
+        }
+    }
+
+    /// Whether `segment` comes closer than `reach` to the body: a walker of that radius along
+    /// it would overlap it. Touching is not closer.
+    pub(crate) fn comes_within(&self, segment: Segment, reach: Num) -> bool {
+        self.shape
+            .comes_within(self.at, segment.start(), segment.end(), reach)
+    }
+
+    /// Whether the insides of the body and of `body`, a box at `at`, share a point: touching is
+    /// not overlap.
+    pub(crate) fn overlaps_box(&self, at: Position, body: &BodyBox) -> bool {
+        match &self.shape {
+            Shape::Circle(radius) => body.nearest(at, self.at, *radius) == Ordering::Less,
+            Shape::Box(other) => body.overlaps(at, other, self.at),
+        }
+    }
+
+    /// Calls `mark` with each row's run of the cells of `grid` whose centers come closer than
+    /// `reach` to the body, as a walker of that radius may not stand in them. Rows in order.
+    pub(crate) fn spans_closer(&self, grid: &Grid, reach: Num, mark: impl FnMut(Range<usize>)) {
+        match &self.shape {
+            Shape::Circle(radius) => grid.spans_closer(self.at, reach + *radius, mark),
+            Shape::Box(body) => grid.box_spans_closer(self.at, body, reach, mark),
         }
     }
 }
@@ -189,8 +217,9 @@ impl BodyIndex {
         });
         self.fresh.clear();
         for body in &self.added {
-            let rows = BodyIndex::buckets(self.bucket, body.at.get().z, body.radius);
-            let columns = BodyIndex::buckets(self.bucket, body.at.get().x, body.radius);
+            let extent = body.shape.extent();
+            let rows = BodyIndex::buckets(self.bucket, body.at.get().z, extent[1]);
+            let columns = BodyIndex::buckets(self.bucket, body.at.get().x, extent[0]);
             for row in rows.low..=rows.high {
                 debug_assert!(row.abs() < BucketKey::ROWS, "a body's rows fit a key");
                 self.fresh
@@ -261,8 +290,8 @@ impl BodyIndex {
         );
     }
 
-    /// Whether a body of `walker`'s layer comes closer to `segment` than its radius and the
-    /// walker's together, exactly: whether the walker along it would overlap one.
+    /// Whether a body of `walker`'s layer comes closer to `segment` than the walker's radius,
+    /// exactly: whether the walker along it would overlap one.
     pub(crate) fn blocks(&self, segment: Segment, walker: Walker) -> bool {
         let radius = walker.radius;
         let (from, to) = (segment.start().get(), segment.end().get());
@@ -279,7 +308,7 @@ impl BodyIndex {
             span(from.z, to.z),
             span(from.x, to.x),
             |body| {
-                if segment.comes_within(body.at, radius + body.radius) {
+                if body.comes_within(segment, radius) {
                     ControlFlow::Break(())
                 } else {
                     ControlFlow::Continue(())

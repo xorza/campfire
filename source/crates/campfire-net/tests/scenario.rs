@@ -333,7 +333,8 @@ fn route(link: LinkModel) -> [u32; 2] {
     );
     let tower_at = tower.get::<Position>().unwrap().get();
     let walker_body = world.entity(world.resource::<EntityIndex>().get(walker).unwrap());
-    let reach = tower.get::<Body>().unwrap().radius() + walker_body.get::<Body>().unwrap().radius();
+    let reach = tower.get::<Body>().unwrap().radius().unwrap()
+        + walker_body.get::<Body>().unwrap().radius().unwrap();
     let reach = u128::from(reach.to_bits().unsigned_abs());
     let mut closest = u128::MAX;
     while local.next_tick(End::Server) < ROUTE_TICKS {
@@ -376,7 +377,7 @@ fn round(link: LinkModel) -> [u32; 2] {
     let world = local.server().world();
     let radius = |id| {
         let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
-        unit.get::<Body>().unwrap().radius()
+        unit.get::<Body>().unwrap().radius().unwrap()
     };
     let reach = radius(walker) + radius(stander);
     let reach = u128::from(reach.to_bits().unsigned_abs());

@@ -44,7 +44,8 @@ production = { queue = 2 }
 vision = { sight_range = "5.0" }
 collision = { radius = "0.8" }
 
-# A neutral boulder near the middle: a static body until it falls.
+# A neutral boulder near the middle: a static body until it falls, a box of 2.4 by 1.2 m that the
+# map turns.
 [units.boulder]
 tags = ["structure", "boulder"]
 params = { xp = 50 }
@@ -52,7 +53,7 @@ pools = ["health"]
 stats = { health = { base = 400 } }
 combat = {}
 vision = { sight_range = "3.0" }
-collision = { radius = "1.0" }
+collision = { box = ["2.4", "1.2"] }
 
 # A ward: hidden, it sees 4 m round it, and nothing strikes it.
 [units.ward]

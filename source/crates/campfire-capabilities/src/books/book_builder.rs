@@ -463,7 +463,7 @@ impl<'a> BookBuilder<'a> {
             combat: combat.as_ref(),
             pools,
             vision: file.vision.as_ref(),
-            body: data.navigation.body(file.collision.as_ref()),
+            body: data.navigation.form(file.collision.as_ref()),
             tracks,
             production: file.production.as_ref(),
             inventory: file.inventory.as_ref().map(|inventory| InventorySpec {

@@ -5,7 +5,7 @@ fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
     IndexedBody {
         id,
         at: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
-        radius,
+        shape: Shape::Circle(radius),
         layer: Layer::FIRST,
     }
 }
@@ -154,8 +154,11 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
                 let at = body.at.get();
                 let rows = BodyIndex::buckets(bucket, Num::int(z), reach);
                 let columns = BodyIndex::buckets(bucket, Num::int(x), reach);
-                meets(BodyIndex::buckets(bucket, at.z, body.radius), rows)
-                    && meets(BodyIndex::buckets(bucket, at.x, body.radius), columns)
+                meets(BodyIndex::buckets(bucket, at.z, body.shape.bound()), rows)
+                    && meets(
+                        BodyIndex::buckets(bucket, at.x, body.shape.bound()),
+                        columns,
+                    )
             })
             .map(|body| body.id)
             .collect();
@@ -169,7 +172,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_within(body.at, walker.radius + body.radius));
+            .any(|body| segment.comes_within(body.at, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "({x}, {z})");
     }
 }
@@ -213,7 +216,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
         scattered.push(IndexedBody {
             id: ids.allocate(),
             at: Position::new(at).unwrap(),
-            radius: Num::from_bits(next(3).cast_signed() * quarter),
+            shape: Shape::Circle(Num::from_bits(next(3).cast_signed() * quarter)),
             layer: Layer::FIRST,
         });
     }
@@ -239,7 +242,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_within(body.at, walker.radius + body.radius));
+            .any(|body| segment.comes_within(body.at, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "{from:?} {to:?}");
     }
 }

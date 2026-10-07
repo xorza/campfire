@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::units::action_id::ActionId;
 use crate::units::block::Block;
+use crate::units::body::Body;
 use crate::units::unit_tags::UnitTags;
 use crate::values::action_start::ActionStart;
 
@@ -147,17 +148,21 @@ impl SimComponent for ForcedMove {
 
     // A dash of no step, or a knock back with no tick left, never ends. A knock back's end lies
     // within twice the world's bound, a distance within it from a place within it, so its way
-    // fits a number.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        match *self {
-            ForcedMove::Dash { step, .. } => step > Num::ZERO,
-            ForcedMove::KnockBack { to, left } => {
-                let reach = 2 * Position::BOUND.to_bits().unsigned_abs();
-                left > 0
-                    && [to.x, to.y, to.z]
-                        .iter()
-                        .all(|axis| axis.to_bits().unsigned_abs() <= reach)
+    // fits a number. A box never walks, so a forced move never moves one.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        let walker = world
+            .get::<Body>(entity)
+            .is_none_or(|body| body.radius().is_some());
+        walker
+            && match *self {
+                ForcedMove::Dash { step, .. } => step > Num::ZERO,
+                ForcedMove::KnockBack { to, left } => {
+                    let reach = 2 * Position::BOUND.to_bits().unsigned_abs();
+                    left > 0
+                        && [to.x, to.y, to.z]
+                            .iter()
+                            .all(|axis| axis.to_bits().unsigned_abs() <= reach)
+                }
             }
-        }
     }
 }
