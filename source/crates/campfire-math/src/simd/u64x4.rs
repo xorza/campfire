@@ -30,6 +30,7 @@ impl U64x4 {
         debug_assert!(estimate <= 1 << 32);
         // 2³² becomes 2³² − 1, the largest root, so the square below fits.
         let root = estimate.wrapping_sub(estimate >> 32);
+        // The mask shows LLVM what the clamp proves, so the square is one widening multiply.
         let narrow = root & 0xFFFF_FFFF;
         root.wrapping_sub((narrow.wrapping_mul(narrow) > value) as u64)
     }
