@@ -32,6 +32,7 @@ pub(crate) mod fog;
 pub(crate) mod reveals;
 pub(crate) mod seen_by;
 pub(crate) mod sight;
+pub(crate) mod sight_cache;
 pub(crate) mod sight_maps;
 pub(crate) mod vision_api;
 pub(crate) mod vision_column;
@@ -108,7 +109,7 @@ fn see(
         Res<'_, SimTick>,
     ),
     mut reveals: ResMut<'_, Reveals>,
-    seers: Query<'_, '_, (&Position, &Team, &Sight, Option<&UnitTags>), Without<Dead>>,
+    seers: Query<'_, '_, (Entity, &Position, &Team, &Sight, Option<&UnitTags>), Without<Dead>>,
     mut units: Query<
         '_,
         '_,
@@ -130,9 +131,10 @@ fn see(
         fog.rebuild(&grid, &relations);
     }
     fog.begin_tick();
-    for (&pos, &team, sight, tags) in &seers {
+    for (entity, &pos, &team, sight, tags) in &seers {
         let detects = UnitTags::properties_of(tags).detects();
-        fog.sight(&grid, pos, team, sight.range(), detects);
+        let slot = entity.index_u32() as usize;
+        fog.sight(&grid, slot, pos, team, sight.range(), detects);
     }
     reveals.run(tick.start(), |reveal| {
         fog.reveal(&grid, reveal.pos, reveal.team, reveal.radius);
