@@ -209,3 +209,77 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     grid.update(&index);
     assert_eq!(drawn_all(&grid), expected);
 }
+
+#[test]
+fn the_walls_test_visits_and_finds_what_a_walk_cell_by_cell_does() {
+    // Half-meter cells over 11.5 m by 8.5 m, 23 columns of 17 rows, so a column's run of rows
+    // crosses a word's edge; walls of two rectangles and a triangle, for walkers of 0 to 1 m.
+    let bounds = Bounds::new(
+        [Num::int(-6), Num::int(-4)],
+        [Num::int(5) + Num::HALF, Num::int(4) + Num::HALF],
+    )
+    .unwrap();
+    let cells = Grid::new(Num::HALF, bounds).unwrap();
+    let at = |x: i64, z: i64| {
+        [
+            Num::from_bits(x * Num::ONE.to_bits() / 4),
+            Num::from_bits(z * Num::ONE.to_bits() / 4),
+        ]
+    };
+    let areas = [
+        vec![at(-16, -9), at(-10, -9), at(-10, 6), at(-16, 6)],
+        vec![at(1, -2), at(13, -2), at(13, 3), at(1, 3)],
+        vec![at(8, 8), at(17, 14), at(4, 15)],
+    ];
+    let walls: Vec<Wall> = areas
+        .into_iter()
+        .map(|points| Wall {
+            layer: Layer::FIRST,
+            area: Polygon::new(points).unwrap(),
+        })
+        .collect();
+    let terrain = Terrain::new(&cells, &walls);
+    let walkers = vec![ground(Num::ZERO), ground(Num::HALF), ground(Num::ONE)];
+    let grid = PathingGrid::new(cells, walkers.clone(), &terrain);
+    let mut state = 0x3A11_u64;
+    let mut next = move |span: u64| {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (state >> 33) % span
+    };
+    for case in 0..4000 {
+        let walker = walkers[case % walkers.len()];
+        let clearance = grid.clearance(walker);
+        let mut point = || {
+            let x = next(47).cast_signed() - 24;
+            let z = next(35).cast_signed() - 16;
+            let [x, z] = at(x, z);
+            Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
+        };
+        // Lines along each axis and single points among them.
+        let (from, other) = (point(), point());
+        let to = match case % 9 {
+            0 => from,
+            1 => Position::new(Vec3::new(from.get().x, Num::ZERO, other.get().z)).unwrap(),
+            2 => Position::new(Vec3::new(other.get().x, Num::ZERO, from.get().z)).unwrap(),
+            _ => other,
+        };
+        let segment = Segment::new(from, to);
+        let walled = clearance.walled.unwrap();
+        let mut expected_work = 0;
+        let expected = clearance
+            .grid
+            .touches(segment.start(), segment.end(), |cell| {
+                expected_work += 1;
+                walled[cell / 64] & 1 << (cell % 64) != 0
+            });
+        let mut work = 0;
+        assert_eq!(
+            clearance.walled(segment, &mut work),
+            expected,
+            "{segment:?}"
+        );
+        assert_eq!(work, expected_work, "{segment:?}");
+    }
+}

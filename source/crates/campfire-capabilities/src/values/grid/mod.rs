@@ -277,6 +277,20 @@ impl Grid {
         to: Position,
         mut hit: impl FnMut(usize) -> bool,
     ) -> bool {
+        let columns = self.columns();
+        self.touches_columns(from, to, |column, rows| {
+            rows.into_iter().any(|row| hit(row * columns + column))
+        })
+    }
+
+    /// The cells `touches` visits, a column at a time, in its order: whether `hit` is true of a
+    /// column and its run of rows, empty in a column the segment touches no row of.
+    pub(crate) fn touches_columns(
+        &self,
+        from: Position,
+        to: Position,
+        mut hit: impl FnMut(usize, Range<usize>) -> bool,
+    ) -> bool {
         let min = self.bounds.min().map(|axis| i128::from(axis.to_bits()));
         let ground = |pos: Position| {
             let at = pos.get();
@@ -294,13 +308,11 @@ impl Grid {
         let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
         let first_column = (ceil_div(a[0], cell) - 1).max(0);
         let last_column = b[0].div_euclid(cell).min(last(0));
+        let index = |at: i128| usize::try_from(at).expect("a cell of the grid");
         let mut rows = |column: i128, low: Quotient, high: Quotient| {
-            let first_row = (low.ceil() - 1).max(0);
-            let last_row = high.floor.min(last(1));
-            (first_row..=last_row).any(|row| {
-                let at = row * i128::from(self.size[0]) + column;
-                hit(usize::try_from(at).expect("a cell of the grid"))
-            })
+            let first = index((low.ceil() - 1).max(0));
+            let end = index((high.floor.min(last(1)) + 1).max(0));
+            hit(index(column), first..end)
         };
         if dx == 0 {
             let (low, high) = (a[1].min(b[1]), a[1].max(b[1]));
