@@ -68,6 +68,13 @@ impl ActionParts {
                     .expect("the load checked a train's unit");
                 KindSpec::Train(names.unit_type(package, unit))
             }
+            ActionKind::Build => {
+                let unit = data
+                    .unit_type
+                    .as_ref()
+                    .expect("the load checked a build's unit");
+                KindSpec::Build(names.unit_type(package, unit))
+            }
             kind => panic!("the load runs no {kind:?}"),
         };
         let delivery = data.delivery.as_ref().map(|delivery| {

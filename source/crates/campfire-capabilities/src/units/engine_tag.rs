@@ -1,4 +1,6 @@
+use crate::units::block::Block;
 use crate::units::tag::Tag;
+use crate::units::tag_properties::TagProperties;
 
 /// A tag the engine gives and reads, at the same place in every match's tags: packages name it
 /// in filters and in the mode's `[tags]`, but no unit type or modifier of theirs carries it.
@@ -10,17 +12,37 @@ pub enum EngineTag {
     Projectile,
     /// Of area types: a filter selects their units only when it names it.
     Area,
+    /// Of a site, a building under construction: it blocks its attacks, casts and uses, so no
+    /// action of its starts.
+    Constructing,
 }
 
 impl EngineTag {
     /// In the order of their places, the first of the match's tags.
-    pub const ALL: [EngineTag; 3] = [EngineTag::Avatar, EngineTag::Projectile, EngineTag::Area];
+    pub const ALL: [EngineTag; 4] = [
+        EngineTag::Avatar,
+        EngineTag::Projectile,
+        EngineTag::Area,
+        EngineTag::Constructing,
+    ];
 
     pub const fn name(self) -> &'static str {
         match self {
             EngineTag::Avatar => "avatar",
             EngineTag::Projectile => "projectile",
             EngineTag::Area => "area",
+            EngineTag::Constructing => "constructing",
+        }
+    }
+
+    /// What it does, beside what a filter reads of it.
+    pub(crate) const fn properties(self) -> TagProperties {
+        match self {
+            EngineTag::Avatar | EngineTag::Projectile | EngineTag::Area => TagProperties::NONE,
+            EngineTag::Constructing => TagProperties::NONE
+                .with_block(Block::Attack)
+                .with_block(Block::Cast)
+                .with_block(Block::Use),
         }
     }
 
@@ -31,5 +53,27 @@ impl EngineTag {
 
     pub(crate) fn tag(self) -> Tag {
         Tag::new(self as usize)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_site_starts_no_action_and_the_other_engine_tags_block_nothing() {
+        let blocks = |tag: EngineTag| Block::ALL.map(|block| tag.properties().blocks(block));
+        let (attack, cast, used) = (1, 2, 3);
+        let mut site = [false; Block::ALL.len()];
+        for at in [attack, cast, used] {
+            site[at] = true;
+        }
+        assert_eq!(Block::ALL[attack], Block::Attack);
+        assert_eq!(Block::ALL[cast], Block::Cast);
+        assert_eq!(Block::ALL[used], Block::Use);
+        assert_eq!(blocks(EngineTag::Constructing), site);
+        for tag in [EngineTag::Avatar, EngineTag::Projectile, EngineTag::Area] {
+            assert_eq!(blocks(tag), [false; Block::ALL.len()], "{tag:?}");
+        }
     }
 }

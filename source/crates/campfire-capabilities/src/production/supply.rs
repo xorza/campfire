@@ -21,12 +21,14 @@ struct PlayerSupply {
     given: u64,
 }
 
-/// A unit as supply counts it: its type, its player, whether it is dead, and its train queue.
+/// A unit as supply counts it: its type, its player, whether it is dead, whether it is complete,
+/// not a site, and its train queue.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CountedUnit<'a> {
     pub(crate) unit_type: UnitType,
     pub(crate) owner: PlayerSlot,
     pub(crate) dead: bool,
+    pub(crate) complete: bool,
     pub(crate) queue: Option<&'a TrainQueue>,
 }
 
@@ -46,7 +48,7 @@ impl Supply {
             if self.players.len() <= at {
                 self.players.resize(at + 1, PlayerSupply::default());
             }
-            let counted = costs.unit(unit.unit_type, unit.dead, unit.queue);
+            let counted = costs.unit(unit.unit_type, unit.dead, unit.complete, unit.queue);
             self.players[at].used += counted.used;
             self.players[at].given += counted.given;
         }

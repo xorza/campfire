@@ -11,8 +11,9 @@ use campfire_capabilities::{
     UnitKitError,
 };
 use campfire_package::{
-    BoxProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit,
-    LoadError, LoadProblem, LocaleProblem, ModePackages, PackageRef, Place, ScriptProblem, Way,
+    BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
+    EffectProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageRef, Place,
+    ScriptProblem, Way,
 };
 use campfire_script::ScriptError;
 use campfire_script::rhai::ParseErrorType;
@@ -71,6 +72,16 @@ const MODE_DATA: &str = "modes/3v3/data/mode.toml";
 const MODE_SCRIPT: &str = "modes/3v3/scripts/mode.rhai";
 /// A train of a melee creep, which the mode's data does not hold, put before its first action.
 const RECRUIT: &str = "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\n\n[actions.melee_creep_attack]";
+/// A yard with the mode's life pool, put before the tower.
+const LIVING_YARD: Edit<'static> = Edit::Replace(
+    "[units.tower]\n",
+    "[units.yard]\npools = [\"health\"]\nstats = { health = { base = 500 } }\ncombat = {}\ncollision = { box = [\"4\", \"2\"] }\n\n[units.tower]\n",
+);
+/// A yard, a unit type of a box of 4 by 2 m, put before the tower.
+const YARD: Edit<'static> = Edit::Replace(
+    "[units.tower]\n",
+    "[units.yard]\ncollision = { box = [\"4\", \"2\"] }\n\n[units.tower]\n",
+);
 /// The manifest's capabilities with `production`.
 const PRODUCTION: Edit<'static> = Edit::Replace(r#""items"]"#, r#""items", "production"]"#);
 
@@ -281,15 +292,15 @@ fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
 #[test]
 fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     // The 3v3 names 25 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 8 more of its unit
-    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 3, so 228
-    // layers, each a tag, fill the 256 a match holds, and 229 are past it.
+    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 4, so 227
+    // layers, each a tag, fill the 256 a match holds, and 228 are past it.
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = ModePackages::from_package_dir(&edited([])).unwrap();
     assert_eq!(tags(&packages), 25);
-    let [(path, layers)] = <[_; 1]>::try_from(layers(228)).unwrap();
+    let [(path, layers)] = <[_; 1]>::try_from(layers(227)).unwrap();
     let edit = Edit::Set(&path, &layers);
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
-    assert_eq!(tags(&packages), 253);
+    assert_eq!(tags(&packages), 252);
     // The mode's `[tags]` may give an engine tag properties, and that names no tag of its own.
     let edit = Edit::Replace(
         "[tags.stunned]",
@@ -327,10 +338,10 @@ struct LimitCase {
 #[test]
 fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
     let cases = [
-        // The 3v3's 25 tags and the engine's 3 leave 228 of the 256 a match holds for layers.
+        // The 3v3's 25 tags and the engine's 4 leave 227 of the 256 a match holds for layers.
         LimitCase {
             more: layers,
-            allowed: 228,
+            allowed: 227,
             limit: Limit::Tags,
         },
         // `level` and 31 more fill the 32 tracks a unit holds.
@@ -359,7 +370,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 250] = [
+static FLAWS: [Flaw; 258] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -2399,6 +2410,97 @@ static FLAWS: [Flaw; 250] = [
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::SupplyUncounted(Place::UnitType(name)) if name == "tower"),
     },
+    // A build aims at a point, within meters, of a unit type of its package with a box body;
+    // its site starts with a share of its life above 0 when the type has the life pool; its
+    // construct is needed, and its placement's filters name the mode's tags.
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"none\"\nunit_type = \"yard\"\nconstruct = \"alone\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::Aims(action)) if action == "raise"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"tower\"\nconstruct = \"alone\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::NoBox(action)) if action == "raise"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"dragon\"\nconstruct = \"alone\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "dragon"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = \"alone\"\nstart_life = \"0\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::StartLife(action)) if action == "raise"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Construct } if action == "raise"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = \"alone\"\nplacement = { near = [{ filter = \"allies:pylon\", distance = \"4\" }] }\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
+        package: MODE,
+        refused: |problem| {
+            matches!(
+                problem,
+                LoadProblem::Unknown {
+                    of: NameKind::Filter,
+                    ..
+                }
+            )
+        },
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = \"alone\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, LIVING_YARD)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::StartLife(action)) if action == "raise"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"global\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = \"alone\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::Global(action)) if action == "raise"),
+    },
     flaw(
         UNITS,
         Edit::Replace(
@@ -2629,6 +2731,23 @@ fn raised(map: &str) -> String {
         toml::Value::String("spatial".to_owned()),
     );
     toml::to_string(&table).unwrap()
+}
+
+#[test]
+fn a_build_of_a_box_with_its_rates_and_its_placement_loads() {
+    // A build of a yard, a box with no life pool, so no start life, at a builders' rate table,
+    // placed away from enemies, beside a train: the load and its books take both.
+    let raise = "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = { builders = [\"1\", \"1.5\"] }\ncancel_refund = \"0.75\"\nplacement = { away = [{ filter = \"enemies\", distance = \"4\" }] }\n\n[actions.melee_creep_attack]";
+    let edits = [
+        (
+            MODE_DATA,
+            Edit::Replace("[actions.melee_creep_attack]", raise),
+        ),
+        (MANIFEST, PRODUCTION),
+        (UNITS, YARD),
+    ];
+    let loaded = ModePackages::from_package_dir(&edited(edits));
+    assert!(loaded.is_ok(), "{:?}", loaded.err());
 }
 
 #[test]

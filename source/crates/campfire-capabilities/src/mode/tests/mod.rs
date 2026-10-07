@@ -332,6 +332,7 @@ fn grunt() -> UnitKit {
         body: None,
         tracks: TrackSet::default(),
         queue: None,
+        builds: false,
         inventory: None,
     }
 }

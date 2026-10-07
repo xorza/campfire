@@ -3,7 +3,6 @@ use bevy_ecs::query::{Has, QueryState, ROQueryItem, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{
     EntityIndex, IdAllocator, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry,
@@ -15,19 +14,26 @@ use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, InProgress, OrderPhase, SlotAim};
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
-use crate::navigation::Navigation;
+use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::walker::Walker;
+use crate::navigation::{Navigation, NavigationSet};
 use crate::players::player_resources::PlayerResources;
+use crate::production::build_specs::BuildSpecs;
+use crate::production::builder::Builder;
+use crate::production::construction::Construction;
+use crate::production::holdings::{Held, Holdings};
 use crate::production::production_column::ProductionColumn;
 use crate::production::production_data::ProductionData;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
-use crate::production::requirements::{Required, Requirements};
+use crate::production::requirements::Requirements;
+use crate::production::site::Site;
 use crate::production::supply::{CountedUnit, Supply};
 use crate::production::supply_costs::SupplyCosts;
 use crate::production::supply_rules::SupplyRules;
 use crate::production::train_queue::{Queued, TrainQueue};
+use crate::stats::StatsSet;
 use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::pools::Pools;
 use crate::units::body::Body;
@@ -43,12 +49,19 @@ use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 use crate::values::shape::Shape;
 
+pub(crate) mod build_specs;
+pub(crate) mod build_target;
+pub(crate) mod builder;
+pub(crate) mod construction;
+pub(crate) mod holdings;
+pub(crate) mod placement;
 pub(crate) mod production_api;
 pub(crate) mod production_column;
 pub(crate) mod production_data;
 pub(crate) mod rally;
 pub(crate) mod rally_target;
 pub(crate) mod requirements;
+pub(crate) mod site;
 pub(crate) mod supply;
 pub(crate) mod supply_costs;
 pub(crate) mod supply_data;
@@ -63,6 +76,8 @@ pub struct Production;
 /// The systems of `production`, for the mode to order its own against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ProductionSet {
+    /// In `SimSet::Inputs`: the build orders that changed are checked, after the orders apply.
+    CheckBuilds,
     /// In `SimSet::Mode`: the trains whose time ended spawn.
     Finish,
 }
@@ -73,6 +88,7 @@ type Counted = (
     &'static Owner,
     Has<Dead>,
     Option<&'static TrainQueue>,
+    Has<Site>,
 );
 
 /// The parts of a living unit a train it was ordered reads and changes.
@@ -86,59 +102,26 @@ type Training = (
     Option<&'static Owner>,
 );
 
-/// A living unit a player owns, by its type, for a requirement to find.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Held {
-    owner: PlayerSlot,
-    unit_type: UnitType,
-}
-
-/// What the players hold as the tick's trains start: their living units, by type, each once, in
-/// order, and their modifiers.
-#[derive(Debug, Clone, Copy)]
-struct Holdings<'a> {
-    units: &'a [Held],
-    modifiers: Option<&'a PlayerModifiers>,
-}
-
-impl Holdings<'_> {
-    /// Whether `owner` holds what `required` needs: one with no `requires` needs nothing, and a
-    /// unit no player owns meets no need.
-    fn meet(self, owner: Option<PlayerSlot>, required: Option<Required<'_>>) -> bool {
-        let Some(required) = required else {
-            return true;
-        };
-        let Some(owner) = owner else {
-            return false;
-        };
-        let units = required
-            .units
-            .iter()
-            .all(|&unit_type| self.units.binary_search(&Held { owner, unit_type }).is_ok());
-        let modifiers = required.modifiers.iter().all(|&modifier| {
-            self.modifiers
-                .is_some_and(|held| held.holds(owner, modifier))
-        });
-        units && modifiers
-    }
-}
-
 /// The parts of a unit production adds to its row of the script view.
 type RowParts = (
     Option<&'static Owner>,
     Option<&'static UnitType>,
     Has<Dead>,
     Option<&'static TrainQueue>,
+    Has<Site>,
 );
 
 impl Production {
-    /// Adds production to a match: in Act, after the other orders start, ordered trains pass their checks,
-    /// pay, and join their unit's queue; in Mode, before the mode's hooks, the trains whose time
-    /// ended spawn.
+    /// Adds production to a match: in Act, after the other orders start, ordered trains pass their
+    /// checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains
+    /// whose time ended spawn. With navigation, which tests a box for room, construction too: in
+    /// Inputs, the build orders that changed are checked; in Act, after the trains, builds start;
+    /// in Mode, before the trains finish, sites grow.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.insert_resource(ByType::<ProductionData>::default());
         world.insert_resource(Requirements::default());
         world.insert_resource(SupplyCosts::default());
+        world.insert_resource(BuildSpecs::default());
         let view = world.non_send::<View>().clone();
         view.add_column(ProductionColumn::default());
         view.add_source::<RowParts, _>(world, fill_row);
@@ -148,8 +131,28 @@ impl Production {
                 .in_set(SimSet::Mode)
                 .in_set(ProductionSet::Finish),
         ));
+        // A build places a box, which only navigation tests for room.
+        if world.contains_resource::<BodyIndex>() {
+            schedule.add_systems((
+                Construction::check_builds
+                    .in_set(SimSet::Inputs)
+                    .in_set(ProductionSet::CheckBuilds)
+                    .after(StatsSet::Regenerate)
+                    .after(NavigationSet::TrackStatics)
+                    .after(ActionsSet::HoldAtInputs),
+                (Construction::forget_dead_builds, Construction::start_builds)
+                    .chain()
+                    .in_set(SimSet::Act)
+                    .after(start_trains),
+                Construction::progress_sites
+                    .in_set(SimSet::Mode)
+                    .before(ProductionSet::Finish),
+            ));
+        }
         registry.register_component::<TrainQueue>();
         registry.register_component::<Rally>();
+        registry.register_component::<Builder>();
+        registry.register_component::<Site>();
     }
 
     /// Spawns each train whose time ended this tick, of its unit's team and player, by its unit's
@@ -269,11 +272,11 @@ impl Production {
 
 /// Fills a row of the script view with what the unit counts for of its player's supply.
 fn fill_row(
-    (owner, unit_type, dead, queue): ROQueryItem<'_, '_, RowParts>,
+    (owner, unit_type, dead, queue, site): ROQueryItem<'_, '_, RowParts>,
     fill: &mut RowFill<'_, ProductionColumn>,
 ) {
     let counted = unit_type
-        .map(|&unit_type| fill.column.costs().unit(unit_type, dead, queue))
+        .map(|&unit_type| fill.column.costs().unit(unit_type, dead, !site, queue))
         .unwrap_or_default();
     fill.column.push(owner.map(|owner| owner.slot()), counted);
 }
@@ -326,23 +329,25 @@ fn start_trains(
         if let Some(rules) = rules.as_deref() {
             let units = counted
                 .iter()
-                .map(|(&unit_type, owner, dead, queue)| CountedUnit {
+                .map(|(&unit_type, owner, dead, queue, site)| CountedUnit {
                     unit_type,
                     owner: owner.slot(),
                     dead,
+                    complete: !site,
                     queue,
                 });
             supply.count(&costs, *rules, units);
         }
-        held.clear();
-        held.extend(counted.iter().filter(|&(.., dead, _)| !dead).map(
-            |(&unit_type, owner, ..)| Held {
+        let complete = counted
+            .iter()
+            .filter(|&(_, _, dead, _, site)| !dead && !site);
+        Held::collect(
+            &mut held,
+            complete.map(|(&unit_type, owner, ..)| Held {
                 owner: owner.slot(),
                 unit_type,
-            },
-        ));
-        held.sort_unstable();
-        held.dedup();
+            }),
+        );
     }
     let mut training = units.p1();
     for &Keyed { entity, .. } in trains {

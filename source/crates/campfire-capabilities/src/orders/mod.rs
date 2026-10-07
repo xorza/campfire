@@ -41,8 +41,13 @@ use crate::orders::resetting::Resetting;
 use crate::orders::tick_orders::TickOrders;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::players::player_resources::PlayerResources;
+use crate::players::resource_amount::ResourceAmount;
+use crate::production::ProductionSet;
+use crate::production::build_specs::BuildSpecs;
+use crate::production::builder::Builder;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
+use crate::production::site::Site;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::points::Points;
 use crate::scripts::ctx::Ctx;
@@ -116,6 +121,7 @@ impl Orders {
         schedule.configure_sets((
             ActionsSet::HoldAtInputs.after(OrdersSet::Orders),
             ItemsSet::HoldAtInputs.after(OrdersSet::Orders),
+            ProductionSet::CheckBuilds.after(OrdersSet::Orders),
             OrdersSet::Orders.after(AbilitiesSet::Toggles),
         ));
         registry.register_component::<NextThink>();
@@ -161,7 +167,11 @@ impl Orders {
 
     /// The unit an order reads and changes, of its `parts`.
     fn ordered<'a>(
-        (&at, spawn, slots, walker, destination, route, progress): QueryItem<'a, '_, Ordered>,
+        (&at, spawn, slots, walker, destination, route, progress, builder): QueryItem<
+            'a,
+            '_,
+            Ordered,
+        >,
     ) -> OrderedUnit<'a> {
         OrderedUnit {
             at,
@@ -171,6 +181,7 @@ impl Orders {
             destination,
             route,
             progress,
+            builder,
         }
     }
 }
@@ -289,6 +300,13 @@ fn check_player_orders(
                     matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
                         .then_some(UnitOrder::Slot { slot, target })
                 }
+                Action::Build { slot, target } => {
+                    let kind = slots
+                        .and_then(|slots| slots.slot(slot))
+                        .and_then(|held| book.get(held.action?))
+                        .map(|action| action.kind.kind());
+                    (kind == Some(ActionKind::Build)).then_some(UnitOrder::Build { slot, target })
+                }
                 Action::Stop => Some(UnitOrder::Stop),
                 Action::Move { .. }
                 | Action::Learn { .. }
@@ -296,7 +314,8 @@ fn check_player_orders(
                 | Action::Sell { .. }
                 | Action::Swap { .. }
                 | Action::CancelTrain { .. }
-                | Action::Rally { .. } => None,
+                | Action::Rally { .. }
+                | Action::CancelBuild => None,
             };
             checked.0.extend(unit_order.map(|order| (entity, order)));
         }
@@ -312,6 +331,7 @@ type Ordered = (
     Option<&'static mut Destination>,
     Option<&'static mut Route>,
     Option<&'static mut Progress>,
+    Option<&'static mut Builder>,
 );
 
 /// Applies the tick's checked player orders, in input order, each as every order applies; a
@@ -363,14 +383,15 @@ fn learn_ranks(
     }
 }
 
-/// Applies each cancel and rally order of the tick, in input order, to each of its units by
-/// stable id that its player controls and that has a train queue, dead or not, as production's
-/// orders apply. A cancel names an
-/// entry by its place in the queue as it stands; a place past its end is ignored. Its entry leaves
-/// the queue and its player gets back the player resources it paid, unless one would carry an
-/// amount past an `i64`, which refuses the cancel; a head's leaving starts the next one's time in
-/// this tick. A rally sets the producer's rally point, a point taken into the bounds, or a unit,
-/// or clears it.
+/// Applies each production order of the tick, in input order, to each of its units by stable id
+/// that its player controls, dead or not: a cancel of a train or a rally to a unit with a train
+/// queue, a cancel of a build to a site. A cancel of a train names an entry by its place in the
+/// queue as it stands; a place past its end is ignored. Its entry leaves the queue and its player
+/// gets back the player resources it paid; a head's leaving starts the next one's time in this
+/// tick. A cancel of a build gives back the build's `cancel_refund` of each player resource its
+/// build paid, each rounded down, and despawns the site, with no death. A refund that would carry
+/// an amount past an `i64` refuses its cancel. A rally sets the producer's rally point, a point
+/// taken into the bounds, or a unit, or clears it.
 fn apply_production_orders(
     (tick, bounds, orders, index): (
         Res<'_, SimTick>,
@@ -378,44 +399,43 @@ fn apply_production_orders(
         Res<'_, TickOrders>,
         Res<'_, EntityIndex>,
     ),
+    builds: Option<Res<'_, BuildSpecs>>,
     mut resources: Option<ResMut<'_, PlayerResources>>,
-    mut producers: Query<'_, '_, (&Owner, &mut TrainQueue)>,
+    mut units: Query<'_, '_, (&Owner, Option<&mut TrainQueue>, Option<&Site>)>,
     mut commands: Commands<'_, '_>,
+    (mut refund, mut cancelled): (Local<'_, Vec<ResourceAmount>>, Local<'_, Vec<Entity>>),
 ) {
     let now = tick.start();
+    cancelled.clear();
+    let mut refunds = |amounts: &[ResourceAmount], slot| {
+        amounts.is_empty()
+            || resources
+                .as_deref_mut()
+                .expect("an order that paid resources runs in a match with them")
+                .refund(slot, amounts)
+    };
     for order in orders.iter() {
         for &unit in order.units {
             let Some(entity) = index.get(unit) else {
                 continue;
             };
-            let Ok((owner, mut queue)) = producers.get_mut(entity) else {
+            let Ok((owner, queue, site)) = units.get_mut(entity) else {
                 continue;
             };
             if owner.slot() != order.slot {
                 continue;
             }
-            match order.action {
-                Action::CancelTrain { place } => {
+            match (order.action, queue, site) {
+                (Action::CancelTrain { place }, Some(mut queue), _) => {
                     let place = usize::from(place);
                     let Some(paid) = queue.paid(place) else {
                         continue;
                     };
-                    if !paid.is_empty() {
-                        let resources = resources
-                            .as_deref_mut()
-                            .expect("a train that paid resources runs in a match with them");
-                        if !resources.takes(order.slot, paid) {
-                            continue;
-                        }
-                        for refund in paid {
-                            resources
-                                .add(order.slot, refund.resource, refund.amount)
-                                .expect("a refund the player's amounts take");
-                        }
+                    if refunds(paid, order.slot) {
+                        queue.remove(place, now);
                     }
-                    queue.remove(place, now);
                 }
-                Action::Rally { target } => {
+                (Action::Rally { target }, Some(_), _) => {
                     let target = target.map(|target| match target {
                         RallyTarget::Point { x, z } => {
                             let [x, z] = bounds.clamp_ground([x, z]);
@@ -428,14 +448,22 @@ fn apply_production_orders(
                         None => commands.entity(entity).remove::<Rally>(),
                     };
                 }
-                Action::Move { .. }
-                | Action::Attack { .. }
-                | Action::Slot { .. }
-                | Action::Learn { .. }
-                | Action::Buy { .. }
-                | Action::Sell { .. }
-                | Action::Swap { .. }
-                | Action::Stop => {}
+                (Action::CancelBuild, _, Some(site)) if !cancelled.contains(&entity) => {
+                    let spec = builds
+                        .as_deref()
+                        .and_then(|builds| builds.of(site.action()))
+                        .expect("a site's build is in the book");
+                    refund.clear();
+                    refund.extend(site.paid().iter().map(|paid| ResourceAmount {
+                        resource: paid.resource,
+                        amount: spec.refund.of(paid.amount),
+                    }));
+                    if refunds(&refund, order.slot) {
+                        commands.entity(entity).despawn();
+                        cancelled.push(entity);
+                    }
+                }
+                _ => {}
             }
         }
     }

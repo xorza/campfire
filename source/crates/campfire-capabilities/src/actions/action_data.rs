@@ -6,10 +6,12 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::actions::action_kind::ActionKind;
+use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
+use crate::actions::placement_data::PlacementData;
 use crate::actions::range::Range;
 use crate::actions::requires_data::RequiresData;
 use crate::players::resource_amount::ResourceAmount;
@@ -22,6 +24,7 @@ use crate::values::package_path::PackagePath;
 use crate::values::param::Param;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
+use crate::values::share::Share;
 use crate::values::stat::Stat;
 
 /// An action as its package's `[actions.<id>]` declares it, in milliseconds. Each capability
@@ -66,8 +69,17 @@ pub struct ActionData {
     pub damage_kind: Option<DeclaredName>,
     /// The unit type of its package a `train` makes, a train's alone.
     pub unit_type: Option<DeclaredName>,
-    /// What its player must hold for a `train` to join a queue.
+    /// What its player must hold for a `train` to join a queue, or a `build` to start.
     pub requires: Option<RequiresData>,
+    /// How a `build`'s site grows.
+    pub construct: Option<ConstructData>,
+    /// The share of its life pool's maximum a `build`'s site starts with.
+    pub start_life: Option<Share>,
+    /// The share of the player resources a `build` paid that a cancel of its site returns, all
+    /// when absent.
+    pub cancel_refund: Option<Share>,
+    /// Where a `build` may place its box.
+    pub placement: Option<PlacementData>,
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,
@@ -504,6 +516,10 @@ pub(crate) mod internals {
                 damage_kind: None,
                 unit_type: None,
                 requires: None,
+                construct: None,
+                start_life: None,
+                cancel_refund: None,
+                placement: None,
                 params: BTreeMap::new(),
                 on_resolve: Vec::new(),
                 on_hit: Vec::new(),

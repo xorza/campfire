@@ -23,7 +23,6 @@ use crate::navigation::path_walker::PathEnd;
 use crate::navigation::route_planner::RoutePlanner;
 use crate::navigation::walker::Walker;
 use crate::orders::order::Order;
-use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::scripts::error::ApiError;
 use crate::scripts::script_budgets::ScriptBudgets;

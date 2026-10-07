@@ -1,3 +1,4 @@
+use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -10,6 +11,9 @@ pub struct Share {
 }
 
 impl Share {
+    /// All of an amount.
+    pub const ALL: Share = Share { parts: 1, whole: 1 };
+
     /// The most fractional digits a share holds.
     const DIGITS: usize = 9;
 
@@ -17,6 +21,17 @@ impl Share {
     pub fn of(self, amount: i64) -> i64 {
         let share = i128::from(amount) * i128::from(self.parts) / i128::from(self.whole);
         i64::try_from(share).expect("a share of at most 1 of an amount fits")
+    }
+
+    /// The share of `value`, rounded down to the least amount a `Num` holds, exactly.
+    pub fn of_num(self, value: Num) -> Num {
+        let bits = i128::from(value.to_bits()) * i128::from(self.parts) / i128::from(self.whole);
+        Num::from_bits(i64::try_from(bits).expect("a share of at most 1 of a value fits"))
+    }
+
+    /// Whether it is no share at all.
+    pub const fn is_zero(self) -> bool {
+        self.parts == 0
     }
 
     /// The share `text` writes, `[0|1][.digits]`; `None` past 1 or for anything else.

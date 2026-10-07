@@ -77,7 +77,7 @@ Intervals, shields and the events modifiers hear are part of [Combat](combat.md#
 
 ### Tags
 
-A unit's tags are its type's tags, the tags the engine gives it by its sections (`avatar`, `projectile`, `area`, `item`, and its layer's name), and the tags its modifiers grant, those of 0 stacks and those an immunity suppresses aside. A tag has properties only when the mode declares them in `[tags.<name>]`:
+A unit's tags are its type's tags, the tags the engine gives it by its sections (`avatar`, `projectile`, `area`, `item`, and its layer's name) and by what it is now (`constructing`, while a site), and the tags its modifiers grant, those of 0 stacks and those an immunity suppresses aside. A tag has properties only when the mode declares them in `[tags.<name>]`:
 
 | Property | Means | Asked by |
 | --- | --- | --- |
@@ -94,7 +94,7 @@ A unit's tags are its type's tags, the tags the engine gives it by its sections 
 - **Immunity suppresses.** An immunity follows the Gameplay Ability System's application immunity, but holds the modifier instead of refusing it: tags are derived, so the modifier takes effect again when the immunity ends, with no state to restore. A modifier that grants a tag with an `immune` property is never suppressed itself, so immunities come from the type's tags and those modifiers first, and then suppress the rest; no order of modifiers can change the result.
 - **Filters** read tags with a sign: `enemies:avatar:!stunned` selects the avatars that may be attacked and are not stunned ([Filters](../08-script-api.md#filters)).
 - **Names.** A tag's name is a declared name: a lowercase letter, then lowercase letters, digits and underscores, so every tag can stand in a filter. The load refuses another name where data gives it.
-- **The engine's tags.** `avatar`, `projectile` and `area` hold the first places among a match's tags, in that order, so the engine finds them without their names. Only the engine gives them: the load refuses a unit type or a modifier that carries one. A filter and the mode's `[tags]` may name them, and give them properties.
+- **The engine's tags.** `avatar`, `projectile`, `area` and `constructing` hold the first places among a match's tags, in that order, so the engine finds them without their names. Only the engine gives them: the load refuses a unit type or a modifier that carries one. A filter and the mode's `[tags]` may name them, and give them properties; `constructing`, which a site carries ([Construction](production.md#construction)), blocks the `attack`, `cast` and `use` groups of its own, so no action of a site starts.
 - A mode declares at most 256 tags together, its types', its modifiers' and the engine's three.
 
 ### Levels

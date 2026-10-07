@@ -41,6 +41,19 @@ impl PlayerResources {
         })
     }
 
+    /// Gives player `slot` each of `amounts`, unless one would carry its amount past an `i64`:
+    /// then none, and `false`, so no part of a refund is lost.
+    pub(crate) fn refund(&mut self, slot: PlayerSlot, amounts: &[ResourceAmount]) -> bool {
+        if !self.takes(slot, amounts) {
+            return false;
+        }
+        for refund in amounts {
+            self.add(slot, refund.resource, refund.amount)
+                .expect("a refund the player's amounts take");
+        }
+        true
+    }
+
     /// The amount of `resource` player `slot` holds.
     pub fn amount(&self, slot: PlayerSlot, resource: ResourceId) -> i64 {
         self.amounts[self.at(slot, resource)]

@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::error::ContentError;
 use crate::error::box_problem::BoxProblem;
+use crate::error::build_problem::BuildProblem;
 use crate::error::choice_problem::ChoiceProblem;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
@@ -88,6 +89,9 @@ pub enum LoadProblem {
     /// A train makes a unit type that does not walk, so no trained unit leaves its producer.
     #[error("action \"{0}\": a train makes a unit type that walks")]
     TrainStands(DeclaredName),
+    /// A build that does not hold.
+    #[error(transparent)]
+    Build(BuildProblem),
     /// A unit type's `supply` in a mode with no `[supply]`, which counts none.
     #[error("{0}: a supply in a mode that counts none")]
     SupplyUncounted(Place),

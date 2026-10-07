@@ -10,6 +10,7 @@ use toml::de::Error as TomlError;
 use crate::error::load_problem::LoadProblem;
 
 pub(crate) mod box_problem;
+pub(crate) mod build_problem;
 pub(crate) mod choice_problem;
 pub(crate) mod ctx_misuse;
 pub(crate) mod delivery_problem;

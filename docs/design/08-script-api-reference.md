@@ -351,6 +351,10 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `charge` | since 1.0 |
 | `unit_type` | since 1.0 |
 | `requires` | since 1.0 |
+| `construct` | since 1.0 |
+| `start_life` | since 1.0 |
+| `cancel_refund` | since 1.0 |
+| `placement` | since 1.0 |
 
 ### An effect of an action's `on_resolve`, `on_hit` or `on_end`
 

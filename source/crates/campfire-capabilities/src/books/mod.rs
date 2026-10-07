@@ -17,6 +17,7 @@ use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_units::ModeUnits;
 use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
+use crate::production::build_specs::BuildSpecs;
 use crate::production::production_column::ProductionColumn;
 use crate::production::production_data::ProductionData;
 use crate::production::requirements::Requirements;
@@ -74,6 +75,7 @@ pub(crate) struct BookParts {
     producers: ByType<ProductionData>,
     supplies: ByType<SupplyData>,
     requirements: Requirements,
+    builds: BuildSpecs,
     /// The kind of walker of each unit type that walks.
     walkers: ByType<Walker>,
     supply_rules: Option<SupplyRules>,
@@ -128,6 +130,7 @@ impl Books {
         replace(world, parts.sights);
         replace(world, parts.producers);
         replace(world, parts.requirements);
+        replace(world, parts.builds);
         replace(world, parts.walkers);
         ProductionColumn::share(&view, parts.supply_rules, costs.clone());
         replace(world, costs);

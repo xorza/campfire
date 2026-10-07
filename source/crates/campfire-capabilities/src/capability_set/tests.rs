@@ -550,6 +550,7 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
             "units.relations",
             "units.spawn_point",
             "units.state",
+            "units.status_tags",
             "units.team",
             "units.unit_type",
         ],
@@ -607,7 +608,12 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
     (Some(Orders), &["orders.next_think", "orders.resetting"]),
     (
         Some(Capability::Production),
-        &["production.rally", "production.train_queue"],
+        &[
+            "production.builder",
+            "production.rally",
+            "production.site",
+            "production.train_queue",
+        ],
     ),
     (Some(Capability::Items), &["items.inventory"]),
 ];

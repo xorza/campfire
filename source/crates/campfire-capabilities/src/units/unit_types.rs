@@ -138,18 +138,20 @@ impl UnitTypes {
         self.tag_names.named(name).map(Tag::new)
     }
 
-    /// The book of the effects `data` gives the tags, by name, and of the types' own tags, which
-    /// it takes: from then on the book alone holds them. A tag `data` does not name has none.
+    /// The book of the effects `data` gives the tags, by name, beside an engine tag's own, and of
+    /// the types' own tags, which it takes: from then on the book alone holds them. A tag neither
+    /// names has none.
     pub(crate) fn tag_book(&mut self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
         let tags = self.tag_names.iter().map(|name| {
+            let engine = EngineTag::named(name).map_or(TagProperties::NONE, EngineTag::properties);
             let Some(data) = data.get(name) else {
-                return (TagProperties::default(), TagSet::default());
+                return (engine, TagSet::default());
             };
             let immune = data.immune.iter().map(|name| {
                 self.tag_named(name.as_str())
                     .expect("the match declared every tag the mode names")
             });
-            (TagProperties::of(data), TagSet::of(immune))
+            (engine.union(TagProperties::of(data)), TagSet::of(immune))
         });
         let effects: Vec<_> = tags.collect();
         let types = self.types.iter_mut().enumerate().map(|(at, entry)| {

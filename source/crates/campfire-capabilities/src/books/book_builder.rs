@@ -3,10 +3,13 @@ use std::collections::BTreeMap;
 use campfire_script::ScriptId;
 
 use crate::actions::action_data::ActionData;
+use crate::actions::action_kind::ActionKind;
 use crate::actions::action_names::ActionNames;
 use crate::actions::action_parts::ActionParts;
+use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::effect_names::EffectNames;
+use crate::actions::placement_data::{PlacementData, PlacementRule};
 use crate::areas::area_spec::AreaSpec;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::error::BookError;
@@ -27,6 +30,7 @@ use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
+use crate::production::build_specs::{NewBuild, PlacementCheck, Style};
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -48,6 +52,7 @@ use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::package_path::PackagePath;
+use crate::values::share::Share;
 use crate::values::stat::Stat;
 
 /// What the package load checked, which the builder trusts.
@@ -396,6 +401,37 @@ impl<'a> BookBuilder<'a> {
             books
                 .actions
                 .load(self.input.scripts, index, id.as_str(), data, script, parts);
+        if let Some(construct) = &data.construct {
+            let types = &books.types;
+            let check = |rule: &PlacementRule| PlacementCheck {
+                filter: Filter::resolve(&rule.filter, types).expect(CHECKED),
+                distance: rule.distance,
+            };
+            let placement = data.placement.as_ref();
+            let rules = |of: fn(&PlacementData) -> &[PlacementRule]| {
+                placement.map_or_else(Vec::new, |placement| {
+                    of(placement).iter().map(check).collect()
+                })
+            };
+            let (style, rates) = match construct {
+                ConstructData::Alone => (Style::Alone, &[][..]),
+                ConstructData::Builder => (Style::Builder, &[][..]),
+                ConstructData::Builders(rates) => (Style::Builders, rates.as_slice()),
+            };
+            let package = &self.input.packages[usize::from(index)];
+            let building = data.unit_type.as_ref().expect(CHECKED);
+            let collision = package.content.units[building].collision.as_ref();
+            let build = NewBuild {
+                form: self.input.data.navigation.form(collision).expect(CHECKED),
+                style,
+                rates,
+                start_life: data.start_life,
+                refund: data.cancel_refund.unwrap_or(Share::ALL),
+                near: rules(|placement| &placement.near),
+                away: rules(|placement| &placement.away),
+            };
+            books.builds.push(action, build);
+        }
         if let Some(requires) = &data.requires {
             let (types, modifiers) = (&books.types, &books.modifiers);
             let scope = TypeScope::of_package(index);
@@ -500,6 +536,10 @@ impl<'a> BookBuilder<'a> {
             body: data.navigation.form(file.collision.as_ref()),
             tracks,
             production: file.production.as_ref(),
+            builds: file.slots.values().flatten().any(|id| {
+                let package = &self.input.packages[usize::from(index)];
+                package.content.actions[id].kind == ActionKind::Build
+            }),
             inventory: file.inventory.as_ref().map(|inventory| InventorySpec {
                 slots: inventory.slots,
                 kind: data.slots.named(inventory.kind.as_str()).expect(CHECKED),

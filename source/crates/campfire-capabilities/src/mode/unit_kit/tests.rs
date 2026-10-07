@@ -62,6 +62,7 @@ fn kit_of<'a>(
         body: None,
         tracks: TrackSet::default(),
         production: None,
+        builds: false,
         inventory: None,
     };
     UnitKit::new(&book, TYPE, sections, Some(PoolId::FIRST), rate)

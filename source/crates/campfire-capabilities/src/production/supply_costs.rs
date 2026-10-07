@@ -33,7 +33,7 @@ impl SupplyCosts {
             .map_while(|at| actions.get(ActionId::nth(at)))
             .map(|action| match action.kind {
                 KindSpec::Train(made) => types.get(made).map_or(0, |supply| supply.cost),
-                KindSpec::Cast | KindSpec::Attack(_) => 0,
+                KindSpec::Cast | KindSpec::Attack(_) | KindSpec::Build(_) => 0,
             })
             .collect();
         SupplyCosts { types, trains }
@@ -44,19 +44,21 @@ impl SupplyCosts {
         self.types.get(unit_type).map_or(0, |supply| supply.cost)
     }
 
-    /// What a unit of `unit_type`, dead when `dead`, with `queue`, counts for: a living unit uses
-    /// its type's `cost` and gives its `provides`; a queued train, of a producer living or dead,
-    /// uses its unit's `cost`.
+    /// What a unit of `unit_type`, dead when `dead`, complete unless a site, with `queue`,
+    /// counts for: a living unit uses its type's `cost`, and gives its `provides` once complete;
+    /// a queued train, of a producer living or dead, uses its unit's `cost`.
     pub(crate) fn unit(
         &self,
         unit_type: UnitType,
         dead: bool,
+        complete: bool,
         queue: Option<&TrainQueue>,
     ) -> UnitSupply {
         let own = match self.types.get(unit_type) {
             Some(supply) if !dead => *supply,
             _ => SupplyData::default(),
         };
+        let given = if complete { own.provides } else { 0 };
         let queued: u64 = queue
             .map_or(&[][..], TrainQueue::entries)
             .iter()
@@ -64,7 +66,7 @@ impl SupplyCosts {
             .sum();
         UnitSupply {
             used: u64::from(own.cost) + queued,
-            given: u64::from(own.provides),
+            given: u64::from(given),
         }
     }
 }

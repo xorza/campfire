@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::actions::action_target::ActionTarget;
 use crate::items::item_id::ItemId;
 use crate::orders::order::order_units::OrderUnits;
+use crate::production::build_target::BuildTarget;
 use crate::production::rally_target::RallyTarget;
 
 pub(crate) mod order_units;
@@ -42,6 +43,10 @@ pub enum Action {
     CancelTrain { place: u8 },
     /// Set where a producer's trained units go, or clear it with `None`.
     Rally { target: Option<RallyTarget> },
+    /// Build with the build in `slot` at `target`.
+    Build { slot: u8, target: BuildTarget },
+    /// Cancel a site of the player's building.
+    CancelBuild,
 }
 
 impl Order {

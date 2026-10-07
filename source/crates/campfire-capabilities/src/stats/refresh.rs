@@ -18,6 +18,7 @@ use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
+use crate::units::status_tags::StatusTags;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
@@ -79,12 +80,14 @@ impl Refresh {
                         Option<&Modifiers>,
                         Option<&mut UnitTags>,
                         Has<LiveShares>,
+                        Option<&StatusTags>,
                     ),
                     (
                         With<UnitStats>,
                         Or<(
                             Changed<Level>,
                             Changed<Modifiers>,
+                            Changed<StatusTags>,
                             Added<UnitStats>,
                             With<LiveShares>,
                         )>,
@@ -106,11 +109,12 @@ impl Refresh {
         let granting = tag_book
             .as_deref()
             .map_or(TagSet::default(), TagBook::granting);
-        for (entity, &id, &unit_type, level, modifiers, tags, marked) in &mut units.p0() {
+        for (entity, &id, &unit_type, level, modifiers, tags, marked, status) in &mut units.p0() {
             let held = modifiers.into_iter().flat_map(Modifiers::iter);
             let granted = held
                 .filter(|instance| instance.stacks > 0)
-                .map(|instance| modifier_book.tags(instance.id));
+                .map(|instance| modifier_book.tags(instance.id))
+                .chain(status.map(|status| status.get()));
             let derived = tag_book
                 .as_deref()
                 .map(|book| book.unit_tags(unit_type, granted));

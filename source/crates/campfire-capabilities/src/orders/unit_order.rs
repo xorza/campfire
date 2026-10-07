@@ -13,6 +13,8 @@ use crate::navigation::path_walker::PathWalker;
 use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::orders::Orders;
+use crate::production::build_target::BuildTarget;
+use crate::production::builder::{BuildOrder, Builder};
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::values::bounds::Bounds;
@@ -39,10 +41,12 @@ pub(crate) enum UnitOrder {
     Reset,
     /// End what is under way, drop the target and the destination, and stand off any path.
     Stop,
+    /// Build with the build in `slot` at `target`, off any path; the build walks the unit.
+    Build { slot: u8, target: BuildTarget },
 }
 
 /// The parts of a unit that an order reads and changes: where it stands and where it spawned,
-/// its actions, the path it walks, where it walks to, and its route there.
+/// its actions, the path it walks, where it walks to, its route there, and its build order.
 #[derive(Debug)]
 pub(crate) struct OrderedUnit<'a> {
     pub(crate) at: Position,
@@ -52,6 +56,7 @@ pub(crate) struct OrderedUnit<'a> {
     pub(crate) destination: Option<Mut<'a, Destination>>,
     pub(crate) route: Option<Mut<'a, Route>>,
     pub(crate) progress: Option<Mut<'a, Progress>>,
+    pub(crate) builder: Option<Mut<'a, Builder>>,
 }
 
 /// For the unit that thinks in the call, which checked the order against the units as the phase
@@ -77,8 +82,10 @@ impl UnitOrder {
     /// route at once, as one of its party. An attack on another target cancels one in its windup;
     /// a slot's cast or train replaces an action not resolved yet, or releases the charge of its
     /// own slot. A stop ends what is under way, with nothing spent, drops the target and the
-    /// destination, and leaves the path; a queue of trains stays. Every order cuts a channel and
-    /// ends a cast that walks in range, with its walk, and an attack cancels a charge.
+    /// destination, and leaves the path; a queue of trains stays. A build becomes the unit's
+    /// build order, its point taken into the bounds, and drops the target and the destination;
+    /// every other order ends one. Every order cuts a channel and ends a cast that walks in
+    /// range, with its walk, and an attack cancels a charge.
     /// Whether the unit now resets, and takes no order until it is home.
     pub(crate) fn apply(self, unit: OrderedUnit<'_>, bounds: &Bounds, now: Tick) -> bool {
         let OrderedUnit {
@@ -89,6 +96,7 @@ impl UnitOrder {
             mut destination,
             route,
             progress,
+            mut builder,
         } = unit;
         if let Some(slots) = &mut slots {
             slots.cut_channel();
@@ -98,6 +106,24 @@ impl UnitOrder {
                     destination.set(None);
                 }
             }
+        }
+        let build = match self {
+            UnitOrder::Build { slot, target } => {
+                let target = match target {
+                    BuildTarget::Point { x, z, angle } => {
+                        let [x, z] = bounds.clamp_ground([x, z]);
+                        BuildTarget::Point { x, z, angle }
+                    }
+                    site @ BuildTarget::Site(_) => site,
+                };
+                Some(BuildOrder { slot, target })
+            }
+            _ => None,
+        };
+        if let Some(builder) = &mut builder
+            && (build.is_some() || builder.order().is_some())
+        {
+            builder.set(build);
         }
         let ground = |x, z| bounds.ground_point([x, z], at);
         let to = match self {
@@ -138,6 +164,7 @@ impl UnitOrder {
                 }
                 None
             }
+            UnitOrder::Build { .. } => None,
         };
         if let Some(slots) = &mut slots {
             slots.set_attack_target(None);

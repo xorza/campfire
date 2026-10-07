@@ -6,8 +6,8 @@ use campfire_capabilities::{
     CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
     Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, Metric, ModifierData,
     ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
-    ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Status,
-    Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Share, Stat,
+    Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -15,6 +15,7 @@ use campfire_sim::{Capability, TickRate};
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
 use crate::error::box_problem::BoxProblem;
+use crate::error::build_problem::BuildProblem;
 use crate::error::choice_problem::ChoiceProblem;
 use crate::error::ctx_misuse::CtxMisuse;
 use crate::error::delivery_problem::DeliveryProblem;
@@ -897,6 +898,60 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
+    /// A `build` of `production`, `id`: aimed at a point, of a range in meters, of a unit type of
+    /// its package, `units`, with a box body, with a `start_life` above 0 when that type has the
+    /// mode's life pool, and its placement's filters of the mode's names.
+    fn build(
+        &self,
+        id: &DeclaredName,
+        action: &ActionData,
+        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+    ) -> Result<(), LoadProblem> {
+        let at = Place::Action(id.clone());
+        self.require(Capability::Production, &at)?;
+        if action.targeting != Targeting::Point {
+            return Err(LoadProblem::Build(BuildProblem::Aims(id.to_owned())));
+        }
+        let global = action
+            .range
+            .as_ref()
+            .is_some_and(|range| range.values().contains(&RangeField::Range(Range::Global)));
+        if global {
+            return Err(LoadProblem::Build(BuildProblem::Global(id.to_owned())));
+        }
+        let name = action
+            .unit_type
+            .as_ref()
+            .expect("a build needs its unit type");
+        let Some(building) = units.get(name).filter(|unit_type| !unit_type.delivers()) else {
+            return Err(unknown(&at, name, NameKind::UnitType));
+        };
+        let boxed = building
+            .collision
+            .as_ref()
+            .is_some_and(|collision| collision.form.is_box());
+        if !boxed {
+            return Err(LoadProblem::Build(BuildProblem::NoBox(id.to_owned())));
+        }
+        let data = &self.packages.data;
+        let alive = data
+            .combat
+            .life
+            .as_ref()
+            .is_some_and(|life| building.pools.contains(life));
+        let starts = action.start_life.is_some_and(|share| !share.is_zero());
+        let zero = action.start_life.is_some_and(Share::is_zero);
+        if (alive && !starts) || zero {
+            return Err(LoadProblem::Build(BuildProblem::StartLife(id.to_owned())));
+        }
+        if let Some(placement) = &action.placement {
+            for rule in placement.near.iter().chain(&placement.away) {
+                self.filter_data(&rule.filter, &at)?;
+            }
+        }
+        Ok(())
+    }
+
     /// An action `id` of a kind the release runs, with the capability of its kind and the fields
     /// the table of action fields lets its kind take: a `cast` of `abilities`; an `attack` of
     /// `combat`, aimed at a unit, of a range in meters, its stats declared and its damage kind
@@ -911,7 +966,7 @@ impl<'a> LoadCheck<'a> {
         let at = Place::Action(id.clone());
         let run = matches!(
             action.kind,
-            ActionKind::Cast | ActionKind::Attack | ActionKind::Train
+            ActionKind::Cast | ActionKind::Attack | ActionKind::Train | ActionKind::Build
         );
         if run && let Some(field) = ActionDataField::misused(action, action.kind) {
             return Err(LoadProblem::KindField {
@@ -957,6 +1012,7 @@ impl<'a> LoadCheck<'a> {
                     Some(_) => {}
                 }
             }
+            ActionKind::Build => self.build(id, action, units)?,
             ActionKind::Attack => {
                 self.require(Capability::Combat, &at)?;
                 let global = action.range.as_ref().is_some_and(|range| {

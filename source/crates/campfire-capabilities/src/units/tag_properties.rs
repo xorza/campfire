@@ -7,6 +7,8 @@ use crate::units::tag_data::TagData;
 pub(crate) struct TagProperties(u8);
 
 impl TagProperties {
+    /// No property.
+    pub(crate) const NONE: TagProperties = TagProperties(0);
     const HIDDEN: u8 = 1 << Block::ALL.len();
     const DETECTS: u8 = TagProperties::HIDDEN << 1;
 

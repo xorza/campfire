@@ -411,6 +411,43 @@ pub(crate) mod internals {
         )
     }
 
+    /// Adds a build of `unit` within `range` meters, aimed at a point, that takes `time` and costs
+    /// `resource_cost`, no pool and no cooldown, to the action book of `world`.
+    #[cfg(test)]
+    pub(crate) fn build(
+        world: &mut World,
+        unit: UnitType,
+        range: Num,
+        time: Ticks,
+        resource_cost: Option<ResourceAmount>,
+    ) -> ActionId {
+        push(
+            world,
+            Action {
+                package: 0,
+                name: "build".into(),
+                kind: KindSpec::Build(unit),
+                passive: None,
+                hold: None,
+                aim: Aim::Point { clamp: false },
+                ranks: vec![RankValues {
+                    range: Range::Meters(range),
+                    cooldown: Ticks::ZERO,
+                    cost: PoolCost::default(),
+                    windup: time,
+                    charges: None,
+                    toggle: None,
+                    channel: None,
+                    charge: None,
+                }],
+                resource_costs: resource_cost.into_iter().collect(),
+                script: None,
+                hooks: HookSet::default(),
+                delivery: None,
+            },
+        )
+    }
+
     /// Adds `action` to the action book of `world`, and shares the book with the script view.
     fn push(world: &mut World, action: Action) -> ActionId {
         let mut book = world.resource_mut::<ActionBook>();
