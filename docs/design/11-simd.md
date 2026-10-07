@@ -75,6 +75,10 @@ So no `asm!` in the engine. A path whose Rust stays far from what its instructio
 
 From the scratch kernels: `fog/sight` about 33 % faster, from its rows' 60 % at 2.2 times the speed; `server_tick/mean_3v3` about 3 % faster, the share of `vision::see` and the root. The bitmap's words, the larger part of the fog in the 3v3, stay as they are. The figures on NEON are not known, as D9 does not measure them.
 
+## Built
+
+**S1.** On one core of the Ryzen 7 6800U, criterion's median: `root/lanes` 3.00 µs against `root/narrow` 12.50 µs, the same 4,096 values of 1 to 64 bits, 0.73 ns a root against 3.05 ns, 4.2 times as fast; `root/floor` 21.52 µs against 21.49 µs before, unchanged. The bench's binary holds `vsqrtpd` and `vpmuludq` on `ymm` registers.
+
 ## Tests
 
 - Each op against its scalar meaning, on each lane, at the edges of its domain.

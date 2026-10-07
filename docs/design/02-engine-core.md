@@ -249,6 +249,7 @@ Exact versions are pinned across the workspace. Each release tag also pins its R
 | Area | Crate | Notes |
 | --- | --- | --- |
 | Fixed-point numbers, trig, sqrt | Own code in `math` | `Num`: `*` and `/` round to nearest, ties to even; exact decimal parsing; `sqrt` from an `f64` estimate that integer steps correct to the exact root, so the result does not depend on the float; `sin_cos`, `atan2` by series at high internal precision, within 0.501 ulp over the tests' sweeps. `fixed` rounds `*` toward −∞ and constants down, and `fixed_analytics` reaches 48 ulp in `atan2`, so neither is used ([Determinism Core](09-determinism-core.md)) |
+| SIMD lanes | Own code in `math` | `I64x4`, `U64x4` and `Mask64x4`, four 64-bit lanes on x86-64-v3 and armv8-a alike, as array loops LLVM vectorizes, exact as the scalar code. `std::simd` is unstable, intrinsics need `unsafe`, and no inline assembly is used ([SIMD](11-simd.md)) |
 | RNG | `blake3` keyed hash, wrapped in `math` | A PRF by specification, counter-based as in [Random123](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf) but cryptographic, unlike Philox; BLAKE3's keyed known-answer vectors run in its tests. Range sampling is own code. No `rand`, which [may change output in minor releases](https://www.rustmax.net/library/rand-book/crate-reprod) |
 | Protocol encoding | `postcard` | [Stable wire format](https://postcard.jamesmunns.com) since 1.0 |
 | State hashes | `blake3` | At checkpoints and the result; per tick in the goldens |
