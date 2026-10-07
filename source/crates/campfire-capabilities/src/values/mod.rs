@@ -3,11 +3,13 @@
 
 pub(crate) mod action_start;
 pub(crate) mod attitude;
+pub(crate) mod body_box;
 pub(crate) mod bounds;
 pub(crate) mod damage_kind;
 pub(crate) mod declared_name;
 pub(crate) mod engine_enum;
 pub(crate) mod filter_data;
+pub(crate) mod fraction;
 pub(crate) mod grid;
 pub(crate) mod hit;
 pub(crate) mod metric;
@@ -25,6 +27,7 @@ pub(crate) mod scalar;
 pub(crate) mod script_enum;
 pub(crate) mod share;
 pub(crate) mod speed;
+pub(crate) mod squared_distance;
 pub(crate) mod stat;
 
 #[cfg(any(test, feature = "internals"))]

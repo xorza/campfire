@@ -193,10 +193,12 @@ pub mod internals {
 pub mod bench {
     use criterion::Criterion;
 
+    use crate::values::body_box;
     use crate::{navigation, vision};
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
+        body_box::bench::body_box(c);
         navigation::bench::collision(c);
         navigation::bench::pathing_grid(c);
         navigation::bench::route_planner(c);

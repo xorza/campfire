@@ -44,6 +44,35 @@ fn products_and_sums_are_exact() {
     assert_eq!(one_short.checked_sub(carried), None);
     assert_eq!(U256::ZERO.checked_sub(one), None);
 
+    // A product with a high half: (2¹²⁸ + 2¹²⁸ − 1) × 2 = 2¹³⁰ − 2, so high 3 and low
+    // 2¹²⁸ − 2; 2²⁵⁵ × 2 and the high half's own carry pass 256 bits.
+    let both = U256 {
+        high: 1,
+        low: u128::MAX,
+    };
+    assert_eq!(
+        both.checked_mul(2),
+        Some(U256 {
+            high: 3,
+            low: u128::MAX - 1
+        })
+    );
+    let half_top = U256 {
+        high: 1 << 127,
+        low: 0,
+    };
+    assert_eq!(half_top.checked_mul(2), None);
+    assert_eq!(top.checked_mul(1), Some(top));
+    assert_eq!(top.checked_mul(0), Some(U256::ZERO));
+    // (2¹²⁸ − 1) / 3 in the high half times 3 fills it, and the low half's product carries 2
+    // into it, past 256 bits: the high half fits alone and the sum does not.
+    let into_high = U256 {
+        high: u128::MAX / 3,
+        low: u128::MAX,
+    };
+    assert_eq!(into_high.checked_mul(3), None);
+    assert_eq!(top.checked_mul(2), None);
+
     // The order compares the high half first.
     assert!(
         U256 { high: 1, low: 0 }
@@ -143,6 +172,8 @@ fn products_match_schoolbook_and_shifts_match_divisions() {
         for &b in &values {
             let product = U256::product(a, b);
             assert_eq!(product, schoolbook(a, b), "{a} {b}");
+            // A low half alone times a u128 is the product of the two.
+            assert_eq!(U256::product(a, 1).checked_mul(b), Some(product), "{a} {b}");
             // A shift by k is a division by 2^k, rounded the same way.
             for k in 1..=126 {
                 assert_eq!(

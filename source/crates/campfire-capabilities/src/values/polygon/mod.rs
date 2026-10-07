@@ -61,6 +61,15 @@ impl Polygon {
         inside
     }
 
+    /// Whether `at`, `[x, z]`, lies inside the polygon or on its edge.
+    pub(crate) fn holds_point(&self, at: [Num; 2]) -> bool {
+        self.holds(at.map(twice))
+    }
+
+    pub(crate) fn points(&self) -> &[[Num; 2]] {
+        &self.points
+    }
+
     /// Calls `mark` with each cell of `grid` whose center the polygon holds, in order; the
     /// polygon lies within the grid's bounds.
     pub(crate) fn cells(&self, grid: &Grid, mut mark: impl FnMut(usize)) {

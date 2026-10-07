@@ -75,6 +75,20 @@ impl U256 {
         }
     }
 
+    /// `self × rhs`; `None` past 256 bits.
+    pub const fn checked_mul(self, rhs: u128) -> Option<U256> {
+        let low = U256::product(self.low, rhs);
+        let high = U256::product(self.high, rhs);
+        if high.high != 0 {
+            return None;
+        }
+        let shifted = U256 {
+            high: high.low,
+            low: 0,
+        };
+        shifted.checked_add(low)
+    }
+
     /// `self + other`; `None` past 256 bits.
     pub const fn checked_add(self, other: U256) -> Option<U256> {
         let (low, carry) = self.low.overflowing_add(other.low);
