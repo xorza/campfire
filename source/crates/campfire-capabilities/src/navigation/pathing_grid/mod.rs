@@ -28,9 +28,11 @@ pub(crate) struct PathingGrid {
     words: usize,
     /// Each clearance's blocked cells, one bit a cell, clearance after clearance.
     blocked: Vec<u64>,
-    /// The cells of each clearance the walls block, which no body opens, in the same order; and
-    /// whether the walls block any.
+    /// The cells of each clearance the walls block, which no body opens, in the same order; the
+    /// same cells column by column, so a segment's run of rows in a column is one or two words;
+    /// and whether the walls block any.
     walled: Vec<u64>,
+    walled_columns: Vec<u64>,
     walls: Vec<bool>,
     /// Each clearance's regions.
     regions: Vec<Regions>,
@@ -56,6 +58,11 @@ impl PathingGrid {
                 walls[at] = true;
             }
         }
+        let mut walled_columns = vec![0; walled.len()];
+        for at in 0..walkers.len() {
+            let span = at * words..(at + 1) * words;
+            PathingGrid::by_column(&grid, &walled[span.clone()], &mut walled_columns[span]);
+        }
         let blocked = walled.clone();
         let regions: Vec<Regions> = (0..walkers.len())
             .map(|at| Regions::new(&grid, &blocked[at * words..(at + 1) * words]))
@@ -65,6 +72,7 @@ impl PathingGrid {
             grid,
             blocked,
             walled,
+            walled_columns,
             walls,
             walkers,
             words,
@@ -169,7 +177,18 @@ impl PathingGrid {
             walker,
             regions: &self.regions[at],
             words: &self.blocked[span.clone()],
-            walled: self.walls[at].then(|| &self.walled[span]),
+            walled: self.walls[at].then(|| &self.walled[span.clone()]),
+            walled_columns: self.walls[at].then(|| &self.walled_columns[span]),
+        }
+    }
+
+    /// Writes into `columns` the cells of `cells`, which number them row by row, column by
+    /// column: the cell at `column` and `row` at `column × rows + row`.
+    fn by_column(grid: &Grid, cells: &[u64], columns: &mut [u64]) {
+        let (width, rows) = (grid.columns(), grid.rows());
+        for cell in (0..grid.cells()).filter(|&cell| cells[cell / 64] & 1 << (cell % 64) != 0) {
+            let at = cell % width * rows + cell / width;
+            columns[at / 64] |= 1 << (at % 64);
         }
     }
 
@@ -221,8 +240,9 @@ pub(crate) struct Clearance<'a> {
     walker: Walker,
     regions: &'a Regions,
     words: &'a [u64],
-    /// The cells the walls block it from, when they block any.
+    /// The cells the walls block it from, when they block any, row by row and column by column.
     walled: Option<&'a [u64]>,
+    walled_columns: Option<&'a [u64]>,
 }
 
 impl Clearance<'_> {
@@ -241,13 +261,35 @@ impl Clearance<'_> {
     /// Whether `segment` touches a cell the walls block the walker from, exactly, corners
     /// included; each cell it visits to tell adds to `work`.
     pub(crate) fn walled(&self, segment: Segment, work: &mut u32) -> bool {
-        self.walled.is_some_and(|walled| {
-            let blocked = |cell: usize| {
-                *work += 1;
-                walled[cell / 64] & 1 << (cell % 64) != 0
-            };
-            self.grid.touches(segment.start(), segment.end(), blocked)
+        self.walled_columns.is_some_and(|walled| {
+            let rows = self.grid.rows();
+            let (from, to) = (segment.start(), segment.end());
+            self.grid.touches_columns(from, to, |column, run| {
+                let cells = column * rows + run.start..column * rows + run.end;
+                let hit = Clearance::first_set(walled, cells.clone());
+                let visited = hit.map_or(cells.end, |at| at + 1) - cells.start;
+                *work += u32::try_from(visited).expect("a column's rows fit u32");
+                hit.is_some()
+            })
         })
+    }
+
+    /// The first of `cells` set in `words`.
+    fn first_set(words: &[u64], cells: Range<usize>) -> Option<usize> {
+        let mut at = cells.start;
+        while at < cells.end {
+            let shift = at % 64;
+            let mut bits = words[at / 64] >> shift;
+            let left = cells.end - at;
+            if left < 64 - shift {
+                bits &= (1 << left) - 1;
+            }
+            if bits != 0 {
+                return Some(at + bits.trailing_zeros() as usize);
+            }
+            at += 64 - shift;
+        }
+        None
     }
 
     /// Whether the step `segment` touches a cell the walls block the walker from, exactly, but the

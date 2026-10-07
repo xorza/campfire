@@ -18,10 +18,10 @@ const REREAD_CHANGED: usize = 100;
 
 /// The script view's read, as each batch of script calls reads it: the reference 3v3 at its
 /// start with `KernelScene::UNITS` of its creeps more, on both teams at the crowded scene's
-/// points, which lie within its map, each read filling every unit's row with the column of each
-/// capability the 3v3 declares. `read` follows a change of every unit, as a tick's first batch
-/// finds them; `reread` a change of one in `REREAD_CHANGED`, as a later batch of the same tick
-/// does.
+/// points, which lie within its map, each read giving every unit a row with the column of each
+/// capability the 3v3 declares, filled again where the unit's parts changed. `read` follows a
+/// move of every unit, as a tick's first batch finds them; `reread` a move of one in
+/// `REREAD_CHANGED`, as a later batch of the same tick does.
 pub(crate) fn script_view(c: &mut Criterion) {
     let reference = Reference3v3::load();
     let mut fixed = reference.start();

@@ -1,9 +1,13 @@
 use std::cell::RefCell;
 use std::fmt;
+use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bevy_ecs::query::{QueryState, ROQueryItem, ReadOnlyQueryData};
+use bevy_ecs::archetype::ArchetypeId;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::{QueryState, ROQueryItem};
+use bevy_ecs::system::{Query, SystemState};
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::Num;
@@ -26,6 +30,9 @@ use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
 use crate::units::row_fill::{FillRow, RowFill, RowSource};
+use crate::units::row_marks::RowMarks;
+use crate::units::row_parts::RowParts;
+use crate::units::source_reads::SourceReads;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag::Tag;
 use crate::units::team::Team;
@@ -57,8 +64,8 @@ pub(crate) struct ScriptView {
     paths: Arc<NameList>,
     /// The names scripts read, as they read them.
     consts: ScriptConsts,
-    /// The core's parts of each unit, once a read built the query.
-    core: Option<QueryState<CoreParts>>,
+    /// The core's parts of each unit, once a read built its queries.
+    core: Option<CoreSource>,
     /// How each installed capability above the core fills its fields of a row, in install order.
     sources: Vec<Box<dyn FillRow>>,
     rate: TickRate,
@@ -66,6 +73,18 @@ pub(crate) struct ScriptView {
     now: Tick,
     /// By stable id.
     units: Vec<UnitRow>,
+    /// The rows of the read before, which a read keeps the rows of unchanged units from.
+    kept_units: Vec<UnitRow>,
+    /// Each unit of the entity index as the last read found it, by stable id, and the one before.
+    seen: Vec<Seen>,
+    kept_seen: Vec<Seen>,
+    /// The rows each source must fill again in the running read.
+    marks: RowMarks,
+    /// Each source's part of the running read.
+    reads: SourceReads,
+    /// Whether the next read must fill every row, as what the rows derive from besides the
+    /// units' parts changed.
+    refill: bool,
     /// How the teams regard each other, as the units were read.
     relations: Relations,
     metric: Metric,
@@ -96,51 +115,200 @@ type CoreParts = (
     Option<&'static UnitTags>,
 );
 
-impl ScriptView {
-    fn read(&mut self, world: &mut World) {
-        let core = self.core.get_or_insert_with(|| QueryState::new(world));
-        core.update_archetypes(world);
-        for source in &mut self.sources {
-            source.update(world);
+/// The core's parts of each unit, and the units whose parts changed since the last read.
+struct CoreSource {
+    parts: QueryState<CoreParts>,
+    changed: SystemState<Query<'static, 'static, Entity, <CoreParts as RowParts>::Changed>>,
+}
+
+/// A query prints only what it reads.
+impl fmt::Debug for CoreSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CoreSource")
+            .field("parts", &self.parts)
+            .finish_non_exhaustive()
+    }
+}
+
+impl CoreSource {
+    fn new(world: &mut World) -> CoreSource {
+        CoreSource {
+            parts: QueryState::new(world),
+            changed: SystemState::new(world),
         }
-        let world: &World = world;
-        self.now = world.resource::<SimTick>().start();
-        self.relations.clone_from(world.resource::<Relations>());
+    }
+
+    /// The row of unit `id`, `entity` of `world`, whose fields of the core it fills, and whose
+    /// fields of the capabilities above it keeps from `kept`; `None` for an entity with no
+    /// position or team, which is no unit scripts see.
+    fn row(
+        &self,
+        world: &World,
+        id: StableId,
+        entity: Entity,
+        kept: Option<UnitRow>,
+    ) -> Option<UnitRow> {
+        let parts = self
+            .parts
+            .get_manual(world, entity)
+            .expect("the core reads optional parts");
+        let (Some(&pos), Some(&team), body, spawn, unit_type, owner, tags) = parts else {
+            return None;
+        };
+        let (alive, targetable) = kept.map_or((true, false), |row| (row.alive, row.targetable));
+        Some(UnitRow {
+            id,
+            pos,
+            team,
+            radius: Body::radius_of(body),
+            spawn: spawn.map(|spawn| spawn.get()),
+            alive,
+            targetable,
+            unit_type: unit_type.copied(),
+            owner: owner.map(|owner| owner.slot()),
+            tags: tags.copied().unwrap_or_default(),
+        })
+    }
+}
+
+/// An entity of the entity index as a read found it: its archetype, which holds the parts it
+/// has, and its row, `None` when it is no unit scripts see.
+#[derive(Debug, Clone, Copy)]
+struct Seen {
+    id: StableId,
+    entity: Entity,
+    archetype: ArchetypeId,
+    row: Option<usize>,
+}
+
+impl ScriptView {
+    /// Reads the units of `world`: fills the rows of units whose parts changed since the last
+    /// read, or that are new to it, and keeps the others. A debug build reads again, every row
+    /// filled, and checks that the two reads agree.
+    fn read(&mut self, world: &mut World) {
+        self.read_rows(world, false);
+        if cfg!(debug_assertions) {
+            self.read_rows(world, true);
+            assert!(
+                self.units == self.kept_units && self.columns.same_as_kept(),
+                "a read keeps exactly the rows a full read fills"
+            );
+        }
+    }
+
+    /// Starts a read of `world`: takes what every row reads besides the units, and marks the
+    /// rows each source must fill again. Whether every row must be filled.
+    fn begin_read(&mut self, world: &World, full: bool) -> bool {
+        let now = world.resource::<SimTick>().start();
+        let relations = world.resource::<Relations>();
+        let refill = mem::take(&mut self.refill) || full || *relations != self.relations;
+        self.now = now;
+        self.relations.clone_from(relations);
         self.metric = *world.resource::<Metric>();
         self.bounds = Bounds::of(world);
-        self.units.clear();
-        self.columns.clear();
         self.indexed = false;
-        let core = self.core.as_ref().expect("the read built the query");
+        let core = self
+            .core
+            .as_mut()
+            .expect("a read builds the core's queries");
+        core.parts.update_archetypes(world);
+        let changed = core.changed.get(world).expect("a query is always valid");
+        for entity in &changed {
+            self.marks.mark(entity, 0);
+        }
+        let (columns, marks) = (&mut self.columns, &mut self.marks);
+        let sources = self.sources.iter_mut().enumerate();
+        self.reads.begin(
+            sources.map(|(at, source)| source.begin(world, columns, at + 1, marks) || refill),
+        );
+        refill
+    }
+
+    /// Reads the units of `world`, every row filled when `full`.
+    fn read_rows(&mut self, world: &mut World, full: bool) {
+        self.core.get_or_insert_with(|| CoreSource::new(world));
+        let world: &World = world;
+        let refill = self.begin_read(world, full);
+        let core = self
+            .core
+            .as_ref()
+            .expect("a read builds the core's queries");
+        mem::swap(&mut self.units, &mut self.kept_units);
+        mem::swap(&mut self.seen, &mut self.kept_seen);
+        self.units.clear();
+        self.seen.clear();
+        let any_refills = self.reads.any_refills();
+        let mut before = self.kept_seen.iter().peekable();
         for (id, entity) in world.resource::<EntityIndex>().iter() {
-            let parts = core
-                .get_manual(world, entity)
-                .expect("the core reads optional parts");
-            let (Some(&pos), Some(&team), body, spawn, unit_type, owner, tags) = parts else {
+            while before.next_if(|seen| seen.id < id).is_some() {}
+            let archetype = world
+                .entities()
+                .get_spawned(entity)
+                .expect("the index holds spawned entities")
+                .archetype_id;
+            let unchanged = before
+                .next_if(|seen| seen.id == id)
+                .filter(|seen| !refill && seen.entity == entity && seen.archetype == archetype);
+            let kept = match unchanged {
+                Some(&seen @ Seen { row: None, .. }) => {
+                    self.seen.push(seen);
+                    continue;
+                }
+                Some(&Seen { row, .. }) => row,
+                None => None,
+            };
+            if let Some(at) = kept
+                && !any_refills
+                && !self.marks.any(entity)
+            {
+                self.reads.keep_all(&self.sources, &mut self.columns, at);
+                self.seen.push(Seen {
+                    id,
+                    entity,
+                    archetype,
+                    row: Some(self.units.len()),
+                });
+                self.units.push(self.kept_units[at]);
+                continue;
+            }
+            self.reads.take_clean(&self.sources, &mut self.columns);
+            let kept_row = kept.map(|at| self.kept_units[at]);
+            let row = if kept.is_some() && !self.marks.marked(entity, 0) {
+                kept_row
+            } else {
+                core.row(world, id, entity, kept_row)
+            };
+            let Some(mut row) = row else {
+                self.seen.push(Seen {
+                    id,
+                    entity,
+                    archetype,
+                    row: None,
+                });
                 continue;
             };
-            let mut row = UnitRow {
-                id,
-                pos,
-                team,
-                radius: Body::radius_of(body),
-                spawn: spawn.map(|spawn| spawn.get()),
-                alive: true,
-                targetable: false,
-                unit_type: unit_type.copied(),
-                owner: owner.map(|owner| owner.slot()),
-                tags: tags.copied().unwrap_or_default(),
-            };
-            let mut fill = RowFill {
-                row: &mut row,
-                world,
-                columns: &mut self.columns,
-            };
-            for source in &self.sources {
-                source.fill(world, entity, &mut fill);
+            let sources = self.sources.iter().zip(self.reads.each()).enumerate();
+            for (at, (source, read)) in sources {
+                match kept {
+                    Some(kept) if !read.refills() && !self.marks.marked(entity, at + 1) => {
+                        read.keep(source.as_ref(), &mut self.columns, kept..kept + 1);
+                    }
+                    _ => {
+                        read.flush(source.as_ref(), &mut self.columns);
+                        source.fill(world, entity, &mut row, &mut self.columns, &self.relations);
+                    }
+                }
             }
+            self.seen.push(Seen {
+                id,
+                entity,
+                archetype,
+                row: Some(self.units.len()),
+            });
             self.units.push(row);
         }
+        self.reads.finish(&self.sources, &mut self.columns);
+        self.marks.clear();
         debug_assert!(
             self.columns.hold(self.units.len()),
             "every column holds a row for each unit"
@@ -185,6 +353,12 @@ impl View {
             rate,
             now: Tick::ZERO,
             units: Vec::new(),
+            kept_units: Vec::new(),
+            seen: Vec::new(),
+            kept_seen: Vec::new(),
+            marks: RowMarks::default(),
+            reads: SourceReads::default(),
+            refill: true,
             relations: Relations::default(),
             metric: Metric::default(),
             bounds: Bounds::WORLD,
@@ -358,15 +532,26 @@ impl View {
         self.0.borrow().consts.action(id)
     }
 
-    /// Adds how a capability fills its fields of each row, from the parts `D` of `world`'s units,
-    /// after those added before it.
-    pub(crate) fn add_source<D: ReadOnlyQueryData + 'static>(
+    /// Adds how a capability fills its column of each row, and its fields of the core row,
+    /// from the parts `D` of `world`'s units, after those added before it. Its column comes
+    /// first.
+    pub(crate) fn add_source<D: RowParts, C: ViewColumn>(
         &self,
         world: &mut World,
-        fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_>),
+        fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_, C>),
     ) {
-        let source = RowSource::<D>::new(world, fill);
-        self.0.borrow_mut().sources.push(Box::new(source));
+        let mut view = self.0.borrow_mut();
+        assert!(
+            view.sources.len() < RowMarks::SOURCES - 1,
+            "the marks have room for every source and the core"
+        );
+        let column = view
+            .columns
+            .index_of::<C>()
+            .expect("a capability adds its column before its source");
+        let source = RowSource::<D, C>::new(world, column, fill);
+        view.sources.push(Box::new(source));
+        view.refill = true;
     }
 
     /// Adds `column`, which a source fills.
@@ -380,7 +565,25 @@ impl View {
     }
 
     /// Changes the column of type `C` by `write`, when one was added.
+    /// The next read fills every row again, as the rows may derive from what `write` changes.
     pub(crate) fn column_mut<C: ViewColumn>(&self, write: impl FnOnce(&mut C)) {
+        let view = &mut *self.0.borrow_mut();
+        if let Some(column) = view.columns.get_mut() {
+            write(column);
+            view.refill = true;
+        }
+    }
+
+    /// Makes the next read fill every row. Bevy clamps each change tick older than it compares
+    /// exactly as it checks the world's ticks, but not the last read of the view's queries of
+    /// changed parts, so after a check those queries may miss a change.
+    pub(crate) fn refill_next(&self) {
+        self.0.borrow_mut().refill = true;
+    }
+
+    /// Changes the rows of the column of type `C` by `write`, as a call's effect changes the
+    /// units' parts too, which the next read finds changed.
+    pub(crate) fn write_rows<C: ViewColumn>(&self, write: impl FnOnce(&mut C)) {
         if let Some(column) = self.0.borrow_mut().columns.get_mut() {
             write(column);
         }
@@ -494,14 +697,14 @@ impl View {
 
     /// The living targets whose bodies come within `radius` of `pos` in the map's metric, as an
     /// area of that radius reaches, that `filter` selects relative to `of`, and `seen` lets by
-    /// their rows, by stable id.
+    /// the view's columns and their rows, by stable id.
     pub(crate) fn find(
         &self,
         of: &Unit,
         pos: Position,
         radius: Num,
         filter: &str,
-        seen: impl Fn(usize) -> bool,
+        seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> Checked<Array> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
@@ -518,7 +721,7 @@ impl View {
             let reaches = view
                 .metric
                 .reaches(pos, Num::ZERO, radius, body.at, body.radius);
-            if reaches && filter.selects(attitude, row.tags.tags) && seen(body.key) {
+            if reaches && filter.selects(attitude, row.tags.tags) && seen(&view.columns, body.key) {
                 found.push(body.key);
             }
         });
@@ -529,14 +732,14 @@ impl View {
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
     /// metric, as a weapon's range does, that `filter` selects relative to it and `seen` lets by
-    /// its row, by exact distance between centres, the lower stable id on a tie; `()` when there
-    /// is none.
+    /// the view's columns and its row, by exact distance between centres, the lower stable id on
+    /// a tie; `()` when there is none.
     pub(crate) fn nearest(
         &self,
         of: &Unit,
         radius: Num,
         filter: &str,
-        seen: impl Fn(usize) -> bool,
+        seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> Checked<Dynamic> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
@@ -553,7 +756,10 @@ impl View {
             let reaches = view
                 .metric
                 .reaches(of.pos, of.radius, radius, body.at, body.radius);
-            if !(reaches && filter.selects(attitude, row.tags.tags) && seen(body.key)) {
+            if !(reaches
+                && filter.selects(attitude, row.tags.tags)
+                && seen(&view.columns, body.key))
+            {
                 return;
             }
             let distance = view.metric.offset(of.pos, body.at).length_squared_bits();
@@ -578,14 +784,14 @@ impl View {
         api.bind(
             find,
             |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
-                ctx.view().find(&of, pos, radius, filter, |_| true)
+                ctx.view().find(&of, pos, radius, filter, |_, _| true)
             },
         )
         .bind(
             find,
             |ctx: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
                 let radius = ApiError::num(radius)?;
-                ctx.view().find(&of, pos, radius, filter, |_| true)
+                ctx.view().find(&of, pos, radius, filter, |_, _| true)
             },
         );
     }

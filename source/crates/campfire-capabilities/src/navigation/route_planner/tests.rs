@@ -1,3 +1,6 @@
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
 

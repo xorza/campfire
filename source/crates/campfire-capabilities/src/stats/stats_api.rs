@@ -47,20 +47,18 @@ impl StatsApi {
         .bind(
             method("stat", "(name)", "its value of a stat the mode declares")
                 .name(0, NameKind::Stat),
-            |unit: &mut Unit, name: &str| {
-                StatsColumn::stat_named(unit.view(), unit.row_index(), name)
-            },
+            |unit: Unit, name: &str| StatsColumn::stat_named(unit.view(), unit.row_index(), name),
         )
         .bind(
             method("pool", "(name)", "the current amount of its pool `name`")
                 .name(0, NameKind::Pool),
-            |unit: &mut Unit, name: &str| {
+            |unit: Unit, name: &str| {
                 StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::current)
             },
         )
         .bind(
             method("pool_max", "(name)", "the maximum of its pool `name`").name(0, NameKind::Pool),
-            |unit: &mut Unit, name: &str| {
+            |unit: Unit, name: &str| {
                 StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::max)
             },
         )
@@ -71,7 +69,7 @@ impl StatsApi {
                 "whether it carries the modifier of the script's package",
             )
             .name(0, NameKind::Modifier),
-            |call: NativeCallContext<'_>, unit: &mut Unit, id: &str| {
+            |call: NativeCallContext<'_>, unit: Unit, id: &str| {
                 let package = Ctx::of_call(&call).frame().package();
                 StatsColumn::has_modifier(unit.view(), unit.row_index(), package, id)
             },

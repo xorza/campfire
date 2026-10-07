@@ -4,6 +4,54 @@ fn at(x: Num, z: Num) -> Position {
     Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
 }
 
+/// `SplitMix64` from `seed`: draws that every run repeats.
+fn split_mix(seed: u64) -> impl FnMut() -> u64 {
+    let mut state = seed;
+    move || {
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+}
+
+/// The cells `Grid::touches` visits from `from` to `to`, each column's rows found by dividing
+/// its span's ends, as the walk did before it carried its quotient.
+fn touched_by_division(grid: &Grid, from: Position, to: Position) -> Vec<usize> {
+    let min = grid.bounds.min().map(|axis| i128::from(axis.to_bits()));
+    let ground = |pos: Position| {
+        let at = pos.get();
+        [
+            i128::from(at.x.to_bits()) - min[0],
+            i128::from(at.z.to_bits()) - min[1],
+        ]
+    };
+    let (mut a, mut b) = (ground(from), ground(to));
+    if a[0] > b[0] {
+        (a, b) = (b, a);
+    }
+    let cell = i128::from(grid.cell.to_bits());
+    let last = |axis: usize| i128::from(grid.size[axis]) - 1;
+    let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+    let mut cells = Vec::new();
+    for column in (ceil_div(a[0], cell) - 1).max(0)..=b[0].div_euclid(cell).min(last(0)) {
+        let (z_low, z_high, scale) = if dx == 0 {
+            (a[1].min(b[1]), a[1].max(b[1]), cell)
+        } else {
+            let at = |x: i128| a[1] * dx + (x - a[0]) * dz;
+            let start = at(a[0].max(column * cell));
+            let end = at(b[0].min((column + 1) * cell));
+            (start.min(end), start.max(end), dx * cell)
+        };
+        for row in (ceil_div(z_low, scale) - 1).max(0)..=z_high.div_euclid(scale).min(last(1)) {
+            let at = row * i128::from(grid.size[0]) + column;
+            cells.push(usize::try_from(at).unwrap());
+        }
+    }
+    cells
+}
+
 #[test]
 fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
     // 1 m cells over (−2, −1) to (2, 1.5): 4 along x, 3 along z, the last row half outside.
@@ -121,14 +169,7 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
     // meters. Discs centered on and off the grid, on cell lines and between, of radii from 0 to
     // the gate's last, within and strictly closer; and the gate's edges.
     let bounds = Bounds::new([Num::int(-48), Num::int(-68)], [Num::int(48), Num::int(68)]).unwrap();
-    let mut state = 0x5EED_u64;
-    let mut next = move || {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    };
+    let mut next = split_mix(0x5EED);
     for cell in [Num::ONE, Num::HALF] {
         let grid = Grid::new(cell, bounds).unwrap();
         let bits = cell.to_bits();
@@ -207,6 +248,50 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
     // at x = 2, on the line between rows 0 and 1, and 4/3 at x = 3; either way round.
     assert_eq!(touched([1, 1], [7, 3]), [0, 1, 5, 2, 6, 7]);
     assert_eq!(touched([7, 3], [1, 1]), [0, 1, 5, 2, 6, 7]);
+    // On grids of 1 m, half-meter and 0.3 m cells, whose last column and row reach past the
+    // bounds, segments of every slope, on and off the lines between cells, and points, within
+    // the grid and past each of its sides, visit the cells that dividing each column's span
+    // gives, in its order.
+    let mut next = split_mix(0x70C4);
+    for cell in [
+        Num::ONE,
+        Num::HALF,
+        Num::from_bits(Num::ONE.to_bits() * 3 / 10),
+    ] {
+        let bounds = Bounds::new([Num::int(-7), Num::int(-5)], [Num::int(9), Num::int(6)]).unwrap();
+        let grid = Grid::new(cell, bounds).unwrap();
+        let bits = cell.to_bits().cast_unsigned();
+        for case in 0..2000 {
+            let mut along = |low: i64, high: i64| {
+                let span = (high - low).cast_unsigned() * Num::ONE.to_bits().cast_unsigned();
+                let offset = next() % (span + 1);
+                // One point in four on a line between cells.
+                let offset = if case % 4 == 0 {
+                    offset - offset % bits
+                } else {
+                    offset
+                };
+                Num::int(low) + Num::from_bits(offset.cast_signed())
+            };
+            let from = at(along(-12, 14), along(-9, 10));
+            let to = match case % 5 {
+                0 => from,
+                1 => at(from.get().x, along(-5, 6)),
+                _ => at(along(-12, 14), along(-9, 10)),
+            };
+            let mut cells = Vec::new();
+            grid.touches(from, to, |cell| {
+                cells.push(cell);
+                false
+            });
+            assert_eq!(
+                cells,
+                touched_by_division(&grid, from, to),
+                "{from:?} {to:?}"
+            );
+        }
+    }
+
     // The visit ends at the first hit.
     let mut seen = 0;
     assert!(

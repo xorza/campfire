@@ -55,36 +55,63 @@ fn a_box_visits_the_bodies_of_the_cells_it_covers_grown_by_the_widest() {
 #[test]
 fn a_box_meets_every_body_whose_square_overlaps_it() {
     let mut ids = IdAllocator::default();
-    // A lattice 0.7 m apart from -5.6 to 5.6 m, radii 0 to 1.2 m.
-    let mut bodies = Vec::new();
+    // A lattice 0.7 m apart from -5.6 to 5.6 m, radii 0 to 1.2 m: cells of 2.4 m, rows -3 to 2.
+    let mut lattice = Vec::new();
     for row in -8_i64..=8 {
         for column in -8..=8 {
             let radius = (row * 3 + column * 5).rem_euclid(13);
-            bodies.push(placed(&mut ids, [column * 7, row * 7], radius));
+            lattice.push(placed(&mut ids, [column * 7, row * 7], radius));
         }
     }
-    let mut grid = BodyGrid::default();
-    grid.rebuild(bodies.iter().copied());
-    for (low, high) in [
-        ([0, 0], [0, 0]),
-        ([-13, 4], [9, 21]),
-        ([-60, -60], [60, 60]),
-        ([-200, -3], [200, 3]),
-        ([33, -47], [34, -46]),
-    ] {
-        let got = visited(&grid, low, high);
-        let overlaps = |body: &&Placed<()>| {
-            let at = body.at.get();
-            let near = |axis: Num, low: i64, high: i64| {
-                m(low) <= axis + body.radius && axis - body.radius <= m(high)
+    // Two points 50 km away either way spread the rows over 41 668, more than 4 × 291 + 64 =
+    // 1228, so the grid keeps no row starts and searches all its bodies for each row.
+    let far = [-500_000, 500_000].map(|z| placed(&mut ids, [0, z], 0));
+    for outliers in [false, true] {
+        let mut bodies = lattice.clone();
+        if outliers {
+            bodies.extend(far);
+        }
+        let mut grid = BodyGrid::default();
+        grid.rebuild(bodies.iter().copied());
+        let kept = grid.rows.row((), 0);
+        assert_eq!(matches!(kept, Some(RowEntries::Layer(_))), outliers);
+        for (low, high) in [
+            ([0, 0], [0, 0]),
+            ([-13, 4], [9, 21]),
+            ([-60, -60], [60, 60]),
+            ([-200, -3], [200, 3]),
+            ([33, -47], [34, -46]),
+            // Past the last row, in part and wholly.
+            ([0, 50], [10, 300]),
+            ([0, 500], [10, 600]),
+        ] {
+            let got = visited(&grid, low, high);
+            let overlaps = |body: &&Placed<()>| {
+                let at = body.at.get();
+                let near = |axis: Num, low: i64, high: i64| {
+                    m(low) <= axis + body.radius && axis - body.radius <= m(high)
+                };
+                near(at.x, low[0], high[0]) && near(at.z, low[1], high[1])
             };
-            near(at.x, low[0], high[0]) && near(at.z, low[1], high[1])
-        };
-        for body in bodies.iter().filter(overlaps) {
-            assert!(
-                got.binary_search(&body.id).is_ok(),
-                "{low:?} {high:?} {body:?}"
-            );
+            for body in bodies.iter().filter(overlaps) {
+                assert!(
+                    got.binary_search(&body.id).is_ok(),
+                    "{low:?} {high:?} {body:?}"
+                );
+            }
+            // Exactly the bodies of the cells the box covers grown by the widest body, 1.2 m,
+            // whether row starts or searches find them.
+            let cell = |tenths: Num| tenths.to_bits().div_euclid(grid.cell);
+            let inside = |body: &&Placed<()>| {
+                let at = body.at.get();
+                let within = |axis: Num, low: i64, high: i64| {
+                    (cell(m(low) - m(12))..=cell(m(high) + m(12))).contains(&cell(axis))
+                };
+                within(at.x, low[0], high[0]) && within(at.z, low[1], high[1])
+            };
+            let mut expected: Vec<_> = bodies.iter().filter(inside).map(|body| body.id).collect();
+            expected.sort_unstable();
+            assert_eq!(got, expected, "{low:?} {high:?}");
         }
     }
 }

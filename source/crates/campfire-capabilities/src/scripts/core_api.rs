@@ -1,5 +1,5 @@
 use campfire_math::Num;
-use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
+use campfire_script::rhai::{Array, Dynamic, INT};
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -57,7 +57,7 @@ impl CoreApi {
             Status::Runs(ApiVersion::FIRST),
         );
         api.ty::<Params>("Params")
-            .index(|params: &mut Params, name: ImmutableString| params.get(&name));
+            .index(|params: &mut Params, name: &str| params.get(name));
     }
 
     /// Draws whether a chance of `p` comes true, on the running call's sequence.

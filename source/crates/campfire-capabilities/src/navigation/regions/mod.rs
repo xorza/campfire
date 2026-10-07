@@ -25,9 +25,21 @@ pub(crate) struct Regions {
     chunks: Vec<Chunk>,
     /// The number of each chunk's first region among all, chunk after chunk, and past the last.
     starts: Vec<u32>,
-    /// The cells a flood fill has yet to spread from, and each region's parent as regions join.
-    stack: Vec<usize>,
+    /// A chunk's runs of open cells as it is labeled, each run's parent as runs join and its
+    /// label, and each region's parent as regions join.
+    runs: Vec<Run>,
+    run_parents: Vec<u32>,
+    run_labels: Vec<u16>,
     parents: Vec<u32>,
+}
+
+/// A run of a chunk's open cells along one row: its row, and its columns from `start` to before
+/// `end`, counted from the chunk's first.
+#[derive(Debug, Clone, Copy)]
+struct Run {
+    row: u32,
+    start: u32,
+    end: u32,
 }
 
 /// One chunk's regions, by label, and the pairs of regions that touch across its right and lower
@@ -96,7 +108,9 @@ impl Regions {
             local: vec![0; columns * rows],
             chunks: vec![Chunk::default(); chunks],
             starts: Vec::with_capacity(chunks + 1),
-            stack: Vec::new(),
+            runs: Vec::new(),
+            run_parents: Vec::new(),
+            run_labels: Vec::new(),
             parents: Vec::new(),
         };
         regions.build(blocked, |_| true);
@@ -259,55 +273,90 @@ impl Regions {
         self.join();
     }
 
-    /// Splits the open cells of `chunk` into regions by flood fill along sides, numbered in the
-    /// order of their first cell, row by row, in place of its regions.
+    /// Splits the open cells of `chunk` into regions of cells that touch along a side, numbered
+    /// in the order of their first cell, row by row, in place of its regions. Each row's open
+    /// cells, one word for the chunk's row, split into runs; a run joins each run of the row
+    /// before it overlaps, the earlier run the root, so each region's root is its first run,
+    /// which holds its first cell.
     fn label(&mut self, chunk: usize, blocked: &[u64]) {
-        let open = |cell: usize| blocked[cell / 64] & 1 << (cell % 64) == 0;
         let [columns, rows] = self.bounds(chunk);
+        let width = columns.end - columns.start;
+        let full = if width == 64 {
+            u64::MAX
+        } else {
+            (1 << width) - 1
+        };
+        self.runs.clear();
+        self.run_parents.clear();
+        let mut before = 0..0;
         for row in rows.clone() {
-            let first = row * self.columns;
-            self.local[first + columns.start..first + columns.end].fill(0);
+            let first = row * self.columns + columns.start;
+            self.local[first..first + width].fill(0);
+            let mut open = !Regions::bits(blocked, first) & full;
+            let here = self.runs.len();
+            let mut above = before.start;
+            while open != 0 {
+                let start = open.trailing_zeros();
+                let end = start + (!(open >> start)).trailing_zeros();
+                open &= u64::MAX.checked_shl(end).unwrap_or(0);
+                let at = u32::try_from(self.runs.len()).expect("a chunk's runs fit u32");
+                self.runs.push(Run {
+                    row: u32::try_from(row).expect("a grid has at most 2²² cells"),
+                    start,
+                    end,
+                });
+                self.run_parents.push(at);
+                // The runs of the row before that overlap this one, which share a side with it.
+                while above < before.end && self.runs[above].end <= start {
+                    above += 1;
+                }
+                let mut over = above;
+                while over < before.end && self.runs[over].start < end {
+                    let earlier = u32::try_from(over).expect("a chunk's runs fit u32");
+                    Regions::unite(&mut self.run_parents, earlier, at);
+                    over += 1;
+                }
+            }
+            before = here..self.runs.len();
         }
         let mut regions = mem::take(&mut self.chunks[chunk].regions);
         regions.clear();
-        let mut label = 0;
-        for row in rows.clone() {
-            for column in columns.clone() {
-                let seed = row * self.columns + column;
-                if self.local[seed] != 0 || !open(seed) {
-                    continue;
-                }
-                label += 1;
-                let narrow =
-                    |value: usize| u32::try_from(value).expect("a grid has at most 2²² cells");
-                let mut region = Region {
-                    low: [narrow(column), narrow(row)],
-                    high: [narrow(column), narrow(row)],
-                    set: 0,
-                };
-                self.local[seed] = label;
-                self.stack.push(seed);
-                while let Some(cell) = self.stack.pop() {
-                    let (x, z) = (cell % self.columns, cell / self.columns);
-                    region.low = [region.low[0].min(narrow(x)), region.low[1].min(narrow(z))];
-                    region.high = [region.high[0].max(narrow(x)), region.high[1].max(narrow(z))];
-                    let beside = [
-                        (x > columns.start).then(|| cell - 1),
-                        (x + 1 < columns.end).then(|| cell + 1),
-                        (z > rows.start).then(|| cell - self.columns),
-                        (z + 1 < rows.end).then(|| cell + self.columns),
-                    ];
-                    for next in beside.into_iter().flatten() {
-                        if self.local[next] == 0 && open(next) {
-                            self.local[next] = label;
-                            self.stack.push(next);
-                        }
-                    }
-                }
-                regions.push(region);
-            }
+        self.run_labels.clear();
+        let column = u32::try_from(columns.start).expect("a grid has at most 2²² cells");
+        for at in 0..self.runs.len() {
+            let run = self.runs[at];
+            let number = u32::try_from(at).expect("a chunk's runs fit u32");
+            let root = Regions::root(&mut self.run_parents, number) as usize;
+            let (low, high) = (
+                [column + run.start, run.row],
+                [column + run.end - 1, run.row],
+            );
+            let label = if root == at {
+                regions.push(Region { low, high, set: 0 });
+                u16::try_from(regions.len()).expect("a chunk has at most 2¹² regions")
+            } else {
+                let label = self.run_labels[root];
+                let region = &mut regions[usize::from(label) - 1];
+                region.low = [region.low[0].min(low[0]), region.low[1].min(low[1])];
+                region.high = [region.high[0].max(high[0]), region.high[1].max(high[1])];
+                label
+            };
+            self.run_labels.push(label);
+            let first = run.row as usize * self.columns + columns.start;
+            self.local[first + run.start as usize..first + run.end as usize].fill(label);
         }
         self.chunks[chunk].regions = regions;
+    }
+
+    /// The 64 cells' bits of `blocked` from cell `at` on.
+    fn bits(blocked: &[u64], at: usize) -> u64 {
+        let (word, shift) = (at / 64, at % 64);
+        let low = blocked[word] >> shift;
+        let high = match blocked.get(word + 1) {
+            Some(&next) if shift > 0 => next << (64 - shift),
+            _ => 0,
+        };
+        low | high
     }
 
     /// Finds the pairs of regions whose cells touch across `chunk`'s right and lower sides, in
@@ -369,7 +418,7 @@ impl Regions {
         }
     }
 
-    /// Joins the regions numbered `a` and `b` in `parents`, the lower number the root.
+    /// Joins the regions, or runs, numbered `a` and `b` in `parents`, the lower number the root.
     fn unite(parents: &mut [u32], a: u32, b: u32) {
         let (first, second) = (Regions::root(parents, a), Regions::root(parents, b));
         let (low, high) = (first.min(second), first.max(second));

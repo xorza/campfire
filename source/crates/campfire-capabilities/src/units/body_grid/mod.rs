@@ -1,20 +1,25 @@
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
+use crate::values::row_directory::{RowDirectory, RowEntries};
+
 /// The bodies of a stage, as a sorted index of cells of the ground plane: a query of a box visits
 /// the bodies of the cells it covers, grown by the widest body, so it meets every body that may
 /// reach into the box, each once, and few others. A sort, not a grid over the map, as a map may
 /// be wide and its bodies few, as the broadphase finds its pairs. A cell is twice the widest
 /// body's radius, a meter at least. Its buffer stays between builds, so a build allocates nothing
-/// once it has grown, and costs `n log n`; a query costs a search for each row of cells it
-/// covers, and never more than a pass over every body.
+/// once it has grown, and costs `n log n`; a query finds the bodies of each row of cells it
+/// covers from where each row starts, searches only those, and never costs more than a pass over
+/// every body. A grid whose rows spread far wider than its bodies keeps no row starts, and a
+/// query searches all its bodies for each row.
 #[derive(Debug)]
 pub(crate) struct BodyGrid<K> {
     /// A cell's side, in raw units.
     cell: i64,
     widest: Num,
-    /// Sorted by row, then column, then stable id.
+    /// Sorted by row, then column, then stable id, and where each row starts, as one layer.
     entries: Vec<GridBody<K>>,
+    rows: RowDirectory<()>,
 }
 
 /// A body of the grid: its unit, the key its reader finds the unit by, where it stands, its
@@ -45,6 +50,7 @@ impl<K> Default for BodyGrid<K> {
             cell: 0,
             widest: Num::ZERO,
             entries: Vec::new(),
+            rows: RowDirectory::default(),
         }
     }
 }
@@ -81,6 +87,8 @@ impl<K: Copy> BodyGrid<K> {
         }
         self.entries
             .sort_unstable_by_key(|body| (body.row, body.column, body.id));
+        self.rows
+            .rebuild(self.entries.iter().map(|body| ((), body.row)));
     }
 
     /// Calls `visit` with each body whose disc may reach into the box of the ground plane from
@@ -104,14 +112,17 @@ impl<K: Copy> BodyGrid<K> {
             self.entries.iter().filter(inside).for_each(visit);
             return;
         }
-        for row in rows.clone() {
-            let start = self
-                .entries
-                .partition_point(|body| (body.row, body.column) < (row, *columns.start()));
-            let run = self.entries[start..]
-                .iter()
-                .take_while(|body| body.row == row && body.column <= *columns.end());
-            run.for_each(&mut visit);
+        let (first, last) = self.rows.span(()).expect("the grid holds bodies");
+        for row in *rows.start().max(&first)..=*rows.end().min(&last) {
+            let Some(found) = self.rows.row((), row) else {
+                continue;
+            };
+            let (RowEntries::Row(run) | RowEntries::Layer(run)) = found;
+            let run = &self.entries[run];
+            let start =
+                run.partition_point(|body| (body.row, body.column) < (row, *columns.start()));
+            let end = run.partition_point(|body| (body.row, body.column) <= (row, *columns.end()));
+            run[start..end].iter().for_each(&mut visit);
         }
     }
 

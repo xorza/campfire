@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use criterion::{Criterion, Throughput};
 
@@ -20,7 +20,9 @@ const SIGHT: i64 = 10;
 /// runs it: each unit reveals the cells within its 10 m sight on a grid of 1 m cells with no
 /// brush, then each learns the teams that see it. Each sight reveals as many cells however close
 /// the units stand, so one density serves, the spread one; the grid reaches a sight past it, so
-/// no sight is cut at its edge.
+/// no sight is cut at its edge. In `sight` every unit moved since the tick before, a bit along x
+/// and back by turns, so each finds its sight's runs on the grid; in `still` none did, so each
+/// takes its runs again.
 pub(crate) fn fog(c: &mut Criterion) {
     let span = Density::Spread.span();
     let mut scene = KernelScene::new(11);
@@ -44,22 +46,38 @@ pub(crate) fn fog(c: &mut Criterion) {
     fog.rebuild(&vision, &Relations::default());
     let mut seen = Vec::with_capacity(KernelScene::UNITS);
 
+    let moved: Vec<(Position, Team)> = units
+        .iter()
+        .map(|&(at, team)| {
+            let step = Vec3::new(Num::EPSILON, Num::ZERO, Num::ZERO);
+            (Position::new(at.get() + step).unwrap(), team)
+        })
+        .collect();
+    let mut tick = |fog: &mut Fog, units: &[(Position, Team)]| {
+        fog.begin_tick();
+        for (slot, &(pos, team)) in units.iter().enumerate() {
+            fog.sight(&vision, slot, pos, team, range, false);
+        }
+        seen.clear();
+        seen.extend(
+            units
+                .iter()
+                .map(|&(pos, team)| fog.seen_by(&vision, pos, team, false)),
+        );
+        black_box(&seen);
+    };
+
     let mut group = c.benchmark_group("fog");
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
+    let mut turn = false;
     group.bench_function("sight", |bench| {
         bench.iter(|| {
-            fog.begin_tick();
-            for &(pos, team) in &units {
-                fog.sight(&vision, pos, team, range, false);
-            }
-            seen.clear();
-            seen.extend(
-                units
-                    .iter()
-                    .map(|&(pos, team)| fog.seen_by(&vision, pos, team, false)),
-            );
-            black_box(&seen);
+            turn = !turn;
+            tick(&mut fog, if turn { &moved } else { &units });
         });
+    });
+    group.bench_function("still", |bench| {
+        bench.iter(|| tick(&mut fog, &units));
     });
     group.finish();
 }

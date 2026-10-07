@@ -104,7 +104,7 @@ impl Navigation {
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(NavigationColumn::default());
-        view.add_source::<RowParts>(world, fill_row);
+        view.add_source::<RowParts, _>(world, fill_row);
         world.insert_resource(Paths::default());
         world.insert_resource(Bounds::WORLD);
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
@@ -194,9 +194,12 @@ type RowParts = (Option<&'static OnPath>, Has<MoveStep>);
 
 /// Fills a row of the script view with the path the unit walks or stands on, and whether it
 /// walks.
-fn fill_row((path, walks): ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+fn fill_row(
+    (path, walks): ROQueryItem<'_, '_, RowParts>,
+    fill: &mut RowFill<'_, NavigationColumn>,
+) {
     let path = path.map(|path| path.get());
-    fill.column::<NavigationColumn>().push(path, walks);
+    fill.column.push(path, walks);
 }
 
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route

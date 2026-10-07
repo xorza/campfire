@@ -1,21 +1,14 @@
 use std::fmt;
 
-use blake3::Hasher;
 use postcard::ser_flavors::Flavor;
 use serde::Serialize;
 
-/// Postcard writes a byte at a time; batching them keeps BLAKE3 from paying per byte.
+/// Postcard writes a byte at a time; batching them spares the sink a call per byte.
 const BUFFER: usize = 64;
 
-/// Where encoded state goes: a hasher for the state hash, bytes for a snapshot.
+/// Where encoded state goes: a hash sink for the state hash, bytes for a snapshot.
 pub(crate) trait Sink: fmt::Debug {
     fn put(&mut self, bytes: &[u8]);
-}
-
-impl Sink for Hasher {
-    fn put(&mut self, bytes: &[u8]) {
-        self.update(bytes);
-    }
 }
 
 impl Sink for Vec<u8> {
@@ -35,15 +28,31 @@ pub(crate) struct Writer<'a> {
 impl Writer<'_> {
     /// Writes the postcard encoding of `value` into `sink`.
     pub(crate) fn write<T: Serialize>(sink: &mut dyn Sink, value: &T) {
-        postcard::serialize_with_flavor(
-            value,
-            Writer {
+        Writer::write_each(sink, [value]);
+    }
+
+    /// Writes the postcard encoding of each of `values` into `sink`, one after another, through
+    /// one writer.
+    pub(crate) fn write_each<T: Serialize>(
+        sink: &mut dyn Sink,
+        values: impl IntoIterator<Item = T>,
+    ) {
+        let mut serializer = postcard::Serializer {
+            output: Writer {
                 sink,
                 buffer: [0; BUFFER],
                 len: 0,
             },
-        )
-        .expect("postcard into a sink cannot fail");
+        };
+        for value in values {
+            value
+                .serialize(&mut serializer)
+                .expect("postcard into a sink cannot fail");
+        }
+        serializer
+            .output
+            .finalize()
+            .expect("postcard into a sink cannot fail");
     }
 }
 

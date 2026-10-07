@@ -49,7 +49,7 @@ fn functions(engine: &Engine) -> Vec<(String, Option<TypeId>)> {
 fn the_registry_holds_exactly_what_the_engine_binds() {
     let mut host = ScriptHost::new(1);
     let before = functions(host.engine_mut());
-    let api = ScriptApi::bind(host.engine_mut(), CapabilitySet::apis());
+    let api = ScriptApi::bind(&mut host, CapabilitySet::apis());
     let mut bound: Vec<String> = functions(host.engine_mut())
         .into_iter()
         .filter(|function| !before.contains(function))

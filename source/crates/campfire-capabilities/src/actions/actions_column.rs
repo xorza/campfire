@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
@@ -13,6 +14,7 @@ use crate::actions::slot_kinds::SlotKinds;
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
+use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
 use crate::units::view_column::ViewColumn;
@@ -24,6 +26,12 @@ use crate::units::view_column::ViewColumn;
 pub(crate) struct ActionsColumn {
     book: ActionBook,
     kinds: SlotKinds,
+    rows: KeptRows<ActionsRows>,
+}
+
+/// The rows of one read of the actions column.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ActionsRows {
     rows: Vec<ActionsRow>,
     slots: Vec<SlotRow>,
 }
@@ -48,13 +56,56 @@ pub(crate) struct SlotRow {
 }
 
 impl ViewColumn for ActionsColumn {
+    fn begin(&mut self, _: &World) -> bool {
+        self.rows.begin();
+        false
+    }
+
+    fn keep(&mut self, rows: Range<usize>) {
+        self.rows.keep(rows);
+    }
+
+    fn rows(&self) -> usize {
+        self.rows.len()
+    }
+
+    fn same_as_kept(&self) -> bool {
+        self.rows.same_as_kept()
+    }
+}
+
+impl ColumnRows for ActionsRows {
     fn clear(&mut self) {
         self.rows.clear();
         self.slots.clear();
     }
 
-    fn rows(&self) -> usize {
+    fn push_from(&mut self, from: &Self, rows: Range<usize>) {
+        let (first, end) = (
+            from.rows[rows.start].slots.start,
+            from.rows[rows.end - 1].slots.end,
+        );
+        let moved = RunMove::new(first, self.slots.len());
+        self.rows
+            .extend(from.rows[rows].iter().map(|row| ActionsRow {
+                target: row.target,
+                attack_range: row.attack_range,
+                slots: moved.of(&row.slots),
+            }));
+        self.slots
+            .extend_from_slice(&from.slots[first as usize..end as usize]);
+    }
+
+    fn len(&self) -> usize {
         self.rows.len()
+    }
+}
+
+impl ActionsRows {
+    /// The run of slots of the unit in row `row`.
+    fn slots(&self, row: usize) -> &[SlotRow] {
+        let slots = &self.rows[row].slots;
+        &self.slots[slots.start as usize..slots.end as usize]
     }
 }
 
@@ -62,23 +113,23 @@ impl ActionsColumn {
     /// Adds the row of a unit with `slots`, or with none: each slot's rank, its action's ranks
     /// and its weapon filter, the attack target, and the range of its first weapon.
     pub(crate) fn push(&mut self, slots: Option<&ActionSlots>) {
-        let start = u32::try_from(self.slots.len()).expect("slots fit u32");
+        let (book, rows) = (&self.book, self.rows.now_mut());
+        let start = u32::try_from(rows.slots.len()).expect("slots fit u32");
         let Some(slots) = slots else {
-            self.rows.push(ActionsRow {
+            rows.rows.push(ActionsRow {
                 target: None,
                 attack_range: None,
                 slots: start..start,
             });
             return;
         };
-        let book = &self.book;
         let attack_range = book.weapon_for(slots, None).map(|slot| {
             let range::Range::Meters(range) = book.range(slots, slot) else {
                 panic!("the load gives every attack a range in meters");
             };
             range
         });
-        self.slots.extend(slots.iter().map(|slot| {
+        rows.slots.extend(slots.iter().map(|slot| {
             let action = slot
                 .action
                 .map(|action| book.get(action).expect("a slot's action is in the book"));
@@ -91,8 +142,8 @@ impl ActionsColumn {
                 weapon: action.and_then(Action::weapon_filter),
             }
         }));
-        let end = u32::try_from(self.slots.len()).expect("slots fit u32");
-        self.rows.push(ActionsRow {
+        let end = u32::try_from(rows.slots.len()).expect("slots fit u32");
+        rows.rows.push(ActionsRow {
             target: slots.attack_target(),
             attack_range,
             slots: start..end,
@@ -173,17 +224,17 @@ impl ActionsColumn {
 
     /// The unit the attacks of the unit in row `row` aim at.
     pub(crate) fn target(view: &View, row: usize) -> Option<StableId> {
-        ActionsColumn::read(view, |column| column.rows[row].target)
+        ActionsColumn::read(view, |column| column.rows.now().rows[row].target)
     }
 
     /// The range of the first weapon of the unit in row `row`, in meters; none with no weapon.
     pub(crate) fn attack_range(view: &View, row: usize) -> Option<Num> {
-        ActionsColumn::read(view, |column| column.rows[row].attack_range)
+        ActionsColumn::read(view, |column| column.rows.now().rows[row].attack_range)
     }
 
     /// How many ability slots the unit in row `row` has.
     pub(crate) fn slot_count(view: &View, row: usize) -> usize {
-        ActionsColumn::read(view, |column| column.rows[row].slots.len())
+        ActionsColumn::read(view, |column| column.rows.now().rows[row].slots.len())
     }
 
     /// Ability slot `slot` of the unit in row `row`, when it has one.
@@ -218,7 +269,6 @@ impl ActionsColumn {
 
     /// The ability slots of the unit in row `row`.
     fn run(&self, row: usize) -> &[SlotRow] {
-        let slots = &self.rows[row].slots;
-        &self.slots[slots.start as usize..slots.end as usize]
+        self.rows.now().slots(row)
     }
 }

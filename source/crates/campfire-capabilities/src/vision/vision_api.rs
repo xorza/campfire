@@ -76,8 +76,8 @@ impl VisionApi {
             "whether its team sees the other unit",
         )
         .capability(Capability::Vision);
-        api.bind(can_see, |unit: &mut Unit, other: Unit| {
-            VisionColumn::can_see(unit, &other)
+        api.bind(can_see, |unit: Unit, other: Unit| {
+            VisionColumn::can_see(&unit, &other)
         });
         let visible = MemberSpec::call(
             "find_visible",

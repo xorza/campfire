@@ -20,6 +20,7 @@ pub(crate) mod polygon;
 pub(crate) mod ranked;
 pub(crate) mod region;
 pub(crate) mod relation;
+pub(crate) mod row_directory;
 pub(crate) mod scalar;
 pub(crate) mod script_enum;
 pub(crate) mod share;

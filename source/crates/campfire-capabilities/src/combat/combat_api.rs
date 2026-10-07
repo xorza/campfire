@@ -136,8 +136,8 @@ impl CombatApi {
             "the living units that struck it within the last `ms`, rounded up to whole ticks",
         )
         .capability(Capability::Combat);
-        api.bind(recent_attackers, |unit: &mut Unit, ms: INT| {
-            CombatColumn::recent_attackers(unit, ms)
+        api.bind(recent_attackers, |unit: Unit, ms: INT| {
+            CombatColumn::recent_attackers(&unit, ms)
         });
     }
 

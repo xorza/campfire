@@ -207,7 +207,7 @@ impl CapabilitySet {
         Units::install(world, schedule, registry, budgets);
         Actions::install(world, registry);
         if let Some(mut host) = world.get_non_send_mut::<ScriptHost>() {
-            ScriptApi::bind(host.engine_mut(), CapabilitySet::apis());
+            ScriptApi::bind(&mut host, CapabilitySet::apis());
         }
         MatchEnd::stop_stages(schedule);
         for row in CAPABILITIES {

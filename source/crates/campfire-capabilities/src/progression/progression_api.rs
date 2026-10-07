@@ -63,7 +63,7 @@ impl ProgressionApi {
                 "its experience on `track`, one of its unit type's",
             )
             .name(0, NameKind::Track),
-            |unit: &mut Unit, track: &str| {
+            |unit: Unit, track: &str| {
                 let view = unit.view();
                 let track = ProgressionColumn::track_named(view, track)?;
                 ProgressionColumn::xp(view, unit.row_index(), track)
@@ -76,7 +76,7 @@ impl ProgressionApi {
                 "its level on `track`, one of its unit type's",
             )
             .name(0, NameKind::Track),
-            |unit: &mut Unit, track: &str| -> Checked<INT> {
+            |unit: Unit, track: &str| -> Checked<INT> {
                 let view = unit.view();
                 let track = ProgressionColumn::track_named(view, track)?;
                 let level = ProgressionColumn::level(view, unit.row_index(), track)?;

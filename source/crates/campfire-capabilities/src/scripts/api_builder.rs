@@ -1,4 +1,7 @@
-use campfire_script::rhai::{Engine, ImmutableString, Module, RhaiNativeFunc, Variant};
+use campfire_script::ScriptHost;
+use campfire_script::rhai::{
+    Dynamic, ImmutableString, Module, NativeCallContext, RhaiNativeFunc, Variant,
+};
 
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::error::{ApiError, Checked};
@@ -22,18 +25,18 @@ const INDEX_SETTER: &str = "index$set$";
 /// recorded, or recorded and not bound.
 #[derive(Debug)]
 pub(crate) struct ApiBuilder<'a> {
-    engine: &'a mut Engine,
+    host: &'a mut ScriptHost,
     api: &'a mut ScriptApi,
 }
 
 impl<'a> ApiBuilder<'a> {
-    pub(crate) const fn new(engine: &'a mut Engine, api: &'a mut ScriptApi) -> ApiBuilder<'a> {
-        ApiBuilder { engine, api }
+    pub(crate) const fn new(host: &'a mut ScriptHost, api: &'a mut ScriptApi) -> ApiBuilder<'a> {
+        ApiBuilder { host, api }
     }
 
     /// Registers `T` as scripts name its type.
     pub(crate) fn ty<T: Variant + Clone>(&mut self, name: &str) -> &mut Self {
-        self.engine.register_type_with_name::<T>(name);
+        self.host.engine_mut().register_type_with_name::<T>(name);
         self
     }
 
@@ -43,7 +46,8 @@ impl<'a> ApiBuilder<'a> {
     pub(crate) fn engine_enum<T: ScriptEnum>(&mut self) -> &mut Self {
         let name = T::ENUM.name();
         let [eq, ne, to_string] = EnumRecord::MEMBER_FUNCTIONS;
-        self.engine
+        self.host
+            .engine_mut()
             .register_type_with_name::<T>(name)
             .register_fn(eq, |a: T, b: T| a == b)
             .register_fn(ne, |a: T, b: T| a != b)
@@ -58,7 +62,9 @@ impl<'a> ApiBuilder<'a> {
         module.set_native_fn(named, |text: ImmutableString| -> Checked<T> {
             T::named(&text).ok_or_else(|| ApiError::UnknownMember(T::ENUM).fail().into())
         });
-        self.engine.register_static_module(name, module.into());
+        self.host
+            .engine_mut()
+            .register_static_module(name, module.into());
         let members = T::MEMBERS.iter().map(|&(member, _)| member).collect();
         self.api.record_enum(T::ENUM, members);
         self
@@ -81,7 +87,7 @@ impl<'a> ApiBuilder<'a> {
             MemberKind::Value | MemberKind::Field => format!("{GETTER}{}", spec.name),
             MemberKind::Call | MemberKind::Method | MemberKind::Operator => spec.name.to_owned(),
         };
-        self.engine.register_fn(name, f);
+        self.host.engine_mut().register_fn(name, f);
         self.api
             .record(spec, false, Status::Runs(ApiVersion::FIRST));
         self
@@ -94,7 +100,9 @@ impl<'a> ApiBuilder<'a> {
         f: impl RhaiNativeFunc<A, 2, X, (), F> + 'static,
     ) -> &mut Self {
         debug_assert_eq!(spec.kind, MemberKind::Field, "only a field is written");
-        self.engine.register_fn(format!("{SETTER}{}", spec.name), f);
+        self.host
+            .engine_mut()
+            .register_fn(format!("{SETTER}{}", spec.name), f);
         self.api.record(spec, true, Status::Runs(ApiVersion::FIRST));
         self
     }
@@ -139,22 +147,88 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Binds `f` as the indexer of its type, through which scripts read names the data
-    /// declares, as `ctx.p.<name>`: the load check reads those names against the data.
-    pub(crate) fn index<A: 'static, const X: bool, R: Variant + Clone, const F: bool>(
+    /// Binds `get` as the indexer of `T`, through which scripts read names the data declares, as
+    /// `ctx.p.<name>`, and as the getter of each such name scripts use: the load check reads those
+    /// names against the data.
+    pub(crate) fn index<T: Variant + Clone>(
         &mut self,
-        f: impl RhaiNativeFunc<A, 2, X, R, F> + 'static,
+        get: fn(&mut T, &str) -> Checked<Dynamic>,
     ) -> &mut Self {
-        self.engine.register_fn(INDEX_GETTER, f);
+        self.host.engine_mut().register_fn(
+            INDEX_GETTER,
+            move |target: &mut T, name: ImmutableString| get(target, &name),
+        );
+        self.host.forward_properties(move |engine, name| {
+            let property = ImmutableString::from(name);
+            engine.register_fn(format!("{GETTER}{name}"), move |target: &mut T| {
+                get(target, &property)
+            });
+        });
         self
     }
 
-    /// Binds `f` as the indexer that writes, as `ctx.state.<name> = value`.
-    pub(crate) fn index_set<A: 'static, const X: bool, const F: bool>(
+    /// Binds `get` as `index` does, for a `T` that reads the running call's context.
+    pub(crate) fn index_in_call<T: Variant + Clone>(
         &mut self,
-        f: impl RhaiNativeFunc<A, 3, X, (), F> + 'static,
+        get: fn(NativeCallContext<'_>, &mut T, &str) -> Checked<Dynamic>,
     ) -> &mut Self {
-        self.engine.register_fn(INDEX_SETTER, f);
+        self.host.engine_mut().register_fn(
+            INDEX_GETTER,
+            move |call: NativeCallContext<'_>, target: &mut T, name: ImmutableString| {
+                get(call, target, &name)
+            },
+        );
+        self.host.forward_properties(move |engine, name| {
+            let property = ImmutableString::from(name);
+            engine.register_fn(
+                format!("{GETTER}{name}"),
+                move |call: NativeCallContext<'_>, target: &mut T| get(call, target, &property),
+            );
+        });
+        self
+    }
+
+    /// Binds `set` as the indexer of `T` that writes, as `ctx.state.<name> = value`, and as the
+    /// setter of each such name scripts use.
+    pub(crate) fn index_set<T: Variant + Clone>(
+        &mut self,
+        set: fn(&mut T, &str, Dynamic) -> Checked<()>,
+    ) -> &mut Self {
+        self.host.engine_mut().register_fn(
+            INDEX_SETTER,
+            move |target: &mut T, name: ImmutableString, value: Dynamic| set(target, &name, value),
+        );
+        self.host.forward_properties(move |engine, name| {
+            let property = ImmutableString::from(name);
+            engine.register_fn(
+                format!("{SETTER}{name}"),
+                move |target: &mut T, value: Dynamic| set(target, &property, value),
+            );
+        });
+        self
+    }
+
+    /// Binds `set` as `index_set` does, for a `T` that reads the running call's context.
+    pub(crate) fn index_set_in_call<T: Variant + Clone>(
+        &mut self,
+        set: fn(NativeCallContext<'_>, &mut T, &str, Dynamic) -> Checked<()>,
+    ) -> &mut Self {
+        self.host.engine_mut().register_fn(
+            INDEX_SETTER,
+            move |call: NativeCallContext<'_>,
+                  target: &mut T,
+                  name: ImmutableString,
+                  value: Dynamic| { set(call, target, &name, value) },
+        );
+        self.host.forward_properties(move |engine, name| {
+            let property = ImmutableString::from(name);
+            engine.register_fn(
+                format!("{SETTER}{name}"),
+                move |call: NativeCallContext<'_>, target: &mut T, value: Dynamic| {
+                    set(call, target, &property, value)
+                },
+            );
+        });
         self
     }
 }

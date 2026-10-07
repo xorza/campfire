@@ -1,10 +1,12 @@
+use std::mem;
 use std::ops::Range;
 
 use crate::vision::brush_map::Hidden;
 
 /// The cells each vision group sees, and those its detectors see, as bitmaps kept between ticks:
-/// a tick clears only the words the tick before set, so it costs what the units see, not the
-/// map's size times the groups. A group has a detection bitmap only once a unit of it detects.
+/// a tick clears only the words the tick before set, which a bit a word marks, so it costs what
+/// the units see and a 64th of the map's words, not the map's size times the groups. A group has
+/// a detection bitmap only once a unit of it detects.
 #[derive(Debug, Default)]
 pub(crate) struct SightMaps {
     /// The words of one bitmap.
@@ -14,9 +16,10 @@ pub(crate) struct SightMaps {
     /// Each group's place among the detection bitmaps, once it has one.
     detection: Vec<Option<usize>>,
     detected: Vec<u64>,
-    /// The words of `revealed`, then of `detected`, that this tick set, to clear the next.
-    set_revealed: Vec<usize>,
-    set_detected: Vec<usize>,
+    /// The words of `revealed`, then of `detected`, that this tick set, a bit a word, to clear
+    /// the next.
+    set_revealed: Vec<u64>,
+    set_detected: Vec<u64>,
 }
 
 impl SightMaps {
@@ -29,19 +32,26 @@ impl SightMaps {
         self.detection.resize(groups, None);
         self.detected.clear();
         self.set_revealed.clear();
+        self.set_revealed
+            .resize(self.revealed.len().div_ceil(64), 0);
         self.set_detected.clear();
     }
 
     /// Clears what the tick before revealed and detected.
     pub(crate) fn begin_tick(&mut self) {
-        for &at in &self.set_revealed {
-            self.revealed[at] = 0;
+        SightMaps::clear_set(&mut self.revealed, &mut self.set_revealed);
+        SightMaps::clear_set(&mut self.detected, &mut self.set_detected);
+    }
+
+    /// Clears each word of `words` that `set` marks, and the marks.
+    fn clear_set(words: &mut [u64], set: &mut [u64]) {
+        for (at, marks) in set.iter_mut().enumerate() {
+            let mut left = mem::take(marks);
+            while left != 0 {
+                words[at * 64 + left.trailing_zeros() as usize] = 0;
+                left &= left - 1;
+            }
         }
-        for &at in &self.set_detected {
-            self.detected[at] = 0;
-        }
-        self.set_revealed.clear();
-        self.set_detected.clear();
     }
 
     /// Reveals `cells`, a run that is not empty, but those `hidden` holds, to `group`, and to its
@@ -78,6 +88,8 @@ impl SightMaps {
         }
         let slot = self.detected.len() / self.words.max(1);
         self.detected.resize(self.detected.len() + self.words, 0);
+        self.set_detected
+            .resize(self.detected.len().div_ceil(64), 0);
         self.detection[group] = Some(slot);
         slot
     }
@@ -97,11 +109,11 @@ impl SightMaps {
     }
 }
 
-/// One bitmap of the bitmaps `words`, at `run`, and the words of them a tick set.
+/// One bitmap of the bitmaps `words`, at `run`, and the words of them a tick set, a bit a word.
 #[derive(Debug)]
 struct Bitmap<'a> {
     words: &'a mut [u64],
-    set: &'a mut Vec<usize>,
+    set: &'a mut [u64],
     run: usize,
 }
 
@@ -124,9 +136,10 @@ impl Bitmap<'_> {
             if let Some(hidden) = hidden {
                 bits &= !hidden.word(word);
             }
-            self.words[self.run + word] |= bits;
+            let at = self.run + word;
+            self.words[at] |= bits;
+            self.set[at / 64] |= 1 << (at % 64);
         }
-        self.set.extend(self.run + first..=self.run + last);
     }
 }
 

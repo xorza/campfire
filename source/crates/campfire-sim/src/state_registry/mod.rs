@@ -15,12 +15,14 @@ use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
 use crate::state_changes::{Removal, StateChanges};
 use crate::state_registry::error::SnapshotError;
+use crate::state_registry::hash_sink::HashSink;
 use crate::state_registry::state_delta::StateDelta;
 use crate::state_registry::writer::{Sink, Writer};
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod error;
+mod hash_sink;
 pub(crate) mod state_delta;
 mod writer;
 
@@ -381,10 +383,10 @@ impl StateRegistry {
     fn combine(&self, world: &World, mut per_type: Option<&mut Vec<TypeHash>>) -> StateHash {
         let mut total = Hasher::new();
         total.update(HASH_DOMAIN);
+        let mut sink = HashSink::new();
         for entry in &self.entries {
-            let mut type_hasher = Hasher::new();
-            (entry.encode)(world, &mut type_hasher);
-            let hash = *type_hasher.finalize().as_bytes();
+            (entry.encode)(world, &mut sink);
+            let hash = sink.finish();
             total
                 .update(&name_len(entry.name).to_le_bytes())
                 .update(entry.name.as_bytes())
@@ -449,9 +451,8 @@ fn take<T: DeserializeOwned>(bytes: &[u8]) -> Result<Taken<'_, T>, SnapshotError
 }
 
 fn encode_entities(world: &World, sink: &mut dyn Sink) {
-    for (id, _) in world.resource::<EntityIndex>().iter() {
-        Writer::write(sink, &id);
-    }
+    let ids = world.resource::<EntityIndex>().iter().map(|(id, _)| id);
+    Writer::write_each(sink, ids);
 }
 
 fn decode_entities(world: &mut World, mut body: &[u8]) -> Result<(), SnapshotError> {
@@ -469,11 +470,9 @@ fn decode_entities(world: &mut World, mut body: &[u8]) -> Result<(), SnapshotErr
 }
 
 fn encode_component<C: SimComponent>(world: &World, sink: &mut dyn Sink) {
-    for (id, entity) in world.resource::<EntityIndex>().iter() {
-        if let Some(component) = world.get::<C>(entity) {
-            Writer::write(sink, &(id, component));
-        }
-    }
+    let index = world.resource::<EntityIndex>().iter();
+    let held = index.filter_map(|(id, entity)| Some((id, world.get::<C>(entity)?)));
+    Writer::write_each(sink, held);
 }
 
 fn decode_component<C: SimComponent>(
@@ -519,22 +518,20 @@ fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(),
 
 fn copy_component<C: SimComponent>(world: &mut World, copying: &Copying<'_>, out: &mut Vec<u8>) {
     let mut query = world.query::<(&StableId, Ref<'_, C>)>();
-    for (&id, value) in query.iter(world) {
+    let changed = query.iter(world).filter(|(id, value)| {
         let changed = copying
             .since
             .is_none_or(|since| value.last_changed().is_newer_than(since, copying.now));
-        if changed || copying.gained.binary_search(&id).is_ok() {
-            Writer::write(out, &(id, Some(&*value)));
-        }
-    }
+        changed || copying.gained.binary_search(id).is_ok()
+    });
     let index = world.resource::<EntityIndex>();
-    for &Removal { id, .. } in copying.removed {
-        if let Some(entity) = index.get(id)
-            && !world.entity(entity).contains::<C>()
-        {
-            Writer::write(out, &(id, None::<&C>));
-        }
-    }
+    let removed = copying.removed.iter().filter(|removal| {
+        index
+            .get(removal.id)
+            .is_some_and(|entity| !world.entity(entity).contains::<C>())
+    });
+    let values = changed.map(|(&id, value)| (id, Some(value.into_inner())));
+    Writer::write_each(out, values.chain(removed.map(|removal| (removal.id, None))));
 }
 
 fn apply_component<C: SimComponent>(world: &mut World, mut body: &[u8], pass: Pass) {

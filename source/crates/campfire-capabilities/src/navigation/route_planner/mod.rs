@@ -1,6 +1,3 @@
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
-
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
@@ -9,8 +6,11 @@ use campfire_sim::{Position, StableId};
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::Clearance;
 use crate::navigation::regions::Candidate;
+use crate::navigation::route_planner::open_cells::OpenCells;
 use crate::navigation::segment::Segment;
 use crate::values::grid::Grid;
+
+pub(crate) mod open_cells;
 
 /// Plans routes by A* on a clearance of the pathing grid: eight neighbors, a straight step costing
 /// 10 and a diagonal 14, and no diagonal past a blocked cell, so a route never cuts a blocked
@@ -34,9 +34,11 @@ pub(crate) struct RoutePlanner {
     came_from: Vec<u32>,
     /// The number of routes planned.
     routes: u64,
-    open: BinaryHeap<Reverse<Open>>,
+    open: OpenCells,
     /// The cells of the route, the last first.
     cells: Vec<u32>,
+    /// The cells the search expanded, in order, for the nearest to the goal when it fails.
+    expanded: Vec<u32>,
     /// A short route's window cells its blockers block, one bit a cell, row by row.
     overlay: Vec<u64>,
     /// The regions the nearest reachable cell to a goal may lie in.
@@ -78,18 +80,11 @@ pub(crate) struct Waiting {
     pub(crate) entity: Entity,
 }
 
-/// A cell to expand: by its total, cost plus estimate, then by its estimate, then by its number.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Open {
-    total: u32,
-    estimate: u32,
-    cell: u32,
-}
-
-/// One search's target and marks.
+/// One search's target, its column and row, and its marks.
 #[derive(Debug, Clone, Copy)]
 struct Search {
     to: usize,
+    at: [usize; 2],
     seen: u64,
     done: u64,
 }
@@ -169,8 +164,9 @@ impl RoutePlanner {
             costs: vec![0; cells],
             came_from: vec![0; cells],
             routes: 0,
-            open: BinaryHeap::new(),
+            open: OpenCells::new(),
             cells: Vec::new(),
+            expanded: Vec::new(),
             overlay: Vec::new(),
             candidates: Vec::new(),
             limit: u64::try_from(cells).expect("a grid has at most 2²² cells"),
@@ -252,6 +248,7 @@ impl RoutePlanner {
         self.routes += 1;
         let search = Search {
             to: target,
+            at: RoutePlanner::place(grid, target),
             seen: 2 * self.routes,
             done: 2 * self.routes + 1,
         };
@@ -259,33 +256,36 @@ impl RoutePlanner {
         self.marks[from] = search.seen;
         self.costs[from] = 0;
         self.came_from[from] = RoutePlanner::number(from);
-        let estimate = RoutePlanner::estimate(grid, from, target);
-        self.open.push(Reverse(Open {
-            total: estimate,
-            estimate,
-            cell: RoutePlanner::number(from),
-        }));
-        let mut expanded = 0;
-        let mut nearest = from;
+        let estimate = RoutePlanner::estimate(RoutePlanner::place(grid, from), search.at);
+        self.open
+            .push(estimate, estimate, RoutePlanner::number(from));
+        self.expanded.clear();
         let mut found = false;
-        while let Some(Reverse(Open { cell, .. })) = self.open.pop() {
+        while let Some(cell) = self.open.pop() {
             let at = cell as usize;
             if self.marks[at] == search.done {
                 continue;
             }
             self.marks[at] = search.done;
-            expanded += 1;
-            let key = |cell: usize| (grid.center_distance(cell, goal), self.costs[cell], cell);
-            if key(at) < key(nearest) {
-                nearest = at;
-            }
+            self.expanded.push(cell);
             if at == target {
                 found = true;
                 break;
             }
             self.expand(walkable, at, search);
         }
-        let end = if found { target } else { nearest };
+        // A search that fails ends on the expanded cell nearest the goal, by its center's
+        // distance, then its cost, then its number: a cell's cost is final once it is expanded.
+        let end = if found {
+            target
+        } else {
+            let key = |cell: u32| {
+                let at = cell as usize;
+                (grid.center_distance(at, goal), self.costs[at], cell)
+            };
+            let nearest = self.expanded.iter().copied().min_by_key(|&cell| key(cell));
+            nearest.map_or(from, |cell| cell as usize)
+        };
         self.cells.clear();
         let mut at = end;
         self.cells.push(RoutePlanner::number(at));
@@ -300,6 +300,7 @@ impl RoutePlanner {
             grid.center(end, goal.get().y)
         };
         work += self.smooth(walkable, start, last, waypoints);
+        let expanded = RoutePlanner::number(self.expanded.len());
         Planned {
             cost: self.costs[end],
             expanded,
@@ -508,9 +509,9 @@ impl RoutePlanner {
             } else {
                 RoutePlanner::STRAIGHT
             };
-            reached[slot] = Some((z * columns + x, step));
+            reached[slot] = Some((z * columns + x, [x, z], step));
         }
-        for (next, step) in reached.into_iter().flatten() {
+        for (next, place, step) in reached.into_iter().flatten() {
             let cost = self.costs[at] + step;
             let mark = self.marks[next];
             if mark == search.done || (mark == search.seen && self.costs[next] <= cost) {
@@ -519,21 +520,22 @@ impl RoutePlanner {
             self.marks[next] = search.seen;
             self.costs[next] = cost;
             self.came_from[next] = RoutePlanner::number(at);
-            let estimate = RoutePlanner::estimate(grid, next, search.to);
-            self.open.push(Reverse(Open {
-                total: cost + estimate,
-                estimate,
-                cell: RoutePlanner::number(next),
-            }));
+            let estimate = RoutePlanner::estimate(place, search.at);
+            self.open
+                .push(cost + estimate, estimate, RoutePlanner::number(next));
         }
     }
 
-    /// The octile distance from cell `a` to cell `b`: diagonal steps while both axes differ,
-    /// then straight ones.
-    fn estimate(grid: &Grid, a: usize, b: usize) -> u32 {
-        let columns = grid.columns();
-        let dx = (a % columns).abs_diff(b % columns);
-        let dz = (a / columns).abs_diff(b / columns);
+    /// The column and row of `cell`.
+    const fn place(grid: &Grid, cell: usize) -> [usize; 2] {
+        [cell % grid.columns(), cell / grid.columns()]
+    }
+
+    /// The octile distance between the cells at `a` and `b`, each its column and row: diagonal
+    /// steps while both axes differ, then straight ones.
+    fn estimate(a: [usize; 2], b: [usize; 2]) -> u32 {
+        let dx = a[0].abs_diff(b[0]);
+        let dz = a[1].abs_diff(b[1]);
         let (long, short) = (dx.max(dz), dx.min(dz));
         RoutePlanner::STRAIGHT * RoutePlanner::number(long - short)
             + RoutePlanner::DIAGONAL * RoutePlanner::number(short)

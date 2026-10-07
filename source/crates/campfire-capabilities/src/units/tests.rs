@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::bundle::Bundle;
+use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
@@ -277,6 +278,56 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     assert_eq!(restores(Num::int(10)), Ok(()));
     let past = restores(Num::int(10) + Num::EPSILON);
     assert_eq!(past, Err(SnapshotError::Invalid(Position::NAME)));
+}
+
+#[test]
+fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
+    // A read keeps the row of each unit whose parts did not change since the last read, and a
+    // debug build checks every read against one that fills every row. A part that only goes
+    // away, and a team an entity gains, change no part's tick, only the unit's archetype.
+    let mut scene = Scene::new();
+    let of = scene.unit(at(0, 0, 0), 0, ());
+    let other = scene.unit(at(3, 0, 4), 1, ());
+    let loose = scene.sim.spawn(at(1, 0, 0), ());
+    let value =
+        |scene: &mut Scene, unit, expression: &str| scene.sim.read(expression, unit).unwrap();
+    let enemies =
+        |scene: &mut Scene| Unit::ids(value(scene, of, r#"ctx.find(of, of.pos, 100, "enemies")"#));
+    assert_eq!(enemies(&mut scene), [other]);
+    assert!(value(&mut scene, other, "of.alive").as_bool().unwrap());
+
+    let entity = scene.sim.entity(other);
+    scene.sim.world.entity_mut(entity).insert(Dead);
+    assert!(!value(&mut scene, other, "of.alive").as_bool().unwrap());
+    assert_eq!(enemies(&mut scene), []);
+    scene.sim.world.entity_mut(entity).remove::<Dead>();
+    assert!(value(&mut scene, other, "of.alive").as_bool().unwrap());
+    assert_eq!(enemies(&mut scene), [other]);
+
+    // The entity with no team is no unit until it gains one; one that loses its team is none.
+    let loose_entity = scene.sim.entity(loose);
+    scene
+        .sim
+        .world
+        .entity_mut(loose_entity)
+        .insert(Team::new(1));
+    assert!(value(&mut scene, loose, "of.alive").as_bool().unwrap());
+    scene.sim.world.entity_mut(entity).remove::<Team>();
+    assert_eq!(enemies(&mut scene), []);
+    assert!(scene.sim.world.non_send::<View>().row(other).is_none());
+
+    // Bevy's check of the world's change ticks, once they advanced past its threshold, makes the
+    // next read fill every row, as it clamps old ticks but not the view's last read: a move
+    // that hid from change detection shows then, where a debug read's check would fail.
+    let world = &mut scene.sim.world;
+    let mut pos = world.get_mut::<Position>(loose_entity).unwrap();
+    *pos.bypass_change_detection() = at(2, 0, 0);
+    for _ in 0..CHECK_TICK_THRESHOLD {
+        world.increment_change_tick();
+    }
+    assert!(world.check_change_ticks().is_some());
+    let moved = value(&mut scene, loose, "of.pos");
+    assert_eq!(moved.cast::<Position>(), at(2, 0, 0));
 }
 
 #[test]

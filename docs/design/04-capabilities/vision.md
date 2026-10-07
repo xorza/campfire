@@ -62,7 +62,7 @@ Each unit goes to the clients whose group sees it, and leaves them when no longe
 
 The grid fog costs each living unit with sight the cells within its range, and each unit a test of its cell against each group's bitmaps. Relevance costs each client the grid cells near its view.
 
-The Vision stage's grid fog, for 1000 units of two teams with a 10 m sight on 1 m cells, on one core of a Ryzen 7 6800U, reveals their cells and finds who sees each in 0.27 ms, however close they stand: 0.8 % of a tick at 30 Hz. `fog/sight` measures it. A sight's rows go four at a time in `math`'s lanes, each with an exact integer root ([Libraries](../02-engine-core.md#libraries)).
+The Vision stage's grid fog, for 1000 units of two teams with a 10 m sight on 1 m cells, on one core of a Ryzen 7 6800U, reveals their cells and finds who sees each in 0.17 ms when every unit moved since the tick before, however close they stand: 0.5 % of a tick at 30 Hz, `fog/sight`; and in 0.07 ms when none did, `fog/still`. A sight's rows go four at a time in `math`'s lanes, each with an exact integer root ([Libraries](../02-engine-core.md#libraries)). A sight covers the same runs of cells from the same place with the same range, so a unit that stood still since the tick before takes its runs again, from a cache of each unit's runs of the tick before: in the 3v3 about two sights in three.
 
 ## Genres
 

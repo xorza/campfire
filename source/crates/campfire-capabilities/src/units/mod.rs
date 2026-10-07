@@ -1,7 +1,9 @@
+use bevy_ecs::change_detection::CheckChangeTicks;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::observer::On;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Commands, NonSendMut, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, NonSend, NonSendMut, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
@@ -40,6 +42,7 @@ pub(crate) mod engine_tag;
 pub(crate) mod filter;
 pub(crate) mod forced_move;
 pub(crate) mod hit_handle;
+pub(crate) mod kept_rows;
 pub(crate) mod layer;
 pub(crate) mod lifespan;
 pub(crate) mod living_unit;
@@ -51,7 +54,10 @@ pub(crate) mod path_id;
 pub(crate) mod predicting;
 pub(crate) mod relations;
 pub(crate) mod row_fill;
+pub(crate) mod row_marks;
+pub(crate) mod row_parts;
 pub(crate) mod script_view;
+mod source_reads;
 pub(crate) mod spawn_point;
 pub(crate) mod spawner;
 pub(crate) mod tag;
@@ -116,10 +122,13 @@ impl Units {
         world.insert_resource(UnitStateBook::default());
         world.insert_resource(NewUnitStates::default());
         view.add_column(UnitsColumn::default());
-        view.add_source::<Option<&'static UnitState>>(world, fill_state);
+        view.add_source::<Option<&'static UnitState>, _>(world, fill_state);
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
         world.insert_resource(Metric::default());
+        world.add_observer(|_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>| {
+            view.refill_next();
+        });
         let Some(budgets) = budgets else {
             world.insert_non_send(view);
             return;
@@ -186,8 +195,11 @@ fn end_lifespans(
 }
 
 /// Adds a unit's script state to the view's column of it.
-fn fill_state(state: ROQueryItem<'_, '_, Option<&'static UnitState>>, fill: &mut RowFill<'_>) {
-    fill.column::<UnitsColumn>().push(state);
+fn fill_state(
+    state: ROQueryItem<'_, '_, Option<&'static UnitState>>,
+    fill: &mut RowFill<'_, UnitsColumn>,
+) {
+    fill.column.push(state);
 }
 
 #[cfg(test)]
