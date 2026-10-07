@@ -413,12 +413,16 @@ fn assert_writer_matches<T: Serialize>(value: &T) {
     let bytes = postcard::to_allocvec(value).unwrap();
     let mut expected = Hasher::new();
     expected.update(&bytes);
-    let mut actual = Hasher::new();
+    let mut actual = HashSink::new();
     Writer::write(&mut actual, value);
-    assert_eq!(actual.finalize(), expected.finalize());
+    assert_eq!(actual.finish(), *expected.finalize().as_bytes());
     let mut written = Vec::new();
     Writer::write(&mut written, value);
     assert_eq!(written, bytes);
+    // Three in one writer, as a type's entities: the three encodings one after another.
+    let mut each = Vec::new();
+    Writer::write_each(&mut each, [value; 3]);
+    assert_eq!(each, bytes.repeat(3));
 }
 
 #[test]
