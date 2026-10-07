@@ -37,6 +37,8 @@ pub(crate) struct RoutePlanner {
     open: BinaryHeap<Reverse<Open>>,
     /// The cells of the route, the last first.
     cells: Vec<u32>,
+    /// The cells the search expanded, in order, for the nearest to the goal when it fails.
+    expanded: Vec<u32>,
     /// A short route's window cells its blockers block, one bit a cell, row by row.
     overlay: Vec<u64>,
     /// The regions the nearest reachable cell to a goal may lie in.
@@ -78,13 +80,10 @@ pub(crate) struct Waiting {
     pub(crate) entity: Entity,
 }
 
-/// A cell to expand: by its total, cost plus estimate, then by its estimate, then by its number.
+/// A cell to expand: by its total, cost plus estimate, then by its estimate, then by its number,
+/// packed in that order into one number, which the heap compares at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Open {
-    total: u32,
-    estimate: u32,
-    cell: u32,
-}
+struct Open(u128);
 
 /// One search's target, its column and row, and its marks.
 #[derive(Debug, Clone, Copy)]
@@ -105,6 +104,20 @@ pub(crate) struct Planned {
     /// All the work it did, the cells expanded among it.
     pub(crate) work: u32,
     pub(crate) reached: bool,
+}
+
+impl Open {
+    const fn new(total: u32, estimate: u32, cell: u32) -> Open {
+        Open((total as u128) << 64 | (estimate as u128) << 32 | cell as u128)
+    }
+
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the low 32 bits hold the cell"
+    )]
+    const fn cell(self) -> u32 {
+        self.0 as u32
+    }
 }
 
 impl Window {
@@ -172,6 +185,7 @@ impl RoutePlanner {
             routes: 0,
             open: BinaryHeap::new(),
             cells: Vec::new(),
+            expanded: Vec::new(),
             overlay: Vec::new(),
             candidates: Vec::new(),
             limit: u64::try_from(cells).expect("a grid has at most 2²² cells"),
@@ -262,32 +276,38 @@ impl RoutePlanner {
         self.costs[from] = 0;
         self.came_from[from] = RoutePlanner::number(from);
         let estimate = RoutePlanner::estimate(RoutePlanner::place(grid, from), search.at);
-        self.open.push(Reverse(Open {
-            total: estimate,
+        self.open.push(Reverse(Open::new(
             estimate,
-            cell: RoutePlanner::number(from),
-        }));
-        let mut expanded = 0;
-        // The expanded cell nearest the goal, by its center's distance, then its cost, then its
-        // number: a cell's cost is final once it is expanded.
-        let key = |cell: usize, cost: u32| (grid.center_distance(cell, goal), cost, cell);
-        let mut nearest = key(from, 0);
+            estimate,
+            RoutePlanner::number(from),
+        )));
+        self.expanded.clear();
         let mut found = false;
-        while let Some(Reverse(Open { cell, .. })) = self.open.pop() {
-            let at = cell as usize;
+        while let Some(Reverse(open)) = self.open.pop() {
+            let at = open.cell() as usize;
             if self.marks[at] == search.done {
                 continue;
             }
             self.marks[at] = search.done;
-            expanded += 1;
-            nearest = nearest.min(key(at, self.costs[at]));
+            self.expanded.push(open.cell());
             if at == target {
                 found = true;
                 break;
             }
             self.expand(walkable, at, search);
         }
-        let end = if found { target } else { nearest.2 };
+        // A search that fails ends on the expanded cell nearest the goal, by its center's
+        // distance, then its cost, then its number: a cell's cost is final once it is expanded.
+        let end = if found {
+            target
+        } else {
+            let key = |cell: u32| {
+                let at = cell as usize;
+                (grid.center_distance(at, goal), self.costs[at], cell)
+            };
+            let nearest = self.expanded.iter().copied().min_by_key(|&cell| key(cell));
+            nearest.map_or(from, |cell| cell as usize)
+        };
         self.cells.clear();
         let mut at = end;
         self.cells.push(RoutePlanner::number(at));
@@ -302,6 +322,7 @@ impl RoutePlanner {
             grid.center(end, goal.get().y)
         };
         work += self.smooth(walkable, start, last, waypoints);
+        let expanded = RoutePlanner::number(self.expanded.len());
         Planned {
             cost: self.costs[end],
             expanded,
@@ -522,11 +543,8 @@ impl RoutePlanner {
             self.costs[next] = cost;
             self.came_from[next] = RoutePlanner::number(at);
             let estimate = RoutePlanner::estimate(place, search.at);
-            self.open.push(Reverse(Open {
-                total: cost + estimate,
-                estimate,
-                cell: RoutePlanner::number(next),
-            }));
+            let open = Open::new(cost + estimate, estimate, RoutePlanner::number(next));
+            self.open.push(Reverse(open));
         }
     }
 

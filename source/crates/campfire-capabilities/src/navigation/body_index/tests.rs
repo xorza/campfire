@@ -113,6 +113,26 @@ fn the_index_finds_each_body_near_once_and_follows_its_changes() {
 
 #[test]
 fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
+    // Bucket keys order as their layer, row and column do, both signs; a row past the keys'
+    // range clamps to its end.
+    let rows = BucketKey::ROWS;
+    let key = |layer: u8, row: i64, column: i64| BucketKey::new(Layer::new(layer), row, column);
+    let ordered = [
+        key(0, -rows, 0),
+        key(0, -rows, 5),
+        key(0, -1, i64::MAX),
+        key(0, 0, i64::MIN),
+        key(0, 0, -1),
+        key(0, 0, 0),
+        key(0, 1, -5),
+        key(0, rows - 1, 0),
+        key(1, -rows, i64::MIN),
+        key(1, 0, 0),
+    ];
+    assert!(ordered.is_sorted_by(|a, b| a < b));
+    assert_eq!(key(0, i64::MIN, 5), key(0, -rows, 5));
+    assert_eq!(key(0, i64::MAX, 0), key(0, rows - 1, 0));
+
     // Buckets of 2 m, for walkers of 1 m.
     let mut index = BodyIndex::new(Num::ONE);
     let mut ids = IdAllocator::default();

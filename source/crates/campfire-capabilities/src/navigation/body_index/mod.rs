@@ -44,22 +44,53 @@ pub(crate) struct IndexedBody {
 }
 
 /// A body in one bucket of its layer, and whether the bucket is in the first row and the first
-/// column of the body's buckets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// column of the body's buckets. Entries order by their bucket, then their body's stable id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Entry {
-    layer: Layer,
-    row: i64,
-    column: i64,
-    id: StableId,
+    bucket: BucketKey,
+    body: IndexedBody,
     first_row: bool,
     first_column: bool,
 }
+
+/// A bucket of a layer, packed so that buckets order as their layer, row and column do: the
+/// layer in the top byte, the row offset into the next 56 bits, the column offset into the low
+/// 64, so a search compares one number, not three.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct BucketKey(u128);
 
 /// The buckets a box covers along one axis, `low` to `high`, both in.
 #[derive(Debug, Clone, Copy)]
 struct Buckets {
     low: i64,
     high: i64,
+}
+
+impl Entry {
+    /// Its place in the order of entries.
+    const fn order(&self) -> (BucketKey, StableId) {
+        (self.bucket, self.body.id)
+    }
+}
+
+impl BucketKey {
+    /// The rows that fit, from −2⁵⁵ to 2⁵⁵ − 1. A body's rows lie within ±2⁴⁵, as positions lie
+    /// within ±2⁴⁴ bits, a radius within 64 m, and a bucket is at least 2 bits wide; a search's
+    /// rows past them clamp to the ends, whose buckets hold no body.
+    const ROWS: i64 = 1 << 55;
+
+    const fn new(layer: Layer, row: i64, column: i64) -> BucketKey {
+        let row = if row < -BucketKey::ROWS {
+            0
+        } else if row >= BucketKey::ROWS {
+            2 * BucketKey::ROWS - 1
+        } else {
+            row + BucketKey::ROWS
+        };
+        let high = (layer.index() as u64) << 56 | row.cast_unsigned();
+        let low = column.cast_unsigned() ^ 1 << 63;
+        BucketKey((high as u128) << 64 | low as u128)
+    }
 }
 
 impl IndexedBody {
@@ -143,7 +174,7 @@ impl BodyIndex {
         let removed = &self.removed;
         self.entries.retain(|entry| {
             removed
-                .binary_search_by_key(&entry.id, |body| body.id)
+                .binary_search_by_key(&entry.body.id, |body| body.id)
                 .is_err()
         });
         self.fresh.clear();
@@ -151,24 +182,23 @@ impl BodyIndex {
             let rows = BodyIndex::buckets(self.bucket, body.at.get().z, body.radius);
             let columns = BodyIndex::buckets(self.bucket, body.at.get().x, body.radius);
             for row in rows.low..=rows.high {
+                debug_assert!(row.abs() < BucketKey::ROWS, "a body's rows fit a key");
                 self.fresh
                     .extend((columns.low..=columns.high).map(|column| Entry {
-                        layer: body.layer,
-                        row,
-                        column,
-                        id: body.id,
+                        bucket: BucketKey::new(body.layer, row, column),
+                        body: *body,
                         first_row: row == rows.low,
                         first_column: column == columns.low,
                     }));
             }
         }
-        self.fresh.sort_unstable();
+        self.fresh.sort_unstable_by_key(Entry::order);
         self.merged.clear();
         self.merged
             .reserve_exact(self.entries.len() + self.fresh.len());
         let (mut kept, mut put) = (0, 0);
         while kept < self.entries.len() && put < self.fresh.len() {
-            if self.entries[kept] < self.fresh[put] {
+            if self.entries[kept].order() < self.fresh[put].order() {
                 self.merged.push(self.entries[kept]);
                 kept += 1;
             } else {
@@ -258,23 +288,20 @@ impl BodyIndex {
         mut visit: impl FnMut(&IndexedBody) -> ControlFlow<()>,
     ) -> ControlFlow<()> {
         for row in rows.low..=rows.high {
-            let start = self.entries.partition_point(|entry| {
-                (entry.layer, entry.row, entry.column) < (layer, row, columns.low)
-            });
-            let run = self.entries[start..].iter().take_while(|entry| {
-                entry.layer == layer && entry.row == row && entry.column <= columns.high
-            });
+            let (low, high) = (
+                BucketKey::new(layer, row, columns.low),
+                BucketKey::new(layer, row, columns.high),
+            );
+            let start = self.entries.partition_point(|entry| entry.bucket < low);
+            let run = self.entries[start..]
+                .iter()
+                .take_while(|entry| entry.bucket <= high);
             for entry in run {
                 let first = (row == rows.low || entry.first_row)
-                    && (entry.column == columns.low || entry.first_column);
-                if !first {
-                    continue;
+                    && (entry.bucket == low || entry.first_column);
+                if first {
+                    visit(&entry.body)?;
                 }
-                let body = &self.bodies[self
-                    .bodies
-                    .binary_search_by_key(&entry.id, |body| body.id)
-                    .expect("an entry's body is in the index")];
-                visit(body)?;
             }
         }
         ControlFlow::Continue(())

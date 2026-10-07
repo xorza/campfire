@@ -67,6 +67,19 @@ fn walled(rows: &[&str]) -> Walled {
 
 #[test]
 fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
+    // Open cells order by their total, then their estimate, then their number, the widest of
+    // each included.
+    let open = [
+        Open::new(0, 0, 0),
+        Open::new(0, 0, u32::MAX),
+        Open::new(0, 1, 0),
+        Open::new(0, u32::MAX, u32::MAX),
+        Open::new(1, 0, 0),
+        Open::new(u32::MAX, 0, 0),
+    ];
+    assert!(open.is_sorted_by(|a, b| a < b));
+    assert_eq!(Open::new(7, 8, u32::MAX).cell(), u32::MAX);
+
     // A wall down column 3 over rows 0 to 2, then down column 4 over rows 3 and 4. Cells (3, 2)
     // and (4, 3) meet at a corner, which a diagonal step from (3, 3) to (4, 2) would cut: the
     // route must go round through row 5.
