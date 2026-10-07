@@ -12,12 +12,14 @@ use tracing::debug;
 use crate::script_host::budget::Budget;
 use crate::script_host::error::ScriptError;
 use crate::script_host::num_api::NumApi;
+use crate::script_host::property_forwards::PropertyForwards;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod budget;
 pub(crate) mod error;
 mod num_api;
+pub(crate) mod property_forwards;
 
 /// Rhai hashes function signatures to resolve calls. It seeds the hash per process unless set,
 /// so the engine fixes the seed: every build and process resolves calls alike.
@@ -67,6 +69,7 @@ pub struct ScriptHost {
     allowed: Rc<Cell<u64>>,
     /// Operations of the running call, as the progress callback last saw them.
     counted: Rc<Cell<u64>>,
+    properties: PropertyForwards,
 }
 
 impl ScriptHost {
@@ -116,6 +119,7 @@ impl ScriptHost {
             scripts: Vec::new(),
             allowed,
             counted,
+            properties: PropertyForwards::new(),
         };
         NumApi::register(&mut host.engine);
         host
@@ -126,8 +130,18 @@ impl ScriptHost {
         &mut self.engine
     }
 
+    /// Gives a type that reads and writes its properties through its indexer a getter and a
+    /// setter of each property name the host's scripts use, before or after: `forward` registers
+    /// those of one name, to call the indexer directly. Rhai tries a getter before the indexer,
+    /// and builds an error message when it finds none, so a forwarded access costs one operation
+    /// where it cost two, and builds no message. The type has no getter or setter of its own.
+    pub fn forward_properties(&mut self, forward: impl Fn(&mut Engine, &str) + 'static) {
+        self.properties.add(&mut self.engine, Box::new(forward));
+    }
+
     pub fn compile(&mut self, source: &str) -> Result<ScriptId, ScriptError> {
         let ast = self.parse(source)?;
+        self.properties.learn(&mut self.engine, &ast);
         let id = ScriptId::nth(self.scripts.len());
         self.scripts.push(ast);
         Ok(id)

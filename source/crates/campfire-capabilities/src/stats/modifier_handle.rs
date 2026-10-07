@@ -2,7 +2,7 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use campfire_script::rhai::{Dynamic, INT, ImmutableString};
+use campfire_script::rhai::{Dynamic, INT};
 use campfire_sim::{Capability, StableId};
 
 use crate::scripts::api_builder::ApiBuilder;
@@ -174,17 +174,15 @@ impl ModifierHandle {
                 |m: &mut ModifierHandle| ModifierState(m.clone()),
             );
         api.ty::<ModifierState>("ModifierState")
-            .index(
-                |state: &mut ModifierState, name: ImmutableString| -> Checked<Dynamic> {
-                    let data = state.0.data();
-                    let at = data.field_named(&name)?;
-                    Ok(data.state[at].to_dynamic(&data.view))
-                },
-            )
+            .index(|state: &mut ModifierState, name: &str| {
+                let data = state.0.data();
+                let at = data.field_named(name)?;
+                Ok(data.state[at].to_dynamic(&data.view))
+            })
             .index_set(
-                |state: &mut ModifierState, name: ImmutableString, value: Dynamic| -> Checked<()> {
+                |state: &mut ModifierState, name: &str, value: Dynamic| -> Checked<()> {
                     let mut data = state.0.data();
-                    let at = data.field_named(&name)?;
+                    let at = data.field_named(name)?;
                     let value = StateValue::from_dynamic(data.fields[at].kind, &value)
                         .ok_or_else(|| ApiError::WrongStateType.fail())?;
                     data.state[at] = value;

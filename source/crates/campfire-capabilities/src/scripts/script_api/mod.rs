@@ -117,7 +117,7 @@ impl ScriptApi {
         apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>,
     ) -> ScriptApi {
         let builtins = ScriptApi::functions(host.engine_mut());
-        let mut api = ScriptApi::bind(host.engine_mut(), apis);
+        let mut api = ScriptApi::bind(host, apis);
         api.builtins = builtins;
         api
     }
@@ -131,10 +131,10 @@ impl ScriptApi {
         names.iter().map(String::as_str).collect()
     }
 
-    /// Binds the core's script API into `engine`, then each capability's API `apis` registers,
+    /// Binds the core's script API into `host`, then each capability's API `apis` registers,
     /// and records it.
     pub(crate) fn bind(
-        engine: &mut Engine,
+        host: &mut ScriptHost,
         apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>,
     ) -> ScriptApi {
         let mut api = ScriptApi {
@@ -145,7 +145,7 @@ impl ScriptApi {
             enums: Vec::new(),
             builtins: NameList::default(),
         };
-        let mut builder = ApiBuilder::new(engine, &mut api);
+        let mut builder = ApiBuilder::new(host, &mut api);
         CoreApi::register(&mut builder);
         Unit::register(&mut builder);
         NewUnit::register(&mut builder);

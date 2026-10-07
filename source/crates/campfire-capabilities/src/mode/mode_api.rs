@@ -200,16 +200,10 @@ impl ModeApi {
                 |ctx: &mut Ctx, tag: &str| ctx.view().units_tagged(tag),
             );
         api.ty::<StateAccess>("ModeState")
-            .index(
-                |state: &mut StateAccess, name: ImmutableString| -> Checked<Dynamic> {
-                    ModeApi::state(&state.0, &name)
-                },
-            )
-            .index_set(
-                |state: &mut StateAccess, name: ImmutableString, value: Dynamic| -> Checked<()> {
-                    ModeApi::set_state(&state.0, &name, &value)
-                },
-            );
+            .index(|state: &mut StateAccess, name: &str| ModeApi::state(&state.0, name))
+            .index_set(|state: &mut StateAccess, name: &str, value: Dynamic| {
+                ModeApi::set_state(&state.0, name, &value)
+            });
     }
 
     /// The players' choices, which only the mode's calls make and read.

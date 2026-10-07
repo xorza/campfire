@@ -1,8 +1,10 @@
+use std::cell::RefCell;
+
 use campfire_math::Num;
-use rhai::INT;
+use rhai::{EvalAltResult, INT, ImmutableString};
 
 use super::*;
-use crate::script_host::error::NumError;
+use crate::script_host::error::{NumError, Raised};
 
 const PER_CALL: u64 = 1000;
 
@@ -188,4 +190,89 @@ fn calls_fail_at_their_limits_the_same_way_in_every_build() {
     let deeper = host.call(&mut ample(), down, "down", (33_i64,)).err();
     let overflow = matches!(&deeper, Some(ScriptError::Runtime(text)) if text == "Stack overflow");
     assert!(overflow, "{deeper:?}");
+}
+
+/// A value whose properties scripts read and write through its indexer: each name holds its
+/// length until a script writes it, and `z` raises.
+#[derive(Debug, Clone)]
+struct Bag(Rc<RefCell<Vec<(String, INT)>>>);
+
+impl Bag {
+    fn get(&mut self, name: &str) -> Result<Dynamic, Box<EvalAltResult>> {
+        if name == "z" {
+            return Err(Raised::error(NumError::Overflow).into());
+        }
+        let written = self
+            .0
+            .borrow()
+            .iter()
+            .find(|(at, _)| at == name)
+            .map(|&(_, v)| v);
+        Ok(Dynamic::from(
+            written.unwrap_or(INT::try_from(name.len()).unwrap()),
+        ))
+    }
+
+    fn set(&mut self, name: &str, value: INT) {
+        self.0.borrow_mut().push((name.to_owned(), value));
+    }
+
+    /// Binds the indexer, and forwards the properties too when `forward`.
+    fn bind(host: &mut ScriptHost, forward: bool) {
+        let engine = host.engine_mut();
+        engine.register_type::<Bag>();
+        engine.register_indexer_get(|bag: &mut Bag, name: ImmutableString| bag.get(&name));
+        engine.register_indexer_set(|bag: &mut Bag, name: ImmutableString, value: INT| {
+            bag.set(&name, value);
+        });
+        if forward {
+            host.forward_properties(|engine, name| {
+                let property = ImmutableString::from(name);
+                let set = property.clone();
+                engine.register_fn(format!("get${name}"), move |bag: &mut Bag| {
+                    bag.get(&property)
+                });
+                engine.register_fn(format!("set${name}"), move |bag: &mut Bag, value: INT| {
+                    bag.set(&set, value);
+                });
+            });
+        }
+    }
+}
+
+#[test]
+fn a_forwarded_property_reads_and_writes_as_its_indexer_does_in_one_operation_less() {
+    let source = "fn read(b) { b.abc + b.de } fn write(b) { b.abc = 7; b.abc } fn raise(b) { b.z }";
+    // Forwards bound before the compile, and after it: each covers the names either way.
+    let mut plain = host();
+    Bag::bind(&mut plain, false);
+    let plain_script = plain.compile(source).unwrap();
+    let mut early = host();
+    Bag::bind(&mut early, true);
+    let early_script = early.compile(source).unwrap();
+    let mut late = host();
+    let late_script = late.compile(source).unwrap();
+    Bag::bind(&mut late, true);
+
+    let bag = || Bag(Rc::default());
+    // `read` reads two properties, `write` writes one and reads one: the plain host spends a
+    // second operation on each, the failed getter before its indexer.
+    for (hook, value, accesses) in [("read", 3 + 2, 2), ("write", 7, 2)] {
+        let mut plain_budget = ample();
+        let read = plain.call(&mut plain_budget, plain_script, hook, (bag(),));
+        assert_eq!(read.unwrap().as_int(), Ok(value), "{hook}");
+        for (forwarded, script) in [(&mut early, early_script), (&mut late, late_script)] {
+            let mut budget = ample();
+            let read = forwarded.call(&mut budget, script, hook, (bag(),));
+            assert_eq!(read.unwrap().as_int(), Ok(value), "{hook}");
+            assert_eq!(budget.left() - plain_budget.left(), accesses, "{hook}");
+        }
+    }
+    // The indexer's own error, raised the same either way.
+    for (host, script) in [(&mut plain, plain_script), (&mut early, early_script)] {
+        let raised = host.call(&mut ample(), script, "raise", (bag(),)).err();
+        let overflow = matches!(&raised, Some(ScriptError::Raised(value))
+            if value.get::<NumError>() == Some(NumError::Overflow));
+        assert!(overflow, "{raised:?}");
+    }
 }

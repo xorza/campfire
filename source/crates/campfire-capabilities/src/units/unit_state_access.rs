@@ -1,4 +1,4 @@
-use campfire_script::rhai::{Dynamic, ImmutableString, NativeCallContext};
+use campfire_script::rhai::Dynamic;
 use campfire_sim::StableId;
 
 use crate::scripts::api_builder::ApiBuilder;
@@ -47,17 +47,12 @@ impl UnitStateAccess {
     /// Indexes `UnitState` by field name, to read and to write.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         api.ty::<UnitStateAccess>("UnitState")
-            .index(
-                |call: NativeCallContext<'_>,
-                 state: &mut UnitStateAccess,
-                 name: ImmutableString| { state.get(&Ctx::of_call(&call), &name) },
-            )
-            .index_set(
-                |call: NativeCallContext<'_>,
-                 state: &mut UnitStateAccess,
-                 name: ImmutableString,
-                 value: Dynamic| { state.set(&Ctx::of_call(&call), &name, &value) },
-            );
+            .index_in_call(|call, state: &mut UnitStateAccess, name| {
+                state.get(&Ctx::of_call(&call), name)
+            })
+            .index_set_in_call(|call, state: &mut UnitStateAccess, name, value| {
+                state.set(&Ctx::of_call(&call), name, &value)
+            });
     }
 
     /// The field `name`, as the call last wrote it, or else as the view holds it, or at its
