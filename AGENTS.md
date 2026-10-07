@@ -17,6 +17,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
     - `08-script-api-reference.md` — every name of the script API, with its roles, capability and whether it runs; generated from the registry by a test, never edited by hand
     - `09-determinism-core.md` — Stage 1 proposal: numbers, vectors, randomness, stable ids, state hash
     - `10-sessions.md` — Stage 6 proposal: journal, crash restore, slots, reconnect, server bots, receipts, checkpoints, saves, local server
+    - `11-simd.md` — proposal: 256-bit integer lanes in `math`, the same on x86-64-v3 and armv8-a, exact as the scalar code, for the grid's rows first; no inline assembly
   - `issues/` — the issue log: one file for each system, with its open problems ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/<game>/` holds the reference content packages (heroes, spells, modes); `source/packages/test/` holds small packages the tests play
 
