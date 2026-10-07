@@ -60,10 +60,62 @@ fn flood(grid: &Grid, blocked: &[u64]) -> Vec<Option<usize>> {
     component
 }
 
-/// Checks `regions` against a flood fill: two open cells share a reachable set exactly when
+/// Checks each chunk's labels and region boxes against a flood fill of the chunk alone, from
+/// each open cell not yet labeled, row by row: the regions are numbered in the order of their
+/// first cell.
+fn check_labels(blocked: &[u64], regions: &Regions) {
+    let mut local = vec![0_u16; regions.local.len()];
+    for chunk in 0..regions.chunks.len() {
+        let [columns, rows] = regions.bounds(chunk);
+        let mut boxes = Vec::new();
+        for seed in rows.clone().flat_map(|row| {
+            columns
+                .clone()
+                .map(move |column| row * regions.columns + column)
+        }) {
+            if local[seed] != 0 || blocked_at(blocked, seed) {
+                continue;
+            }
+            boxes.push(([u32::MAX; 2], [0; 2]));
+            let label = u16::try_from(boxes.len()).unwrap();
+            local[seed] = label;
+            let mut stack = vec![seed];
+            while let Some(cell) = stack.pop() {
+                let (x, z) = (cell % regions.columns, cell / regions.columns);
+                let (low, high) = boxes.last_mut().unwrap();
+                let at = [u32::try_from(x).unwrap(), u32::try_from(z).unwrap()];
+                *low = [low[0].min(at[0]), low[1].min(at[1])];
+                *high = [high[0].max(at[0]), high[1].max(at[1])];
+                let beside = [
+                    (x > columns.start).then(|| cell - 1),
+                    (x + 1 < columns.end).then(|| cell + 1),
+                    (z > rows.start).then(|| cell - regions.columns),
+                    (z + 1 < rows.end).then(|| cell + regions.columns),
+                ];
+                for next in beside.into_iter().flatten() {
+                    if local[next] == 0 && !blocked_at(blocked, next) {
+                        local[next] = label;
+                        stack.push(next);
+                    }
+                }
+            }
+        }
+        let found: Vec<_> = regions.chunks[chunk]
+            .regions
+            .iter()
+            .map(|region| (region.low, region.high))
+            .collect();
+        assert_eq!(found, boxes, "chunk {chunk}");
+    }
+    assert_eq!(regions.local, local);
+}
+
+/// Checks `regions` against a flood fill: each chunk's labels and boxes are a flood fill's of
+/// the chunk; two open cells share a reachable set exactly when
 /// the flood fill puts them in one component; a blocked cell reaches its open side
 /// neighbors' sets; the nearest reachable cell to a few goals is the nearest by brute force.
 fn check(grid: &Grid, blocked: &[u64], regions: &Regions) {
+    check_labels(blocked, regions);
     let component = flood(grid, blocked);
     let mut by_set = BTreeMap::new();
     let mut by_component = BTreeMap::new();
