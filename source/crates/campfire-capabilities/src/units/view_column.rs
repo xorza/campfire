@@ -1,5 +1,6 @@
 use std::any::{Any, TypeId};
 use std::fmt;
+use std::ops::Range;
 
 use bevy_ecs::world::World;
 
@@ -12,8 +13,8 @@ pub(crate) trait ViewColumn: Any + fmt::Debug {
     /// units' parts changed.
     fn begin(&mut self, world: &World) -> bool;
 
-    /// Adds row `row` of the read before, unchanged.
-    fn keep(&mut self, row: usize);
+    /// Adds the rows `rows` of the read before, unchanged.
+    fn keep(&mut self, rows: Range<usize>);
 
     /// How many rows it holds: one for each unit the view read.
     fn rows(&self) -> usize;

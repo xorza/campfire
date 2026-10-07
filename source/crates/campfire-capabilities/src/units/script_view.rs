@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::mem;
+use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -79,8 +80,8 @@ pub(crate) struct ScriptView {
     kept_seen: Vec<Seen>,
     /// The rows each source must fill again in the running read.
     marks: RowMarks,
-    /// Whether each source must fill every row in the running read.
-    refills: Vec<bool>,
+    /// Each source's part of the running read.
+    reads: Vec<SourceRead>,
     /// Whether the next read must fill every row, as what the rows derive from besides the
     /// units' parts changed.
     refill: bool,
@@ -180,6 +181,37 @@ struct Seen {
     row: Option<usize>,
 }
 
+/// A source's part of a read: whether it fills every row, and the run of the read before's rows
+/// it keeps next, which grows while the rows it keeps follow one another there.
+#[derive(Debug, Clone)]
+struct SourceRead {
+    refill: bool,
+    kept: Option<Range<usize>>,
+}
+
+impl SourceRead {
+    /// Keeps row `kept` of the read before: it joins the run, or `source` adds the run to its
+    /// column, and the row starts the next.
+    fn keep(&mut self, source: &dyn FillRow, columns: &mut ViewColumns, kept: usize) {
+        match &mut self.kept {
+            Some(run) if run.end == kept => run.end += 1,
+            run => {
+                if let Some(run) = run.replace(kept..kept + 1) {
+                    source.keep(columns, run);
+                }
+            }
+        }
+    }
+
+    /// Adds the run kept so far to `source`'s column: before a row it fills, and as the read
+    /// ends.
+    fn flush(&mut self, source: &dyn FillRow, columns: &mut ViewColumns) {
+        if let Some(run) = self.kept.take() {
+            source.keep(columns, run);
+        }
+    }
+}
+
 /// A read fills every row again once the last read is this many ticks old, long before Bevy's
 /// change ticks could wrap past it: a tick advances the world's change tick by a few hundred,
 /// and Bevy compares ticks exactly within `MAX_CHANGE_AGE`, about 3.3 · 10⁹ of them.
@@ -220,10 +252,13 @@ impl ScriptView {
         for entity in &changed {
             self.marks.mark(entity, 0);
         }
-        self.refills.clear();
+        self.reads.clear();
         for (at, source) in self.sources.iter_mut().enumerate() {
             let all = source.begin(world, &mut self.columns, at + 1, &mut self.marks);
-            self.refills.push(refill || all);
+            self.reads.push(SourceRead {
+                refill: refill || all,
+                kept: None,
+            });
         }
         mem::swap(&mut self.units, &mut self.kept_units);
         mem::swap(&mut self.seen, &mut self.kept_seen);
@@ -263,12 +298,16 @@ impl ScriptView {
                 });
                 continue;
             };
-            for (at, source) in self.sources.iter().enumerate() {
+            let sources = self.sources.iter().zip(&mut self.reads).enumerate();
+            for (at, (source, read)) in sources {
                 match kept {
-                    Some(kept) if !self.refills[at] && !self.marks.marked(entity, at + 1) => {
-                        source.keep(&mut self.columns, kept);
+                    Some(kept) if !read.refill && !self.marks.marked(entity, at + 1) => {
+                        read.keep(source.as_ref(), &mut self.columns, kept);
                     }
-                    _ => source.fill(world, entity, &mut row, &mut self.columns, &self.relations),
+                    _ => {
+                        read.flush(source.as_ref(), &mut self.columns);
+                        source.fill(world, entity, &mut row, &mut self.columns, &self.relations);
+                    }
                 }
             }
             self.seen.push(Seen {
@@ -278,6 +317,9 @@ impl ScriptView {
                 row: Some(self.units.len()),
             });
             self.units.push(row);
+        }
+        for (source, read) in self.sources.iter().zip(&mut self.reads) {
+            read.flush(source.as_ref(), &mut self.columns);
         }
         self.marks.clear();
         debug_assert!(
@@ -328,7 +370,7 @@ impl View {
             seen: Vec::new(),
             kept_seen: Vec::new(),
             marks: RowMarks::default(),
-            refills: Vec::new(),
+            reads: Vec::new(),
             refill: true,
             relations: Relations::default(),
             metric: Metric::default(),

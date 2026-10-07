@@ -153,8 +153,10 @@ impl Refresh {
                 continue;
             };
             let values = scratch.values(unit, count);
-            let refill = stats.refill();
-            refill.extend_from_slice(values);
+            // A unit with a live change refreshes every pass, mostly to the values it has.
+            if stats.values() != values {
+                stats.refill().extend_from_slice(values);
+            }
             if let (Some(mut step), Some(value)) = (step, book.step(values, *rate)) {
                 step.set_if_neq(MoveStep::new(value).expect("a step is at least 0"));
             }

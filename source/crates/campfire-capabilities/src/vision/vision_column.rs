@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::rhai::{Array, Dynamic};
@@ -22,8 +24,8 @@ impl ViewColumn for VisionColumn {
         false
     }
 
-    fn keep(&mut self, row: usize) {
-        self.rows.keep(row);
+    fn keep(&mut self, rows: Range<usize>) {
+        self.rows.keep(rows);
     }
 
     fn rows(&self) -> usize {

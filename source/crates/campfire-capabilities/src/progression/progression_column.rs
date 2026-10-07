@@ -9,7 +9,7 @@ use crate::progression::points::Points;
 use crate::progression::track_book::TrackBook;
 use crate::scripts::error::{ApiError, Checked};
 use crate::stats::level::Level;
-use crate::units::kept_rows::{ColumnRows, KeptRows};
+use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::script_view::View;
 use crate::units::track_id::TrackId;
 use crate::units::view_column::ViewColumn;
@@ -51,8 +51,8 @@ impl ViewColumn for ProgressionColumn {
         false
     }
 
-    fn keep(&mut self, row: usize) {
-        self.rows.keep(row);
+    fn keep(&mut self, rows: Range<usize>) {
+        self.rows.keep(rows);
     }
 
     fn rows(&self) -> usize {
@@ -70,15 +70,19 @@ impl ColumnRows for ProgressionRows {
         self.held.clear();
     }
 
-    fn push_from(&mut self, from: &Self, row: usize) {
-        let held = from.held(row);
-        let start = u32::try_from(self.held.len()).expect("tracks fit u32");
-        self.held.extend_from_slice(held);
-        let end = u32::try_from(self.held.len()).expect("tracks fit u32");
-        self.rows.push(TracksRow {
-            held: start..end,
-            points: from.rows[row].points,
-        });
+    fn push_from(&mut self, from: &Self, rows: Range<usize>) {
+        let (first, end) = (
+            from.rows[rows.start].held.start,
+            from.rows[rows.end - 1].held.end,
+        );
+        let moved = RunMove::new(first, self.held.len());
+        self.rows
+            .extend(from.rows[rows].iter().map(|row| TracksRow {
+                held: moved.of(&row.held),
+                points: row.points,
+            }));
+        self.held
+            .extend_from_slice(&from.held[first as usize..end as usize]);
     }
 
     fn len(&self) -> usize {

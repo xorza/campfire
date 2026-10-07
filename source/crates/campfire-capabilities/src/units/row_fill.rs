@@ -1,5 +1,6 @@
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::Range;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{QueryState, ROQueryItem};
@@ -77,8 +78,8 @@ pub(crate) trait FillRow: fmt::Debug {
         relations: &Relations,
     );
 
-    /// Adds row `row` of the read before to its column, unchanged.
-    fn keep(&self, columns: &mut ViewColumns, row: usize);
+    /// Adds the rows `rows` of the read before to its column, unchanged.
+    fn keep(&self, columns: &mut ViewColumns, rows: Range<usize>);
 }
 
 impl<D: RowParts, C: ViewColumn> FillRow for RowSource<D, C> {
@@ -117,8 +118,8 @@ impl<D: RowParts, C: ViewColumn> FillRow for RowSource<D, C> {
         (self.fill)(parts, &mut fill);
     }
 
-    fn keep(&self, columns: &mut ViewColumns, row: usize) {
-        columns.any_mut(self.column).keep(row);
+    fn keep(&self, columns: &mut ViewColumns, rows: Range<usize>) {
+        columns.any_mut(self.column).keep(rows);
     }
 }
 

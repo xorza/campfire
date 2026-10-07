@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::StableId;
@@ -28,8 +30,8 @@ impl ViewColumn for NavigationColumn {
         false
     }
 
-    fn keep(&mut self, row: usize) {
-        self.rows.keep(row);
+    fn keep(&mut self, rows: Range<usize>) {
+        self.rows.keep(rows);
     }
 
     fn rows(&self) -> usize {

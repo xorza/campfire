@@ -5,7 +5,7 @@ use campfire_script::rhai::Dynamic;
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
-use crate::units::kept_rows::{ColumnRows, KeptRows};
+use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::script_view::View;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_state_book::{StateField, UnitStateBook};
@@ -34,8 +34,8 @@ impl ViewColumn for UnitsColumn {
         false
     }
 
-    fn keep(&mut self, row: usize) {
-        self.rows.keep(row);
+    fn keep(&mut self, rows: Range<usize>) {
+        self.rows.keep(rows);
     }
 
     fn rows(&self) -> usize {
@@ -53,9 +53,13 @@ impl ColumnRows for StateRows {
         self.values.clear();
     }
 
-    fn push_from(&mut self, from: &Self, row: usize) {
-        let run = &from.rows[row];
-        self.push(&from.values[run.start as usize..run.end as usize]);
+    fn push_from(&mut self, from: &Self, rows: Range<usize>) {
+        let (first, end) = (from.rows[rows.start].start, from.rows[rows.end - 1].end);
+        let moved = RunMove::new(first, self.values.len());
+        self.rows
+            .extend(from.rows[rows].iter().map(|run| moved.of(run)));
+        self.values
+            .extend_from_slice(&from.values[first as usize..end as usize]);
     }
 
     fn len(&self) -> usize {

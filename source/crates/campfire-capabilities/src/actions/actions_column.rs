@@ -14,7 +14,7 @@ use crate::actions::slot_kinds::SlotKinds;
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
-use crate::units::kept_rows::{ColumnRows, KeptRows};
+use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
 use crate::units::view_column::ViewColumn;
@@ -61,8 +61,8 @@ impl ViewColumn for ActionsColumn {
         false
     }
 
-    fn keep(&mut self, row: usize) {
-        self.rows.keep(row);
+    fn keep(&mut self, rows: Range<usize>) {
+        self.rows.keep(rows);
     }
 
     fn rows(&self) -> usize {
@@ -80,16 +80,20 @@ impl ColumnRows for ActionsRows {
         self.slots.clear();
     }
 
-    fn push_from(&mut self, from: &Self, row: usize) {
-        let start = u32::try_from(self.slots.len()).expect("slots fit u32");
-        self.slots.extend_from_slice(from.slots(row));
-        let end = u32::try_from(self.slots.len()).expect("slots fit u32");
-        let kept = &from.rows[row];
-        self.rows.push(ActionsRow {
-            target: kept.target,
-            attack_range: kept.attack_range,
-            slots: start..end,
-        });
+    fn push_from(&mut self, from: &Self, rows: Range<usize>) {
+        let (first, end) = (
+            from.rows[rows.start].slots.start,
+            from.rows[rows.end - 1].slots.end,
+        );
+        let moved = RunMove::new(first, self.slots.len());
+        self.rows
+            .extend(from.rows[rows].iter().map(|row| ActionsRow {
+                target: row.target,
+                attack_range: row.attack_range,
+                slots: moved.of(&row.slots),
+            }));
+        self.slots
+            .extend_from_slice(&from.slots[first as usize..end as usize]);
     }
 
     fn len(&self) -> usize {

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bevy_ecs::world::World;
 use campfire_script::rhai::{Array, Dynamic, INT};
 
@@ -5,7 +7,7 @@ use crate::combat::recent_attack::RecentAttack;
 use crate::scripts::error::{ApiError, Checked};
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_id::PoolId;
-use crate::units::kept_rows::{ColumnRows, KeptRows};
+use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::unit::Unit;
 use crate::units::view_column::ViewColumn;
 
@@ -36,8 +38,8 @@ impl ViewColumn for CombatColumn {
         changed
     }
 
-    fn keep(&mut self, row: usize) {
-        self.rows.keep(row);
+    fn keep(&mut self, rows: Range<usize>) {
+        self.rows.keep(rows);
     }
 
     fn rows(&self) -> usize {
@@ -56,8 +58,15 @@ impl ColumnRows for CombatRows {
         self.starts.clear();
     }
 
-    fn push_from(&mut self, from: &Self, row: usize) {
-        self.push(from.stays[row], from.run(row).iter().copied());
+    fn push_from(&mut self, from: &Self, rows: Range<usize>) {
+        let first = from.starts[rows.start];
+        let end = from.end(rows.end - 1);
+        let moved = RunMove::new(first, self.attacks.len());
+        self.stays.extend_from_slice(&from.stays[rows.clone()]);
+        let starts = from.starts[rows].iter();
+        self.starts.extend(starts.map(|&start| moved.at(start)));
+        self.attacks
+            .extend_from_slice(&from.attacks[first as usize..end as usize]);
     }
 
     fn len(&self) -> usize {
@@ -75,11 +84,13 @@ impl CombatRows {
 
     /// The recent attacks on the unit in row `row`.
     fn run(&self, row: usize) -> &[RecentAttack] {
-        let end = self
-            .starts
-            .get(row + 1)
-            .map_or(self.attacks.len(), |&end| end as usize);
-        &self.attacks[self.starts[row] as usize..end]
+        &self.attacks[self.starts[row] as usize..self.end(row) as usize]
+    }
+
+    /// Where the run of row `row` ends.
+    fn end(&self, row: usize) -> u32 {
+        let end = self.starts.get(row + 1).copied();
+        end.unwrap_or_else(|| u32::try_from(self.attacks.len()).expect("attacks fit u32"))
     }
 }
 

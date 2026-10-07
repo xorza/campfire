@@ -15,7 +15,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stats_call::StatsCall;
 use crate::units::action_id::ActionId;
-use crate::units::kept_rows::{ColumnRows, KeptRows};
+use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
 use crate::units::view_column::ViewColumn;
@@ -70,8 +70,8 @@ impl ViewColumn for StatsColumn {
         false
     }
 
-    fn keep(&mut self, row: usize) {
-        self.rows.keep(row);
+    fn keep(&mut self, rows: Range<usize>) {
+        self.rows.keep(rows);
     }
 
     fn rows(&self) -> usize {
@@ -91,13 +91,31 @@ impl ColumnRows for StatsRows {
         self.modifier_state.clear();
     }
 
-    fn push_from(&mut self, from: &Self, row: usize) {
-        let kept = &from.rows[row];
-        let carried = from
-            .run(row)
-            .iter()
-            .map(|held| (held.id, held.source, held.stacks, from.state(held)));
-        self.push(kept.level, kept.pools, from.stats(row), carried);
+    fn push_from(&mut self, from: &Self, rows: Range<usize>) {
+        let (first, last) = (&from.rows[rows.start], &from.rows[rows.end - 1]);
+        let values = RunMove::new(first.stats.start, self.stats.len());
+        let carried = RunMove::new(first.modifiers.start, self.modifiers.len());
+        self.rows.extend(from.rows[rows].iter().map(|row| StatsRow {
+            level: row.level,
+            pools: row.pools,
+            stats: values.of(&row.stats),
+            modifiers: carried.of(&row.modifiers),
+        }));
+        let stats = first.stats.start as usize..last.stats.end as usize;
+        self.stats.extend_from_slice(&from.stats[stats]);
+        let modifiers =
+            &from.modifiers[first.modifiers.start as usize..last.modifiers.end as usize];
+        if let (Some(head), Some(tail)) = (modifiers.first(), modifiers.last()) {
+            let script = RunMove::new(head.state.start, self.modifier_state.len());
+            self.modifiers
+                .extend(modifiers.iter().map(|modifier| ModifierRow {
+                    state: script.of(&modifier.state),
+                    ..modifier.clone()
+                }));
+            let run = head.state.start as usize..tail.state.end as usize;
+            self.modifier_state
+                .extend_from_slice(&from.modifier_state[run]);
+        }
     }
 
     fn len(&self) -> usize {
