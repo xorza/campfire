@@ -12,7 +12,6 @@ A snapshot is untrusted data. Some components validate in their `Deserialize` (`
 
 Target: a type's own invariants (sorted, bounded, in range) are kept by its `Deserialize`, so a decoded value is always valid. `check` keeps only what needs the world (book references, team counts). The tick bound is done: `Tick` and `Ticks` refuse a value past the limit as they decode.
 
-- [ ] `combat/recent_attackers.rs:15,49`: `RecentAttackers` derives a transparent `Deserialize`, and `check` tests only the ticks. `record` binary-searches by `source`, so an unsorted or repeated list makes it miss entries and insert duplicates. Then the assist list is wrong or names a unit twice. Target: the decode rejects a list that is not strictly ascending by `source`, as `Experience`'s does.
 - [ ] **(bug)** `stats/meter.rs:9-12,41-43,90-98,101-123`: the field doc says that `carry` is "0 while full or empty", but `fill` and `take` reach full and empty without a reset. Only `regen`, `add` and `set_max` reset it. The decode accepts any `carry`, and `Pools::check` (`stats/pools.rs:116-124`) returns `true`. A forged `carry >= hz` adds more than `per_second` over `hz` ticks. Target: one private step after each write resets `carry` at either end, so the invariant holds. Then `Pools::check` rejects `carry >= hz` (it has the `TickRate`) and a nonzero `carry` at either end. The reset must come first: a check alone would reject snapshots that the live code makes today.
 
 ## 4. Data is checked, then read back with `expect`

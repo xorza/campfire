@@ -3,14 +3,15 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{EntityIndex, SimComponent, StableId};
-use serde::{Deserialize, Serialize};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::combat::recent_attack::RecentAttack;
 
 /// Who struck a unit, and the last tick each did, by stable id. An attacker that no longer exists
 /// is forgotten as a new one comes, so the list never holds more than the units that lived since
 /// then; each reader skips those gone.
-#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct RecentAttackers(Vec<RecentAttack>);
 
@@ -41,6 +42,18 @@ impl RecentAttackers {
     }
 }
 
+/// A snapshot is untrusted, so attackers out of the order of their stable ids, or one twice, which
+/// `record`'s search relies on, fail to decode.
+impl<'de> Deserialize<'de> for RecentAttackers {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<RecentAttackers, D::Error> {
+        let attacks = Vec::<RecentAttack>::deserialize(deserializer)?;
+        if !attacks.is_sorted_by(|a, b| a.source < b.source) {
+            return Err(D::Error::custom("attackers in order, each once"));
+        }
+        Ok(RecentAttackers(attacks))
+    }
+}
+
 impl SimComponent for RecentAttackers {
     const NAME: &'static str = "combat.recent_attackers";
 
@@ -48,5 +61,27 @@ impl SimComponent for RecentAttackers {
     // within the limit.
     fn check(&self, _: &World, _: Entity) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_sim::IdAllocator;
+
+    use super::*;
+
+    #[test]
+    fn attackers_decode_in_order_each_once() {
+        let mut ids = IdAllocator::default();
+        let [first, second] = [ids.allocate(), ids.allocate()].map(|source| RecentAttack {
+            source,
+            tick: Tick::new(4),
+        });
+        let decode = |attacks: &[RecentAttack]| {
+            let bytes = postcard::to_allocvec(attacks).unwrap();
+            postcard::from_bytes::<RecentAttackers>(&bytes).is_ok()
+        };
+        assert!(decode(&[]) && decode(&[first, second]));
+        assert!(!decode(&[second, first]) && !decode(&[first, first]));
     }
 }
