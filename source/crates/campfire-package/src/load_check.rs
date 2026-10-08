@@ -649,7 +649,9 @@ impl<'a> LoadCheck<'a> {
                 }
             }
             for used in &facts.members {
-                self.member(facts, &used.name, used.kind).map_err(fail)?;
+                if let Some(capability) = self.member(facts, &used.name, used.kind).map_err(fail)? {
+                    self.require(capability, &at)?;
+                }
             }
             self.enums(facts).map_err(fail)?;
             if let Some(name) = facts
@@ -767,13 +769,15 @@ impl<'a> LoadCheck<'a> {
 
     /// A script may read or call `name`, of `kind`, on a value other than `ctx`: a handle's field
     /// or method that runs, one the engine has of its own, a key of the script's object maps or
-    /// one of its functions. A name only a planned handle member has is planned.
+    /// one of its functions. A name only a planned handle member has is planned. A name whose
+    /// every form that runs is of a capability the mode does not declare gives the first such
+    /// capability, which the match binds no form of.
     fn member(
         &self,
         facts: &ScriptFacts,
         name: &str,
         kind: MemberKind,
-    ) -> Result<(), ScriptProblem> {
+    ) -> Result<Option<Capability>, ScriptProblem> {
         let own = match kind {
             MemberKind::Field => {
                 self.api.builtin(&format!("get${name}"))
@@ -785,19 +789,26 @@ impl<'a> LoadCheck<'a> {
             }
         };
         if own {
-            return Ok(());
+            return Ok(None);
         }
         let mut problem = ScriptProblem::UnknownMember(name.to_owned());
+        let mut undeclared = None;
         let handles = self.api.members().iter().filter(|member| {
             member.owner != ApiOwner::Ctx && member.name == name && member.kind == kind
         });
         for member in handles {
-            if member.status != Status::Planned {
-                return Ok(());
+            if member.status == Status::Planned {
+                problem = ScriptProblem::Planned(name.to_owned());
+                continue;
             }
-            problem = ScriptProblem::Planned(name.to_owned());
+            match member.capability {
+                Some(capability) if !self.packages.manifest.capabilities.contains(capability) => {
+                    undeclared.get_or_insert(capability);
+                }
+                _ => return Ok(None),
+            }
         }
-        Err(problem)
+        undeclared.map(Some).ok_or(problem)
     }
 
     /// A name a script at `at` gives an argument of a name kind is one of its kind that the match

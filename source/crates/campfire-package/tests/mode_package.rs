@@ -377,7 +377,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 268] = [
+static FLAWS: [Flaw; 269] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1051,6 +1051,17 @@ static FLAWS: [Flaw; 268] = [
         Edit::Replace("fn on_resolve(", "fn on_cast("),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_cast"),
+    ),
+    // A handle's member every form of which is of a capability the mode does not declare: the
+    // 3v3 has no `production`, whose `unit.load` it is.
+    flaw(
+        CREEP_AI,
+        Edit::Replace(
+            "if target == () {\n        ctx.order_follow_path",
+            "if unit.load > 0 {\n        ctx.order_follow_path",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Script(path) } if path.as_str() == "scripts/creep_ai.rhai"),
     ),
     flaw(
         CREEP_AI,
