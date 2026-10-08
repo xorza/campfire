@@ -498,7 +498,8 @@ impl Construction {
         let builder = *world.get::<StableId>(entity).expect("a builder has an id");
         let holder = (style == Style::Builder).then_some(builder);
         let held = Site::new(action, start.rank, gain, paid, holder);
-        let status = StatusTags::of([EngineTag::Constructing]);
+        let status = world.get::<StatusTags>(site).copied().unwrap_or_default();
+        let status = status.turned(EngineTag::Constructing, true);
         world.entity_mut(site).insert((held, status));
         let next = (style != Style::Alone).then_some(BuildOrder {
             slot: order.slot,
@@ -614,7 +615,7 @@ impl Construction {
             }
             if progressed.complete {
                 commands.entity(entity).remove::<Site>();
-                *status = StatusTags::default();
+                *status = status.turned(EngineTag::Constructing, false);
                 done.push(id);
             }
         }

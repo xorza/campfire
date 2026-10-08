@@ -370,7 +370,8 @@ fn a_load_past_what_an_amount_holds_stays_with_its_worker() {
 #[test]
 fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another_resource() {
     // A worker that gathered the mineral carries 5 when its loop is cut by a move. Sent to the
-    // hall, in range, it delivers at once and goes back to the mineral it gathered last.
+    // hall, in range, it delivers at once and goes back to the mineral it gathered last, 1.5 m
+    // off, though a free one spans x 1.5 to 3.5 at z 4, 1 m off and within 4 m of it.
     let mut mine = Mine::new();
     let hall = mine.hall(half(0, 3));
     let node = mine.mineral(half(0, 12), 100);
@@ -379,6 +380,7 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     for _ in 1..=3 {
         mine.shop.tick();
     }
+    let nearer = mine.mineral(half(5, 8), 100);
     let mut gatherer = mine.shop.sim.get_mut::<Gatherer>(worker);
     gatherer.set(None);
     gatherer.carry(Some(Load {
@@ -388,6 +390,7 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     mine.gather_at(&[worker], hall);
     assert_eq!(mine.gold(), 10);
     assert_eq!(mine.node_of(worker), Some(node));
+    assert_eq!(mine.holder(nearer), None);
     assert_eq!(mine.shop.sim.get::<Gatherer>(worker).load(), None);
 
     // A load of another resource, sent to gather gold, is dropped.

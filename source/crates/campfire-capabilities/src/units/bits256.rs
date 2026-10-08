@@ -21,6 +21,13 @@ impl Bits256 {
         self
     }
 
+    /// The bits with bit `index`, below `BITS`, clear.
+    #[must_use]
+    pub(crate) const fn without(mut self, index: usize) -> Bits256 {
+        self.0[index / 64] &= !(1 << (index % 64));
+        self
+    }
+
     pub(crate) const fn contains(self, index: usize) -> bool {
         self.0[index / 64] & 1 << (index % 64) != 0
     }

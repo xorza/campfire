@@ -1335,12 +1335,6 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A unit type at `at`, of a package of `actions` and `modifiers`: each capability its
-    /// sections use declared, its stats and pools the mode's, its layer one the mode declares;
-    /// its slots of kinds the mode declares, each holding actions of `actions`, none twice; its
-    /// passive one of `modifiers`; and a projectile or an area type a delivery type alone: a
-    /// homing projectile faster than the cap, its filter of the match's tags, and an area's
-    /// `inside` modifiers of `modifiers`.
     /// A box body only on a type that does not walk, on a planar map.
     fn body_box(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
         let boxed = unit_type
@@ -1399,6 +1393,12 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
+    /// A unit type at `at`, of a package of `actions` and `modifiers`: each capability its
+    /// sections use declared, its stats and pools the mode's, its layer one the mode declares, a
+    /// box body only where `body_box` allows it; its slots of kinds the mode declares, each
+    /// holding actions of `actions`, none twice; its passive one of `modifiers`; and a
+    /// projectile or an area type a delivery type alone: a homing projectile faster than the
+    /// cap, its filter of the match's tags, and an area's `inside` modifiers of `modifiers`.
     fn unit_type(
         &self,
         unit_type: &UnitTypeFile,

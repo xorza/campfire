@@ -69,8 +69,12 @@ impl Gatherer {
         self.last
     }
 
+    /// Sets its loop. A checked loop's node becomes the last it chose; an order not checked yet
+    /// names a unit that may be no node, such as a drop-off, so the last stays.
     pub(crate) const fn set(&mut self, order: Option<GatherOrder>) {
-        if let Some(order) = order {
+        if let Some(order) = order
+            && !matches!(order.step, GatherStep::Ordered)
+        {
             self.last = Some(order.node);
         }
         self.order = order;
@@ -85,8 +89,8 @@ impl SimComponent for Gatherer {
     const NAME: &'static str = "production.gatherer";
 
     // A load of a resource the mode lacks would join no amount, and one with no last node has no
-    // node to go back to; a loop's node is the last it chose. A step's tick of any value is
-    // compared, not counted from.
+    // node to go back to; a checked loop's node is the last it chose. A step's tick of any value
+    // is compared, not counted from.
     fn check(&self, world: &World, _: Entity) -> bool {
         let resources = world
             .get_resource::<PlayerResources>()
@@ -94,7 +98,9 @@ impl SimComponent for Gatherer {
         let load = self
             .load
             .is_none_or(|load| load.resource.index() < resources && self.last.is_some());
-        let order = self.order.is_none_or(|order| self.last == Some(order.node));
+        let order = self
+            .order
+            .is_none_or(|order| order.step == GatherStep::Ordered || self.last == Some(order.node));
         load && order
     }
 }
@@ -137,5 +143,17 @@ mod tests {
         assert!(!checks(None, Some(load(gold)), None));
         assert!(!checks(Some(order(first)), None, Some(second)));
         assert!(!checks(Some(order(first)), None, None));
+        // An order not checked yet names any unit, and keeps the last node it chose.
+        let ordered = GatherOrder {
+            step: GatherStep::Ordered,
+            ..order(second)
+        };
+        assert!(checks(Some(ordered), Some(load(gold)), Some(first)));
+        let mut gatherer = Gatherer::default();
+        gatherer.set(Some(order(first)));
+        gatherer.set(Some(ordered));
+        assert_eq!(gatherer.last(), Some(first));
+        gatherer.set(Some(order(second)));
+        assert_eq!(gatherer.last(), Some(second));
     }
 }

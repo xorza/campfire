@@ -17,6 +17,10 @@ impl TagSet {
         TagSet(self.0.with(tag.index()))
     }
 
+    pub(crate) const fn without(self, tag: Tag) -> TagSet {
+        TagSet(self.0.without(tag.index()))
+    }
+
     pub(crate) const fn contains(self, tag: Tag) -> bool {
         self.0.contains(tag.index())
     }
@@ -56,5 +60,7 @@ mod tests {
         assert!(set.covers(tags(&[63, 255])) && !set.covers(tags(&[63, 254])));
         assert!(set.covers(TagSet::default()));
         assert_eq!(tags(&[1]).union(tags(&[130])), tags(&[1, 130]));
+        let cleared = set.without(Tag::new(64)).without(Tag::new(65));
+        assert_eq!(cleared, tags(&[0, 63, 200, 255]));
     }
 }

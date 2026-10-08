@@ -54,6 +54,10 @@ type Worker = (
     Option<&'static UnitTags>,
 );
 
+/// The living units that gather, which the loop visits and a freed node's waiting workers are
+/// found among.
+type Gatherers = QueryState<(Entity, &'static StableId, &'static Gatherer), Without<Dead>>;
+
 /// What the gather loop reads of the match: the books, the workers, the nodes and the drop-offs.
 #[derive(SystemParam, Debug)]
 pub(crate) struct GatherView<'w, 's> {
@@ -412,11 +416,11 @@ impl GatherLoop {
     /// whose gather's time runs from this tick.
     pub(crate) fn run(
         world: &mut World,
-        workers: &mut QueryState<(Entity, &StableId, &Gatherer), Without<Dead>>,
+        (workers, nodes): (&mut Gatherers, &mut QueryState<(Entity, &StableId, &Node)>),
         view: &mut SystemState<GatherView<'_, '_>>,
         (mut order, mut held): (Local<'_, Ordered>, Local<'_, Vec<HeldNode>>),
     ) {
-        GatherLoop::free_left_nodes(world, &mut held);
+        GatherLoop::free_left_nodes(world, workers, nodes, &mut held);
         let looping = workers
             .iter(world)
             .filter(|(.., gatherer)| gatherer.order().is_some())
@@ -435,7 +439,7 @@ impl GatherLoop {
                 break;
             };
             for taken in 1..=GatherLoop::STEPS {
-                GatherLoop::apply(world, entity, step);
+                GatherLoop::apply(world, workers, entity, step);
                 if !step.goes_on() || taken == GatherLoop::STEPS {
                     break;
                 }
@@ -449,8 +453,12 @@ impl GatherLoop {
 
     /// Frees each node whose holder no longer gathers it: dead, gone, or of a loop that ended or
     /// went elsewhere.
-    fn free_left_nodes(world: &mut World, held: &mut Vec<HeldNode>) {
-        let mut nodes = world.query::<(Entity, &StableId, &Node)>();
+    fn free_left_nodes(
+        world: &mut World,
+        workers: &mut Gatherers,
+        nodes: &mut QueryState<(Entity, &StableId, &Node)>,
+        held: &mut Vec<HeldNode>,
+    ) {
         held.clear();
         held.extend(nodes.iter(world).filter_map(|(entity, &id, node)| {
             Some(HeldNode {
@@ -479,17 +487,16 @@ impl GatherLoop {
                         })
             });
             if !gathers {
-                GatherLoop::free(world, node, id);
+                GatherLoop::free(world, workers, node, id);
             }
         }
     }
 
     /// Frees the node of `entity`, of id `id`, to its first waiting worker, by the tick it began
     /// to wait, then by stable id: it holds the node, and its gather's time runs from this tick.
-    fn free(world: &mut World, entity: Entity, id: StableId) {
+    fn free(world: &mut World, workers: &mut Gatherers, entity: Entity, id: StableId) {
         let now = world.resource::<SimTick>().start();
-        let mut waiting = world.query_filtered::<(Entity, &StableId, &Gatherer), Without<Dead>>();
-        let first = waiting
+        let first = workers
             .iter(world)
             .filter_map(|(worker, &worker_id, gatherer)| {
                 let order = gatherer.order()?;
@@ -512,7 +519,7 @@ impl GatherLoop {
     }
 
     /// Does `step` for the worker of `entity`.
-    fn apply(world: &mut World, entity: Entity, step: Step) {
+    fn apply(world: &mut World, workers: &mut Gatherers, entity: Entity, step: Step) {
         let now = world.resource::<SimTick>().start();
         let Some(order) = world
             .get::<Gatherer>(entity)
@@ -536,7 +543,7 @@ impl GatherLoop {
             Step::Interrupt(node) => {
                 set(world, with(GatherStep::ToNode));
                 let id = *world.get::<StableId>(node).expect("a node has an id");
-                GatherLoop::free(world, node, id);
+                GatherLoop::free(world, workers, node, id);
             }
             Step::Retarget(next) => set(
                 world,
@@ -559,7 +566,7 @@ impl GatherLoop {
                     .hold(Some(id));
                 set(world, with(GatherStep::Gathering { since: now }));
             }
-            Step::Collect(node) => GatherLoop::collect(world, entity, order, node),
+            Step::Collect(node) => GatherLoop::collect(world, workers, entity, order, node),
             Step::Choose(drop_off) => set(
                 world,
                 with(GatherStep::ToDropOff {
@@ -572,7 +579,13 @@ impl GatherLoop {
 
     /// Ends the gather of the worker of `entity`, in its loop `order`, at the node of `node`: it
     /// carries what it takes, sets out for a drop-off, and frees the node.
-    fn collect(world: &mut World, entity: Entity, order: GatherOrder, node: Entity) {
+    fn collect(
+        world: &mut World,
+        workers: &mut Gatherers,
+        entity: Entity,
+        order: GatherOrder,
+        node: Entity,
+    ) {
         let slots = world.get::<ActionSlots>(entity).expect("a worker's slots");
         let held = slots.slot(order.slot).and_then(|slot| slot.action);
         let action = held.and_then(|action| world.resource::<ActionBook>().get(action));
@@ -593,7 +606,7 @@ impl GatherLoop {
             ..order
         }));
         let id = *world.get::<StableId>(node).expect("a node has an id");
-        GatherLoop::free(world, node, id);
+        GatherLoop::free(world, workers, node, id);
     }
 
     /// Joins the load of the worker of `entity`, in its loop `order`, to its player's resources,
@@ -643,22 +656,19 @@ impl GatherLoop {
         mut workers: Query<'_, '_, (Entity, &Gatherer, Option<&mut StatusTags>)>,
         mut commands: Commands<'_, '_>,
     ) {
-        let gathering = StatusTags::of([EngineTag::Gathering]);
         for (entity, gatherer, status) in &mut workers {
             let looping = gatherer
                 .order()
                 .is_some_and(|order| order.step != GatherStep::Ordered);
-            let wanted = if looping {
-                gathering
-            } else {
-                StatusTags::default()
-            };
             match status {
                 Some(mut status) => {
+                    let wanted = status.turned(EngineTag::Gathering, looping);
                     status.set_if_neq(wanted);
                 }
                 None if looping => {
-                    commands.entity(entity).insert(gathering);
+                    commands
+                        .entity(entity)
+                        .insert(StatusTags::of([EngineTag::Gathering]));
                 }
                 None => {}
             }

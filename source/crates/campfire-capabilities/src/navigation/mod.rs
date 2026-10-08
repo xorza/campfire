@@ -242,8 +242,9 @@ impl Navigation {
 
 /// Gives the static index and the pathing grid the static bodies: the living units that cannot
 /// walk, those the client only holds among them. It runs as each tick starts, so a structure that
-/// died or spawned in the tick before counts from this one, and again as Collide starts, so
-/// collision parts walkers from the static bodies as they stand then. Each change goes to
+/// died or spawned in the tick before counts from this one, again as Collide starts, so
+/// collision parts walkers from the static bodies as they stand then, and as a box spawns, so
+/// the walkers it moves out land clear of it. Each change goes to
 /// `changes` for the walkers' routes. Every run reads them into `statics`, a buffer it keeps.
 fn track_static_bodies(
     mut index: ResMut<'_, BodyIndex>,

@@ -22,6 +22,18 @@ impl StatusTags {
     pub(crate) const fn get(self) -> TagSet {
         self.0
     }
+
+    /// It with `tag` when `on`, else without it; every other tag stays, as each belongs to the
+    /// capability that gives it.
+    #[must_use]
+    pub(crate) fn turned(self, tag: EngineTag, on: bool) -> StatusTags {
+        let tag = tag.tag();
+        StatusTags(if on {
+            self.0.with(tag)
+        } else {
+            self.0.without(tag)
+        })
+    }
 }
 
 impl SimComponent for StatusTags {
@@ -30,5 +42,23 @@ impl SimComponent for StatusTags {
     // Engine tags alone, which every match declares first.
     fn check(&self, _: &World, _: Entity) -> bool {
         self.0.iter().all(|tag| tag.index() < EngineTag::ALL.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_turn_changes_its_own_tag_alone() {
+        let site = StatusTags::of([EngineTag::Constructing]);
+        let both = StatusTags::of([EngineTag::Constructing, EngineTag::Gathering]);
+        assert_eq!(site.turned(EngineTag::Gathering, true), both);
+        assert_eq!(both.turned(EngineTag::Gathering, false), site);
+        assert_eq!(site.turned(EngineTag::Constructing, true), site);
+        assert_eq!(
+            site.turned(EngineTag::Constructing, false),
+            StatusTags::default()
+        );
     }
 }
