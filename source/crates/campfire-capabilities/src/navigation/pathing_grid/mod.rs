@@ -5,13 +5,13 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 
+use crate::geometry::grid::Grid;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::regions::Regions;
 use crate::navigation::segment::Segment;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::units::body::Body;
-use crate::values::grid::Grid;
 
 /// The map's pathing grid: its bounds in square cells, and for each kind of walker the mode has,
 /// its clearance: the cells it cannot stand in, those the walls of its layer block and those whose
@@ -160,18 +160,18 @@ impl PathingGrid {
 
     /// The cells `walker` may stand in, when it is one of the mode's kinds of walker.
     pub(crate) fn serving(&self, walker: Walker) -> Option<Clearance<'_>> {
-        self.walkers
-            .binary_search(&walker)
-            .is_ok()
-            .then(|| self.clearance(walker))
+        let at = self.walkers.binary_search(&walker).ok()?;
+        Some(self.clearance_at(at))
     }
 
     /// The cells `walker`, one of the mode's kinds of walker, may stand in.
     pub(crate) fn clearance(&self, walker: Walker) -> Clearance<'_> {
-        let at = self
-            .walkers
-            .binary_search(&walker)
-            .expect("a kind of walker the mode has");
+        self.serving(walker).expect("a kind of walker the mode has")
+    }
+
+    /// The cells the kind of walker at `at` among the mode's may stand in.
+    fn clearance_at(&self, at: usize) -> Clearance<'_> {
+        let walker = self.walkers[at];
         let span = at * self.words..(at + 1) * self.words;
         Clearance {
             grid: &self.grid,

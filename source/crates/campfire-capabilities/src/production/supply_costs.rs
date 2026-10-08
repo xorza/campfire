@@ -30,7 +30,7 @@ impl SupplyCosts {
     /// The costs of `types`, and of the trains of `actions`.
     pub(crate) fn new(types: ByType<SupplyData>, actions: &ActionBook) -> SupplyCosts {
         let trains = (0..)
-            .map_while(|at| actions.get(ActionId::nth(at)))
+            .map_while(|at| actions.get(ActionId::new(at)))
             .map(|action| match action.kind {
                 KindSpec::Train(made) => types.get(made).map_or(0, |supply| supply.cost),
                 KindSpec::Cast | KindSpec::Attack(_) | KindSpec::Build(_) | KindSpec::Gather(_) => {

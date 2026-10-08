@@ -1,9 +1,11 @@
-use campfire_common::Tick;
+use campfire_common::{Tick, Ticks};
+use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::Serialize;
 
+use super::*;
 use crate::actions::action_book;
-use crate::actions::effect_lists::LaunchId;
+use crate::actions::launch_id::LaunchId;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
 use crate::stats::Stats;
@@ -12,14 +14,15 @@ use crate::units::Units;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::tag_set::TagSet;
+use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::{Number, ParamRef};
+use crate::values::rank::Rank;
 use crate::values::relation::Relation;
-
-use super::*;
+use crate::values::relation_set::RelationSet;
 
 #[test]
 fn an_area_that_triggers_after_it_ends_fails_to_decode() {
@@ -64,8 +67,8 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
     let [projectile, area] = [EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag);
     let parse = |text| Filter::parse(text, &types).unwrap();
     // A relation alone is the filter of its name.
-    assert_eq!(Filter::of_relation(Relation::Enemies), parse("enemies"));
-    assert_eq!(Filter::of_relation(Relation::All), parse("all"));
+    assert_eq!(Filter::of_relations(RelationSet::Enemies), parse("enemies"));
+    assert_eq!(Filter::of_relations(RelationSet::All), parse("all"));
     let units = [
         TagSet::default(),
         TagSet::of([projectile]),
@@ -77,7 +80,7 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
         ("enemies:projectile", [false, true, false]),
         ("enemies:!area", [true, false, false]),
     ] {
-        let selects = units.map(|tags| parse(filter).selects(Attitude::Hostile, tags));
+        let selects = units.map(|tags| parse(filter).selects(Relation::Hostile, tags));
         assert_eq!(selects, selected, "{filter}");
     }
 }
@@ -128,7 +131,7 @@ fn an_area_is_state_and_restores() {
     let by = Delivering {
         source,
         action,
-        rank: 1,
+        rank: Rank::FIRST,
         start: None,
         launch: None,
     };
@@ -138,12 +141,12 @@ fn an_area_is_state_and_restores() {
     loads(&mut restored);
     sim.restore_into(&mut restored);
     assert_eq!(restored.get::<Area>(id), sim.get::<Area>(id));
-    // Its times are at most the limit: either a tick past it fails.
+    // Its times are at most the limit: either a tick past it fails to decode.
     let entity = sim.entity(id);
     let past = Tick::new(Tick::LIMIT.get() + 1);
     let check = |triggers_at, ends_at| {
         let area = Area::new(by, None, triggers_at, ends_at).unwrap();
-        area.check(&sim.world, entity)
+        TestMatch::decodes(&area) && area.check(&sim.world, entity)
     };
     assert!(check(Some(Tick::LIMIT), Tick::LIMIT));
     assert!(!check(None, past));

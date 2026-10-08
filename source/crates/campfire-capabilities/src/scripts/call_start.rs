@@ -6,6 +6,7 @@ use crate::units::forced_move::DashDelivery;
 use crate::units::modifier_id::ModifierId;
 use crate::values::action_start::ActionStart;
 use crate::values::hit::Hit;
+use crate::values::rank::Rank;
 
 /// What a call starts with: its role; its acting unit, a cast's caster, a modifier's source or
 /// the unit that thinks, none for the mode; the action whose params it reads, at `rank`, and its
@@ -18,7 +19,7 @@ pub(crate) struct CallStart {
     pub(crate) role: ScriptRole,
     pub(crate) acting: Option<StableId>,
     pub(crate) action: Option<ActionId>,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
     pub(crate) modifier: Option<ModifierId>,
     pub(crate) package: u16,
     pub(crate) depth: u8,
@@ -35,7 +36,7 @@ impl CallStart {
             role,
             acting: None,
             action: None,
-            rank: 1,
+            rank: Rank::FIRST,
             modifier: None,
             package: 0,
             depth: 0,
@@ -48,21 +49,16 @@ impl CallStart {
     /// A cast of `action` of `package` at `rank` by `caster`, for no hit.
     pub(crate) const fn cast(
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         caster: StableId,
         package: u16,
     ) -> CallStart {
         CallStart {
-            role: ScriptRole::Action,
             acting: Some(caster),
             action: Some(action),
             rank,
-            modifier: None,
             package,
-            depth: 0,
-            hit: None,
-            start: None,
-            dash_delivers: None,
+            ..CallStart::mode(ScriptRole::Action)
         }
     }
 
@@ -70,16 +66,10 @@ impl CallStart {
     /// by no action, at rank 1.
     pub(crate) const fn hook(modifier: ModifierId, package: u16, depth: u8) -> CallStart {
         CallStart {
-            role: ScriptRole::Modifier,
-            acting: None,
-            action: None,
-            rank: 1,
             modifier: Some(modifier),
             package,
             depth,
-            hit: None,
-            start: None,
-            dash_delivers: None,
+            ..CallStart::mode(ScriptRole::Modifier)
         }
     }
 }

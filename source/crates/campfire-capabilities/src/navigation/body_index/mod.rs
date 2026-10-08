@@ -6,14 +6,14 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::grid::Grid;
+use crate::geometry::shape::Shape;
 use crate::navigation::segment::Segment;
 use crate::navigation::walker::Walker;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
-use crate::values::body_box::BodyBox;
-use crate::values::grid::Grid;
 use crate::values::row_directory::{RowDirectory, RowEntries};
-use crate::values::shape::Shape;
 
 /// Bodies that stand, by layer and by the square buckets their bounding boxes cover, so a query
 /// sees only the bodies of its layer. As a resource it holds the
@@ -149,7 +149,7 @@ impl BodyIndex {
         let widest = if widest > Num::ZERO {
             widest
         } else {
-            Body::MAX_RADIUS
+            Shape::MAX_BOUND
         };
         BodyIndex {
             bucket: widest + widest,
@@ -288,6 +288,27 @@ impl BodyIndex {
             all.is_continue(),
             "a visit that never breaks meets every body"
         );
+    }
+
+    /// Whether `hit` holds of a body of `layer` whose bounding box meets the square `reach` from
+    /// `at` on each side, as `near` visits them, stopping at the first.
+    pub(crate) fn any_near(
+        &self,
+        layer: Layer,
+        at: Vec3,
+        reach: Num,
+        mut hit: impl FnMut(&IndexedBody) -> bool,
+    ) -> bool {
+        let rows = BodyIndex::buckets(self.bucket, at.z, reach);
+        let columns = BodyIndex::buckets(self.bucket, at.x, reach);
+        let met = self.meeting(layer, rows, columns, |body| {
+            if hit(body) {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+        met.is_break()
     }
 
     /// Whether a body of `walker`'s layer comes closer to `segment` than the walker's radius,

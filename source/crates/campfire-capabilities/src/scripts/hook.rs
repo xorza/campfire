@@ -182,7 +182,7 @@ impl Hook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::values::relation::Relation;
+    use crate::values::relation_set::RelationSet;
 
     #[test]
     fn every_hook_is_found_by_its_name_alone() {
@@ -198,8 +198,8 @@ mod tests {
                 .any(|prefix| hook.name().starts_with(prefix))
         });
         assert!(named_like_hooks);
-        for relation in [Relation::Enemies, Relation::Allies, Relation::All] {
-            assert_eq!(Relation::named(relation.name()), Some(relation));
+        for relation in [RelationSet::Enemies, RelationSet::Allies, RelationSet::All] {
+            assert_eq!(RelationSet::named(relation.name()), Some(relation));
         }
         // A few as design 08 lists them.
         let think = Hook::OnThink;

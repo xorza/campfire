@@ -20,17 +20,13 @@ impl TeamRooms {
 
     /// The room of the link seated in `team`.
     pub(crate) fn of(&self, team: Team) -> Rooms {
-        Rooms::single(self.rooms[usize::from(team.index())])
+        Rooms::single(self.rooms[team.index()])
     }
 
     /// The rooms of a unit that `seen` says which teams see: every team's for a unit with none,
     /// as in a match with no vision.
     pub(crate) fn seeing(&self, seen: Option<&SeenBy>) -> Rooms {
         let teams = seen.map_or(TeamSet::ALL, |seen| seen.get());
-        Rooms::from(
-            teams
-                .teams()
-                .map(|team| self.rooms[usize::from(team.index())]),
-        )
+        Rooms::from(teams.teams().map(|team| self.rooms[team.index()]))
     }
 }

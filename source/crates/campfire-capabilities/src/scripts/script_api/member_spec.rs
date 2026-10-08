@@ -3,26 +3,32 @@ use campfire_sim::Capability;
 use crate::scripts::applies::Applies;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::MemberKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_kind::MemberKind;
 use crate::values::engine_enum::EngineEnum;
 
-/// A name as the code that binds it describes it: an `ApiMember` with one form.
+/// A name of the script API as the code that binds it describes it: whose it is, what it is,
+/// who may use it, the forms it is called in, and what its arguments name.
 #[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MemberSpec {
+pub struct MemberSpec {
     pub owner: ApiOwner,
     pub name: &'static str,
     pub kind: MemberKind,
     pub roles: RoleSet,
     pub capability: Option<Capability>,
-    pub signature: &'static str,
+    /// Each form it is called in, by the names of its arguments, the receiver aside; none for a
+    /// value, a field or an operator.
+    pub forms: Forms,
     pub description: &'static str,
     pub names: NameArgs,
     pub enums: EnumArgs,
     /// How its argument that names a modifier applies it; none for one that only names it.
     pub applies: Option<Applies>,
 }
+
+/// The forms of a call or a method, each by the names of its arguments.
+pub type Forms = &'static [&'static [&'static str]];
 
 /// What each argument of a call or a method names, by place, the receiver aside: the load
 /// checks a literal an argument of a name kind is given.
@@ -31,28 +37,32 @@ pub type NameArgs = [Option<NameKind>; MemberSpec::ARGS];
 /// Which engine enum each argument of a call takes, by place, the receiver aside: the load
 /// refuses a string literal an argument of an enum is given.
 pub type EnumArgs = [Option<EngineEnum>; MemberSpec::ARGS];
+
 impl MemberSpec {
     /// The most arguments a member's name roles reach.
     pub(crate) const ARGS: usize = 4;
 
     /// A value of `ctx`, for every role and of the core until said otherwise.
     pub(crate) const fn value(name: &'static str, description: &'static str) -> MemberSpec {
-        MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Value, "", description)
+        MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Value, &[], description)
     }
 
-    /// A call of `ctx`, in the form `signature`.
+    /// A call of `ctx`, in the forms `forms`.
     pub(crate) const fn call(
         name: &'static str,
-        signature: &'static str,
+        forms: Forms,
         description: &'static str,
     ) -> MemberSpec {
-        MemberSpec::new(
-            ApiOwner::Ctx,
-            name,
-            MemberKind::Call,
-            signature,
-            description,
-        )
+        MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Call, forms, description)
+    }
+
+    /// A call of `ctx` for the mode's script only, in the forms `forms`.
+    pub(crate) const fn mode_call(
+        name: &'static str,
+        forms: Forms,
+        description: &'static str,
+    ) -> MemberSpec {
+        MemberSpec::call(name, forms, description).roles(RoleSet::MODE)
     }
 
     /// A field of `owner`'s handle.
@@ -61,17 +71,17 @@ impl MemberSpec {
         name: &'static str,
         description: &'static str,
     ) -> MemberSpec {
-        MemberSpec::new(owner, name, MemberKind::Field, "", description)
+        MemberSpec::new(owner, name, MemberKind::Field, &[], description)
     }
 
-    /// A method of `owner`'s handle, in the form `signature`.
+    /// A method of `owner`'s handle, in the forms `forms`.
     pub(crate) const fn method(
         owner: ApiOwner,
         name: &'static str,
-        signature: &'static str,
+        forms: Forms,
         description: &'static str,
     ) -> MemberSpec {
-        MemberSpec::new(owner, name, MemberKind::Method, signature, description)
+        MemberSpec::new(owner, name, MemberKind::Method, forms, description)
     }
 
     /// The operator `name` on `owner`'s handles.
@@ -80,14 +90,14 @@ impl MemberSpec {
         name: &'static str,
         description: &'static str,
     ) -> MemberSpec {
-        MemberSpec::new(owner, name, MemberKind::Operator, "", description)
+        MemberSpec::new(owner, name, MemberKind::Operator, &[], description)
     }
 
     const fn new(
         owner: ApiOwner,
         name: &'static str,
         kind: MemberKind,
-        signature: &'static str,
+        forms: Forms,
         description: &'static str,
     ) -> MemberSpec {
         MemberSpec {
@@ -96,7 +106,7 @@ impl MemberSpec {
             kind,
             roles: RoleSet::ALL,
             capability: None,
-            signature,
+            forms,
             description,
             names: [None; MemberSpec::ARGS],
             enums: [None; MemberSpec::ARGS],

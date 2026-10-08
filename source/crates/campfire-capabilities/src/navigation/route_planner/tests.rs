@@ -8,12 +8,12 @@ use campfire_common::SegmentSeed;
 use campfire_math::{RngSource, RngStream};
 
 use super::*;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::shape::Shape;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::units::layer::Layer;
-use crate::values::bounds::Bounds;
-use crate::values::shape::Shape;
 
 /// The point `(x, z)` in quarters of a meter.
 fn at(x: i64, z: i64) -> Position {
@@ -78,11 +78,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
         "...#....", "...#....", "...#....", "....#...", "....#...", "........",
     ]);
     let clearance = grid.clearance(walker());
-    let walkable = Walkable {
-        clearance,
-        statics: &statics,
-        short: None,
-    };
+    let walkable = Walkable::of(clearance, &statics);
     let mut planner = RoutePlanner::new(clearance.grid());
     let mut waypoints = Vec::new();
     let (start, goal) = (at(2, 10), at(29, 11));
@@ -162,11 +158,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
         statics: closed_statics,
     } = walled(&["....#...", "....#...", "....#..."]);
     let closed_clearance = closed.clearance(walker());
-    let closed_walkable = Walkable {
-        clearance: closed_clearance,
-        statics: &closed_statics,
-        short: None,
-    };
+    let closed_walkable = Walkable::of(closed_clearance, &closed_statics);
     let mut closed_planner = RoutePlanner::new(closed_clearance.grid());
     let walled_off = closed_planner.plan(closed_walkable, at(2, 6), at(26, 6), &mut waypoints);
     assert_eq!(
@@ -397,11 +389,7 @@ fn a_route_costs_what_a_search_of_every_cell_finds() {
         let Walled { grid, statics } = walled(&rows);
         let clearance = grid.clearance(walker());
         let cells = clearance.grid();
-        let walkable = Walkable {
-            clearance,
-            statics: &statics,
-            short: None,
-        };
+        let walkable = Walkable::of(clearance, &statics);
         let regions = clearance.regions();
         let mut planner = RoutePlanner::new(cells);
         let open: Vec<usize> = (0..cells.cells())

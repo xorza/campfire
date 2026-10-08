@@ -5,10 +5,10 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionDataField, ActionError, ActionField, ActionKind, AiError, CapabilitySet, DeclaredName,
-    EffectData, EffectTo, Effecting, EngineEnum, EngineTag, Hook, MapProblem, ModeError,
-    ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, Scalar, Status, SyncTo,
-    UnitKitError,
+    ActionDataField, ActionField, ActionKind, AiError, CapabilitySet, DeclaredName, EffectData,
+    EffectTo, Effecting, EngineEnum, EngineTag, HealFields, Hook, LaunchFields, MapProblem,
+    ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields, Scalar,
+    Status, SyncTo, TimeTooLarge, UnitKitError,
 };
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
@@ -166,9 +166,9 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
     let heal = EffectData {
-        does: Effecting::Heal {
+        does: Effecting::Heal(HealFields {
             amount: Number::Value(Scalar::Int(1)),
-        },
+        }),
         to: EffectTo::Source,
     };
     assert_eq!(
@@ -183,9 +183,9 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         .iter()
         .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
-    let purge = Effecting::Purge {
+    let purge = Effecting::Purge(PurgeFields {
         tag: DeclaredName::new("slowed").unwrap(),
-    };
+    });
     assert_eq!(
         rime.content.actions["fan_of_frost"]
             .on_hit
@@ -237,11 +237,11 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
         .iter()
         .find(|dependent| dependent.package.header.name == "hero-cinder")
         .unwrap();
-    let launch = Effecting::Launch {
+    let launch = Effecting::Launch(LaunchFields {
         area: DeclaredName::new("eruption").unwrap(),
         on_hit: Vec::new(),
         on_end: Vec::new(),
-    };
+    });
     let on_hit = &cinder.content.actions["attack"].on_hit;
     assert_eq!(
         on_hit.iter().map(|effect| &effect.does).collect::<Vec<_>>(),
@@ -1749,7 +1749,12 @@ static FLAWS: [Flaw; 270] = [
         HUSK,
         Edit::Set("actions.lash_out.cooldown_ms.4", "400000000000000000"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Action { action, error: ActionError::TimeTooLarge } if action.as_str() == "lash_out"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Action { action, error: TimeTooLarge } if action.as_str() == "lash_out"
+            )
+        },
     ),
     flaw(
         HUSK,

@@ -23,8 +23,9 @@ impl TrackSet {
 
     /// Its tracks, in the order of their ids.
     pub fn iter(self) -> impl Iterator<Item = TrackId> {
-        (0..TrackId::LIMIT)
-            .filter_map(TrackId::new)
+        (0..=u8::MAX)
+            .take(TrackId::LIMIT)
+            .map(TrackId::new)
             .filter(move |&track| self.contains(track))
     }
 }
@@ -35,11 +36,10 @@ mod tests {
 
     #[test]
     fn a_set_holds_exactly_the_tracks_it_was_made_of() {
-        let [first, fifth, last] = [0, 4, 31].map(|at| TrackId::new(at).unwrap());
+        let [first, fifth, last] = [0, 4, 31].map(TrackId::new);
         let set = TrackSet::of([last, first, fifth, first]);
         assert_eq!(set.iter().collect::<Vec<_>>(), [first, fifth, last]);
-        assert!(set.contains(last) && !set.contains(TrackId::new(1).unwrap()));
+        assert!(set.contains(last) && !set.contains(TrackId::new(1)));
         assert!(TrackSet::default().is_empty() && !set.is_empty());
-        assert_eq!(TrackId::new(TrackId::LIMIT), None);
     }
 }

@@ -90,7 +90,7 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     // The train needs a living forge of its player's, and its player's modifier 0.
     let mut shop = Shop::new();
     let train = internals::train(&mut shop.sim.world, shop.grunt, Ticks::new(5), None);
-    let drill = ModifierId::nth(0);
+    let drill = ModifierId::new(0);
     let mut requirements = Requirements::default();
     requirements.push(train, [shop.forge], [drill]);
     shop.sim.world.insert_resource(requirements);

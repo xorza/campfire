@@ -24,26 +24,26 @@ impl OrdersApi {
                 .roles(RoleSet::AI)
                 .capability(Capability::Orders)
         };
-        api.bind(
+        api.bind_for(
             order(
                 "order_attack",
-                "(unit, target)",
+                &[&["unit", "target"]],
                 "`unit` attacks `target`, a living enemy that one of its weapons selects",
             ),
             |ctx: &mut Ctx, unit: Unit, target: Unit| OrdersApi::attack(ctx, &unit, &target),
         )
-        .bind(
+        .bind_for(
             order(
                 "order_follow_path",
-                "(unit)",
+                &[&["unit"]],
                 "`unit` drops its target and walks its path again",
             ),
             |ctx: &mut Ctx, unit: Unit| OrdersApi::order(ctx, &unit, UnitOrder::FollowPath),
         )
-        .bind(
+        .bind_for(
             order(
                 "order_move",
-                "(unit, pos)",
+                &[&["unit", "pos"]],
                 "`unit` drops its target and walks to `pos`, within the map, off its path",
             ),
             |ctx: &mut Ctx, unit: Unit, to: Position| {
@@ -55,14 +55,14 @@ impl OrdersApi {
                     })
             },
         )
-        .bind(
+        .bind_for(
             order(
                 "order_reset",
-                "(unit)",
+                &[&["unit"]],
                 "`unit` drops its target and walks home, taking no order until there, where its pools fill",
             ),
             |ctx: &mut Ctx, unit: Unit| {
-                if unit.row().spawn.is_none() {
+                if unit.read(|row| row.spawn.is_none()) {
                     return Err(ApiError::NoSpawnPlace.fail().into());
                 }
                 OrdersApi::order(ctx, &unit, UnitOrder::Reset)
@@ -75,20 +75,24 @@ impl OrdersApi {
     /// Queues an attack of `unit` on `target`, a living enemy that one of its learned weapons
     /// selects, as the attack order of a player needs.
     fn attack(ctx: &Ctx, unit: &Unit, target: &Unit) -> Checked<()> {
-        let (ordered, target) = (unit.row(), target.row());
-        let attitude = ctx.view().attitude(ordered.team, target.team);
-        if !target.alive || !attitude.may_attack() {
-            return Err(ApiError::NotAnEnemy.fail().into());
-        }
-        if !ActionsColumn::armed_against(ctx.view(), unit.row_index(), &ordered, &target) {
-            return Err(ApiError::NoAttack.fail().into());
-        }
+        let view = ctx.view();
+        unit.read(|ordered| {
+            target.read(|aimed| {
+                let relation = view.relation(ordered.team, aimed.team);
+                if !aimed.alive || !relation.may_attack() {
+                    return Err(ApiError::NotAnEnemy.fail());
+                }
+                if !ActionsColumn::armed_against(view, unit.row_index(), ordered, aimed) {
+                    return Err(ApiError::NoAttack.fail());
+                }
+                Ok(())
+            })
+        })?;
         OrdersApi::order(ctx, unit, UnitOrder::Attack { target: target.id })
     }
 
     /// Queues `order` for `unit`, which must be the unit that thinks.
     fn order(ctx: &Ctx, unit: &Unit, order: UnitOrder) -> Checked<()> {
-        ctx.require(RoleSet::AI)?;
         if ctx.acting() != Some(unit.id) {
             return Err(ApiError::OtherUnit.fail().into());
         }

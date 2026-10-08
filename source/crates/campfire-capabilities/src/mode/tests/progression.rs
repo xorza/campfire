@@ -31,7 +31,10 @@ fn on_mode_input(ctx, player, name, value) {
     let hero = owned.single(&game.sim.world).unwrap();
     let ranks = |game: &Game| {
         let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
-        slots.iter().map(|slot| slot.rank).collect::<Vec<_>>()
+        slots
+            .iter()
+            .map(|slot| Rank::count(slot.rank))
+            .collect::<Vec<_>>()
     };
     // Three ranks of two fail at the third, and the call learns none; two in one call count the
     // first queued, and reach the last rank; then neither slot has a rank more, and two slots do
@@ -109,7 +112,7 @@ fn on_level_up(ctx, unit, track, level) {
     // level of the `level` track, the first at the spawn, and none with valor's.
     let progress = |game: &Game| {
         let experience = game.sim.world.get::<Experience>(hero).unwrap();
-        let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at).unwrap()).unwrap());
+        let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at)).unwrap());
         assert_eq!(level.level, None);
         let unit_level = game.sim.world.get::<Level>(hero).unwrap().get();
         let points = game.sim.world.get::<Points>(hero).unwrap().get();
@@ -195,8 +198,7 @@ fn on_input(ctx, player, name, value) {
     let script = format!("{killer}{DEATHS_3V3}");
     let mut game = Game::picking(&script, ScriptLimits::ROOMY);
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
-    let core = UnitTypeData::tagged(&["core"]);
-    Units::load_type(&mut game.sim.world, TypeScope::Mode, "core", &core);
+    Units::declare_tags(&mut game.sim.world, ["core"]);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     let hero = |game: &mut Game, slot| {
         let mut owned = game.sim.world.query::<(Entity, &Owner)>();
@@ -212,7 +214,7 @@ fn on_input(ctx, player, name, value) {
     assert!(game.sim.world.get::<Dead>(y).is_some());
     let xp = |game: &Game| {
         let experience = game.sim.world.get::<Experience>(x).unwrap();
-        experience.get(TrackId::new(0).unwrap()).unwrap().xp
+        experience.get(TrackId::new(0)).unwrap().xp
     };
     assert_eq!(xp(&game), Num::int(175));
     assert_eq!(game.sim.world.get::<Level>(x).unwrap().get(), 2);

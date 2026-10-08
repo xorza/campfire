@@ -172,9 +172,7 @@ impl Plugin for SimClient {
             .manifest()
             .capabilities
             .install(world, &mut schedule, &mut state, None);
-        packages
-            .books(rate)
-            .install_prediction(world, packages.walkers());
+        packages.books(rate).install_prediction(world);
         world.add_schedule(schedule);
         mark_unpredicted(world);
         world.insert_resource(Signer::new(self.session_key, self.entropy));

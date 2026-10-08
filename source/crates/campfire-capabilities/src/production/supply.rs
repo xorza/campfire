@@ -1,6 +1,6 @@
 use campfire_common::PlayerSlot;
 
-use crate::production::supply_costs::SupplyCosts;
+use crate::production::supply_costs::{SupplyCosts, UnitSupply};
 use crate::production::supply_rules::SupplyRules;
 use crate::production::train_queue::TrainQueue;
 use crate::units::unit_type::UnitType;
@@ -16,8 +16,8 @@ pub(crate) struct Supply {
 
 /// A player's supply: what it uses, and what its units give, before the mode's `max`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct PlayerSupply {
-    used: u64,
+pub(crate) struct PlayerSupply {
+    pub(crate) used: u64,
     given: u64,
 }
 
@@ -44,13 +44,8 @@ impl Supply {
         self.players.clear();
         self.max = u64::from(rules.max);
         for unit in units {
-            let at = unit.owner.index();
-            if self.players.len() <= at {
-                self.players.resize(at + 1, PlayerSupply::default());
-            }
             let counted = costs.unit(unit.unit_type, unit.dead, unit.complete, unit.queue);
-            self.players[at].used += counted.used;
-            self.players[at].given += counted.given;
+            self.entry_mut(unit.owner).add(counted);
         }
     }
 
@@ -61,11 +56,8 @@ impl Supply {
 
     /// What `player`'s units give, at most the mode's `max`.
     pub(crate) fn cap(&self, player: PlayerSlot) -> u64 {
-        let given = self
-            .players
-            .get(player.index())
-            .map_or(0, |held| held.given);
-        given.min(self.max)
+        let held = self.players.get(player.index()).copied();
+        held.unwrap_or_default().cap(self.max)
     }
 
     /// Whether `player` has room for `cost` more under its cap.
@@ -75,11 +67,29 @@ impl Supply {
 
     /// Counts `cost` more used by `player`, as a train joins its queue.
     pub(crate) fn reserve(&mut self, player: PlayerSlot, cost: u32) {
+        self.entry_mut(player).used += u64::from(cost);
+    }
+
+    /// `player`'s supply, to change, the players grown to hold it.
+    fn entry_mut(&mut self, player: PlayerSlot) -> &mut PlayerSupply {
         let at = player.index();
         if self.players.len() <= at {
             self.players.resize(at + 1, PlayerSupply::default());
         }
-        self.players[at].used += u64::from(cost);
+        &mut self.players[at]
+    }
+}
+
+impl PlayerSupply {
+    /// Counts what a unit uses and gives, `counted`, to it.
+    pub(crate) const fn add(&mut self, counted: UnitSupply) {
+        self.used += counted.used;
+        self.given += counted.given;
+    }
+
+    /// What its units give, at most `max`.
+    pub(crate) fn cap(self, max: u64) -> u64 {
+        self.given.min(max)
     }
 }
 

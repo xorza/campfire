@@ -3,12 +3,12 @@ use campfire_script::rhai::{Dynamic, INT, NativeCallContext};
 use campfire_script::{NumError, Raised};
 use campfire_sim::Position;
 
+use crate::geometry::shape::Shape;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::values::shape::Shape;
 
 /// The script API of positions and vectors: `Pos` with `distance_to`, `within` and
 /// `direction_to`, and `Vector` with `rotated_deg`.
@@ -23,14 +23,14 @@ impl UnitsApi {
         };
         let within = position(
             "within",
-            "(pos, radius)",
+            &[&["pos", "radius"]],
             "whether `pos` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies",
         );
         api.ty::<Position>("Pos")
             .bind(
                 position(
                     "distance_to",
-                    "(pos)",
+                    &[&["pos"]],
                     "the distance to `pos` in the map's metric",
                 ),
                 |call: NativeCallContext<'_>, from: Position, to: Position| {
@@ -57,7 +57,7 @@ impl UnitsApi {
             .bind(
                 position(
                     "direction_to",
-                    "(pos)",
+                    &[&["pos"]],
                     "the unit vector towards `pos` in the map's metric, `()` for the same point",
                 ),
                 |call: NativeCallContext<'_>, from: Position, to: Position| {
@@ -74,7 +74,7 @@ impl UnitsApi {
         };
         let rotated = vector(
             "rotated_deg",
-            "(degrees)",
+            &[&["degrees"]],
             "the vector turned by `degrees` about the vertical, counter-clockwise seen from above",
         );
         api.ty::<Vec3>("Vector")
@@ -133,9 +133,7 @@ impl UnitsApi {
         to: Position,
         radius: Num,
     ) -> Checked<bool> {
-        if radius < Num::ZERO {
-            return Err(ApiError::NegativeRadius.fail().into());
-        }
+        let radius = ApiError::radius(radius)?;
         let metric = Ctx::of_call(call).view().metric();
         Ok(metric.reaches(from, Shape::POINT, radius, to, Shape::POINT))
     }

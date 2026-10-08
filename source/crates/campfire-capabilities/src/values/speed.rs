@@ -26,11 +26,8 @@ impl Speed {
 /// A number, or a decimal string, that is positive.
 impl<'de> Deserialize<'de> for Speed {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Speed, D::Error> {
-        let scalar = Scalar::deserialize(deserializer)?;
-        scalar
-            .to_num()
-            .and_then(Speed::new)
-            .ok_or_else(|| D::Error::custom("a speed is a positive number"))
+        let speed = Scalar::num(deserializer)?;
+        Speed::new(speed).ok_or_else(|| D::Error::custom("a speed is a positive number"))
     }
 }
 
@@ -43,5 +40,18 @@ mod tests {
         assert_eq!(Speed::new(Num::EPSILON).map(Speed::get), Some(Num::EPSILON));
         assert!(Speed::new(Num::ZERO).is_none());
         assert!(Speed::new(-Num::EPSILON).is_none());
+        // Read from data, a number past what a `Num` holds fails as every data number does, and
+        // one that is not positive as a speed does.
+        let read = |value: toml::Value| {
+            Speed::deserialize(value).map_err(|error| error.message().to_owned())
+        };
+        assert_eq!(
+            read(toml::Value::Integer(3)).map(Speed::get),
+            Ok(Num::int(3))
+        );
+        let past = read(toml::Value::Integer(1 << 40)).unwrap_err();
+        assert_eq!(past, "Int(1099511627776) is past what a number holds");
+        let zero = read(toml::Value::Integer(0)).unwrap_err();
+        assert_eq!(zero, "a speed is a positive number");
     }
 }

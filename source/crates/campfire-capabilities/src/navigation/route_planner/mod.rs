@@ -1,12 +1,12 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
+use crate::geometry::grid::Grid;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::Clearance;
 use crate::navigation::regions::Candidate;
 use crate::navigation::route_planner::open_cells::OpenCells;
 use crate::navigation::segment::Segment;
-use crate::values::grid::Grid;
 
 pub(crate) mod open_cells;
 
@@ -81,9 +81,11 @@ struct Search {
 /// What planning a route cost, and whether it ends on the goal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Planned {
-    /// The cost of the route's cells, 10 a straight step.
+    /// The cost of the route's cells, 10 a straight step, which only the tests read.
+    #[cfg(test)]
     pub(crate) cost: u32,
-    /// The cells the search expanded.
+    /// The cells the search expanded, which only the tests read.
+    #[cfg(test)]
     pub(crate) expanded: u32,
     /// All the work it did, the cells expanded among it.
     pub(crate) work: u32,
@@ -117,7 +119,17 @@ impl Window {
     }
 }
 
-impl Walkable<'_> {
+impl<'a> Walkable<'a> {
+    /// What a route may cross, for any route: the cells of `clearance`, past the bodies of
+    /// `statics`.
+    pub(crate) const fn of(clearance: Clearance<'a>, statics: &'a BodyIndex) -> Walkable<'a> {
+        Walkable {
+            clearance,
+            statics,
+            short: None,
+        }
+    }
+
     /// Whether something blocks a walker along `segment`: a static body, a cell the walls block it
     /// from, or a short route's blocker.
     pub(crate) fn blocks(&self, segment: Segment) -> bool {
@@ -220,7 +232,9 @@ impl RoutePlanner {
         };
         let Some(mut target) = target else {
             return Planned {
+                #[cfg(test)]
                 cost: 0,
+                #[cfg(test)]
                 expanded: 0,
                 work,
                 reached: false,
@@ -290,7 +304,9 @@ impl RoutePlanner {
         work += self.smooth(walkable, start, last, waypoints);
         let expanded = RoutePlanner::number(self.expanded.len());
         Planned {
+            #[cfg(test)]
             cost: self.costs[end],
+            #[cfg(test)]
             expanded,
             work: work + expanded,
             reached,

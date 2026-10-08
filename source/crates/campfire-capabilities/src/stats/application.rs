@@ -12,6 +12,7 @@ use crate::stats::modifier_clocks::Interval;
 use crate::stats::modifier_data::Reapply;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::values::rank::Rank;
 
 /// A modifier applied to a unit, its numbers resolved: its instance as it would be new, with
 /// how a second application from its source acts and its stack limit.
@@ -28,7 +29,7 @@ pub(crate) struct NewInstance {
     pub(crate) id: ModifierId,
     pub(crate) source: Option<StableId>,
     pub(crate) ability: Option<ActionId>,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
     pub(crate) lifetime: Lifetime,
     pub(crate) aura_radius: Option<Num>,
     pub(crate) stacks: u32,
@@ -48,6 +49,7 @@ pub(crate) mod internals {
     use crate::stats::lifetime::{Ends, Lifetime};
     use crate::stats::modifier_data::Reapply;
     use crate::units::modifier_id::ModifierId;
+    use crate::values::rank::Rank;
 
     impl NewInstance {
         /// A new instance of `id` from `source`: one stack at rank 1 of no ability, that lasts
@@ -57,7 +59,7 @@ pub(crate) mod internals {
                 id,
                 source,
                 ability: None,
-                rank: 1,
+                rank: Rank::FIRST,
                 lifetime: Lifetime::new(None, Ends::Never),
                 aura_radius: None,
                 stacks: 1,

@@ -57,11 +57,22 @@ impl Paths {
 
     /// The path named `name`.
     pub fn named(&self, name: &str) -> Option<PathId> {
-        self.names.named(name).map(PathId::new)
+        self.names.named(name).map(Paths::id_at)
+    }
+
+    /// The id of the path at `at`, as the map numbers at most `u32` of them.
+    pub(crate) fn id_at(at: usize) -> PathId {
+        PathId::new(u32::try_from(at).expect("paths fit u32"))
     }
 
     pub fn name(&self, path: PathId) -> &str {
         self.names.get(path.index()).expect("a path of the map")
+    }
+
+    /// The waypoints of `path`, from its start.
+    pub(crate) fn points(&self, path: PathId) -> &[Position] {
+        let range = &self.ranges[path.index()];
+        &self.points[range.start as usize..range.end as usize]
     }
 
     /// Waypoint `index` of `path` counted from its end `from`; `None` past the last.

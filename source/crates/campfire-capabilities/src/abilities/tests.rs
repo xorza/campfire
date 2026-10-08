@@ -2,49 +2,68 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
 use bevy_ecs::bundle::Bundle;
-use campfire_common::{PlayerSlot, StateHash};
+use bevy_ecs::world::Mut;
+use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_script::NumError;
-use campfire_sim::{Capability, EntityIndex, SimRng, StateCopy, TickInput, TickInputs};
+use campfire_sim::{
+    Capability, EntityIndex, Position, SimRng, SimTick, StableId, StateCopy, TickInput, TickInputs,
+};
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_data::{
-    ActionData, ChannelData, ChargeData, ChargesData, RangeField, Targeting,
-};
+use crate::actions::action_book::ActionBook;
+use crate::actions::action_call::Started;
+use crate::actions::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
 use crate::actions::action_data_field::ActionDataField;
-use crate::actions::action_slots::Started;
+use crate::actions::action_kind::ActionKind;
+use crate::actions::action_range::ActionRange;
+use crate::actions::action_slots::{ActionSlot, ActionSlots};
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
-use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
-use crate::actions::error::{ActionError, ActionField};
-use crate::actions::range::Range;
-use crate::actions::slot_kind::SlotKind;
-use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
+use crate::actions::effect_data::{
+    DamageFields, EffectData, EffectTo, Effecting, LaunchFields, ModifierFields, MoveData,
+    PurgeFields, RestoreFields, XpFields,
+};
+use crate::actions::effect_lists::EffectLists;
+use crate::actions::error::ActionField;
+use crate::actions::in_progress::{InProgress, OrderPhase};
+use crate::actions::kind_data::KindData;
+use crate::actions::range_field::RangeField;
+use crate::actions::slot_aim::SlotAim;
+use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
+use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::targeting::Targeting;
+use crate::areas::Areas;
 use crate::areas::area::Area;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
-use crate::combat;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::geometry::body_box::BodyBox;
 use crate::navigation::Navigation;
+use crate::navigation::destination::Destination;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::orders::order::{Action, Order};
+use crate::players::player_resources::PlayerResources;
 use crate::players::resource_id::ResourceId;
 use crate::progression::Progression;
 use crate::progression::experience::Experience;
 use crate::progression::points::Points;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
+use crate::projectiles::Projectiles;
 use crate::projectiles::projectile::Projectile;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
+use crate::scripts::hook::Hook;
+use crate::scripts::pool::Pool;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_failures::internals::FailedCall;
@@ -52,7 +71,6 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
-use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
@@ -61,8 +79,8 @@ use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
-use crate::stats::move_step::MoveStep;
 use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_graph::StatGraph;
@@ -71,22 +89,32 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
+use crate::units::action_id::ActionId;
+use crate::units::body::Body;
+use crate::units::dead::Dead;
+use crate::units::forced_move::ForcedMove;
+use crate::units::move_step::MoveStep;
+use crate::units::owner::Owner;
 use crate::units::tag_data::TagData;
+use crate::units::team::Team;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::values::body_box::BodyBox;
+use crate::values::action_start::ActionStart;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
+use crate::values::error::TimeTooLarge;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::package_path::PackagePath;
 use crate::values::param::{Param, Scaling};
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
+use crate::{combat, stats};
 
 /// Lash Out as the reference Husk had it when these tests were written: the engine's tests keep
 /// their own copy, so a balance change to the reference hero changes none of them.
@@ -179,7 +207,9 @@ fn lash_out() -> ActionData {
 fn strike() -> ActionData {
     ActionData {
         script: Some(PackagePath::parse("strike.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(5),
+        )))),
         cooldown_ms: Some(Ranked::One(int(1001))),
         cost: BTreeMap::from([
             (DeclaredName::new("mana").unwrap(), Ranked::One(int(10))),
@@ -221,6 +251,25 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
     action.damage_kind = Some(DeclaredName::new("physical").unwrap());
     action.on_hit = sapper(false).on_hit;
     assert_eq!(ActionDataField::misused(&action, ActionKind::Attack), None);
+    // Its kind's fields come as the attack needs them; as a cast, the rate it refuses is the
+    // error.
+    let attack = ActionData {
+        kind: ActionKind::Attack,
+        ..action.clone()
+    };
+    assert_eq!(
+        attack.kind_data(),
+        Ok(KindData::Attack {
+            rate: &Stat::named("armor").unwrap(),
+            damage: &Stat::named("attack_damage").unwrap(),
+            damage_kind: &DeclaredName::new("physical").unwrap(),
+        })
+    );
+    let cast = ActionData {
+        kind: ActionKind::Cast,
+        ..action.clone()
+    };
+    assert_eq!(cast.kind_data(), Err(ActionDataField::Rate));
     let ending = ActionData {
         on_end: action.on_hit.clone(),
         ..action.clone()
@@ -250,6 +299,17 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         ActionDataField::misused(&train, ActionKind::Train),
         Some(ActionDataField::UnitType)
     );
+    // Given its unit type, and none of the params and the hit list a train refuses, it gives
+    // the train that type.
+    let train = ActionData {
+        kind: ActionKind::Train,
+        unit_type: Some(DeclaredName::new("grunt").unwrap()),
+        params: BTreeMap::new(),
+        on_hit: Vec::new(),
+        ..train
+    };
+    let grunt = DeclaredName::new("grunt").unwrap();
+    assert_eq!(train.kind_data(), Ok(KindData::Train { unit_type: &grunt }));
 }
 
 const STRIKE: &str =
@@ -330,7 +390,7 @@ impl Match {
             ground(Num::ZERO, Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
-                ActionSlots::new([(ability, SlotKind::new(0), rank)]),
+                ActionSlots::new([(ability, SlotKind::new(0), Rank::new(rank))]),
             ),
         );
         self.give_pools(caster, 100, 20);
@@ -476,13 +536,17 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     // its caster over 100 ms, 3 ticks.
     let aim = ActionData {
         windup_ms: Some(Ranked::One(int(300))),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(10))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(10),
+        )))),
         ..strike()
     };
     let aim = game.load("aim", &aim, STRIKE);
     let shove = ActionData {
         script: Some(PackagePath::parse("shove.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(5),
+        )))),
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
     };
     let script =
@@ -491,7 +555,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     let caster = game.caster(aim, 1);
     game.sim
         .insert(caster, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
-    let slots = ActionSlots::new([(shove, SlotKind::new(0), 1)]);
+    let slots = ActionSlots::new([(shove, SlotKind::new(0), Rank::new(1))]);
     let shover = game.spawn(1, ground(Num::int(5), Num::ZERO), slots);
 
     // Aim starts in tick 0, to resolve in tick 9. Shove resolves in tick 2's Hit stage, after
@@ -574,13 +638,15 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
         to: EffectTo::Reached,
         speed: int(30),
     };
-    let damage = Effecting::Damage {
+    let damage = Effecting::Damage(DamageFields {
         amount: int(1),
         kind: DeclaredName::new("true").unwrap(),
-    };
+    });
     let lunge = ActionData {
         script: Some(PackagePath::parse("lunge.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(10))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(10),
+        )))),
         on_resolve: vec![
             effect(Effecting::Move(knock_back), EffectTo::Reached),
             effect(Effecting::Move(dash), EffectTo::Source),
@@ -719,7 +785,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
             ground(Num::int(x), Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
-                ActionSlots::new([(strike, SlotKind::new(0), rank)]),
+                ActionSlots::new([(strike, SlotKind::new(0), Rank::new(rank))]),
             ),
         );
         game.give_pools(unit, mana, rage);
@@ -803,7 +869,7 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let ownerless = game.spawn(
         0,
         ground(Num::ZERO, Num::int(1)),
-        ActionSlots::new([(strike, SlotKind::new(0), 1)]),
+        ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]),
     );
     game.give_pools(ownerless, 100, 20);
     let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
@@ -969,7 +1035,9 @@ fn on_resolve(ctx, caster, target) {
 "#;
     let leap = |clamp| ActionData {
         script: Some(PackagePath::parse("leap.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(4))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(4),
+        )))),
         clamp_to_range: clamp,
         ..ActionData::cast(Targeting::Point)
     };
@@ -1007,7 +1075,7 @@ fn on_resolve(ctx, caster, target) {
     let boxed = |game: &mut Match| {
         let caster = game.caster(clamped, 1);
         let body = BodyBox::new([Num::int(4), Num::int(2)], Num::ZERO).unwrap();
-        game.sim.insert(caster, Body::boxed(body));
+        game.sim.insert(caster, Body::of_box(body));
         caster
     };
     let near = |x: &str, z: &str| ground(x.parse().unwrap(), z.parse().unwrap());
@@ -1044,7 +1112,9 @@ impl Reaching {
         let mut game = Match::with(ScriptLimits::ROOMY, &declared);
         let hop = ActionData {
             script: Some(PackagePath::parse("hop.rhai").unwrap()),
-            range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(4))))),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+                Num::int(4),
+            )))),
             ..ActionData::cast(Targeting::Point)
         };
         let jab = ActionData {
@@ -1221,9 +1291,9 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
         (
             Owner::new(PlayerSlot::new(0)),
             ActionSlots::new([
-                (step, SlotKind::new(0), 1),
-                (refill, SlotKind::new(0), 1),
-                (dud, SlotKind::new(0), 1),
+                (step, SlotKind::new(0), Rank::new(1)),
+                (refill, SlotKind::new(0), Rank::new(1)),
+                (dud, SlotKind::new(0), Rank::new(1)),
             ]),
         ),
     );
@@ -1278,7 +1348,10 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
         ground(Num::int(5), Num::ZERO),
         (
             Owner::new(PlayerSlot::new(0)),
-            ActionSlots::new([(step, SlotKind::new(0), 0), (refill, SlotKind::new(0), 1)]),
+            ActionSlots::new([
+                (step, SlotKind::new(0), Rank::new(0)),
+                (refill, SlotKind::new(0), Rank::new(1)),
+            ]),
         ),
     );
     game.give_pools(learner, 100, 20);
@@ -1287,8 +1360,76 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
         .order(1, ActionTarget::None);
     game.sim.step();
     let unlearned = game.sim.get::<ActionSlots>(learner).slot(0).unwrap();
-    assert_eq!((unlearned.rank, unlearned.charges), (0, None));
+    assert_eq!((unlearned.rank, unlearned.charges), (None, None));
     assert_eq!(game.failed_calls(), []);
+}
+
+#[test]
+fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
+    // One caster casts, a tick each from tick 0: Step, of 3 charges back in 1000 ms, 30 ticks,
+    // and a cooldown of 100 ms, 3 ticks; Aura, a toggle that pays each second; then Drain, a
+    // channel of 300 ms that ticks each 100 ms. The server resolves each cast, and a client,
+    // with no script, predicts it: after each tick their slots are alike.
+    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+    let cast = || ActionData::cast(Targeting::None);
+    let step = ActionData {
+        charges: Some(ChargesData {
+            max: Ranked::One(int(3)),
+            recharge_ms: Ranked::One(int(1000)),
+        }),
+        cooldown_ms: Some(Ranked::One(int(100))),
+        ..cast()
+    };
+    let aura = ActionData {
+        toggle: Some(Toggle::CostPerSecond(BTreeMap::new())),
+        ..cast()
+    };
+    let drain = ActionData {
+        channel: Some(ChannelData {
+            duration_ms: Ranked::One(int(300)),
+            tick_ms: Ranked::One(int(100)),
+        }),
+        ..cast()
+    };
+    let caster = |sim: &mut TestMatch| {
+        let actions = [("step", &step), ("aura", &aura), ("drain", &drain)];
+        let slots = actions.map(|(name, data)| {
+            let action = Actions::load(&mut sim.world, 0, name, data, None, 1).unwrap();
+            (action, SlotKind::new(0), Rank::new(1))
+        });
+        sim.spawn(
+            ground(Num::ZERO, Num::ZERO),
+            (Team::new(0), ActionSlots::new(slots)),
+        )
+    };
+    let mut server = TestMatch::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
+    let mut client = TestMatch::client(&declared);
+    let on_server = caster(&mut server);
+    let on_client = caster(&mut client);
+    for slot in 0..3 {
+        for (sim, unit) in [(&mut server, on_server), (&mut client, on_client)] {
+            sim.get_mut::<ActionSlots>(unit)
+                .order(slot, ActionTarget::None);
+            sim.step();
+        }
+        let slots = server.get::<ActionSlots>(on_server);
+        assert_eq!(slots, client.get::<ActionSlots>(on_client), "slot {slot}");
+    }
+    // Step spent a charge in tick 0, its next back in tick 30, and is ready from tick 3; Aura,
+    // cast in tick 1, pays from tick 31; Drain, cast in tick 2, channels from tick 3, ticking in
+    // tick 6, to tick 12.
+    let slots = server.get::<ActionSlots>(on_server);
+    let step = slots.slot(0).unwrap();
+    let charges = step.charges.unwrap();
+    assert_eq!(
+        (charges.count, charges.next, step.ready_at),
+        (2, Tick::new(30), Tick::new(3))
+    );
+    assert_eq!(slots.slot(1).unwrap().toggle, Some(Tick::new(31)));
+    let Some(InProgress::Channel { next, ends, .. }) = slots.in_progress() else {
+        panic!("Drain channels");
+    };
+    assert_eq!((next, ends), (Tick::new(6), Tick::new(12)));
 }
 
 #[test]
@@ -1316,7 +1457,9 @@ fn on_interrupt(ctx, caster, target) {
     Stats::load_modifier(&mut game.sim.world, 0, "ward", &ward, None);
     let drain = ActionData {
         script: Some(PackagePath::parse("drain.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(5),
+        )))),
         channel: Some(ChannelData {
             duration_ms: Ranked::One(int(300)),
             tick_ms: Ranked::One(int(100)),
@@ -1402,8 +1545,10 @@ fn on_resolve(ctx, caster, target) {
     game.load_stats();
     let draw = ActionData {
         script: Some(PackagePath::parse("draw.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
-        charge: Some(ChargeData {
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(5),
+        )))),
+        charge: Some(ChargeUpData {
             max_ms: Ranked::One(int(3000)),
         }),
         cost: cost("mana", int(10)),
@@ -1418,7 +1563,10 @@ fn on_resolve(ctx, caster, target) {
     let other = game.load("other", &lash_out(), LASH_OUT);
     let caster = |game: &mut Match, x: i64| {
         let at = ground(Num::int(x), Num::ZERO);
-        let slots = ActionSlots::new([(draw, SlotKind::new(0), 1), (other, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([
+            (draw, SlotKind::new(0), Rank::new(1)),
+            (other, SlotKind::new(0), Rank::new(1)),
+        ]);
         let caster = game.spawn(0, at, (Owner::new(PlayerSlot::new(0)), slots));
         game.give_pools(caster, 100, 20);
         let target = game.spawn(1, ground(Num::int(x + 3), Num::ZERO), ());
@@ -1468,7 +1616,7 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!(game.failed_calls(), []);
     // The same script in an action that does not charge fails its call.
     let at = ground(Num::int(100), Num::ZERO);
-    let slots = ActionSlots::new([(plain, SlotKind::new(0), 1)]);
+    let slots = ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]);
     let caster = game.spawn(0, at, (Owner::new(PlayerSlot::new(0)), slots));
     game.give_pools(caster, 100, 20);
     let target = game.spawn(1, ground(Num::int(103), Num::ZERO), ());
@@ -1494,7 +1642,7 @@ fn on_resolve(ctx, caster, target) {
     game.load_stats();
     let near = game.load("strike", &strike(), script);
     let global = ActionData {
-        range: Some(Ranked::One(RangeField::Range(Range::Global))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Global))),
         ..strike()
     };
     let far = game.load("far", &global, script);
@@ -1527,7 +1675,7 @@ fn on_resolve(ctx, caster, target) {
         ground(Num::int(20), Num::ZERO),
         (
             Owner::new(PlayerSlot::new(0)),
-            ActionSlots::new([(ability, SlotKind::new(0), 1)]),
+            ActionSlots::new([(ability, SlotKind::new(0), Rank::new(1))]),
         ),
     );
     game.give_pools(second, 100, 20);
@@ -1582,7 +1730,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             ground(Num::ZERO, Num::int(1)),
             (
                 Owner::new(PlayerSlot::new(1)),
-                ActionSlots::new([(strike, SlotKind::new(0), 1)]),
+                ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]),
             ),
         );
         game.give_pools(striker, 100, 20);
@@ -1622,9 +1770,10 @@ fn a_cast_draws_from_its_casters_player_pool() {
 fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
     game.load_stats();
-    let load = |game: &mut Match, data: &ActionData, source: &str| {
+    // Each load under its own name, as a package names each action once.
+    let load = |game: &mut Match, name: &str, data: &ActionData, source: &str| {
         let script = Units::compile_hooked(&mut game.sim.world, source).unwrap();
-        Actions::load(&mut game.sim.world, 0, "lash_out", data, Some(script), 5)
+        Actions::load(&mut game.sim.world, 0, name, data, Some(script), 5)
     };
     let mut uneven = lash_out();
     uneven.cost = BTreeMap::from([(
@@ -1662,19 +1811,29 @@ fn an_ability_loads_only_when_its_data_holds() {
             let at = POOLS.iter().position(|pool| *pool == name.as_str())?;
             PoolId::new(u8::try_from(at).unwrap()).map(CostTarget::Pool)
         };
-        assert_eq!(data.fields_at(1, pool).err(), Some(field), "{field:?}");
+        assert_eq!(
+            data.fields_at(Rank::FIRST, pool).err(),
+            Some(field),
+            "{field:?}"
+        );
     }
     // What only a match's rate decides: i64::MAX ms counts in no tick.
-    let forever = load(&mut game, &forever, LASH_OUT);
-    assert_eq!(forever, Err(ActionError::TimeTooLarge));
-    assert_eq!(load(&mut game, &lash_out(), LASH_OUT), Ok(ActionId::nth(0)));
+    let forever = load(&mut game, "forever", &forever, LASH_OUT);
+    assert_eq!(forever, Err(TimeTooLarge));
+    assert_eq!(
+        load(&mut game, "lash_out", &lash_out(), LASH_OUT),
+        Ok(ActionId::new(0))
+    );
     // A direction loads, as every targeting does; no cast can aim one yet.
-    assert_eq!(load(&mut game, &aimed, LASH_OUT), Ok(ActionId::nth(1)));
+    assert_eq!(
+        load(&mut game, "aimed", &aimed, LASH_OUT),
+        Ok(ActionId::new(1))
+    );
 
     // A script may serve only the ability's modifiers: a cast of rank 1 in tick 0 then runs no
     // script, and spends 35 of 100 and its 10 000 ms, 300 ticks at 30 a second.
     let modifiers_only = "fn on_damage_taken(ctx, m, d) { }";
-    let passive = load(&mut game, &lash_out(), modifiers_only).unwrap();
+    let passive = load(&mut game, "passive", &lash_out(), modifiers_only).unwrap();
     let caster = game.caster(passive, 1);
     game.cast(caster, ActionTarget::None);
     assert_eq!(game.failed_calls(), []);
@@ -1815,13 +1974,15 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.cost = BTreeMap::new();
     claws.params = BTreeMap::new();
     claws.targeting = Targeting::Unit(FilterData::parse("enemies").unwrap());
-    claws.range = Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(2)))));
+    claws.range = Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        Num::int(2),
+    ))));
     claws.rate = Some(Stat::named("armor").unwrap());
     claws.damage = Some(Stat::named("attack_damage").unwrap());
     claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
     claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game.sim.world, 0, "claws", &claws, None, 1).unwrap();
-    let slots = ActionSlots::new([(claws, SlotKind::new(0), 1)]);
+    let slots = ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]);
     let beast = game.spawn(0, ground(Num::ZERO, Num::ZERO), slots);
     let entity = game.sim.entity(beast);
     game.sim.insert(beast, Modifiers::default());
@@ -1870,7 +2031,10 @@ fn on_resolve(ctx, caster, target) {
     let id = Stats::modifier(&game.sim.world, 0, "mark").unwrap();
     let modifiers = game.sim.world.get::<Modifiers>(entity).unwrap();
     let held = modifiers.get(id, Some(caster)).unwrap();
-    assert_eq!((held.ability, held.rank), (Some(ability), 3));
+    assert_eq!(
+        (held.ability, held.rank),
+        (Some(ability), Rank::new(3).unwrap())
+    );
     let clocks = game.sim.world.get::<ModifierClocks>(entity).unwrap();
     assert_eq!(
         (
@@ -1897,7 +2061,7 @@ fn on_resolve(ctx, caster, target) {
         Some(script),
         5,
     );
-    let slots = ActionSlots::new([(theirs.unwrap(), SlotKind::new(0), 1)]);
+    let slots = ActionSlots::new([(theirs.unwrap(), SlotKind::new(0), Rank::new(1))]);
     game.sim.world.entity_mut(entity).insert(slots);
     game.cast(caster, ActionTarget::None);
     assert_eq!(game.failed_calls(), []);
@@ -1925,6 +2089,13 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         ..scripted(None, &[])
     };
     Stats::load_modifier(&mut game.sim.world, 0, "stun", &stun, None);
+    // Every type loads before the tag book takes their tags.
+    let target_type = Units::load_type(
+        &mut game.sim.world,
+        TypeScope::Mode,
+        "target",
+        &UnitTypeData::default(),
+    );
     let stunned = TagData {
         blocks: vec![Block::Move, Block::Attack, Block::Cast, Block::Use],
         ..TagData::default()
@@ -1940,12 +2111,6 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
     let strike = game.load("strike", &strike(), script);
     let caster = game.caster(strike, 1);
-    let target_type = Units::load_type(
-        &mut game.sim.world,
-        TypeScope::Mode,
-        "target",
-        &UnitTypeData::default(),
-    );
     let parts = (
         target_type,
         Level::default(),
@@ -1999,6 +2164,13 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         };
         Stats::load_modifier(&mut game.sim.world, 0, name, &data, None);
     }
+    // Every type loads before the tag book takes their tags.
+    let target = Units::load_type(
+        &mut game.sim.world,
+        TypeScope::Mode,
+        "target",
+        &UnitTypeData::default(),
+    );
     let stunned = TagData {
         blocks: vec![Block::Move],
         ..TagData::default()
@@ -2011,9 +2183,9 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         .types_mut()
         .tag_book(&effects);
     game.sim.world.insert_resource(book);
-    let purge = Effecting::Purge {
+    let purge = Effecting::Purge(PurgeFields {
         tag: DeclaredName::new("stunned").unwrap(),
-    };
+    });
     let data = ActionData {
         script: None,
         on_resolve: vec![effect(purge, EffectTo::Reached)],
@@ -2022,12 +2194,6 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     let ability = Actions::load(&mut game.sim.world, 0, "cleanse", &data, None, 1).unwrap();
     EffectLists::load(&mut game.sim.world, ability, 0, &data);
     let [first, second] = [(); 2].map(|()| game.caster(ability, 1));
-    let target = Units::load_type(
-        &mut game.sim.world,
-        TypeScope::Mode,
-        "target",
-        &UnitTypeData::default(),
-    );
     let parts = || {
         (
             target,
@@ -2129,7 +2295,7 @@ fn with_valor(more: &[Capability]) -> (Match, TrackId) {
     };
     let tracks = BTreeMap::from([(DeclaredName::new("valor").unwrap(), valor)]);
     Progression::load(&mut game.sim.world, &tracks);
-    (game, TrackId::new(0).unwrap())
+    (game, TrackId::new(0))
 }
 
 /// `effecting` to `to`.
@@ -2142,18 +2308,18 @@ const fn effect(effecting: Effecting, to: EffectTo) -> EffectData {
 
 /// 10 experience on `valor`.
 fn valor_xp() -> Effecting {
-    Effecting::Xp {
+    Effecting::Xp(XpFields {
         track: DeclaredName::new("valor").unwrap(),
         amount: int(10),
-    }
+    })
 }
 
 /// The `damage` param as true damage.
 fn true_damage() -> Effecting {
-    Effecting::Damage {
+    Effecting::Damage(DamageFields {
         amount: param("damage"),
         kind: DeclaredName::new("true").unwrap(),
-    }
+    })
 }
 
 #[test]
@@ -2501,7 +2667,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     }]));
     // Player 0's caster, at level 1 with 2 points, its spawn's and one more.
     let caster = game.caster(ability, 0);
-    let track = TrackId::new(0).unwrap();
+    let track = TrackId::new(0);
     let mut points = Points::at_spawn(TrackSet::of([track]), Some(track)).unwrap();
     points.gain(1);
     let step = MoveStep::new(Num::ONE).unwrap();
@@ -2529,7 +2695,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
             .shield_of(modifiers, id, Some(caster))
             .map(|shield| shield.to_int().unwrap());
         let points = game.sim.world.get::<Points>(entity).unwrap().get();
-        (game.slot(caster).rank, points, shield)
+        (Rank::count(game.slot(caster).rank), points, shield)
     };
     let learn = Action::Learn { slot: 0 };
 
@@ -2661,9 +2827,9 @@ fn sapper(ranged: bool) -> ActionData {
     ActionData {
         kind: ActionKind::Attack,
         script: None,
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(
-            meters,
-        ))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(meters),
+        )))),
         rate: Some(Stat::named("armor").unwrap()),
         damage: Some(Stat::named("attack_damage").unwrap()),
         damage_kind: Some(DeclaredName::new("physical").unwrap()),
@@ -2677,17 +2843,17 @@ fn sapper(ranged: bool) -> ActionData {
         ]),
         on_hit: vec![
             effect(
-                Effecting::Modifier {
+                Effecting::Modifier(ModifierFields {
                     id: DeclaredName::new("mark").unwrap(),
                     duration_ms: None,
-                },
+                }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Damage {
+                Effecting::Damage(DamageFields {
                     amount: param("bite"),
                     kind: DeclaredName::new("true").unwrap(),
-                },
+                }),
                 EffectTo::Reached,
             ),
         ],
@@ -2741,18 +2907,22 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
         let target = game.spawn(1, ground(Num::int(out), Num::ZERO), Modifiers::default());
         let attacker = if by_cast {
             let data = ActionData {
-                range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+                range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+                    Num::int(5),
+                )))),
                 ..strike()
             };
             let cast = game.load("swing", &data, extra);
-            let slots =
-                ActionSlots::new([(cast, SlotKind::new(0), 1), (weapon, SlotKind::new(1), 1)]);
+            let slots = ActionSlots::new([
+                (cast, SlotKind::new(0), Rank::new(1)),
+                (weapon, SlotKind::new(1), Rank::new(1)),
+            ]);
             let caster = game.fighter(fighter, slots);
             game.give_pools(caster, 100, 20);
             game.cast(caster, ActionTarget::Unit(target));
             caster
         } else {
-            let slots = ActionSlots::new([(weapon, SlotKind::new(0), 1)]);
+            let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
             let attacker = game.fighter(fighter, slots);
             game.sim
                 .get_mut::<ActionSlots>(attacker)
@@ -2785,19 +2955,19 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
 
 /// `damage` true damage of `amount`.
 fn true_of(amount: Number) -> Effecting {
-    Effecting::Damage {
+    Effecting::Damage(DamageFields {
         amount,
         kind: DeclaredName::new("true").unwrap(),
-    }
+    })
 }
 
 /// A launch of `area` with its lists `on_hit` and `on_end`.
 fn launch(area: &str, on_hit: Vec<EffectData>, on_end: Vec<EffectData>) -> Effecting {
-    Effecting::Launch {
+    Effecting::Launch(LaunchFields {
         area: DeclaredName::new(area).unwrap(),
         on_hit,
         on_end,
-    }
+    })
 }
 
 #[test]
@@ -2829,7 +2999,10 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         ..sapper(false)
     };
     let weapon = game.load_weapon("cannon", &cannon);
-    let attacker = game.fighter(fighter, ActionSlots::new([(weapon, SlotKind::new(0), 1)]));
+    let attacker = game.fighter(
+        fighter,
+        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]),
+    );
     let [target, near, far] = [1, 2, 4].map(|x| {
         let at = ground(Num::int(x) + Num::HALF * i64::from(x == 2), Num::ZERO);
         game.spawn(1, at, ())
@@ -2867,7 +3040,10 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     // which lands nothing, as an area whose source is gone does.
     let (mut game, fighter) = weapon_match();
     let weapon = game.load_weapon("cannon", &cannon);
-    let attacker = game.fighter(fighter, ActionSlots::new([(weapon, SlotKind::new(0), 1)]));
+    let attacker = game.fighter(
+        fighter,
+        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]),
+    );
     let target = game.spawn(1, ground(Num::ONE, Num::ZERO), ());
     game.sim
         .get_mut::<ActionSlots>(attacker)
@@ -2898,7 +3074,10 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
     // list still follows: its mark of 40 holds, and the bite of 30 comes off one of the shields.
     let (mut game, fighter) = weapon_match();
     let weapon = game.load_weapon("sapper", &sapper(false));
-    let attacker = game.fighter(fighter, ActionSlots::new([(weapon, SlotKind::new(0), 1)]));
+    let attacker = game.fighter(
+        fighter,
+        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]),
+    );
     let mut target = |x| game.spawn(1, ground(Num::int(x), Num::ZERO), Modifiers::default());
     let [living, blocked, spent, deep, deepest, warded] = [1, 2, 3, 4, 5, 6].map(&mut target);
     game.sim.set_blocks(blocked, &[Block::Damage]);
@@ -2913,7 +3092,7 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
         kind: DamageKind::new(0),
         cause: DamageCause::Attack {
             roll: Num::ZERO,
-            rank: 1,
+            rank: Rank::FIRST,
         },
         ability: Some(weapon),
         depth,
@@ -3503,24 +3682,24 @@ fn fan_of_frost() -> ActionData {
         }),
         on_hit: vec![
             effect(
-                Effecting::Damage {
+                Effecting::Damage(DamageFields {
                     amount: param("damage"),
                     kind: DeclaredName::new("physical").unwrap(),
-                },
+                }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Modifier {
+                Effecting::Modifier(ModifierFields {
                     id: DeclaredName::new("chilled").unwrap(),
                     duration_ms: None,
-                },
+                }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Restore {
+                Effecting::Restore(RestoreFields {
                     pool: DeclaredName::new("mana").unwrap(),
                     amount: int(2),
-                },
+                }),
                 EffectTo::Source,
             ),
         ],

@@ -163,6 +163,18 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
             .map(|body| body.id)
             .collect();
         assert_eq!(met, expected, "({x}, {z})");
+        // `any_near` meets the same bodies, and stops at the first that holds.
+        let around = Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
+        for body in &bodies {
+            let found = index.any_near(Layer::FIRST, around, reach, |near| near.id == body.id);
+            assert_eq!(found, expected.contains(&body.id), "({x}, {z})");
+        }
+        let mut visits = 0;
+        let any = index.any_near(Layer::FIRST, around, reach, |_| {
+            visits += 1;
+            true
+        });
+        assert_eq!((any, visits), (!expected.is_empty(), usize::from(any)));
         let point =
             |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
         let segment = Segment::new(point(x, z), point(x + 4, z - 2));

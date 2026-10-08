@@ -69,7 +69,7 @@ impl EngineTag {
     }
 
     pub(crate) fn tag(self) -> Tag {
-        Tag::new(self as usize)
+        Tag::new(self as u8)
     }
 }
 

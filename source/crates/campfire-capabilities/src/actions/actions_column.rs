@@ -1,23 +1,29 @@
 use std::ops::Range;
 
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
 use crate::actions::action::Action;
 use crate::actions::action_book::ActionBook;
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::delivery::Delivery;
-use crate::actions::range;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
-use crate::units::script_view::View;
+use crate::units::row_fill::RowFill;
 use crate::units::unit_row::UnitRow;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
+use crate::values::rank::Rank;
+
+/// The part of a unit the actions read into its row: its slots.
+pub(super) type RowParts = Option<&'static ActionSlots>;
 
 /// What the action pipeline adds to the script view: the match's actions and slot kinds, and each
 /// unit's ability slots, the unit its attacks aim at, and the range of its first weapon, a row
@@ -50,7 +56,7 @@ struct ActionsRow {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlotRow {
     pub(crate) action: Option<ActionId>,
-    pub(crate) rank: u8,
+    pub(crate) rank: Option<Rank>,
     pub(crate) ranks: u8,
     pub(crate) weapon: Option<Filter>,
 }
@@ -124,7 +130,7 @@ impl ActionsColumn {
             return;
         };
         let attack_range = book.weapon_for(slots, None).map(|slot| {
-            let range::Range::Meters(range) = book.range(slots, slot) else {
+            let ActionRange::Meters(range) = book.range(slots, slot) else {
                 panic!("the load gives every attack a range in meters");
             };
             range
@@ -198,14 +204,14 @@ impl ActionsColumn {
         ActionsColumn::read(view, |column| column.kinds.ranks(kind))
     }
 
-    /// The rank an action in `kind` has as it is granted: 1 for a kind with no `ranks`, 0 for
-    /// one whose ranks are learned.
-    pub(crate) fn first_rank(view: &View, kind: SlotKind) -> u8 {
+    /// The rank an action in `kind` has as it is granted: the first for a kind with no `ranks`,
+    /// none for one whose ranks are learned.
+    pub(crate) fn first_rank(view: &View, kind: SlotKind) -> Option<Rank> {
         ActionsColumn::read(view, |column| column.kinds.first_rank(kind))
     }
 
     /// The range of action `id` at `rank`, one of its ranks.
-    pub(crate) fn range(view: &View, id: ActionId, rank: u8) -> range::Range {
+    pub(crate) fn range(view: &View, id: ActionId, rank: Rank) -> ActionRange {
         ActionsColumn::read(view, |column| {
             column
                 .book
@@ -246,8 +252,8 @@ impl ActionsColumn {
 
     /// Whether a learned weapon of `unit`, in row `row`, selects `target`, as `unit` regards it.
     pub(crate) fn armed_against(view: &View, row: usize, unit: &UnitRow, target: &UnitRow) -> bool {
-        let attitude = view.attitude(unit.team, target.team);
-        let target = Some((attitude, target.tags.tags));
+        let relation = view.relation(unit.team, target.team);
+        let target = Some((relation, target.tags.tags));
         ActionsColumn::read(view, |column| {
             column
                 .run(row)
@@ -270,5 +276,13 @@ impl ActionsColumn {
     /// The ability slots of the unit in row `row`.
     fn run(&self, row: usize) -> &[SlotRow] {
         self.rows.now().slots(row)
+    }
+
+    /// Adds a unit's actions to the actions' column of the script view.
+    pub(super) fn fill_row(
+        slots: ROQueryItem<'_, '_, RowParts>,
+        fill: &mut RowFill<'_, ActionsColumn>,
+    ) {
+        fill.column.push(slots);
     }
 }

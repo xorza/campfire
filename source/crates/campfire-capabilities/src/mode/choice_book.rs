@@ -77,15 +77,17 @@ impl ChoiceBook {
         })
     }
 
-    /// What `slot` chose of `choice`: all its values, or `None` before the player chose.
+    /// What `slot` chose of `choice`: all its values, in order, or `None` before the player
+    /// chose.
     pub(crate) fn chosen<'a>(
         &self,
         choices: &'a Choices,
         slot: PlayerSlot,
         choice: &Choice,
-    ) -> Option<&'a [Option<Offer>]> {
+    ) -> Option<impl Iterator<Item = Offer> + 'a> {
         let values = &choices.0[self.run(slot.index(), choice)];
-        values.iter().all(Option::is_some).then_some(values)
+        let chose = values.iter().all(Option::is_some);
+        chose.then(|| values.iter().flatten().copied())
     }
 
     /// Records `values`, as many as `choice` takes, as what `slot` chose of it.

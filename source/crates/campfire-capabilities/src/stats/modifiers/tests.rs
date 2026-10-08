@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 
+use campfire_common::Ticks;
 use campfire_sim::IdAllocator;
 
 use super::*;

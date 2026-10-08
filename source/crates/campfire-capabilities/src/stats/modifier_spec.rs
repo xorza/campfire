@@ -9,7 +9,7 @@ use campfire_sim::TickRate;
 use crate::scripts::state_value::StateValue;
 use crate::stats::error::ModifierProblem;
 use crate::stats::modifier_data::{ModifierData, Reapply};
-use crate::stats::modifier_handle::StateField;
+use crate::stats::modifier_state_field::ModifierStateField;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::units::filter::Filter;
@@ -39,7 +39,7 @@ pub(crate) struct ModifierSpec {
     /// The units of its player a player modifier holds on; absent, all of them.
     pub(crate) affects: Option<Filter>,
     /// Its script state's fields, in the order of their names, and each one's first value.
-    pub(crate) fields: Arc<[StateField]>,
+    pub(crate) fields: Arc<[ModifierStateField]>,
     pub(crate) initial: Box<[StateValue]>,
 }
 
@@ -139,15 +139,15 @@ impl ModifierSpec {
             fields: data
                 .state
                 .iter()
-                .map(|(name, decl)| StateField {
+                .map(|(name, decl)| ModifierStateField {
                     name: name.as_str().into(),
-                    kind: decl.kind,
+                    kind: decl.kind(),
                 })
                 .collect(),
             initial: data
                 .state
                 .values()
-                .map(|decl| decl.initial.clone())
+                .map(|decl| decl.initial().clone())
                 .collect(),
         })
     }

@@ -2,9 +2,9 @@ use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
 
 use crate::mode::mode_data::{InputType, ModeData};
-use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
+use crate::scripts::script_role::ScriptRole;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
 use crate::values::name_table::NameTable;
@@ -37,20 +37,7 @@ impl ModeSchema {
     pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> ModeSchema {
         let mut schema = ModeSchema {
             script,
-            hooks: scripts.defines(
-                Some(script),
-                &[
-                    Hook::OnMatchStart,
-                    Hook::OnModeInput,
-                    Hook::OnTimer,
-                    Hook::OnPlayerJoin,
-                    Hook::OnPlayerLeave,
-                    Hook::OnUnitDied,
-                    Hook::CalcDamage,
-                    Hook::CalcHeal,
-                    Hook::OnLevelUp,
-                ],
-            ),
+            hooks: scripts.defines(Some(script), ScriptRole::Mode),
             params: NameTable::default(),
             state: NameTable::default(),
             inputs: NameTable::default(),
@@ -62,7 +49,7 @@ impl ModeSchema {
         let state = data.state.iter();
         schema
             .state
-            .push(state.map(|(name, field)| (name.as_str(), field.decl.kind)));
+            .push(state.map(|(name, field)| (name.as_str(), field.decl.kind())));
         let inputs = data.inputs.iter();
         schema
             .inputs

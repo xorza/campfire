@@ -30,7 +30,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut owned = world.query_filtered::<Entity, With<Owner>>();
     let producer = owned.single(world).unwrap();
     let pools = Pools::new([(PoolId::FIRST, Num::int(10)), (MANA, Num::int(100))]).unwrap();
-    let slots = ActionSlots::new([(train, SlotKind::new(0), 1)]);
+    let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]);
     let hero_type = *world.get::<UnitType>(producer).unwrap();
     let production = ProductionData {
         queue: NonZeroU8::new(2).unwrap(),

@@ -7,14 +7,14 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Name | Form | Roles | Capability | Status | What it is |
 | --- | --- | --- | --- | --- | --- |
 | `add_charge` | `(unit, id)`, `id` a ability | every role | abilities | since 1.0 | gives `unit`'s ability `id`, of the script's package, a charge, up to its most |
-| `add_modifier` | `(unit, id) or (unit, id, duration_ms)`, `id` a modifier | every role | stats | since 1.0 | applies the modifier `id` of the script's package to `unit` from the acting unit, with the call's action at its rank, which gives each param the modifier reads and does not declare, and returns its handle |
+| `add_modifier` | `(unit, id)` or `(unit, id, duration_ms)`, `id` a modifier | every role | stats | since 1.0 | applies the modifier `id` of the script's package to `unit` from the acting unit, with the call's action at its rank, which gives each param the modifier reads and does not declare, and returns its handle |
 | `add_player_modifier` | `(player, id)`, `id` a modifier | every role | stats | since 1.0 | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source and with no action, so the modifier declares each param it reads |
 | `add_resource` | `(player, name, amount)`, `name` a player resource | every role | core | since 1.0 | adds `amount` of the player resource `name`, one the mode declares, to `player` |
 | `add_xp` | `(unit, track, amount)`, `track` a track | every role | progression | since 1.0 | gives `unit` `amount` of experience on `track`, one of its unit type's |
 | `area` | `(pos)` | action | areas | since 1.0 | lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick |
 | `attack_hit` | `(target)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
 | `available` | `(player, choice, value)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
-| `avatars` | `() or (team)` | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
+| `avatars` | `()` or `(team)` | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
 | `carry` | read | mode | core | planned | the carry the session loaded, which the mode writes for the next session |
 | `chance` | `(p)` | every role | core | since 1.0 | true with probability `p`, from 0 to 1, from the secret stream |
 | `charge` | read | action | abilities | since 1.0 | the share of its most a charged action charged, from 0 to 1 |
@@ -22,7 +22,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `chosen` | `(player, choice)`, `choice` a choice | mode | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
 | `damage` | `(target, amount, kind)`, `kind` a damage kind | every role | combat | since 1.0 | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target` |
 | `dash` | `(unit, to, speed)` | every role | navigation | since 1.0 | moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch |
-| `end` | `(team) or (())` | mode | core | since 1.0 | ends the match, once: `team` wins, `()` is a draw |
+| `end` | `(team)` or `(())` | mode | core | since 1.0 | ends the match, once: `team` wins, `()` is a draw |
 | `enemy_team` | `(team)`, `team` a team | every role | core | since 1.0 | the one team that is `team`'s enemy, in a mode of two playing teams |
 | `find` | `(of, pos, radius, filter)`, `filter` a filter | every role | core | since 1.0 | the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of, pos, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | as `find`, of the units `of`'s team sees |
@@ -43,7 +43,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `p` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
 | `players` | read | mode | core | since 1.0 | how many slots the session has, whatever controls each |
-| `projectile` | `(from, direction) or (from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick |
+| `projectile` | `(from, direction)` or `(from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick |
 | `range` | read | action | abilities | since 1.0 | the ability's range at its rank in meters, `()` for a global one |
 | `reduce_cooldown` | `(unit, id, ms)`, `id` a ability | every role | abilities | since 1.0 | takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package |
 | `reduce_cooldowns` | `(unit, kind, fraction)`, `kind` a slot kind | every role | abilities | since 1.0 | takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind` |
@@ -54,7 +54,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `save` | `()` | mode | core | since 1.0 | asks for a save at the end of the tick |
 | `set_relation` | `(a, b, relation)`, `a` a team, `b` a team, `relation` a `Relation` | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, their vision as it was |
 | `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path, `from` a `PathEnd` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from` of `path`, walking it from there |
-| `spawn_unit` | `(type, team, pos) or (type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` and its `.state` |
+| `spawn_unit` | `(type, team, pos)` or `(type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` and its `.state` |
 | `state` | read | mode | core | since 1.0 | the mode's state fields, by name, to read and write |
 | `supply_cap` | `(player)` | every role | production | since 1.0 | what `player`'s living, complete units give of supply, at most the mode's `max` |
 | `supply_used` | `(player)` | every role | production | since 1.0 | what `player`'s living units and queued trains use of its supply |

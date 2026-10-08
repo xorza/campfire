@@ -13,7 +13,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::internals;
 use campfire_capabilities::{
     ActionSlot, ActionSlots, Dead, Deaths, Level, ModeParam, ModeState, Owner, PathWalker, Points,
-    Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team, UnitType,
+    Rank, Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team, UnitType,
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
@@ -99,7 +99,7 @@ impl Learning {
         let unit = world.entity(entity);
         let slots = unit.get::<ActionSlots>().unwrap();
         Learning {
-            ranks: [0, 1, 2, 3].map(|slot| slots.slot(slot).unwrap().rank),
+            ranks: [0, 1, 2, 3].map(|slot| Rank::count(slots.slot(slot).unwrap().rank)),
             points: unit.get::<Points>().unwrap().get(),
             dead: unit.contains::<Dead>(),
         }
@@ -351,7 +351,7 @@ fn assert_start(reference: &Reference3v3, run: &Run) -> UnitType {
         let slots: Vec<_> = unit
             .slots
             .iter()
-            .map(|slot| (slot.kind, slot.rank))
+            .map(|slot| (slot.kind, Rank::count(slot.rank)))
             .collect();
         let kinds = [
             (basic, 0),

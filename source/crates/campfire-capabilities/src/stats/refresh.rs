@@ -9,7 +9,6 @@ use crate::stats::level::Level;
 use crate::stats::live_carriers::LiveCarriers;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
-use crate::stats::move_step::MoveStep;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::pool_book::PoolBook;
@@ -18,6 +17,7 @@ use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
+use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
@@ -60,7 +60,7 @@ impl Refresh {
             Option<Res<'_, StatBook>>,
             Option<Res<'_, PoolBook>>,
             Option<Res<'_, TagBook>>,
-            Option<Res<'_, ModifierBook>>,
+            Res<'_, ModifierBook>,
             Res<'_, EntityIndex>,
         ),
         (params, rate): (Res<'_, ParamBook>, Res<'_, TickRate>),
@@ -103,8 +103,7 @@ impl Refresh {
         >,
         (mut scratch, mut visits): (Local<'_, RefreshScratch>, Local<'_, Vec<Entity>>),
     ) {
-        let (Some(book), Some(pool_book), Some(modifier_book)) = (book, pool_book, modifier_book)
-        else {
+        let (Some(book), Some(pool_book)) = (book, pool_book) else {
             return;
         };
         let scratch = &mut *scratch;

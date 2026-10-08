@@ -1,5 +1,5 @@
 use crate::mode::choice_data::Offers;
-use crate::mode::mode_setup::LoadoutSetup;
+use crate::mode::loadout_setup::LoadoutSetup;
 use crate::mode::offer::Offer;
 use crate::units::action_id::ActionId;
 use crate::values::name_list::NameList;
@@ -30,22 +30,22 @@ impl Roster {
         Some(Offer::new(at))
     }
 
-    /// Whether `offer` is one of `offers`.
-    pub(crate) const fn holds(&self, offers: Offers, offer: Offer) -> bool {
-        let count = match offers {
+    /// How many values `offers` holds.
+    const fn count(&self, offers: Offers) -> usize {
+        match offers {
             Offers::Avatars => self.avatars.len(),
             Offers::Loadout => self.loadout.len(),
-        };
-        offer.index() < count
+        }
+    }
+
+    /// Whether `offer` is one of `offers`.
+    pub(crate) const fn holds(&self, offers: Offers, offer: Offer) -> bool {
+        offer.index() < self.count(offers)
     }
 
     /// The ids of `offers`, in order.
     pub(crate) fn ids(&self, offers: Offers) -> impl Iterator<Item = &str> {
-        let count = match offers {
-            Offers::Avatars => self.avatars.len(),
-            Offers::Loadout => self.loadout.len(),
-        };
-        (0..count).map(move |at| self.id(offers, Offer::new(at)))
+        (0..self.count(offers)).map(move |at| self.id(offers, Offer::new(at)))
     }
 
     /// The id of `offer` among `offers`.

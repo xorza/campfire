@@ -19,12 +19,12 @@ impl AreasApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let area = MemberSpec::call(
             "area",
-            "(pos)",
+            &[&["pos"]],
             "lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION)
         .capability(Capability::Areas);
-        api.bind(area, |ctx: &mut Ctx, at: Position| AreasApi::land(ctx, at))
+        api.bind_for(area, |ctx: &mut Ctx, at: Position| AreasApi::land(ctx, at))
             .data(DataTable::Delivery, &["area"], &[])
             .data(
                 DataTable::Area,

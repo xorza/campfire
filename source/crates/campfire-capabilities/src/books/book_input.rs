@@ -7,7 +7,6 @@ use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::stat_id::StatId;
-use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::package_path::PackagePath;
 use crate::values::speed::Speed;
@@ -33,16 +32,6 @@ pub struct BookInput<'a> {
     /// The places of the mode's stats in the order the stats refresh computes them, which the
     /// mode's stat graph gives.
     pub stat_order: &'a [StatId],
-}
-
-impl BookInput<'_> {
-    /// The damage kind `name`, which the load checked the mode declares.
-    pub(crate) fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
-        let kinds = &self.data.combat.damage_kinds;
-        let at = kinds.iter().position(|kind| kind == name);
-        let at = u8::try_from(at.expect("the load checked the damage kind"));
-        DamageKind::new(at.expect("the load keeps damage kinds within u8"))
-    }
 }
 
 /// One package of a match: its name, its content, its kind, and the paths of its scripts, in

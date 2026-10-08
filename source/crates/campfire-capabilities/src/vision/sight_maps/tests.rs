@@ -51,7 +51,8 @@ fn a_tick_clears_only_what_the_tick_before_revealed() {
     maps.reset(200, 2);
     maps.reveal(1, 60..70, false, None);
     maps.reveal(1, 130..131, true, None);
-    let seen = |maps: &SightMaps, group, cell, hidden| maps.sees(group, cell, hidden);
+    let seen =
+        |maps: &SightMaps, group, cell: usize, hidden| maps.sees(group, cell..cell + 1, hidden);
     assert!(seen(&maps, 1, 60, false) && seen(&maps, 1, 69, false));
     assert!(!seen(&maps, 1, 59, false) && !seen(&maps, 1, 70, false));
     assert!(!seen(&maps, 0, 65, false));

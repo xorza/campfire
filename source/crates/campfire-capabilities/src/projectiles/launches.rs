@@ -1,3 +1,5 @@
+use std::slice;
+
 use bevy_ecs::resource::Resource;
 use campfire_sim::{Position, StableId};
 
@@ -8,13 +10,14 @@ use crate::units::action_id::ActionId;
 use crate::units::unit_type::UnitType;
 use crate::values::action_start::ActionStart;
 use crate::values::damage_kind::DamageKind;
+use crate::values::rank::Rank;
 
 /// The projectiles that launch this tick: those ranged attacks fire, those actions deliver, and
 /// those scripts launch, which spawn in `CombatSet::Launch`. Not state: it empties within the
 /// tick.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Launches {
-    pub(crate) launches: Vec<Launch>,
+    launches: Vec<Launch>,
     /// The casts named so far this tick.
     casts: u32,
 }
@@ -38,14 +41,14 @@ pub(crate) struct Launch {
 pub(crate) enum LaunchPayload {
     Attack {
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         amount: Num,
         kind: DamageKind,
         roll: Num,
     },
     Action {
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         start: Option<ActionStart>,
         cast: u32,
     },
@@ -56,6 +59,28 @@ impl Launches {
     pub(crate) const fn cast(&mut self) -> u32 {
         self.casts += 1;
         self.casts
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.launches.len()
+    }
+
+    /// The launches, in the order they hold.
+    pub(crate) fn iter(&self) -> slice::Iter<'_, Launch> {
+        self.launches.iter()
+    }
+
+    pub(crate) fn push(&mut self, launch: Launch) {
+        self.launches.push(launch);
+    }
+
+    pub(crate) fn extend(&mut self, launches: impl IntoIterator<Item = Launch>) {
+        self.launches.extend(launches);
+    }
+
+    /// Orders the launches by their source's stable id, each source's in the order launched.
+    pub(crate) fn sort_by_source(&mut self) {
+        self.launches.sort_by_key(|launch| launch.source);
     }
 
     /// Empties it for the next tick.

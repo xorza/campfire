@@ -39,6 +39,7 @@ impl Meter {
 
     pub(crate) const fn fill(&mut self) {
         self.current = self.max;
+        self.settle();
     }
 
     /// Sets the maximum to `max`, which is positive: a rise raises the current amount as much, a
@@ -51,9 +52,7 @@ impl Meter {
             self.current = self.current.min(max);
         }
         self.max = max;
-        if self.current == max {
-            self.carry = 0;
-        }
+        self.settle();
     }
 
     /// Adds a tick's share of `per_second` at `hz` ticks a second, within 0 and the maximum:
@@ -67,9 +66,7 @@ impl Meter {
         let current =
             (i128::from(self.current.to_bits()) + gain).clamp(0, i128::from(self.max.to_bits()));
         self.current = Num::from_bits(i64::try_from(current).expect("within the maximum"));
-        if self.current == self.max || current == 0 {
-            self.carry = 0;
-        }
+        self.settle();
     }
 
     /// Adds `amount`, which is not negative, up to the maximum.
@@ -82,9 +79,7 @@ impl Meter {
             .current
             .checked_add(amount)
             .map_or(self.max, |sum| sum.min(self.max));
-        if self.current == self.max {
-            self.carry = 0;
-        }
+        self.settle();
     }
 
     /// Takes `amount`, which is not negative, down to 0 at the least.
@@ -94,6 +89,21 @@ impl Meter {
             "a meter takes an amount that is not negative"
         );
         self.current = (self.current - amount).max(Num::ZERO);
+        self.settle();
+    }
+
+    /// Drops what regen carried once the amount is at either end, as its field says.
+    const fn settle(&mut self) {
+        if self.current.to_bits() == 0 || self.current.to_bits() == self.max.to_bits() {
+            self.carry = 0;
+        }
+    }
+
+    /// Whether what it carries is what regen at `hz` ticks a second leaves: less than a bit, and
+    /// nothing at either end.
+    pub(crate) const fn settled(self, hz: u32) -> bool {
+        let ends = self.current.to_bits() == 0 || self.current.to_bits() == self.max.to_bits();
+        self.carry < hz && !(ends && self.carry != 0)
     }
 }
 
@@ -170,6 +180,30 @@ mod tests {
         assert_eq!((meter.current(), meter.carry), (Num::int(3), 0));
         meter.regen(-Num::int(9), 3);
         assert_eq!((meter.current(), meter.carry), (Num::ZERO, 0));
+        // A take to empty and a fill drop it too: 1 a second from 2 of 12 carries a third of a
+        // bit, which neither end keeps.
+        let carrying = |meter: &mut Meter| {
+            meter.set_max(Num::int(12));
+            meter.take(Num::int(12));
+            meter.add(Num::int(2));
+            meter.regen(Num::ONE, 3);
+            assert_eq!(meter.carry, 1);
+        };
+        carrying(&mut meter);
+        meter.take(Num::int(12));
+        assert_eq!(meter.carry, 0);
+        carrying(&mut meter);
+        meter.fill();
+        assert_eq!(meter.carry, 0);
+        // What a restored meter carries is settled at 3 ticks a second below 3 parts, and only
+        // between its ends.
+        let meter = |current, carry| Meter {
+            current: Num::int(current),
+            max: Num::int(10),
+            carry,
+        };
+        assert!(meter(5, 2).settled(3) && meter(0, 0).settled(3) && meter(10, 0).settled(3));
+        assert!(!meter(5, 3).settled(3) && !meter(0, 1).settled(3) && !meter(10, 1).settled(3));
 
         for (current, max, reads) in [
             (0, 10, true),

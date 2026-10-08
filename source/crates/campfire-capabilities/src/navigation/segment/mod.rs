@@ -29,8 +29,9 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::Position;
 
+    use crate::geometry::approach::Approach;
+    use crate::geometry::metric::Metric;
     use crate::navigation::segment::Segment;
-    use crate::values::metric::{Approach, Metric};
 
     impl Segment {
         /// Whether the segment comes closer than `reach` to `at`, exactly; touching at `reach`

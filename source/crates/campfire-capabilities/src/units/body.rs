@@ -6,9 +6,9 @@ use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::shape::Shape;
 use crate::units::layer::Layer;
-use crate::values::body_box::BodyBox;
-use crate::values::shape::Shape;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
 /// that does not walk on a planar map may have. Living bodies of one layer do not overlap, and
@@ -19,29 +19,11 @@ pub struct Body {
     layer: Layer,
 }
 
-/// A unit type's body before a unit of it spawns: a circle, or a box of a size that the spawn's
-/// angle turns, on its layer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BodyForm {
-    form: Form,
-    layer: Layer,
-}
-
-/// The shape of a `BodyForm`: a circle's radius, or a box's size, `[width, height]`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Form {
-    Circle(Num),
-    Box([Num; 2]),
-}
-
 impl Body {
-    /// The widest body: wider than any structure a map stands, and small enough that two bodies'
-    /// radii and a range add up within a `Num`.
-    pub const MAX_RADIUS: Num = Num::from_bits(64 << Num::FRAC_BITS);
-
-    /// A circle on the first layer; `None` unless `radius` is positive and at most `MAX_RADIUS`.
+    /// A circle on the first layer; `None` unless `radius` is positive and at most
+    /// `Shape::MAX_BOUND`.
     pub const fn new(radius: Num) -> Option<Body> {
-        if radius.to_bits() <= 0 || radius.to_bits() > Body::MAX_RADIUS.to_bits() {
+        if radius.to_bits() <= 0 || radius.to_bits() > Shape::MAX_BOUND.to_bits() {
             return None;
         }
         Some(Body {
@@ -50,8 +32,8 @@ impl Body {
         })
     }
 
-    /// The box `body` on the first layer.
-    pub(crate) const fn boxed(body: BodyBox) -> Body {
+    /// The body of the built box `body`, on the first layer.
+    pub(crate) const fn of_box(body: BodyBox) -> Body {
         Body {
             shape: Shape::Box(body),
             layer: Layer::FIRST,
@@ -105,64 +87,6 @@ impl Body {
     }
 }
 
-impl BodyForm {
-    /// A circle of `radius` on the first layer, as `Body::new` takes it.
-    pub fn circle(radius: Num) -> Option<BodyForm> {
-        Body::new(radius).map(|_| BodyForm {
-            form: Form::Circle(radius),
-            layer: Layer::FIRST,
-        })
-    }
-
-    /// A box of `size`, `[width, height]` in meters, on the first layer, when `BodyBox` takes
-    /// that size: at every angle, as the size alone decides.
-    pub fn boxed(size: [Num; 2]) -> Option<BodyForm> {
-        BodyBox::new(size, Num::ZERO).map(|_| BodyForm {
-            form: Form::Box(size),
-            layer: Layer::FIRST,
-        })
-    }
-
-    /// The form on `layer`.
-    #[must_use]
-    pub(crate) const fn on(self, layer: Layer) -> BodyForm {
-        BodyForm { layer, ..self }
-    }
-
-    pub(crate) const fn layer(self) -> Layer {
-        self.layer
-    }
-
-    /// Whether it is a box.
-    pub const fn is_box(self) -> bool {
-        matches!(self.form, Form::Box(_))
-    }
-
-    /// The body a unit of it spawns with, turned by `angle` degrees: a box's turn, which a
-    /// circle ignores.
-    pub fn at(self, angle: Num) -> Body {
-        let shape = match self.form {
-            Form::Circle(radius) => Shape::Circle(radius),
-            Form::Box(size) => {
-                let body = BodyBox::new(size, angle);
-                Shape::Box(body.expect("a form's size is one a box takes at every angle"))
-            }
-        };
-        Body {
-            shape,
-            layer: self.layer,
-        }
-    }
-
-    /// The radius of a circle, as a walker sees it; `None` for a box, which never walks.
-    pub(crate) const fn radius(self) -> Option<Num> {
-        match self.form {
-            Form::Circle(radius) => Some(radius),
-            Form::Box(_) => None,
-        }
-    }
-}
-
 impl SimComponent for Body {
     const NAME: &'static str = "units.body";
 
@@ -185,7 +109,7 @@ impl<'de> Deserialize<'de> for Body {
         let body = match fields.shape {
             Shape::Circle(radius) => Body::new(radius)
                 .ok_or_else(|| D::Error::custom("a body radius not positive or beyond 64 m"))?,
-            Shape::Box(body) => Body::boxed(body),
+            Shape::Box(body) => Body::of_box(body),
         };
         Ok(body.on(fields.layer))
     }
@@ -198,9 +122,9 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::Position;
 
+    use crate::geometry::metric::Metric;
+    use crate::geometry::shape::Shape;
     use crate::units::body::Body;
-    use crate::values::metric::Metric;
-    use crate::values::shape::Shape;
 
     /// Whether `range` from the edge of `from_body` at `from` reaches the edge of `to_body` at
     /// `to`, on a planar map, by the reach rule; a unit with no body is a point.
@@ -247,6 +171,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::units::body_form::BodyForm;
 
     #[test]
     fn a_body_is_a_circle_up_to_64_m_or_a_box_on_a_layer() {
@@ -276,7 +201,7 @@ mod tests {
         // angle, which keeps the form's layer; the box has half edges and no radius.
         let form = BodyForm::circle(Num::int(2)).unwrap();
         assert_eq!(form.at(Num::int(90)), circle);
-        let boxed = BodyForm::boxed([Num::int(4), Num::int(2)])
+        let boxed = BodyForm::box_sized([Num::int(4), Num::int(2)])
             .unwrap()
             .on(Layer::new(1));
         let turned = boxed.at(Num::int(90));
@@ -287,10 +212,13 @@ mod tests {
         );
         assert_eq!((turned.radius(), turned.layer()), (None, Layer::new(1)));
         assert!(boxed.is_box() && !form.is_box());
-        assert_eq!((boxed.radius(), form.radius()), (None, Some(Num::int(2))));
+        assert_eq!(
+            (boxed.circle_radius(), form.circle_radius()),
+            (None, Some(Num::int(2)))
+        );
         let decoded = postcard::from_bytes::<Body>(&postcard::to_allocvec(&turned).unwrap());
         assert_eq!(decoded.ok(), Some(turned));
         // A box of a size `BodyBox` refuses is no form.
-        assert_eq!(BodyForm::boxed([Num::int(126), Num::int(1)]), None);
+        assert_eq!(BodyForm::box_sized([Num::int(126), Num::int(1)]), None);
     }
 }

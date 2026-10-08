@@ -2,44 +2,68 @@ use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
-use campfire_common::{PlayerSlot, SegmentSeed};
+use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, Command, IdAllocator, SimUpdate, TickInput};
+use campfire_script::ScriptError;
+use campfire_sim::{
+    Capability, Command, IdAllocator, Position, SimUpdate, StableId, TickInput, TickInputs,
+};
 use serde::Deserialize;
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
-use crate::actions::action_slots::{InProgress, OrderPhase, SlotAim};
+use crate::actions::action_range::ActionRange;
+use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_target::ActionTarget;
+use crate::actions::in_progress::{InProgress, OrderPhase};
+use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::CapabilitySet;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
-use crate::items::inventory::ItemStack;
+use crate::geometry::grid::Grid;
+use crate::items::inventory::{Inventory, ItemStack};
 use crate::items::item_book::ItemSpec;
-use crate::items::shop::ShopPlace;
+use crate::items::item_id::ItemId;
+use crate::items::shop::{Shop, ShopPlace};
 use crate::navigation::Navigation;
-use crate::navigation::path_walker::PathEnd;
+use crate::navigation::destination::Destination;
+use crate::navigation::on_path::OnPath;
+use crate::navigation::path_walker::{PathEnd, PathWalker};
+use crate::navigation::paths::Paths;
+use crate::navigation::route::Route;
 use crate::navigation::route_planner::RoutePlanner;
 use crate::navigation::walker::Walker;
-use crate::orders::order::Order;
+use crate::orders::ai_data::AiData;
+use crate::orders::error::AiError;
+use crate::orders::order::{Action, Order};
+use crate::players::player_resources::PlayerResources;
+use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
-use crate::scripts::error::ApiError;
+use crate::scripts::error::{ApiError, CallError};
+use crate::scripts::hook::Hook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::stats::move_step::MoveStep;
 use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::units::Units;
+use crate::units::body::Body;
+use crate::units::dead::Dead;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
+use crate::units::move_step::MoveStep;
+use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
+use crate::units::spawn_point::SpawnPoint;
+use crate::units::team::Team;
+use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
-use crate::values::grid::Grid;
 use crate::values::package_path::PackagePath;
-use crate::values::region::Region;
+use crate::values::rank::Rank;
 use crate::values::scalar::Scalar;
 use crate::values::share::Share;
 
@@ -393,7 +417,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     // Its weapon in slot 0, and a train in slot 1.
     let train = internals::train(&mut game.sim.world, UnitType::new(0), Ticks::ZERO, None);
     let mut slots = game.sim.get_mut::<ActionSlots>(hero);
-    slots.grant(SlotKind::new(0), &[train], 1);
+    slots.grant(SlotKind::new(0), &[train], Some(Rank::FIRST));
     let ordered = |game: &Match| game.slots(hero).in_progress();
     let slot = |slot| {
         Order::payload(&[Order::one(
@@ -821,11 +845,11 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     let mut armed = |aim: &str| {
         let weapon = TestWeapon::new(
             Filter::parse(aim, &UnitTypes::default()).unwrap(),
-            Range::Meters(Num::int(20)),
+            ActionRange::Meters(Num::int(20)),
             Ticks::new(2),
         );
         let weapon = internals::weapon(&mut game.sim.world, weapon);
-        let slots = ActionSlots::new([(weapon, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
         let stats = game.arm(standing(), Team::new(0));
         let unit = game.sim.spawn(at(0, 0, 0), (striker, stats));
         game.sim.insert(unit, slots);
@@ -1214,7 +1238,7 @@ fn shop_match() -> Match {
         item(125, &[], 1),
     ]);
     let share = Share::deserialize(toml::Value::String("0.7".to_owned())).unwrap();
-    let region = Region::new([Num::int(-5); 2], [Num::int(5); 2]);
+    let region = Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap();
     let places = vec![ShopPlace {
         team: Team::new(0),
         region,
@@ -1505,6 +1529,16 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     game.tick(&[]);
     assert_eq!(game.position(walker), place);
     assert_eq!(game.target(walker), None);
+    // A second stop finds no destination to drop, and leaves it untouched, as a write would
+    // replicate an avatar's.
+    let entity = game.sim.entity(walker);
+    let changed = |game: &Match| {
+        let unit = game.sim.world.entity(entity);
+        unit.get_ref::<Destination>().unwrap().last_changed()
+    };
+    let before = changed(&game);
+    game.tick(&[(0, &stop)]);
+    assert_eq!(changed(&game), before);
 }
 
 #[test]

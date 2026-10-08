@@ -69,7 +69,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
     let slots: Vec<_> = slots
         .iter()
-        .map(|slot| (slot.action.unwrap(), slot.rank))
+        .map(|slot| (slot.action.unwrap(), Rank::count(slot.rank)))
         .collect();
     assert_eq!(slots, [(game.strike, 0), (game.blink, 1)]);
 }
@@ -214,7 +214,7 @@ fn on_input(ctx, player, name, value) {
         slots.collect::<Vec<_>>()
     };
     let [basic, spell] = [0, 1].map(SlotKind::new);
-    assert_eq!(slots(&game), [(game.strike, basic, 0)]);
+    assert_eq!(slots(&game), [(game.strike, basic, None)]);
     // A choice not unique: players 1 and 2 both take both heroes, in their own order; then
     // player 1 chooses again, which replaces its values. Too few values, one twice, one the
     // choice does not offer and a choice the mode does not declare fail, and change nothing.
@@ -255,7 +255,55 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(game.failures(), refused.map(FailureKind::Api));
     assert_eq!(
         slots(&game),
-        [(game.strike, basic, 0), (game.blink, spell, 1)]
+        [
+            (game.strike, basic, None),
+            (game.blink, spell, Some(Rank::FIRST))
+        ]
+    );
+}
+
+#[test]
+fn a_grant_to_a_fresh_unit_counts_its_inventory_slots() {
+    // Hero Y carries 255 inventory slots of the spell kind and no action. Granted two spells as it
+    // spawns, it would hold 257 slots, past the 256 a unit holds: the grant fails, and its call's
+    // spawn with it. Granted one, it holds 256, the spell after the inventory's slots.
+    let script = r#"
+fn on_input(ctx, player, name, value) {
+    let unit = ctx.spawn_unit("hero-y", "a", ctx.map.markers("camp")[0].pos, player);
+    ctx.grant(unit, "spell", if value == "two" { ["blink", "blink"] } else { ["blink"] });
+}
+"#;
+    let spell = SlotKind::new(1);
+    let carry = |setup: &mut ModeSetup<'_>| {
+        setup.units.unit_types[2].kit.inventory = Some(InventorySpec {
+            slots: NonZeroU8::MAX,
+            kind: spell,
+        });
+    };
+    let script = format!("{script}{PICKING}");
+    let mut game = Game::start_setup(&script, ScriptLimits::ROOMY, mode_files(), carry).unwrap();
+    let owned = |game: &mut Game| {
+        let mut owned = game.sim.world.query::<(&Owner, &ActionSlots)>();
+        let slots = owned.iter(&game.sim.world).map(|(_, slots)| slots.clone());
+        slots.collect::<Vec<_>>()
+    };
+    game.tick(&[(0, input("probe", "two"))]);
+    assert_eq!(game.failures(), [FailureKind::Api(ApiError::TooManySlots)]);
+    assert!(owned(&mut game).is_empty());
+    game.tick(&[(0, input("probe", "one"))]);
+    assert_eq!(game.failures(), []);
+    let [slots] = owned(&mut game).try_into().unwrap();
+    assert_eq!(slots.len(), ActionSlots::LIMIT);
+    let last = slots.slot(255).unwrap();
+    assert_eq!(
+        (last.action, last.kind, last.rank),
+        (Some(game.blink), spell, Some(Rank::FIRST))
+    );
+    assert!(
+        slots
+            .iter()
+            .take(255)
+            .all(|slot| slot.action.is_none() && slot.kind == spell)
     );
 }
 

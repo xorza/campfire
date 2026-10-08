@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::mem;
 
 use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::units::engine_tag::EngineTag;
@@ -24,6 +23,9 @@ pub(crate) struct UnitTypes {
     /// The name of each tag, by tag: the engine's, then the match's.
     tag_names: NameList,
     types: Vec<TypeEntry>,
+    /// Each type's own tags, by type, until the tag book takes them: from then on the book alone
+    /// holds them, and a type loaded or tagged later is a bug.
+    staged_tags: Option<Vec<TagSet>>,
     /// The name of each type in its scope, by type.
     type_names: NameList,
     /// Every type, sorted by scope, then name.
@@ -34,11 +36,10 @@ pub(crate) struct UnitTypes {
     states: NameTable<SyncedStateDecl>,
 }
 
-/// A loaded unit type: the scope its name is seen in, and its tags.
+/// A loaded unit type: the scope its name is seen in.
 #[derive(Debug)]
 struct TypeEntry {
     scope: TypeScope,
-    tags: TagSet,
 }
 
 /// The engine's tags at their places, and no type.
@@ -47,6 +48,7 @@ impl Default for UnitTypes {
         UnitTypes {
             tag_names: EngineTag::ALL.into_iter().map(EngineTag::name).collect(),
             types: Vec::new(),
+            staged_tags: Some(Vec::new()),
             type_names: NameList::default(),
             by_name: Vec::new(),
             params: NameTable::default(),
@@ -82,7 +84,8 @@ impl UnitTypes {
         let run = self.states.push(fields);
         debug_assert_eq!(run, usize::from(index), "one run of state fields per type");
         self.by_name.insert(at, UnitType::new(index));
-        self.types.push(TypeEntry { scope, tags });
+        self.types.push(TypeEntry { scope });
+        self.staged_mut().push(tags);
         self.type_names.push(name);
         UnitType::new(index)
     }
@@ -97,13 +100,21 @@ impl UnitTypes {
             self.tag_names.len() < Tag::LIMIT,
             "the load counted the tags"
         );
-        Tag::new(self.tag_names.push(name))
+        let at = self.tag_names.push(name);
+        Tag::new(u8::try_from(at).expect("tags fit u8"))
     }
 
     /// Gives `unit_type` the tag `tag` too, as the engine tags a type by its sections.
     pub(crate) fn give_tag(&mut self, unit_type: UnitType, tag: Tag) {
-        let entry = &mut self.types[unit_type.index()];
-        entry.tags = entry.tags.with(tag);
+        let tags = &mut self.staged_mut()[unit_type.index()];
+        *tags = tags.with(tag);
+    }
+
+    /// The types' own tags, which the tag book has not taken yet.
+    fn staged_mut(&mut self) -> &mut Vec<TagSet> {
+        self.staged_tags
+            .as_mut()
+            .expect("a type's tags change only before the tag book takes them")
     }
 
     /// Whether the match loaded `unit_type`.
@@ -135,12 +146,13 @@ impl UnitTypes {
 
     /// The tag `name`, once declared.
     pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
-        self.tag_names.named(name).map(Tag::new)
+        let at = self.tag_names.named(name)?;
+        Some(Tag::new(u8::try_from(at).expect("tags fit u8")))
     }
 
     /// The book of the effects `data` gives the tags, by name, beside an engine tag's own, and of
-    /// the types' own tags, which it takes: from then on the book alone holds them. A tag neither
-    /// names has none.
+    /// the types' own tags, which it takes, once: from then on the book alone holds them, and a
+    /// later load or tag of a type fails. A tag neither names has none.
     pub(crate) fn tag_book(&mut self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
         let tags = self.tag_names.iter().map(|name| {
             let engine = EngineTag::named(name).map_or(TagProperties::NONE, EngineTag::properties);
@@ -154,10 +166,14 @@ impl UnitTypes {
             (engine.union(TagProperties::of(data)), TagSet::of(immune))
         });
         let effects: Vec<_> = tags.collect();
-        let types = self.types.iter_mut().enumerate().map(|(at, entry)| {
+        let staged = self
+            .staged_tags
+            .take()
+            .expect("the tag book takes the types' tags once");
+        let types = staged.into_iter().enumerate().map(|(at, tags)| {
             (
                 UnitType::new(u16::try_from(at).expect("types fit u16")),
-                mem::take(&mut entry.tags),
+                tags,
             )
         });
         TagBook::new(effects, types)
@@ -184,7 +200,11 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn tags(&self, unit_type: UnitType) -> TagSet {
-            self.types[unit_type.index()].tags
+            let staged = self
+                .staged_tags
+                .as_ref()
+                .expect("the tags are still staged");
+            staged[unit_type.index()]
         }
     }
 }

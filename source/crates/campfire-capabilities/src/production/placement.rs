@@ -4,19 +4,19 @@ use bevy_ecs::query::{Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_sim::Position;
 
-use crate::navigation::body_index::BodyIndex;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::metric::Metric;
+use crate::geometry::shape::Shape;
+use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::walls::Walls;
 use crate::production::build_specs::{BuildSpec, PlacementCheck};
-use crate::stats::move_step::MoveStep;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::move_step::MoveStep;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
-use crate::values::attitude::Attitude;
-use crate::values::bounds::Bounds;
-use crate::values::metric::Metric;
-use crate::values::shape::Shape;
+use crate::values::relation::Relation;
 use crate::vision::seen_by::SeenBy;
 
 /// What a placement tests a building's box against: the bounds, the walls, the static bodies,
@@ -54,11 +54,15 @@ impl Placement<'_, '_> {
             panic!("a building's body is a box");
         };
         let layer = body.layer();
-        let mut statics = Vec::new();
-        self.statics
-            .near(layer, at.get(), boxed.bound(), |body| statics.push(*body));
-        let walls = self.walls.as_deref().cloned().unwrap_or_default();
-        if !walls.room_for(*self.bounds, at, &boxed, layer, statics.iter().copied()) {
+        let walls = self.walls.as_deref();
+        if !Walls::room_for(walls, *self.bounds, at, &boxed, layer) {
+            return false;
+        }
+        let overlaps = |other: &IndexedBody| other.overlaps_box(at, &boxed);
+        if self
+            .statics
+            .any_near(layer, at.get(), boxed.bound(), overlaps)
+        {
             return false;
         }
         let blocked = self
@@ -72,7 +76,7 @@ impl Placement<'_, '_> {
                     Shape::Circle(radius) => boxed.nearest(at, pos, radius) == Ordering::Less,
                     Shape::Box(other) => boxed.overlaps(at, &other, pos),
                 };
-                let friendly = self.relations.between(team, other_team) == Attitude::Friendly;
+                let friendly = self.relations.between(team, other_team) == Relation::Friendly;
                 let sees = seen.is_none_or(|seen| seen.get().contains(team));
                 inside && !friendly && sees
             });
@@ -93,9 +97,9 @@ impl Placement<'_, '_> {
         self.units
             .iter()
             .any(|(&pos, other, &other_team, tags, ..)| {
-                let attitude = self.relations.between(team, other_team);
+                let relation = self.relations.between(team, other_team);
                 let tags = tags.map(|tags| tags.tags).unwrap_or_default();
-                rule.filter.selects(attitude, tags)
+                rule.filter.selects(relation, tags)
                     && self.metric.reaches(
                         at,
                         body.shape(),

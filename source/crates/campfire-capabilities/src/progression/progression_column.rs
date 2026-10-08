@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::StableId;
@@ -10,9 +11,18 @@ use crate::progression::track_book::TrackBook;
 use crate::scripts::error::{ApiError, Checked};
 use crate::stats::level::Level;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
-use crate::units::script_view::View;
+use crate::units::row_fill::RowFill;
 use crate::units::track_id::TrackId;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
+
+/// The parts of a unit progression reads into its row: its experience, its level, which is its
+/// `level` track's, and its points.
+pub(super) type RowParts = (
+    Option<&'static Experience>,
+    Option<&'static Level>,
+    Option<&'static Points>,
+);
 
 /// What progression adds to the script view: the tracks the mode declares, and each unit's
 /// tracks, its experience and level on each, and its points, a row each.
@@ -183,5 +193,13 @@ impl ProgressionColumn {
     fn find(&self, row: usize, track: TrackId) -> Option<HeldTrack> {
         let held = self.rows.now().held(row);
         held.iter().find(|held| held.track == track).copied()
+    }
+
+    /// Fills a row of the script view with a unit's tracks, its progress on each, and its points.
+    pub(super) fn fill_row(
+        (experience, level, points): ROQueryItem<'_, '_, RowParts>,
+        fill: &mut RowFill<'_, ProgressionColumn>,
+    ) {
+        fill.column.push(experience, level, points);
     }
 }

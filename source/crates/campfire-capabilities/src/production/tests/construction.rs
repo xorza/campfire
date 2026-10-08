@@ -2,6 +2,9 @@ use campfire_sim::{EntityIndex, TickInput, TickInputs};
 use serde::Deserialize;
 
 use super::*;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::polygon::Polygon;
 use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
@@ -10,19 +13,17 @@ use crate::production::build_specs::{BuildSpecs, NewBuild, PlacementCheck, Style
 use crate::production::build_target::BuildTarget;
 use crate::production::builder::Builder;
 use crate::production::site::Site;
-use crate::stats::move_step::MoveStep;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
-use crate::units::body::{Body, BodyForm};
+use crate::units::body::Body;
+use crate::units::body_form::BodyForm;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
+use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::team_set::TeamSet;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
-use crate::values::polygon::Polygon;
-use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 use crate::values::share::Share;
 use crate::vision::seen_by::SeenBy;
 
@@ -74,19 +75,17 @@ struct Yard {
 
 /// How a yard's build grows and where it places.
 #[derive(Debug, Clone)]
-struct Rules {
-    style: Style,
-    rates: Vec<Num>,
+struct Rules<'a> {
+    style: Style<'a>,
     near: Vec<PlacementCheck>,
     away: Vec<PlacementCheck>,
     walls: Vec<Wall>,
 }
 
-impl Rules {
-    fn of(style: Style) -> Rules {
+impl<'a> Rules<'a> {
+    fn of(style: Style<'a>) -> Rules<'a> {
         Rules {
             style,
-            rates: Vec::new(),
             near: Vec::new(),
             away: Vec::new(),
             walls: Vec::new(),
@@ -95,10 +94,10 @@ impl Rules {
 }
 
 impl Yard {
-    fn new(rules: Rules) -> Yard {
+    fn new(rules: Rules<'_>) -> Yard {
         let mut shop = Shop::ordering();
         let depot = shop.depot;
-        let form = BodyForm::boxed([Num::int(4), Num::int(2)]).unwrap();
+        let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
         let log = Rc::clone(&shop.spawned);
         let world = &mut shop.sim.world;
         world.insert_non_send(Spawner::new(move |world, at, owner| {
@@ -136,7 +135,6 @@ impl Yard {
         let new = NewBuild {
             form,
             style: rules.style,
-            rates: &rules.rates,
             start_life: Some(share("0.1")),
             refund: share("0.5"),
             near: rules.near,
@@ -155,7 +153,7 @@ impl Yard {
     /// A builder of `team`, owned by player `owner`, at `at`, of a half meter, that walks a meter
     /// a tick, with the build in its slot 0.
     fn builder(&mut self, at: Position, team: u8, owner: u32) -> StableId {
-        let slots = ActionSlots::new([(self.build, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(self.build, SlotKind::new(0), Rank::new(1))]);
         let parts = (
             Team::new(team),
             Owner::new(PlayerSlot::new(owner)),
@@ -302,28 +300,23 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
     // and 1.5, 1 with one, then 1.5 with two, 2.5 after tick 1, and 4 after tick 2, which
     // completes it and ends both orders.
     let one = Num::ONE;
+    let rates = [one, one + Num::HALF];
     let cases = [
         (
             Style::Alone,
-            vec![],
             [Some(one), Some(one * 2), Some(one * 3), None],
         ),
         (
             Style::Builder,
-            vec![],
             [Some(one), Some(one * 2), Some(one * 3), None],
         ),
         (
-            Style::Builders,
-            vec![one, one + Num::HALF],
+            Style::Builders(&rates),
             [Some(one), Some(Num::HALF * 5), None, None],
         ),
     ];
-    for (style, rates, progress) in cases {
-        let mut yard = Yard::new(Rules {
-            rates,
-            ..Rules::of(style)
-        });
+    for (style, progress) in cases {
+        let mut yard = Yard::new(Rules::of(style));
         let first = yard.builder(half(-6, 0), 0, 0);
         let second = yard.builder(half(6, 0), 0, 0);
         yard.build_at(first, 0, 0);
@@ -337,7 +330,7 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
             seen.push(yard.site(depot).1);
         }
         assert_eq!(seen, progress, "{style:?}");
-        let builds = style == Style::Builders;
+        let builds = matches!(style, Style::Builders(_));
         assert_eq!(
             joined,
             builds.then_some(BuildTarget::Site(depot)),
@@ -444,10 +437,10 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         .unwrap(),
     };
     let rule = |relation| PlacementCheck {
-        filter: Filter::of_relation(relation),
+        filter: Filter::of_relations(relation),
         distance: Num::int(2),
     };
-    let cases: [(&str, Rules, Option<fn(&mut Yard)>, i64); 6] = [
+    let cases: [(&str, Rules<'_>, Option<fn(&mut Yard)>, i64); 6] = [
         (
             "wall",
             Rules {
@@ -478,7 +471,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         (
             "near no enemy",
             Rules {
-                near: vec![rule(Relation::Enemies)],
+                near: vec![rule(RelationSet::Enemies)],
                 ..Rules::of(Style::Alone)
             },
             None,
@@ -487,7 +480,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         (
             "away from no ally",
             Rules {
-                away: vec![rule(Relation::Allies)],
+                away: vec![rule(RelationSet::Allies)],
                 ..Rules::of(Style::Alone)
             },
             None,
@@ -514,7 +507,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
     yard.build_at(builder, 0, 0);
     assert_eq!((yard.depots().len(), yard.gold()), (1, 85));
     let mut yard = Yard::new(Rules {
-        near: vec![rule(Relation::Enemies)],
+        near: vec![rule(RelationSet::Enemies)],
         ..Rules::of(Style::Alone)
     });
     yard.shop

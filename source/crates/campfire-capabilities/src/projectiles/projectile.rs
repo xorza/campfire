@@ -10,10 +10,11 @@ use crate::actions::action_book::ActionBook;
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
-use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 use crate::values::action_start::ActionStart;
 use crate::values::damage_kind::DamageKind;
+use crate::values::rank::Rank;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
 /// carries.
@@ -42,6 +43,28 @@ pub(crate) enum Flight {
     },
 }
 
+impl Flight {
+    /// A fresh flight homing on `target`, none of it flown.
+    pub(crate) const fn homing(target: StableId) -> Flight {
+        Flight::Homing {
+            target,
+            flown: Num::ZERO,
+            lost: false,
+        }
+    }
+
+    /// A fresh flight along `direction` for `range`, none of it flown, aimed at `aimed` if a
+    /// unit.
+    pub(crate) const fn line(direction: Vec3, range: Num, aimed: Option<StableId>) -> Flight {
+        Flight::Line {
+            direction,
+            flown: Num::ZERO,
+            range,
+            aimed,
+        }
+    }
+}
+
 /// What a projectile carries: an attack's damage of `kind`, the rank of its weapon's slot and the
 /// roll it drew, or the action at `rank` whose `on_hit` and `on_end` it runs, with the projectiles
 /// of its cast in `group`, named by the first of them.
@@ -50,14 +73,14 @@ pub(crate) enum Payload {
     Attack {
         /// The weapon's action, which its damage names.
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         amount: Num,
         kind: DamageKind,
         roll: Num,
     },
     Action {
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         start: Option<ActionStart>,
         group: StableId,
     },

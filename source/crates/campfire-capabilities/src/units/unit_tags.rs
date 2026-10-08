@@ -1,5 +1,7 @@
 use bevy_ecs::component::Component;
 
+use crate::units::block::Block;
+use crate::units::engine_tag::EngineTag;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 
@@ -17,6 +19,19 @@ impl UnitTags {
     pub(crate) fn properties_of(tags: Option<&UnitTags>) -> TagProperties {
         tags.map_or_else(TagProperties::default, |tags| tags.properties)
     }
+
+    /// Whether a unit with `tags` gathers: it has the engine's `gathering` tag, which a gather
+    /// under way gives it.
+    pub(crate) fn gathers(tags: Option<&UnitTags>) -> bool {
+        tags.is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag()))
+    }
+
+    /// Whether a unit with `tags`, under a forced move when `forced`, is kept from `block`: by its
+    /// tags, or by the forced move from a step, a cast or an attack.
+    pub(crate) fn blocks(tags: Option<&UnitTags>, forced: bool, block: Block) -> bool {
+        UnitTags::properties_of(tags).blocks(block)
+            || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
+    }
 }
 
 #[cfg(test)]
@@ -25,11 +40,11 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
 
     use crate::units::block::Block;
-    use crate::units::script_view::View;
     use crate::units::tag_book::TagBook;
     use crate::units::tag_properties::TagProperties;
     use crate::units::unit_tags::UnitTags;
     use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
 
     impl UnitTags {
         /// Gives `entity` the tags of its unit type, as a match's spawn does; one of no type

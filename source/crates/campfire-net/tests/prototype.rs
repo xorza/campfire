@@ -7,9 +7,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_capabilities::internals::{give_modifier, set_relation};
 use campfire_capabilities::{
-    Action, ActionSlots, Attitude, Bounds, Combat, DashTo, Dead, Destination, ForcedMove, MatchEnd,
-    MatchResult, Metric, Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Relations, Respawn,
-    Stats, Team,
+    Action, ActionSlots, Bounds, Combat, DashTo, Dead, Destination, ForcedMove, MatchEnd,
+    MatchResult, Metric, Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Relation,
+    Relations, Respawn, Stats, Team,
 };
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
@@ -484,7 +484,7 @@ fn the_client_takes_the_relations_a_script_sets() {
         local.server_mut().world_mut(),
         west,
         east,
-        Attitude::Neutral,
+        Relation::Neutral,
     );
     // The server sends them in its frame of the next step, and the client takes them in the step
     // after.

@@ -9,9 +9,9 @@ use crate::scripts::frame::Frame;
 use crate::scripts::script_role::ScriptRole;
 use crate::scripts::state_value::StateValue;
 use crate::units::new_unit_states::NewUnitStates;
-use crate::units::script_view::View;
 use crate::units::unit_state::UnitState;
 use crate::units::units_column::UnitsColumn;
+use crate::units::view::View;
 
 /// What the core adds to the call frame for units' script state: the writes the call made, in
 /// order, which it reads back and which apply to the units when it ends.

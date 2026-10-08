@@ -3,6 +3,8 @@ use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::{Position, SimTick, StableId, TickRate};
 
+use crate::geometry::metric::Metric;
+use crate::geometry::shape::Shape;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
@@ -24,9 +26,8 @@ use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
-use crate::values::attitude::Attitude;
-use crate::values::metric::Metric;
-use crate::values::shape::Shape;
+use crate::values::rank::Rank;
+use crate::values::relation::Relation;
 
 /// The living units whose held modifiers `HeldPass::run` writes.
 type HeldUnits<'w, 's> = Query<
@@ -60,7 +61,7 @@ impl HeldPass {
     /// ability that gave the aura, a player modifier's at rank 1; neither has a duration.
     pub(crate) fn run(
         (book, stats, (tick, rate), metric, players, mut others): (
-            Option<Res<'_, ModifierBook>>,
+            Res<'_, ModifierBook>,
             Option<Res<'_, StatBook>>,
             (Res<'_, SimTick>, Res<'_, TickRate>),
             Res<'_, Metric>,
@@ -74,9 +75,9 @@ impl HeldPass {
         tag_book: Option<Res<'_, TagBook>>,
         (mut held, mut grid): (Local<'_, Vec<Held>>, Local<'_, BodyGrid<Entity>>),
     ) {
-        let (Some(book), Some(_)) = (book, stats) else {
+        if stats.is_none() {
             return;
-        };
+        }
         let rate = *rate;
         held.clear();
         held.extend(others.0.drain(..));
@@ -112,9 +113,9 @@ impl HeldPass {
                     let (&target, _, &other, tags, ..) =
                         units.get(body.key).expect("an indexed unit");
                     let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
-                    let attitude = relations.between(team, other);
+                    let relation = relations.between(team, other);
                     let reaches = metric.reaches(at, Shape::POINT, radius, body.at, body.shape);
-                    if reaches && filter.selects(attitude, tags) {
+                    if reaches && filter.selects(relation, tags) {
                         held.push(Held {
                             target,
                             modifier,
@@ -177,13 +178,13 @@ impl HeldPass {
             let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
             for modifier in players.of(owner.slot()) {
                 let affects = book.get(modifier).spec.affects;
-                if affects.is_none_or(|filter| filter.selects(Attitude::Friendly, tags)) {
+                if affects.is_none_or(|filter| filter.selects(Relation::Friendly, tags)) {
                     held.push(Held {
                         target,
                         modifier,
                         source: None,
                         ability: None,
-                        rank: 1,
+                        rank: Rank::FIRST,
                     });
                 }
             }

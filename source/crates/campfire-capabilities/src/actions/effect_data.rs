@@ -16,36 +16,26 @@ pub struct EffectData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effecting {
     /// `damage = { amount, kind }`.
-    Damage { amount: Number, kind: DeclaredName },
+    Damage(DamageFields),
     /// `heal = { amount }`, of the life pool.
-    Heal { amount: Number },
+    Heal(HealFields),
     /// `restore = { pool, amount }`.
-    Restore { pool: DeclaredName, amount: Number },
+    Restore(RestoreFields),
     /// `modifier = { id, duration_ms }`, a modifier of the action's package, from the acting
     /// unit.
-    Modifier {
-        id: DeclaredName,
-        duration_ms: Option<Number>,
-    },
+    Modifier(ModifierFields),
     /// `xp = { track, amount }`.
-    Xp { track: DeclaredName, amount: Number },
+    Xp(XpFields),
     /// `purge = { tag }`, of the modifiers that grant the tag.
-    Purge { tag: DeclaredName },
+    Purge(PurgeFields),
     /// `launch = { area, on_hit, on_end }`: an area type of the action's package, which runs its
     /// own lists.
-    Launch {
-        area: DeclaredName,
-        on_hit: Vec<EffectData>,
-        on_end: Vec<EffectData>,
-    },
+    Launch(LaunchFields),
     /// `move = { to, speed }` or `move = { from, distance, ms }`: a forced move.
     Move(MoveData),
     /// `spawn = { unit_type, duration_ms }`: a unit of the mode's type `unit_type` where the
     /// effect applies, despawning `duration_ms` after it spawns when that is given.
-    Spawn {
-        unit_type: DeclaredName,
-        duration_ms: Option<Number>,
-    },
+    Spawn(SpawnFields),
     /// An effect the design names that the release does not run yet; the load refuses it.
     Planned(PlannedEffect),
 }
@@ -104,44 +94,44 @@ impl MoveUnit {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DamageFields {
-    amount: Number,
-    kind: DeclaredName,
+pub struct DamageFields {
+    pub amount: Number,
+    pub kind: DeclaredName,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct HealFields {
-    amount: Number,
+pub struct HealFields {
+    pub amount: Number,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RestoreFields {
-    pool: DeclaredName,
-    amount: Number,
+pub struct RestoreFields {
+    pub pool: DeclaredName,
+    pub amount: Number,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ModifierFields {
-    id: DeclaredName,
-    duration_ms: Option<Number>,
+pub struct ModifierFields {
+    pub id: DeclaredName,
+    pub duration_ms: Option<Number>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct XpFields {
-    track: DeclaredName,
-    amount: Number,
+pub struct XpFields {
+    pub track: DeclaredName,
+    pub amount: Number,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PurgeFields {
-    tag: DeclaredName,
+pub struct PurgeFields {
+    pub tag: DeclaredName,
 }
 
 /// A dash's `to` and `speed`, or a knock back's `from`, `distance` and `ms`.
@@ -181,21 +171,21 @@ impl MoveFields {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SpawnFields {
-    unit_type: DeclaredName,
-    duration_ms: Option<Number>,
+pub struct SpawnFields {
+    pub unit_type: DeclaredName,
+    pub duration_ms: Option<Number>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct LaunchFields {
-    area: DeclaredName,
+pub struct LaunchFields {
+    pub area: DeclaredName,
     #[serde(default)]
-    on_hit: Vec<EffectData>,
+    pub on_hit: Vec<EffectData>,
     #[serde(default)]
-    on_end: Vec<EffectData>,
+    pub on_end: Vec<EffectData>,
 }
 
 impl Effecting {
@@ -203,18 +193,17 @@ impl Effecting {
     /// back's distance and time.
     pub fn numbers(&self) -> impl Iterator<Item = &Number> + '_ {
         let numbers = match self {
-            Effecting::Damage { amount, .. }
-            | Effecting::Heal { amount }
-            | Effecting::Restore { amount, .. }
-            | Effecting::Xp { amount, .. }
+            Effecting::Damage(DamageFields { amount, .. })
+            | Effecting::Heal(HealFields { amount })
+            | Effecting::Restore(RestoreFields { amount, .. })
+            | Effecting::Xp(XpFields { amount, .. })
             | Effecting::Move(MoveData::Dash { speed: amount, .. }) => [Some(amount), None],
-            Effecting::Modifier { duration_ms, .. } | Effecting::Spawn { duration_ms, .. } => {
-                [duration_ms.as_ref(), None]
-            }
+            Effecting::Modifier(ModifierFields { duration_ms, .. })
+            | Effecting::Spawn(SpawnFields { duration_ms, .. }) => [duration_ms.as_ref(), None],
             Effecting::Move(MoveData::KnockBack { distance, ms, .. }) => [Some(distance), Some(ms)],
-            Effecting::Purge { .. } | Effecting::Launch { .. } | Effecting::Planned(_) => {
-                [None, None]
-            }
+            Effecting::Purge(PurgeFields { .. })
+            | Effecting::Launch(LaunchFields { .. })
+            | Effecting::Planned(_) => [None, None],
         };
         numbers.into_iter().flatten()
     }
@@ -222,7 +211,7 @@ impl Effecting {
     /// The effects of the lists it holds: a launch's `on_hit`, then its `on_end`.
     pub fn nested(&self) -> impl Iterator<Item = &EffectData> + '_ {
         let (on_hit, on_end): (&[EffectData], &[EffectData]) = match self {
-            Effecting::Launch { on_hit, on_end, .. } => (on_hit, on_end),
+            Effecting::Launch(LaunchFields { on_hit, on_end, .. }) => (on_hit, on_end),
             _ => (&[], &[]),
         };
         on_hit.iter().chain(on_end)
@@ -231,7 +220,7 @@ impl Effecting {
     /// The modifier of its package it applies, if it applies one.
     pub const fn modifier(&self) -> Option<&DeclaredName> {
         match self {
-            Effecting::Modifier { id, .. } => Some(id),
+            Effecting::Modifier(ModifierFields { id, .. }) => Some(id),
             _ => None,
         }
     }
@@ -278,35 +267,13 @@ impl<'de> Deserialize<'de> for EffectData {
             .into_iter()
             .filter(|&(given, _)| given)
             .map(|(_, effect)| Effecting::Planned(effect));
-        let damage = fields
-            .damage
-            .map(|DamageFields { amount, kind }| Effecting::Damage { amount, kind });
-        let heal = fields
-            .heal
-            .map(|HealFields { amount }| Effecting::Heal { amount });
-        let restore = fields
-            .restore
-            .map(|RestoreFields { pool, amount }| Effecting::Restore { pool, amount });
-        let modifier = fields
-            .modifier
-            .map(|ModifierFields { id, duration_ms }| Effecting::Modifier { id, duration_ms });
-        let xp = fields
-            .xp
-            .map(|XpFields { track, amount }| Effecting::Xp { track, amount });
-        let purge = fields
-            .purge
-            .map(|PurgeFields { tag }| Effecting::Purge { tag });
-        let launch = fields.launch.map(
-            |LaunchFields {
-                 area,
-                 on_hit,
-                 on_end,
-             }| Effecting::Launch {
-                area,
-                on_hit,
-                on_end,
-            },
-        );
+        let damage = fields.damage.map(Effecting::Damage);
+        let heal = fields.heal.map(Effecting::Heal);
+        let restore = fields.restore.map(Effecting::Restore);
+        let modifier = fields.modifier.map(Effecting::Modifier);
+        let xp = fields.xp.map(Effecting::Xp);
+        let purge = fields.purge.map(Effecting::Purge);
+        let launch = fields.launch.map(Effecting::Launch);
         let moves = match fields.moves.map(MoveFields::data) {
             Some(None) => {
                 return Err(D::Error::custom(
@@ -315,15 +282,7 @@ impl<'de> Deserialize<'de> for EffectData {
             }
             moves => moves.flatten().map(Effecting::Move),
         };
-        let spawn = fields.spawn.map(
-            |SpawnFields {
-                 unit_type,
-                 duration_ms,
-             }| Effecting::Spawn {
-                unit_type,
-                duration_ms,
-            },
-        );
+        let spawn = fields.spawn.map(Effecting::Spawn);
         let mut effects = [
             damage, heal, restore, modifier, xp, purge, launch, moves, spawn,
         ]

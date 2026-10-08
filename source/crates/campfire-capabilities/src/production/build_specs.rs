@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
 use crate::units::action_id::ActionId;
-use crate::units::body::BodyForm;
+use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
 use crate::values::share::Share;
 
@@ -22,20 +22,28 @@ pub(crate) struct BuildSpecs {
 struct Stored {
     action: ActionId,
     form: BodyForm,
-    style: Style,
-    rates: Range<u32>,
+    style: StoredStyle,
     start_life: Option<Share>,
     refund: Share,
     near: Range<u32>,
     away: Range<u32>,
 }
 
-/// How a site grows: by itself, while one builder builds it, or at its builders' rate.
+/// How a site grows: by itself, while one builder builds it, or at its builders' rate, from the
+/// rate for one builder, one rate at least.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Style {
+pub(crate) enum Style<'a> {
     Alone,
     Builder,
-    Builders,
+    Builders(&'a [Num]),
+}
+
+/// A `Style` as `BuildSpecs` holds it: its builders' rates a run of its rates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StoredStyle {
+    Alone,
+    Builder,
+    Builders(Range<u32>),
 }
 
 /// An entry of a placement: a living unit the filter selects for the builder, within `distance`
@@ -51,8 +59,7 @@ pub(crate) struct PlacementCheck {
 pub(crate) struct BuildSpec<'a> {
     /// The building's box, before its angle turns it.
     pub(crate) form: BodyForm,
-    pub(crate) style: Style,
-    rates: &'a [Num],
+    pub(crate) style: Style<'a>,
     /// The share of its life pool's maximum a site starts with, none for a type without it.
     pub(crate) start_life: Option<Share>,
     /// The share of what the build paid that a cancel returns.
@@ -65,8 +72,7 @@ pub(crate) struct BuildSpec<'a> {
 #[derive(Debug, Clone)]
 pub(crate) struct NewBuild<'a> {
     pub(crate) form: BodyForm,
-    pub(crate) style: Style,
-    pub(crate) rates: &'a [Num],
+    pub(crate) style: Style<'a>,
     pub(crate) start_life: Option<Share>,
     pub(crate) refund: Share,
     pub(crate) near: Vec<PlacementCheck>,
@@ -78,8 +84,16 @@ impl BuildSpecs {
     pub(crate) fn push(&mut self, action: ActionId, build: NewBuild<'_>) {
         debug_assert!(self.specs.last().is_none_or(|last| last.action < action));
         let run = |at: usize| u32::try_from(at).expect("a book's builds fit a u32");
-        let rates = run(self.rates.len());
-        self.rates.extend_from_slice(build.rates);
+        let style = match build.style {
+            Style::Alone => StoredStyle::Alone,
+            Style::Builder => StoredStyle::Builder,
+            Style::Builders(rates) => {
+                assert!(!rates.is_empty(), "a builders style has a rate for one");
+                let start = run(self.rates.len());
+                self.rates.extend_from_slice(rates);
+                StoredStyle::Builders(start..run(self.rates.len()))
+            }
+        };
         let near = run(self.rules.len());
         self.rules.extend(build.near);
         let away = run(self.rules.len());
@@ -87,8 +101,7 @@ impl BuildSpecs {
         self.specs.push(Stored {
             action,
             form: build.form,
-            style: build.style,
-            rates: rates..run(self.rates.len()),
+            style,
             start_life: build.start_life,
             refund: build.refund,
             near: near..away,
@@ -104,10 +117,14 @@ impl BuildSpecs {
             .ok()?;
         let spec = &self.specs[at];
         let range = |run: &Range<u32>| run.start as usize..run.end as usize;
+        let style = match &spec.style {
+            StoredStyle::Alone => Style::Alone,
+            StoredStyle::Builder => Style::Builder,
+            StoredStyle::Builders(rates) => Style::Builders(&self.rates[range(rates)]),
+        };
         Some(BuildSpec {
             form: spec.form,
-            style: spec.style,
-            rates: &self.rates[range(&spec.rates)],
+            style,
             start_life: spec.start_life,
             refund: spec.refund,
             near: &self.rules[range(&spec.near)],
@@ -122,12 +139,9 @@ impl BuildSpec<'_> {
     /// count, the last for a count past it, and 0 for none.
     pub(crate) fn rate(self, builders: usize) -> Num {
         match (self.style, builders) {
-            (Style::Builder | Style::Builders, 0) => Num::ZERO,
+            (Style::Builder | Style::Builders(_), 0) => Num::ZERO,
             (Style::Alone | Style::Builder, _) => Num::ONE,
-            (Style::Builders, count) => {
-                let last = self.rates.len() - 1;
-                self.rates[(count - 1).min(last)]
-            }
+            (Style::Builders(rates), count) => rates[(count - 1).min(rates.len() - 1)],
         }
     }
 }
@@ -141,26 +155,21 @@ mod tests {
         // Rates 1, 1.5 and 2 for one, two and three builders, the last for any count past it.
         let rates = [Num::ONE, Num::ONE + Num::HALF, Num::int(2)];
         let mut specs = BuildSpecs::default();
-        for (at, style) in [Style::Alone, Style::Builder, Style::Builders]
+        for (at, style) in [Style::Alone, Style::Builder, Style::Builders(&rates)]
             .into_iter()
             .enumerate()
         {
             let build = NewBuild {
-                form: BodyForm::boxed([Num::ONE, Num::ONE]).unwrap(),
+                form: BodyForm::box_sized([Num::ONE, Num::ONE]).unwrap(),
                 style,
-                rates: if style == Style::Builders {
-                    &rates
-                } else {
-                    &[]
-                },
                 start_life: None,
                 refund: Share::ALL,
                 near: Vec::new(),
                 away: Vec::new(),
             };
-            specs.push(ActionId::nth(u32::try_from(at).unwrap() * 2), build);
+            specs.push(ActionId::new(u32::try_from(at).unwrap() * 2), build);
         }
-        let rate = |action, builders| specs.of(ActionId::nth(action)).unwrap().rate(builders);
+        let rate = |action, builders| specs.of(ActionId::new(action)).unwrap().rate(builders);
         let counts = [0, 1, 2, 3, 7];
         assert_eq!(counts.map(|count| rate(0, count)), [Num::ONE; 5]);
         assert_eq!(
@@ -171,6 +180,6 @@ mod tests {
             counts.map(|count| rate(4, count)),
             [Num::ZERO, rates[0], rates[1], rates[2], rates[2]]
         );
-        assert!(specs.of(ActionId::nth(1)).is_none());
+        assert!(specs.of(ActionId::new(1)).is_none());
     }
 }

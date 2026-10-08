@@ -1,20 +1,26 @@
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost};
-use campfire_sim::{Capability, IdAllocator, StableId};
+use campfire_sim::{Capability, IdAllocator, Position, StableId};
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::bounds::Bounds;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pools::Pools;
+use crate::units::body::Body;
+use crate::units::dead::Dead;
+use crate::units::relations::Relations;
 use crate::units::tag_properties::TagProperties;
+use crate::units::team::Team;
+use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
-use crate::values::attitude::Attitude;
-use crate::values::body_box::BodyBox;
-use crate::values::bounds::Bounds;
+use crate::units::unit_tags::UnitTags;
+use crate::values::relation::Relation;
 
 fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
@@ -101,7 +107,7 @@ impl Scene {
     fn seen_by(&self, id: StableId) -> TeamSet {
         let relations = self.sim.world.resource::<Relations>();
         let parts = (self.sim.try_get::<SeenBy>(id), self.sim.try_get::<Team>(id));
-        Vision::seen_by(parts, relations)
+        VisionColumn::seen_by(parts, relations)
     }
 }
 
@@ -181,7 +187,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // A new unit is seen by its whole group before its first Vision stage, as that stage gives
     // it: teams 1 and 2 become friends that share vision.
     let relations = &mut scene.sim.world.resource_mut::<Relations>();
-    relations.set(Team::new(1), Team::new(2), Attitude::Friendly, true);
+    relations.set(Team::new(1), Team::new(2), Relation::Friendly, true);
     let new = scene.spawn(2, 9, 9, None);
     assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
     scene.sim.step();
@@ -209,8 +215,8 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
     let [zero, forty, sixty_three, one] = units;
     // 0 and 40 friends that share vision, 0 and 63 friends with vision off.
     let mut relations = scene.sim.world.resource_mut::<Relations>();
-    relations.set(Team::new(0), Team::new(40), Attitude::Friendly, true);
-    relations.set(Team::new(63), Team::new(0), Attitude::Friendly, false);
+    relations.set(Team::new(0), Team::new(40), Relation::Friendly, true);
+    relations.set(Team::new(63), Team::new(0), Relation::Friendly, false);
     let teams = |list: &[u8]| {
         list.iter()
             .fold(TeamSet::NONE, |set, &team| set.with(Team::new(team)))
@@ -224,7 +230,7 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
 
     // With vision off between 0 and 40, as between 0 and 63, each team sees alone.
     let mut relations = scene.sim.world.resource_mut::<Relations>();
-    relations.set(Team::new(0), Team::new(40), Attitude::Friendly, false);
+    relations.set(Team::new(0), Team::new(40), Relation::Friendly, false);
     scene.sim.step();
     assert_eq!(scene.seen_by(zero), teams(&[0]));
     assert_eq!(scene.seen_by(forty), teams(&[40]));
@@ -273,9 +279,10 @@ fn a_reveal_shows_its_cells_to_the_caster_group_alone_for_its_time_and_no_hidden
     assert_eq!(seen(&scene), [team(1), team(1), team(1)]);
     assert_eq!(*scene.sim.world.resource::<Reveals>(), Reveals::default());
 
-    // A call with no acting unit, a negative radius, a time of 0 or a negative one fails.
+    // The mode's call, which has no acting unit, fails, as do a negative radius, a time of 0 and a
+    // negative one.
     let fails = [
-        (None, "2", 100, ApiError::NoActingUnit),
+        (None, "2", 100, ApiError::NotForRole),
         (Some(caster), "-1", 100, ApiError::NegativeRadius),
         (Some(caster), "2", 0, ApiError::ZeroTime),
         (Some(caster), "2", -1, ApiError::NegativeTime),
@@ -341,7 +348,7 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     let team = |index| TeamSet::of(Team::new(index));
     let building = scene.spawn(1, 5, 0, None);
     let body = BodyBox::new([Num::int(6), Num::int(2)], Num::ZERO).unwrap();
-    scene.sim.insert(building, Body::boxed(body));
+    scene.sim.insert(building, Body::of_box(body));
     let seer = scene.spawn(0, -1, 0, Some(4));
     scene.sim.step();
     assert_eq!(scene.seen_by(building), team(1).with(Team::new(0)));

@@ -96,8 +96,8 @@ mod tests {
     use campfire_math::Vec3;
 
     use super::*;
-    use crate::values::bounds::Bounds;
-    use crate::values::grid::Grid;
+    use crate::geometry::bounds::Bounds;
+    use crate::geometry::grid::Grid;
 
     #[test]
     fn a_sight_takes_its_runs_again_only_from_the_same_place_and_range_of_the_tick_before() {

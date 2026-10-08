@@ -3,10 +3,10 @@ use std::ops::Range;
 use campfire_math::Num;
 use campfire_sim::Position;
 
+use crate::geometry::body_box::BodyBox;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
-use crate::values::body_box::BodyBox;
 use crate::vision::sight_cache::{SightCache, Sighting};
 use crate::vision::sight_maps::SightMaps;
 use crate::vision::vision_grid::VisionGrid;
@@ -110,8 +110,8 @@ impl Fog {
             let sees = match body {
                 Some(_) => runs
                     .iter()
-                    .any(|run| self.maps.sees_any(group, run.clone(), hidden)),
-                None => self.maps.sees(group, cell, hidden),
+                    .any(|run| self.maps.sees(group, run.clone(), hidden)),
+                None => self.maps.sees(group, cell..cell + 1, hidden),
             };
             if sees {
                 teams = teams.union(self.groups.members(group));

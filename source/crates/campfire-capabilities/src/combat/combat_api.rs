@@ -12,6 +12,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::hook::Hook;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::api_owner::ApiOwner;
@@ -38,24 +39,24 @@ impl CombatApi {
         };
         let damage = call(
             "damage",
-            "(target, amount, kind)",
+            &[&["target", "amount", "kind"]],
             "deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target`",
         )
         .name(2, NameKind::DamageKind);
         let heal = call(
             "heal",
-            "(unit, amount)",
+            &[&["unit", "amount"]],
             "heals `unit`'s life pool, times one plus its `heal_scale` stat",
         );
         let restore = call(
             "restore",
-            "(unit, pool, amount)",
+            &[&["unit", "pool", "amount"]],
             "gives `unit` back `amount` of its `pool`, unscaled",
         )
         .name(1, NameKind::Pool);
         let attack_hit = call(
             "attack_hit",
-            "(target)",
+            &[&["target"]],
             "an extra attack of the acting unit on `target`: no crit, and no `on_attack`",
         )
         .roles(RoleSet::ACTING);
@@ -96,7 +97,7 @@ impl CombatApi {
                 CombatApi::restore(ctx, &unit, pool, ApiError::num(amount)?)
             },
         )
-        .bind(attack_hit, |ctx: &mut Ctx, target: Unit| {
+        .bind_for(attack_hit, |ctx: &mut Ctx, target: Unit| {
             CombatApi::attack_hit(ctx, &target)
         })
         .tag_property(
@@ -124,7 +125,12 @@ impl CombatApi {
         )
         .data(DataTable::Leech, &["attack", "other"], &[])
         .data(DataTable::Combat, &["on_death"], &[])
-        .action_fields(ActionDataField::of(Some(Capability::Combat)));
+        .action_fields(ActionDataField::of(Some(Capability::Combat)))
+        .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnDamageTaken, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnKill, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnTakedown, Status::Runs(ApiVersion::FIRST));
     }
 
     /// What combat adds to a `Unit` handle.
@@ -132,7 +138,7 @@ impl CombatApi {
         let recent_attackers = MemberSpec::method(
             ApiOwner::Unit,
             "recent_attackers",
-            "(ms)",
+            &[&["ms"]],
             "the living units that struck it within the last `ms`, rounded up to whole ticks",
         )
         .capability(Capability::Combat);
@@ -143,7 +149,10 @@ impl CombatApi {
 
     /// Queues `amount` of `kind` damage to `target`, a kind the mode declares.
     fn damage(ctx: &Ctx, target: &Unit, amount: Num, kind: &str) -> Checked<()> {
-        let kind = ctx.view().damage_kind_named(kind)?;
+        let kind = ctx
+            .view()
+            .damage_kind_named(kind)
+            .ok_or_else(|| ApiError::UnknownDamageKind.fail())?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeDamage.fail().into());
         }

@@ -10,3 +10,13 @@ pub(crate) enum Pool {
     /// The mode's own calls: the match start and timers.
     Mode,
 }
+
+impl Pool {
+    /// The pool of a unit's calls: its player's, when `owner` controls it, or the think pool.
+    pub(crate) const fn of(owner: Option<PlayerSlot>) -> Pool {
+        match owner {
+            Some(slot) => Pool::Player(slot),
+            None => Pool::Think,
+        }
+    }
+}

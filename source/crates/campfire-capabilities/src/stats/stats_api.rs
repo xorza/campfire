@@ -6,7 +6,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::applies::Applies;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::error::Checked;
+use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
@@ -20,9 +20,10 @@ use crate::stats::stats_column::StatsColumn;
 use crate::stats::stats_effect::StatsEffect;
 use crate::units::tag_property::TagProperty;
 use crate::units::unit::Unit;
+use crate::values::rank::Rank;
 
 /// The script API of `stats`: `ctx.add_modifier`, `ctx.remove`, the `Modifier` handle, and the
-/// planned crowd control and experience.
+/// planned crowd control.
 #[derive(Debug)]
 pub(crate) struct StatsApi;
 
@@ -45,19 +46,28 @@ impl StatsApi {
             },
         )
         .bind(
-            method("stat", "(name)", "its value of a stat the mode declares")
-                .name(0, NameKind::Stat),
+            method(
+                "stat",
+                &[&["name"]],
+                "its value of a stat the mode declares",
+            )
+            .name(0, NameKind::Stat),
             |unit: Unit, name: &str| StatsColumn::stat_named(unit.view(), unit.row_index(), name),
         )
         .bind(
-            method("pool", "(name)", "the current amount of its pool `name`")
-                .name(0, NameKind::Pool),
+            method(
+                "pool",
+                &[&["name"]],
+                "the current amount of its pool `name`",
+            )
+            .name(0, NameKind::Pool),
             |unit: Unit, name: &str| {
                 StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::current)
             },
         )
         .bind(
-            method("pool_max", "(name)", "the maximum of its pool `name`").name(0, NameKind::Pool),
+            method("pool_max", &[&["name"]], "the maximum of its pool `name`")
+                .name(0, NameKind::Pool),
             |unit: Unit, name: &str| {
                 StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::max)
             },
@@ -65,7 +75,7 @@ impl StatsApi {
         .bind(
             method(
                 "has_modifier",
-                "(id)",
+                &[&["id"]],
                 "whether it carries the modifier of the script's package",
             )
             .name(0, NameKind::Modifier),
@@ -84,7 +94,7 @@ impl StatsApi {
         };
         let add = call(
             "add_modifier",
-            "(unit, id) or (unit, id, duration_ms)",
+            &[&["unit", "id"], &["unit", "id", "duration_ms"]],
             "applies the modifier `id` of the script's package to `unit` from the acting unit, with \
              the call's action at its rank, which gives each param the modifier reads and does not \
              declare, and returns its handle",
@@ -95,13 +105,13 @@ impl StatsApi {
             StatsApi::add_modifier(ctx, &target, id, None)
         })
         .bind(add, |ctx: &mut Ctx, target: Unit, id: &str, ms: INT| {
-            let ticks = ctx.view().ticks(ms)?;
+            let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
             StatsApi::add_modifier(ctx, &target, id, Some(ticks))
         })
         .bind(
             call(
                 "add_player_modifier",
-                "(player, id)",
+                &[&["player", "id"]],
                 "gives `player` the modifier `id` of the script's package, which every living unit \
                  it owns that the modifier's `affects` selects holds from no source and with no \
                  action, so the modifier declares each param it reads",
@@ -113,17 +123,12 @@ impl StatsApi {
         .bind(
             call(
                 "remove",
-                "(handle)",
+                &[&["handle"]],
                 "ends the modifier, projectile or area at once",
             ),
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(handle.remove()),
         );
         api.hook(Hook::OnInterval, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnDamageTaken, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnKill, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnTakedown, Status::Runs(ApiVersion::FIRST))
             .tag_property(TagProperty::Immune, Status::Runs(ApiVersion::FIRST));
         api.data(
             DataTable::Modifier,
@@ -152,7 +157,13 @@ impl StatsApi {
     fn add_player_modifier(ctx: &Ctx, player: INT, id: &str) -> Checked<()> {
         let player = ctx.view().player(player)?;
         let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
-        StatsColumn::check_way(ctx.view(), StatsCall::of(&ctx.frame()), id, None, 1)?;
+        StatsColumn::check_way(
+            ctx.view(),
+            StatsCall::of(&ctx.frame()),
+            id,
+            None,
+            Rank::FIRST,
+        )?;
         ctx.queue(StatsEffect::AddPlayer { player, id })
     }
 

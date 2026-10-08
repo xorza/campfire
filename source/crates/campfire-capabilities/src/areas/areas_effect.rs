@@ -2,14 +2,15 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{Position, StableId};
 
-use crate::actions::effect_lists::Does;
+use crate::actions::capability_does::CapabilityDoes;
 use crate::areas::Areas;
 use crate::deliveries::delivering::Delivering;
+use crate::geometry::bounds::Bounds;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
-use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 
 /// An area a call queued: of `by`, of `unit_type`, at `at`; with `id`, the id the call took for
 /// it, which a script reads, or none for a launch of a list, which takes its id as it lands.
@@ -30,13 +31,13 @@ impl AreasEffect {
         reason = "its signature is the one every capability's listed effects queue by"
     )]
     pub(crate) fn queue_listed(
-        does: Does,
+        does: CapabilityDoes,
         unit: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         view: &View,
     ) -> Result<(), CallError> {
-        let Does::Launch { area, launch } = does else {
+        let CapabilityDoes::Launch { area, launch } = does else {
             unreachable!("areas queue only their own listed effects")
         };
         let (Some(source), Some(action)) = (frame.acting(), frame.action()) else {
@@ -66,7 +67,10 @@ impl AreasEffect {
 }
 
 impl Effect for AreasEffect {
+    /// Applies the effect: an area that lands this tick, at the point of the map's bounds nearest
+    /// where it says.
     fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
-        Areas::apply(world, self);
+        let at = world.resource::<Bounds>().clamp(self.at);
+        Areas::push(world, self.by, self.unit_type, at, None, self.id);
     }
 }

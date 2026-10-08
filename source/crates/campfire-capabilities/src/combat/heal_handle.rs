@@ -1,11 +1,10 @@
-use campfire_script::rhai::Dynamic;
 use campfire_sim::Capability;
 
 use crate::combat::heal::{Heal, HealCause};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A heal as a script holds it, `Heal` in scripts: read only.
 #[derive(Debug, Clone)]
@@ -27,20 +26,11 @@ impl HealHandle {
         api.ty::<HealHandle>("Heal")
             .bind(
                 field("source", "the unit that gave it, `()` when gone or none"),
-                |h: &mut HealHandle| {
-                    h.heal
-                        .source
-                        .and_then(|source| h.view.unit(source))
-                        .map_or(Dynamic::UNIT, Dynamic::from)
-                },
+                |h: &mut HealHandle| h.view.unit_value(h.heal.source),
             )
             .bind(
                 field("target", "the unit it heals"),
-                |h: &mut HealHandle| {
-                    h.view
-                        .unit(h.heal.target)
-                        .map_or(Dynamic::UNIT, Dynamic::from)
-                },
+                |h: &mut HealHandle| h.view.unit_value(Some(h.heal.target)),
             )
             .bind(
                 field("amount", "before `calc_heal` and the heal scale"),
@@ -52,11 +42,7 @@ impl HealHandle {
             )
             .bind(
                 field("ability", "the ability that gave it, `()` for none"),
-                |h: &mut HealHandle| {
-                    h.heal
-                        .ability
-                        .map_or(Dynamic::UNIT, |id| Dynamic::from(h.view.ability_name(id)))
-                },
+                |h: &mut HealHandle| h.view.ability_value(h.heal.ability),
             );
     }
 }

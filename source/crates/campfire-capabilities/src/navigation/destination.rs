@@ -23,10 +23,6 @@ impl Destination {
         self.0
     }
 
-    pub(crate) const fn set(&mut self, target: Option<Position>) {
-        self.0 = target;
-    }
-
     /// Sets where a unit walks, leaving a destination that does not change untouched: a write
     /// marks it changed, and an avatar's destination replicates. A unit whose `route` arrived
     /// short of `target` stays where it stands, with no destination, until the static bodies

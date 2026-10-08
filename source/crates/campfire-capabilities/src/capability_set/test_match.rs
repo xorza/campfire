@@ -15,7 +15,12 @@ use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimSet, SimTick, SimUpdate, StableId,
     StateCopy, StateRegistry, TickRate, TypeHash,
 };
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
+use crate::actions::slot_kinds::SlotKinds;
+
+use crate::actions::slot_kind_data::SlotKindData;
 use crate::capability_set::CapabilitySet;
 use crate::combat::Combat;
 use crate::combat::internals;
@@ -27,6 +32,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::unit_tags::UnitTags;
+use crate::values::declared_name::DeclaredName;
 
 /// A match for a capability's tests: a world that `SimUpdate::prepare` set up, with the core and
 /// the declared capabilities installed and their schedule in it, and its state registry. A
@@ -59,6 +65,15 @@ impl TestMatch {
         set.install(&mut world, &mut schedule, &mut registry, budgets);
         // A match installs the book its package load read; a test fills one as it compiles.
         world.insert_resource(ScriptBook::default());
+        // A mode declares the kinds its units' slots are of: here one, whose one rank comes with
+        // the spawn, which a test that needs others replaces.
+        if world.contains_resource::<SlotKinds>() {
+            let basic = SlotKindData {
+                name: DeclaredName::new("basic").unwrap(),
+                ranks: None,
+            };
+            world.insert_resource(SlotKinds(vec![basic]));
+        }
         if set.contains(Capability::Combat) {
             internals::bind_life(&mut world, PoolId::FIRST);
         }
@@ -73,6 +88,12 @@ impl TestMatch {
     /// A client's match at `RATE` of `declared`: no script host, and no system that runs scripts.
     pub(crate) fn client(declared: &[Capability]) -> TestMatch {
         TestMatch::new(declared, TestMatch::RATE, None)
+    }
+
+    /// Whether `value`, encoded as a snapshot holds it, decodes again: a decode keeps the rules a
+    /// type's own values follow, as a restore check keeps those that need the match.
+    pub(crate) fn decodes<T: Serialize + DeserializeOwned>(value: &T) -> bool {
+        postcard::from_bytes::<T>(&postcard::to_allocvec(value).unwrap()).is_ok()
     }
 
     /// A server's match at `RATE` of `declared`, running scripts within `budgets`.

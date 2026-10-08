@@ -2,22 +2,28 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 use std::slice;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_common::Ticks;
 use campfire_math::{Num, Vec3};
+use campfire_script::rhai::Dynamic;
 use campfire_script::{Budget, ScriptHost, ScriptId};
 use campfire_sim::{
-    Capability, Position, SimComponent, SimResource, SlotEvent, SlotEventKind, StableId, TickInput,
+    Capability, EntityIndex, Position, SimComponent, SimResource, SlotEvent, SlotEventKind,
+    StableId, TickInput, TickInputs,
 };
 
 use super::*;
 use crate::actions::Actions;
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_data::{ActionData, Targeting};
+use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
-use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
+use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
+use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::targeting::Targeting;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::combat_rules::CombatRules;
 use crate::combat::damage::{Damage, DamageCause};
@@ -25,21 +31,30 @@ use crate::combat::heal::{Heal, HealCause};
 use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::combat::respawn::Respawn;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::metric::Metric;
 use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::error::ModeError;
+use crate::mode::loadout_setup::LoadoutSetup;
 use crate::mode::map_data::{
-    GridData, MapData, MapNavigationData, MapPoint, MarkerData, PathData, PlacedUnitData,
+    GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData,
 };
+use crate::mode::map_point::MapPoint;
 use crate::mode::match_end::MatchResult;
+use crate::mode::mode_books::ModeBooksInput;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
-use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
+use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::offer::Offer;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
 use crate::mode::saves_data::SavesData;
+use crate::mode::slot_action::SlotAction;
 use crate::mode::team_manifest::TeamManifest;
-use crate::mode::unit_kit::UnitKit;
+use crate::mode::unit_kit::{InventorySpec, UnitKit};
+use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::destination::Destination;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
@@ -74,7 +89,6 @@ use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
-use crate::stats::move_step::MoveStep;
 use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -84,31 +98,32 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
-use crate::units::body::{Body, BodyForm};
+use crate::units::body::Body;
+use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::layer::Layer;
 use crate::units::modifier_id::ModifierId;
+use crate::units::move_step::MoveStep;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::player_units::HeldPlayerUnits;
+use crate::units::relations::Relations;
 use crate::units::tag_set::TagSet;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::values::attitude::Attitude;
-use crate::values::bounds::Bounds;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::engine_enum::EngineEnum;
 use crate::values::filter_data::FilterData;
-use crate::values::grid::Grid;
-use crate::values::metric::Metric;
 use crate::values::number::{Number, ParamRef};
 use crate::values::package_path::PackagePath;
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
+use crate::values::relation::Relation;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 use crate::vision::vision_grid::VisionGrid;
@@ -577,7 +592,7 @@ fn mode_files() -> ModeFiles {
                 .into(),
             relations: vec![RelationData {
                 teams: ["a", "neutral"].map(|name| DeclaredName::new(name).unwrap()),
-                relation: Attitude::Neutral,
+                relation: Relation::Neutral,
                 vision: true,
             }],
             tags: BTreeMap::new(),
@@ -624,7 +639,7 @@ fn setup(
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y, crate_type] = types;
     let hero = UnitKit {
-        tracks: TrackSet::of([0, 1].map(|at| TrackId::new(at).unwrap())),
+        tracks: TrackSet::of([0, 1].map(TrackId::new)),
         ..grunt()
     };
     let unit = |unit_type, kit| UnitTypeSetup {
@@ -645,7 +660,7 @@ fn setup(
                     actions: vec![SlotAction {
                         kind: SlotKind::new(0),
                         ability: strike,
-                        rank: 0,
+                        rank: None,
                     }],
                     ..unit(x, hero)
                 },
@@ -665,7 +680,7 @@ fn setup(
                     crate_type,
                     UnitKit {
                         step: None,
-                        body: BodyForm::boxed([Num::int(2), Num::int(2)]),
+                        body: BodyForm::box_sized([Num::int(2), Num::int(2)]),
                         ..grunt()
                     },
                 ),
@@ -673,7 +688,6 @@ fn setup(
             avatars: ["hero-x", "hero-y"].into_iter().collect(),
             loadout: spell,
         },
-        walkers: vec![Walker::of_form(grunt().body).unwrap()],
     }
 }
 
@@ -712,6 +726,16 @@ impl Game {
 
     /// The match `new` gives, of the mode `files`; an error when the mode's start fails.
     fn start(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<Game, CallError> {
+        Game::start_setup(script, limits, files, |_| {})
+    }
+
+    /// The match `start` gives, its setup changed by `adjust` before the mode installs.
+    fn start_setup(
+        script: &str,
+        limits: ScriptLimits,
+        files: ModeFiles,
+        adjust: impl FnOnce(&mut ModeSetup<'_>),
+    ) -> Result<Game, CallError> {
         let scripts = ScriptBudgets::new(limits, 3);
         let declared = [
             Capability::Stats,
@@ -751,6 +775,10 @@ impl Game {
         // A spell has one rank; hero X's ability, 2.
         let strike = Actions::load(world, 0, "strike", &blink, None, 2).unwrap();
         let blink = Actions::load(world, 0, "blink", &blink, None, 1).unwrap();
+        // Loaded out of name order, each is found by its name, and only in its package.
+        let named = ["blink", "strike", "dash"].map(|name| Actions::action(world, 0, name));
+        assert_eq!(named, [Some(blink), Some(strike), None]);
+        assert_eq!(Actions::action(world, 1, "blink"), None);
         let mut spell = LoadoutSetup::default();
         spell.push("blink", blink);
         let types = [grunt_type, tower_type, x, y, crate_type];
@@ -760,7 +788,15 @@ impl Game {
         }
         let script = Units::compile_hooked(world, &format!("{script}{PICK}")).unwrap();
         let blessing = Stats::modifier(world, 0, "blessing").unwrap();
-        let setup = setup(&files, script, types, spell, strike, blessing);
+        let mut setup = setup(&files, script, types, spell, strike, blessing);
+        adjust(&mut setup);
+        // The grunt and both heroes walk with the grunt's body: one kind.
+        let mut walkers = ByType::default();
+        for setup in &setup.units.unit_types {
+            if setup.kit.step.is_some() {
+                walkers.set(setup.unit_type, Walker::of_form(setup.kit.body).unwrap());
+            }
+        }
         let books = {
             let view = world.non_send::<View>();
             let stats = StatBook::new(&files.data.stats, [], Num::int(10));
@@ -769,16 +805,20 @@ impl Game {
             let rules = &files.data.navigation;
             let map =
                 ModeMap::resolve(&files.map, &files.teams, relations, rules, unit_type).unwrap();
-            let unit_types = &setup.units.unit_types;
-            ModeBooks::build(
-                &files.data,
-                unit_types,
-                &mut view.types_mut(),
+            let data = &files.data;
+            ModeBooks::build(ModeBooksInput {
+                data,
+                unit_types: &setup.units.unit_types,
+                types: &mut view.types_mut(),
+                walkers: &walkers,
                 stats,
+                life: data.combat.life_pool(&data.pools),
+                loadout_ranks: data.loadout_ranks(),
                 map,
-                None,
-            )
+                shop: None,
+            })
         };
+        assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
         sim.install(|world, schedule, registry| {
             Mode::install(world, schedule, registry, setup, books);
         });
@@ -834,7 +874,7 @@ impl Game {
     }
 
     /// Each unit: its id, where it stands, its team, and the end of a path it walks from.
-    fn units(&self) -> Vec<(u64, Position, u8, Option<PathEnd>)> {
+    fn units(&self) -> Vec<(u64, Position, usize, Option<PathEnd>)> {
         let world = &self.sim.world;
         world
             .resource::<EntityIndex>()
@@ -992,7 +1032,10 @@ impl Game {
             ScriptRole::Ai => ctx.frame().begin_think(&self.sim.world, actor),
             ScriptRole::Action => ctx
                 .frame()
-                .begin(&self.sim.world, CallStart::cast(self.strike, 1, actor, 0))
+                .begin(
+                    &self.sim.world,
+                    CallStart::cast(self.strike, Rank::FIRST, actor, 0),
+                )
                 .unwrap(),
             ScriptRole::Modifier => {
                 let blessing = Stats::modifier(&self.sim.world, 0, "blessing").unwrap();

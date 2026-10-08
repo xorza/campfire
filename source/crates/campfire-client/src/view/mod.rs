@@ -217,7 +217,7 @@ impl View {
             let alive = if own {
                 &palette.own
             } else {
-                &palette.teams[usize::from(team.index()).min(2)]
+                &palette.teams[team.index().min(2)]
             };
             let figure = commands.spawn((Figure, Mesh3d(mesh.clone()))).id();
             let look = Look {

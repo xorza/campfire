@@ -1,9 +1,12 @@
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::error::Error;
+use std::fmt;
 use std::num::NonZeroU64;
+use std::panic::{self, AssertUnwindSafe};
 use std::{env, fs};
 
+use campfire_sim::Capability;
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 
 use super::*;
@@ -11,7 +14,7 @@ use crate::actions::action_data::ActionData;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::requires_data::RequiresData;
-use crate::actions::slot_kinds::SlotKindData;
+use crate::actions::slot_kind_data::SlotKindData;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::CapabilitySet;
 use crate::combat::combat_data::CombatData;
@@ -31,6 +34,9 @@ use crate::production::supply_data::SupplyData;
 use crate::production::supply_rules::SupplyRules;
 use crate::progression::track_data::TrackData;
 use crate::projectiles::projectile_data::ProjectileData;
+use crate::scripts::hook::Hook;
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::role_set::RoleSet;
 use crate::stats::modifier_data::{AuraData, ModifierData};
 use crate::units::collision_data::CollisionData;
 use crate::units::tag_data::TagData;
@@ -68,15 +74,15 @@ fn the_registry_holds_exactly_what_the_engine_binds() {
         .iter()
         .filter(|member| member.status == Status::Runs(ApiVersion::FIRST))
     {
-        match member.kind {
+        match member.spec.kind {
             MemberKind::Value | MemberKind::Field => {
-                recorded.push(format!("get${}", member.name));
+                recorded.push(format!("get${}", member.spec.name));
                 if member.writable {
-                    recorded.push(format!("set${}", member.name));
+                    recorded.push(format!("set${}", member.spec.name));
                 }
             }
             MemberKind::Call | MemberKind::Method | MemberKind::Operator => {
-                recorded.push(member.name.to_owned());
+                recorded.push(member.spec.name.to_owned());
             }
         }
     }
@@ -110,21 +116,21 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     assert_eq!(effects.len(), TagProperty::ALL.len());
     let damage = api.member(ApiOwner::Ctx, "damage").unwrap();
     assert_eq!(
-        (damage.roles, damage.capability, damage.status),
+        (damage.spec.roles, damage.spec.capability, damage.status),
         (
             RoleSet::ALL,
             Some(Capability::Combat),
             Status::Runs(ApiVersion::FIRST)
         )
     );
-    assert_eq!(damage.signatures, ["(target, amount, kind)"]);
+    assert_eq!(damage.spec.forms, [["target", "amount", "kind"]]);
     let timer = api.member(ApiOwner::Ctx, "timer").unwrap();
-    assert_eq!(timer.roles, RoleSet::MODE);
+    assert_eq!(timer.spec.roles, RoleSet::MODE);
     let stacks = api.member(ApiOwner::Modifier, "stacks").unwrap();
     assert!(stacks.writable);
     let points = api.member(ApiOwner::Unit, "points").unwrap();
     assert_eq!(
-        (points.capability, points.status),
+        (points.spec.capability, points.status),
         (
             Some(Capability::Progression),
             Status::Runs(ApiVersion::FIRST)
@@ -132,10 +138,64 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     );
     let perk = api.member(ApiOwner::Unit, "has_perk").unwrap();
     assert_eq!(
-        (perk.capability, perk.status),
+        (perk.spec.capability, perk.status),
         (Some(Capability::Progression), Status::Planned)
     );
     assert!(api.builtin("len") && api.builtin("max") && !api.builtin("pos"));
+}
+
+#[test]
+fn a_binding_records_its_spec_once_and_whole() {
+    let mut api = CapabilitySet::script_api();
+    let stacks = api.member(ApiOwner::Modifier, "stacks").unwrap().clone();
+    let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
+    // Another binding of the same spec adds only its writing.
+    api.record(damage, true, Status::Runs(ApiVersion::FIRST));
+    let held = api.member(ApiOwner::Ctx, "damage").unwrap();
+    assert_eq!((held.spec, held.writable), (damage, true));
+    api.record(stacks.spec, false, stacks.status);
+    assert!(api.member(ApiOwner::Modifier, "stacks").unwrap().writable);
+    let misuses: [(fn(&mut ScriptApi), &str); 4] = [
+        (
+            |api| {
+                let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
+                let spec = MemberSpec {
+                    description: "another",
+                    ..damage
+                };
+                api.record(spec, false, Status::Runs(ApiVersion::FIRST));
+            },
+            "the bindings of Ctx.damage agree",
+        ),
+        (
+            |api| {
+                let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
+                api.record(damage, false, Status::Planned);
+            },
+            "the bindings of Ctx.damage agree",
+        ),
+        (
+            |api| {
+                let spec = MemberSpec::call("named", &[&["unit"]], "a test call")
+                    .name(1, NameKind::Modifier);
+                api.record(spec, false, Status::Planned);
+            },
+            "Ctx.named: argument 1, which names something, is in its first form",
+        ),
+        (
+            |api| {
+                let field = api.data[0];
+                api.record_field(field.table, field.name, field.status);
+            },
+            "is recorded once",
+        ),
+    ];
+    for (misuse, message) in misuses {
+        let mut api = CapabilitySet::script_api();
+        let panic = panic::catch_unwind(AssertUnwindSafe(|| misuse(&mut api))).unwrap_err();
+        let said = panic.downcast_ref::<String>().unwrap();
+        assert!(said.contains(message), "{said}");
+    }
 }
 
 /// The names serde reads for `T`'s fields, as its derive or its own impl gives them.
@@ -211,20 +271,19 @@ fn the_reference_is_what_the_registry_writes() {
         held == written,
         "the reference differs from the registry: run this test with CAMPFIRE_BLESS=1"
     );
-    api.members[0].description = "another description";
+    api.members[0].spec.description = "another description";
     assert_ne!(api.reference(), held);
     // A script's literal is checked by a method's name alone, so every handle's method of a
     // name marks the same names.
-    let methods = api
-        .members
-        .iter()
-        .filter(|member| member.owner != ApiOwner::Ctx && member.kind == MemberKind::Method);
+    let methods = api.members.iter().filter(|member| {
+        member.spec.owner != ApiOwner::Ctx && member.spec.kind == MemberKind::Method
+    });
     for member in methods {
         assert_eq!(
-            api.method_names(member.name),
-            Some(member.names),
+            api.method_names(member.spec.name),
+            Some(member.spec.names),
             "{}",
-            member.name
+            member.spec.name
         );
     }
 }

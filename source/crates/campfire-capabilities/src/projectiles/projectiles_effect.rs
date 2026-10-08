@@ -4,7 +4,10 @@ use campfire_math::Vec3;
 use campfire_sim::{Position, StableId};
 
 use crate::deliveries::delivering::Delivering;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::metric::Metric;
 use crate::projectiles::Projectiles;
+use crate::projectiles::projectile::Flight;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
@@ -28,7 +31,26 @@ pub(crate) enum Toward {
 }
 
 impl Effect for ProjectilesEffect {
+    /// Applies the effect: a launch this tick, its own cast, from the point of the map's bounds
+    /// nearest where it says. A direction of no length launches nothing.
     fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
-        Projectiles::apply(world, self);
+        let from = world.resource::<Bounds>().clamp(self.from);
+        let flight = match self.toward {
+            Toward::Unit(target) => Flight::homing(target),
+            Toward::Direction(direction) => {
+                let Some(direction) = world.resource::<Metric>().direction(direction) else {
+                    return;
+                };
+                let range = Projectiles::line_range(world, self.by, self.unit_type);
+                let bounds = *world.resource::<Bounds>();
+                Flight::line(
+                    direction,
+                    Projectiles::reach(bounds, range, from, direction),
+                    None,
+                )
+            }
+        };
+        let id = Some(self.id);
+        Projectiles::push(world, self.by, self.unit_type, from, id, [flight]);
     }
 }

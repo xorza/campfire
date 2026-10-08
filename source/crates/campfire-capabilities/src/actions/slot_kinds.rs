@@ -1,92 +1,19 @@
 use std::collections::BTreeMap;
-use std::num::NonZeroU8;
 
 use bevy_ecs::resource::Resource;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::stats::level::Level;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 
 /// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order. As a resource,
 /// the match's, which the `learn` order reads; empty until the mode's books install.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
 pub struct SlotKinds(pub Vec<SlotKindData>);
-
-/// A slot kind: its name, and its ranks. A kind with no `ranks` has one rank, learned from the
-/// spawn; one with `ranks` starts unlearned.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SlotKindData {
-    pub name: DeclaredName,
-    pub ranks: Option<SlotRanks>,
-}
-
-/// The ranks of a kind whose ranks are learned, and, when the kind gives them, the level of the
-/// `level` track each rank needs: one level for each rank, each at least the one before.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SlotRanks {
-    count: NonZeroU8,
-    levels: Option<Box<[Level]>>,
-}
-
-impl SlotRanks {
-    /// `count` ranks that need `levels`; `None` for levels that are not one for each rank, or
-    /// one below the one before.
-    pub(crate) fn new(count: NonZeroU8, levels: Option<Vec<Level>>) -> Option<SlotRanks> {
-        if let Some(levels) = &levels
-            && (levels.len() != usize::from(count.get()) || !levels.is_sorted())
-        {
-            return None;
-        }
-        Some(SlotRanks {
-            count,
-            levels: levels.map(Vec::into_boxed_slice),
-        })
-    }
-
-    pub(crate) const fn count(&self) -> NonZeroU8 {
-        self.count
-    }
-
-    /// The level each rank needs, from rank 1, when the kind gives them.
-    pub fn levels(&self) -> Option<&[Level]> {
-        self.levels.as_deref()
-    }
-}
-
-/// Data is untrusted, so `levels` on a kind with no `ranks`, or levels that `SlotRanks::new`
-/// refuses, fail to read.
-impl<'de> Deserialize<'de> for SlotKindData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<SlotKindData, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            name: DeclaredName,
-            ranks: Option<NonZeroU8>,
-            levels: Option<Vec<Level>>,
-        }
-        let Fields {
-            name,
-            ranks,
-            levels,
-        } = Fields::deserialize(deserializer)?;
-        let ranks = match (ranks, levels) {
-            (None, None) => None,
-            (None, Some(_)) => {
-                return Err(D::Error::custom("a slot kind's `levels` needs its `ranks`"));
-            }
-            (Some(count), levels) => Some(SlotRanks::new(count, levels).ok_or_else(|| {
-                D::Error::custom(
-                    "a slot kind's `levels` gives one level for each rank, each at least the one \
-                     before",
-                )
-            })?),
-        };
-        Ok(SlotKindData { name, ranks })
-    }
-}
 
 impl SlotKinds {
     /// The ranks of each action that the unit types of `slots` place, each type's actions by
@@ -119,6 +46,15 @@ impl SlotKinds {
         Some(SlotKind::new(u8::try_from(at).ok()?))
     }
 
+    /// Whether `kind` is one of the mode's, where an action of `ranks` ranks finds a level for
+    /// each rank, when the kind gives them.
+    pub(crate) fn holds(&self, kind: SlotKind, ranks: usize) -> bool {
+        self.0.get(kind.index()).is_some_and(|data| {
+            let levels = data.ranks.as_ref().and_then(SlotRanks::levels);
+            levels.is_none_or(|levels| ranks <= levels.len())
+        })
+    }
+
     /// How many ranks an action in `kind` has.
     pub fn ranks(&self, kind: SlotKind) -> u8 {
         self.0[kind.index()]
@@ -129,15 +65,15 @@ impl SlotKinds {
 
     /// The level of the `level` track that `rank`, from 1, of an action in `kind` needs; none
     /// when the kind gives its ranks no levels.
-    pub(crate) fn level_of(&self, kind: SlotKind, rank: u8) -> Option<Level> {
+    pub(crate) fn level_of(&self, kind: SlotKind, rank: Rank) -> Option<Level> {
         let levels = self.0[kind.index()].ranks.as_ref()?.levels()?;
-        Some(levels[usize::from(rank) - 1])
+        Some(levels[rank.index()])
     }
 
-    /// The rank an action in `kind` has as its unit spawns or it is granted: 1 for a kind with
-    /// no `ranks`, 0 for one whose ranks are learned.
-    pub(crate) fn first_rank(&self, kind: SlotKind) -> u8 {
-        u8::from(self.0[kind.index()].ranks.is_none())
+    /// The rank an action in `kind` has as its unit spawns or it is granted: the first for a kind
+    /// with no `ranks`, none for one whose ranks are learned.
+    pub(crate) fn first_rank(&self, kind: SlotKind) -> Option<Rank> {
+        self.0[kind.index()].ranks.is_none().then_some(Rank::FIRST)
     }
 }
 
@@ -181,5 +117,12 @@ mod tests {
             refusal("name = \"basic\"\nranks = 1\nlevels = [0]")
                 .starts_with("a level is at least 1")
         );
+        // The mode's kinds hold an action in one of them that finds a level for each of its
+        // ranks: in `basic`, of three levels, three ranks and no more; in `spell`, of none, any.
+        let basic = read("name = \"basic\"\nranks = 3\nlevels = [6, 11, 16]").unwrap();
+        let kinds = SlotKinds(vec![basic, read("name = \"spell\"").unwrap()]);
+        let [basic, spell, past] = [0, 1, 2].map(SlotKind::new);
+        assert!(kinds.holds(basic, 3) && !kinds.holds(basic, 4));
+        assert!(kinds.holds(spell, 30) && !kinds.holds(past, 0));
     }
 }

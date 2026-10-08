@@ -7,7 +7,7 @@ pub struct ActionId(u32);
 
 impl ActionId {
     /// The action at `index` of the book.
-    pub(crate) const fn nth(index: u32) -> ActionId {
+    pub(crate) const fn new(index: u32) -> ActionId {
         ActionId(index)
     }
 

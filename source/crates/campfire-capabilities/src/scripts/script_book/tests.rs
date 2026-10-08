@@ -13,14 +13,14 @@ fn a_script_defines_a_hook_only_by_its_name_and_its_count_of_parameters() {
     let script = host.compile(source).unwrap();
     let mut book = ScriptBook::default();
     book.push(host.functions(script));
-    let hooks = [Hook::OnResolve, Hook::OnHit, Hook::OnEnd];
+    // Of an action's hooks, it defines `on_resolve` alone; of the mode's, none.
     assert_eq!(
-        book.defines(Some(script), &hooks),
+        book.defines(Some(script), ScriptRole::Action),
         HookSet::of([Hook::OnResolve])
     );
-    assert_eq!(book.defines(None, &hooks), HookSet::default());
+    assert_eq!(book.defines(None, ScriptRole::Action), HookSet::default());
     assert_eq!(
-        book.defines(Some(script), &[Hook::OnHit]),
+        book.defines(Some(script), ScriptRole::Mode),
         HookSet::default()
     );
 }

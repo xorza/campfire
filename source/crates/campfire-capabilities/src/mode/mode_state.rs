@@ -18,7 +18,7 @@ impl ModeState {
     /// The state `data` declares, each field at its first value, in the order of their names.
     pub(crate) fn initial(data: &ModeData) -> ModeState {
         let fields = data.state.values();
-        ModeState(fields.map(|field| field.decl.initial.clone()).collect())
+        ModeState(fields.map(|field| field.decl.initial().clone()).collect())
     }
 
     pub const fn get(&self) -> &[StateValue] {

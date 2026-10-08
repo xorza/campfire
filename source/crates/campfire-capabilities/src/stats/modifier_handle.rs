@@ -9,11 +9,11 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
+use crate::stats::modifier_state_field::ModifierStateField;
 use crate::stats::stats_effect::StatsEffect;
 use crate::units::modifier_id::ModifierId;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A modifier as a script holds it, `Modifier` in scripts: its carrier and source, and its
 /// stacks and state, which a call may write and read back; the writes apply when the call ends.
@@ -31,15 +31,8 @@ pub(crate) struct HandleData {
     pub(crate) state: Vec<StateValue>,
     pub(crate) written: bool,
     pub(crate) removed: bool,
-    fields: Arc<[StateField]>,
+    fields: Arc<[ModifierStateField]>,
     view: View,
-}
-
-/// A field of a modifier's script state: its name and type, in the order of the names.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StateField {
-    pub(crate) name: Box<str>,
-    pub(crate) kind: StateType,
 }
 
 /// `m.state`: the modifier's state fields, by name, to read and write.
@@ -64,7 +57,7 @@ impl ModifierHandle {
         spare: Option<ModifierHandle>,
         of: HandleOf,
         state: &[StateValue],
-        fields: Arc<[StateField]>,
+        fields: Arc<[ModifierStateField]>,
         view: View,
     ) -> ModifierHandle {
         let HandleOf {
@@ -139,9 +132,7 @@ impl ModifierHandle {
                 field("carrier", "the unit that carries it"),
                 |m: &mut ModifierHandle| {
                     let data = m.data();
-                    data.view
-                        .unit(data.carrier)
-                        .map_or(Dynamic::UNIT, Dynamic::from)
+                    data.view.unit_value(Some(data.carrier))
                 },
             )
             .bind(
@@ -174,13 +165,13 @@ impl ModifierHandle {
                 |m: &mut ModifierHandle| ModifierState(m.clone()),
             );
         api.ty::<ModifierState>("ModifierState")
-            .index(|state: &mut ModifierState, name: &str| {
+            .index(|_, state: &mut ModifierState, name: &str| {
                 let data = state.0.data();
                 let at = data.field_named(name)?;
                 Ok(data.state[at].to_dynamic(&data.view))
             })
             .index_set(
-                |state: &mut ModifierState, name: &str, value: Dynamic| -> Checked<()> {
+                |_, state: &mut ModifierState, name: &str, value: Dynamic| -> Checked<()> {
                     let mut data = state.0.data();
                     let at = data.field_named(name)?;
                     let value = StateValue::from_dynamic(data.fields[at].kind, &value)

@@ -6,7 +6,7 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
 use campfire_script::rhai::Array;
-use campfire_sim::{Capability, SimComponent, SnapshotError, StableId};
+use campfire_sim::{Capability, SimComponent, SimTick, SnapshotError, StableId};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -24,7 +24,6 @@ use crate::stats::pools::Pools;
 use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
-use crate::units::dead::Dead;
 use crate::units::path_id::PathId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
@@ -32,6 +31,7 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
+
 fn at(x: i64, y: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
 }

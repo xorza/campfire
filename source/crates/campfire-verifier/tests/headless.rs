@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use campfire_capabilities::{Action, ActionSlots, Destination, Order, PoolId, Pools, Projectile};
+use campfire_capabilities::{
+    Action, ActionSlots, Destination, Order, PoolId, Pools, Projectile, Rank,
+};
 use campfire_common::{Fingerprint, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_log::internals::LogCheck;
 use campfire_log::{ErrorReport, LogEvent};
@@ -525,7 +527,7 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
             .get(units.hero(slot))
             .unwrap();
         let slots = world.get::<ActionSlots>(entity).unwrap();
-        slots.slot(ability).unwrap().rank
+        Rank::count(slots.slot(ability).unwrap().rank)
     });
     assert_eq!(ranks, [1, 1, 1]);
 }

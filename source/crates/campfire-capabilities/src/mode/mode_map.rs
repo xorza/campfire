@@ -1,29 +1,34 @@
-use std::collections::BTreeMap;
-
-use bevy_ecs::world::World;
 use campfire_sim::Position;
 
+use campfire_math::Num;
+use campfire_sim::IdAllocator;
+
+use crate::geometry::grid::Grid;
+use crate::geometry::polygon::Polygon;
+use crate::geometry::shape::Shape;
 use crate::mode::error::ModeError;
-use crate::mode::map_data::{MapData, MapPoint};
-use crate::mode::mode_data::ModeParam;
+use crate::mode::map_data::MapData;
+use crate::mode::map_ground::MapGround;
+use crate::mode::map_point::MapPoint;
+use crate::mode::marker_spec::MarkerSpec;
 use crate::mode::placed_unit::{PlacedPath, PlacedUnit};
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
-use crate::navigation::Navigation;
+use crate::navigation::body_index::{BodyIndex, IndexedBody};
+use crate::navigation::error::MapProblem;
 use crate::navigation::navigation_rules::NavigationRules;
+use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
+use crate::navigation::route_planner::Walkable;
+use crate::navigation::segment::Segment;
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
-use crate::navigation::wall::Wall;
+use crate::navigation::walls::Walls;
+use crate::units::body_form::BodyForm;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
-use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
-use crate::values::grid::Grid;
-use crate::values::metric::Metric;
-use crate::values::name_list::NameList;
-use crate::values::polygon::Polygon;
-use crate::values::region::Region;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
@@ -38,30 +43,6 @@ pub struct ModeMap {
     pub(crate) grid: Option<Grid>,
     /// The areas of the vision grid's brush, in the map's order.
     pub(crate) brush: Vec<Polygon>,
-}
-
-/// What a client's prediction takes of the map as a match does, and no script reads: its metric,
-/// its bounds, how its teams regard each other, and the cells units plan routes over.
-#[derive(Debug)]
-pub(crate) struct MapGround {
-    metric: Metric,
-    bounds: Bounds,
-    relations: Relations,
-    pathing: Option<Grid>,
-    /// The map's walls, which block cells on the pathing grid; none without it.
-    walls: Vec<Wall>,
-}
-
-/// A marker of the map, names resolved: its name, its tags, its point, its region and its team
-/// if it names them, and its params.
-#[derive(Debug, Clone)]
-pub(crate) struct MarkerSpec {
-    pub(crate) name: Box<str>,
-    pub(crate) tags: NameList,
-    pub(crate) pos: Option<Position>,
-    pub(crate) region: Option<Region>,
-    pub(crate) team: Option<Team>,
-    pub(crate) params: BTreeMap<DeclaredName, ModeParam>,
 }
 
 impl ModeMap {
@@ -190,21 +171,13 @@ impl ModeMap {
                 return Err(ModeError::RepeatedName(marker.name.clone()));
             }
             let marker_team = marker.team.as_ref().map(&team).transpose()?;
-            if let Some(region) = marker.region
-                && (marker.pos.is_some() || !region.holds(map.metric, map.bounds))
-            {
-                return Err(ModeError::Region(marker.name.clone()));
-            }
             let region = marker.region.map(|region| {
-                let [min, max] = [region.min, region.max].map(|corner| {
-                    let at = corner
-                        .position()
-                        .expect("the region holds within the bounds")
-                        .get();
-                    [at.x, at.z]
-                });
-                Region::new(min, max)
+                region
+                    .region(map.metric, map.bounds)
+                    .filter(|_| marker.pos.is_none())
+                    .ok_or_else(|| ModeError::Region(marker.name.clone()))
             });
+            let region = region.transpose()?;
             markers.push(MarkerSpec {
                 name: marker.name.as_str().into(),
                 tags: marker.tags.iter().map(DeclaredName::as_str).collect(),
@@ -216,23 +189,98 @@ impl ModeMap {
         }
         Ok(markers)
     }
-}
 
-impl MapGround {
-    /// Puts the ground in `world`, its pathing grid for the kinds of `walkers`.
-    pub(crate) fn install(self, world: &mut World, walkers: Vec<Walker>) {
+    /// Checks that each placed box has room, and that the map can be walked by every kind of
+    /// unit that walks, of `walkers`, for the widest of each layer, among the map's placed units
+    /// that cannot walk, whose bodies `body_of` gives by unit type, and none for a type that
+    /// walks; `name_of` names a type in a problem. A box has room as a placement needs it: within
+    /// the bounds, its inside clear of the walls of its layer and of every other placed unit of
+    /// its layer that cannot walk. Every marker's point and waypoint is a place that walker may
+    /// stand, and every waypoint is in a reachable set of the one before it, by the regions a
+    /// match plans its routes with. A narrower walker of the layer has every cell the widest has
+    /// open. A map with no `[navigation]` cells, or a mode with no walker, has nothing more to
+    /// check.
+    pub(crate) fn check_walkable(
+        &self,
+        walkers: &[Walker],
+        body_of: impl Fn(UnitType) -> Option<BodyForm>,
+        name_of: impl Fn(UnitType) -> DeclaredName,
+    ) -> Result<(), MapProblem> {
         let MapGround {
-            metric,
             bounds,
-            relations,
             pathing,
             walls,
-        } = self;
-        world.insert_resource(metric);
-        world.insert_resource(bounds);
-        world.insert_resource(relations);
-        if let Some(pathing) = pathing {
-            Navigation::load_pathing(world, pathing, &walls, walkers);
+            ..
+        } = &self.ground;
+        let mut ids = IdAllocator::default();
+        let structures: Vec<(usize, IndexedBody)> = self
+            .placed
+            .iter()
+            .enumerate()
+            .filter_map(|(at, unit)| {
+                let body = body_of(unit.unit_type)?.at(unit.angle);
+                Some((at, IndexedBody::of(ids.allocate(), unit.pos, &body)))
+            })
+            .collect();
+        let placed_walls = Walls::new(walls);
+        for &(at, body) in &structures {
+            let Shape::Box(boxed) = body.shape else {
+                continue;
+            };
+            let mut others = structures
+                .iter()
+                .filter(|(other, held)| *other != at && held.layer == body.layer);
+            let walls = Some(&placed_walls);
+            let clear = Walls::room_for(walls, *bounds, body.at, &boxed, body.layer)
+                && !others.any(|(_, other)| other.overlaps_box(body.at, &boxed));
+            if !clear {
+                return Err(MapProblem::BoxBlocked {
+                    unit: at,
+                    unit_type: name_of(self.placed[at].unit_type),
+                });
+            }
         }
+        let structures: Vec<IndexedBody> = structures.into_iter().map(|(_, body)| body).collect();
+        let Some(cells) = *pathing else {
+            return Ok(());
+        };
+        let terrain = Terrain::new(&cells, walls);
+        debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
+        let widest = walkers
+            .chunk_by(|a, b| a.layer == b.layer)
+            .map(|layer| *layer.last().expect("a chunk is never empty"));
+        let widest_radius = walkers.iter().map(|walker| walker.radius).max();
+        let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
+        statics.update(&structures);
+        let mut grid = PathingGrid::new(cells, widest.clone().collect(), &terrain);
+        grid.update(&statics);
+        let declared = |name: &str| DeclaredName::new(name).expect("the map's names are declared");
+        for walker in widest {
+            let clearance = grid.clearance(walker);
+            let walkable = Walkable::of(clearance, &statics);
+            let stands = |at: Position| !walkable.blocks(Segment::new(at, at));
+            for marker in &self.markers {
+                if marker.pos.is_some_and(|pos| !stands(pos)) {
+                    let marker = declared(&marker.name);
+                    return Err(MapProblem::MarkerBlocked { marker });
+                }
+            }
+            let reach = |at: Position| clearance.regions().reach(cells.nearest_cell(at));
+            for (path, name) in self.paths.names().enumerate() {
+                let points = self.paths.points(Paths::id_at(path));
+                if let Some(waypoint) = points.iter().position(|&point| !stands(point)) {
+                    let path = declared(name);
+                    return Err(MapProblem::WaypointBlocked { path, waypoint });
+                }
+                let closed = points
+                    .windows(2)
+                    .position(|pair| !reach(pair[0]).meets(reach(pair[1])));
+                if let Some(before) = closed {
+                    let (path, waypoint) = (declared(name), before + 1);
+                    return Err(MapProblem::WaypointUnreachable { path, waypoint });
+                }
+            }
+        }
+        Ok(())
     }
 }

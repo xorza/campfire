@@ -27,12 +27,14 @@ use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
-use crate::units::spawner::{SpawnAt, Spawner};
+use crate::units::spawn_at::SpawnAt;
+use crate::units::spawner::Spawner;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 
 fn at(x: i64) -> Position {
     Position::new(Vec3::new(Num::from_int(x).unwrap(), Num::ZERO, Num::ZERO)).unwrap()
@@ -144,7 +146,7 @@ impl Shop {
         train: ActionId,
         queue: TrainQueue,
     ) {
-        let slots = ActionSlots::new([(train, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]);
         let parts = (id, at(x), self.barracks, Team::new(team), slots, queue);
         let mut producer = self.sim.world.spawn(parts);
         if let Some(owner) = owner {
@@ -183,7 +185,7 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
     for &time in times {
         let queued = Queued {
             action: train,
-            rank: 1,
+            rank: Rank::FIRST,
             time: Ticks::new(time),
             paid: 0,
         };
@@ -301,8 +303,8 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
         amount: 5,
     };
     let queued = Queued {
-        action: ActionId::nth(0),
-        rank: 1,
+        action: ActionId::new(0),
+        rank: Rank::FIRST,
         time: Ticks::new(30),
         paid: 1,
     };
@@ -331,18 +333,18 @@ fn a_train_queue_is_state_and_restores() {
     internals::train(&mut restored.sim.world, restored.grunt, Ticks::new(3), None);
     shop.sim.restore_into(&mut restored.sim);
     // A train of the longest time, pushed at tick 0, is done at the limit; pushed a tick later,
-    // or a tick longer, it fails.
+    // or a tick longer, it fails to decode.
     let entity = restored.sim.entity(id);
     let check = |pushed: u64, time: u64| {
         let mut queue = TrainQueue::default();
         let queued = Queued {
             action: train,
-            rank: 1,
+            rank: Rank::FIRST,
             time: Ticks::new(time),
             paid: 0,
         };
         queue.push(queued, &[], Tick::new(pushed));
-        queue.check(&restored.sim.world, entity)
+        TestMatch::decodes(&queue) && queue.check(&restored.sim.world, entity)
     };
     assert!(check(0, Tick::LIMIT.get()));
     assert!(!check(1, Tick::LIMIT.get()) && !check(0, Tick::LIMIT.get() + 1));

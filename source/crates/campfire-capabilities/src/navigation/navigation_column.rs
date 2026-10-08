@@ -1,19 +1,31 @@
 use std::ops::Range;
 
+use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{Position, StableId};
 
+use crate::geometry::shape::Shape;
 use crate::navigation::body_index::IndexedBody;
+use crate::navigation::on_path::OnPath;
 use crate::navigation::walls::Walls;
 use crate::units::body::Body;
 use crate::units::kept_rows::KeptRows;
 use crate::units::layer::Layer;
+use crate::units::move_step::MoveStep;
 use crate::units::path_id::PathId;
-use crate::units::script_view::View;
+use crate::units::row_fill::RowFill;
 use crate::units::unit::Unit;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
-use crate::values::shape::Shape;
+
+/// The parts of a unit navigation reads into its row: the path it is on, whether it walks, and
+/// its body, for its layer.
+pub(super) type RowParts = (
+    Option<&'static OnPath>,
+    Has<MoveStep>,
+    Option<&'static Body>,
+);
 
 /// What navigation adds to the script view, a row each: the path each unit walks or stands on,
 /// whether it walks, as a unit with a step does, and the layer it moves on; and the map's walls,
@@ -78,32 +90,29 @@ impl NavigationColumn {
             return true;
         };
         let layer = body.layer();
-        let spawning = spawning
+        let clear_of_spawning = spawning
             .iter()
             .filter(|other| other.layer == layer)
-            .copied();
+            .all(|other| !other.overlaps_box(at, &boxed));
         let room = view.column(|column: &NavigationColumn| {
             let rows = column.rows.now();
-            let mut statics = Vec::new();
+            let mut clear = Walls::room_for(Some(&column.walls), view.bounds(), at, &boxed, layer);
             view.each_row(|place, row| {
                 let stands = !rows[place].walks && rows[place].layer == layer;
-                if stands && row.alive && row.shape != Shape::POINT {
-                    statics.push(IndexedBody {
+                if clear && stands && row.alive && row.shape != Shape::POINT {
+                    let other = IndexedBody {
                         id: row.id,
                         at: row.pos,
                         shape: row.shape,
                         layer,
-                    });
+                    };
+                    clear = !other.overlaps_box(at, &boxed);
                 }
             });
-            let statics = statics.into_iter().chain(spawning.clone());
-            column
-                .walls
-                .room_for(view.bounds(), at, &boxed, layer, statics)
+            clear
         });
-        room.unwrap_or_else(|| {
-            Walls::default().room_for(view.bounds(), at, &boxed, layer, spawning)
-        })
+        let room = room.unwrap_or_else(|| Walls::room_for(None, view.bounds(), at, &boxed, layer));
+        room && clear_of_spawning
     }
 
     /// `unit.path`: the name of the path `unit` walks or stands on, `()` with none, or in a view
@@ -112,7 +121,8 @@ impl NavigationColumn {
         let view = unit.view();
         let path =
             view.column(|column: &NavigationColumn| column.rows.now()[unit.row_index()].path);
-        view.path_name(path.flatten())
+        let name = path.flatten().and_then(|path| view.path_name(path));
+        name.map_or(Dynamic::UNIT, Dynamic::from)
     }
 
     /// Whether unit `id`, which `view` read, walks; none does in a view with no navigation.
@@ -122,5 +132,15 @@ impl NavigationColumn {
         };
         let walks = view.column(|column: &NavigationColumn| column.rows.now()[row].walks);
         walks.unwrap_or(false)
+    }
+
+    /// Fills a row of the script view with the path the unit walks or stands on, whether it walks,
+    /// and its layer.
+    pub(super) fn fill_row(
+        (path, walks, body): ROQueryItem<'_, '_, RowParts>,
+        fill: &mut RowFill<'_, NavigationColumn>,
+    ) {
+        let path = path.map(|path| path.get());
+        fill.column.push(path, walks, Body::layer_of(body));
     }
 }

@@ -4,7 +4,8 @@ use campfire_common::{PlayerSlot, Tick, Ticks};
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::units::lifespan::Lifespan;
-use crate::units::spawner::{SpawnAt, Spawner};
+use crate::units::spawn_at::SpawnAt;
+use crate::units::spawner::Spawner;
 
 /// A unit a listed `spawn` makes, `at` its place, of the acting unit's team and player, with a
 /// timed life of `life` when it has one.

@@ -35,7 +35,7 @@ impl ProductionApi {
             .bind(
                 MemberSpec::call(
                     "supply_used",
-                    "(player)",
+                    &[&["player"]],
                     "what `player`'s living units and queued trains use of its supply",
                 )
                 .capability(Capability::Production),
@@ -44,7 +44,7 @@ impl ProductionApi {
             .bind(
                 MemberSpec::call(
                     "supply_cap",
-                    "(player)",
+                    &[&["player"]],
                     "what `player`'s living, complete units give of supply, at most the mode's `max`",
                 )
                 .capability(Capability::Production),

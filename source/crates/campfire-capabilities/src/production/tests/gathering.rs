@@ -1,7 +1,11 @@
+use std::num::NonZeroU32;
+
 use campfire_sim::{EntityIndex, TickInput, TickInputs};
 
 use super::*;
 use crate::actions::gather_spec::GatherSpec;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
 use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::orders::order::{Action, Order};
@@ -11,15 +15,14 @@ use crate::production::node_book::NodeBook;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
 use crate::production::resource_set::ResourceSet;
-use crate::stats::move_step::MoveStep;
 use crate::units::block::Block;
-use crate::units::body::{Body, BodyForm};
+use crate::units::body::Body;
+use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
+use crate::units::move_step::MoveStep;
 use crate::units::unit_tags::UnitTags;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
-use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 
 /// The point at `x` and `z` half meters.
 fn half(x: i64, z: i64) -> Position {
@@ -59,10 +62,10 @@ impl Mine {
         world.insert_resource(nodes);
         let spec = GatherSpec {
             resource: gold,
-            take: 5,
+            take: NonZeroU32::new(5).unwrap(),
             bounce: Num::int(4),
         };
-        let all = Filter::of_relation(Relation::All);
+        let all = Filter::of_relations(RelationSet::All);
         let gather = internals::gather(world, spec, all, Num::ONE, Ticks::new(3));
         Mine {
             shop,
@@ -75,7 +78,7 @@ impl Mine {
     /// A worker of player `owner` at `at`, of a half meter, walking a meter a tick, with the
     /// gather in its slot 0.
     fn worker(&mut self, at: Position, owner: u32) -> StableId {
-        let slots = ActionSlots::new([(self.gather, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(self.gather, SlotKind::new(0), Rank::new(1))]);
         let parts = (
             Team::new(0),
             Owner::new(PlayerSlot::new(owner)),
@@ -89,7 +92,7 @@ impl Mine {
 
     /// A mineral at `at` holding `amount`.
     fn mineral(&mut self, at: Position, amount: u32) -> StableId {
-        let body = BodyForm::boxed([Num::int(2), Num::ONE])
+        let body = BodyForm::box_sized([Num::int(2), Num::ONE])
             .unwrap()
             .at(Num::ZERO);
         let parts = (self.mineral, Team::new(2), body, Node::new(amount));
@@ -98,7 +101,7 @@ impl Mine {
 
     /// Player 0's hall at `at`.
     fn hall(&mut self, at: Position) -> StableId {
-        let body = BodyForm::boxed([Num::int(4), Num::int(2)])
+        let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
             .unwrap()
             .at(Num::ZERO);
         let parts = (
@@ -344,7 +347,8 @@ fn a_block_of_use_ends_a_gather_with_no_load_and_the_loop_starts_again_as_it_end
 #[test]
 fn a_load_past_what_an_amount_holds_stays_with_its_worker() {
     // The player holds 2 short of the most: the first load, 5, would pass it, so the worker,
-    // in range of the hall, stands with it, and its loop keeps it at the drop-off.
+    // in range of the hall, stands with it, and its loop keeps it at the drop-off. A worker no
+    // player owns has no drop-off, and stands with its load too.
     let mut mine = Mine::new();
     mine.hall(half(0, 3));
     let node = mine.mineral(half(0, 12), 100);
@@ -358,13 +362,22 @@ fn a_load_past_what_an_amount_holds_stays_with_its_worker() {
     for _ in 1..=4 {
         mine.shop.tick();
     }
-    assert_eq!(mine.gold(), near_most);
-    let gatherer = *mine.shop.sim.get::<Gatherer>(worker);
-    assert_eq!(gatherer.load().map(|load| load.amount), Some(5));
-    assert!(matches!(
-        mine.step(worker),
-        Some(GatherStep::ToDropOff { .. })
-    ));
+    let stands = |mine: &Mine| {
+        assert_eq!(mine.gold(), near_most);
+        let gatherer = *mine.shop.sim.get::<Gatherer>(worker);
+        assert_eq!(gatherer.load().map(|load| load.amount), Some(5));
+        assert!(matches!(
+            mine.step(worker),
+            Some(GatherStep::ToDropOff { .. })
+        ));
+        let to = mine.shop.sim.try_get::<Destination>(worker).copied();
+        assert_eq!(to.and_then(Destination::get), None);
+    };
+    stands(&mine);
+    let entity = mine.shop.sim.entity(worker);
+    mine.shop.sim.world.entity_mut(entity).remove::<Owner>();
+    mine.shop.tick();
+    stands(&mine);
 }
 
 #[test]
@@ -442,7 +455,7 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     let worker_type = mine.shop.grunt;
     let world = &mut mine.shop.sim.world;
     world.insert_non_send(Spawner::new(move |world, at, owner| {
-        let slots = ActionSlots::new([(gather, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(gather, SlotKind::new(0), Rank::new(1))]);
         let parts = (
             at.id,
             at.unit_type,

@@ -9,12 +9,11 @@ use crate::scripts::state_value::StateValue;
 
 pub(crate) mod synced_state_decl;
 
-/// A declared field of script state: its type and its first value. Script state is declared,
-/// never invented at run time.
+/// A declared field of script state: its first value, which is of its type. Script state is
+/// declared, never invented at run time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateDecl {
-    pub kind: StateType,
-    pub initial: StateValue,
+    initial: StateValue,
 }
 
 /// The type of a state field.
@@ -65,7 +64,16 @@ impl StateDecl {
             (StateType::String, Some(StateDefault::Text(text))) => StateValue::Text(text),
             _ => return None,
         };
-        Some(StateDecl { kind, initial })
+        Some(StateDecl { initial })
+    }
+
+    /// Its type: its first value's.
+    pub const fn kind(&self) -> StateType {
+        self.initial.kind()
+    }
+
+    pub const fn initial(&self) -> &StateValue {
+        &self.initial
     }
 
     /// `new`, as a read takes it: a default not of the type fails it.

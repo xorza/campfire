@@ -195,6 +195,7 @@ mod tests {
     use crate::stats::lifetime::{Ends, Lifetime};
     use crate::stats::modifier_clocks::Interval;
     use crate::stats::modifier_data::Reapply;
+    use crate::values::rank::Rank;
 
     #[test]
     fn a_change_of_clocks_alone_leaves_the_modifiers_unchanged() {
@@ -204,7 +205,7 @@ mod tests {
                 id: ModifierId::new(0),
                 source: None,
                 ability: None,
-                rank: 1,
+                rank: Rank::FIRST,
                 lifetime: Lifetime::new(None, Ends::Never),
                 aura_radius: None,
                 stacks: 1,

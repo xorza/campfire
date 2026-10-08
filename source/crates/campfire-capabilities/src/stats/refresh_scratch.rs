@@ -13,6 +13,7 @@ use crate::stats::stat_op::StatOp;
 use crate::stats::stat_totals::StatTotals;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_type::UnitType;
+use crate::values::rank::Rank;
 
 /// What a stats refresh holds while it runs, kept between runs so a refresh allocates nothing once
 /// its buffers have grown: the units it refreshes, by stable id, each one's run of totals and of
@@ -47,7 +48,7 @@ pub(crate) struct LiveTerm {
     op: StatOp,
     stacks: u32,
     live: LiveParam,
-    rank: u8,
+    rank: Rank,
     source: Option<StableId>,
     pub(crate) share: u32,
     pub(crate) value: Num,

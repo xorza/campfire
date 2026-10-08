@@ -162,12 +162,12 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position};
 
+    use crate::geometry::body_box::BodyBox;
+    use crate::geometry::kernel_scene::KernelScene;
+    use crate::geometry::shape::Shape;
     use crate::navigation::body_index::{BodyIndex, IndexedBody};
     use crate::navigation::collider::Collider;
     use crate::units::layer::Layer;
-    use crate::values::body_box::BodyBox;
-    use crate::values::kernel_scene::KernelScene;
-    use crate::values::shape::Shape;
 
     /// `count` bodies from `seed`: each at a whole centimeter within `span` meters of the origin
     /// on both axes, of a radius from 0.2 to 1.19 m, on one of `layers` layers, and that may be
@@ -242,7 +242,7 @@ mod tests {
 
     use super::internals::{scene, statics};
     use super::*;
-    use crate::values::shape::Shape;
+    use crate::geometry::shape::Shape;
 
     /// The pairs a check of every pair finds, in its order.
     fn every_pair(colliders: &[Collider]) -> Vec<Contact> {

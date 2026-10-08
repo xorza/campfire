@@ -84,7 +84,7 @@ impl ModeData {
     /// What a cost named `name` takes from: one of its pools, or else one of its players'
     /// resources; `None` for a name it declares neither as.
     pub fn cost_target_named(&self, name: &DeclaredName) -> Option<CostTarget> {
-        let pool = PoolId::named(&self.pools, name).map(CostTarget::Pool);
+        let pool = PoolId::named(&self.pools, name.as_str()).map(CostTarget::Pool);
         pool.or_else(|| ResourceId::named(&self.resources, name.as_str()).map(CostTarget::Resource))
     }
 

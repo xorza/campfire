@@ -6,7 +6,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::hit_handle::HitHandle;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A damage as a script holds it, `Damage` in scripts: read only.
 #[derive(Debug, Clone)]
@@ -28,20 +28,11 @@ impl DamageHandle {
         api.ty::<DamageHandle>("Damage")
             .bind(
                 field("source", "the unit that dealt it, `()` when gone or none"),
-                |d: &mut DamageHandle| {
-                    d.damage
-                        .source
-                        .and_then(|source| d.view.unit(source))
-                        .map_or(Dynamic::UNIT, Dynamic::from)
-                },
+                |d: &mut DamageHandle| d.view.unit_value(d.damage.source),
             )
             .bind(
                 field("target", "the unit it is dealt to"),
-                |d: &mut DamageHandle| {
-                    d.view
-                        .unit(d.damage.target)
-                        .map_or(Dynamic::UNIT, Dynamic::from)
-                },
+                |d: &mut DamageHandle| d.view.unit_value(Some(d.damage.target)),
             )
             .bind(
                 field("amount", "raw in `calc_damage`, final in a hook"),
@@ -49,7 +40,10 @@ impl DamageHandle {
             )
             .bind(
                 field("kind", "one of the mode's `[combat] damage_kinds`"),
-                |d: &mut DamageHandle| d.view.damage_kind_name(d.damage.kind),
+                |d: &mut DamageHandle| {
+                    let name = d.view.damage_kind_name(d.damage.kind);
+                    name.expect("a damage's kind is one of the mode's")
+                },
             )
             .bind(
                 field("attack", "whether an attack dealt it"),
@@ -82,11 +76,7 @@ impl DamageHandle {
                     "ability",
                     "the action that dealt it: an ability, or an attack's weapon; `()` for none",
                 ),
-                |d: &mut DamageHandle| {
-                    d.damage
-                        .ability
-                        .map_or(Dynamic::UNIT, |id| Dynamic::from(d.view.ability_name(id)))
-                },
+                |d: &mut DamageHandle| d.view.ability_value(d.damage.ability),
             );
     }
 }

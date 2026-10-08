@@ -3,20 +3,21 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, Position, SimComponent, TickInput, TickInputs};
+use campfire_sim::{Capability, Position, SimComponent, StableId, TickInput, TickInputs};
 use serde::Deserialize;
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_data::{ActionData, Targeting};
-use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_data::ActionData;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
+use crate::actions::effect_data::{EffectData, EffectTo, Effecting, HealFields};
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::targeting::Targeting;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::geometry::bounds::Bounds;
 use crate::items::inventory::ItemStack;
 use crate::items::item_book::ItemSpec;
 use crate::items::item_id::ItemId;
@@ -28,8 +29,11 @@ use crate::players::resource_id::ResourceId;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
+use crate::stats::lifetime::Hold;
 use crate::stats::loads::load_stats;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
+use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_change::StatChange;
@@ -38,12 +42,12 @@ use crate::stats::stat_rule::StatRule;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::block::Block;
+use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::Number;
 use crate::values::ranked::Ranked;
-use crate::values::region::Region;
 use crate::values::scalar::Scalar;
 use crate::values::share::Share;
 use crate::values::stat::Stat;
@@ -94,9 +98,9 @@ impl Carrier {
         Stats::load_modifier(&mut sim.world, 0, "might", &might, None);
         let might = Stats::modifier(&sim.world, 0, "might").unwrap();
         let heal = EffectData {
-            does: Effecting::Heal {
+            does: Effecting::Heal(HealFields {
                 amount: Number::Value(Scalar::Int(50)),
-            },
+            }),
             to: EffectTo::Source,
         };
         let drink = ActionData {
@@ -169,7 +173,7 @@ impl Carrier {
         let share = Share::deserialize(toml::Value::String("0.5".to_owned())).unwrap();
         let places = vec![ShopPlace {
             team: Team::new(0),
-            region: Region::new([Num::int(-5); 2], [Num::int(5); 2]),
+            region: Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap(),
         }];
         let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
         sim.world

@@ -2,6 +2,8 @@ use std::slice;
 
 use serde::Deserialize;
 
+use crate::values::rank::Rank;
+
 /// One value for every rank, or one per rank.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
@@ -27,18 +29,11 @@ impl<T> Ranked<T> {
         }
     }
 
-    /// The value at `rank`, from 1; `None` past the last rank.
-    pub fn get(&self, rank: u8) -> Option<&T> {
+    /// The value at `rank`; `None` past the last rank.
+    pub fn get(&self, rank: Rank) -> Option<&T> {
         match self {
             Ranked::One(value) => Some(value),
-            Ranked::PerRank(values) => values.get(usize::from(rank.checked_sub(1)?)),
+            Ranked::PerRank(values) => values.get(rank.index()),
         }
-    }
-}
-
-impl<T: Copy> Ranked<T> {
-    /// The value at `rank`, from 1; `None` past the last rank.
-    pub fn at(&self, rank: u8) -> Option<T> {
-        self.get(rank).copied()
     }
 }

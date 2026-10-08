@@ -3,7 +3,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::values::filter_data::FilterData;
-use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 use crate::values::scalar::Scalar;
 
 /// A unit type's `projectile` section, which makes its units projectiles: they fly `speed`
@@ -85,7 +85,7 @@ impl<'de> Deserialize<'de> for ProjectileData {
 impl ProjectileHits {
     /// The units of `enemies`, which a projectile hits when its data names none.
     pub const ENEMIES: ProjectileHits = ProjectileHits::Units(FilterData {
-        relation: Relation::Enemies,
+        relations: RelationSet::Enemies,
         tags: Vec::new(),
     });
 }

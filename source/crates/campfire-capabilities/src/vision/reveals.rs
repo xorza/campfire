@@ -23,6 +23,10 @@ pub(crate) struct Reveal {
 }
 
 impl Reveals {
+    pub(crate) const fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub(crate) fn push(&mut self, reveal: Reveal) {
         self.0.push(reveal);
     }
@@ -45,8 +49,7 @@ impl SimResource for Reveals {
     fn check(&self, world: &World) -> bool {
         let grid = world.get_resource::<VisionGrid>();
         self.0.iter().all(|reveal| {
-            reveal.radius >= Num::ZERO
-                && grid.is_some_and(|grid| usize::from(reveal.team.index()) < grid.teams)
+            reveal.radius >= Num::ZERO && grid.is_some_and(|grid| reveal.team.index() < grid.teams)
         })
     }
 }

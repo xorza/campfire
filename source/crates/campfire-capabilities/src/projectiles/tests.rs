@@ -11,7 +11,10 @@ use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::grid::Grid;
 use crate::navigation::navigation_effect::NavigationEffect;
+use crate::projectiles::projectile::Payload;
 use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
 use crate::projectiles::struck_units::Struck;
 use crate::scripts::effects::Effect;
@@ -19,20 +22,22 @@ use crate::scripts::frame::Frame;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::forced_move::DashTo;
+use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::values::body_box::BodyBox;
 use crate::values::damage_kind::DamageKind;
 use crate::values::filter_data::FilterData;
-use crate::values::grid::Grid;
+use crate::values::rank::Rank;
 use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
+
 fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
@@ -135,20 +140,15 @@ impl Volley {
             .range
             .unwrap();
         let mut launches = self.sim.world.resource_mut::<Launches>();
-        launches.launches.push(Launch {
+        launches.push(Launch {
             id: None,
             source,
             from: at(0, 0),
             unit_type,
-            flight: Flight::Line {
-                direction: Vec3::new(Num::ONE, Num::ZERO, Num::ZERO),
-                flown: Num::ZERO,
-                range,
-                aimed: None,
-            },
+            flight: Flight::line(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO), range, None),
             payload: LaunchPayload::Attack {
-                action: ActionId::nth(0),
-                rank: 1,
+                action: ActionId::new(0),
+                rank: Rank::FIRST,
                 amount: Num::int(10),
                 kind: DamageKind::new(0),
                 roll: Num::ZERO,
@@ -462,7 +462,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     let near = |x: &str, z: &str| point(x.parse().unwrap(), z.parse().unwrap());
     let block = volley.unit(1, near("3.5", "0.3"), target());
     let body = BodyBox::new([Num::int(2), Num::ONE], Num::ZERO).unwrap();
-    volley.sim.insert(block, Body::boxed(body));
+    volley.sim.insert(block, Body::of_box(body));
     let dot = volley.unit(1, near("2.6", "0"), target());
     volley.fire_line(source, volley.dart);
     for _ in 0..7 {

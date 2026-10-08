@@ -1,20 +1,20 @@
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
-use crate::actions::targets::Targets;
+use crate::actions::targets::{TargetKey, Targets};
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
+use crate::geometry::fraction::Fraction;
+use crate::geometry::shape::Shape;
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::struck_units::{Struck, StruckUnits};
 use crate::units::body_grid::BodyGrid;
 use crate::units::team::Team;
-use crate::values::fraction::Fraction;
 use crate::values::hit::Hit;
-use crate::values::shape::Shape;
 
 /// The flights of a tick: where their hits and ends go, the units each line struck while it
 /// flies, the bodies a line may meet, indexed as the stage began, and a scratch list
@@ -24,7 +24,7 @@ pub(crate) struct Flights<'a> {
     pub(crate) queue: &'a mut PassQueue,
     pub(crate) deliveries: &'a mut Deliveries,
     pub(crate) struck: &'a mut StruckUnits,
-    pub(crate) grid: &'a BodyGrid<()>,
+    pub(crate) grid: &'a BodyGrid<TargetKey>,
     pub(crate) met: &'a mut Vec<(Fraction, StableId)>,
 }
 
@@ -173,10 +173,11 @@ impl Flights<'_> {
                 .map(|axis| axis.checked_add(half).unwrap_or(Num::MAX));
             let (met, struck) = (&mut *self.met, &*self.struck);
             self.grid.visit(low, high, |body| {
-                let Some(unit) = targets.living(body.id) else {
+                if !body.key.targetable {
                     return;
-                };
-                let selects = hits.selects(targets.attitude(team, unit.team), unit.tags);
+                }
+                let unit = Targets::unit_of(body);
+                let selects = hits.selects(targets.relation(team, unit.team), unit.tags);
                 if !selects || struck.contains(Struck { by, unit: unit.id }) {
                     return;
                 }

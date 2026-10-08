@@ -5,7 +5,7 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::units::bits256::Bits256;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A unit's team: its index in the mode's list of teams. How two teams regard each other is
 /// their relation, which the match's relations hold.
@@ -23,7 +23,12 @@ impl Team {
         Team(index)
     }
 
-    pub const fn index(self) -> u8 {
+    pub const fn index(self) -> usize {
+        self.0 as usize
+    }
+
+    /// The team as the wire and the session's receipt write it.
+    pub const fn get(self) -> u8 {
         self.0
     }
 }

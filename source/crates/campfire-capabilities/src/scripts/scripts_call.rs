@@ -21,7 +21,7 @@ pub(crate) struct ScriptsCall {
     opener: Option<RngOpener>,
     /// Whose sequence the running call draws on: its acting unit's, or none for the mode's.
     drawer: Option<StableId>,
-    /// The sequences the tick opened, by drawer: none for the mode.
+    /// The sequences the tick opened, sorted by drawer: none for the mode.
     open: Vec<(Option<StableId>, Rng)>,
 }
 
@@ -59,15 +59,68 @@ impl ScriptsCall {
     /// The running call's drawer's sequence, opened at its first draw in the tick.
     fn sequence(&mut self) -> &mut Rng {
         let drawer = self.drawer;
-        if let Some(at) = self.open.iter().position(|(held, _)| *held == drawer) {
-            return &mut self.open[at].1;
-        }
-        let opener = self.opener.expect("a call began");
-        let rng = match drawer {
-            Some(unit) => opener.open(UNIT_DRAWS, unit.get()),
-            None => opener.open(MODE_DRAWS, 0),
+        let at = match self.open.binary_search_by_key(&drawer, |&(held, _)| held) {
+            Ok(at) => at,
+            Err(at) => {
+                let opener = self.opener.expect("a call began");
+                let rng = match drawer {
+                    Some(unit) => opener.open(UNIT_DRAWS, unit.get()),
+                    None => opener.open(MODE_DRAWS, 0),
+                };
+                self.open.insert(at, (drawer, rng));
+                at
+            }
         };
-        self.open.push((drawer, rng));
-        &mut self.open.last_mut().expect("the sequence just opened").1
+        &mut self.open[at].1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::array;
+
+    use campfire_common::SegmentSeed;
+    use campfire_sim::IdAllocator;
+
+    use super::*;
+
+    #[test]
+    fn each_drawer_draws_on_its_own_sequence_whatever_the_order() {
+        let opener = SimRng::new(SegmentSeed::new([7; 32])).opener();
+        let mut ids = IdAllocator::default();
+        let units: [StableId; 4] = array::from_fn(|_| ids.allocate());
+        let mut call = ScriptsCall {
+            opener: Some(opener),
+            ..ScriptsCall::default()
+        };
+        // Drawers out of id order, the mode among them, and each again later.
+        let order = [
+            Some(3),
+            None,
+            Some(1),
+            Some(3),
+            Some(0),
+            None,
+            Some(1),
+            Some(3),
+        ];
+        let mut drawn: Vec<(Option<usize>, usize)> = Vec::new();
+        for drawer in order {
+            call.drawer = drawer.map(|at| units[at]);
+            drawn.push((drawer, call.pick(1000)));
+        }
+        // Each drawer's picks are its own sequence's, in its own order.
+        for drawer in [None, Some(0), Some(1), Some(3)] {
+            let mut rng = match drawer {
+                Some(at) => opener.open(UNIT_DRAWS, units[at].get()),
+                None => opener.open(MODE_DRAWS, 0),
+            };
+            let own = drawn.iter().filter(|&&(by, _)| by == drawer);
+            for &(_, pick) in own {
+                assert_eq!(pick, rng.pick(1000), "{drawer:?}");
+            }
+        }
+        let held: Vec<_> = call.open.iter().map(|&(drawer, _)| drawer).collect();
+        assert_eq!(held, [None, Some(units[0]), Some(units[1]), Some(units[3])]);
     }
 }

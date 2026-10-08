@@ -22,7 +22,7 @@ impl CoreApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let chance = MemberSpec::call(
             "chance",
-            "(p)",
+            &[&["p"]],
             "true with probability `p`, from 0 to 1, from the secret stream",
         );
         api.ty::<Ctx>("Ctx")
@@ -40,7 +40,7 @@ impl CoreApi {
             .bind(
                 MemberSpec::call(
                     "pick",
-                    "(list)",
+                    &[&["list"]],
                     "an entry of `list`, each as likely, from the secret stream",
                 ),
                 |ctx: &mut Ctx, list: Array| CoreApi::pick(ctx, &list),
@@ -57,7 +57,7 @@ impl CoreApi {
             Status::Runs(ApiVersion::FIRST),
         );
         api.ty::<Params>("Params")
-            .index(|params: &mut Params, name: &str| params.get(name));
+            .index(|_, params: &mut Params, name: &str| params.get(name));
     }
 
     /// Draws whether a chance of `p` comes true, on the running call's sequence.

@@ -35,9 +35,7 @@ impl CallPart for ModeCall {
         if start.role != ScriptRole::Mode {
             return Ok(());
         }
-        self.state.clear();
-        self.state
-            .extend_from_slice(&world.resource::<ModeState>().0);
+        self.state.clone_from(&world.resource::<ModeState>().0);
         self.choices.clone_from(world.resource::<Choices>());
         self.ended = world.contains_resource::<MatchEnd>();
         self.boxes.clear();

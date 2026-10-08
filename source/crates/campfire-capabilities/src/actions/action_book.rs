@@ -1,28 +1,28 @@
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::ScriptId;
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 
 use crate::actions::action::{Action, Aim};
 use crate::actions::action_data::ActionData;
 use crate::actions::action_parts::ActionParts;
-use crate::actions::action_slots::{ActionSlots, SlotAim};
+use crate::actions::action_range::ActionRange;
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
+use crate::actions::checked_action::CheckedAction;
 use crate::actions::purse::Purse;
-use crate::actions::range::Range;
-use crate::actions::rank_values::RankValues;
-use crate::actions::targets::Targets;
-use crate::scripts::hook::Hook;
+use crate::actions::slot_aim::SlotAim;
 use crate::scripts::script_book::ScriptBook;
+use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
-use crate::values::attitude::Attitude;
-use crate::values::shape::Shape;
+use crate::values::relation::Relation;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the actions, as the
@@ -30,6 +30,8 @@ use crate::values::shape::Shape;
 #[derive(Resource, Debug, Clone, Default)]
 pub(crate) struct ActionBook {
     actions: Arc<Vec<Action>>,
+    /// Every action's id, sorted by package, then name, for `named` to search.
+    by_name: Arc<Vec<ActionId>>,
 }
 
 impl ActionBook {
@@ -57,17 +59,13 @@ impl ActionBook {
             script.is_some(),
             "an action has a script exactly when its data names one"
         );
-        let hooks = scripts.defines(
-            script,
-            &[
-                Hook::OnResolve,
-                Hook::OnHit,
-                Hook::OnEnd,
-                Hook::OnChannelTick,
-                Hook::OnInterrupt,
-            ],
-        );
-        let id = ActionId::nth(u32::try_from(self.actions.len()).expect("actions fit u32"));
+        let hooks = scripts.defines(script, ScriptRole::Action);
+        let id = ActionId::new(u32::try_from(self.actions.len()).expect("actions fit u32"));
+        let at = self
+            .by_name
+            .binary_search_by(|&held| self.order(held, package, name))
+            .expect_err("a package loads an action of a name once");
+        Arc::make_mut(&mut self.by_name).insert(at, id);
         Arc::make_mut(&mut self.actions).push(Action {
             package,
             name: name.into(),
@@ -96,32 +94,40 @@ impl ActionBook {
     /// The action `name` of `package`.
     pub(crate) fn named(&self, package: u16, name: &str) -> Option<ActionId> {
         let at = self
-            .actions
-            .iter()
-            .position(|action| action.package == package && &*action.name == name)?;
-        Some(ActionId::nth(u32::try_from(at).expect("actions fit u32")))
+            .by_name
+            .binary_search_by(|&id| self.order(id, package, name))
+            .ok()?;
+        Some(self.by_name[at])
+    }
+
+    /// How action `id` sorts against the action `name` of `package`: by package, then name.
+    fn order(&self, id: ActionId, package: u16, name: &str) -> Ordering {
+        let action = &self.actions[id.index()];
+        action
+            .package
+            .cmp(&package)
+            .then_with(|| (*action.name).cmp(name))
     }
 
     /// The action `aim` names of a unit with `slots`, when it may go on: its slot holds a learned
     /// action that is ready and, with charges, holds one, `purse` affords its cost in each pool
-    /// and player resource, and its
-    /// target is a living unit the action's filter selects, or the action takes none, which drops
-    /// any target the order named. `attitude` tells how the unit regards a team, and `living`
-    /// finds a living unit.
+    /// and player resource, and its target is a living unit the action's filter selects, or the
+    /// action takes none, which drops any target the order named. `relation` tells how the unit
+    /// regards a team, and `living` finds a living unit.
     pub(crate) fn check(
         &self,
         now: Tick,
         slots: &ActionSlots,
         purse: Purse<'_>,
         aim: SlotAim,
-        attitude: impl Fn(Team) -> Attitude,
+        relation: impl Fn(Team) -> Relation,
         living: impl Fn(StableId) -> Option<LivingUnit>,
-    ) -> Option<Checked<'_>> {
-        let slot = slots.slot(aim.slot).filter(|slot| slot.rank > 0)?;
-        let id = slot.action?;
+    ) -> Option<CheckedAction<'_>> {
+        let slot = slots.slot(aim.slot)?;
+        let (id, rank) = (slot.action?, slot.rank?);
         let action = self.get(id)?;
-        let values = action.values(slot.rank);
-        let affords = purse.affords(&values.cost, action.resource_cost(slot.rank));
+        let values = *action.values(rank);
+        let affords = purse.affords(&values.cost, action.resource_cost(rank));
         let charged =
             values.charges.is_none() || slot.charges.is_some_and(|charges| charges.count > 0);
         if now < slot.ready_at || !affords || !charged {
@@ -134,27 +140,27 @@ impl ActionBook {
             }
             (Aim::Unit(filter), ActionTarget::Unit(target))
                 if living(target)
-                    .is_some_and(|unit| filter.selects(attitude(unit.team), unit.tags)) =>
+                    .is_some_and(|unit| filter.selects(relation(unit.team), unit.tags)) =>
             {
                 ActionTarget::Unit(target)
             }
             _ => return None,
         };
-        Some(Checked {
+        Some(CheckedAction {
             id,
             target,
             action,
-            rank: slot.rank,
+            rank,
             values,
         })
     }
 
     /// The slot of the first learned weapon of `slots` whose filter selects a unit of `tags` its
-    /// unit regards with `attitude`, ready or not; or with `None`, the first learned weapon at all.
+    /// unit regards with `relation`, ready or not; or with `None`, the first learned weapon at all.
     pub(crate) fn weapon_for(
         &self,
         slots: &ActionSlots,
-        target: Option<(Attitude, TagSet)>,
+        target: Option<(Relation, TagSet)>,
     ) -> Option<u8> {
         let at = slots.iter().position(|slot| {
             slot.action.is_some_and(|action| {
@@ -166,109 +172,20 @@ impl ActionBook {
     }
 
     /// The range of the learned action in `slot` of `slots`, at its rank.
-    pub(crate) fn range(&self, slots: &ActionSlots, slot: u8) -> Range {
+    pub(crate) fn range(&self, slots: &ActionSlots, slot: u8) -> ActionRange {
         let slot = slots.slot(slot).expect("a unit's slot");
-        let action = slot
-            .action
-            .and_then(|action| self.get(action))
-            .expect("a learned slot's action is in the book");
-        action.values(slot.rank).range
-    }
-}
-
-/// An action that passes its checks: its id, the target it keeps, none for an action that takes
-/// none whatever its order named, and the action and its values at the slot's rank.
-#[derive(Debug)]
-pub(crate) struct Checked<'a> {
-    pub(crate) id: ActionId,
-    pub(crate) target: ActionTarget,
-    pub(crate) action: &'a Action,
-    pub(crate) rank: u8,
-    pub(crate) values: RankValues,
-}
-
-impl Checked<'_> {
-    /// Moves a point it aims at beyond its range in to the range, along the line from the unit
-    /// at `position` with a body of `shape`, when its aim clamps, as `targets` measure reach: the
-    /// farthest point along the line that it reaches.
-    pub(crate) fn clamp(&mut self, position: Position, shape: Shape, targets: &Targets<'_, '_>) {
-        let (Aim::Point { clamp: true }, Range::Meters(range), ActionTarget::Point(at)) =
-            (self.action.aim, self.values.range, self.target)
-        else {
-            return;
-        };
-        if targets.reaches_point(position, shape, range, at) {
-            return;
-        }
-        let reaches = |step: Num| {
-            targets.reaches_point(position, shape, range, targets.toward(position, at, step))
-        };
-        let most = range
-            .checked_add(shape.bound())
-            .expect("a reach past every number reaches every point");
-        let step = match shape {
-            // The step rounds once in each coordinate, so it may end a last bit past the reach;
-            // stepping a bit shorter each time ends within it after a few.
-            Shape::Circle(_) => {
-                let mut step = most;
-                while !reaches(step) {
-                    step -= Num::from_bits(1);
-                }
-                step
-            }
-            // A box's edge lies anywhere within its bound along the line, so the farthest step
-            // that reaches is searched for: the position reaches, as it lies inside the box, and
-            // a step past the bound and the range does not.
-            Shape::Box(_) => {
-                let (mut reaching, mut past) = (Num::ZERO, most + Num::from_bits(1));
-                while past - reaching > Num::from_bits(1) {
-                    let middle = Num::from_bits(i64::midpoint(reaching.to_bits(), past.to_bits()));
-                    if reaches(middle) {
-                        reaching = middle;
-                    } else {
-                        past = middle;
-                    }
-                }
-                reaching
-            }
-        };
-        self.target = ActionTarget::Point(targets.toward(position, at, step));
+        slot.values_in(self)
+            .expect("a learned slot's action is in the book")
+            .range
     }
 
-    /// Where a unit walks to come in range of its target: the living unit's place, or the point;
-    /// none for an action that aims at nothing or along a direction.
-    pub(crate) fn aimed_at(&self, targets: &Targets<'_, '_>) -> Option<Position> {
-        match (self.action.aim, self.target) {
-            (Aim::Unit(_), ActionTarget::Unit(target)) => {
-                targets.living(target).map(|unit| unit.pos)
-            }
-            (Aim::Point { .. }, ActionTarget::Point(at)) => Some(at),
-            _ => None,
-        }
-    }
-
-    /// Whether its target is within its range of a unit at `position` with a body of `shape`,
-    /// as `targets` measure reach: a unit's body, or a point it aims at; an action of global
-    /// reach, one that aims at a direction, or one with no target always is. The range counts
-    /// only when an action starts.
-    pub(crate) fn in_range(
-        &self,
-        position: Position,
-        shape: Shape,
-        targets: &Targets<'_, '_>,
-    ) -> bool {
-        let Range::Meters(range) = self.values.range else {
-            return true;
+    /// The range in meters of the action in `slot` of `slots`, one whose load checked that it
+    /// reaches in meters, as a build's and a gather's do.
+    pub(crate) fn meters(&self, slots: &ActionSlots, slot: u8) -> Num {
+        let ActionRange::Meters(range) = self.range(slots, slot) else {
+            panic!("the load checked the action's range in meters");
         };
-        match (self.action.aim, self.target) {
-            (Aim::Unit(_), ActionTarget::Unit(target)) => targets
-                .living(target)
-                .is_some_and(|unit| targets.reaches(position, shape, range, &unit)),
-            (Aim::Point { .. }, ActionTarget::Point(at)) => {
-                targets.reaches_point(position, shape, range, at)
-            }
-            _ => true,
-        }
+        range
     }
 }
 
@@ -283,13 +200,13 @@ pub(crate) mod internals {
 
     use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
+    use crate::actions::action_range::ActionRange;
     use crate::actions::actions_column::ActionsColumn;
     use crate::actions::delivery::{Delivery, DeliveryShape};
     use crate::actions::fan::Fan;
     #[cfg(any(test, feature = "bench"))]
     use crate::actions::gather_spec::GatherSpec;
     use crate::actions::kind_spec::KindSpec;
-    use crate::actions::range::Range;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
     use crate::players::resource_amount::ResourceAmount;
@@ -298,8 +215,8 @@ pub(crate) mod internals {
     use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
     use crate::units::filter::Filter;
-    use crate::units::script_view::View;
     use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
     use crate::values::damage_kind::DamageKind;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
@@ -308,7 +225,7 @@ pub(crate) mod internals {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct TestWeapon {
         pub(crate) aim: Filter,
-        pub(crate) range: Range,
+        pub(crate) range: ActionRange,
         pub(crate) windup: Ticks,
         pub(crate) projectile: Option<UnitType>,
         pub(crate) rate: StatId,
@@ -320,7 +237,7 @@ pub(crate) mod internals {
     impl TestWeapon {
         /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
         /// rate and damage, costing nothing.
-        pub(crate) fn new(aim: Filter, range: Range, windup: Ticks) -> TestWeapon {
+        pub(crate) fn new(aim: Filter, range: ActionRange, windup: Ticks) -> TestWeapon {
             TestWeapon {
                 aim,
                 range,
@@ -396,7 +313,7 @@ pub(crate) mod internals {
                 hold: None,
                 aim: Aim::None,
                 ranks: vec![RankValues {
-                    range: Range::Global,
+                    range: ActionRange::Global,
                     cooldown: Ticks::ZERO,
                     cost: PoolCost::default(),
                     windup: time,
@@ -433,7 +350,7 @@ pub(crate) mod internals {
                 hold: None,
                 aim: Aim::Point { clamp: false },
                 ranks: vec![RankValues {
-                    range: Range::Meters(range),
+                    range: ActionRange::Meters(range),
                     cooldown: Ticks::ZERO,
                     cost: PoolCost::default(),
                     windup: time,
@@ -470,7 +387,7 @@ pub(crate) mod internals {
                 hold: None,
                 aim: Aim::Unit(aim),
                 ranks: vec![RankValues {
-                    range: Range::Meters(range),
+                    range: ActionRange::Meters(range),
                     cooldown: Ticks::ZERO,
                     cost: PoolCost::default(),
                     windup: time,
@@ -490,7 +407,7 @@ pub(crate) mod internals {
     /// Adds `action` to the action book of `world`, and shares the book with the script view.
     fn push(world: &mut World, action: Action) -> ActionId {
         let mut book = world.resource_mut::<ActionBook>();
-        let id = ActionId::nth(u32::try_from(book.actions.len()).unwrap());
+        let id = ActionId::new(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(action);
         let book = book.clone();
         ActionsColumn::share(world.non_send::<View>(), book);

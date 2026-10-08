@@ -3,6 +3,7 @@ use campfire_script::ScriptId;
 
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
+use crate::scripts::script_role::ScriptRole;
 
 /// The hooks each script of a match defines, by `ScriptId`, in the order the match compiles its
 /// scripts: what a book reads to know which hooks of a script its owner calls, with no script
@@ -23,13 +24,14 @@ impl ScriptBook {
             .push(HookSet::of(Hook::ALL.into_iter().filter(defines)));
     }
 
-    /// The hooks of `hooks` that `script` defines, none with no script.
-    pub(crate) fn defines(&self, script: Option<ScriptId>, hooks: &[Hook]) -> HookSet {
+    /// The hooks of `role` that `script` defines, none with no script.
+    pub(crate) fn defines(&self, script: Option<ScriptId>, role: ScriptRole) -> HookSet {
         let Some(script) = script else {
             return HookSet::default();
         };
         let defined = self.hooks[script.index()];
-        HookSet::of(hooks.iter().copied().filter(|&hook| defined.contains(hook)))
+        let hooks = Hook::ALL.into_iter().filter(|hook| hook.role() == role);
+        HookSet::of(hooks.filter(|&hook| defined.contains(hook)))
     }
 }
 

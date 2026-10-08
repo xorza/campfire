@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A unit's type, by its place in the match's unit types.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

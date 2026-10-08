@@ -204,10 +204,10 @@ impl ScriptFacts {
                     kind: MemberKind::Call,
                 });
                 let member = api.member(ApiOwner::Ctx, &call.name);
-                let member = member.filter(|member| member.kind == MemberKind::Call);
-                let applies = member.and_then(|member| member.applies);
-                self.read_names(member.map(|member| member.names), applies, call);
-                self.read_enums(member.map(|member| member.enums), call);
+                let member = member.filter(|member| member.spec.kind == MemberKind::Call);
+                let applies = member.and_then(|member| member.spec.applies);
+                self.read_names(member.map(|member| member.spec.names), applies, call);
+                self.read_enums(member.map(|member| member.spec.enums), call);
             }
             Expr::Dot(inner, ..) | Expr::Index(inner, ..) => {
                 let Some(name) = property(&inner.lhs) else {

@@ -1,15 +1,17 @@
 use std::ops::Range;
 
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
-use crate::units::script_view::View;
+use crate::units::row_fill::RowFill;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_state_book::{StateField, UnitStateBook};
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 
 /// What the core adds to the script view for units' script state: the fields each unit type
@@ -115,7 +117,7 @@ impl UnitsColumn {
     /// The default of the field at `at` of `unit_type`, as a script reads it.
     pub(crate) fn initial(view: &View, unit_type: UnitType, at: usize) -> Dynamic {
         let value = view
-            .column(|column: &UnitsColumn| column.book.fields(unit_type)[at].decl.initial.clone())
+            .column(|column: &UnitsColumn| column.book.fields(unit_type)[at].decl.initial().clone())
             .expect("a view of units has their state");
         value.to_dynamic(view)
     }
@@ -128,6 +130,14 @@ impl UnitsColumn {
             let start = rows.rows[row].start as usize;
             rows.values[start + at] = value;
         });
+    }
+
+    /// Adds a unit's script state to the view's column of it.
+    pub(super) fn fill_state(
+        state: ROQueryItem<'_, '_, Option<&'static UnitState>>,
+        fill: &mut RowFill<'_, UnitsColumn>,
+    ) {
+        fill.column.push(state);
     }
 }
 

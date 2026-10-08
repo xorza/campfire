@@ -1,6 +1,10 @@
 use std::num::NonZeroU64;
 
+use campfire_script::ScriptError;
+
 use super::*;
+use crate::combat::kept::Kept;
+use crate::progression::level_ups::LevelUps;
 
 #[test]
 fn a_player_spends_only_their_own_pool() {
@@ -214,7 +218,7 @@ fn on_player_leave(ctx, player) {
         slot: PlayerSlot::new(2),
         kind: joined,
     };
-    assert_eq!(waiting.0, [join]);
+    assert_eq!(waiting.0.iter().collect::<Vec<_>>(), [&join]);
     // The waiting join is state: it decodes to itself.
     let bytes = postcard::to_allocvec(waiting).unwrap();
     let decoded = postcard::from_bytes::<UnansweredSlotEvents>(&bytes).ok();

@@ -8,6 +8,9 @@ use campfire_sim::{IdAllocator, Position};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::kernel_scene::{Density, KernelScene};
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::broadphase::internals::{scene, statics};
@@ -20,9 +23,6 @@ use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
-use crate::values::kernel_scene::{Density, KernelScene};
 
 /// The radii of the 3v3's units that walk, in centimeters: its creeps, its camps and its heroes.
 const WALKER_RADII: [i64; 5] = [35, 40, 50, 55, 70];
@@ -125,11 +125,7 @@ pub(crate) fn route_planner(c: &mut Criterion) {
     let mut index = BodyIndex::new(walker.radius);
     index.update(&scene_statics(span));
     grid.update(&index);
-    let walkable = Walkable {
-        clearance: grid.clearance(walker),
-        statics: &index,
-        short: None,
-    };
+    let walkable = Walkable::of(grid.clearance(walker), &index);
     let mut ends = KernelScene::new(17);
     let end_at = |ends: &mut KernelScene, z: i64| {
         let x = ends.below(span * 200).cast_signed() - span.cast_signed() * 100;
@@ -219,11 +215,7 @@ impl GroupScene<'_> {
                 goal,
             })
             .collect();
-        let walkable = Walkable {
-            clearance: self.grid.clearance(self.walker),
-            statics: self.statics,
-            short: None,
-        };
+        let walkable = Walkable::of(self.grid.clearance(self.walker), self.statics);
         let mut asks = RouteAsks::default();
         let mut waypoints = Vec::new();
         group.throughput(Throughput::Elements(ROUTES as u64));

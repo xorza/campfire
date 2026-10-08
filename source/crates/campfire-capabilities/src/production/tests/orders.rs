@@ -1,14 +1,15 @@
 use campfire_sim::{EntityIndex, TickInput, TickInputs};
 
 use super::*;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
 use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::orders::order::{Action, Order};
 use crate::production::rally_target::RallyTarget;
-use crate::units::body::{Body, BodyForm};
+use crate::units::body::Body;
+use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
 
 impl Shop {
     /// Runs a tick in which player `slot` orders `action` to `unit`.
@@ -39,7 +40,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     for paid in [10, 20, 30] {
         let queued = Queued {
             action: train,
-            rank: 1,
+            rank: Rank::FIRST,
             time: Ticks::new(4),
             paid: 1,
         };
@@ -82,7 +83,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     let mut queue = TrainQueue::default();
     let queued = Queued {
         action: train,
-        rank: 1,
+        rank: Rank::FIRST,
         time: Ticks::new(4),
         paid: 1,
     };
@@ -125,7 +126,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     let player = PlayerSlot::new(0);
     let producer = shop.id();
     shop.producer(producer, 1, 0, Some(player), train, TrainQueue::default());
-    let body = BodyForm::boxed([Num::int(4), Num::int(2)])
+    let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
         .unwrap()
         .at(Num::ZERO);
     shop.sim.insert(producer, body);

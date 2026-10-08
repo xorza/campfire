@@ -12,9 +12,9 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::forced_move::DashDelivery;
-use crate::units::modifier_id::ModifierId;
 use crate::values::action_start::ActionStart;
 use crate::values::hit::Hit;
+use crate::values::rank::Rank;
 
 /// What the running call reads and queues, beside the units the view holds: its role, its
 /// acting unit, what each capability's part of it holds, such as its params or the mode's state,
@@ -22,27 +22,11 @@ use crate::values::hit::Hit;
 /// again, so a call allocates none of them.
 #[derive(Debug, Default)]
 pub(crate) struct Frame {
-    /// The running call's role; none between calls.
-    role: Option<ScriptRole>,
-    /// Its acting unit: a cast's caster, a modifier's source, the unit that thinks; none for the
-    /// mode.
-    acting: Option<StableId>,
-    /// The action whose params it reads, at `rank`, and its modifier's.
-    action: Option<ActionId>,
-    rank: u8,
-    modifier: Option<ModifierId>,
-    /// The depth of the chain of combat events it runs in: 0 for a cast.
-    depth: u8,
-    /// The package whose names it means: 0 the mode's.
-    package: u16,
-    /// The hit a delivery's hook runs for.
-    hit: Option<Hit>,
-    /// How its action started.
-    start: Option<ActionStart>,
-    /// The delivery a dash it starts carries: an instant action's own, in its `on_resolve`.
-    dash_delivers: Option<DashDelivery>,
+    /// How the running call started: its role, acting unit, action and the rest; none before
+    /// the first call.
+    call: Option<CallStart>,
     /// Whether it is a pure hook's, whose `ctx` only reads.
-    pub(crate) pure: bool,
+    pure: bool,
     /// The stable ids as the call takes them for the units it creates, and whether it took one.
     ids: IdAllocator,
     ids_taken: bool,
@@ -56,40 +40,50 @@ pub(crate) struct Frame {
 }
 
 impl Frame {
-    pub(crate) const fn role(&self) -> Option<ScriptRole> {
-        self.role
+    /// How the running call started.
+    const fn running(&self) -> &CallStart {
+        self.call.as_ref().expect("a call began")
     }
 
-    pub(crate) const fn acting(&self) -> Option<StableId> {
-        self.acting
+    pub(crate) fn role(&self) -> Option<ScriptRole> {
+        self.call.map(|call| call.role)
     }
 
-    pub(crate) const fn action(&self) -> Option<ActionId> {
-        self.action
+    pub(crate) fn acting(&self) -> Option<StableId> {
+        self.call.and_then(|call| call.acting)
     }
 
-    pub(crate) const fn rank(&self) -> u8 {
-        self.rank
+    pub(crate) fn action(&self) -> Option<ActionId> {
+        self.call.and_then(|call| call.action)
+    }
+
+    pub(crate) const fn rank(&self) -> Rank {
+        self.running().rank
     }
 
     pub(crate) const fn depth(&self) -> u8 {
-        self.depth
+        self.running().depth
     }
 
     pub(crate) const fn package(&self) -> u16 {
-        self.package
+        self.running().package
     }
 
-    pub(crate) const fn hit(&self) -> Option<Hit> {
-        self.hit
+    pub(crate) fn hit(&self) -> Option<Hit> {
+        self.call.and_then(|call| call.hit)
     }
 
-    pub(crate) const fn start(&self) -> Option<ActionStart> {
-        self.start
+    pub(crate) fn start(&self) -> Option<ActionStart> {
+        self.call.and_then(|call| call.start)
     }
 
-    pub(crate) const fn dash_delivers(&self) -> Option<DashDelivery> {
-        self.dash_delivers
+    pub(crate) fn dash_delivers(&self) -> Option<DashDelivery> {
+        self.call.and_then(|call| call.dash_delivers)
+    }
+
+    /// Whether the running call is a pure hook's, whose `ctx` only reads.
+    pub(crate) const fn pure(&self) -> bool {
+        self.pure
     }
 
     /// Adds `part`, which every call readies, and which applies what a call wrote to it.
@@ -158,28 +152,7 @@ impl Frame {
         self.read_resources(world);
         self.ids.clone_from(world.resource::<IdAllocator>());
         self.ids_taken = false;
-        let CallStart {
-            role,
-            acting,
-            action,
-            rank,
-            modifier,
-            package,
-            depth,
-            hit,
-            start: action_start,
-            dash_delivers,
-        } = start;
-        self.role = Some(role);
-        self.acting = acting;
-        self.action = action;
-        self.rank = rank;
-        self.modifier = modifier;
-        self.package = package;
-        self.depth = depth;
-        self.hit = hit;
-        self.start = action_start;
-        self.dash_delivers = dash_delivers;
+        self.call = Some(start);
         self.pure = false;
         self.effects.clear();
         self.parts.begin(world, &start)
@@ -208,6 +181,6 @@ impl Frame {
 
     /// The running call's param `name`, of the part that holds its role's params.
     pub(crate) fn param_named(&self, name: &str) -> Option<Dynamic> {
-        self.parts.param_named(self.role, name)
+        self.parts.param_named(self.role(), name)
     }
 }

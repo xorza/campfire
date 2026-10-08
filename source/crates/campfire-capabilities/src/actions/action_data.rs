@@ -2,26 +2,31 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_math::Num;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 
+use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_kind::ActionKind;
+use crate::actions::action_range::ActionRange;
 use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
+use crate::actions::kind_data::KindData;
 use crate::actions::placement_data::PlacementData;
-use crate::actions::range::Range;
+use crate::actions::range_field::RangeField;
+use crate::actions::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
 use crate::actions::requires_data::RequiresData;
+use crate::actions::targeting::Targeting;
 use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::stats::pool_cost::PoolCost;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
-use crate::values::number::{Number, ParamRef};
+use crate::values::number::Number;
 use crate::values::package_path::PackagePath;
 use crate::values::param::Param;
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::share::Share;
@@ -53,7 +58,7 @@ pub struct ActionData {
     pub hold: Option<DeclaredName>,
     pub charges: Option<ChargesData>,
     /// A charged cast.
-    pub charge: Option<ChargeData>,
+    pub charge: Option<ChargeUpData>,
     /// The modifier held while the action has a rank.
     pub passive_modifier: Option<DeclaredName>,
     /// The passive modifier is held only while the action is off cooldown.
@@ -116,6 +121,8 @@ pub struct ChannelData {
     pub tick_ms: Ranked<Number>,
 }
 
+/// An action's `charges`: the uses it stores, at most `max`, each coming back `recharge_ms`
+/// after it is spent.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChargesData {
@@ -123,29 +130,65 @@ pub struct ChargesData {
     pub recharge_ms: Ranked<Number>,
 }
 
+/// An action's `charge`: a cast that charges from its start, in place of its windup, and
+/// resolves when its order is given again or at `max_ms`, whichever is first.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ChargeData {
+pub struct ChargeUpData {
     pub max_ms: Ranked<Number>,
 }
 
 impl ActionData {
+    /// What its kind, one the release runs, needs, as it gives it; an error names the first field
+    /// its kind refuses, or needs and it does not give, as the table of action fields says.
+    pub fn kind_data(&self) -> Result<KindData<'_>, ActionDataField> {
+        if let Some(field) = ActionDataField::misused(self, self.kind) {
+            return Err(field);
+        }
+        let needs = "the table of action fields makes its kind need it";
+        Ok(match self.kind {
+            ActionKind::Cast => KindData::Cast,
+            ActionKind::Attack => KindData::Attack {
+                rate: self.rate.as_ref().expect(needs),
+                damage: self.damage.as_ref().expect(needs),
+                damage_kind: self.damage_kind.as_ref().expect(needs),
+            },
+            ActionKind::Train => KindData::Train {
+                unit_type: self.unit_type.as_ref().expect(needs),
+            },
+            ActionKind::Build => KindData::Build {
+                unit_type: self.unit_type.as_ref().expect(needs),
+            },
+            ActionKind::Gather => KindData::Gather {
+                resource: self.resource.as_ref().expect(needs),
+                take: self.take.expect(needs),
+                bounce: self.bounce,
+            },
+            kind => panic!("the release runs no {kind:?}"),
+        })
+    }
+
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
-        let numbers = |ranked: Option<&Ranked<Number>>| ranked.and_then(Ranked::ranks);
+        let range = self.range.as_ref().and_then(Ranked::ranks);
+        let numbers = self.ranked_numbers().chain(self.costs()).map(Ranked::ranks);
+        let params = self.params.values().map(Param::ranks);
+        [range].into_iter().chain(numbers).chain(params).flatten()
+    }
+
+    /// Each of its capability fields that is a number at each rank, which may read a param:
+    /// its cooldown, windup, channel, charges and charge.
+    fn ranked_numbers(&self) -> impl Iterator<Item = &Ranked<Number>> {
         [
-            self.range.as_ref().and_then(Ranked::ranks),
-            self.cooldown_ms.as_ref().and_then(Ranked::ranks),
-            self.windup_ms.as_ref().and_then(Ranked::ranks),
-            numbers(self.channel.as_ref().map(|channel| &channel.duration_ms)),
-            numbers(self.channel.as_ref().map(|channel| &channel.tick_ms)),
-            numbers(self.charges.as_ref().map(|charges| &charges.max)),
-            numbers(self.charges.as_ref().map(|charges| &charges.recharge_ms)),
-            numbers(self.charge.as_ref().map(|charge| &charge.max_ms)),
+            self.cooldown_ms.as_ref(),
+            self.windup_ms.as_ref(),
+            self.channel.as_ref().map(|channel| &channel.duration_ms),
+            self.channel.as_ref().map(|channel| &channel.tick_ms),
+            self.charges.as_ref().map(|charges| &charges.max),
+            self.charges.as_ref().map(|charges| &charges.recharge_ms),
+            self.charge.as_ref().map(|charge| &charge.max_ms),
         ]
         .into_iter()
-        .chain(self.costs().map(Ranked::ranks))
-        .chain(self.params.values().map(Param::ranks))
         .flatten()
     }
 
@@ -182,12 +225,12 @@ impl ActionData {
     /// action's.
     pub fn fields_at(
         &self,
-        rank: u8,
+        rank: Rank,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
     ) -> Result<RankFields, ActionField> {
         let whole = |field, ranked: Option<&Ranked<Number>>| self.whole_at(rank, field, ranked);
         let range = match &self.range {
-            None => Range::Global,
+            None => ActionRange::Global,
             Some(ranked) => match ranked.get(rank).ok_or(ActionField::Range)? {
                 RangeField::Range(range) => *range,
                 RangeField::Param(reference) => {
@@ -195,7 +238,7 @@ impl ActionData {
                         .param_at(rank, reference.param.as_str(), ActionField::Range)?
                         .to_num();
                     let meters = meters.filter(|meters| *meters >= Num::ZERO);
-                    Range::Meters(meters.ok_or(ActionField::Range)?)
+                    ActionRange::Meters(meters.ok_or(ActionField::Range)?)
                 }
             },
         };
@@ -228,9 +271,9 @@ impl ActionData {
 
     /// Its param `name` at `rank`, a ranked one; `field` for one it does not declare, or a
     /// scaling one, whose value is the caster's, not the action's.
-    fn param_at(&self, rank: u8, name: &str, field: ActionField) -> Result<Scalar, ActionField> {
+    fn param_at(&self, rank: Rank, name: &str, field: ActionField) -> Result<Scalar, ActionField> {
         match self.params.get(name) {
-            Some(Param::Ranked(ranked)) => ranked.at(rank).ok_or(field),
+            Some(Param::Ranked(ranked)) => ranked.get(rank).copied().ok_or(field),
             Some(Param::Scaling(_)) | None => Err(field),
         }
     }
@@ -239,7 +282,7 @@ impl ActionData {
     /// and `field` for one that is not a whole number at least 0.
     fn whole_at(
         &self,
-        rank: u8,
+        rank: Rank,
         field: ActionField,
         ranked: Option<&Ranked<Number>>,
     ) -> Result<u64, ActionField> {
@@ -258,7 +301,7 @@ impl ActionData {
     }
 
     /// Its charges at `rank`: a count of 1 to 255, and a recharge.
-    fn charges_at(&self, rank: u8) -> Result<Option<RankCharges>, ActionField> {
+    fn charges_at(&self, rank: Rank) -> Result<Option<RankCharges>, ActionField> {
         let field = ActionField::Charges;
         self.charges
             .as_ref()
@@ -276,7 +319,7 @@ impl ActionData {
     /// Its toggle at `rank`: its cost, in the pools `target` finds alone.
     fn toggle_at(
         &self,
-        rank: u8,
+        rank: Rank,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
     ) -> Result<Option<RankToggle>, ActionField> {
         let field = ActionField::Toggle;
@@ -304,9 +347,8 @@ impl ActionData {
             .transpose()
     }
 
-    /// Its channel at `rank`: a length and a time between ticks, neither 0.
     /// Its charge's most at `rank`: whole milliseconds, not 0.
-    fn charge_at(&self, rank: u8) -> Result<Option<u64>, ActionField> {
+    fn charge_at(&self, rank: Rank) -> Result<Option<u64>, ActionField> {
         let field = ActionField::Charge;
         self.charge
             .as_ref()
@@ -317,7 +359,8 @@ impl ActionData {
             .transpose()
     }
 
-    fn channel_at(&self, rank: u8) -> Result<Option<RankChannel>, ActionField> {
+    /// Its channel at `rank`: a length and a time between ticks, neither 0.
+    fn channel_at(&self, rank: Rank) -> Result<Option<RankChannel>, ActionField> {
         let field = ActionField::Channel;
         self.channel
             .as_ref()
@@ -337,34 +380,24 @@ impl ActionData {
 
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
     pub fn param_refs(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
-        [
-            self.cooldown_ms.as_ref(),
-            self.windup_ms.as_ref(),
-            self.channel.as_ref().map(|channel| &channel.duration_ms),
-            self.channel.as_ref().map(|channel| &channel.tick_ms),
-            self.charges.as_ref().map(|charges| &charges.max),
-            self.charges.as_ref().map(|charges| &charges.recharge_ms),
-            self.charge.as_ref().map(|charge| &charge.max_ms),
-        ]
-        .into_iter()
-        .flatten()
-        .chain(self.costs())
-        .flat_map(Ranked::values)
-        .filter_map(Number::param)
-        .chain(
-            self.range
-                .iter()
-                .flat_map(Ranked::values)
-                .filter_map(|range| match range {
-                    RangeField::Range(_) => None,
-                    RangeField::Param(reference) => Some(&reference.param),
-                }),
-        )
-        .chain(
-            self.effects()
-                .flat_map(|effect| effect.does.numbers())
-                .filter_map(Number::param),
-        )
+        self.ranked_numbers()
+            .chain(self.costs())
+            .flat_map(Ranked::values)
+            .filter_map(Number::param)
+            .chain(
+                self.range
+                    .iter()
+                    .flat_map(Ranked::values)
+                    .filter_map(|range| match range {
+                        RangeField::Range(_) => None,
+                        RangeField::Param(reference) => Some(&reference.param),
+                    }),
+            )
+            .chain(
+                self.effects()
+                    .flat_map(|effect| effect.does.numbers())
+                    .filter_map(Number::param),
+            )
     }
 
     /// The ids of the modifiers its data names: the one it holds, its passive, and those its
@@ -412,90 +445,14 @@ impl ActionData {
     }
 }
 
-/// An action's capability fields at one rank, as data gives them: times in milliseconds, its
-/// cost in its caster's pools, and in its caster's player's resources.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RankFields {
-    pub range: Range,
-    pub cooldown_ms: u64,
-    pub cost: PoolCost,
-    pub resource_cost: Vec<ResourceAmount>,
-    pub windup_ms: u64,
-    pub charges: Option<RankCharges>,
-    pub toggle: Option<RankToggle>,
-    pub channel: Option<RankChannel>,
-    /// A charged action's most, in milliseconds.
-    pub charge_ms: Option<u64>,
-}
-
-/// A channel at one rank: how long it runs, and the time between its ticks, both positive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RankChannel {
-    pub duration_ms: u64,
-    pub tick_ms: u64,
-}
-
-/// A toggle's cost at one rank: in the caster's pools, paid as each attack goes off, or at each
-/// whole second it is on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RankToggle {
-    pub per: TogglePer,
-    pub cost: PoolCost,
-}
-
-/// When a toggle pays its cost.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TogglePer {
-    Attack,
-    Second,
-}
-
-/// An action's charges at one rank: how many it holds at most, and how long one takes to come
-/// back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RankCharges {
-    pub max: NonZeroU8,
-    pub recharge_ms: u64,
-}
-
-/// What an action targets. In data: `none`, `point`, `direction`, or a filter of the units it
-/// may target, such as `enemies` or `enemies:avatar`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Targeting {
-    None,
-    Point,
-    Direction,
-    Unit(FilterData),
-}
-
-/// A range as data writes it: a range, or `{ param = "<name>" }`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
-pub enum RangeField {
-    Range(Range),
-    Param(ParamRef),
-}
-
-impl<'de> Deserialize<'de> for Targeting {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Targeting, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        match text.as_str() {
-            "none" => Ok(Targeting::None),
-            "point" => Ok(Targeting::Point),
-            "direction" => Ok(Targeting::Direction),
-            filter => FilterData::parse(filter)
-                .map(Targeting::Unit)
-                .ok_or_else(|| Error::custom(format!("unknown targeting {filter:?}"))),
-        }
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
-    use crate::actions::action_data::{ActionData, Targeting};
+    use crate::actions::action_data::ActionData;
+
     use crate::actions::action_kind::ActionKind;
+    use crate::actions::targeting::Targeting;
 
     impl ActionData {
         /// A cast of `targeting` and nothing more, as a table that names its targeting alone reads.

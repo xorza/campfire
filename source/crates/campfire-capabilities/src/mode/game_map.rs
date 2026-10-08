@@ -3,7 +3,7 @@ use std::rc::Rc;
 use campfire_script::rhai::{Array, Dynamic, ImmutableString};
 
 use crate::mode::marker::{Marker, MarkerInfo};
-use crate::mode::mode_map::MarkerSpec;
+use crate::mode::marker_spec::MarkerSpec;
 
 /// `ctx.map`: the map's paths, by name, and its markers, in the map's order. A clone shares
 /// them, as each `ctx.map` read gives one.

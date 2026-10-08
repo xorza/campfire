@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use campfire_sim::Position;
 
-use crate::values::grid::Grid;
+use crate::geometry::grid::Grid;
 
 /// The cells of one layer of the pathing grid a walker can go between, as 0 A.D.'s hierarchical
 /// pathfinder keeps them: the grid in chunks of `CHUNK` × `CHUNK` cells, each chunk's open cells
@@ -46,14 +46,14 @@ struct Run {
 /// sides, sorted, each once.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Chunk {
-    regions: Vec<Region>,
+    regions: Vec<ChunkRegion>,
     pairs: Vec<Pair>,
 }
 
 /// A region of a chunk: the box of its cells, columns and rows from `low` to `high` both in, and
 /// its reachable set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Region {
+struct ChunkRegion {
     low: [u32; 2],
     high: [u32; 2],
     set: u32,
@@ -332,7 +332,7 @@ impl Regions {
                 [column + run.end - 1, run.row],
             );
             let label = if root == at {
-                regions.push(Region { low, high, set: 0 });
+                regions.push(ChunkRegion { low, high, set: 0 });
                 u16::try_from(regions.len()).expect("a chunk has at most 2¹² regions")
             } else {
                 let label = self.run_labels[root];

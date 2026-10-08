@@ -1,15 +1,33 @@
 use std::ops::Range;
 
+use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_script::rhai::{Array, Dynamic, INT};
 
+use crate::actions::targets::Targets;
+use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attack::RecentAttack;
+use crate::combat::recent_attackers::RecentAttackers;
 use crate::scripts::error::{ApiError, Checked};
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
+use crate::units::dead::Dead;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
+use crate::units::row_fill::RowFill;
 use crate::units::unit::Unit;
+use crate::units::unit_tags::UnitTags;
 use crate::units::view_column::ViewColumn;
+
+/// The parts of a unit combat reads into its row: whether it is dead, its pools and tags, what
+/// it does when it dies, and who struck it recently.
+pub(super) type RowParts = (
+    Has<Dead>,
+    Option<&'static Pools>,
+    Option<&'static UnitTags>,
+    Option<&'static OnDeath>,
+    Option<&'static RecentAttackers>,
+);
 
 /// What combat adds to the script view: whether each unit stays when it dies, and the recent
 /// attacks on it, a run for each row, in one buffer; and the mode's life pool, as the read
@@ -131,10 +149,30 @@ impl CombatColumn {
                 // A strike later than the view's tick, as a rollback can leave, is not recent.
                 .filter(|attack| now.since(attack.tick).is_some_and(|age| age <= window))
                 .filter_map(|attack| view.unit(attack.source))
-                .filter(|attacker| attacker.row().alive)
+                .filter(|attacker| attacker.read(|row| row.alive))
                 .map(Dynamic::from)
                 .collect()
         });
         Ok(attackers.unwrap_or_default())
+    }
+
+    /// Fills a row of the script view with what combat holds: whether the unit lives and whether it
+    /// may be a target, in the core's row; whether it stays when dead, and who struck it recently,
+    /// in combat's column.
+    pub(super) fn fill_row(
+        parts: ROQueryItem<'_, '_, RowParts>,
+        fill: &mut RowFill<'_, CombatColumn>,
+    ) {
+        let (dead, pools, tags, on_death, recent) = parts;
+        let alive = !dead;
+        fill.row.alive = alive;
+        fill.row.targetable = alive
+            && fill
+                .column
+                .life()
+                .is_some_and(|life| Targets::targetable(pools, tags, life));
+        let stays = on_death == Some(&OnDeath::Stay);
+        fill.column
+            .push(stays, recent.into_iter().flat_map(RecentAttackers::iter));
     }
 }

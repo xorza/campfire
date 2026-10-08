@@ -7,7 +7,7 @@ use crate::capability_set::test_match::TestMatch;
 use crate::orders::ai::Ai;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::by_type::ByType;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
 
@@ -153,8 +153,9 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 
 /// The layer of each module of the crate, lowest first: a module imports from its own layer
 /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-const LAYERS: [(&str, u8); 20] = [
+const LAYERS: [(&str, u8); 21] = [
     ("values", 0),
+    ("geometry", 0),
     ("units", 1),
     ("scripts", 1),
     ("players", 1),
@@ -277,7 +278,7 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// call, which resolves the names it is given once, or in the load, which resolves the
 /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
 /// when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 67] = [
+const LOOKUPS: [(&str, &str); 72] = [
     // The load.
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "cost_target_named"),
@@ -304,7 +305,6 @@ const LOOKUPS: [(&str, &str); 67] = [
     ("combat/combat_api.rs", "pool_named"),
     ("mode/map_data.rs", "layer_named"),
     ("mode/marker.rs", "named"),
-    ("mode/mod.rs", "input_type_named"),
     ("mode/mode_api.rs", "kind_named"),
     ("mode/mode_api.rs", "named"),
     ("mode/mode_api.rs", "path_named"),
@@ -312,9 +312,10 @@ const LOOKUPS: [(&str, &str); 67] = [
     ("mode/mode_api.rs", "state_field_named"),
     ("mode/mode_api.rs", "unit_type_named"),
     ("mode/mode_call.rs", "param_named"),
+    ("mode/mode_hooks.rs", "input_type_named"),
     ("mode/mode_schema.rs", "get_named"),
     ("mode/mode_schema.rs", "named"),
-    ("mode/mode_setup.rs", "sorted_named"),
+    ("mode/loadout_setup.rs", "sorted_named"),
     ("mode/roster.rs", "named"),
     ("navigation/paths.rs", "named"),
     ("progression/progression_api.rs", "track_named"),
@@ -332,10 +333,12 @@ const LOOKUPS: [(&str, &str); 67] = [
     ("stats/stats_column.rs", "named"),
     ("stats/stats_column.rs", "pool_id_named"),
     ("stats/stats_column.rs", "pool_named"),
-    ("units/script_view.rs", "damage_kind_named"),
-    ("units/script_view.rs", "named"),
-    ("units/script_view.rs", "param_named"),
-    ("units/script_view.rs", "tag_named"),
+    ("units/view.rs", "damage_kind_named"),
+    ("units/view.rs", "param_named"),
+    ("units/view.rs", "path_named"),
+    ("units/view.rs", "resource_named"),
+    ("units/view.rs", "tag_named"),
+    ("units/view.rs", "unit_type_named"),
     ("units/teams.rs", "named"),
     ("units/unit.rs", "param_named"),
     ("units/unit.rs", "tag_named"),
@@ -344,6 +347,9 @@ const LOOKUPS: [(&str, &str); 67] = [
     ("units/unit_types.rs", "named"),
     ("units/unit_types.rs", "tag_named"),
     ("units/units_column.rs", "field_named"),
+    ("units/view_names.rs", "named"),
+    ("units/view_names.rs", "param_named"),
+    ("units/view_names.rs", "tag_named"),
     ("values/name_table.rs", "named"),
     ("values/name_table.rs", "sorted_named"),
     ("values/stat.rs", "named"),
@@ -545,7 +551,10 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
             "sim.position",
             "sim.tick",
             "units.body",
+            "units.dead",
+            "units.forced_move",
             "units.lifespan",
+            "units.move_step",
             "units.owner",
             "units.relations",
             "units.spawn_point",
@@ -576,7 +585,6 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
     (
         Some(Combat),
         &[
-            "combat.dead",
             "combat.kept",
             "combat.on_death",
             "combat.recent_attackers",
@@ -587,8 +595,6 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
         Some(Navigation),
         &[
             "navigation.destination",
-            "navigation.forced_move",
-            "navigation.move_step",
             "navigation.on_path",
             "navigation.path_walker",
             "navigation.progress",

@@ -1,5 +1,6 @@
 use super::*;
-use crate::values::body_box::BodyBox;
+use crate::geometry::body_box::BodyBox;
+use crate::units::forced_move::{DashTo, ForcedMove};
 
 const HALF: Num = Num::HALF;
 const QUARTER: Num = Num::QUARTER;
@@ -7,7 +8,7 @@ const QUARTER: Num = Num::QUARTER;
 /// A box body of `width` by `height` meters, turned `angle` degrees.
 fn boxed(width: i64, height: i64, angle: i64) -> Body {
     let body = BodyBox::new([Num::int(width), Num::int(height)], Num::int(angle));
-    Body::boxed(body.unwrap())
+    Body::of_box(body.unwrap())
 }
 
 /// The point `(x, z)` in quarters of a meter, on the ground.
@@ -122,7 +123,7 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
     let point = MapPoint::ground;
     let rules = NavigationRules::default();
     let body_of = |unit_type: &str| match unit_type {
-        "crate" => BodyForm::boxed([Num::int(2), Num::int(2)]),
+        "crate" => BodyForm::box_sized([Num::int(2), Num::int(2)]),
         other => corridor_body(other),
     };
     let check = |boxes: &[(Num, Num)], walled: bool| {
@@ -144,7 +145,7 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
             ..PlacedUnitData::new("crate", "west", point(0, 0))
         });
         map.units.extend(placed);
-        map.check_walkable(&[ground(Num::HALF)], &rules, body_of)
+        check_walkable(&map, &[ground(Num::HALF)], &rules, body_of)
     };
     let blocked = |unit| {
         Err(MapProblem::BoxBlocked {

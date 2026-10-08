@@ -3,7 +3,7 @@ use std::ops::{Deref, Range};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::{Tick, Ticks};
+use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::{SimComponent, StableId, TickRate};
 use serde::de::Error;
@@ -526,19 +526,6 @@ impl Carried<'_> {
                 .all(|share| share.live.is_none_or(|live| params.holds_live(live, rank)));
         applies && shares
     }
-
-    /// Whether its end, its stacks' life and each stack's end are times a match makes.
-    fn within_limit(&self) -> bool {
-        let ends = match self.instance.lifetime.applied {
-            Some(Ends::At(at)) => at <= Tick::LIMIT,
-            Some(Ends::Never) | None => true,
-        };
-        let life = self
-            .instance
-            .stack_life
-            .is_none_or(|life| life <= Ticks::LIMIT);
-        ends && life && self.stack_ends.iter().all(|end| end.until <= Tick::LIMIT)
-    }
 }
 
 impl SimComponent for Modifiers {
@@ -546,24 +533,20 @@ impl SimComponent for Modifiers {
 
     // A modifier, a param the books lack, or another count of shares than its modifier's changes,
     // would be read past the books' places, and a way that lacks a param would fail the next
-    // application of it or its aura's; its clocks are one for each instance; and a stack's life
-    // past the limit would overflow its next end.
+    // application of it or its aura's; and its clocks are one for each instance.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let books = (
-            world.get_resource::<ModifierBook>(),
-            world.get_resource::<ParamBook>(),
-            world.get_resource::<TickRate>(),
+        let (modifiers, params) = (
+            world.resource::<ModifierBook>(),
+            world.resource::<ParamBook>(),
         );
+        let rate = *world.resource::<TickRate>();
         let clocks = world
             .get::<ModifierClocks>(entity)
             .is_some_and(|clocks| clocks.len() == self.instances.len());
-        let (Some(modifiers), Some(params), Some(&rate)) = books else {
-            return self.instances.is_empty() && clocks;
-        };
         clocks
             && self
                 .iter()
-                .all(|carried| carried.fits(modifiers, params, rate) && carried.within_limit())
+                .all(|carried| carried.fits(modifiers, params, rate))
     }
 }
 

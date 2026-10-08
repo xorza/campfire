@@ -1,11 +1,10 @@
 use campfire_math::Num;
 
 use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
 
 /// What an action costs in each pool, 0 in a pool it does not name.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct PoolCost([Num; Pools::LIMIT]);
+pub struct PoolCost([Num; PoolId::LIMIT]);
 
 impl PoolCost {
     /// The cost of `amounts`, each not negative, a pool named at most once.

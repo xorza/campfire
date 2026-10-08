@@ -1,7 +1,7 @@
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::units::body::BodyForm;
+use crate::units::body_form::BodyForm;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
@@ -30,19 +30,16 @@ impl<'de> Deserialize<'de> for CollisionData {
         }
         let fields = Fields::deserialize(deserializer)?;
         let form = match (fields.radius, fields.size) {
-            (Some(radius), None) => radius
-                .to_num()
-                .and_then(BodyForm::circle)
+            (Some(radius), None) => BodyForm::circle(radius.checked("collision radius: ")?)
                 .ok_or_else(|| D::Error::custom("a collision radius is positive, up to 64 m"))?,
-            (None, Some(size)) => size[0]
-                .to_num()
-                .zip(size[1].to_num())
-                .and_then(|(width, height)| BodyForm::boxed([width, height]))
-                .ok_or_else(|| {
+            (None, Some([width, height])) => {
+                let side = |side: Scalar| side.checked::<D::Error>("collision box: ");
+                BodyForm::box_sized([side(width)?, side(height)?]).ok_or_else(|| {
                     D::Error::custom(
                         "a collision box's sides are at least 2⁻¹⁰ m, its diagonal at most 126 m",
                     )
-                })?,
+                })?
+            }
             _ => {
                 return Err(D::Error::custom(
                     "a collision `radius` or `box`, one of them",

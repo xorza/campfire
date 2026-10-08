@@ -11,7 +11,8 @@ use thiserror::Error;
 
 use crate::entity_index::EntityIndex;
 use crate::sim_state::{SimComponent, SimResource};
-use crate::state_registry::StateRegistry;
+use crate::state_registry::state_delta::StateDelta;
+use crate::state_registry::{ENTITIES, StateRegistry};
 
 /// The most each value is drawn again when its type's decode refuses it.
 const TRIES: usize = 16;
@@ -443,5 +444,24 @@ impl StateRegistry {
             .find(|entry| entry.name == name)
             .expect("a registered type");
         (entry.scramble)(draws, world)
+    }
+
+    /// The names of the types of which `delta`, the changes of `world` since its last copy,
+    /// holds a value, a removal or an id gained or lost, the entity list's: each type whose
+    /// section differs from the one a copy at once after gives, as a type that holds no change,
+    /// a resource that is absent among them, writes the same bytes each copy. Starts recording
+    /// again, as `changes` does.
+    pub fn changed_types(&self, world: &mut World, delta: &StateDelta) -> Vec<&'static str> {
+        let mut unchanged = StateDelta::default();
+        self.changes(world, &mut unchanged);
+        let entities = !(delta.lost.is_empty() && delta.gained.is_empty());
+        let entries = self.entries.iter().enumerate();
+        entries
+            .filter(|&(at, entry)| {
+                let ids = entry.name == ENTITIES && entities;
+                ids || delta.section(at) != unchanged.section(at)
+            })
+            .map(|(_, entry)| entry.name)
+            .collect()
     }
 }

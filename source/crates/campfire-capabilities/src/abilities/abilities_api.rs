@@ -3,8 +3,8 @@ use campfire_script::rhai::{Dynamic, INT};
 use campfire_sim::{Capability, Position};
 
 use crate::abilities::abilities_effect::AbilitiesEffect;
+use crate::actions::action_range::ActionRange;
 use crate::actions::actions_column::ActionsColumn;
-use crate::actions::range::Range;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
@@ -38,32 +38,32 @@ impl AbilitiesApi {
         };
         let cut = call(
             "reduce_cooldowns",
-            "(unit, kind, fraction)",
+            &[&["unit", "kind", "fraction"]],
             "takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind`",
         )
         .name(1, NameKind::SlotKind);
-        api.bind(
+        api.bind_for(
             cast(
                 "range",
                 "the ability's range at its rank in meters, `()` for a global one",
             ),
-            |ctx: &mut Ctx| AbilitiesApi::range(ctx),
+            |ctx: &mut Ctx| Ok(AbilitiesApi::range(ctx)),
         )
-        .bind(
+        .bind_for(
             cast(
                 "charge",
                 "the share of its most a charged action charged, from 0 to 1",
             ),
             |ctx: &mut Ctx| AbilitiesApi::charge(ctx),
         )
-        .bind(
+        .bind_for(
             cast("origin", "where the action's unit stood as it started"),
             |ctx: &mut Ctx| AbilitiesApi::origin(ctx),
         )
         .bind(
             call(
                 "reduce_cooldown",
-                "(unit, id, ms)",
+                &[&["unit", "id", "ms"]],
                 "takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package",
             )
             .name(1, NameKind::Ability),
@@ -86,7 +86,7 @@ impl AbilitiesApi {
         .bind(
             call(
                 "add_charge",
-                "(unit, id)",
+                &[&["unit", "id"]],
                 "gives `unit`'s ability `id`, of the script's package, a charge, up to its most",
             )
             .name(1, NameKind::Ability),
@@ -101,40 +101,38 @@ impl AbilitiesApi {
         .hook(Hook::OnInterrupt, Status::Runs(ApiVersion::FIRST))
         .action_fields(ActionDataField::of(Some(Capability::Abilities)));
     }
+
     /// Where the running call's action's unit stood as the action started.
     fn origin(ctx: &Ctx) -> Checked<Position> {
-        ctx.require(RoleSet::ACTION)?;
         let start = ctx.frame().start();
         Ok(start.ok_or_else(|| ApiError::NoStart.fail())?.origin)
     }
 
     /// The share of its most the running call's charged action charged.
     fn charge(ctx: &Ctx) -> Checked<Num> {
-        ctx.require(RoleSet::ACTION)?;
         let start = ctx.frame().start();
         let start = start.ok_or_else(|| ApiError::NoStart.fail())?;
         Ok(start.charge.ok_or_else(|| ApiError::NotCharged.fail())?)
     }
 
     /// The range of the running call's action at its rank: meters, or `()` for a global one.
-    fn range(ctx: &Ctx) -> Checked<Dynamic> {
-        ctx.require(RoleSet::ACTION)?;
+    fn range(ctx: &Ctx) -> Dynamic {
         let (action, rank) = {
             let frame = ctx.frame();
             let action = frame.action().expect("an action's call has its action");
             (action, frame.rank())
         };
-        Ok(match ActionsColumn::range(ctx.view(), action, rank) {
-            Range::Meters(meters) => Dynamic::from(meters),
-            Range::Global => Dynamic::UNIT,
-        })
+        match ActionsColumn::range(ctx.view(), action, rank) {
+            ActionRange::Meters(meters) => Dynamic::from(meters),
+            ActionRange::Global => Dynamic::UNIT,
+        }
     }
 
     /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `id` of the script's
     /// package, which it holds.
     fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: &str, ms: INT) -> Checked<()> {
         let action = AbilitiesApi::held(ctx, unit, id)?;
-        let cut = ctx.view().ticks(ms)?;
+        let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {
             unit: unit.id,
             action,

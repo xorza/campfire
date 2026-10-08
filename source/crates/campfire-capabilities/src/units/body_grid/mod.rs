@@ -1,8 +1,8 @@
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
+use crate::geometry::shape::Shape;
 use crate::values::row_directory::{RowDirectory, RowEntries};
-use crate::values::shape::Shape;
 
 /// The bodies of a stage, as a sorted index of cells of the ground plane: a query of a box visits
 /// the bodies of the cells it covers, grown by the widest body's bound, the radius of the least

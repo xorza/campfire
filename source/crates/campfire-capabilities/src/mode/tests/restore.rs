@@ -1,6 +1,9 @@
+use campfire_sim::StateDelta;
+
 use super::*;
 use crate::actions::action_slots::SlotCharges;
 use crate::orders::next_think::NextThink;
+use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::stats::instance::StackEnd;
 use crate::stats::lifetime::{Ends, Lifetime};
 use crate::units::unit_state::UnitState;
@@ -19,9 +22,9 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let own_type = *world.get::<UnitType>(grunt).unwrap();
     assert!(own_type.check(world, grunt) && !UnitType::new(u16::MAX).check(world, grunt));
     let mut relations = Relations::default();
-    relations.set(Team::new(0), Team::new(2), Attitude::Friendly, true);
+    relations.set(Team::new(0), Team::new(2), Relation::Friendly, true);
     assert!(relations.check(world));
-    relations.set(Team::new(0), Team::new(3), Attitude::Friendly, true);
+    relations.set(Team::new(0), Team::new(3), Relation::Friendly, true);
     assert!(!relations.check(world));
     let ended = |team| MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(team)));
     assert!(ended(1).check(world) && !ended(3).check(world));
@@ -58,10 +61,10 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     // Actions: one the book holds, at a rank it has or 0, and an order of a slot it has.
     let book = world.resource::<ActionBook>();
     let strike = book.named(0, "strike").unwrap();
-    let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), rank)]);
+    let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
     assert!(slots(strike, 0).check(world, grunt) && slots(strike, 1).check(world, grunt));
     assert!(!slots(strike, u8::MAX).check(world, grunt));
-    assert!(!slots(ActionId::nth(u32::MAX), 1).check(world, grunt));
+    assert!(!slots(ActionId::new(u32::MAX), 1).check(world, grunt));
     let mut ordered = slots(strike, 1);
     ordered.order(1, ActionTarget::None);
     assert!(!ordered.check(world, grunt));
@@ -76,7 +79,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut queue = TrainQueue::default();
     let queued = Queued {
         action: strike,
-        rank: 1,
+        rank: Rank::FIRST,
         time: Ticks::new(1),
         paid: 0,
     };
@@ -87,23 +90,23 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     );
 
     // Tracks: the mode has two, 0 and 1.
-    let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track).unwrap()]), None);
+    let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track)]), None);
     assert!(on_tracks(1).check(world, grunt) && !on_tracks(2).check(world, grunt));
     // Track 0 is the `level` track, whose level is the unit's: one that holds its own is
     // refused, one that holds none passes.
     let level_track = |own: bool| {
-        let track = TrackId::new(0).unwrap();
+        let track = TrackId::new(0);
         Experience::new(TrackSet::of([track]), (!own).then_some(track))
     };
     assert!(level_track(false).check(world, grunt) && !level_track(true).check(world, grunt));
     let unit = *world.get::<StableId>(grunt).unwrap();
     let level_up = |track| LevelUp {
         unit,
-        track: TrackId::new(track).unwrap(),
+        track: TrackId::new(track),
         level: Level::new(2).unwrap(),
     };
-    assert!(LevelUps(vec![level_up(1)]).check(world));
-    assert!(!LevelUps(vec![level_up(2)]).check(world));
+    assert!(LevelUps(vec![level_up(1)].into()).check(world));
+    assert!(!LevelUps(vec![level_up(2)].into()).check(world));
 
     // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
     let route = game.sim.world.get::<Route>(grunt).unwrap().clone();
@@ -115,26 +118,29 @@ fn a_restore_check_refuses_what_the_match_lacks() {
 }
 
 /// Each time a unit, the match's end and a route hold is at most `Tick::LIMIT`, which no match
-/// reaches, so no sum of two restored times overflows: each passes at the limit, and fails a tick
-/// past it.
+/// reaches, so no sum of two restored times overflows: each decodes at the limit, and fails to a
+/// tick past it.
 #[test]
-fn a_restore_check_keeps_each_time_within_the_limit() {
+fn a_restore_keeps_each_time_within_the_limit() {
     let game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     let grunt = game.entity(2);
     let world = &game.sim.world;
     let unit = *world.get::<StableId>(grunt).unwrap();
     let past = Tick::new(Tick::LIMIT.get() + 1);
     for (at, holds) in [(Tick::LIMIT, true), (past, false)] {
-        assert_eq!(NextThink::new(at).check(world, grunt), holds, "{at}");
-        assert_eq!(Respawn { at }.check(world, grunt), holds, "{at}");
-        let ended = MatchEnd::new(at, MatchResult::Draw);
-        assert_eq!(ended.check(world), holds, "{at}");
+        assert_eq!(TestMatch::decodes(&NextThink::new(at)), holds, "{at}");
+        assert_eq!(TestMatch::decodes(&Respawn { at }), holds, "{at}");
+        assert_eq!(
+            TestMatch::decodes(&MatchEnd::new(at, MatchResult::Draw)),
+            holds,
+            "{at}"
+        );
         let mut attackers = RecentAttackers::default();
         attackers.record(unit, at, world.resource::<EntityIndex>());
-        assert_eq!(attackers.check(world, grunt), holds, "{at}");
+        assert_eq!(TestMatch::decodes(&attackers), holds, "{at}");
         let mut route = world.get::<Route>(grunt).unwrap().clone();
         route.ask(*world.get::<Position>(grunt).unwrap(), at, None);
-        assert_eq!(route.check(world, grunt), holds, "{at}");
+        assert_eq!(TestMatch::decodes(&route), holds, "{at}");
     }
 }
 
@@ -190,7 +196,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     let state = vec![StateValue::Bool(true)];
     assert!(!clocks_of(applied(modifier, vec![one], state)).check(world, fighter));
     // Its end, and its stacks' life and end, are at most the limit, so no sum of two overflows:
-    // each passes there, and fails a tick past it.
+    // each restores there, and fails to decode a tick past it.
     let past = Tick::new(Tick::LIMIT.get() + 1);
     let longer = Ticks::new(Ticks::LIMIT.get() + 1);
     let timed = |ends: Tick, life: Ticks, stack_end: Tick| Application {
@@ -215,8 +221,9 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
         (timed(at, life, past), false),
     ];
     for (case, (application, holds)) in cases.into_iter().enumerate() {
+        let modifiers = modifiers_of(application);
         assert_eq!(
-            modifiers_of(application).check(world, fighter),
+            TestMatch::decodes(&modifiers) && modifiers.check(world, fighter),
             holds,
             "case {case}"
         );
@@ -238,4 +245,40 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
         modifier: rally,
     });
     assert!(!rallied.check(world));
+}
+
+#[test]
+fn a_quiet_tick_changes_no_state_but_the_tick() {
+    // A mode with a death hook and a timer each tick, on its map's tower alone: once its start
+    // settles, a tick with no input and no event writes no state but the tick, so its copy
+    // carries nothing more; the timer's call reads the mode's state and writes none, so only the
+    // timer, set again, changes besides.
+    let script = r#"
+fn on_match_start(ctx) {
+    ctx.timer("each", 100, true, ());
+}
+
+fn on_timer(ctx, name, data) {
+    if ctx.state.phase == "never" {
+        ctx.state.phase = "now";
+    }
+}
+
+fn on_unit_died(ctx, unit, killer, assisters) {}
+"#;
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
+    game.tick(&[]);
+    game.tick(&[]);
+    let mut delta = StateDelta::default();
+    let TestMatch {
+        world, registry, ..
+    } = &mut game.sim;
+    registry.track(world, &mut delta);
+    game.tick(&[]);
+    let TestMatch {
+        world, registry, ..
+    } = &mut game.sim;
+    registry.changes(world, &mut delta);
+    let changed = registry.changed_types(world, &delta);
+    assert_eq!(changed, ["mode.timers", "sim.tick"]);
 }

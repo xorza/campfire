@@ -6,6 +6,7 @@ use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, IdAllocator, Position, SimComponent, SimUpdate};
 
+use super::*;
 use crate::capability_set::test_match::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
@@ -15,16 +16,17 @@ use crate::stats::instance::StatShare;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::Clock;
 use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
-use crate::stats::move_step::MoveStep;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
+use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::move_step::MoveStep;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
@@ -37,11 +39,11 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::param::{Param, Scaling};
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::stat::{EngineStat, Stat};
 
-use super::*;
 /// `value` sixteenths.
 fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))
@@ -524,8 +526,8 @@ fn a_scaling_aura_radius_and_shield_below_zero_hold_zero_and_restore() {
 #[test]
 fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_limit() {
     // The warding unit's clock, as the application made it, has an interval and a shield, as
-    // its modifier does. Without either, the clock would not do what its modifier does; with an
-    // interval past the limit, its next tick would overflow.
+    // its modifier does. Without either, the clock would not do what its modifier does; an
+    // interval past the limit, whose next tick would overflow, fails to decode.
     let (mut game, warding) = warding_match();
     let unit = unit(&mut game, 0);
     game.world.entity_mut(unit).insert(Modifiers::default());
@@ -536,7 +538,7 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
     let check = |change: fn(&mut Clock)| {
         let mut clocks = made.clone();
         change(clocks.clock_mut(0));
-        clocks.check(&game.world, unit)
+        TestMatch::decodes(&clocks) && clocks.check(&game.world, unit)
     };
     let limit = |clock: &mut Clock| {
         let interval = clock.interval.as_mut().unwrap();
@@ -665,7 +667,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
         modifier: inspired,
         source: None,
         ability: None,
-        rank: 1,
+        rank: Rank::FIRST,
     };
     game.world.resource_mut::<HeldModifiers>().0.push(held);
     game.step();

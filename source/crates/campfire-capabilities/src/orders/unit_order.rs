@@ -1,4 +1,6 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::change_detection::Mut;
+use bevy_ecs::query::QueryData;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
@@ -7,6 +9,7 @@ use campfire_sim::{EntityIndex, Position, StableId};
 use crate::actions::action_slots::ActionSlots;
 
 use crate::actions::action_target::ActionTarget;
+use crate::geometry::bounds::Bounds;
 use crate::navigation::destination::Destination;
 use crate::navigation::party::Party;
 use crate::navigation::path_walker::PathWalker;
@@ -18,7 +21,7 @@ use crate::production::builder::{BuildOrder, Builder};
 use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
-use crate::values::bounds::Bounds;
+use crate::units::spawn_point::SpawnPoint;
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
 /// bot's input, or an order an AI call queued for the unit that thinks.
@@ -50,18 +53,20 @@ pub(crate) enum UnitOrder {
 }
 
 /// The parts of a unit that an order reads and changes: where it stands and where it spawned,
-/// its actions, the path it walks, where it walks to, its route there, and its build order.
-#[derive(Debug)]
-pub(crate) struct OrderedUnit<'a> {
-    pub(crate) at: Position,
-    pub(crate) spawn: Option<Position>,
-    pub(crate) slots: Option<Mut<'a, ActionSlots>>,
-    pub(crate) walker: Option<Mut<'a, PathWalker>>,
-    pub(crate) destination: Option<Mut<'a, Destination>>,
-    pub(crate) route: Option<Mut<'a, Route>>,
-    pub(crate) progress: Option<Mut<'a, Progress>>,
-    pub(crate) builder: Option<Mut<'a, Builder>>,
-    pub(crate) gatherer: Option<Mut<'a, Gatherer>>,
+/// its actions, the path it walks, where it walks to, its route there, and its build and gather
+/// orders.
+#[derive(Debug, QueryData)]
+#[query_data(mutable, derive(Debug))]
+pub(crate) struct OrderedUnit {
+    pub(crate) at: &'static Position,
+    pub(crate) spawn: Option<&'static SpawnPoint>,
+    pub(crate) slots: Option<&'static mut ActionSlots>,
+    pub(crate) walker: Option<&'static mut PathWalker>,
+    pub(crate) destination: Option<&'static mut Destination>,
+    pub(crate) route: Option<&'static mut Route>,
+    pub(crate) progress: Option<&'static mut Progress>,
+    pub(crate) builder: Option<&'static mut Builder>,
+    pub(crate) gatherer: Option<&'static mut Gatherer>,
 }
 
 /// For the unit that thinks in the call, which checked the order against the units as the phase
@@ -92,9 +97,9 @@ impl UnitOrder {
     /// the target and the destination; every other order ends both. Every order cuts a channel
     /// and ends a cast that walks in range, with its walk, and an attack cancels a charge.
     /// Whether the unit now resets, and takes no order until it is home.
-    pub(crate) fn apply(self, unit: OrderedUnit<'_>, bounds: &Bounds, now: Tick) -> bool {
-        let OrderedUnit {
-            at,
+    pub(crate) fn apply(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) -> bool {
+        let OrderedUnitItem {
+            at: &at,
             spawn,
             mut slots,
             walker,
@@ -109,7 +114,7 @@ impl UnitOrder {
             if slots.approaching() {
                 slots.stop();
                 if let Some(destination) = &mut destination {
-                    destination.set(None);
+                    destination.set_if_neq(Destination::to(None));
                 }
             }
         }
@@ -146,7 +151,7 @@ impl UnitOrder {
                 return false;
             }
             UnitOrder::Move { x, z, .. } => Some(ground(x, z)),
-            UnitOrder::Reset => Some(spawn.expect("the call checked the spawn place")),
+            UnitOrder::Reset => Some(spawn.expect("the call checked the spawn place").get()),
             UnitOrder::Stop => {
                 if let Some(slots) = &mut slots {
                     slots.stop();
@@ -162,7 +167,7 @@ impl UnitOrder {
             walker.leave();
         }
         if let Some(mut destination) = destination {
-            destination.set(to);
+            destination.set_if_neq(Destination::to(to));
         }
         if let (UnitOrder::Move { party, .. }, Some(to), Some(mut route), Some(mut progress)) =
             (self, to, route, progress)

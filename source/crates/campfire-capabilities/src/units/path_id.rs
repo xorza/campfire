@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 pub struct PathId(u32);
 
 impl PathId {
-    pub(crate) fn new(index: usize) -> PathId {
-        PathId(u32::try_from(index).expect("paths fit u32"))
+    pub(crate) const fn new(index: u32) -> PathId {
+        PathId(index)
     }
 
     pub(crate) const fn index(self) -> usize {

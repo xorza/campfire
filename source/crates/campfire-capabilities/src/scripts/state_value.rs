@@ -4,8 +4,8 @@ use campfire_sim::{Position, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::scripts::state_decl::StateType;
-use crate::units::script_view::View;
 use crate::units::unit::Unit;
+use crate::units::view::View;
 
 /// A value of script state, of one of the declared types. Units are held by stable id, so a
 /// value outlives the handles a call holds.
@@ -72,9 +72,7 @@ impl StateValue {
             StateValue::Num(value) => Dynamic::from(*value),
             StateValue::Bool(value) => Dynamic::from_bool(*value),
             StateValue::Text(text) => Dynamic::from(ImmutableString::from(text.as_str())),
-            StateValue::Entity(id) => id
-                .and_then(|id| view.unit(id))
-                .map_or(Dynamic::UNIT, Dynamic::from),
+            StateValue::Entity(id) => view.unit_value(*id),
             StateValue::EntityList(ids) => Dynamic::from_array(
                 ids.iter()
                     .filter_map(|&id| view.unit(id))

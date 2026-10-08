@@ -1,9 +1,11 @@
+use std::ops::ControlFlow;
+
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::ScriptError;
 use campfire_script::rhai::{Dynamic, FuncArgs};
-use campfire_sim::SimTick;
+use campfire_sim::{SimTick, StableId};
 
 use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
@@ -42,7 +44,7 @@ impl Calls<'_, '_> {
 
     /// The match's mode.
     pub(crate) fn book(&self) -> &ModeBook {
-        ModeBook::of(self.ctx).expect("mode calls run in a match with a mode")
+        ModeBook::of_match(self.ctx)
     }
 
     /// Runs `hook` with `args` from `pool`: on success its state, choices and ids commit and its
@@ -60,9 +62,31 @@ impl Calls<'_, '_> {
         Ok(())
     }
 
+    /// Runs `hook` with `args` from `pool` as `run` does, and records a failure, for `unit` if
+    /// any. `Break`, with the error unrecorded, when the call found the pool spent: what the
+    /// caller answers in a later tick waits, from this call on.
+    pub(crate) fn answer(
+        &mut self,
+        unit: Option<StableId>,
+        pool: Pool,
+        hook: Hook,
+        args: impl FuncArgs,
+    ) -> ControlFlow<CallError> {
+        match self.run(pool, hook, args) {
+            Ok(()) => ControlFlow::Continue(()),
+            Err(ScriptError::TickBudget) => {
+                ControlFlow::Break(CallError::from_script(ScriptError::TickBudget))
+            }
+            Err(error) => {
+                self.batch.record(unit, hook, CallError::from_script(error));
+                ControlFlow::Continue(())
+            }
+        }
+    }
+
     /// `calc_damage` of `damage` in `batch`, its `ctx` pure: the number it returns, an integer
     /// as a number.
-    pub(crate) fn weigh(
+    pub(crate) fn weigh_damage(
         batch: &mut ScriptBatch<'_>,
         ctx: &Ctx,
         damage: Damage,
@@ -115,8 +139,13 @@ impl Calls<'_, '_> {
         {
             let frame = self.ctx.frame();
             let call = ModeCall::of(&frame);
-            world.resource_mut::<ModeState>().0.clone_from(&call.state);
-            world.resource_mut::<Choices>().clone_from(&call.choices);
+            // A write marks the state changed, so a call that changed none writes nothing.
+            if world.resource::<ModeState>().0 != call.state {
+                world.resource_mut::<ModeState>().0.clone_from(&call.state);
+            }
+            if *world.resource::<Choices>() != call.choices {
+                world.resource_mut::<Choices>().clone_from(&call.choices);
+            }
         }
         self.ctx.apply(world, self.now);
     }

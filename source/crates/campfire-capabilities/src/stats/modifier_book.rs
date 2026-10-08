@@ -9,9 +9,9 @@ use campfire_script::ScriptId;
 use campfire_sim::TickRate;
 
 use crate::scripts::error::ParamProblem;
-use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
+use crate::scripts::script_role::ScriptRole;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::applier::Applier;
 use crate::stats::error::ModifierError;
@@ -28,6 +28,7 @@ use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 use crate::values::stat::Stat;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
@@ -112,7 +113,7 @@ impl ModifierBook {
             modifier: |name: &str| {
                 let at = modifiers.binary_search_by(|modifier| modifier.name.as_str().cmp(name));
                 match at {
-                    Ok(at) => ModifierId::nth(start + at),
+                    Ok(at) => ModifierBook::id_at(start + at),
                     Err(_) => self
                         .named(package, name)
                         .expect("the load checked the aura's modifier"),
@@ -136,7 +137,7 @@ impl ModifierBook {
                 name: modifier.name.as_str().into(),
                 spec,
                 script: modifier.script,
-                hooks: scripts.defines(modifier.script, &MODIFIER_HOOKS),
+                hooks: scripts.defines(modifier.script, ScriptRole::Modifier),
                 tags,
             });
         }
@@ -149,7 +150,12 @@ impl ModifierBook {
             .entries
             .binary_search_by(|entry| entry.order(package, name))
             .ok()?;
-        Some(ModifierId::nth(at))
+        Some(ModifierBook::id_at(at))
+    }
+
+    /// The id of the modifier at `at` of the book, which numbers at most `u16` of them.
+    fn id_at(at: usize) -> ModifierId {
+        ModifierId::new(u16::try_from(at).expect("modifiers fit u16"))
     }
 
     /// The modifier `id`, when the book holds it.
@@ -174,7 +180,7 @@ impl ModifierBook {
         &self,
         id: ModifierId,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
         params: &ParamBook,
         rate: TickRate,
     ) -> Result<(), ParamProblem> {
@@ -197,7 +203,7 @@ impl ModifierBook {
         &self,
         id: ModifierId,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
         params: &ParamBook,
         rate: TickRate,
     ) -> bool {
@@ -206,22 +212,18 @@ impl ModifierBook {
             && self.check_way(id, ability, rank, params, rate).is_ok()
     }
 
-    /// `has_way` of `world`'s books at its rate; false in a match with no stats.
+    /// `has_way` of `world`'s books at its rate.
     pub(crate) fn has_way_in(
         world: &World,
         id: ModifierId,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
     ) -> bool {
-        let books = (
-            world.get_resource::<ModifierBook>(),
-            world.get_resource::<ParamBook>(),
-            world.get_resource::<TickRate>(),
+        let (book, params) = (
+            world.resource::<ModifierBook>(),
+            world.resource::<ParamBook>(),
         );
-        let (Some(book), Some(params), Some(&rate)) = books else {
-            return false;
-        };
-        book.has_way(id, ability, rank, params, rate)
+        book.has_way(id, ability, rank, params, *world.resource::<TickRate>())
     }
 
     /// `id` as applied in tick `now` from `source`, by `ability` at its rank or by none, a way
@@ -316,16 +318,6 @@ impl ModifierEntry {
     }
 }
 
-/// The hooks of a modifier's script that combat events call.
-const MODIFIER_HOOKS: [Hook; 6] = [
-    Hook::OnAttack,
-    Hook::OnInterval,
-    Hook::OnAttackHit,
-    Hook::OnDamageTaken,
-    Hook::OnKill,
-    Hook::OnTakedown,
-];
-
 #[cfg(test)]
 pub(crate) mod internals {
     use std::sync::Arc;
@@ -382,7 +374,7 @@ pub(crate) mod internals {
                 hooks: HookSet::default(),
                 tags,
             });
-            let id = ModifierId::nth(at);
+            let id = ModifierBook::id_at(at);
             ParamBook::load_modifier(world, id, &BTreeMap::new(), |_| StatId::new(0));
             id
         }
@@ -410,11 +402,12 @@ mod tests {
     use crate::stats::param_book::{ParamBook, ParamTables};
     use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
-    use crate::units::modifier_id::ModifierId;
+
     use crate::units::unit_types::UnitTypes;
     use crate::values::declared_name::DeclaredName;
     use crate::values::number::{Number, ParamRef};
     use crate::values::param::{Param, Scaling};
+    use crate::values::rank::Rank;
     use crate::values::ranked::Ranked;
     use crate::values::scalar::Scalar;
 
@@ -492,12 +485,13 @@ mod tests {
         }
         let params = ParamBook::new(tables);
         let ways = |ability, rank| -> Vec<Option<ParamProblem>> {
-            let check = |at| book.check_way(ModifierId::nth(at), ability, rank, &params, rate);
+            let rank = Rank::new(rank).unwrap();
+            let check = |at| book.check_way(ModifierBook::id_at(at), ability, rank, &params, rate);
             (0..data.len()).map(|at| check(at).err()).collect()
         };
         // By the action at rank 2: no `absent`; 2⁴⁰ past a number; −5 ms no time; `own` has no
         // second rank; 200 ms holds; a time of a scaling table does not, and a shield of it does.
-        let action = Some(ActionId::nth(0));
+        let action = Some(ActionId::new(0));
         let by_action = [Missing, Overflow, Time, Short].map(Some);
         let by_action = [by_action.as_slice(), &[None, Some(ScalingTime), None]].concat();
         assert_eq!(ways(action, 2), by_action);
@@ -512,12 +506,13 @@ mod tests {
         // A live param is the action's scaling table, at a rank it has: not 2⁴⁰, which is no
         // table, nor a place past its params, nor rank 3.
         let live = |at| LiveParam {
-            owner: ParamOwner::Action(ActionId::nth(0)),
+            owner: ParamOwner::Action(ActionId::new(0)),
             at,
         };
-        assert!(params.holds_live(live(3), 2));
-        assert!(!params.holds_live(live(0), 2));
-        assert!(!params.holds_live(live(4), 2));
-        assert!(!params.holds_live(live(3), 3));
+        let [second, third] = [2, 3].map(|rank| Rank::new(rank).unwrap());
+        assert!(params.holds_live(live(3), second));
+        assert!(!params.holds_live(live(0), second));
+        assert!(!params.holds_live(live(4), second));
+        assert!(!params.holds_live(live(3), third));
     }
 }

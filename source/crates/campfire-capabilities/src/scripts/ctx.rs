@@ -12,7 +12,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_role::ScriptRole;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// `ctx` in every script: what one call reads, and the effects it queues. Every role's call goes
 /// through it, its frame saying whose call it is. Effects apply only after the call returns
@@ -57,7 +57,7 @@ impl Ctx {
     /// The frame to change, as `frame`; a pure hook's call fails.
     pub(crate) fn write(&self) -> Checked<RefMut<'_, Frame>> {
         let frame = self.frame();
-        if frame.pure {
+        if frame.pure() {
             return Err(ApiError::PureCall.fail().into());
         }
         Ok(frame)

@@ -6,6 +6,7 @@ use crate::actions::action_slots::ActionSlot;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::progression::points::Points;
 use crate::stats::level::Level;
+use crate::values::rank::Rank;
 
 /// The rule of the `learn` order, as the orders check it and a client's HUD shows it: how many
 /// ranks a slot's action has, and whether a unit may learn its next one.
@@ -19,7 +20,7 @@ impl Learning<'_> {
     /// How many ranks the action in `held` has, when its kind's ranks are learned; none for a
     /// kind whose one rank comes with the spawn.
     pub fn ranks(&self, held: ActionSlot) -> Option<u8> {
-        if self.kinds.first_rank(held.kind) != 0 {
+        if self.kinds.first_rank(held.kind).is_some() {
             return None;
         }
         let ranks = self.action(held)?.ranks.len();
@@ -32,10 +33,8 @@ impl Learning<'_> {
         let Some(action) = self.action(held) else {
             return false;
         };
-        let next = held
-            .rank
-            .checked_add(1)
-            .filter(|&next| action.has_rank(next));
+        let next = held.rank.map_or(Some(Rank::FIRST), Rank::next);
+        let next = next.filter(|&next| action.has_rank(next));
         points.get() > 0
             && next.is_some_and(|next| {
                 self.kinds

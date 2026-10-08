@@ -1,6 +1,7 @@
 use campfire_common::PlayerSlot;
 
 use super::*;
+use crate::navigation::party::{Party, PartyKey};
 
 /// Over 1 m cells from (0, 0) to (20, 12), a wall from (4, 0) to (6, 4), as in
 /// `a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it`, and `more` walls,
@@ -120,7 +121,7 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
     walk.sim
         .get_mut::<Route>(early)
         .ask(at(9, 0, 5), Tick::new(0), None);
-    walk.sim.get_mut::<Destination>(early).set(Some(goal));
+    *walk.sim.get_mut::<Destination>(early) = Destination::to(Some(goal));
     let party = ordered(goal);
     walk.sim
         .get_mut::<Route>(early)

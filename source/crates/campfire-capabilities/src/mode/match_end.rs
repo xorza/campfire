@@ -6,8 +6,8 @@ use campfire_common::Tick;
 use campfire_sim::{SimEdge, SimResource, SimSet};
 use serde::{Deserialize, Serialize};
 
-use crate::units::script_view::View;
 use crate::units::team::Team;
+use crate::units::view::View;
 
 /// The end of a match: the tick whose stage ended it, and its result. It is state, so the final
 /// state hash a verifier checks holds the result too; once it exists, no later stage runs, nor
@@ -69,12 +69,11 @@ impl SimResource for MatchEnd {
 
     // A winner that is not one of the mode's teams has no name to report.
     fn check(&self, world: &World) -> bool {
-        let named = match self.result {
+        match self.result {
             MatchResult::Won(team) => world
                 .get_non_send::<View>()
                 .is_none_or(|view| view.has_team(team)),
             MatchResult::Draw => true,
-        };
-        named && self.tick <= Tick::LIMIT
+        }
     }
 }
