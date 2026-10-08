@@ -1,4 +1,3 @@
-use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_sim::{Capability, StateRegistry};
@@ -7,12 +6,9 @@ use crate::actions::effect_queues::EffectQueues;
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::LevelUps;
 use crate::progression::points::Points;
+use crate::progression::progression_column::{ProgressionColumn, RowParts};
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
-
-use crate::progression::progression_column::ProgressionColumn;
-use crate::stats::level::Level;
-use crate::units::row_fill::RowFill;
 use crate::units::view::View;
 
 pub(crate) mod experience;
@@ -34,7 +30,7 @@ impl Progression {
     pub fn install(world: &mut World, _: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(ProgressionColumn::default());
-        view.add_source::<RowParts, _>(world, fill_row);
+        view.add_source::<RowParts, _>(world, ProgressionColumn::fill_row);
         world.insert_resource(TrackBook::default());
         world.insert_resource(LevelUps::default());
         world
@@ -44,22 +40,6 @@ impl Progression {
         registry.register_component::<Points>();
         registry.register_resource::<LevelUps>();
     }
-}
-
-/// The parts of a unit progression reads into its row: its experience, its level, which is its
-/// `level` track's, and its points.
-type RowParts = (
-    Option<&'static Experience>,
-    Option<&'static Level>,
-    Option<&'static Points>,
-);
-
-/// Fills a row of the script view with a unit's tracks, its progress on each, and its points.
-fn fill_row(
-    (experience, level, points): ROQueryItem<'_, '_, RowParts>,
-    fill: &mut RowFill<'_, ProgressionColumn>,
-) {
-    fill.column.push(experience, level, points);
 }
 
 #[cfg(test)]
