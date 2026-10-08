@@ -1,12 +1,14 @@
 use std::ops::Range;
 use std::sync::Arc;
 
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
+use crate::stats::level::Level;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_handle::{HandleOf, ModifierHandle};
@@ -14,14 +16,25 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stats_call::StatsCall;
+use crate::stats::unit_stats::UnitStats;
 use crate::units::action_id::ActionId;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::modifier_id::ModifierId;
+use crate::units::row_fill::RowFill;
 use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;
 use crate::values::stat::Stat;
+
+/// The parts of a unit the stats read into its row.
+pub(super) type RowParts = (
+    Option<&'static Level>,
+    Option<&'static Pools>,
+    Option<&'static UnitStats>,
+    Option<&'static Modifiers>,
+    Option<&'static ModifierClocks>,
+);
 
 /// What stats adds to the script view: the stats, pools and modifiers the mode declares, and each
 /// unit's level, pools, values of its stats and the modifiers it carries with their script
@@ -398,6 +411,22 @@ impl StatsColumn {
     /// The modifiers the unit in row `row` carries.
     fn run(&self, row: usize) -> &[ModifierRow] {
         self.rows.now().run(row)
+    }
+
+    /// Adds the unit's level, pools, stats and modifiers to the stats' column of the script view.
+    pub(super) fn fill_row(
+        parts: ROQueryItem<'_, '_, RowParts>,
+        fill: &mut RowFill<'_, StatsColumn>,
+    ) {
+        let (level, pools, stats, modifiers, clocks) = parts;
+        let stats = stats.map_or(&[][..], UnitStats::values);
+        fill.column.push(
+            level.map(|level| level.get()),
+            pools.copied(),
+            stats,
+            modifiers,
+            clocks,
+        );
     }
 }
 

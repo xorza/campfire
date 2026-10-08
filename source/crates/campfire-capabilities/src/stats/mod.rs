@@ -1,10 +1,7 @@
 //! The `stats` capability: a unit type's stats and how they grow by level, the rules the mode
 //! declares for them, and each unit's stats derived from its type and level.
 
-use bevy_ecs::query::Added;
-use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
 use campfire_sim::{EntityIndex, SimEdge, SimSet, SimTick, StableId, StateRegistry, TickRate};
@@ -18,6 +15,7 @@ use crate::stats::level::Level;
 use crate::stats::live_carriers::LiveCarriers;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
+use crate::stats::modifier_ends::ModifierEnds;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
@@ -29,11 +27,10 @@ use crate::stats::pools::Pools;
 use crate::stats::refresh::Refresh;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stats_call::StatsCall;
+use crate::stats::stats_column::RowParts;
 use crate::stats::stats_column::StatsColumn;
-use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
-use crate::units::row_fill::RowFill;
 use crate::units::tag::Tag;
 use crate::units::view::View;
 
@@ -53,6 +50,7 @@ pub(crate) mod meter;
 pub(crate) mod modifier_book;
 pub(crate) mod modifier_clocks;
 pub(crate) mod modifier_data;
+pub(crate) mod modifier_ends;
 pub(crate) mod modifier_handle;
 pub(crate) mod modifier_spec;
 pub(crate) mod modifier_state_field;
@@ -109,7 +107,7 @@ impl Stats {
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(StatsColumn::default());
-        view.add_source::<RowParts, _>(world, fill_row);
+        view.add_source::<RowParts, _>(world, StatsColumn::fill_row);
         world.insert_resource(ModifierBook::default());
         world.insert_resource(ParamBook::default());
         if let Some(ctx) = world.get_non_send::<Ctx>() {
@@ -125,11 +123,11 @@ impl Stats {
         registry.register_component::<Pools>();
         schedule.add_systems((
             (
-                expire_modifiers.in_set(StatsSet::Expire),
+                ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
                 Refresh::regenerate.in_set(StatsSet::Regenerate),
             )
                 .in_set(SimSet::Inputs),
-            (clear_dead_modifiers, HeldPass::run)
+            (ModifierEnds::clear_dead_modifiers, HeldPass::run)
                 .chain()
                 .in_set(SimSet::Resolve)
                 .in_set(StatsSet::Hold),
@@ -226,48 +224,6 @@ impl Stats {
             carried.write(data.id, data.source, data.stacks, &data.state, now);
         }
     }
-}
-
-/// Ends, as each tick starts, the modifiers and stacks that hold no longer.
-fn expire_modifiers(
-    tick: Res<'_, SimTick>,
-    mut units: Query<'_, '_, (&mut Modifiers, &mut ModifierClocks)>,
-) {
-    let now = tick.start();
-    for (modifiers, clocks) in &mut units {
-        CarriedMut::new(modifiers, clocks).expire(now);
-    }
-}
-
-/// Ends the modifiers of each unit that died this tick, all but its passives.
-fn clear_dead_modifiers(
-    mut dead: Query<'_, '_, (&mut Modifiers, &mut ModifierClocks), Added<Dead>>,
-) {
-    for (modifiers, clocks) in &mut dead {
-        CarriedMut::new(modifiers, clocks).clear_on_death();
-    }
-}
-
-/// The parts of a unit the stats read into its row.
-type RowParts = (
-    Option<&'static Level>,
-    Option<&'static Pools>,
-    Option<&'static UnitStats>,
-    Option<&'static Modifiers>,
-    Option<&'static ModifierClocks>,
-);
-
-/// Adds the unit's level, pools, stats and modifiers to the stats' column of the script view.
-fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_, StatsColumn>) {
-    let (level, pools, stats, modifiers, clocks) = parts;
-    let stats = stats.map_or(&[][..], UnitStats::values);
-    fill.column.push(
-        level.map(|level| level.get()),
-        pools.copied(),
-        stats,
-        modifiers,
-        clocks,
-    );
 }
 
 #[cfg(any(test, feature = "internals"))]

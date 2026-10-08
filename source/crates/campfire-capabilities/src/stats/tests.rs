@@ -6,6 +6,7 @@ use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, IdAllocator, Position, SimComponent, SimUpdate};
 
+use super::*;
 use crate::capability_set::test_match::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
@@ -21,6 +22,7 @@ use crate::stats::stat_change::StatChange;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
+use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -37,12 +39,11 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::param::{Param, Scaling};
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::stat::{EngineStat, Stat};
 
-use super::*;
-use crate::values::rank::Rank;
 /// `value` sixteenths.
 fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))
