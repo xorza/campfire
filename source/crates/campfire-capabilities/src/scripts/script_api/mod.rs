@@ -273,7 +273,7 @@ impl ScriptApi {
         }
         out.push_str("\n## Tag properties\n\n| Property | Status |\n| --- | --- |\n");
         for status in &self.tag_properties {
-            writeln!(out, "| `{}` | {} |", status.property.name(), status.status)?;
+            writeln!(out, "| `{}` | {} |", status.property, status.status)?;
         }
         out.push_str("\n## Data fields\n");
         for table in DataTable::ALL {

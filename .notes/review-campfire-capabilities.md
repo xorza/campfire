@@ -10,7 +10,6 @@ Fix the root cause of a group, not its items one by one. Most groups give the st
 
 A fixed set (hooks, fields, tag properties, API members) has one declaration, and a second list repeats it. Adding a member means editing every list. Target: one table per set, and the other lists are derived from it or checked against it.
 
-- [ ] `units/tag_property.rs:19-31`, `units/tag_data.rs:10-20`, `units/tag_properties.rs`: the tag property set (`blocks`, `hidden`, `detects`, `immune`) is spelled in three structures. `TagProperty::ALL` lists the six `Block`s again. `TagProperty::name` builds a `String` on each call. Target: one definition that the others derive from, and `&'static str` names.
 - [ ] `scripts/script_api/mod.rs:81-102,383-433`: `ApiMember` declares nine of `MemberSpec`'s fields again. Target: `ApiMember` holds the `MemberSpec` and what the registry adds (signatures, writable, status).
 - [ ] `scripts/script_api/mod.rs:383-409` (`record`): the doc says a second form "must agree on the rest", but the assert compares only kind, roles, capability, status, names and enums. A later form's `description` and `applies` are dropped silently. Target: compare every field the member keeps. This is automatic when `ApiMember` holds the spec.
 - [ ] `scripts/script_api/mod.rs:329-352`: `record_enum`, `record_hook` and `record_tag_property` assert one record each, but `record_field` (and so `record_data` and `ApiBuilder::action_fields`) pushes duplicates with no check. Target: the same uniqueness assert on (table, name).
