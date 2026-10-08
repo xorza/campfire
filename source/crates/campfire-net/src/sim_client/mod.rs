@@ -11,7 +11,7 @@ use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_capabilities::{Dead, MatchEnd, Order, Owner, Relations};
+use campfire_capabilities::{Dead, MatchEnd, Order, PlayerUnits, Relations};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
@@ -479,9 +479,6 @@ fn report_deaths(
     }
 }
 
-/// The client's own avatar: the one unit it predicts under a player's control.
-type OwnAvatar<'w, 's> = Query<'w, 's, &'static StableId, (With<Owner>, With<Predicted>)>;
-
 /// Adds the bot script's mode inputs due by the tick about to run, and its orders for the
 /// player's own avatar once the client predicts it, as a link that came back replicates it a
 /// little later: an order due before waits, and goes out late. Then stamps the pending orders
@@ -499,7 +496,7 @@ fn send_orders(
     prediction: Res<'_, PredictionManager>,
     timeline_config: Res<'_, InputTimelineConfig>,
     bot: Option<ResMut<'_, BotScript>>,
-    avatar: OwnAvatar<'_, '_>,
+    players: PlayerUnits<'_, '_>,
     signer: Res<'_, Signer>,
     mut pending: ResMut<'_, PendingOrders>,
     mut state: ResMut<'_, JoinState>,
@@ -520,9 +517,9 @@ fn send_orders(
         for input in bot.due_inputs(stamp) {
             pending.push_input(input.clone());
         }
-        if let Ok(&unit) = avatar.single() {
+        if let Some(avatar) = players.avatar(playing.chain.slot()) {
             for scripted in bot.due_orders(stamp) {
-                pending.push(Order::one(unit, scripted.action));
+                pending.push(Order::one(avatar.id, scripted.action));
             }
         }
     }

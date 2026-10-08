@@ -156,6 +156,7 @@ pub use crate::units::layer::Layer;
 pub use crate::units::lifespan::Lifespan;
 pub use crate::units::modifier_id::ModifierId;
 pub use crate::units::owner::Owner;
+pub use crate::units::player_units::{Commanded, HeldPlayerUnits, PlayerUnits};
 pub use crate::units::relations::Relations;
 pub use crate::units::spawn_point::SpawnPoint;
 pub use crate::units::team::Team;

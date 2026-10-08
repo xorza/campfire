@@ -28,6 +28,7 @@ use campfire_capabilities::{
     ActionSlots, Area, Body, Dead, MatchEnd, MatchResult, MoveStep, Owner, Projectile, Team,
 };
 use campfire_math::Num;
+use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use lightyear::prelude::Predicted;
 
@@ -474,13 +475,12 @@ impl View {
     /// Shows the match's end for the client's team: the window's title names it, and the ground
     /// turns gold for a victory, dark red for a defeat and gray for a draw.
     fn show_end(
-        end: Res<'_, MatchEnd>,
-        own: Query<'_, '_, &Team, With<Predicted>>,
+        (end, state): (Res<'_, MatchEnd>, Res<'_, JoinState>),
         ground: Single<'_, '_, &mut MeshMaterial3d<StandardMaterial>, With<Ground>>,
         mut windows: Query<'_, '_, &mut Window>,
         mut materials: ResMut<'_, Assets<StandardMaterial>>,
     ) {
-        let standing = Standing::of(end.result(), own.iter().next().copied());
+        let standing = Standing::of(end.result(), state.team());
         let (title, color) = match standing {
             Some(Standing::Victory) => ("Campfire: victory", Color::srgb(0.75, 0.6, 0.15)),
             Some(Standing::Defeat) => ("Campfire: defeat", Color::srgb(0.4, 0.08, 0.06)),

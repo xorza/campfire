@@ -8,15 +8,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-net/src/net_protocol.rs:94,102,106,107,110 — `SpawnPoint`, `Respawn`, `Route`, `Progress` and `ModifierClocks` replicate to every observer, though only the owner's prediction reads them; `Progress` changes every tick a unit walks, and `Route` resends its whole `Vec` on change. Target: an immutable `OwnedBy(Option<PlayerSlot>)` on each unit, a replicon `VisibilityFilter` scoped to these five components, with `PlayerLink` as its client component. Blocked: see `review-crates_QUESTIONS.md`, "Owner-only replication needs `bevy_replicon` as a direct dependency".
 
-## Who the player commands is guessed from markers, five ways [medium]
-
-Design: one fact, two parts. A player's units are the units its `Owner` slot names; the client learns its slot from `MatchStart`. A player's avatar, in a mode with avatars, is its owned unit whose type is one of the mode's avatar types (`ModeUnits::avatars`), a typed fact both ends hold from the packages. One method on one type answers both parts for the client, the HUD and both bots. `With<Predicted>`, `With<Experience>` and `.single()` stop being identity.
-
-- [ ] source/crates/campfire-client/src/pointer.rs:28 — `OwnAvatar` is `single()` of `(With<Owner>, With<Predicted>)`, as in `Hud::add_gauges` (hud/mod.rs:172,176); the server predicts every owned unit (`campfire-net/src/sim_server/mod.rs:652`), so with two units it errs: no gauges, and clicks and casts order nothing.
-- [ ] source/crates/campfire-client/src/view.rs:478,483 — `show_end` takes any `Predicted` entity's team by `.iter().next()`; the slot's team is known from the seat. `Hud::mark_target` (hud/mod.rs:396,401) takes the first `Predicted` entity with an attack target.
-- [ ] source/crates/campfire-net/src/sim_client/mod.rs:481,521 — the client bot's `(With<Owner>, With<Predicted>)` with `.single()` makes its orders wait forever, unlogged, once it owns two units.
-- [ ] source/crates/campfire-net/src/sim_server/bot_driver.rs:46 — the server bot finds its avatar by `With<Experience>`, so a mode without progression drops every bot order as `AvatarMissing`.
-
 ## The journal's record bound is not tied to the session terms [medium]
 
 - [ ] source/crates/campfire-protocol/src/journal/journal_frames.rs:48 — `seal` has a release `assert!(len <= MAX_RECORD)` (16 MiB), but neither `SessionLog::new` (session_log/mod.rs:371) nor `record` (:643) relates the terms to it; under legal large terms a client's packet passes every check, then panics the server in `journal_last_entry` (:672) after the log changed. Target: the largest record each kind can be is a function of the terms (inputs and payload per tick, the delegation's length, a checkpoint's carry), computed once in `SessionLog::new`, which refuses terms past `MAX_RECORD` with a `HeaderError` case; `seal`'s check becomes a `debug_assert!` of a contract the log keeps.

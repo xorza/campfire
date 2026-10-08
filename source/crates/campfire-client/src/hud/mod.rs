@@ -19,10 +19,10 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use campfire_capabilities::{
-    ActionSlots, Combat, Dead, Learning, Level, Owner, Points, PoolId, Pools, Team,
+    ActionSlots, Combat, Dead, Learning, Level, PlayerUnits, Points, PoolId, Pools, Team,
 };
+use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
-use lightyear::prelude::Predicted;
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind};
 use crate::hud::ring::Ring;
@@ -71,8 +71,6 @@ type Ungauged<'w, 's> = Query<
         &'static Team,
         Option<&'static Pools>,
         Option<&'static ActionSlots>,
-        Has<Predicted>,
-        Has<Owner>,
     ),
     (With<Drawn>, Without<Gauged>, Allow<Unpredicted>),
 >;
@@ -161,25 +159,30 @@ impl Hud {
         });
     }
 
-    /// Gives each drawn unit its gauges, once the client holds its own avatar, whose team tells
-    /// friend from foe: life for every unit with the life pool; for the own avatar, each other
-    /// pool, then, when an ability ranks up, a row of learn marks, then a cooldown per ability
+    /// Gives each drawn unit its gauges, once the client plays, its team telling friend from
+    /// foe: life for every unit with the life pool; for the own avatar, each other pool, then, when an ability ranks up, a row of learn marks, then a cooldown per ability
     /// slot, then the rank ticks of each ability that ranks up.
     fn add_gauges(
         palette: Res<'_, HudPalette>,
         life: Option<Res<'_, Life>>,
         learning: Option<Learning<'_>>,
-        own: Query<'_, '_, &Team, (With<Owner>, With<Predicted>)>,
+        state: Option<Res<'_, JoinState>>,
+        players: PlayerUnits<'_, '_>,
         drawn: Ungauged<'_, '_>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Ok(&own_team) = own.single() else {
+        let state = state.as_deref();
+        let (Some(slot), Some(own_team)) = (
+            state.and_then(JoinState::slot),
+            state.and_then(JoinState::team),
+        ) else {
             return;
         };
+        let avatar = players.avatar(slot).map(|avatar| avatar.entity);
         let life = life.map(|life| life.0);
-        for (unit, team, pools, slots, predicted, owned) in &drawn {
+        for (unit, team, pools, slots) in &drawn {
             commands.entity(unit).insert(Gauged);
-            let mine = predicted && owned;
+            let mine = Some(unit) == avatar;
             let friend = *team == own_team;
             let mut kinds = Vec::new();
             let has = |pool| pools.is_some_and(|pools| pools.max(pool).is_some());
@@ -392,15 +395,19 @@ impl Hud {
     /// Puts the target ring on the ground under the unit the own avatar attacks, as wide as the
     /// unit's drawing, or hides it.
     fn mark_target(
-        index: Res<'_, EntityIndex>,
-        own: Query<'_, '_, &ActionSlots, With<Predicted>>,
+        (index, state): (Res<'_, EntityIndex>, Option<Res<'_, JoinState>>),
+        players: PlayerUnits<'_, '_>,
+        own: Query<'_, '_, &ActionSlots>,
         units: Query<'_, '_, &Drawn, Allow<Unpredicted>>,
         drawings: Query<'_, '_, (&Transform, &Glide, &Look), Without<TargetMark>>,
         mark: Single<'_, '_, (&mut Transform, &mut Visibility), With<TargetMark>>,
     ) {
-        let target = own
-            .iter()
-            .find_map(ActionSlots::attack_target)
+        let target = state
+            .as_deref()
+            .and_then(JoinState::slot)
+            .and_then(|slot| players.avatar(slot))
+            .and_then(|avatar| own.get(avatar.entity).ok())
+            .and_then(ActionSlots::attack_target)
             .and_then(|target| index.get(target))
             .and_then(|target| units.get(target).ok())
             .and_then(|drawn| drawings.get(drawn.drawing()).ok());

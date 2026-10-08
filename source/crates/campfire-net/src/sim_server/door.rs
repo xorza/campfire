@@ -195,6 +195,7 @@ impl Door {
                 start_tick: start_tick.0,
                 first,
                 slot,
+                team,
                 chain,
                 loaded,
             });

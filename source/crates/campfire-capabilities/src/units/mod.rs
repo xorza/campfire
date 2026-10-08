@@ -52,6 +52,7 @@ pub(crate) mod new_unit;
 pub(crate) mod new_unit_states;
 pub(crate) mod owner;
 pub(crate) mod path_id;
+pub(crate) mod player_units;
 pub(crate) mod predicting;
 pub(crate) mod relations;
 pub(crate) mod row_fill;

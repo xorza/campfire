@@ -278,6 +278,7 @@ impl SimServer {
                     start_tick: start.0,
                     first: next,
                     slot,
+                    team,
                     chain: None,
                     loaded: false,
                 });
