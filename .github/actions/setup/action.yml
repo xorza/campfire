@@ -19,6 +19,22 @@ runs:
       shell: bash
       working-directory: source
       run: rustup toolchain install
+    # The cache key hashes every installed toolchain, so the stable one each runner image ships
+    # would change the key whenever the image updates it, and that platform's cache would be lost.
+    # The cache action runs rustc from the repository root, outside rust-toolchain.toml, so the
+    # pinned toolchain becomes the default too.
+    - name: Keep only the toolchain of rust-toolchain.toml
+      shell: bash
+      working-directory: source
+      run: |
+        pinned=$(rustup show active-toolchain | tr -d '\r' | cut -d ' ' -f 1)
+        rustup default "$pinned"
+        for toolchain in $(rustup toolchain list --quiet | tr -d '\r'); do
+          if [ "$toolchain" != "$pinned" ]; then
+            rustup toolchain uninstall "$toolchain"
+          fi
+        done
+        rustup toolchain list
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         workspaces: source -> target
