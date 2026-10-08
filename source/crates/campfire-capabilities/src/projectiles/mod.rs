@@ -23,7 +23,6 @@ use crate::projectiles::launches::{Launch, LaunchPayload, Launches};
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 
 use crate::projectiles::projectile_spec::ProjectileSpec;
-use crate::projectiles::projectiles_effect::{ProjectilesEffect, Toward};
 use crate::projectiles::struck_units::StruckUnits;
 use crate::stats::pools::Pools;
 use crate::units::body_grid::BodyGrid;
@@ -70,33 +69,6 @@ impl Projectiles {
         ));
         registry.register_component::<Projectile>();
         registry.register_resource::<StruckUnits>();
-    }
-
-    /// Applies `effect`: a launch this tick, its own cast, from the point of the map's bounds
-    /// nearest where it says. A direction of no length launches nothing.
-    fn apply(world: &mut World, effect: ProjectilesEffect) {
-        let from = world.resource::<Bounds>().clamp(effect.from);
-        let flight = match effect.toward {
-            Toward::Unit(target) => Flight::Homing {
-                target,
-                flown: Num::ZERO,
-                lost: false,
-            },
-            Toward::Direction(direction) => {
-                let Some(direction) = world.resource::<Metric>().direction(direction) else {
-                    return;
-                };
-                let range = Projectiles::range(world, effect.by, effect.unit_type);
-                Flight::Line {
-                    direction,
-                    flown: Num::ZERO,
-                    range: Projectiles::reach(*world.resource::<Bounds>(), range, from, direction),
-                    aimed: None,
-                }
-            }
-        };
-        let id = Some(effect.id);
-        Projectiles::push(world, effect.by, effect.unit_type, from, id, [flight]);
     }
 
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing

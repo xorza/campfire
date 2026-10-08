@@ -6,15 +6,13 @@ use campfire_math::Num;
 use campfire_sim::{EntityIndex, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
-use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
-use crate::combat::damage::{Damage, DamageCause};
+use crate::combat::damage::Damage;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::{Deaths, Fallen};
 use crate::combat::heal::{Heal, HealCause};
@@ -25,7 +23,6 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 
-use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::carried_mut::CarriedMut;
@@ -322,74 +319,6 @@ impl DamagePass {
             }
         }
         death.map_or(Landed::Taken, |death| Landed::Killed { death })
-    }
-
-    /// Applies `effect`, which the call in `frame` queued: from its acting unit, by its ability,
-    /// at its chain depth, delivered by its hit. Damage and a heal join the pass's queue, a
-    /// restore applies at once, and an extra attack queues the source's attack damage, when it
-    /// still has an attack.
-    pub(super) fn apply_effect(world: &mut World, effect: CombatEffect, frame: &Frame) {
-        let (source, ability, depth) = (frame.acting(), frame.action(), frame.depth());
-        let damage = |target, amount, kind, cause| Damage {
-            source,
-            target,
-            amount,
-            kind,
-            cause,
-            ability,
-            depth,
-            hit: frame.hit(),
-        };
-        match effect {
-            CombatEffect::Damage {
-                target,
-                amount,
-                kind,
-            } => {
-                let damage = damage(target, amount, kind, DamageCause::Effect);
-                world.resource_mut::<PassQueue>().push_damage(damage);
-            }
-            CombatEffect::Heal { unit, amount } => {
-                world.resource_mut::<PassQueue>().push_heal(Heal {
-                    source,
-                    target: unit,
-                    amount,
-                    cause: HealCause::Effect,
-                    ability,
-                    depth,
-                });
-            }
-            CombatEffect::Restore { unit, pool, amount } => {
-                DamagePass::restore(world, unit, pool, amount);
-            }
-            CombatEffect::AttackHit { target } => {
-                let index = world.resource::<EntityIndex>();
-                let Some(unit) = source.and_then(|source| index.get(source)) else {
-                    return;
-                };
-                let unit = world.entity(unit);
-                let book = world.resource::<ActionBook>();
-                let first = unit.get::<ActionSlots>().and_then(|slots| {
-                    let slot = slots.slot(book.weapon_for(slots, None)?)?;
-                    let weapon = book.get(slot.action?)?.kind.weapon()?;
-                    Some((slot, slot.rank?, weapon))
-                });
-                let Some((slot, rank, weapon)) = first else {
-                    return;
-                };
-                let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
-                let hit = Damage {
-                    ability: slot.action,
-                    ..damage(
-                        target,
-                        weapon.damage(stats),
-                        weapon.kind,
-                        DamageCause::ExtraAttack { rank },
-                    )
-                };
-                world.resource_mut::<PassQueue>().push_damage(hit);
-            }
-        }
     }
 
     /// Heals `unit`'s life pool by `amount` times one plus its `heal_scale` stat, when it exists

@@ -21,7 +21,6 @@ use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::{Deliveries, DeliverySet};
-use crate::geometry::bounds::Bounds;
 use crate::stats::StatsSet;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::units::body_grid::BodyGrid;
@@ -77,13 +76,6 @@ impl Areas {
                 .before(StatsSet::Hold),
         ));
         registry.register_component::<Area>();
-    }
-
-    /// Applies `effect`: an area that lands this tick, at the point of the map's bounds nearest
-    /// where it says.
-    fn apply(world: &mut World, effect: AreasEffect) {
-        let at = world.resource::<Bounds>().clamp(effect.at);
-        Areas::push(world, effect.by, effect.unit_type, at, None, effect.id);
     }
 
     /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it

@@ -5,6 +5,7 @@ use campfire_sim::{Position, StableId};
 use crate::actions::capability_does::CapabilityDoes;
 use crate::areas::Areas;
 use crate::deliveries::delivering::Delivering;
+use crate::geometry::bounds::Bounds;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
@@ -66,7 +67,10 @@ impl AreasEffect {
 }
 
 impl Effect for AreasEffect {
+    /// Applies the effect: an area that lands this tick, at the point of the map's bounds nearest
+    /// where it says.
     fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
-        Areas::apply(world, self);
+        let at = world.resource::<Bounds>().clamp(self.at);
+        Areas::push(world, self.by, self.unit_type, at, None, self.id);
     }
 }

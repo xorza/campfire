@@ -23,14 +23,13 @@ use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
-use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
+use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh::Refresh;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
-use crate::stats::stats_effect::StatsEffect;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
@@ -154,32 +153,6 @@ impl Stats {
         StatsColumn::share_pool_names(view, pools.names());
         world.insert_resource(book);
         world.insert_resource(pools);
-    }
-
-    /// Applies `effect`, which a call by `applier` queued. An added modifier's numbers resolve
-    /// now, its params read from the param book, of its source as it is now; nothing is added to a
-    /// dead or gone unit, or one that carries no modifiers.
-    pub(crate) fn apply_effect(world: &mut World, effect: StatsEffect, applier: Applier) {
-        match effect {
-            StatsEffect::Add {
-                target,
-                id,
-                duration,
-            } => Stats::add_modifier(world, target, id, applier, duration),
-            StatsEffect::AddPlayer { player, id } => {
-                let held = PlayerModifier {
-                    player,
-                    modifier: id,
-                };
-                world.resource_mut::<PlayerModifiers>().add(held);
-            }
-            StatsEffect::Remove {
-                carrier,
-                id,
-                source,
-            } => Stats::remove_modifier(world, carrier, id, source),
-            StatsEffect::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
-        }
     }
 
     /// Ends the applications of the modifiers `carrier` holds that grant `tag`: an instance no
@@ -343,7 +316,7 @@ pub(crate) mod internals {
             id,
             duration: None,
         };
-        Stats::apply_effect(world, add, applier);
+        add.apply_by(world, applier);
     }
 
     /// The modifiers `unit` carries, each with its source, in their order.

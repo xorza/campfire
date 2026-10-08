@@ -7,10 +7,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, StableId};
 
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::slot_kind::SlotKind;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::items::inventory::Inventory;
 use crate::mode::choice_book::ChoiceBook;
@@ -35,7 +33,6 @@ use crate::progression::track_book::TrackBook;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
-use crate::stats::Stats;
 use crate::stats::applier::Applier;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
@@ -43,7 +40,6 @@ use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stats_effect::StatsEffect;
 use crate::stats::unit_stats::UnitStats;
-use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
@@ -281,7 +277,7 @@ impl ModeBook {
                 id: passive,
                 duration: None,
             };
-            Stats::apply_effect(world, add, applier);
+            add.apply_by(world, applier);
         }
         if body.is_some_and(|body| body.half_edges().is_some()) {
             Navigation::make_room(world, entity);
@@ -316,27 +312,6 @@ impl ModeBook {
                 angle: Num::ZERO,
             };
             self.spawn(world, at, walker);
-        }
-    }
-
-    /// Puts `abilities` in `kind` of `unit`, after the slots of that kind it has, at the first
-    /// rank of the kind; nothing for a unit that is gone.
-    pub(crate) fn grant(
-        world: &mut World,
-        unit: StableId,
-        kind: SlotKind,
-        rank: Option<Rank>,
-        abilities: &[ActionId],
-    ) {
-        let Some(entity) = world.resource::<EntityIndex>().get(unit) else {
-            return;
-        };
-        let mut unit = world.entity_mut(entity);
-        if let Some(mut slots) = unit.get_mut::<ActionSlots>() {
-            slots.grant(kind, abilities, rank);
-        } else {
-            let slots = abilities.iter().map(|&ability| (ability, kind, rank));
-            unit.insert(ActionSlots::new(slots));
         }
     }
 }

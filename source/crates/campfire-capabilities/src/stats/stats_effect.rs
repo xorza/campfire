@@ -6,6 +6,7 @@ use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::stats::Stats;
 use crate::stats::applier::Applier;
+use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
 
@@ -32,6 +33,34 @@ pub(crate) enum StatsEffect {
 }
 
 /// From the call's acting unit, by its action at its rank.
+impl StatsEffect {
+    /// Applies the effect, which a call by `applier` queued. An added modifier's numbers resolve
+    /// now, its params read from the param book, of its source as it is now; nothing is added to a
+    /// dead or gone unit, or one that carries no modifiers.
+    pub(crate) fn apply_by(self, world: &mut World, applier: Applier) {
+        match self {
+            StatsEffect::Add {
+                target,
+                id,
+                duration,
+            } => Stats::add_modifier(world, target, id, applier, duration),
+            StatsEffect::AddPlayer { player, id } => {
+                let held = PlayerModifier {
+                    player,
+                    modifier: id,
+                };
+                world.resource_mut::<PlayerModifiers>().add(held);
+            }
+            StatsEffect::Remove {
+                carrier,
+                id,
+                source,
+            } => Stats::remove_modifier(world, carrier, id, source),
+            StatsEffect::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
+        }
+    }
+}
+
 impl Effect for StatsEffect {
     fn apply(self, world: &mut World, frame: &mut Frame, _: Tick) {
         let applier = Applier {
@@ -40,6 +69,6 @@ impl Effect for StatsEffect {
             rank: frame.rank(),
             hold: None,
         };
-        Stats::apply_effect(world, self, applier);
+        self.apply_by(world, applier);
     }
 }

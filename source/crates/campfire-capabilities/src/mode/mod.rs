@@ -17,14 +17,12 @@ use campfire_sim::{
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
-use crate::actions::action_slots::ActionSlots;
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
 use crate::combat::heal_weigher::HealWeigher;
 use crate::combat::kept::Kept;
-use crate::combat::respawn::Respawn;
 use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
 use crate::mode::game_map::GameMap;
@@ -32,7 +30,6 @@ use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_call::ModeCall;
-use crate::mode::mode_effect::ModeEffect;
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::ModeSetup;
@@ -57,7 +54,6 @@ use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
-use crate::units::relations::Relations;
 use crate::units::script_view::View;
 use crate::units::spawner::{SpawnAt, Spawner};
 use crate::units::team::Team;
@@ -213,58 +209,6 @@ impl Mode {
     /// a slot the session does not have.
     pub fn team_of(world: &World, slot: PlayerSlot) -> Option<Team> {
         ModeBook::of(world.get_non_send::<Ctx>()?)?.teams.of(slot)
-    }
-
-    /// Applies `effect`, which a call of `book`'s script queued in tick `now`.
-    fn apply_effect(world: &mut World, book: &ModeBook, now: Tick, effect: ModeEffect) {
-        match effect {
-            ModeEffect::Timer {
-                name,
-                ticks,
-                repeat,
-                data,
-            } => world
-                .resource_mut::<Timers>()
-                .set(now, name, ticks, repeat, data),
-            ModeEffect::End(result) => {
-                let tick = world.resource::<SimTick>().start();
-                world.insert_resource(MatchEnd::new(tick, result));
-            }
-            ModeEffect::SpawnUnit { at, owner } => {
-                book.spawn_owned(world, at, owner);
-            }
-            ModeEffect::SpawnGroup {
-                team,
-                path,
-                from,
-                units,
-            } => book.spawn_group(world, team, path, from, &units),
-            ModeEffect::Grant {
-                unit,
-                kind,
-                rank,
-                abilities,
-            } => ModeBook::grant(world, unit, kind, rank, &abilities),
-            ModeEffect::Respawn { unit, ticks } => {
-                let entity = world.resource::<EntityIndex>().get(unit);
-                let entity = entity.expect("a dead unit that stays is in the world");
-                let at = now.after(ticks);
-                world.entity_mut(entity).insert(Respawn { at });
-            }
-            ModeEffect::Learn { unit, slot } => {
-                let entity = world.resource::<EntityIndex>().get(unit);
-                let entity = entity.expect("a unit the view read is in the world");
-                let slots = world.get_mut::<ActionSlots>(entity);
-                slots.expect("a unit with ability slots").learn(slot);
-            }
-            ModeEffect::SetRelation { a, b, attitude } => {
-                world
-                    .resource_mut::<Relations>()
-                    .set_attitude(a, b, attitude);
-            }
-            // A call's `now` is the end of its tick.
-            ModeEffect::Save => world.insert_resource(SaveAsked::new(now)),
-        }
     }
 
     /// Starts the match, before its first tick: the map's placed units spawn, on their paths and
