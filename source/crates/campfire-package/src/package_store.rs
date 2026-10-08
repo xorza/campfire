@@ -71,18 +71,25 @@ impl PackageStore {
             dir: dir.to_owned(),
             error,
         };
-        if dir.join(PackageDir::MANIFEST).is_file() {
-            self.insert(dir);
-            return Ok(());
-        }
+        // In the order of their names, so the same tree gives the same result on every OS.
+        let mut entries = fs::read_dir(dir)
+            .map_err(io)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(io)?;
+        entries.sort_unstable_by_key(fs::DirEntry::file_name);
         let mut subdirs = Vec::new();
-        for entry in fs::read_dir(dir).map_err(io)? {
-            let entry = entry.map_err(io)?;
-            if entry.file_type().map_err(io)?.is_dir() {
+        for entry in entries {
+            let kind = entry.file_type().map_err(io)?;
+            // By its exact name, which a file system that ignores case would also find as
+            // `Manifest.toml`.
+            if kind.is_file() && entry.file_name() == PackageDir::MANIFEST {
+                self.insert(dir);
+                return Ok(());
+            }
+            if kind.is_dir() {
                 subdirs.push(entry.path());
             }
         }
-        subdirs.sort_unstable();
         for subdir in subdirs {
             self.scan_dir(&subdir)?;
         }

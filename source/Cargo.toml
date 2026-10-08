@@ -63,6 +63,8 @@ derive_more = { version = "=2.1.1", default-features = false, features = ["displ
 fluent-bundle = "=0.16.0"
 fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"
+# Only `store`'s platform layer, on Unix: the process's effective user, which std does not give.
+libc = "=0.2.190"
 lightyear = { version = "=0.30.1", features = ["webtransport", "crossbeam", "raw_connection"] }
 nostr = "=0.45.5"
 postcard = { version = "=1.1.3", features = ["use-std"] }
@@ -88,6 +90,15 @@ tracing-subscriber = { version = "=0.3.23", default-features = false, features =
     "tracing-log",
 ] }
 unic-langid = "=0.9.6"
+# Only `store`'s platform layer, on Windows: its ACL, rename and directory-flush calls.
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }
 wtransport = "=0.6.1"
 
 [profile.dev]

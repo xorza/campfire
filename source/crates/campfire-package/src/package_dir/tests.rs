@@ -1,9 +1,5 @@
-#[cfg(unix)]
-use std::os::unix::fs::symlink as link_file;
-#[cfg(windows)]
-use std::os::windows::fs::symlink_file as link_file;
-
 use campfire_common::Fingerprint;
+use campfire_store::FileLink;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
@@ -92,8 +88,12 @@ fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
     write(&root, "nested/two/manifest.toml", "n");
     write(&root, "one/inner/manifest.toml", "i");
     write(&root, "bad/manifest.toml", "b");
-    link_file(root.join("bad/manifest.toml"), root.join("bad/link")).unwrap();
+    FileLink::make(&root.join("bad/manifest.toml"), &root.join("bad/link"));
+    // A manifest is found by its exact name, as a file system that ignores case would not.
+    write(&root, "upper/Manifest.toml", "u");
     let store = PackageStore::scan(&root).unwrap();
+    let upper = PackageDir::new(root.join("upper")).read().unwrap();
+    assert!(store.get(upper.fingerprint()).is_none());
     let one = dir.read().unwrap().fingerprint();
     let two = PackageDir::new(root.join("nested/two"))
         .read()
@@ -116,18 +116,47 @@ fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
     assert!(
         matches!(&failures[0].error, ContentError::NotAFile(path) if *path == root.join("bad/link"))
     );
+}
 
-    // A link is no file of a package, and a name no package path spells is no file of one.
-    link_file(package.join("manifest.toml"), package.join("link")).unwrap();
+#[test]
+fn a_package_refuses_what_an_os_would_hold_another_way() {
+    let scratch = TempDir::new().unwrap();
+    let package = scratch.path().join("one");
+    write(&package, "manifest.toml", "m");
+    let dir = PackageDir::new(&package);
+    // A link is no file of a package, and a name no package path spells, one past ASCII, is no
+    // file of one. Of two flaws, the one refused is the first by name, `a€` before `link`,
+    // whatever order the OS lists them in.
+    FileLink::make(&package.join("manifest.toml"), &package.join("link"));
     assert!(
         matches!(dir.read(), Err(ContentError::NotAFile(path)) if path == package.join("link"))
     );
+    let euro = package.join("a\u{20ac}.toml");
+    write(&package, "a\u{20ac}.toml", "");
+    assert!(matches!(dir.read(), Err(ContentError::NotPath(path)) if path == euro));
     fs::remove_file(package.join("link")).unwrap();
-    #[cfg(unix)]
-    {
-        write(&package, "a\\b.toml", "");
+    assert!(matches!(dir.read(), Err(ContentError::NotPath(path)) if path == euro));
+    fs::remove_file(&euro).unwrap();
+    assert!(dir.read().is_ok());
+
+    // Two paths, or the directories on their way, that differ only in case are one file where
+    // case is ignored, so no package: the walk takes them in path order, uppercase first, and
+    // refuses the second spelling.
+    for (one, two, other) in [
+        ("data/a.toml", "data/A.toml", "data/A.toml"),
+        ("data/a.toml", "Data/b.toml", "Data"),
+    ] {
+        let tree: BTreeMap<PathBuf, Vec<u8>> = ["manifest.toml", one, two]
+            .into_iter()
+            .map(|path| (Path::new("p").join(path), Vec::new()))
+            .collect();
         assert!(
-            matches!(dir.read(), Err(ContentError::NotPath(path)) if path == package.join("a\\b.toml"))
+            matches!(
+                PackageDir::in_memory(Arc::new(tree), "p").read(),
+                Err(ContentError::CaseClash { path, other: first })
+                    if path.as_str() == "data/a.toml" && first.as_str() == other
+            ),
+            "{one} {two}"
         );
     }
 }

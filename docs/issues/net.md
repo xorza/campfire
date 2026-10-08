@@ -16,7 +16,6 @@ Design: [Modules](../design/02-engine-core.md#modules), `net`. Rules: [Issue log
 
 ## Ready
 
-- **Plan: F13.** `SessionDir::find` walks `sessions/` in the order `fs::read_dir` gives, which differs by OS and file system, and returns at the first flaw, so a data directory with a stray entry and two unpublished sessions gives `FindError::Stray` on one OS and `FindError::Several` on another.
 - **Plan: F11.** A client that leaves refuses, with a warning, a receipt that reaches it after its leave: it plays no match from its leave on, so `ReceiptRefusal::NotPlaying`, and the receipt of its last inputs is lost. [Receipts](../design/10-sessions.md#receipts) has the client keep its chain until its link closes and take such a receipt. The LAN check failed on it in CI run 37537426577 on macOS, as a restored server that ran behind sent a receipt as bot 1 left.
 - **Stage 8.** No production state replicates: a client sees no train queue and no player resource, where design 04's production sends a player's queues and resources to that player ([Production](../design/04-capabilities/production.md#network)).
 - **Stage 10.** No unit's inventory replicates: a client sees no item its units carry, where design 04's items send a unit's own inventory to its owner ([Items](../design/04-capabilities/items.md#network)).

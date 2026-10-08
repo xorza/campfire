@@ -1,5 +1,7 @@
+use std::env;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 use campfire_common::StateHash;
 use campfire_protocol::{CertificateHash, SessionId};
@@ -41,6 +43,20 @@ fn bot(index: usize, slot: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
         scripted: 2,
         whole: true,
     }
+}
+
+/// The outcome of a process that failed: this test binary, given an option it refuses, which it
+/// exits from with a failure, as std describes it on each OS.
+fn failed() -> ProcessOutcome {
+    let status = Command::new(env::current_exe().unwrap())
+        .arg("--no-such-option")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    let outcome = ProcessOutcome::of(status);
+    assert!(matches!(outcome, ProcessOutcome::Failed(_)), "{outcome}");
+    outcome
 }
 
 fn found(verdict: &Verdict) -> Vec<Failure> {
@@ -176,7 +192,7 @@ fn a_match_fails_by_each_flaw_it_has() {
     // Neither follows from a verifier that failed but the first; both follow from a server
     // that overran, which alone the verdict names.
     let empty = |process| ProcessLog::empty(process);
-    let failed = ProcessOutcome::Failed { code: Some(1) };
+    let failed = failed();
     verdict.process(Process::Verifier, failed, &empty(Process::Verifier));
     let verifier_failed = Failure::Ended {
         process: Process::Verifier,
@@ -197,7 +213,7 @@ fn a_match_fails_by_each_flaw_it_has() {
 fn the_impostor_and_each_process_fail_by_their_own_flaws() {
     // The impostor must exit with failure and say why; one that succeeded or overran, or
     // stayed silent, fails the check.
-    let failed = ProcessOutcome::Failed { code: Some(1) };
+    let failed = failed();
     let lost = LinkLost {
         reason: "Transport error: certificate hash mismatch".to_owned(),
     };

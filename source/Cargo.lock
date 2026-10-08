@@ -2132,6 +2132,7 @@ dependencies = [
  "campfire-package",
  "campfire-script",
  "campfire-sim",
+ "campfire-store",
  "derive_more",
  "fluent-bundle",
  "fluent-syntax",
@@ -2235,8 +2236,10 @@ dependencies = [
 name = "campfire-store"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "tempfile",
  "thiserror 2.0.21",
+ "windows",
 ]
 
 [[package]]

@@ -13,6 +13,7 @@ mod data_dir;
 mod durable_file;
 mod exchange;
 mod latest_writer;
+mod platform;
 mod secret_file;
 mod stream_writer;
 mod worker;
@@ -28,6 +29,9 @@ pub use crate::durable_file::DurableFile;
 pub use crate::durable_file::error::DurableError;
 pub use crate::exchange::Exchange;
 pub use crate::latest_writer::LatestWriter;
+#[cfg(any(test, feature = "internals"))]
+pub use crate::platform::file_link::FileLink;
+pub use crate::platform::owner_only::Exposure;
 pub use crate::secret_file::SecretFile;
 pub use crate::secret_file::error::SecretReadError;
 pub use crate::stream_writer::StreamWriter;

@@ -29,18 +29,15 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
     ));
     // Others may read it: refused before its key is read, so text that is no key is refused as
     // exposed too, and a file of such a key is no missing one, which a new key would replace.
-    #[cfg(unix)]
-    {
-        for path in [&path, &bad] {
-            SecretFile::set_mode(path, 0o640);
-            assert!(matches!(
-                KeyFile::read(path),
-                Err(KeyFileError::Read(SecretReadError::Exposed { mode: 0o640 }))
-            ));
-        }
+    for path in [&path, &bad] {
+        SecretFile::expose(path);
         assert!(matches!(
-            KeyFile::read_or_create(&path, |bytes| bytes.fill(9)),
-            Err(KeyFileError::Read(SecretReadError::Exposed { mode: 0o640 }))
+            KeyFile::read(path),
+            Err(KeyFileError::Read(SecretReadError::Exposed(_)))
         ));
     }
+    assert!(matches!(
+        KeyFile::read_or_create(&path, |bytes| bytes.fill(9)),
+        Err(KeyFileError::Read(SecretReadError::Exposed(_)))
+    ));
 }

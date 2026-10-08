@@ -2,13 +2,6 @@ use tempfile::TempDir;
 
 use super::*;
 
-/// The permission bits of the file at `path`.
-#[cfg(unix)]
-pub(crate) fn mode(path: &Path) -> u32 {
-    use std::os::unix::fs::PermissionsExt;
-    fs::metadata(path).unwrap().permissions().mode() & 0o777
-}
-
 #[test]
 fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
     let dir = TempDir::new().unwrap();
@@ -21,23 +14,18 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
         .map(|entry| entry.unwrap().file_name())
         .collect();
     assert_eq!(names, ["state"]);
-    #[cfg(unix)]
-    assert_eq!(mode(&path), 0o600);
+    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
 
     // A crash left a temporary file, which others may read: the write makes its own, so the file
     // is its owner's only.
     let stale = dir.path().join("state.part");
     fs::write(&stale, b"stale and longer").unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&stale, fs::Permissions::from_mode(0o644)).unwrap();
-    }
+    OwnerOnly::expose(&stale);
+    assert!(OwnerOnly::exposure_at(&stale).unwrap().is_some());
     DurableFile::write(&path, b"third").unwrap();
     assert_eq!(fs::read(&path).unwrap(), b"third");
     assert!(!stale.exists());
-    #[cfg(unix)]
-    assert_eq!(mode(&path), 0o600);
+    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
 
     // A path with no file name, and a directory that is not there.
     assert!(matches!(
@@ -60,8 +48,7 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
     // Made again, it stays as it is.
     DurableFile::create_dir(&path).unwrap();
     assert_eq!(fs::read(path.join("kept")).unwrap(), b"kept");
-    #[cfg(unix)]
-    assert_eq!(mode(&path), 0o700);
+    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
     // A file in its place is no directory.
     assert!(matches!(
         DurableFile::create_dir(&path.join("kept")),

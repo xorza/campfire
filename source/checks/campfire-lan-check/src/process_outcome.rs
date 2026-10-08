@@ -7,9 +7,9 @@ use derive_more::Display;
 pub(crate) enum ProcessOutcome {
     #[display("succeeded")]
     Succeeded,
-    /// It exited with a failure, with its code when it has one.
-    #[display("{}", failed(*code))]
-    Failed { code: Option<i32> },
+    /// It ended with a failure, whose status std describes as the OS gave it.
+    #[display("ended with a failure, {_0}")]
+    Failed(ExitStatus),
     /// It still ran at the deadline, and the check stopped it.
     #[display("still ran at the deadline")]
     Overran,
@@ -26,17 +26,7 @@ impl ProcessOutcome {
         if status.success() {
             ProcessOutcome::Succeeded
         } else {
-            ProcessOutcome::Failed {
-                code: status.code(),
-            }
+            ProcessOutcome::Failed(status)
         }
-    }
-}
-
-/// How a process that failed ended: with its exit code, or by a signal when it has none.
-fn failed(code: Option<i32>) -> String {
-    match code {
-        Some(code) => format!("exited with {code}"),
-        None => "was killed by a signal".to_owned(),
     }
 }

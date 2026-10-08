@@ -100,8 +100,13 @@ impl PackageDir {
             dir: dir.to_owned(),
             error,
         };
-        for entry in fs::read_dir(dir).map_err(io)? {
-            let entry = entry.map_err(io)?;
+        // In the order of their names, so the first flaw of a tree is the same on every OS.
+        let mut entries = fs::read_dir(dir)
+            .map_err(io)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(io)?;
+        entries.sort_unstable_by_key(fs::DirEntry::file_name);
+        for entry in entries {
             let path = entry.path();
             let kind = entry.file_type().map_err(io)?;
             if kind.is_dir() {

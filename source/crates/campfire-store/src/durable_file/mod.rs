@@ -1,17 +1,18 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
 use crate::durable_file::error::DurableError;
+use crate::platform::durable_name::DurableName;
+use crate::platform::owner_only::OwnerOnly;
 
 pub(crate) mod error;
 
 /// A file written whole or not at all, which a crash leaves either as it was or as written: the
-/// bytes go to a temporary file beside it, which is synced and renamed over its name, and on Unix
-/// the directory is synced too, so the new name survives a crash as well as the bytes. The
-/// temporary file is always made new, a stale one a crash left removed first, so on Unix the
-/// file is its owner's only, mode 0600, whatever mode the stale one had. Windows syncs no
-/// directory, and its rename is the last step.
+/// bytes go to a temporary file beside it, which is synced and given its name durably, so the
+/// new name survives a crash as well as the bytes. The temporary file is always made new, a stale
+/// one a crash left removed first, so the file is its owner's only, whatever access the stale one
+/// gave.
 #[derive(Debug)]
 pub struct DurableFile;
 
@@ -29,31 +30,24 @@ impl DurableFile {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(DurableError::RemoveStale(error)),
         }
-        let mut file = DurableFile::create(&temporary).map_err(DurableError::Create)?;
+        let mut file = OwnerOnly::create_new(&temporary).map_err(DurableError::Create)?;
         file.write_all(bytes).map_err(DurableError::Write)?;
         file.sync_all().map_err(DurableError::Sync)?;
         drop(file);
-        fs::rename(&temporary, path).map_err(DurableError::Rename)?;
-        DurableFile::sync_directory(directory).map_err(DurableError::SyncDirectory)
+        DurableName::rename(&temporary, path).map_err(DurableError::Rename)?;
+        DurableName::sync_dir(directory).map_err(DurableError::SyncDirectory)
     }
 
-    /// Makes the directory `path` when it is missing, its owner's only on Unix, and syncs its
-    /// parent, so its name survives a crash.
+    /// Makes the directory `path` when it is missing, its owner's only, and syncs its parent, so
+    /// its name survives a crash.
     pub fn create_dir(path: &Path) -> Result<(), DurableError> {
         let parent = path.parent().ok_or(DurableError::NoName)?;
-        let mut builder = fs::DirBuilder::new();
-        builder.recursive(false);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
-        match builder.create(path) {
+        match OwnerOnly::create_dir(path) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists && path.is_dir() => {}
             Err(error) => return Err(DurableError::Create(error)),
         }
-        DurableFile::sync_directory(parent).map_err(DurableError::SyncDirectory)
+        DurableName::sync_dir(parent).map_err(DurableError::SyncDirectory)
     }
 
     /// Removes the directory `path` and all it holds, and syncs its parent, so it does not come
@@ -61,34 +55,7 @@ impl DurableFile {
     pub fn remove_dir(path: &Path) -> Result<(), DurableError> {
         let parent = path.parent().ok_or(DurableError::NoName)?;
         fs::remove_dir_all(path).map_err(DurableError::Remove)?;
-        DurableFile::sync_directory(parent).map_err(DurableError::SyncDirectory)
-    }
-
-    /// A new file at `path`, its owner's only on Unix; an error when there is a file, whose mode
-    /// would stay what it was.
-    fn create(path: &Path) -> io::Result<File> {
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        options.open(path)
-    }
-
-    /// Syncs `directory`, so the names in it survive a crash; nothing on Windows, which opens no
-    /// directory as a file.
-    fn sync_directory(directory: &Path) -> io::Result<()> {
-        if cfg!(unix) {
-            let directory = if directory.as_os_str().is_empty() {
-                Path::new(".")
-            } else {
-                directory
-            };
-            File::open(directory)?.sync_all()?;
-        }
-        Ok(())
+        DurableName::sync_dir(parent).map_err(DurableError::SyncDirectory)
     }
 }
 

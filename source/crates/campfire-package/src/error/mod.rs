@@ -68,6 +68,13 @@ pub enum ContentError {
     /// A file's name in a package is no package path, as one holding `\` is not.
     #[error("{}: no path a package can name", .0.display())]
     NotPath(PathBuf),
+    /// Two paths of a package, or the directories on their way, differ only in case, which a
+    /// file system that ignores case holds as one, as Windows' and macOS's do by default.
+    #[error("{path} and {other} differ only in case")]
+    CaseClash {
+        path: PackagePath,
+        other: PackagePath,
+    },
     /// The package holds more files than a load takes.
     #[error("more files than a package holds")]
     TooManyFiles,

@@ -2,9 +2,6 @@ use tempfile::TempDir;
 
 use super::*;
 
-#[cfg(unix)]
-use crate::durable_file::tests::mode;
-
 #[test]
 fn a_secret_file_round_trips_and_refuses_one_others_may_read() {
     let dir = TempDir::new().unwrap();
@@ -15,19 +12,15 @@ fn a_secret_file_round_trips_and_refuses_one_others_may_read() {
         SecretFile::read(&dir.path().join("none.nsec")),
         Err(SecretReadError::Read(_))
     ));
-    #[cfg(unix)]
-    {
-        assert_eq!(mode(&path), 0o600);
-        // Others may read it: refused, with its mode, before its bytes are read.
-        for mode in [0o644, 0o640, 0o604] {
-            SecretFile::set_mode(&path, mode);
-            assert!(matches!(
-                SecretFile::read(&path),
-                Err(SecretReadError::Exposed { mode: refused }) if refused == mode
-            ));
-        }
-        // Written again, it is its owner's only once more.
-        SecretFile::write(&path, b"again\n").unwrap();
-        assert_eq!(SecretFile::read(&path).unwrap(), b"again\n");
-    }
+    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
+    // Others may read it: refused, with who they are, before its bytes are read.
+    SecretFile::expose(&path);
+    let exposure = OwnerOnly::exposure_at(&path).unwrap().unwrap();
+    assert!(matches!(
+        SecretFile::read(&path),
+        Err(SecretReadError::Exposed(refused)) if refused == exposure
+    ));
+    // Written again, it is its owner's only once more.
+    SecretFile::write(&path, b"again\n").unwrap();
+    assert_eq!(SecretFile::read(&path).unwrap(), b"again\n");
 }

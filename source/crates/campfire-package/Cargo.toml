@@ -28,6 +28,7 @@ unic-langid.workspace = true
 # The integration tests find the reference packages through `internals`.
 [dev-dependencies]
 campfire-package = { workspace = true, features = ["internals"] }
+campfire-store = { workspace = true, features = ["internals"] }
 tempfile.workspace = true
 
 [lints]

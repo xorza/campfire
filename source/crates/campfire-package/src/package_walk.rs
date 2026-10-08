@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::io::{self, Read};
 
 use campfire_capabilities::PackagePath;
@@ -21,6 +22,9 @@ pub(crate) struct PackageWalk {
     /// In the order of their paths, as the fingerprint lists them.
     rows: BTreeMap<PackagePath, FileSum>,
     read: BTreeMap<PackagePath, Vec<u8>>,
+    /// The first spelling of each path and each directory on its way, by its ASCII lowercase,
+    /// so two that differ only in case are found.
+    spellings: BTreeMap<String, PackagePath>,
     /// The bytes of the files read so far.
     read_bytes: u64,
     /// The buffer a streamed file passes through, made at its first use.
@@ -74,6 +78,7 @@ impl PackageWalk {
             limits,
             rows: BTreeMap::new(),
             read: BTreeMap::new(),
+            spellings: BTreeMap::new(),
             read_bytes: 0,
             stream: Vec::new(),
         }
@@ -96,6 +101,7 @@ impl PackageWalk {
         if self.rows.len() == self.limits.files {
             return Err(ContentError::TooManyFiles);
         }
+        self.spell(&path)?;
         let sum = if PackageWalk::reads(&path) {
             self.check_read(&path, size)?;
             let mut bytes = Vec::new();
@@ -118,6 +124,30 @@ impl PackageWalk {
             self.stream(&path, file)?
         };
         self.rows.insert(path, sum);
+        Ok(())
+    }
+
+    /// Takes the spelling of `path` and of each directory on its way, refusing one that differs
+    /// only in case from one taken before: a package path is ASCII, so its ASCII lowercase is
+    /// the one name every file system that ignores case gives it.
+    fn spell(&mut self, path: &PackagePath) -> Result<(), ContentError> {
+        let text = path.as_str();
+        let ends = text.match_indices('/').map(|(at, _)| at);
+        for end in ends.chain([text.len()]) {
+            let spelled = &text[..end];
+            match self.spellings.entry(spelled.to_ascii_lowercase()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(PackagePath::parse(spelled).expect("a path's start is a path"));
+                }
+                Entry::Occupied(entry) if entry.get().as_str() != spelled => {
+                    return Err(ContentError::CaseClash {
+                        path: path.clone(),
+                        other: entry.get().clone(),
+                    });
+                }
+                Entry::Occupied(_) => {}
+            }
+        }
         Ok(())
     }
 

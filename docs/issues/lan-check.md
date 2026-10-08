@@ -12,4 +12,3 @@ Design: [Modules](../design/02-engine-core.md#modules), `lan-check`. Rules: [Iss
 
 ## Ready
 
-- `ProcessOutcome::Failed` holds the exit code as an `Option`, whose `None`, a process that a signal ended, only Unix gives: the type and its text, "was killed by a signal", carry a case of one OS, and on Windows a process that crashed reads as one that exited with a code, as an access violation's 0xC0000005.

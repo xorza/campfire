@@ -94,9 +94,15 @@ impl SessionDir {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(FindError::Read(error)),
         };
+        // In the order of their names, so a directory with several flaws gives the same error on
+        // every OS.
+        let mut names = entries
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(FindError::Read)?;
+        names.sort_unstable();
         let mut found = None;
-        for entry in entries {
-            let name = entry.map_err(FindError::Read)?.file_name();
+        for name in names {
             let session: SessionId = name
                 .to_str()
                 .and_then(|name| name.parse().ok())
@@ -306,6 +312,19 @@ mod tests {
         assert!(matches!(
             SessionDir::find(&data),
             Err(FindError::Stray(name)) if name == "stray"
+        ));
+        // Of several flaws, the first by name is the one found, whatever order the OS lists them
+        // in: two unpublished sessions, whose ids sort before `stray`, then a stray entry whose
+        // `-` sorts before them all.
+        for id in ['0', '1'] {
+            let name = String::from(id).repeat(64);
+            DurableFile::create_dir(&root.join("sessions").join(name)).unwrap();
+        }
+        assert!(matches!(SessionDir::find(&data), Err(FindError::Several)));
+        DurableFile::create_dir(&root.join("sessions").join("-stray")).unwrap();
+        assert!(matches!(
+            SessionDir::find(&data),
+            Err(FindError::Stray(name)) if name == "-stray"
         ));
         drop(data);
     }
