@@ -3,8 +3,9 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
+use campfire_math::Vec3;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, SimSet, SimTick};
+use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
@@ -12,13 +13,16 @@ use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::CombatSet;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::deliverers::Deliverers;
+use crate::deliveries::delivering::Delivering;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::units::forced_move::DashDelivery;
 use crate::units::hit_handle::HitHandle;
 use crate::units::owner::Owner;
+use crate::values::hit::Hit;
 
 pub(crate) mod delivered;
 pub(crate) mod deliverers;
@@ -46,6 +50,37 @@ pub(crate) enum DeliverySet {
 }
 
 impl Deliveries {
+    /// Records the end of a dash that delivers `dash`, aimed at `target` if a unit, whose unit
+    /// stands at `place` after a last step in `direction`: an end with no delivery unit, after
+    /// the meters the dash went, whose hooks are its action's.
+    pub(crate) fn end_dash(
+        &mut self,
+        dash: DashDelivery,
+        target: Option<StableId>,
+        place: Position,
+        direction: Option<Vec3>,
+    ) {
+        let by = Delivering {
+            source: dash.source,
+            action: dash.action,
+            rank: dash.rank,
+            start: dash.start,
+            launch: None,
+        };
+        let hit = Hit {
+            delivery: None,
+            target,
+            pos: place,
+            distance: dash.dashed,
+            direction,
+        };
+        self.delivered.push(Delivered {
+            by,
+            reach: Reached::End,
+            hit,
+        });
+    }
+
     /// Adds the deliveries' hooks to a match, once for the capabilities that deliver: after the
     /// `DeliverySet`s, before attacks pay their toggles and strike.
     pub(crate) fn install(world: &mut World, schedule: &mut Schedule) {

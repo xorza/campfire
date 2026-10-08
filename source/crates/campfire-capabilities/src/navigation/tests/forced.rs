@@ -4,6 +4,7 @@ use super::*;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::units::action_id::ActionId;
+use crate::units::forced_move::DashDelivery;
 use crate::values::rank::Rank;
 
 /// Half a meter.

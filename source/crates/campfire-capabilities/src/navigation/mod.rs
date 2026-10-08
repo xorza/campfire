@@ -15,8 +15,6 @@ use campfire_sim::{
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::deliveries::Deliveries;
-use crate::deliveries::delivered::{Delivered, Reached};
-use crate::deliveries::delivering::Delivering;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
@@ -47,13 +45,12 @@ use crate::units::body_grid::Placed;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::engine_tag::EngineTag;
-use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove, Goal};
+use crate::units::forced_move::{DashTo, ForcedMove, Goal};
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
 use crate::units::unit_tags::UnitTags;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
-use crate::values::hit::Hit;
 use crate::values::shape::Shape;
 
 #[cfg(feature = "bench")]
@@ -810,16 +807,15 @@ fn force_units(
         {
             delivery.went(at, stands);
             if ends {
+                let target = match *dash_to {
+                    DashTo::Unit(target) => Some(target),
+                    DashTo::Point(_) => None,
+                };
+                let direction = at.ground_offset(stands).normalized();
                 deliveries
                     .as_deref_mut()
                     .expect("a dash that delivers an action runs in a match with abilities")
-                    .delivered
-                    .push(dash_end(
-                        *delivery,
-                        *dash_to,
-                        Segment::new(at, stands),
-                        place,
-                    ));
+                    .end_dash(*delivery, target, place, direction);
             }
         }
         if ends {
@@ -830,40 +826,6 @@ fn force_units(
         } else {
             under_way.set_if_neq(forced);
         }
-    }
-}
-
-/// The end of a dash to `to` that delivers `delivery`, whose last step was `step`, and whose unit
-/// then stands at `place`: a hit with no delivery unit, the dash's unit as its target, its place
-/// `place`, its distance the way the dash's steps went, and its direction the last step's.
-fn dash_end(delivery: DashDelivery, to: DashTo, step: Segment, place: Position) -> Delivered {
-    let DashDelivery {
-        source,
-        action,
-        rank,
-        start,
-        dashed,
-    } = delivery;
-    let target = match to {
-        DashTo::Unit(target) => Some(target),
-        DashTo::Point(_) => None,
-    };
-    Delivered {
-        by: Delivering {
-            source,
-            action,
-            rank,
-            start,
-            launch: None,
-        },
-        reach: Reached::End,
-        hit: Hit {
-            delivery: None,
-            target,
-            pos: place,
-            distance: dashed,
-            direction: step.start().ground_offset(step.end()).normalized(),
-        },
     }
 }
 
