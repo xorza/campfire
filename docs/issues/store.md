@@ -6,6 +6,6 @@ Design: [Storage](../design/02-engine-core.md#storage). Rules: [Issue log](../..
 
 ## Research
 
-- **Plan: F9.** `DataDir`, `DurableFile` and `SecretFile` each branch on the platform with `#[cfg(unix)]`, and on Windows each branch does nothing, so a promise of `store` holds on Unix only: a file or directory made owner-only on Unix gets its parent's ACL on Windows; a secret file that other users may read loads on Windows, where on Unix it is refused ([Sessions](../design/10-sessions.md#decisions), D8); and a rename's directory is synced on Unix only, so on Windows a crash may lose a durable file's name (D9).
+- **Plan: F9.** `DataDir`, `DurableFile` and `SecretFile` each branch on the platform with `#[cfg(unix)]`, and on Windows each branch does nothing, so a promise of `store` holds on Unix only: a file or directory made owner-only on Unix gets its parent's ACL on Windows; a secret file that other users may read loads on Windows, where on Unix it is refused ([Sessions](../design/10-sessions.md#decisions), D8); and a rename's directory is synced on Unix only, so on Windows a crash may lose a durable file's name (D9). The interface is Unix-shaped too: `SecretReadError::Exposed` carries a Unix mode, and the tests' `SecretFile::set_mode` sets one; and the tests of each promise, in `store` and in `net`'s `KeyFile`, run on Unix only, so on Windows no test holds them.
 
 ## Ready
