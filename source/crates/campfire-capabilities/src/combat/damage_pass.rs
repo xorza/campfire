@@ -22,7 +22,6 @@ use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
-
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::carried_mut::CarriedMut;
@@ -52,6 +51,40 @@ enum Landed {
     Killed { death: usize },
 }
 
+/// The match's scripts the pass runs, each when the match has it, out of the world while the
+/// pass runs.
+#[derive(Debug)]
+struct PassScripts {
+    weigher: Option<DamageWeigher>,
+    healer: Option<HealWeigher>,
+    events: Option<CombatEvents>,
+    ctx: Option<Ctx>,
+}
+
+/// What the pass runs in: the world alone, for a match with none of its scripts, or a script
+/// batch.
+#[derive(Debug)]
+enum PassRun<'a, 'w> {
+    Plain(&'a mut World),
+    Scripted(&'a mut ScriptBatch<'w>),
+}
+
+impl<'w> PassRun<'_, 'w> {
+    fn world(&mut self) -> &mut World {
+        match self {
+            PassRun::Plain(world) => world,
+            PassRun::Scripted(batch) => batch.world(),
+        }
+    }
+
+    fn batch(&mut self) -> Option<&mut ScriptBatch<'w>> {
+        match self {
+            PassRun::Plain(_) => None,
+            PassRun::Scripted(batch) => Some(batch),
+        }
+    }
+}
+
 impl DamagePass {
     /// Applies the tick's damage and heals in the queue's order, with the units as the pass began:
     /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
@@ -63,64 +96,29 @@ impl DamagePass {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
         world.resource_mut::<PassQueue>().begin();
-        let weigher = world.remove_non_send::<DamageWeigher>();
-        let healer = world.remove_non_send::<HealWeigher>();
-        let events = world.remove_non_send::<CombatEvents>();
-        let ctx = world.get_non_send::<Ctx>().cloned();
-        if weigher.is_none() && healer.is_none() && events.is_none() {
-            while let Some(entry) = world.resource_mut::<PassQueue>().next() {
-                match entry {
-                    PassEntry::Damage(damage) => {
-                        DamagePass::deal(world, damage, damage.amount, now);
-                    }
-                    PassEntry::Heal(heal) => DamagePass::heal(world, heal.target, heal.amount),
-                }
-            }
+        let scripts = PassScripts {
+            weigher: world.remove_non_send::<DamageWeigher>(),
+            healer: world.remove_non_send::<HealWeigher>(),
+            events: world.remove_non_send::<CombatEvents>(),
+            ctx: world.get_non_send::<Ctx>().cloned(),
+        };
+        let scripted =
+            scripts.weigher.is_some() || scripts.healer.is_some() || scripts.events.is_some();
+        if !scripted {
+            DamagePass::drain(&mut PassRun::Plain(world), &scripts, now, &mut assisters);
         } else if !world.resource::<PassQueue>().is_empty() {
             let view = world.non_send::<View>().clone();
             ScriptBatch::run(world, &view, |batch| {
-                while let Some(entry) = batch.world().resource_mut::<PassQueue>().next() {
-                    let damage = match entry {
-                        PassEntry::Damage(damage) => damage,
-                        PassEntry::Heal(heal) => {
-                            if DamagePass::living(batch.world(), heal.target).is_none() {
-                                continue;
-                            }
-                            let amount = healer.as_ref().map_or(heal.amount, |healer| {
-                                healer.weigh(batch, heal).unwrap_or_else(|error| {
-                                    batch.record(Some(heal.target), Hook::CalcHeal, error);
-                                    heal.amount
-                                })
-                            });
-                            DamagePass::heal(batch.world(), heal.target, amount);
-                            continue;
-                        }
-                    };
-                    if DamagePass::damageable(batch.world(), damage.target).is_none() {
-                        continue;
-                    }
-                    let amount = weigher.as_ref().map_or(damage.amount, |weigher| {
-                        weigher.weigh(batch, damage).unwrap_or_else(|error| {
-                            batch.record(Some(damage.target), Hook::CalcDamage, error);
-                            damage.amount
-                        })
-                    });
-                    let landed = DamagePass::deal(batch.world(), damage, amount, now);
-                    if landed != Landed::Nothing
-                        && let Some(ctx) = &ctx
-                    {
-                        DamagePass::run_weapon_list(batch, ctx, damage, now);
-                    }
-                    if let Some(events) = &events {
-                        let dealt = Damage {
-                            amount: amount.max(Num::ZERO),
-                            ..damage
-                        };
-                        DamagePass::answer(batch, events, dealt, landed, &mut assisters);
-                    }
-                }
+                let run = &mut PassRun::Scripted(batch);
+                DamagePass::drain(run, &scripts, now, &mut assisters);
             });
         }
+        let PassScripts {
+            weigher,
+            healer,
+            events,
+            ctx: _,
+        } = scripts;
         if let Some(weigher) = weigher {
             world.insert_non_send(weigher);
         }
@@ -131,6 +129,64 @@ impl DamagePass {
             world.insert_non_send(events);
         }
         world.resource_mut::<PassQueue>().end();
+    }
+
+    /// Deals the queue's entries in order, with the pass's `scripts` when `run` runs them.
+    fn drain(
+        run: &mut PassRun<'_, '_>,
+        scripts: &PassScripts,
+        now: Tick,
+        assisters: &mut Vec<StableId>,
+    ) {
+        while let Some(entry) = run.world().resource_mut::<PassQueue>().next() {
+            let damage = match entry {
+                PassEntry::Damage(damage) => damage,
+                PassEntry::Heal(heal) => {
+                    let Some(entity) = DamagePass::living(run.world(), heal.target) else {
+                        continue;
+                    };
+                    let amount = match (&scripts.healer, run.batch()) {
+                        (Some(healer), Some(batch)) => {
+                            healer.weigh(batch, heal).unwrap_or_else(|error| {
+                                batch.record(Some(heal.target), Hook::CalcHeal, error);
+                                heal.amount
+                            })
+                        }
+                        _ => heal.amount,
+                    };
+                    DamagePass::heal(run.world(), entity, amount);
+                    continue;
+                }
+            };
+            if DamagePass::damageable(run.world(), damage.target).is_none() {
+                continue;
+            }
+            let amount = match (&scripts.weigher, run.batch()) {
+                (Some(weigher), Some(batch)) => {
+                    weigher.weigh(batch, damage).unwrap_or_else(|error| {
+                        batch.record(Some(damage.target), Hook::CalcDamage, error);
+                        damage.amount
+                    })
+                }
+                _ => damage.amount,
+            };
+            let landed = DamagePass::deal(run.world(), damage, amount, now);
+            let Some(batch) = run.batch() else {
+                continue;
+            };
+            if landed != Landed::Nothing
+                && let Some(ctx) = &scripts.ctx
+            {
+                DamagePass::run_weapon_list(batch, ctx, damage, now);
+            }
+            if let Some(events) = &scripts.events {
+                let dealt = Damage {
+                    amount: amount.max(Num::ZERO),
+                    ..damage
+                };
+                DamagePass::answer(batch, events, dealt, landed, assisters);
+            }
+        }
     }
 
     /// The entity of `unit`, when it exists and its life pool is above zero: one that damage,
@@ -321,16 +377,9 @@ impl DamagePass {
         death.map_or(Landed::Taken, |death| Landed::Killed { death })
     }
 
-    /// Heals `unit`'s life pool by `amount` times one plus its `heal_scale` stat, when it exists
-    /// and its life is above zero.
-    pub(crate) fn heal(world: &mut World, unit: StableId, amount: Num) {
-        if let Some(entity) = DamagePass::living(world, unit) {
-            DamagePass::heal_living(world, entity, amount);
-        }
-    }
-
-    /// Heals `entity`, a living unit, as `heal` does.
-    fn heal_living(world: &mut World, entity: Entity, amount: Num) {
+    /// Heals the life pool of `entity`, a living unit, by `amount` times one plus its
+    /// `heal_scale` stat.
+    fn heal(world: &mut World, entity: Entity, amount: Num) {
         let bindings = *world.resource::<CombatBindings>();
         let LifePool(life) = *world.resource::<LifePool>();
         let scale = DamagePass::stat(world, entity, bindings.heal_scale);
@@ -372,4 +421,22 @@ fn scaled(amount: Num, ratio: Num) -> Num {
             Num::MIN
         }
     })
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+    use campfire_sim::StableId;
+
+    use crate::combat::damage_pass::DamagePass;
+
+    impl DamagePass {
+        /// Heals `unit` at once, as the pass heals it, when it exists and its life is above zero.
+        pub(crate) fn heal_unit(world: &mut World, unit: StableId, amount: Num) {
+            if let Some(entity) = DamagePass::living(world, unit) {
+                DamagePass::heal(world, entity, amount);
+            }
+        }
+    }
 }

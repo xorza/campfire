@@ -869,7 +869,7 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     let c = fight.unit(Team::new(0), at(3, 0, 0), dummy());
     fight.damage(Some(c), target, 10, ATTACK);
     fight.sim.run_until(2);
-    DamagePass::heal(&mut fight.sim.world, target, Num::int(50));
+    DamagePass::heal_unit(&mut fight.sim.world, target, Num::int(50));
     assert_eq!(fight.sim.health(target), 0);
     let attackers = fight.sim.try_get::<RecentAttackers>(target).unwrap();
     assert!(attackers.iter().all(|attack| attack.source != c));
@@ -956,9 +956,9 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     assert_eq!(fight.sim.life(target), Num::int(55));
     assert_eq!(fight.sim.life(source), Num::int(185) / 4);
     // A heal of 10 is halved too; one past the maximum stops at it.
-    DamagePass::heal(&mut fight.sim.world, source, Num::int(10));
+    DamagePass::heal_unit(&mut fight.sim.world, source, Num::int(10));
     assert_eq!(fight.sim.life(source), Num::int(205) / 4);
-    DamagePass::heal(&mut fight.sim.world, source, Num::int(1000));
+    DamagePass::heal_unit(&mut fight.sim.world, source, Num::int(1000));
     assert_eq!(fight.sim.life(source), Num::int(100));
     // A heal scale at the largest number, one past which no number holds, scales as the largest:
     // a heal of 1 from 40 fills the pool.
@@ -967,7 +967,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         .sim
         .get_mut::<Pools>(source)
         .take(PoolId::FIRST, Num::int(60));
-    DamagePass::heal(&mut fight.sim.world, source, Num::ONE);
+    DamagePass::heal_unit(&mut fight.sim.world, source, Num::ONE);
     assert_eq!(fight.sim.life(source), Num::int(100));
     fight.stats(source, [-half, half, Num::ONE / 4]);
     // Leech is dealt next, before the rest of the queue: at 10, an attack of 20 steals 20 × 0.5,
@@ -994,7 +994,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     fight.sim.run_until(4);
     assert_eq!(fight.sim.life(target), Num::int(25));
     assert_eq!(fight.sim.life(source), Num::int(50));
-    DamagePass::heal(&mut fight.sim.world, source, Num::int(10));
+    DamagePass::heal_unit(&mut fight.sim.world, source, Num::int(10));
     assert_eq!(fight.sim.life(source), Num::int(60));
     // A restore reaches the pool it names, unscaled: a second pool at 50 of 100 takes 20 more,
     // and the life pool keeps its 60.
