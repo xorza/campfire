@@ -14,12 +14,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 ## 13. A fact is derived in several places in one module
 
-- [ ] `navigation/mod.rs:221,244,406,795`, `navigation/navigation_effect.rs:230`, `navigation/route_asks.rs:345` (`RouteAsks::walkable`), `mode/map_data.rs:208`: each spells `Walkable { clearance, statics, short: None }`. Target: one `Walkable::of(clearance, statics)`, and `RouteAsks::walkable` removed.
-- [ ] `navigation/mod.rs:509-510,665-666`: `tags.is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag()))` twice, beside `UnitTags::properties_of(Option<&UnitTags>)`. Target: `UnitTags::gathers(Option<&UnitTags>)`.
-- [ ] `navigation/statics_dirty.rs:71,86`: `state_inserted` and `state_removed` have the same body. Target: one private function.
-- [ ] `navigation/collider/mod.rs:55,88,104`: `overlaps`, `overlap` and `part` each derive "can these two separate" again. Target: one `Collider::may_part(&self, other)`.
-- [ ] `navigation/pathing_grid/mod.rs:162,170`: `serving` binary-searches the kinds, then `clearance` searches again with `expect`. Target: one search that returns the index.
-- [ ] `navigation/route_planner/mod.rs:85,87`: `Planned::cost` and `Planned::expanded` are computed for each plan, but only `route_planner/tests.rs` reads them. Target: remove them from the production result, or gate them for tests.
 - [ ] `vision/sight_maps/mod.rs:99,115`: `sees` and `sees_any` (in a second `impl SightMaps` block) repeat the detection-or-reveal bitmap choice. `sees(group, cell, hidden)` is `sees_any(group, cell..cell + 1, hidden)`. Target: one method on a range in one `impl` block.
 - [ ] `actions/action_slots.rs:173-208` (`InProgress::slot`, `slot_mut`): the same four-arm destructuring twice. Target: one place names each variant's slot.
 - [ ] `combat/damage_handle.rs:30-48,80-90`, `combat/heal_handle.rs:28-44,53-60`: the `source`, `target` and `ability` bindings are the same closures twice. Target: shared helpers.

@@ -1,5 +1,6 @@
 use std::mem;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Allow, Has, With};
@@ -71,14 +72,9 @@ impl StaticsDirty {
     fn state_inserted(
         inserted: On<'_, '_, Insert, (MoveStep, Dead)>,
         parts: BodyParts<'_, '_>,
-        mut dirty: ResMut<'_, StaticsDirty>,
+        dirty: ResMut<'_, StaticsDirty>,
     ) {
-        if parts
-            .get(inserted.entity)
-            .is_ok_and(|(walks, dead)| !(walks && dead))
-        {
-            dirty.set();
-        }
+        StaticsDirty::state_changed(inserted.entity, &parts, dirty);
     }
 
     /// A unit lives again or stops walking: it becomes static if it lacks the other of the two.
@@ -86,10 +82,20 @@ impl StaticsDirty {
     fn state_removed(
         removed: On<'_, '_, Remove, (MoveStep, Dead)>,
         parts: BodyParts<'_, '_>,
+        dirty: ResMut<'_, StaticsDirty>,
+    ) {
+        StaticsDirty::state_changed(removed.entity, &parts, dirty);
+    }
+
+    /// `entity` gained or lost walking or being dead: it was or becomes static unless it has
+    /// both, and so stays a walker or dead either way.
+    fn state_changed(
+        entity: Entity,
+        parts: &BodyParts<'_, '_>,
         mut dirty: ResMut<'_, StaticsDirty>,
     ) {
         if parts
-            .get(removed.entity)
+            .get(entity)
             .is_ok_and(|(walks, dead)| !(walks && dead))
         {
             dirty.set();

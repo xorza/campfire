@@ -125,11 +125,7 @@ pub(crate) fn route_planner(c: &mut Criterion) {
     let mut index = BodyIndex::new(walker.radius);
     index.update(&scene_statics(span));
     grid.update(&index);
-    let walkable = Walkable {
-        clearance: grid.clearance(walker),
-        statics: &index,
-        short: None,
-    };
+    let walkable = Walkable::of(grid.clearance(walker), &index);
     let mut ends = KernelScene::new(17);
     let end_at = |ends: &mut KernelScene, z: i64| {
         let x = ends.below(span * 200).cast_signed() - span.cast_signed() * 100;
@@ -219,11 +215,7 @@ impl GroupScene<'_> {
                 goal,
             })
             .collect();
-        let walkable = Walkable {
-            clearance: self.grid.clearance(self.walker),
-            statics: self.statics,
-            short: None,
-        };
+        let walkable = Walkable::of(self.grid.clearance(self.walker), self.statics);
         let mut asks = RouteAsks::default();
         let mut waypoints = Vec::new();
         group.throughput(Throughput::Elements(ROUTES as u64));

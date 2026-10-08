@@ -224,11 +224,10 @@ fn teleport(world: &mut World, entity: Entity, unit: StableId, to: Position, now
     if let Some(grid) = world.get_resource::<PathingGrid>()
         && PathingGrid::serves(world, entity)
     {
-        let walkable = Walkable {
-            clearance: grid.clearance(Walker::walking(world.get::<Body>(entity))),
-            statics: world.resource::<BodyIndex>(),
-            short: None,
-        };
+        let walkable = Walkable::of(
+            grid.clearance(Walker::walking(world.get::<Body>(entity))),
+            world.resource::<BodyIndex>(),
+        );
         let Some(open) = world.resource::<RoutePlanner>().stand_at(walkable, place) else {
             return;
         };

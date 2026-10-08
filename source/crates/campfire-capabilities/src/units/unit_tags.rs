@@ -1,6 +1,7 @@
 use bevy_ecs::component::Component;
 
 use crate::units::block::Block;
+use crate::units::engine_tag::EngineTag;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 
@@ -17,6 +18,12 @@ impl UnitTags {
     /// The properties of a unit with `tags`: none for one with no tags.
     pub(crate) fn properties_of(tags: Option<&UnitTags>) -> TagProperties {
         tags.map_or_else(TagProperties::default, |tags| tags.properties)
+    }
+
+    /// Whether a unit with `tags` gathers: it has the engine's `gathering` tag, which a gather
+    /// under way gives it.
+    pub(crate) fn gathers(tags: Option<&UnitTags>) -> bool {
+        tags.is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag()))
     }
 
     /// Whether a unit with `tags`, under a forced move when `forced`, is kept from `block`: by its

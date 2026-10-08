@@ -175,7 +175,7 @@ impl RouteAsks {
     ) {
         let (_, _, &at, mut route, body) = units.get_mut(entity).expect("a unit read this tick");
         let goal = route.goal().expect("a unit that asked a route has a goal");
-        let walkable = RouteAsks::walkable(grid, statics, Walker::walking(body));
+        let walkable = Walkable::of(grid.clearance(Walker::walking(body)), statics);
         let outcome = planner.plan(walkable, at, goal, &mut self.waypoints);
         route.answer(&self.waypoints, outcome.reached);
     }
@@ -282,7 +282,7 @@ impl RouteAsks {
             .filter(|member| member.walker == widest)
             .min_by_key(|member| (distance(member.at), member.id))
             .expect("the widest walker is a member's");
-        let walkable = RouteAsks::walkable(grid, statics, widest);
+        let walkable = Walkable::of(grid.clearance(widest), statics);
         let outcome = planner.plan(walkable, leader.at, party.goal, &mut self.waypoints);
         let start = self.shared.len();
         self.shared.extend_from_slice(&self.waypoints);
@@ -313,7 +313,7 @@ impl RouteAsks {
             .expect("its layer's route was searched")
             .clone();
         let route = &self.shared[shared.waypoints];
-        let walkable = RouteAsks::walkable(grid, statics, member.walker);
+        let walkable = Walkable::of(grid.clearance(member.walker), statics);
         let seen = (0..route.len())
             .rev()
             .find(|&at| planner.sees(walkable, Segment::new(member.at, route[at])));
@@ -336,14 +336,6 @@ impl RouteAsks {
             }
         }
         answer(member.entity, &self.waypoints, reached);
-    }
-
-    fn walkable<'a>(grid: &'a PathingGrid, statics: &'a BodyIndex, walker: Walker) -> Walkable<'a> {
-        Walkable {
-            clearance: grid.clearance(walker),
-            statics,
-            short: None,
-        }
     }
 }
 

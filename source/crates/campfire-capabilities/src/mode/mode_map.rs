@@ -287,11 +287,7 @@ impl ModeMap {
         let declared = |name: &str| DeclaredName::new(name).expect("the map's names are declared");
         for walker in widest {
             let clearance = grid.clearance(walker);
-            let walkable = Walkable {
-                clearance,
-                statics: &statics,
-                short: None,
-            };
+            let walkable = Walkable::of(clearance, &statics);
             let stands = |at: Position| !walkable.blocks(Segment::new(at, at));
             for marker in &self.markers {
                 if marker.pos.is_some_and(|pos| !stands(pos)) {

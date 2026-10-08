@@ -46,7 +46,6 @@ use crate::units::body::Body;
 use crate::units::body_grid::Placed;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
-use crate::units::engine_tag::EngineTag;
 use crate::units::forced_move::{DashTo, ForcedMove, Goal};
 use crate::units::move_step::MoveStep;
 use crate::units::row_fill::RowFill;
@@ -209,11 +208,7 @@ impl Navigation {
             let grid = world.get_resource::<PathingGrid>();
             let planner = world.get_resource::<RoutePlanner>();
             let place = if let (Some(grid), Some(planner)) = (grid, planner) {
-                let walkable = Walkable {
-                    clearance: grid.clearance(kind),
-                    statics: world.resource::<BodyIndex>(),
-                    short: None,
-                };
+                let walkable = Walkable::of(grid.clearance(kind), world.resource::<BodyIndex>());
                 planner.stand_at(walkable, pos).unwrap_or(pos)
             } else {
                 let out = boxed
@@ -232,11 +227,7 @@ impl Navigation {
         let grid = world.get_resource::<PathingGrid>()?;
         let planner = world.get_resource::<RoutePlanner>()?;
         let clearance = grid.serving(walker)?;
-        let walkable = Walkable {
-            clearance,
-            statics: world.resource::<BodyIndex>(),
-            short: None,
-        };
+        let walkable = Walkable::of(clearance, world.resource::<BodyIndex>());
         let cell = planner.nearest_open(walkable, point, &mut 0)?;
         Some(clearance.grid().center(cell, point.get().y))
     }
@@ -394,11 +385,7 @@ fn route_units(
                 let straight = from.filter(|_| route.reached() && route.asked().is_none());
                 let blocks = |from| {
                     grid.as_ref().is_some_and(|grid| {
-                        let walkable = Walkable {
-                            clearance: grid.clearance(walker),
-                            statics: &statics,
-                            short: None,
-                        };
+                        let walkable = Walkable::of(grid.clearance(walker), &statics);
                         walkable.blocks(Segment::new(from, goal))
                     })
                 };
@@ -500,12 +487,9 @@ fn steer(
             at,
             shape: body.shape(),
         });
-    let gathering = |tags: Option<&UnitTags>| {
-        tags.is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag()))
-    };
     let gatherers = bodies
         .iter()
-        .filter(|&(.., tags)| gathering(tags))
+        .filter(|&(.., tags)| UnitTags::gathers(tags))
         .map(|(&id, ..)| id);
     steering.read(&statics, still, walking, gatherers);
     let stuck_ticks = rate
@@ -528,7 +512,7 @@ fn steer(
             step: step.get(),
             walker: Walker::walking(Some(body)),
             stuck: u64::from(progress.track(at, step.get())) >= stuck_ticks,
-            gathering: gathering(tags),
+            gathering: UnitTags::gathers(tags),
         };
         if let Some(detour) = steering.steer(planner, &grid, &statics, steered, &route) {
             route.splice(steering.short(), detour.skipped, detour.reached);
@@ -656,8 +640,7 @@ fn collide(
                     layer: body.layer(),
                     movable,
                     walking: walks(destination, tags, false),
-                    gathering: tags
-                        .is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag())),
+                    gathering: UnitTags::gathers(tags),
                 },
             ),
     );
@@ -783,11 +766,7 @@ fn force_units(
         let stands = if blocked { at } else { to };
         let place = match (clearance, planner.as_deref()) {
             (Some(clearance), Some(planner)) if ends && !knocked => {
-                let walkable = Walkable {
-                    clearance,
-                    statics: &statics,
-                    short: None,
-                };
+                let walkable = Walkable::of(clearance, &statics);
                 planner.stand_at(walkable, stands).unwrap_or(stands)
             }
             _ => stands,

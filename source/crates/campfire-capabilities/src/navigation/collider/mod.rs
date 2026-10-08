@@ -53,14 +53,21 @@ impl Collider {
     /// not overlap. Two that may not be pushed never part, so they have no contact, nor have two
     /// of other layers, nor two that both gather.
     pub(crate) fn overlaps(&self, other: &Collider) -> bool {
-        let apart = !self.movable && !other.movable || self.gathering && other.gathering;
-        if apart || self.layer != other.layer {
+        if !self.may_part(other) {
             return false;
         }
         match Collider::boxed(self, other) {
             Some((body, at, mover)) => body.push_out(at, mover.at, mover.radius()).is_some(),
             None => self.overlap(other).is_some(),
         }
+    }
+
+    /// Whether the two may part: they stand on one layer, one of them may be pushed, and not both
+    /// gather.
+    fn may_part(&self, other: &Collider) -> bool {
+        self.layer == other.layer
+            && (self.movable || other.movable)
+            && !(self.gathering && other.gathering)
     }
 
     /// The radius of a body that may be pushed, which is a circle.
@@ -86,7 +93,7 @@ impl Collider {
     /// How `other` lies from `self`, two circles, when the two overlap and may part, in bits of a
     /// `Num`: a position and a radius are within 2⁴⁵ bits, so squares fit i128.
     fn overlap(&self, other: &Collider) -> Option<Overlap> {
-        if !self.movable && !other.movable || self.layer != other.layer {
+        if !self.may_part(other) {
             return None;
         }
         let dx = i128::from(other.at.x.to_bits() - self.at.x.to_bits());
@@ -102,7 +109,7 @@ impl Collider {
     }
 
     fn part(a: &mut Collider, b: &mut Collider) {
-        if a.layer != b.layer {
+        if !a.may_part(b) {
             return;
         }
         if let Some((body, at, _)) = Collider::boxed(a, b) {
