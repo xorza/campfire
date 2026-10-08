@@ -254,7 +254,7 @@ impl Production {
         let at = *target.get::<Position>()?;
         let slots = world.get::<ActionSlots>(trained)?;
         let book = world.resource::<ActionBook>();
-        let slot = (0..).zip(slots.iter()).find_map(|(slot, held)| {
+        let slot = slots.indexed().find_map(|(slot, held)| {
             let action = book.get(held.action?)?;
             let KindSpec::Gather(spec) = action.kind else {
                 return None;

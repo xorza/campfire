@@ -287,11 +287,7 @@ fn run_toggles(
     let second = Abilities::second(*rate);
     for (mut slots, mut pools, tags, inventory, dead) in &mut units {
         on.clear();
-        on.extend(
-            (0..)
-                .zip(slots.iter())
-                .filter(|(_, slot)| slot.toggle.is_some()),
-        );
+        on.extend(slots.indexed().filter(|(_, slot)| slot.toggle.is_some()));
         for &(at, slot) in &*on {
             let group = Inventory::group(inventory, slot.kind);
             if dead || UnitTags::properties_of(tags).blocks(group) {

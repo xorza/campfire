@@ -142,6 +142,25 @@ impl ModeBook {
             .map_or(&[], |held| &self.actions[held.actions.clone()])
     }
 
+    /// The slots a unit of `unit_type` spawns with: its actions, each at the first rank of its
+    /// kind, then an empty slot of its inventory's kind for each inventory slot; none for a type
+    /// with neither.
+    pub(crate) fn spawn_slots(&self, unit_type: UnitType) -> Option<ActionSlots> {
+        let inventory = self.kit(unit_type)?.inventory;
+        let actions = self.actions(unit_type);
+        if actions.is_empty() && inventory.is_none() {
+            return None;
+        }
+        let actions = actions
+            .iter()
+            .map(|action| (action.ability, action.kind, action.rank));
+        let mut slots = ActionSlots::new(actions);
+        if let Some(inventory) = inventory {
+            slots.add_empty(inventory.kind, inventory.slots.get());
+        }
+        Some(slots)
+    }
+
     pub(super) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
         self.types.get(unit_type).map(|held| held.kit)
     }
@@ -234,17 +253,11 @@ impl ModeBook {
         if kit.gathers {
             unit.insert(Gatherer::default());
         }
-        let actions = self.actions(unit_type);
-        if !actions.is_empty() || kit.inventory.is_some() {
-            let slots = actions
-                .iter()
-                .map(|action| (action.ability, action.kind, action.rank));
-            let mut slots = ActionSlots::new(slots);
-            if let Some(inventory) = kit.inventory {
-                slots.add_empty(inventory.kind, inventory.slots.get());
-                unit.insert(Inventory::new(inventory.slots, inventory.kind));
-            }
+        if let Some(slots) = self.spawn_slots(unit_type) {
             unit.insert(slots);
+        }
+        if let Some(inventory) = kit.inventory {
+            unit.insert(Inventory::new(inventory.slots, inventory.kind));
         }
         let entity = unit.id();
         if let Some(passive) = self.types.get(unit_type).and_then(|held| held.passive) {

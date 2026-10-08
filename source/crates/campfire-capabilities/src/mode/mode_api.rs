@@ -323,7 +323,9 @@ impl ModeApi {
             grant,
             |ctx: &mut Ctx, unit: NewUnit, kind: ImmutableString, ids: Array| {
                 let book = ModeBook::of_or_fail(ctx)?;
-                let slots = book.actions(unit.unit_type).len();
+                let slots = book
+                    .spawn_slots(unit.unit_type)
+                    .map_or(0, |slots| slots.len());
                 ModeApi::grant(ctx, unit.id, slots, &kind, &ids)
             },
         )

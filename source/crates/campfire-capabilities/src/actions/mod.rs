@@ -191,7 +191,7 @@ fn hold_passives(
         }
         let mut waits = false;
         let mut carried = CarriedMut::new(modifiers, clocks);
-        for (index, slot) in (0..).zip(slots.iter()) {
+        for (index, slot) in slots.indexed() {
             let Some(ability) = slot.action else {
                 continue;
             };

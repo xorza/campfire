@@ -337,6 +337,16 @@ impl ActionSlots {
         self.slots.iter().copied()
     }
 
+    pub(crate) const fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    /// Each slot with its index: a range to the last `u8`, as an open one overflows on the
+    /// 256th slot a unit may hold.
+    pub(crate) fn indexed(&self) -> impl Iterator<Item = (u8, ActionSlot)> + '_ {
+        (0..=u8::MAX).zip(self.iter())
+    }
+
     /// Raises the action in `slot` a rank; the caller checked it has one more.
     pub(crate) fn learn(&mut self, slot: u8) {
         let slot = &mut self.slots[usize::from(slot)];
@@ -666,7 +676,7 @@ impl ActionSlots {
         book: &'a ActionBook,
         now: Tick,
     ) -> impl Iterator<Item = (u8, Option<SlotCharges>)> + 'a {
-        (0..).zip(&self.slots).filter_map(move |(at, slot)| {
+        self.indexed().filter_map(move |(at, slot)| {
             let rule = slot.action.and_then(|action| {
                 let action = book.get(action).expect("a slot's action is in the book");
                 action.charge_rule(slot.rank)

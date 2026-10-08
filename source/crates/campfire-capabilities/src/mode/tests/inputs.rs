@@ -260,6 +260,51 @@ fn on_input(ctx, player, name, value) {
 }
 
 #[test]
+fn a_grant_to_a_fresh_unit_counts_its_inventory_slots() {
+    // Hero Y carries 255 inventory slots of the spell kind and no action. Granted two spells as it
+    // spawns, it would hold 257 slots, past the 256 a unit holds: the grant fails, and its call's
+    // spawn with it. Granted one, it holds 256, the spell after the inventory's slots.
+    let script = r#"
+fn on_input(ctx, player, name, value) {
+    let unit = ctx.spawn_unit("hero-y", "a", ctx.map.markers("camp")[0].pos, player);
+    ctx.grant(unit, "spell", if value == "two" { ["blink", "blink"] } else { ["blink"] });
+}
+"#;
+    let spell = SlotKind::new(1);
+    let carry = |setup: &mut ModeSetup<'_>| {
+        setup.units.unit_types[2].kit.inventory = Some(InventorySpec {
+            slots: NonZeroU8::MAX,
+            kind: spell,
+        });
+    };
+    let script = format!("{script}{PICKING}");
+    let mut game = Game::start_setup(&script, ScriptLimits::ROOMY, mode_files(), carry).unwrap();
+    let owned = |game: &mut Game| {
+        let mut owned = game.sim.world.query::<(&Owner, &ActionSlots)>();
+        let slots = owned.iter(&game.sim.world).map(|(_, slots)| slots.clone());
+        slots.collect::<Vec<_>>()
+    };
+    game.tick(&[(0, input("probe", "two"))]);
+    assert_eq!(game.failures(), [FailureKind::Api(ApiError::TooManySlots)]);
+    assert!(owned(&mut game).is_empty());
+    game.tick(&[(0, input("probe", "one"))]);
+    assert_eq!(game.failures(), []);
+    let [slots] = owned(&mut game).try_into().unwrap();
+    assert_eq!(slots.len(), ActionSlots::LIMIT);
+    let last = slots.slot(255).unwrap();
+    assert_eq!(
+        (last.action, last.kind, last.rank),
+        (Some(game.blink), spell, 1)
+    );
+    assert!(
+        slots
+            .iter()
+            .take(255)
+            .all(|slot| slot.action.is_none() && slot.kind == spell)
+    );
+}
+
+#[test]
 fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     // Player 0 picks hero X, of an avatar's type, and owns a grunt besides; player 1 owns only a
     // grunt, and player 2 nothing. A second hero of player 0 of a higher id is not its avatar.
