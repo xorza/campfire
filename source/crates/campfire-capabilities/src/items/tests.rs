@@ -3,7 +3,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, Position, SimComponent, TickInput, TickInputs};
+use campfire_sim::{Capability, Position, SimComponent, StableId, TickInput, TickInputs};
 use serde::Deserialize;
 
 use super::*;
@@ -29,8 +29,11 @@ use crate::players::resource_id::ResourceId;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
+use crate::stats::lifetime::Hold;
 use crate::stats::loads::load_stats;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
+use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_change::StatChange;
@@ -39,6 +42,7 @@ use crate::stats::stat_rule::StatRule;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::block::Block;
+use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
 use crate::values::declared_name::DeclaredName;
