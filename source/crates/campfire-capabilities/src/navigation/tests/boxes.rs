@@ -144,7 +144,7 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
             ..PlacedUnitData::new("crate", "west", point(0, 0))
         });
         map.units.extend(placed);
-        map.check_walkable(&[ground(Num::HALF)], &rules, body_of)
+        check_walkable(&map, &[ground(Num::HALF)], &rules, body_of)
     };
     let blocked = |unit| {
         Err(MapProblem::BoxBlocked {

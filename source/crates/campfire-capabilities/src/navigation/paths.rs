@@ -64,6 +64,12 @@ impl Paths {
         self.names.get(path.index()).expect("a path of the map")
     }
 
+    /// The waypoints of `path`, from its start.
+    pub(crate) fn points(&self, path: PathId) -> &[Position] {
+        let range = &self.ranges[path.index()];
+        &self.points[range.start as usize..range.end as usize]
+    }
+
     /// Waypoint `index` of `path` counted from its end `from`; `None` past the last.
     pub fn waypoint(&self, path: PathId, index: u32, from: PathEnd) -> Option<Position> {
         let range = self.ranges.get(path.index())?;

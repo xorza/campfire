@@ -15,6 +15,7 @@ use crate::items::item_book::ItemBook;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_units::ModeUnits;
+use crate::navigation::error::MapProblem;
 use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
 use crate::production::build_specs::BuildSpecs;
@@ -36,8 +37,10 @@ use crate::stats::stats_column::StatsColumn;
 use crate::units::by_type::ByType;
 use crate::units::predicting::Predicting;
 use crate::units::script_view::View;
+use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::units::units_column::UnitsColumn;
+use crate::values::declared_name::DeclaredName;
 use crate::vision::sight::Sight;
 
 pub(crate) mod book_builder;
@@ -99,6 +102,27 @@ impl Books {
     /// not see and the books cannot hold.
     pub fn build(input: &BookInput<'_>) -> Result<Books, BookError> {
         BookBuilder::new(input).build()
+    }
+
+    /// Checks that the mode's map can be walked by the kinds of `walkers`, as
+    /// `ModeMap::check_walkable` says, among its placed units of the types that do not walk.
+    pub fn check_walkable(&self, walkers: &[Walker]) -> Result<(), MapProblem> {
+        let kits = &self.parts.units.unit_types;
+        let body_of = |unit_type| {
+            let walks = self.parts.walkers.get(unit_type).is_some();
+            let placed = kits.iter().find(|setup| setup.unit_type == unit_type);
+            placed
+                .expect("a placed unit's type stands")
+                .kit
+                .body
+                .filter(|_| !walks)
+        };
+        let name_of = |unit_type: UnitType| {
+            let name = self.parts.types.names().nth(unit_type.index());
+            DeclaredName::new(name.expect("a type of the books"))
+                .expect("a type's name is declared")
+        };
+        self.mode.map.check_walkable(walkers, body_of, name_of)
     }
 
     /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are

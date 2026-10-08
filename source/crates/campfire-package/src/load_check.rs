@@ -146,9 +146,10 @@ impl<'a> LoadCheck<'a> {
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
         let input = packages.book_input(check.rate, &stat_order);
-        Books::build(&input).map_err(|error| check.book_error(error))?;
-        // After the build, which resolved the map's names.
-        check.map_walkable().map_err(fail)?;
+        let books = Books::build(&input).map_err(|error| check.book_error(error))?;
+        books
+            .check_walkable(&packages.walkers())
+            .map_err(|problem| fail(LoadProblem::Map(problem)))?;
         Ok(stat_order)
     }
 
@@ -207,24 +208,6 @@ impl<'a> LoadCheck<'a> {
             &view.expect("the books name a package").package.header.name,
             problem,
         )
-    }
-
-    /// The map can be walked by every unit that walks, among the mode's unit types and its
-    /// avatars, as `MapData::check_walkable` sets: the widest of each layer stands on every
-    /// marker's point and waypoint, and reaches every waypoint from the one before, among the
-    /// map's placed units that cannot walk.
-    fn map_walkable(&self) -> Result<(), LoadProblem> {
-        let packages = self.packages;
-        let walkers = packages.walkers();
-        let body_of = |unit_type: &str| {
-            let unit_type = packages.content.units.get(unit_type)?;
-            let form = packages.data.navigation.form(unit_type.collision.as_ref());
-            form.filter(|_| !unit_type.walks())
-        };
-        packages
-            .map
-            .check_walkable(&walkers, &packages.data.navigation, body_of)
-            .map_err(LoadProblem::Map)
     }
 
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.

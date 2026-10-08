@@ -7,6 +7,8 @@ use crate::mode::error::ModeError;
 use crate::mode::map_data::{
     MapData, MapNavigationData, MapPoint, MarkerData, PathData, PlacedUnitData, WallData,
 };
+use crate::mode::mode_map::ModeMap;
+use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::error::MapProblem;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
@@ -14,6 +16,7 @@ use crate::navigation::wall::Wall;
 use crate::units::body::BodyForm;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
+use crate::units::unit_type::UnitType;
 use crate::values::declared_name::DeclaredName;
 use crate::values::polygon::Polygon;
 use crate::values::polygon::error::PolygonError;
@@ -752,6 +755,29 @@ fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
     }
 }
 
+/// `map` resolved as a mode of one team, `west`, of `rules`, and checked walkable for `walkers`,
+/// its placed units' bodies by their types' names as `body_of` gives them.
+fn check_walkable(
+    map: &MapData,
+    walkers: &[Walker],
+    rules: &NavigationRules,
+    body_of: impl Fn(&str) -> Option<BodyForm>,
+) -> Result<(), MapProblem> {
+    const TYPES: [&str; 4] = ["tower", "creep", "cloud", "crate"];
+    let unit_type = |name: &str| {
+        let at = TYPES.iter().position(|&held| held == name)?;
+        Some(UnitType::new(u16::try_from(at).unwrap()))
+    };
+    let teams = [TeamManifest {
+        name: DeclaredName::new("west").unwrap(),
+        slots: 0,
+    }];
+    let map = ModeMap::resolve(map, &teams, &[], rules, unit_type).unwrap();
+    let name = |unit_type: UnitType| TYPES[unit_type.index()];
+    let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
+    map.check_walkable(walkers, |unit_type| body_of(name(unit_type)), named)
+}
+
 /// The corridor's bodies: a tower of 0.9 m on the ground, a cloud of the same width in the air.
 fn corridor_body(unit_type: &str) -> Option<BodyForm> {
     let tower = BodyForm::circle(Num::from_bits((9 << Num::FRAC_BITS) / 10)).unwrap();
@@ -774,7 +800,7 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     let body_of = corridor_body;
     let rules = NavigationRules::default();
     let check = |towers: &[(i64, i64)], neutral| {
-        map(towers, neutral).check_walkable(&[ground(half)], &rules, body_of)
+        check_walkable(&map(towers, neutral), &[ground(half)], &rules, body_of)
     };
     assert_eq!(check(&[(5, 0), (5, 4)], (8, 3)), Ok(()));
     let unreachable = MapProblem::WaypointUnreachable {
@@ -805,9 +831,9 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     };
     let both = [ground(half), flyer];
     let closed = map(&[(5, 0), (5, 2), (5, 4)], (8, 3));
-    assert_eq!(closed.check_walkable(&[flyer], &rules, body_of), Ok(()));
+    assert_eq!(check_walkable(&closed, &[flyer], &rules, body_of), Ok(()));
     assert_eq!(
-        closed.check_walkable(&both, &rules, body_of),
+        check_walkable(&closed, &both, &rules, body_of),
         Err(MapProblem::WaypointUnreachable {
             path: DeclaredName::new("lane").unwrap(),
             waypoint: 1,
@@ -816,14 +842,14 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     let mut clouded = map(&[(5, 0), (5, 4)], (8, 3));
     clouded.units.push(placed("cloud", (7, 3)));
     assert_eq!(
-        clouded.check_walkable(&[ground(half)], &rules, body_of),
+        check_walkable(&clouded, &[ground(half)], &rules, body_of),
         Ok(())
     );
     assert_eq!(
-        clouded.check_walkable(&both, &rules, body_of),
+        check_walkable(&clouded, &both, &rules, body_of),
         blocked("camp")
     );
-    assert_eq!(clouded.check_walkable(&[], &rules, body_of), Ok(()));
+    assert_eq!(check_walkable(&clouded, &[], &rules, body_of), Ok(()));
 }
 
 #[test]
@@ -851,9 +877,9 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
         walled
     };
     let across = walled(vec![wall(None, &[(5, 0), (6, 0), (6, 4), (5, 4)])]);
-    assert_eq!(across.check_walkable(&[flyer], &rules, body_of), Ok(()));
+    assert_eq!(check_walkable(&across, &[flyer], &rules, body_of), Ok(()));
     assert_eq!(
-        across.check_walkable(&both, &rules, body_of),
+        check_walkable(&across, &both, &rules, body_of),
         Err(MapProblem::WaypointUnreachable {
             path: DeclaredName::new("lane").unwrap(),
             waypoint: 1,
@@ -862,7 +888,7 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
     let round = walled(vec![wall(None, &[(0, 0), (2, 0), (2, 2), (0, 2)])]);
     let spawn = DeclaredName::new("spawn").unwrap();
     let blocked = Err(MapProblem::MarkerBlocked { marker: spawn });
-    assert_eq!(round.check_walkable(&both, &rules, body_of), blocked);
+    assert_eq!(check_walkable(&round, &both, &rules, body_of), blocked);
     let air = DeclaredName::new("air").unwrap();
     let layered = NavigationRules {
         layers: vec![DeclaredName::new("ground").unwrap(), air.clone()],

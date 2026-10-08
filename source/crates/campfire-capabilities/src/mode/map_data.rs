@@ -1,31 +1,22 @@
 use std::collections::BTreeMap;
 
 use campfire_math::{Num, Vec3};
-use campfire_sim::{IdAllocator, Position};
+use campfire_sim::Position;
 use serde::Deserialize;
 
 use crate::mode::error::ModeError;
 use crate::mode::mode_data::ModeParam;
-use crate::navigation::body_index::{BodyIndex, IndexedBody};
-use crate::navigation::error::MapProblem;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
-use crate::navigation::pathing_grid::PathingGrid;
-use crate::navigation::route_planner::Walkable;
-use crate::navigation::segment::Segment;
-use crate::navigation::terrain::Terrain;
-use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
-use crate::navigation::walls::Walls;
-use crate::units::body::BodyForm;
 use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::polygon::Polygon;
+use crate::values::region::Region;
 use crate::values::scalar::Scalar;
-use crate::values::shape::Shape;
 
 /// The mode's `map/map.toml`: its metric, its bounds, its grids, its paths, the units placed on it
 /// from the start, and its markers.
@@ -141,99 +132,6 @@ pub enum MapPoint {
 }
 
 impl MapData {
-    /// Checks that each placed box has room, and that the map can be walked by every kind of
-    /// unit that walks, of `walkers`, for the widest of each layer, among the map's placed units
-    /// that cannot walk, whose bodies `body_of` gives by unit type, and none for a type that
-    /// walks. A box has room as a placement needs it: within the bounds, its inside clear of the
-    /// walls of its layer and of every other placed unit of its layer that cannot walk. Every
-    /// marker's point and waypoint is a place that walker may stand, and every waypoint is in a
-    /// reachable set of the one before it, by the regions a match plans its routes with. A
-    /// narrower walker of the layer has every cell the widest has open. A map with no
-    /// `[navigation]` cells, or a mode with no walker, has nothing more to check. The book build
-    /// checked its points.
-    pub fn check_walkable(
-        &self,
-        walkers: &[Walker],
-        rules: &NavigationRules,
-        body_of: impl Fn(&str) -> Option<BodyForm>,
-    ) -> Result<(), MapProblem> {
-        let walls = self.walls(rules).expect("the book build checked the map");
-        let point = |point: &MapPoint| point.position().expect("the book build checked the map");
-        let mut ids = IdAllocator::default();
-        let structures: Vec<(usize, IndexedBody)> = self
-            .units
-            .iter()
-            .enumerate()
-            .filter_map(|(at, unit)| {
-                let body = body_of(unit.unit_type.as_str())?.at(unit.angle);
-                Some((at, IndexedBody::of(ids.allocate(), point(&unit.pos), &body)))
-            })
-            .collect();
-        let placed_walls = Walls::new(&walls);
-        for &(at, body) in &structures {
-            let Shape::Box(boxed) = body.shape else {
-                continue;
-            };
-            let others = structures
-                .iter()
-                .filter(|(other, held)| *other != at && held.layer == body.layer)
-                .map(|&(_, held)| held);
-            if !placed_walls.room_for(self.bounds, body.at, &boxed, body.layer, others) {
-                let unit_type = self.units[at].unit_type.clone();
-                return Err(MapProblem::BoxBlocked {
-                    unit: at,
-                    unit_type,
-                });
-            }
-        }
-        let structures: Vec<IndexedBody> = structures.into_iter().map(|(_, body)| body).collect();
-        let Some(cells) = self.pathing().expect("the book build checked the map") else {
-            return Ok(());
-        };
-        let terrain = Terrain::new(&cells, &walls);
-        debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
-        let widest = walkers
-            .chunk_by(|a, b| a.layer == b.layer)
-            .map(|layer| *layer.last().expect("a chunk is never empty"));
-        let widest_radius = walkers.iter().map(|walker| walker.radius).max();
-        let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
-        statics.update(&structures);
-        let mut grid = PathingGrid::new(cells, widest.clone().collect(), &terrain);
-        grid.update(&statics);
-        for walker in widest {
-            let clearance = grid.clearance(walker);
-            let walkable = Walkable {
-                clearance,
-                statics: &statics,
-                short: None,
-            };
-            let stands = |at: Position| !walkable.blocks(Segment::new(at, at));
-            for marker in &self.markers {
-                if marker.pos.is_some_and(|pos| !stands(point(&pos))) {
-                    let marker = marker.name.clone();
-                    return Err(MapProblem::MarkerBlocked { marker });
-                }
-            }
-            let reach = |at: Position| clearance.regions().reach(cells.nearest_cell(at));
-            for path in &self.paths {
-                if let Some(waypoint) = path.points.iter().position(|ground| !stands(point(ground)))
-                {
-                    let path = path.name.clone();
-                    return Err(MapProblem::WaypointBlocked { path, waypoint });
-                }
-                let closed = path
-                    .points
-                    .windows(2)
-                    .position(|pair| !reach(point(&pair[0])).meets(reach(point(&pair[1]))));
-                if let Some(before) = closed {
-                    let (path, waypoint) = (path.name.clone(), before + 1);
-                    return Err(MapProblem::WaypointUnreachable { path, waypoint });
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// The vision grid over the bounds, if the map has one; an error unless its cell is positive
     /// and at most the world's bound, and it has at most 2²² cells.
     pub fn grid(&self) -> Result<Option<Grid>, ModeError> {
@@ -333,17 +231,16 @@ impl MapPoint {
 }
 
 impl RegionData {
-    /// Whether its points fit `metric` and lie within `bounds`, `min` below `max` on every axis
-    /// of the metric.
-    pub fn holds(self, metric: Metric, bounds: Bounds) -> bool {
-        let (Some(min), Some(max)) = (self.min.position(), self.max.position()) else {
-            return false;
-        };
+    /// The box on the ground plane it gives, when its points fit `metric` and lie within
+    /// `bounds`, `min` below `max` on every axis of the metric.
+    pub(crate) fn region(self, metric: Metric, bounds: Bounds) -> Option<Region> {
+        let (min, max) = (self.min.position()?, self.max.position()?);
         let (low, high) = (min.get(), max.get());
         let below =
             low.x < high.x && low.z < high.z && (metric == Metric::Planar || low.y < high.y);
         let fits = self.min.fits(metric) && self.max.fits(metric);
-        fits && below && bounds.contains(min) && bounds.contains(max)
+        (fits && below && bounds.contains(min) && bounds.contains(max))
+            .then(|| Region::new([low.x, low.z], [high.x, high.z]))
     }
 }
 
