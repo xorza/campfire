@@ -206,7 +206,7 @@ impl ScriptView {
         self.now = now;
         self.relations.clone_from(relations);
         self.metric = *world.resource::<Metric>();
-        self.bounds = Bounds::of(world);
+        self.bounds = *world.resource::<Bounds>();
         self.indexed = false;
         let core = self
             .core

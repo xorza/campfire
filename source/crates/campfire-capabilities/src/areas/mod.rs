@@ -82,7 +82,7 @@ impl Areas {
     /// Applies `effect`: an area that lands this tick, at the point of the map's bounds nearest
     /// where it says.
     fn apply(world: &mut World, effect: AreasEffect) {
-        let at = Bounds::of(world).clamp(effect.at);
+        let at = world.resource::<Bounds>().clamp(effect.at);
         Areas::push(world, effect.by, effect.unit_type, at, None, effect.id);
     }
 

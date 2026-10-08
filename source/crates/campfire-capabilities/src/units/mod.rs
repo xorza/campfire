@@ -137,6 +137,8 @@ impl Units {
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
         world.insert_resource(Metric::default());
+        // The world's bounds until a map's take their place.
+        world.insert_resource(Bounds::WORLD);
         world.add_observer(|_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>| {
             view.refill_next();
         });
@@ -166,7 +168,7 @@ impl Units {
     /// Whether every unit stands within the match's bounds, as every system keeps it, and as
     /// vision and navigation index the map's cells by it.
     fn within_bounds(world: &World) -> bool {
-        let bounds = Bounds::of(world);
+        let bounds = *world.resource::<Bounds>();
         world.resource::<EntityIndex>().iter().all(|(_, entity)| {
             world
                 .get::<Position>(entity)

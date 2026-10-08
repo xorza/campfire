@@ -6,13 +6,6 @@ Paths are relative to `source/crates/campfire-capabilities/src/` unless they nam
 
 Fix the root cause of a group, not its items one by one. Most groups give the structural target first, and their items are the places that target removes.
 
-## 7. A resource's presence does not match its install
-
-Some resources are always installed, but each read treats them as optional and returns silently when they are missing. This hides a missing install. Other resources are optional, but each read applies its own fallback. Target: a capability's resources are required (`Res<T>`, `resource::<T>()`) after the capability installs. `Option` stays only for what a mode can lack, and the install decides it once.
-
-- [ ] `values/bounds.rs:25-30` (`Bounds::of`, with a `Bounds::WORLD` fallback, called from eight sites) against `units/mod.rs:132` (`Metric`, always inserted). `navigation/mod.rs:124` inserts `Bounds::WORLD` separately. Two map-wide resources with two contracts. Target: the core installs `Bounds` like `Metric`.
-- [ ] `navigation/mod.rs` (`make_room`, `open_cell`, `route_units`, `force_units`, `teleport`): each gets the `PathingGrid` and `RoutePlanner` options again. `abilities/mod.rs:679` tests `contains_resource::<ItemBook>()`. Target: one decision at install, read as required where the capability runs.
-
 ## 8. One set is declared once, and listed again by hand
 
 A fixed set (hooks, fields, tag properties, API members) has one declaration, and a second list repeats it. Adding a member means editing every list. Target: one table per set, and the other lists are derived from it or checked against it.

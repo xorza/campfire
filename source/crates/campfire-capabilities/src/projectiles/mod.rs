@@ -75,7 +75,7 @@ impl Projectiles {
     /// Applies `effect`: a launch this tick, its own cast, from the point of the map's bounds
     /// nearest where it says. A direction of no length launches nothing.
     fn apply(world: &mut World, effect: ProjectilesEffect) {
-        let from = Bounds::of(world).clamp(effect.from);
+        let from = world.resource::<Bounds>().clamp(effect.from);
         let flight = match effect.toward {
             Toward::Unit(target) => Flight::Homing {
                 target,
@@ -90,7 +90,7 @@ impl Projectiles {
                 Flight::Line {
                     direction,
                     flown: Num::ZERO,
-                    range: Projectiles::reach(Bounds::of(world), range, from, direction),
+                    range: Projectiles::reach(*world.resource::<Bounds>(), range, from, direction),
                     aimed: None,
                 }
             }
@@ -147,7 +147,7 @@ impl Projectiles {
         } else {
             range
         };
-        let bounds = Bounds::of(world);
+        let bounds = *world.resource::<Bounds>();
         let flights = (0..fan.count.get()).map(|at| {
             let direction = aim.rotated_y(fan.turn(at).sin_cos());
             Flight::Line {

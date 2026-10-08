@@ -275,7 +275,9 @@ impl Production {
         let producer = world.entity(entity);
         let at = *producer.get::<Position>().expect("a producer stands");
         match producer.get::<Rally>()?.get() {
-            RallyTarget::Point { x, z } => Some(Bounds::of(world).ground_point([x, z], at)),
+            RallyTarget::Point { x, z } => {
+                Some(world.resource::<Bounds>().ground_point([x, z], at))
+            }
             RallyTarget::Unit(id) => {
                 let unit = world.entity(world.resource::<EntityIndex>().get(id)?);
                 let pos = *unit.get::<Position>()?;
