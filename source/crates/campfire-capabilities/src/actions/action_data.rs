@@ -164,20 +164,25 @@ impl ActionData {
 
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
-        let numbers = |ranked: Option<&Ranked<Number>>| ranked.and_then(Ranked::ranks);
+        let range = self.range.as_ref().and_then(Ranked::ranks);
+        let numbers = self.ranked_numbers().chain(self.costs()).map(Ranked::ranks);
+        let params = self.params.values().map(Param::ranks);
+        [range].into_iter().chain(numbers).chain(params).flatten()
+    }
+
+    /// Each of its capability fields that is a number at each rank, which may read a param:
+    /// its cooldown, windup, channel, charges and charge.
+    fn ranked_numbers(&self) -> impl Iterator<Item = &Ranked<Number>> {
         [
-            self.range.as_ref().and_then(Ranked::ranks),
-            self.cooldown_ms.as_ref().and_then(Ranked::ranks),
-            self.windup_ms.as_ref().and_then(Ranked::ranks),
-            numbers(self.channel.as_ref().map(|channel| &channel.duration_ms)),
-            numbers(self.channel.as_ref().map(|channel| &channel.tick_ms)),
-            numbers(self.charges.as_ref().map(|charges| &charges.max)),
-            numbers(self.charges.as_ref().map(|charges| &charges.recharge_ms)),
-            numbers(self.charge.as_ref().map(|charge| &charge.max_ms)),
+            self.cooldown_ms.as_ref(),
+            self.windup_ms.as_ref(),
+            self.channel.as_ref().map(|channel| &channel.duration_ms),
+            self.channel.as_ref().map(|channel| &channel.tick_ms),
+            self.charges.as_ref().map(|charges| &charges.max),
+            self.charges.as_ref().map(|charges| &charges.recharge_ms),
+            self.charge.as_ref().map(|charge| &charge.max_ms),
         ]
         .into_iter()
-        .chain(self.costs().map(Ranked::ranks))
-        .chain(self.params.values().map(Param::ranks))
         .flatten()
     }
 
@@ -369,34 +374,24 @@ impl ActionData {
 
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
     pub fn param_refs(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
-        [
-            self.cooldown_ms.as_ref(),
-            self.windup_ms.as_ref(),
-            self.channel.as_ref().map(|channel| &channel.duration_ms),
-            self.channel.as_ref().map(|channel| &channel.tick_ms),
-            self.charges.as_ref().map(|charges| &charges.max),
-            self.charges.as_ref().map(|charges| &charges.recharge_ms),
-            self.charge.as_ref().map(|charge| &charge.max_ms),
-        ]
-        .into_iter()
-        .flatten()
-        .chain(self.costs())
-        .flat_map(Ranked::values)
-        .filter_map(Number::param)
-        .chain(
-            self.range
-                .iter()
-                .flat_map(Ranked::values)
-                .filter_map(|range| match range {
-                    RangeField::Range(_) => None,
-                    RangeField::Param(reference) => Some(&reference.param),
-                }),
-        )
-        .chain(
-            self.effects()
-                .flat_map(|effect| effect.does.numbers())
-                .filter_map(Number::param),
-        )
+        self.ranked_numbers()
+            .chain(self.costs())
+            .flat_map(Ranked::values)
+            .filter_map(Number::param)
+            .chain(
+                self.range
+                    .iter()
+                    .flat_map(Ranked::values)
+                    .filter_map(|range| match range {
+                        RangeField::Range(_) => None,
+                        RangeField::Param(reference) => Some(&reference.param),
+                    }),
+            )
+            .chain(
+                self.effects()
+                    .flat_map(|effect| effect.does.numbers())
+                    .filter_map(Number::param),
+            )
     }
 
     /// The ids of the modifiers its data names: the one it holds, its passive, and those its
