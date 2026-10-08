@@ -92,6 +92,12 @@ impl ModeBook {
         ctx.mode()?.downcast_ref()
     }
 
+    /// The mode of the match `ctx` runs in, which has one: the mode's own systems and calls run
+    /// only in such a match.
+    pub(crate) fn of_match(ctx: &Ctx) -> &ModeBook {
+        ModeBook::of(ctx).expect("a match with a mode")
+    }
+
     /// The mode of the match `ctx` runs in; an error in a match with none.
     pub(crate) fn of_or_fail(ctx: &Ctx) -> Checked<&ModeBook> {
         ModeBook::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())

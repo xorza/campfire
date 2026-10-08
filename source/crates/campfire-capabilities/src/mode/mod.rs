@@ -2,7 +2,7 @@
 //! mode's hooks on the capabilities below it.
 
 use std::mem;
-use std::ops::Range;
+use std::ops::{ControlFlow, Range};
 use std::rc::Rc;
 
 use bevy_ecs::entity::Entity;
@@ -10,7 +10,6 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::{PlayerSlot, Tick};
-use campfire_script::ScriptError;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{
     EntityIndex, IdAllocator, SimSet, SimTick, SlotEventKind, StateRegistry, TickInputs, TickRate,
@@ -164,7 +163,7 @@ impl Mode {
         ctx.set_mode(book);
         let spawning = ctx.clone();
         world.insert_non_send(Spawner::new(move |world, at, owner| {
-            let mode = ModeBook::of(&spawning).expect("the mode installed");
+            let mode = ModeBook::of_match(&spawning);
             mode.spawn_owned(world, at, owner)
         }));
         if hooks.contains(Hook::CalcDamage) {
@@ -273,7 +272,7 @@ impl Mode {
     /// rules.
     pub fn start(world: &mut World) -> Result<(), CallError> {
         let ctx = world.non_send::<Ctx>().clone();
-        let book = ModeBook::of(&ctx).expect("a match with a mode");
+        let book = ModeBook::of_match(&ctx);
         for placed in &book.placed {
             let at = SpawnAt {
                 id: world.resource_mut::<IdAllocator>().allocate(),
@@ -313,8 +312,7 @@ fn mode_inputs(
     mut inputs: Local<'_, Vec<Input>>,
 ) {
     let ctx = world.non_send::<Ctx>().clone();
-    if !ModeBook::of(&ctx)
-        .expect("a match with a mode")
+    if !ModeBook::of_match(&ctx)
         .schema
         .hooks
         .contains(Hook::OnModeInput)
@@ -357,8 +355,9 @@ fn mode_inputs(
             };
             let name = ImmutableString::from(decoded.name);
             let args = (call.ctx.clone(), INT::from(input.slot.get()), name, value);
-            if let Err(error) = call.run(Pool::Player(input.slot), Hook::OnModeInput, args) {
-                let error = CallError::from_script(error);
+            // An input is answered once: one whose call finds the pool spent fails.
+            let pool = Pool::Player(input.slot);
+            if let ControlFlow::Break(error) = call.answer(None, pool, Hook::OnModeInput, args) {
                 call.batch.record(None, Hook::OnModeInput, error);
             }
         }
@@ -387,10 +386,7 @@ fn slot_events(world: &mut World) {
         let events = world.resource::<TickInputs>().slot_events();
         unanswered.0.extend_from_slice(events);
         let ctx = world.non_send::<Ctx>().clone();
-        let hooks = ModeBook::of(&ctx)
-            .expect("a match with a mode")
-            .schema
-            .hooks;
+        let hooks = ModeBook::of_match(&ctx).schema.hooks;
         let now = world.resource::<SimTick>().end();
         let answered = Calls::batch(world, &ctx, now, |call| {
             let mut answered = 0;
@@ -401,13 +397,8 @@ fn slot_events(world: &mut World) {
                 };
                 if hooks.contains(hook) {
                     let args = (call.ctx.clone(), INT::from(event.slot.get()));
-                    match call.run(Pool::Mode, hook, args) {
-                        Ok(()) => {}
-                        Err(ScriptError::TickBudget) => break,
-                        Err(error) => {
-                            let error = CallError::from_script(error);
-                            call.batch.record(None, hook, error);
-                        }
+                    if call.answer(None, Pool::Mode, hook, args).is_break() {
+                        break;
                     }
                 }
                 answered += 1;
@@ -436,13 +427,11 @@ fn run_timers(world: &mut World) {
                     .as_ref()
                     .map_or(Dynamic::UNIT, |data| data.to_dynamic(call.ctx.view()));
                 let args = (call.ctx.clone(), name, data);
-                match call.run(Pool::Mode, Hook::OnTimer, args) {
-                    Ok(()) => {}
-                    Err(ScriptError::TickBudget) => break,
-                    Err(error) => {
-                        let error = CallError::from_script(error);
-                        call.batch.record(None, Hook::OnTimer, error);
-                    }
+                if call
+                    .answer(None, Pool::Mode, Hook::OnTimer, args)
+                    .is_break()
+                {
+                    break;
                 }
             }
             call.batch.world().resource_mut::<Timers>().fire();
@@ -457,10 +446,7 @@ fn run_timers(world: &mut World) {
 /// stays, dead, until then.
 fn unit_deaths(world: &mut World, mut units: Local<'_, Vec<Option<Entity>>>) {
     let ctx = world.non_send::<Ctx>().clone();
-    let hooks = ModeBook::of(&ctx)
-        .expect("a match with a mode")
-        .schema
-        .hooks;
+    let hooks = ModeBook::of_match(&ctx).schema.hooks;
     if !hooks.contains(Hook::OnUnitDied) {
         return;
     }
@@ -482,13 +468,12 @@ fn unit_deaths(world: &mut World, mut units: Local<'_, Vec<Option<Entity>>>) {
                     let assisters = death.assisters.iter().filter_map(|&id| view.unit(id));
                     let assisters: Array = assisters.map(Dynamic::from).collect();
                     let args = (call.ctx.clone(), Dynamic::from(unit), killer, assisters);
-                    match call.run(Pool::Mode, Hook::OnUnitDied, args) {
-                        Ok(()) => {}
-                        Err(ScriptError::TickBudget) => break,
-                        Err(error) => {
-                            let error = CallError::from_script(error);
-                            call.batch.record(Some(death.unit), Hook::OnUnitDied, error);
-                        }
+                    let unit = Some(death.unit);
+                    if call
+                        .answer(unit, Pool::Mode, Hook::OnUnitDied, args)
+                        .is_break()
+                    {
+                        break;
                     }
                 }
                 answered += 1;
@@ -523,10 +508,7 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
         return;
     }
     let ctx = world.non_send::<Ctx>().clone();
-    let hooks = ModeBook::of(&ctx)
-        .expect("a match with a mode")
-        .schema
-        .hooks;
+    let hooks = ModeBook::of_match(&ctx).schema.hooks;
     // A write marks the state changed, so a tick with no level-up writes nothing.
     if world.resource::<LevelUps>().0.is_empty() {
         return;
@@ -549,13 +531,11 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
                 if let Some(handle) = view.unit(unit) {
                     let level = INT::from(level.get());
                     let args = (call.ctx.clone(), handle, view.track_name(track), level);
-                    match call.run(Pool::Mode, Hook::OnLevelUp, args) {
-                        Ok(()) => {}
-                        Err(ScriptError::TickBudget) => break,
-                        Err(error) => {
-                            let error = CallError::from_script(error);
-                            call.batch.record(Some(unit), Hook::OnLevelUp, error);
-                        }
+                    if call
+                        .answer(Some(unit), Pool::Mode, Hook::OnLevelUp, args)
+                        .is_break()
+                    {
+                        break;
                     }
                 }
                 answered += 1;
@@ -587,7 +567,7 @@ pub(crate) mod internals {
     /// kit gives, as the mode's own spawns do.
     pub fn spawn_typed(world: &mut World, name: &str, team: Team, pos: Position) -> StableId {
         let ctx = world.non_send::<Ctx>().clone();
-        let book = ModeBook::of(&ctx).expect("a match with a mode");
+        let book = ModeBook::of_match(&ctx);
         let unit_type = ctx
             .view()
             .unit_type_named(name)

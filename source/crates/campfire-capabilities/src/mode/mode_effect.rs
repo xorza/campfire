@@ -68,7 +68,7 @@ pub(crate) enum ModeEffect {
 impl Effect for ModeEffect {
     fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
         let ctx = world.non_send::<Ctx>().clone();
-        let mode = ModeBook::of(&ctx).expect("a mode effect comes from a match with a mode");
+        let mode = ModeBook::of_match(&ctx);
         Mode::apply_effect(world, mode, now, self);
     }
 }

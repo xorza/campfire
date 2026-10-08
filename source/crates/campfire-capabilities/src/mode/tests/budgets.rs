@@ -1,5 +1,7 @@
 use std::num::NonZeroU64;
 
+use campfire_script::ScriptError;
+
 use super::*;
 
 #[test]
