@@ -66,8 +66,7 @@ impl ModeApi {
             .hook(Hook::OnPlayerLeave, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnGenerate, Status::Planned)
             .bind_for(
-                MemberSpec::call("save", &[&[]], "asks for a save at the end of the tick")
-                    .roles(RoleSet::MODE),
+                MemberSpec::mode_call("save", &[&[]], "asks for a save at the end of the tick"),
                 |ctx: &mut Ctx| ctx.queue(ModeEffect::Save),
             )
             .plan(
@@ -77,14 +76,11 @@ impl ModeApi {
                 )
                 .roles(RoleSet::MODE),
             )
-            .plan(
-                MemberSpec::call(
-                    "generate",
-                    &[&["region"]],
-                    "builds the map's region `region` through `on_generate`",
-                )
-                .roles(RoleSet::MODE),
-            )
+            .plan(MemberSpec::mode_call(
+                "generate",
+                &[&["region"]],
+                "builds the map's region `region` through `on_generate`",
+            ))
             .data(
                 DataTable::Mode,
                 &[
@@ -143,8 +139,7 @@ impl ModeApi {
             },
         )
         .bind_for(
-            MemberSpec::call("team_of", &[&["player"]], "the name of `player`'s team")
-                .roles(RoleSet::MODE),
+            MemberSpec::mode_call("team_of", &[&["player"]], "the name of `player`'s team"),
             |ctx: &mut Ctx, player: INT| -> Checked<Dynamic> {
                 let book = ModeBook::of_or_fail(ctx)?;
                 let slot = book.teams.player(player)?;
@@ -218,10 +213,7 @@ impl ModeApi {
             &[],
         )
         .data(DataTable::SlotKind, &["name", "ranks", "levels"], &[]);
-        let mode = |name, signature, description| {
-            MemberSpec::call(name, signature, description).roles(RoleSet::MODE)
-        };
-        let choose = mode(
+        let choose = MemberSpec::mode_call(
             "choose",
             &[&["player", "choice", "values"]],
             "records `values`, as many as `choice` takes, each a value it offers, none twice and, \
@@ -242,7 +234,7 @@ impl ModeApi {
             },
         )
         .bind_for(
-            mode(
+            MemberSpec::mode_call(
                 "chosen",
                 &[&["player", "choice"]],
                 "the values `player` chose of `choice`, in order; empty before the player chose",
@@ -253,7 +245,7 @@ impl ModeApi {
             },
         )
         .bind_for(
-            mode(
+            MemberSpec::mode_call(
                 "available",
                 &[&["player", "choice", "value"]],
                 "whether `player` may choose `value` of `choice`: no other player chose it in a \
@@ -265,7 +257,7 @@ impl ModeApi {
             },
         )
         .bind_for(
-            mode(
+            MemberSpec::mode_call(
                 "offers",
                 &[&["choice"]],
                 "the values `choice` offers, in order: the avatars in the order of the mode's \
@@ -278,10 +270,7 @@ impl ModeApi {
 
     /// The spawns only the mode's calls make, and the actions they grant.
     fn register_spawns(api: &mut ApiBuilder<'_>) {
-        let mode = |name, signature, description| {
-            MemberSpec::call(name, signature, description).roles(RoleSet::MODE)
-        };
-        let spawn_unit = mode(
+        let spawn_unit = MemberSpec::mode_call(
             "spawn_unit",
             &[&["type", "team", "pos"], &["type", "team", "pos", "player"]],
             "spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by \
@@ -289,7 +278,7 @@ impl ModeApi {
         )
         .name(0, NameKind::UnitType)
         .name(1, NameKind::Team);
-        let grant = mode(
+        let grant = MemberSpec::mode_call(
             "grant",
             &[&["unit", "kind", "ids"]],
             "puts the actions `ids`, loadout entries the mode depends on, in the slot kind \
@@ -331,7 +320,7 @@ impl ModeApi {
             },
         )
         .bind_for(
-            mode(
+            MemberSpec::mode_call(
                 "spawn_group",
                 &[&["team", "path", "from", "types"]],
                 "spawns `types` of `team` in order at the end `from` of `path`, walking it from \
@@ -351,16 +340,13 @@ impl ModeApi {
     /// What only the mode's calls do, but adding resources and setting relations, which every
     /// role does: spawns, timers, respawns, learning and the match's end.
     fn register_changes(api: &mut ApiBuilder<'_>) {
-        let mode = |name, signature, description| {
-            MemberSpec::call(name, signature, description).roles(RoleSet::MODE)
-        };
-        let end = mode(
+        let end = MemberSpec::mode_call(
             "end",
             &[&["team"], &["()"]],
             "ends the match, once: `team` wins, `()` is a draw",
         );
         api.bind_for(
-            mode(
+            MemberSpec::mode_call(
                 "timer",
                 &[&["name", "ms", "repeat", "data"]],
                 "calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one",
@@ -370,7 +356,7 @@ impl ModeApi {
             },
         )
         .bind_for(
-            mode(
+            MemberSpec::mode_call(
                 "respawn",
                 &[&["unit", "ms"]],
                 "brings back `unit`, dead and of a type that stays, `ms` from the call",
@@ -379,7 +365,7 @@ impl ModeApi {
             |ctx: &mut Ctx, unit: Unit, ms: INT| ModeApi::respawn(ctx, &unit, ms),
         )
         .bind_for(
-            mode(
+            MemberSpec::mode_call(
                 "learn",
                 &[&["avatar", "slot"]],
                 "the ability in `slot` a rank more, up to its last",
@@ -497,9 +483,8 @@ impl ModeApi {
         Ok(())
     }
 
-    /// The choice `name` of the mode of `ctx`.
-    fn choice<'a>(ctx: &'a Ctx, name: &str) -> Checked<&'a Choice> {
-        let book = ModeBook::of_or_fail(ctx)?;
+    /// The choice `name` of `book`.
+    fn choice<'a>(book: &'a ModeBook, name: &str) -> Checked<&'a Choice> {
         book.choices
             .named(name)
             .ok_or_else(|| ApiError::UnknownChoice.fail().into())
@@ -509,7 +494,7 @@ impl ModeApi {
     fn choose(ctx: &Ctx, player: INT, choice: &str, values: &Array) -> Checked<()> {
         let book = ModeBook::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
-        let choice = ModeApi::choice(ctx, choice)?;
+        let choice = ModeApi::choice(book, choice)?;
         if values.len() != choice.count() {
             return Err(ApiError::ChoiceCount.fail().into());
         }
@@ -541,7 +526,7 @@ impl ModeApi {
     fn chosen(ctx: &Ctx, player: INT, choice: &str) -> Checked<Array> {
         let book = ModeBook::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
-        let choice = ModeApi::choice(ctx, choice)?;
+        let choice = ModeApi::choice(book, choice)?;
         let frame = ctx.frame();
         let Some(values) = book
             .choices
@@ -557,7 +542,7 @@ impl ModeApi {
     /// The values `choice` offers, in order.
     fn offers(ctx: &Ctx, choice: &str) -> Checked<Array> {
         let book = ModeBook::of_or_fail(ctx)?;
-        let choice = ModeApi::choice(ctx, choice)?;
+        let choice = ModeApi::choice(book, choice)?;
         Ok(book
             .roster
             .ids(choice.offers)
@@ -570,7 +555,7 @@ impl ModeApi {
     fn available(ctx: &Ctx, player: INT, choice: &str, value: &str) -> Checked<bool> {
         let book = ModeBook::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
-        let choice = ModeApi::choice(ctx, choice)?;
+        let choice = ModeApi::choice(book, choice)?;
         let offer = book
             .roster
             .offer(choice.offers, value)

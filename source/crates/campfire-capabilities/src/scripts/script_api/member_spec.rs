@@ -56,6 +56,15 @@ impl MemberSpec {
         MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Call, forms, description)
     }
 
+    /// A call of `ctx` for the mode's script only, in the forms `forms`.
+    pub(crate) const fn mode_call(
+        name: &'static str,
+        forms: Forms,
+        description: &'static str,
+    ) -> MemberSpec {
+        MemberSpec::call(name, forms, description).roles(RoleSet::MODE)
+    }
+
     /// A field of `owner`'s handle.
     pub(crate) const fn field(
         owner: ApiOwner,
