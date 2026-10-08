@@ -5,9 +5,9 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionDataField, ActionError, ActionField, ActionKind, AiError, CapabilitySet, DeclaredName,
-    EffectData, EffectTo, Effecting, EngineEnum, EngineTag, Hook, MapProblem, ModeError,
-    ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, Scalar, Status, SyncTo,
+    ActionDataField, ActionField, ActionKind, AiError, CapabilitySet, DeclaredName, EffectData,
+    EffectTo, Effecting, EngineEnum, EngineTag, Hook, MapProblem, ModeError, ModifierProblem,
+    NameKind, Number, ParamProblem, PlannedEffect, Scalar, Status, SyncTo, TimeTooLarge,
     UnitKitError,
 };
 use campfire_package::{
@@ -1749,7 +1749,7 @@ static FLAWS: [Flaw; 270] = [
         HUSK,
         Edit::Set("actions.lash_out.cooldown_ms.4", "400000000000000000"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Action { action, error: ActionError::TimeTooLarge } if action.as_str() == "lash_out"),
+        |problem| matches!(problem, LoadProblem::Action { action, error: TimeTooLarge } if action.as_str() == "lash_out"),
     ),
     flaw(
         HUSK,

@@ -8,6 +8,7 @@ pub(crate) mod bounds;
 pub(crate) mod damage_kind;
 pub(crate) mod declared_name;
 pub(crate) mod engine_enum;
+pub(crate) mod error;
 pub(crate) mod filter_data;
 pub(crate) mod fraction;
 pub(crate) mod grid;

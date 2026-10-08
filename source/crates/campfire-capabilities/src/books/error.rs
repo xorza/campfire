@@ -1,11 +1,11 @@
 use thiserror::Error;
 
-use crate::actions::error::ActionError;
 use crate::books::type_place::TypePlace;
 use crate::mode::error::{ModeError, UnitKitError};
 use crate::orders::error::AiError;
 use crate::stats::error::ModifierProblem;
 use crate::values::declared_name::DeclaredName;
+use crate::values::error::TimeTooLarge;
 
 /// What the package load did not check and a match's books cannot hold: each in the package at
 /// its place among the match's packages, the mode's 0.
@@ -33,7 +33,7 @@ pub enum BookError {
         package: u16,
         action: DeclaredName,
         #[source]
-        error: ActionError,
+        error: TimeTooLarge,
     },
     /// The modifier does not load.
     #[error("modifier {modifier}")]

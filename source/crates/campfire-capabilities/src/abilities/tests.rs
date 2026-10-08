@@ -17,7 +17,7 @@ use crate::actions::action_slots::{SlotAim, Started};
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
-use crate::actions::error::{ActionError, ActionField};
+use crate::actions::error::ActionField;
 use crate::actions::kind_data::KindData;
 use crate::actions::range::Range;
 use crate::actions::slot_kind::SlotKind;
@@ -82,6 +82,7 @@ use crate::values::action_start::ActionStart;
 use crate::values::body_box::BodyBox;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
+use crate::values::error::TimeTooLarge;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::package_path::PackagePath;
@@ -1776,7 +1777,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     }
     // What only a match's rate decides: i64::MAX ms counts in no tick.
     let forever = load(&mut game, &forever, LASH_OUT);
-    assert_eq!(forever, Err(ActionError::TimeTooLarge));
+    assert_eq!(forever, Err(TimeTooLarge));
     assert_eq!(load(&mut game, &lash_out(), LASH_OUT), Ok(ActionId::nth(0)));
     // A direction loads, as every targeting does; no cast can aim one yet.
     assert_eq!(load(&mut game, &aimed, LASH_OUT), Ok(ActionId::nth(1)));

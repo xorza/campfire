@@ -18,7 +18,6 @@ Target: a type's own invariants (sorted, bounded, in range) are kept by its `Des
 
 The load checks a fact and keeps the unchecked shape, so later code asserts what the check proved. The shape does not show the invariant, and a second caller can skip the check. Target: the check returns the narrower type (parse, don't validate), and later code matches on it.
 
-- [ ] `areas/area_spec.rs` (`AreaSpec::of` returns `Option` for "time does not fit in ticks"), against `ActionParts::of` and `RankValues::all` (return `Result<_, ActionError::TimeTooLarge>`). Same condition, two shapes. Target: one load-time tick conversion error, and both return `Result`.
 - [ ] `values/bounds.rs:106-122`, `values/speed.rs:27-37`, `units/collision_data.rs:33-47`: three hand-written "Scalar to `Num`, error on overflow" conversions with different messages, beside the shared `Scalar::num` and `checked` (`values/scalar.rs:30,57`). Target: the shared conversion.
 
 ## 5. Sim state is marked changed when it did not change

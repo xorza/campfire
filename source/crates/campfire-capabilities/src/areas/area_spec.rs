@@ -7,6 +7,7 @@ use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
+use crate::values::error::TimeTooLarge;
 
 /// An area type as a match runs it: its radius, its delay and its duration in ticks, what it
 /// reaches, and the modifiers it holds inside.
@@ -31,19 +32,20 @@ pub(crate) struct Inside {
 impl AreaSpec {
     /// The spec of `data`, which the package load checked: its times in ticks at `rate`, rounded
     /// up, what it reaches among the tags of `types`, and its `inside` modifiers as `modifier`
-    /// finds them; `None` when a time does not count in ticks.
+    /// finds them; an error when a time does not count in ticks.
     pub(crate) fn of(
         data: &AreaData,
         types: &UnitTypes,
         rate: TickRate,
         modifier: impl Fn(&DeclaredName) -> ModifierId,
-    ) -> Option<AreaSpec> {
+    ) -> Result<AreaSpec, TimeTooLarge> {
         let affects = Filter::resolve_or_enemies(data.affects.as_ref(), types);
         let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier);
-        Some(AreaSpec {
+        let ticks = |ms| rate.ticks(ms).ok_or(TimeTooLarge);
+        Ok(AreaSpec {
             radius: data.radius,
-            delay: rate.ticks(data.delay_ms)?,
-            duration: rate.ticks(data.duration_ms)?,
+            delay: ticks(data.delay_ms)?,
+            duration: ticks(data.duration_ms)?,
             affects: affects.expect("the load checked the filter's tags"),
             inside: Inside {
                 caster: inside(&data.inside.caster),

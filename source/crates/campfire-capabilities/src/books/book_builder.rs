@@ -51,6 +51,7 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
+use crate::values::error::TimeTooLarge;
 use crate::values::filter_data::FilterData;
 use crate::values::package_path::PackagePath;
 use crate::values::share::Share;
@@ -639,12 +640,13 @@ impl<'a> BookBuilder<'a> {
             books.types.give_tag(unit_type, EngineTag::Area.tag());
             let modifiers = &books.modifiers;
             let modifier = |id: &DeclaredName| modifiers.named(index, id.as_str()).expect(CHECKED);
-            let spec = AreaSpec::of(area, &books.types, rate, modifier).ok_or_else(|| {
-                BookError::AreaTime {
-                    package: index,
-                    unit_type: name.clone(),
-                }
-            })?;
+            let spec =
+                AreaSpec::of(area, &books.types, rate, modifier).map_err(|TimeTooLarge| {
+                    BookError::AreaTime {
+                        package: index,
+                        unit_type: name.clone(),
+                    }
+                })?;
             books.areas.set(unit_type, spec);
         }
         if let Some(vision) = file.vision {

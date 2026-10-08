@@ -1,7 +1,7 @@
 use campfire_capabilities::{
-    ActionDataField, ActionError, ActionField, ActionKind, AiError, ApiVersion, DeclaredName,
-    EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, PackagePath, ParamProblem,
-    Stat, UnitKitError,
+    ActionDataField, ActionField, ActionKind, AiError, ApiVersion, DeclaredName, EngineTag, Hook,
+    MapProblem, ModeError, ModifierProblem, NameKind, PackagePath, ParamProblem, Stat,
+    TimeTooLarge, UnitKitError,
 };
 use campfire_sim::Capability;
 use thiserror::Error;
@@ -214,7 +214,7 @@ pub enum LoadProblem {
     Action {
         action: DeclaredName,
         #[source]
-        error: ActionError,
+        error: TimeTooLarge,
     },
     /// A modifier does not load at the fastest rate the mode allows.
     #[error("modifier \"{modifier}\"")]

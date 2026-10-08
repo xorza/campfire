@@ -280,7 +280,6 @@ pub(crate) mod loads {
     use crate::actions::action_parts::ActionParts;
     use crate::actions::actions_column::ActionsColumn;
     use crate::actions::cost_target::CostTarget;
-    use crate::actions::error::ActionError;
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::scripts::script_book::ScriptBook;
     use crate::stats::modifier_book::ModifierBook;
@@ -296,6 +295,7 @@ pub(crate) mod loads {
     use crate::units::unit_type::UnitType;
     use crate::values::damage_kind::DamageKind;
     use crate::values::declared_name::DeclaredName;
+    use crate::values::error::TimeTooLarge;
     use crate::values::filter_data::FilterData;
     use crate::values::param::Param;
     use crate::values::stat::Stat;
@@ -315,7 +315,7 @@ pub(crate) mod loads {
             data: &ActionData,
             script: Option<ScriptId>,
             ranks: u8,
-        ) -> Result<ActionId, ActionError> {
+        ) -> Result<ActionId, TimeTooLarge> {
             let rate = *world.resource::<TickRate>();
             let view = world.non_send::<View>().clone();
             let names = MatchNames {

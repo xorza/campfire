@@ -9,7 +9,6 @@ use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery::Delivery;
 use crate::actions::delivery::DeliveryShape;
 use crate::actions::delivery_data::DeliveryData;
-use crate::actions::error::ActionError;
 use crate::actions::fan::Fan;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::kind_data::KindData;
@@ -18,6 +17,7 @@ use crate::actions::rank_values::LoadedRanks;
 use crate::actions::rank_values::RankValues;
 use crate::actions::weapon::Weapon;
 use crate::units::modifier_id::ModifierId;
+use crate::values::error::TimeTooLarge;
 use crate::values::scalar::Scalar;
 
 /// What an action's data gives, resolved against the match: its kind with what the kind needs,
@@ -41,7 +41,7 @@ impl ActionParts {
         ranks: u8,
         rate: TickRate,
         names: &impl ActionNames,
-    ) -> Result<ActionParts, ActionError> {
+    ) -> Result<ActionParts, TimeTooLarge> {
         let passive = data.passive_modifier.as_ref().map(|name| Passive {
             modifier: names.modifier(package, name),
             while_ready: data.passive_while_ready,

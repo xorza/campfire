@@ -7,11 +7,11 @@ use crate::actions::action_data::{ActionData, RankToggle};
 
 use crate::actions::cost_target::CostTarget;
 
-use crate::actions::error::ActionError;
 use crate::actions::range::Range;
 use crate::players::resource_amount::ResourceAmount;
 use crate::stats::pool_cost::PoolCost;
 use crate::values::declared_name::DeclaredName;
+use crate::values::error::TimeTooLarge;
 use crate::values::rank::Rank;
 
 /// An action's fields at each rank: its values, and its cost in player resources, one run of
@@ -59,12 +59,12 @@ impl RankValues {
         ranks: u8,
         rate: TickRate,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
-    ) -> Result<LoadedRanks, ActionError> {
+    ) -> Result<LoadedRanks, TimeTooLarge> {
         assert!(
             data.check_ranks(usize::from(ranks)),
             "the load checked the ranks"
         );
-        let ticks = |ms: u64| rate.ticks(ms).ok_or(ActionError::TimeTooLarge);
+        let ticks = |ms: u64| rate.ticks(ms).ok_or(TimeTooLarge);
         let mut loaded = LoadedRanks {
             values: Vec::with_capacity(usize::from(ranks)),
             resource_costs: Vec::new(),
