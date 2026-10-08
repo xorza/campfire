@@ -19,6 +19,8 @@ pub struct Deaths {
     entries: Vec<Death>,
     /// Each death's assisters, one run per death.
     assisters: Vec<StableId>,
+    /// The units of the deaths the damage pass recorded, sorted, once `index_killed` ran.
+    killed: Vec<StableId>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +63,7 @@ impl Deaths {
         self.tick = tick;
         self.entries.clear();
         self.assisters.clear();
+        self.killed.clear();
     }
 
     /// Records that `fallen` died, dealt its last damage by `killer` if any, with `assisters`:
@@ -91,8 +94,18 @@ impl Deaths {
         }
     }
 
-    pub(crate) fn contains(&self, unit: StableId) -> bool {
-        self.entries.iter().any(|death| death.fallen.unit == unit)
+    /// Sorts the units of the deaths recorded so far, the damage pass's kills, for `killed` to
+    /// find them: once a tick, before the deaths with no killer join the record.
+    pub(crate) fn index_killed(&mut self) {
+        debug_assert!(self.killed.is_empty(), "the kills are indexed once a tick");
+        self.killed
+            .extend(self.entries.iter().map(|death| death.fallen.unit));
+        self.killed.sort_unstable();
+    }
+
+    /// Whether the damage pass killed `unit` this tick, as `index_killed` sorted the kills.
+    pub(crate) fn killed(&self, unit: StableId) -> bool {
+        self.killed.binary_search(&unit).is_ok()
     }
 
     /// The tick whose deaths the record holds.
@@ -107,5 +120,36 @@ impl Deaths {
     /// The deaths, in the order the units died.
     pub fn iter(&self) -> impl Iterator<Item = DeathView<'_>> {
         (0..self.entries.len()).map(|at| self.get(at))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::array;
+
+    use campfire_sim::IdAllocator;
+
+    use super::*;
+
+    #[test]
+    fn the_damage_passs_kills_are_found_and_a_later_death_is_not() {
+        let mut ids = IdAllocator::default();
+        let units: [StableId; 10] = array::from_fn(|_| ids.allocate());
+        let unit = |at: usize| units[at];
+        let fallen = |at: usize| Fallen::of(unit(at), None, None);
+        let mut deaths = Deaths::default();
+        deaths.clear(Tick::new(1));
+        // Killed out of id order: 5, 2, 9.
+        for id in [5, 2, 9] {
+            deaths.push(fallen(id), None, []);
+        }
+        deaths.index_killed();
+        deaths.push(fallen(7), None, []);
+        let found = [1, 2, 5, 7, 9].map(|id| deaths.killed(unit(id)));
+        assert_eq!(found, [false, true, true, false, true]);
+        assert_eq!(deaths.iter().count(), 4);
+        deaths.clear(Tick::new(2));
+        deaths.index_killed();
+        assert!(!deaths.killed(unit(5)));
     }
 }

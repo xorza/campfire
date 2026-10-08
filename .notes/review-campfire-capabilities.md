@@ -10,7 +10,6 @@ Fix the root cause of a group, not its items one by one. Most groups give the st
 
 A hot path here runs per damage, per draw, per kill, or per script field read. Each item makes the common case pay for a case that seldom applies.
 
-- [ ] `combat/mod.rs:650` (`die`) with `combat/deaths.rs:94` (`Deaths::contains`, a linear scan): N kills in one tick cost O(N²). Target: the damage pass marks the units it killed, and `die` tests the mark.
 - [ ] `units/unit.rs:69-110`, `units/script_view.rs:670` (`Unit::row`, `View::row_at`): each field getter (`pos`, `alive`, `team`, `radius`, ...) copies the whole `UnitRow` (about 250 bytes) out of the `RefCell` to read one field. `is_enemy_of` copies two. Target: a borrowing accessor (`view.with_row(at, |row| ..)`) or one read per field.
 - [ ] `actions/action_book.rs:97` (`named`): a linear scan with a string compare, called from `ActionsColumn::action_named` on each `reduce_cooldown` and `add_charge` script call (`abilities/abilities_api.rs`, `held`). Target: a `(package, name) -> ActionId` index built at load, as the other books have.
 - [ ] `scripts/scripts_call.rs:62` (`sequence`): a linear `position` over every stream opened this tick, once per draw, so a tick with many drawing units is quadratic. Target: a run sorted by drawer, and a binary search.

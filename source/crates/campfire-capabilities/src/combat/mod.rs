@@ -620,6 +620,7 @@ fn die(
         (With<OnDeath>, Without<Dead>),
     >,
 ) {
+    deaths.index_killed();
     for (entity, &id, pools, slots, team, owner) in &mut units {
         if pools.above_zero(life.0) {
             continue;
@@ -629,7 +630,7 @@ fn die(
             slots.stop();
         }
         commands.entity(entity).insert(Dead);
-        if !deaths.contains(id) {
+        if !deaths.killed(id) {
             deaths.push(Fallen::of(id, team, owner), None, []);
         }
     }
