@@ -17,6 +17,7 @@ use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 use crate::journal::Journal;
 use crate::journal::error::JournalReplayError;
+use crate::journal::journal_frames::MAX_RECORD;
 use crate::journal::record_sink::RecordSink;
 use crate::player_input::PlayerInput;
 use crate::server_input::error::ServerInputDecodeError;
@@ -366,14 +367,19 @@ impl Control {
 impl SessionLog {
     /// A log with nothing recorded; an error when the header starts another count of slots than
     /// the terms plan, or a slot otherwise than its plan, when a player's delegation names
-    /// another server or session than `header`, whose terms the session id hashes, or when there
-    /// are more slots than a `u32` counts.
+    /// another server or session than `header`, whose terms the session id hashes, when there
+    /// are more slots than a `u32` counts, or when the terms let a journal record hold more than
+    /// a journal frame takes, so no entry the log takes later can.
     pub fn new(header: SessionHeader) -> Result<SessionLog, HeaderError> {
         if u32::try_from(header.slots.len()).is_err() {
             return Err(HeaderError::TooManySlots);
         }
         if header.slots.len() != header.terms.slots.len() {
             return Err(HeaderError::SlotCount);
+        }
+        let fits = |bound| usize::try_from(bound).is_ok_and(|bound| bound <= MAX_RECORD);
+        if !header.terms.largest_record().is_some_and(fits) {
+            return Err(HeaderError::RecordTooLarge);
         }
         let session_id = header.terms.session_id();
         let slots_len = header.slots.len();

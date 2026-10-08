@@ -1,11 +1,15 @@
 use thiserror::Error;
 
+use crate::delegation::Delegation;
 use crate::delegation::delegation_tag::DelegationTag;
 
 /// Why a delegation does not let a session key sign for a player. A delegation comes from the
 /// player, so each is an expected failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum DelegationError {
+    /// The JSON holds more than `Delegation::MAX_JSON` bytes.
+    #[error("delegation holds more than {} bytes", Delegation::MAX_JSON)]
+    TooLong,
     /// The JSON is not a Nostr event.
     #[error("delegation is not a Nostr event")]
     NotEvent,

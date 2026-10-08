@@ -45,6 +45,10 @@ pub struct Delegation {
 }
 
 impl Delegation {
+    /// The most bytes a delegation's JSON holds: several times what one with no content and no
+    /// other tag takes. The log keeps the JSON whole, so this bounds each record that holds one.
+    pub const MAX_JSON: usize = 4096;
+
     /// `terms` signed by `main_key` at `created_at`, in Unix seconds, with BIP-340's auxiliary
     /// randomness `aux`.
     pub fn sign<C: Signing>(
@@ -89,9 +93,12 @@ impl Delegation {
         Delegation::parse(&event.as_json()).expect("a signed delegation parses")
     }
 
-    /// Reads a delegation from its event's JSON, checking the event's id and signature, its kind,
-    /// and each term's tag. Other tags and the content are ignored.
+    /// Reads a delegation from its event's JSON, at most `MAX_JSON` bytes, checking the event's
+    /// id and signature, its kind, and each term's tag. Other tags and the content are ignored.
     pub fn parse(json: &str) -> Result<Delegation, DelegationError> {
+        if json.len() > Delegation::MAX_JSON {
+            return Err(DelegationError::TooLong);
+        }
         let event = Event::from_json(json)
             .ok()
             .ok_or(DelegationError::NotEvent)?;

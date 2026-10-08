@@ -45,7 +45,10 @@ impl<'a> JournalFrames<'a> {
     /// before it, its hash after it.
     pub(crate) fn seal(out: &mut Vec<u8>, start: usize) {
         let len = out.len() - start - LEN_BYTES;
-        assert!(len <= MAX_RECORD, "a journal record of {len} bytes");
+        debug_assert!(
+            len <= MAX_RECORD,
+            "a journal record of {len} bytes, past the bound its log's terms keep"
+        );
         let len_bytes = u32::try_from(len).expect("a record within the bound fits u32");
         out[start..start + LEN_BYTES].copy_from_slice(&len_bytes.to_le_bytes());
         let hash = JournalFrames::hash(&out[start + LEN_BYTES..]);

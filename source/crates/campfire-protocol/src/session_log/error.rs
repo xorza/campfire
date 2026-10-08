@@ -160,6 +160,10 @@ pub enum HeaderError {
     /// The file starts the slot `slot` as no known kind of start.
     #[error("slot {} starts as no known kind", .slot.get())]
     UnknownStart { slot: PlayerSlot },
+    /// The terms let a journal record hold more than a journal frame takes: inputs, payloads, a
+    /// window of stamps or slots past what a record of 16 MiB holds.
+    #[error("the terms let a journal record pass 16 MiB")]
+    RecordTooLarge,
 }
 
 /// Why a log does not load a save.

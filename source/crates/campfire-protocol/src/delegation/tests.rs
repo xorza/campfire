@@ -102,7 +102,14 @@ fn a_flawed_delegation_is_refused() {
     forged[sig_at] = if forged[sig_at] == b'0' { b'1' } else { b'0' };
     let forged = String::from_utf8(forged).unwrap();
 
+    // A delegation with no other tag and no content is far below the most bytes one holds, and
+    // one padded past it by a tag of its own is refused before it is read.
+    assert!(json.len() < Delegation::MAX_JSON / 4, "{}", json.len());
+    let pad = |tags: &mut Vec<Vec<String>>| {
+        tags.push(vec!["pad".to_owned(), "x".repeat(Delegation::MAX_JSON)]);
+    };
     let cases = [
+        (event(KIND, tags(pad)), DelegationError::TooLong),
         ("not JSON".to_owned(), DelegationError::NotEvent),
         ("{}".to_owned(), DelegationError::NotEvent),
         (

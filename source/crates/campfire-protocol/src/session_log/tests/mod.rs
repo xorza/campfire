@@ -599,6 +599,30 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     };
     assert_eq!(SessionLog::new(bot).err(), Some(mismatch));
 
+    // The largest record of the terms, a checkpoint's: each of the 2 slots carries a delegation
+    // of at most 4,096 bytes and its length, 4,101, and its inputs still to apply, 2 a stamp
+    // over the delay, the lead and the next tick, 5 stamps, each a tick, a slot, a stamp, a
+    // length and 4 bytes, 10 + 5 + 10 + 5 + 4 = 34: 4,101 + 340 + 256 = 4,697 a slot; then two
+    // hashes, the signature and the slack, 64 + 64 + 256 = 384: 2 × 4,697 + 384 = 9,778. A
+    // packet takes 2 × 19 + 320 = 358, a server input 4,101 + 320 = 4,421, the header
+    // 2 × 4,357 + 2 × 32 + 5 + 256 = 9,039.
+    assert_eq!(terms().largest_record(), Some(9_778));
+    // A lead of 2¹⁸ ticks lets each slot hold 2 × (2¹⁸ + 3) inputs of 34 bytes, past 16 MiB in
+    // all.
+    let mut far = header();
+    far.terms.max_input_lead = Ticks::new(1 << 18);
+    assert_eq!(
+        SessionLog::new(far).err(),
+        Some(HeaderError::RecordTooLarge)
+    );
+    let mut endless = header();
+    endless.terms.max_input_delay = Ticks::new(u64::MAX);
+    assert_eq!(endless.terms.largest_record(), None);
+    assert_eq!(
+        SessionLog::new(endless).err(),
+        Some(HeaderError::RecordTooLarge)
+    );
+
     // The session id hashes the terms, so a change to any of them leaves every delegation
     // naming another session.
     let changes: [fn(&mut SessionTerms); 12] = [
