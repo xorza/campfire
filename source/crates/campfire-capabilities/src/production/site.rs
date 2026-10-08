@@ -118,12 +118,10 @@ impl SimComponent for Site {
             .get_resource::<ActionBook>()
             .and_then(|book| book.get(self.action))
             .is_some_and(|action| {
-                let ticks = || action.values(self.rank).windup.get();
                 action.kind.kind() == ActionKind::Build
                     && action.has_rank(self.rank)
-                    && i64::try_from(ticks())
-                        .ok()
-                        .and_then(Num::from_int)
+                    && action
+                        .windup_ticks(self.rank)
                         .is_some_and(|time| self.progress <= time)
             });
         let resources = world

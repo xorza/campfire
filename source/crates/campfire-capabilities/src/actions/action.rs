@@ -1,3 +1,4 @@
+use campfire_math::Num;
 use campfire_script::ScriptId;
 
 use crate::actions::delivery::Delivery;
@@ -82,6 +83,13 @@ impl Action {
     /// Its capability fields at `rank`, one of its ranks.
     pub(crate) fn values(&self, rank: Rank) -> &RankValues {
         self.values_at(rank).expect("a rank the action has")
+    }
+
+    /// Its windup at `rank` in ticks, as a `Num`: a build's time. None for a rank it lacks, or a
+    /// count past a `Num`.
+    pub(crate) fn windup_ticks(&self, rank: Rank) -> Option<Num> {
+        let ticks = self.values_at(rank)?.windup.get();
+        Num::from_int(i64::try_from(ticks).ok()?)
     }
 
     /// Its cost at `rank`, one of its ranks, in its caster's player's resources.

@@ -7,7 +7,6 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{ActionSlots, SlotAim};
 use crate::actions::action_target::ActionTarget;
 use crate::actions::kind_spec::KindSpec;
@@ -160,9 +159,7 @@ impl BuildView<'_, '_> {
         let KindSpec::Build(unit_type) = self.book.get(action)?.kind else {
             return None;
         };
-        let ActionRange::Meters(range) = self.book.range(slots, slot) else {
-            panic!("the load checked a build's range in meters");
-        };
+        let range = self.book.meters(slots, slot);
         let spec = self
             .builds
             .of(action)
@@ -265,9 +262,7 @@ impl BuildView<'_, '_> {
         building: Building<'_>,
         placed: Placed,
     ) -> bool {
-        let shape = Body::shape_of(body);
-        self.metric
-            .reaches(from, shape, building.range, placed.at, placed.body.shape())
+        Construction::in_range(*self.metric, from, body, building.range, placed)
     }
 
     /// Whether the builder `holder` holds the site `site`: it lives, and its order is to build
@@ -334,6 +329,24 @@ impl BuildView<'_, '_> {
 }
 
 impl Construction {
+    /// Whether `range` from a builder at `from` with `body` reaches the building `placed`, in
+    /// `metric`: from the edge of the one body to the edge of the other.
+    fn in_range(
+        metric: Metric,
+        from: Position,
+        body: Option<&Body>,
+        range: Num,
+        placed: Placed,
+    ) -> bool {
+        metric.reaches(
+            from,
+            Body::shape_of(body),
+            range,
+            placed.at,
+            placed.body.shape(),
+        )
+    }
+
     /// Checks each build order that changed since the last run, in Inputs, after the orders
     /// apply, as it applies: a point's build passes its action's checks, its requirements and
     /// its placement against the match as it stands, and a site's is a living site of the same
@@ -566,10 +579,12 @@ impl Construction {
             else {
                 continue;
             };
-            let ActionRange::Meters(range) = book.range(slots, slot) else {
-                panic!("the load checked a build's range in meters");
+            let range = book.meters(slots, slot);
+            let placed = Placed {
+                at,
+                body: *site_body,
             };
-            let reaches = metric.reaches(from, Body::shape_of(body), range, at, site_body.shape());
+            let reaches = Construction::in_range(*metric, from, body, range, placed);
             if reaches && !UnitTags::properties_of(tags).blocks(Block::Use) {
                 building.push(BuildingAt {
                     site,
@@ -599,8 +614,8 @@ impl Construction {
             let action = book
                 .get(site.action())
                 .expect("a site's build is in the book");
-            let ticks = action.values(site.rank()).windup.get();
-            let time = Num::from_int(i64::try_from(ticks).expect("a build's time fits"))
+            let time = action
+                .windup_ticks(site.rank())
                 .expect("a build's time fits a Num");
             let progressed = site.progress_by(spec.rate(count), time);
             if let (Some(life), Some(mut pools)) = (life.as_deref(), pools) {

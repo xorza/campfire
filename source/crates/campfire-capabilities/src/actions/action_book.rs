@@ -180,6 +180,15 @@ impl ActionBook {
             .expect("a learned slot's action is in the book")
             .range
     }
+
+    /// The range in meters of the action in `slot` of `slots`, one whose load checked that it
+    /// reaches in meters, as a build's and a gather's do.
+    pub(crate) fn meters(&self, slots: &ActionSlots, slot: u8) -> Num {
+        let ActionRange::Meters(range) = self.range(slots, slot) else {
+            panic!("the load checked the action's range in meters");
+        };
+        range
+    }
 }
 
 /// An action that passes its checks: its id, the target it keeps, none for an action that takes

@@ -11,7 +11,6 @@ use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId};
 
 use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::kind_spec::KindSpec;
@@ -118,6 +117,31 @@ struct Place {
     body: Option<Body>,
 }
 
+impl Place {
+    /// The squared distance on the ground plane from `from` to the point of the place's body
+    /// nearest it, as `Shape::nearest_point` rounds it, in squared bits.
+    fn distance_from(self, from: Position) -> u128 {
+        let near = Body::shape_of(self.body.as_ref()).nearest_point(self.at, from);
+        from.ground_offset(near).length_squared_bits()
+    }
+
+    /// Walks a worker at `from`, whose route and destination are given, to its point
+    /// nearest it, or stops it when its route arrived short of that point.
+    fn walk_from(
+        self,
+        from: Position,
+        destination: Option<&Destination>,
+        route: Option<&Route>,
+    ) -> Step {
+        let to = Body::shape_of(self.body.as_ref()).nearest_point(self.at, from);
+        if Destination::gives_up(destination, route, to) {
+            Step::Stop
+        } else {
+            Step::Walk(to)
+        }
+    }
+}
+
 /// A node the loop found: its entity, and where it stands.
 #[derive(Debug, Clone, Copy)]
 struct FoundNode {
@@ -170,9 +194,7 @@ impl GatherView<'_, '_> {
         let (KindSpec::Gather(spec), Aim::Unit(filter)) = (action.kind, action.aim) else {
             return None;
         };
-        let ActionRange::Meters(range) = self.book.range(slots, slot) else {
-            panic!("the load checked a gather's range in meters");
-        };
+        let range = self.book.meters(slots, slot);
         let rank = held.rank.expect("a gather's slot is learned");
         let ticks = action.values(rank).windup.get().max(1);
         Some(Gather {
@@ -202,13 +224,6 @@ impl GatherView<'_, '_> {
         })
     }
 
-    /// The squared distance on the ground plane from `from` to the point of `place`'s body
-    /// nearest it, as `Shape::nearest_point` rounds it, in squared bits.
-    fn distance(from: Position, place: Place) -> u128 {
-        let near = Body::shape_of(place.body.as_ref()).nearest_point(place.at, from);
-        from.ground_offset(near).length_squared_bits()
-    }
-
     /// The nearest living node to a worker at `from` of `team` that its `gather` gathers, whose
     /// body comes within its bounce of `near`'s, and that no worker holds: by the distance to its
     /// body, the lower stable id on a tie.
@@ -229,10 +244,39 @@ impl GatherView<'_, '_> {
                 let within =
                     self.metric
                         .reaches(near.at, near_shape, gather.spec.bounce, place.at, shape);
-                within.then_some((GatherView::distance(from, place), id, place.at))
+                within.then_some((place.distance_from(from), id, place.at))
             })
             .min_by_key(|&(distance, id, _)| (distance, id))
             .map(|(_, node, at)| NodeAt { node, at })
+    }
+
+    /// Whether a drop-off of `unit_type` that `drop_owner` owns takes `resource` from a worker
+    /// of `owner`: one of the same player that takes that resource.
+    fn takes(
+        &self,
+        drop_owner: Owner,
+        unit_type: UnitType,
+        owner: PlayerSlot,
+        resource: ResourceId,
+    ) -> bool {
+        drop_owner.slot() == owner && self.nodes_book.takes(unit_type, resource)
+    }
+
+    /// Where the living, complete drop-off `id` stands, when it takes `resource` from a worker
+    /// of `owner`.
+    fn drop_off_place(
+        &self,
+        id: StableId,
+        owner: PlayerSlot,
+        resource: ResourceId,
+    ) -> Option<Place> {
+        let (_, &at, body, &unit_type, drop_owner) =
+            self.drop_offs.get(self.index.get(id)?).ok()?;
+        self.takes(*drop_owner, unit_type, owner, resource)
+            .then_some(Place {
+                at,
+                body: body.copied(),
+            })
     }
 
     /// The nearest living, complete drop-off of `owner` that takes `resource`, to a worker at
@@ -246,14 +290,14 @@ impl GatherView<'_, '_> {
         self.drop_offs
             .iter()
             .filter(|&(.., &unit_type, drop_owner)| {
-                drop_owner.slot() == owner && self.nodes_book.takes(unit_type, resource)
+                self.takes(*drop_owner, unit_type, owner, resource)
             })
             .map(|(&id, &at, body, ..)| {
                 let place = Place {
                     at,
                     body: body.copied(),
                 };
-                (GatherView::distance(from, place), id)
+                (place.distance_from(from), id)
             })
             .min()
             .map(|(_, id)| id)
@@ -276,22 +320,6 @@ impl GatherView<'_, '_> {
         let shape = Body::shape_of(body);
         let to = Body::shape_of(place.body.as_ref());
         self.metric.reaches(from, shape, gather.range, place.at, to)
-    }
-
-    /// Walks a worker at `from`, whose route and destination are given, to `place`'s point
-    /// nearest it, or stops it when its route arrived short of that point.
-    fn walk(
-        from: Position,
-        place: Place,
-        destination: Option<&Destination>,
-        route: Option<&Route>,
-    ) -> Step {
-        let to = Body::shape_of(place.body.as_ref()).nearest_point(place.at, from);
-        if Destination::gives_up(destination, route, to) {
-            Step::Stop
-        } else {
-            Step::Walk(to)
-        }
     }
 
     /// What the worker of `entity` does in its loop this tick.
@@ -329,7 +357,7 @@ impl GatherView<'_, '_> {
                     return search();
                 };
                 if !self.reaches(from, body, gather, place) {
-                    return GatherView::walk(from, place, destination, route);
+                    return place.walk_from(from, destination, route);
                 }
                 let (.., node, _, _) = self.nodes.get(entity).expect("a node found this tick");
                 if node.holder().is_none() {
@@ -362,16 +390,7 @@ impl GatherView<'_, '_> {
                 let Some(owner) = owner.copied().map(Owner::slot) else {
                     return Step::Stand;
                 };
-                let chosen = drop_off.and_then(|id| {
-                    let (_, &at, body, &unit_type, drop_owner) =
-                        self.drop_offs.get(self.index.get(id)?).ok()?;
-                    let takes = drop_owner.slot() == owner
-                        && self.nodes_book.takes(unit_type, load.resource);
-                    takes.then_some(Place {
-                        at,
-                        body: body.copied(),
-                    })
-                });
+                let chosen = drop_off.and_then(|id| self.drop_off_place(id, owner, load.resource));
                 let Some(place) = chosen else {
                     return match self.drop_off(from, owner, load.resource) {
                         Some(next) => Step::Choose(next),
@@ -379,7 +398,7 @@ impl GatherView<'_, '_> {
                     };
                 };
                 if !self.reaches(from, body, gather, place) {
-                    return GatherView::walk(from, place, destination, route);
+                    return place.walk_from(from, destination, route);
                 }
                 if !self.joins(owner, load) {
                     return Step::Stand;
@@ -758,16 +777,10 @@ impl GatherView<'_, '_> {
                 load,
             );
         }
-        let drop_off = self.index.get(target);
-        let returns =
-            (gatherer.load().zip(owner).zip(drop_off)).is_some_and(|((load, owner), drop_off)| {
-                self.drop_offs
-                    .get(drop_off)
-                    .is_ok_and(|(.., &unit_type, drop_owner)| {
-                        drop_owner.slot() == owner.slot()
-                            && self.nodes_book.takes(unit_type, load.resource)
-                    })
-            });
+        let returns = gatherer.load().zip(owner).is_some_and(|(load, owner)| {
+            let place = self.drop_off_place(target, owner.slot(), load.resource);
+            place.is_some()
+        });
         if !returns {
             return checked(None, gatherer.load());
         }

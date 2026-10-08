@@ -14,13 +14,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 ## 13. A fact is derived in several places in one module
 
-- [ ] `production/gather_loop.rs:244,347,747`: "a drop-off of this owner that takes this resource" is spelled in `drop_off()`, in the `chosen` closure of `step`, and in `resolve`. Target: one `GatherView` method.
-- [ ] `production/construction.rs:162,576`, `production/gather_loop.rs:169`: `book.range(slots, slot)` then `let Range::Meters(range) = .. else { panic!(..) }`, three times. Target: one `ActionBook` accessor that gives meters for a slot.
-- [ ] `production/construction.rs:264-276,576-580`: `BuildView::in_range` and the inline `metric.reaches(..)` in `progress_sites` test the same rule. Target: `progress_sites` uses `in_range`.
-- [ ] `production/site.rs:119-127`, `production/construction.rs:609-611`: a build's time is read from `windup` and converted to `Num` in two ways. Target: one method.
-- [ ] `production/supply.rs:35-61`, `production/production_column.rs:91-109`: a player's `used`, `given` and capped total are summed for the train check and again for the script view. Target: one type sums and caps, and the column feeds it.
-- [ ] `production/supply.rs:46-50,77-82`: the "grow `players` to hold slot `at`" resize is in `count` and in `reserve`. Target: one private `entry_mut(player)`.
-- [ ] `production/gather_loop.rs:202,266`, `production/mod.rs:310`: `GatherView::distance` and `GatherView::walk` take no `self` and work on `Place`. `Production::ordered` takes only `ActionSlots` and `ActionBook`. Target: methods of `Place`, and of `ActionSlots` (with the book).
 - [ ] `projectiles/mod.rs:76,86,118,143,294`: the fresh `Flight::Homing { target, flown: ZERO, lost: false }` is written three times, and the fresh `Flight::Line` twice. Target: `Flight::homing` and `Flight::line`.
 - [ ] `projectiles/mod.rs:100-107,150-163`: `deliver` fetches the action and the `ProjectileSpec`, then `range()` fetches both again. Target: `range` takes what `deliver` read.
 - [ ] `projectiles/launches.rs:17`, `projectiles/mod.rs:189,289,316,325`: `Launches.launches` is a `pub(crate)` field that `push`, `take_shots` and `launch` change directly, beside the methods `cast` and `clear`. Target: a private field and methods.

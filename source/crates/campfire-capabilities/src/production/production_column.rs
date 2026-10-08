@@ -4,6 +4,7 @@ use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::INT;
 
+use crate::production::supply::PlayerSupply;
 use crate::production::supply_costs::{SupplyCosts, UnitSupply};
 use crate::production::supply_rules::SupplyRules;
 use crate::units::kept_rows::KeptRows;
@@ -91,17 +92,14 @@ impl ProductionColumn {
     pub(crate) fn supply(view: &View, player: PlayerSlot) -> Option<ReadSupply> {
         view.column(|column: &ProductionColumn| {
             let rules = column.rules?;
-            let rows = column
-                .rows
-                .now()
-                .iter()
-                .filter(|row| row.owner == Some(player));
-            let (used, given) = rows.fold((0, 0), |(used, given), row| {
-                (used + row.counted.used, given + row.counted.given)
-            });
+            let mut total = PlayerSupply::default();
+            let rows = column.rows.now().iter();
+            for row in rows.filter(|row| row.owner == Some(player)) {
+                total.add(row.counted);
+            }
             Some(ReadSupply {
-                used,
-                cap: given.min(u64::from(rules.max)),
+                used: total.used,
+                cap: total.cap(u64::from(rules.max)),
             })
         })
         .flatten()

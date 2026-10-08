@@ -254,6 +254,20 @@ impl InProgress {
 }
 
 impl ActionSlots {
+    /// The order they hold ordered, not yet checked, whose action `book` says is of `kind`.
+    pub(crate) fn ordered(&self, book: &ActionBook, kind: ActionKind) -> Option<SlotAim> {
+        let Some(InProgress::Order {
+            aim,
+            phase: OrderPhase::Ordered,
+        }) = self.in_progress()
+        else {
+            return None;
+        };
+        let slot = self.slot(aim.slot)?;
+        let of_kind = book.get(slot.action?)?.kind.kind() == kind;
+        of_kind.then_some(aim)
+    }
+
     /// The most slots a unit holds: every index a `u8` holds.
     pub const LIMIT: usize = 256;
 

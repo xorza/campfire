@@ -12,7 +12,7 @@ use campfire_sim::{
 use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
-use crate::actions::action_slots::{ActionSlots, InProgress, OrderPhase, SlotAim};
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
 use crate::geometry::bounds::Bounds;
@@ -308,20 +308,6 @@ impl Production {
         let near = Body::shape_of(producer.get::<Body>()).nearest_point(at, to);
         Navigation::open_cell(world, walker, near).unwrap_or(at)
     }
-
-    /// The train `slots` hold ordered, not yet checked, whose action `book` says trains.
-    fn ordered(slots: &ActionSlots, book: &ActionBook) -> Option<SlotAim> {
-        let Some(InProgress::Order {
-            aim,
-            phase: OrderPhase::Ordered,
-        }) = slots.in_progress()
-        else {
-            return None;
-        };
-        let slot = slots.slot(aim.slot)?;
-        let trains = book.get(slot.action?)?.kind.kind() == ActionKind::Train;
-        trains.then_some(aim)
-    }
 }
 
 /// Fills a row of the script view with what the unit counts for of its player's supply, and
@@ -376,7 +362,9 @@ fn start_trains(
     let trains = {
         let training = units.p1();
         let ordered = training.iter().filter_map(|(entity, &id, _, slots, ..)| {
-            Production::ordered(slots, &book).map(|_| Keyed { id, entity })
+            slots
+                .ordered(&book, ActionKind::Train)
+                .map(|_| Keyed { id, entity })
         });
         order.sort(ordered)
     };
@@ -412,7 +400,9 @@ fn start_trains(
     for &Keyed { entity, .. } in trains {
         let (_, _, &unit_type, mut slots, mut queue, mut pools, held_by) =
             training.get_mut(entity).expect("a unit in the order");
-        let ordered = Production::ordered(&slots, &book).expect("an ordered train");
+        let ordered = slots
+            .ordered(&book, ActionKind::Train)
+            .expect("an ordered train");
         slots.stop();
         let purse = Purse::of(pools.as_deref(), resources.as_deref(), held_by);
         let owner = held_by.map(|owner| owner.slot());
