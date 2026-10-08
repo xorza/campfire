@@ -6,11 +6,6 @@ Paths are relative to `source/crates/campfire-capabilities/src/` unless they nam
 
 Fix the root cause of a group, not its items one by one. Most groups give the structural target first, and their items are the places that target removes.
 
-## 9. Hot paths pay for the rare case on every event
-
-A hot path here runs per damage, per draw, per kill, or per script field read. Each item makes the common case pay for a case that seldom applies.
-
-
 ## 10. Script call plumbing is written once per caller
 
 The same steps to begin a frame, call a hook within the budget, apply on success and record on failure are written in each system. Also, each capability applies its effects in a different shape. Target: one `ScriptBatch` (or `Calls`) method that runs a hook and does all of those steps, and one shape for `Effect::apply`.
