@@ -12,10 +12,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 - [ ] `combat/mod.rs` (8 free-function systems, `Wielded`, `GoingOff`, `IntervalDue`, the `RowParts` and `Attacker` aliases, about 620 lines) and `stats/mod.rs:263-302` (`expire_modifiers`, `clear_dead_modifiers`, `fill_row`), while `DamagePass`, `Refresh` and `HeldPass` are unit-struct namespaces in their own files. Two conventions for one job. Target: one type per system, in its own file. `mod.rs` keeps `install`, the sets and the module list. **Decided: crate-wide. Every capability's systems move into unit-struct files by concern, and each `fill_row` becomes a method of its column type; done after the other items, one capability per commit.**
 
-## 16. The published surface names some types and not others
-
-- [ ] `lib.rs:57-89` exports `ModeData`, `ModeParam`, `MapData`, `ModeInput`, `Books`, `ModeInputs`, `ModeSetup` and `Mode::install`. It does not export the `pub` types in their public fields and signatures: `ChoiceData`, `InputType` (in `ModeInput::decode`), `ListEntry` (the payload of `ModeParam::List`), `RelationData`, `GridData`, `BrushData`, `MapNavigationData`, `WallData`, `PathData`, `PlacedUnitData`, `MarkerData`, `RegionData`, `MapPoint`, `ModeUnits`, `ModeBooks` and `ModeMap`. A caller cannot name them, so it cannot match `ModeParam::List`, build a `ModeSetup` or `MapData`, or store the parts of `ModeInputs`. Target: one decision for the surface. Either export each of them, or make it `pub(crate)` and make the owner's field private.
-
 ## 17. Small code-guide slips
 
 - [ ] `items/inventory.rs:52`, `items/item_book.rs:45`: `slots()` and `modifiers()` return `&self.field` through `Vec` deref, so they are not `const`. Target: `const fn` with `as_slice()`, as `ModeState::get` does.
