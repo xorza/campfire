@@ -9,8 +9,8 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
+use crate::stats::modifier_state_field::ModifierStateField;
 use crate::stats::stats_effect::StatsEffect;
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
@@ -31,15 +31,8 @@ pub(crate) struct HandleData {
     pub(crate) state: Vec<StateValue>,
     pub(crate) written: bool,
     pub(crate) removed: bool,
-    fields: Arc<[StateField]>,
+    fields: Arc<[ModifierStateField]>,
     view: View,
-}
-
-/// A field of a modifier's script state: its name and type, in the order of the names.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StateField {
-    pub(crate) name: Box<str>,
-    pub(crate) kind: StateType,
 }
 
 /// `m.state`: the modifier's state fields, by name, to read and write.
@@ -64,7 +57,7 @@ impl ModifierHandle {
         spare: Option<ModifierHandle>,
         of: HandleOf,
         state: &[StateValue],
-        fields: Arc<[StateField]>,
+        fields: Arc<[ModifierStateField]>,
         view: View,
     ) -> ModifierHandle {
         let HandleOf {

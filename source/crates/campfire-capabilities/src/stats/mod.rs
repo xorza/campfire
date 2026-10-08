@@ -56,6 +56,7 @@ pub(crate) mod modifier_clocks;
 pub(crate) mod modifier_data;
 pub(crate) mod modifier_handle;
 pub(crate) mod modifier_spec;
+pub(crate) mod modifier_state_field;
 pub(crate) mod modifiers;
 pub(crate) mod param_book;
 pub(crate) mod param_read;
