@@ -92,9 +92,7 @@ impl SimComponent for Area {
         });
         let applies = |modifier| ModifierBook::has_way_in(world, modifier, Some(action), rank);
         let holds = |spec: &AreaSpec| spec.inside.modifiers().all(applies);
-        let times =
-            self.triggers_at.is_none_or(|at| at <= Tick::LIMIT) && self.ends_at <= Tick::LIMIT;
-        by && launched && spec.is_some_and(holds) && times
+        by && launched && spec.is_some_and(holds)
     }
 }
 

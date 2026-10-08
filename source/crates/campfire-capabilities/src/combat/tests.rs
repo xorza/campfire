@@ -579,7 +579,7 @@ fn every_combat_type_is_state_and_restores() {
         slots.set_attack_target(Some(doomed));
         slots.start_attack(0, Tick::new(resolves_at));
         slots.cool_down(0, Tick::new(ready_at));
-        slots.check(&restored.sim.world, entity)
+        TestMatch::decodes(&slots) && slots.check(&restored.sim.world, entity)
     };
     assert!(slots(2, 0) && slots(Tick::LIMIT.get(), Tick::LIMIT.get()));
     assert!(!slots(1, 0));

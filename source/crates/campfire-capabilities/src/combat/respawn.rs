@@ -14,7 +14,8 @@ pub struct Respawn {
 impl SimComponent for Respawn {
     const NAME: &'static str = "combat.respawn";
 
+    // Its decode keeps its tick within the limit.
     fn check(&self, _: &World, _: Entity) -> bool {
-        self.at <= Tick::LIMIT
+        true
     }
 }

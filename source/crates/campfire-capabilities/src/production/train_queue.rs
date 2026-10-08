@@ -113,11 +113,6 @@ impl SimComponent for TrainQueue {
             .zip(producers)
             .and_then(|(&unit_type, producers)| producers.get(unit_type))
             .map(|production| usize::from(production.queue.get()));
-        let times = self.head_done.is_none_or(|done| done <= Tick::LIMIT)
-            && self
-                .entries
-                .iter()
-                .all(|queued| queued.time <= Ticks::LIMIT);
         let resources = world
             .get_resource::<PlayerResources>()
             .map_or(0, PlayerResources::resources);
@@ -125,7 +120,7 @@ impl SimComponent for TrainQueue {
             .paid
             .iter()
             .all(|paid| paid.resource.index() < resources && paid.amount >= 0);
-        trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity) && times && paid
+        trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity) && paid
     }
 }
 

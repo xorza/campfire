@@ -44,8 +44,9 @@ impl RecentAttackers {
 impl SimComponent for RecentAttackers {
     const NAME: &'static str = "combat.recent_attackers";
 
-    // Each attacker may be gone, which every reader allows.
+    // Each attacker may be gone, which every reader allows, and its decode keeps each tick
+    // within the limit.
     fn check(&self, _: &World, _: Entity) -> bool {
-        self.0.iter().all(|attack| attack.tick <= Tick::LIMIT)
+        true
     }
 }

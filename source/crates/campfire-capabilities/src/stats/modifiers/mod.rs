@@ -3,7 +3,7 @@ use std::ops::{Deref, Range};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::{Tick, Ticks};
+use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::{SimComponent, StableId, TickRate};
 use serde::de::Error;
@@ -526,19 +526,6 @@ impl Carried<'_> {
                 .all(|share| share.live.is_none_or(|live| params.holds_live(live, rank)));
         applies && shares
     }
-
-    /// Whether its end, its stacks' life and each stack's end are times a match makes.
-    fn within_limit(&self) -> bool {
-        let ends = match self.instance.lifetime.applied {
-            Some(Ends::At(at)) => at <= Tick::LIMIT,
-            Some(Ends::Never) | None => true,
-        };
-        let life = self
-            .instance
-            .stack_life
-            .is_none_or(|life| life <= Ticks::LIMIT);
-        ends && life && self.stack_ends.iter().all(|end| end.until <= Tick::LIMIT)
-    }
 }
 
 impl SimComponent for Modifiers {
@@ -563,7 +550,7 @@ impl SimComponent for Modifiers {
         clocks
             && self
                 .iter()
-                .all(|carried| carried.fits(modifiers, params, rate) && carried.within_limit())
+                .all(|carried| carried.fits(modifiers, params, rate))
     }
 }
 

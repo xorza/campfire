@@ -15,6 +15,8 @@ use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimSet, SimTick, SimUpdate, StableId,
     StateCopy, StateRegistry, TickRate, TypeHash,
 };
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::capability_set::CapabilitySet;
 use crate::combat::Combat;
@@ -73,6 +75,12 @@ impl TestMatch {
     /// A client's match at `RATE` of `declared`: no script host, and no system that runs scripts.
     pub(crate) fn client(declared: &[Capability]) -> TestMatch {
         TestMatch::new(declared, TestMatch::RATE, None)
+    }
+
+    /// Whether `value`, encoded as a snapshot holds it, decodes again: a decode keeps the rules a
+    /// type's own values follow, as a restore check keeps those that need the match.
+    pub(crate) fn decodes<T: Serialize + DeserializeOwned>(value: &T) -> bool {
+        postcard::from_bytes::<T>(&postcard::to_allocvec(value).unwrap()).is_ok()
     }
 
     /// A server's match at `RATE` of `declared`, running scripts within `budgets`.

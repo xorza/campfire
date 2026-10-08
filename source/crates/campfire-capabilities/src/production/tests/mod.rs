@@ -331,7 +331,7 @@ fn a_train_queue_is_state_and_restores() {
     internals::train(&mut restored.sim.world, restored.grunt, Ticks::new(3), None);
     shop.sim.restore_into(&mut restored.sim);
     // A train of the longest time, pushed at tick 0, is done at the limit; pushed a tick later,
-    // or a tick longer, it fails.
+    // or a tick longer, it fails to decode.
     let entity = restored.sim.entity(id);
     let check = |pushed: u64, time: u64| {
         let mut queue = TrainQueue::default();
@@ -342,7 +342,7 @@ fn a_train_queue_is_state_and_restores() {
             paid: 0,
         };
         queue.push(queued, &[], Tick::new(pushed));
-        queue.check(&restored.sim.world, entity)
+        TestMatch::decodes(&queue) && queue.check(&restored.sim.world, entity)
     };
     assert!(check(0, Tick::LIMIT.get()));
     assert!(!check(1, Tick::LIMIT.get()) && !check(0, Tick::LIMIT.get() + 1));

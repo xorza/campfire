@@ -31,7 +31,8 @@ impl Lifespan {
 impl SimComponent for Lifespan {
     const NAME: &'static str = "units.lifespan";
 
+    // Its decode keeps its tick within the limit.
     fn check(&self, _: &World, _: Entity) -> bool {
-        self.ends <= Tick::LIMIT
+        true
     }
 }

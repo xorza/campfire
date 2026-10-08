@@ -138,12 +138,12 @@ fn an_area_is_state_and_restores() {
     loads(&mut restored);
     sim.restore_into(&mut restored);
     assert_eq!(restored.get::<Area>(id), sim.get::<Area>(id));
-    // Its times are at most the limit: either a tick past it fails.
+    // Its times are at most the limit: either a tick past it fails to decode.
     let entity = sim.entity(id);
     let past = Tick::new(Tick::LIMIT.get() + 1);
     let check = |triggers_at, ends_at| {
         let area = Area::new(by, None, triggers_at, ends_at).unwrap();
-        area.check(&sim.world, entity)
+        TestMatch::decodes(&area) && area.check(&sim.world, entity)
     };
     assert!(check(Some(Tick::LIMIT), Tick::LIMIT));
     assert!(!check(None, past));

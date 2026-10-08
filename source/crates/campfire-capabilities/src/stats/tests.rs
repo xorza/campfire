@@ -524,8 +524,8 @@ fn a_scaling_aura_radius_and_shield_below_zero_hold_zero_and_restore() {
 #[test]
 fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_limit() {
     // The warding unit's clock, as the application made it, has an interval and a shield, as
-    // its modifier does. Without either, the clock would not do what its modifier does; with an
-    // interval past the limit, its next tick would overflow.
+    // its modifier does. Without either, the clock would not do what its modifier does; an
+    // interval past the limit, whose next tick would overflow, fails to decode.
     let (mut game, warding) = warding_match();
     let unit = unit(&mut game, 0);
     game.world.entity_mut(unit).insert(Modifiers::default());
@@ -536,7 +536,7 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
     let check = |change: fn(&mut Clock)| {
         let mut clocks = made.clone();
         change(clocks.clock_mut(0));
-        clocks.check(&game.world, unit)
+        TestMatch::decodes(&clocks) && clocks.check(&game.world, unit)
     };
     let limit = |clock: &mut Clock| {
         let interval = clock.interval.as_mut().unwrap();

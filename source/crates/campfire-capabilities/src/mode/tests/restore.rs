@@ -115,26 +115,29 @@ fn a_restore_check_refuses_what_the_match_lacks() {
 }
 
 /// Each time a unit, the match's end and a route hold is at most `Tick::LIMIT`, which no match
-/// reaches, so no sum of two restored times overflows: each passes at the limit, and fails a tick
-/// past it.
+/// reaches, so no sum of two restored times overflows: each decodes at the limit, and fails to a
+/// tick past it.
 #[test]
-fn a_restore_check_keeps_each_time_within_the_limit() {
+fn a_restore_keeps_each_time_within_the_limit() {
     let game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     let grunt = game.entity(2);
     let world = &game.sim.world;
     let unit = *world.get::<StableId>(grunt).unwrap();
     let past = Tick::new(Tick::LIMIT.get() + 1);
     for (at, holds) in [(Tick::LIMIT, true), (past, false)] {
-        assert_eq!(NextThink::new(at).check(world, grunt), holds, "{at}");
-        assert_eq!(Respawn { at }.check(world, grunt), holds, "{at}");
-        let ended = MatchEnd::new(at, MatchResult::Draw);
-        assert_eq!(ended.check(world), holds, "{at}");
+        assert_eq!(TestMatch::decodes(&NextThink::new(at)), holds, "{at}");
+        assert_eq!(TestMatch::decodes(&Respawn { at }), holds, "{at}");
+        assert_eq!(
+            TestMatch::decodes(&MatchEnd::new(at, MatchResult::Draw)),
+            holds,
+            "{at}"
+        );
         let mut attackers = RecentAttackers::default();
         attackers.record(unit, at, world.resource::<EntityIndex>());
-        assert_eq!(attackers.check(world, grunt), holds, "{at}");
+        assert_eq!(TestMatch::decodes(&attackers), holds, "{at}");
         let mut route = world.get::<Route>(grunt).unwrap().clone();
         route.ask(*world.get::<Position>(grunt).unwrap(), at, None);
-        assert_eq!(route.check(world, grunt), holds, "{at}");
+        assert_eq!(TestMatch::decodes(&route), holds, "{at}");
     }
 }
 
@@ -190,7 +193,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     let state = vec![StateValue::Bool(true)];
     assert!(!clocks_of(applied(modifier, vec![one], state)).check(world, fighter));
     // Its end, and its stacks' life and end, are at most the limit, so no sum of two overflows:
-    // each passes there, and fails a tick past it.
+    // each restores there, and fails to decode a tick past it.
     let past = Tick::new(Tick::LIMIT.get() + 1);
     let longer = Ticks::new(Ticks::LIMIT.get() + 1);
     let timed = |ends: Tick, life: Ticks, stack_end: Tick| Application {
@@ -215,8 +218,9 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
         (timed(at, life, past), false),
     ];
     for (case, (application, holds)) in cases.into_iter().enumerate() {
+        let modifiers = modifiers_of(application);
         assert_eq!(
-            modifiers_of(application).check(world, fighter),
+            TestMatch::decodes(&modifiers) && modifiers.check(world, fighter),
             holds,
             "case {case}"
         );

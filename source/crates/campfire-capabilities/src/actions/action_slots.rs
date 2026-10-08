@@ -815,7 +815,7 @@ impl SimComponent for ActionSlots {
                     let charges = action.is_some_and(|(rank, action)| {
                         action.has_rank(rank) && action.values(rank).charge.is_some()
                     });
-                    return charges && since < full && full <= Tick::LIMIT;
+                    return charges && since < full;
                 }
                 _ => {}
             }
@@ -833,14 +833,12 @@ impl SimComponent for ActionSlots {
         // A channel only of an action with one, at a rank it has, and a cut one as well, of a slot
         // it has.
         let channel = match self.underway {
-            Some(InProgress::Channel {
-                aim, next, ends, ..
-            }) => {
+            Some(InProgress::Channel { aim, .. }) => {
                 let rule = self
                     .slots
                     .get(usize::from(aim.slot))
                     .and_then(|slot| book.get(slot.action?)?.channel_rule(slot.rank));
-                rule.is_some() && next <= Tick::LIMIT && ends <= Tick::LIMIT
+                rule.is_some()
             }
             _ => true,
         };
@@ -852,13 +850,11 @@ impl SimComponent for ActionSlots {
         });
         // A toggle on only for an action with one, at a rank it has.
         let toggles = self.slots.iter().all(|slot| {
-            slot.toggle.is_none_or(|next| {
-                let toggles = slot
+            slot.toggle.is_none()
+                || slot
                     .action
                     .and_then(|action| book.get(action)?.toggle_rule(slot.rank))
-                    .is_some();
-                toggles && next <= Tick::LIMIT
-            })
+                    .is_some()
         });
         // Charges no more than the action holds at its rank, and only for an action with them.
         let charges = self.slots.iter().all(|slot| {
@@ -867,18 +863,11 @@ impl SimComponent for ActionSlots {
                     .action
                     .and_then(|action| book.get(action)?.charge_rule(slot.rank));
                 rule.is_some_and(|rule| charges.count <= rule.max.get())
-                    && charges.next <= Tick::LIMIT
             })
         });
-        let times = self.slots.iter().all(|slot| slot.ready_at <= Tick::LIMIT)
-            && self
-                .underway
-                .and_then(InProgress::resolves_at)
-                .is_none_or(|at| at <= Tick::LIMIT);
         self.slots.len() <= ActionSlots::LIMIT
             && self.slots.iter().all(held)
             && underway
-            && times
             && charges
             && toggles
             && channel
