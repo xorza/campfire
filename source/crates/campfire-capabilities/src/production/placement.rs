@@ -7,7 +7,7 @@ use campfire_sim::Position;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
-use crate::navigation::body_index::BodyIndex;
+use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::walls::Walls;
 use crate::production::build_specs::{BuildSpec, PlacementCheck};
 use crate::units::body::Body;
@@ -54,11 +54,15 @@ impl Placement<'_, '_> {
             panic!("a building's body is a box");
         };
         let layer = body.layer();
-        let mut statics = Vec::new();
-        self.statics
-            .near(layer, at.get(), boxed.bound(), |body| statics.push(*body));
-        let walls = self.walls.as_deref().cloned().unwrap_or_default();
-        if !walls.room_for(*self.bounds, at, &boxed, layer, statics.iter().copied()) {
+        let walls = self.walls.as_deref();
+        if !Walls::room_for(walls, *self.bounds, at, &boxed, layer) {
+            return false;
+        }
+        let overlaps = |other: &IndexedBody| other.overlaps_box(at, &boxed);
+        if self
+            .statics
+            .any_near(layer, at.get(), boxed.bound(), overlaps)
+        {
             return false;
         }
         let blocked = self

@@ -78,32 +78,29 @@ impl NavigationColumn {
             return true;
         };
         let layer = body.layer();
-        let spawning = spawning
+        let clear_of_spawning = spawning
             .iter()
             .filter(|other| other.layer == layer)
-            .copied();
+            .all(|other| !other.overlaps_box(at, &boxed));
         let room = view.column(|column: &NavigationColumn| {
             let rows = column.rows.now();
-            let mut statics = Vec::new();
+            let mut clear = Walls::room_for(Some(&column.walls), view.bounds(), at, &boxed, layer);
             view.each_row(|place, row| {
                 let stands = !rows[place].walks && rows[place].layer == layer;
-                if stands && row.alive && row.shape != Shape::POINT {
-                    statics.push(IndexedBody {
+                if clear && stands && row.alive && row.shape != Shape::POINT {
+                    let other = IndexedBody {
                         id: row.id,
                         at: row.pos,
                         shape: row.shape,
                         layer,
-                    });
+                    };
+                    clear = !other.overlaps_box(at, &boxed);
                 }
             });
-            let statics = statics.into_iter().chain(spawning.clone());
-            column
-                .walls
-                .room_for(view.bounds(), at, &boxed, layer, statics)
+            clear
         });
-        room.unwrap_or_else(|| {
-            Walls::default().room_for(view.bounds(), at, &boxed, layer, spawning)
-        })
+        let room = room.unwrap_or_else(|| Walls::room_for(None, view.bounds(), at, &boxed, layer));
+        room && clear_of_spawning
     }
 
     /// `unit.path`: the name of the path `unit` walks or stands on, `()` with none, or in a view

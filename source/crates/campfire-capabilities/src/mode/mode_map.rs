@@ -259,11 +259,13 @@ impl ModeMap {
             let Shape::Box(boxed) = body.shape else {
                 continue;
             };
-            let others = structures
+            let mut others = structures
                 .iter()
-                .filter(|(other, held)| *other != at && held.layer == body.layer)
-                .map(|&(_, held)| held);
-            if !placed_walls.room_for(*bounds, body.at, &boxed, body.layer, others) {
+                .filter(|(other, held)| *other != at && held.layer == body.layer);
+            let walls = Some(&placed_walls);
+            let clear = Walls::room_for(walls, *bounds, body.at, &boxed, body.layer)
+                && !others.any(|(_, other)| other.overlaps_box(body.at, &boxed));
+            if !clear {
                 return Err(MapProblem::BoxBlocked {
                     unit: at,
                     unit_type: name_of(self.placed[at].unit_type),
