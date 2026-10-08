@@ -143,9 +143,12 @@ fn see(
         let slot = entity.index_u32() as usize;
         fog.sight(&grid, slot, pos, team, sight.range(), detects);
     }
-    reveals.run(tick.start(), |reveal| {
-        fog.reveal(&grid, reveal.pos, reveal.team, reveal.radius);
-    });
+    // A write marks the reveals changed, so a tick with none writes nothing.
+    if !reveals.is_empty() {
+        reveals.run(tick.start(), |reveal| {
+            fog.reveal(&grid, reveal.pos, reveal.team, reveal.radius);
+        });
+    }
     for (entity, &pos, &team, body, tags, seen) in &mut units {
         let hidden = UnitTags::properties_of(tags).hidden();
         let boxed = match Body::shape_of(body) {

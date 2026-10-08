@@ -1,3 +1,5 @@
+use campfire_sim::StateDelta;
+
 use super::*;
 use crate::actions::action_slots::SlotCharges;
 use crate::orders::next_think::NextThink;
@@ -242,4 +244,40 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
         modifier: rally,
     });
     assert!(!rallied.check(world));
+}
+
+#[test]
+fn a_quiet_tick_changes_no_state_but_the_tick() {
+    // A mode with a death hook and a timer each tick, on its map's tower alone: once its start
+    // settles, a tick with no input and no event writes no state but the tick, so its copy
+    // carries nothing more; the timer's call reads the mode's state and writes none, so only the
+    // timer, set again, changes besides.
+    let script = r#"
+fn on_match_start(ctx) {
+    ctx.timer("each", 100, true, ());
+}
+
+fn on_timer(ctx, name, data) {
+    if ctx.state.phase == "never" {
+        ctx.state.phase = "now";
+    }
+}
+
+fn on_unit_died(ctx, unit, killer, assisters) {}
+"#;
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
+    game.tick(&[]);
+    game.tick(&[]);
+    let mut delta = StateDelta::default();
+    let TestMatch {
+        world, registry, ..
+    } = &mut game.sim;
+    registry.track(world, &mut delta);
+    game.tick(&[]);
+    let TestMatch {
+        world, registry, ..
+    } = &mut game.sim;
+    registry.changes(world, &mut delta);
+    let changed = registry.changed_types(world, &delta);
+    assert_eq!(changed, ["mode.timers", "sim.tick"]);
 }

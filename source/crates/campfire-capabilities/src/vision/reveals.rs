@@ -23,6 +23,10 @@ pub(crate) struct Reveal {
 }
 
 impl Reveals {
+    pub(crate) const fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub(crate) fn push(&mut self, reveal: Reveal) {
         self.0.push(reveal);
     }

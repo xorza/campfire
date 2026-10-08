@@ -100,6 +100,10 @@ impl Deaths {
         self.tick
     }
 
+    pub const fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// The deaths, in the order the units died.
     pub fn iter(&self) -> impl Iterator<Item = DeathView<'_>> {
         (0..self.entries.len()).map(|at| self.get(at))

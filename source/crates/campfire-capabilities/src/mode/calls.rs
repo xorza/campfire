@@ -115,8 +115,13 @@ impl Calls<'_, '_> {
         {
             let frame = self.ctx.frame();
             let call = ModeCall::of(&frame);
-            world.resource_mut::<ModeState>().0.clone_from(&call.state);
-            world.resource_mut::<Choices>().clone_from(&call.choices);
+            // A write marks the state changed, so a call that changed none writes nothing.
+            if world.resource::<ModeState>().0 != call.state {
+                world.resource_mut::<ModeState>().0.clone_from(&call.state);
+            }
+            if *world.resource::<Choices>() != call.choices {
+                world.resource_mut::<Choices>().clone_from(&call.choices);
+            }
         }
         self.ctx.apply(world, self.now);
     }

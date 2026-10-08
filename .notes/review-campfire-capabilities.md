@@ -18,12 +18,8 @@ Target: a type's own invariants (sorted, bounded, in range) are kept by its `Des
 
 `campfire-sim` writes a resource or component into a delta snapshot when its `last_changed` is newer than the last copy (`campfire-sim/src/state_registry/mod.rs:612-614,676-678`). Each `DerefMut` on a `Mut` marks a change, so a write of the same value, or a `&mut` access that writes nothing, makes the delta larger. `stats/carried_mut.rs` already solves this: it reports `Touched` and marks only what changed. `slot_events` guards too (`mode/mod.rs:379`).
 
-Target: every sim-state write goes through an owner that marks only a real change (the `CarriedMut` model, or `set_if_neq`). Add one match-test guard: a quiet tick (no input, no event) makes an empty delta. Then a new spurious write fails a test and is not found by review.
+Target: every sim-state write goes through an owner that marks only a real change (the `CarriedMut` model, or `set_if_neq`). The guard is done: `a_quiet_tick_changes_no_state_but_the_tick` (`mode/tests/restore.rs`) fails on a write of a quiet tick; the items below change state only on ticks with orders or damage, which it does not reach.
 
-- [ ] `mode/calls.rs:113-122` (`Calls::commit`): after each successful mode call, `clone_from` writes into `ModeState` and `Choices`, whether or not the call changed them. Every `on_timer`, join, leave, death and level-up call marks both changed.
-- [ ] `mode/mode_call.rs:38-40` (`ModeCall::begin`): `state.clear()` then `extend_from_slice` drops and clones again every `StateValue::Text` and `EntityList` allocation. It does this for each mode call, also for each `calc_damage` and `calc_heal` through `Calls::amount` (one per hit). Together with `commit`, the whole state is copied in and out of each call so that a failed call changes nothing. Target: the frame copies the state on the first write only, and `commit` writes back only a state that was written. This also fixes the item above.
-- [ ] `mode/mod.rs:467`: `unit_deaths` calls `unanswered.extend(..)` on a `Mut<UnansweredDeaths>` on every tick that the hook exists, also with no deaths.
-- [ ] `mode/mod.rs:527,533`: `level_ups` takes `resource_mut::<LevelUps>()` on every tick (a clear with no hook, a `mem::swap` into `due`).
 - [ ] `orders/unit_order.rs:112,165` (`UnitOrder::apply`): `destination.set(to)` through `Mut` for every order, also when the value does not change (`Stop`, `Build`, `Gather` set `None` on a unit that is already at `None`). `Destination::walk_to` and `go` exist to prevent this, because an avatar's destination replicates.
 - [ ] `combat/damage_pass.rs:264-268` (`deal`): `get_mut::<Pools>` and `take` for each damage, also when the amount after shields is 0.
 ## 6. Capability boundaries are not where the code is

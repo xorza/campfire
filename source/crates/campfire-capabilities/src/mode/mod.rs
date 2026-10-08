@@ -375,15 +375,15 @@ struct Input {
 /// from the mode pool. One whose call finds the pool spent waits, with those after it, for a
 /// later tick.
 fn slot_events(world: &mut World) {
+    // A write marks the state changed, and taking the resource out to scope it is one, so a tick
+    // with no event to answer leaves it as it is.
+    let events = world.resource::<TickInputs>().slot_events().is_empty();
+    if events && world.resource::<UnansweredSlotEvents>().0.is_empty() {
+        return;
+    }
     world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredSlotEvents>| {
-        // A write marks the state changed, so a tick with no event writes nothing.
         let events = world.resource::<TickInputs>().slot_events();
-        if !events.is_empty() {
-            unanswered.0.extend_from_slice(events);
-        }
-        if unanswered.0.is_empty() {
-            return;
-        }
+        unanswered.0.extend_from_slice(events);
         let ctx = world.non_send::<Ctx>().clone();
         let hooks = ModeBook::of(&ctx)
             .expect("a match with a mode")
@@ -462,12 +462,14 @@ fn unit_deaths(world: &mut World, mut units: Local<'_, Vec<Option<Entity>>>) {
     if !hooks.contains(Hook::OnUnitDied) {
         return;
     }
+    // A write marks the state changed, and taking the resource out to scope it is one, so a tick
+    // with no death to answer leaves it as it is.
+    if world.resource::<Deaths>().is_empty() && world.resource::<UnansweredDeaths>().is_empty() {
+        return;
+    }
     let now = world.resource::<SimTick>().end();
     world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredDeaths>| {
         unanswered.extend(world.resource::<Deaths>().iter());
-        if unanswered.is_empty() {
-            return;
-        }
         let answered = Calls::batch(world, &ctx, now, |call| {
             let view = call.ctx.view().clone();
             let mut answered = 0;
@@ -523,17 +525,21 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
         .expect("a match with a mode")
         .schema
         .hooks;
+    // A write marks the state changed, so a tick with no level-up writes nothing.
+    if world.resource::<LevelUps>().0.is_empty() {
+        return;
+    }
     if !hooks.contains(Hook::OnLevelUp) {
         world.resource_mut::<LevelUps>().0.clear();
         return;
     }
     let now = world.resource::<SimTick>().end();
     loop {
-        due.clear();
-        mem::swap(&mut *due, &mut world.resource_mut::<LevelUps>().0);
-        if due.is_empty() {
+        if world.resource::<LevelUps>().0.is_empty() {
             return;
         }
+        due.clear();
+        mem::swap(&mut *due, &mut world.resource_mut::<LevelUps>().0);
         let answered = Calls::batch(world, &ctx, now, |call| {
             let view = call.ctx.view().clone();
             let mut answered = 0;
