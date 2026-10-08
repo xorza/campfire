@@ -160,7 +160,7 @@ mod tests {
             .enumerate()
         {
             let build = NewBuild {
-                form: BodyForm::boxed([Num::ONE, Num::ONE]).unwrap(),
+                form: BodyForm::box_sized([Num::ONE, Num::ONE]).unwrap(),
                 style,
                 start_life: None,
                 refund: Share::ALL,

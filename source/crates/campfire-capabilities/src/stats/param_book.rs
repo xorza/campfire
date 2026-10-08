@@ -126,10 +126,7 @@ impl ParamBook {
     pub(crate) fn holds_live(&self, live: LiveParam, rank: Rank) -> bool {
         let TableRun { table, run } = self.table(live.owner);
         let at = usize::from(live.at);
-        table.has_run(run)
-            && at < table.len(run)
-            && table.scales(run, at)
-            && table.has_rank(run, at, rank)
+        at < table.len(run) && table.scales(run, at) && table.has_rank(run, at, rank)
     }
 
     /// The value of live param `live` at `rank` of `source`.

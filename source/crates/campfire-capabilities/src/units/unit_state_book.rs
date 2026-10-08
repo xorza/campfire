@@ -31,20 +31,12 @@ impl UnitStateBook {
     /// The fields `unit_type` declares, in the order of their names; none for a type the book
     /// does not hold.
     pub(crate) fn fields(&self, unit_type: UnitType) -> &[SyncedStateDecl] {
-        let run = unit_type.index();
-        if self.0.has_run(run) {
-            self.0.values(run)
-        } else {
-            &[]
-        }
+        self.0.values(unit_type.index())
     }
 
     /// The field `name` of `unit_type`, when it declares one.
     pub(crate) fn field_named(&self, unit_type: UnitType, name: &str) -> Option<StateField> {
         let run = unit_type.index();
-        if !self.0.has_run(run) {
-            return None;
-        }
         let at = self.0.named(run, name)?;
         let kind = self.0.values(run)[at].decl.kind();
         Some(StateField { at, kind })

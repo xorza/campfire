@@ -46,8 +46,8 @@ impl Body {
         })
     }
 
-    /// The box `body` on the first layer.
-    pub(crate) const fn boxed(body: BodyBox) -> Body {
+    /// The body of the built box `body`, on the first layer.
+    pub(crate) const fn of_box(body: BodyBox) -> Body {
         Body {
             shape: Shape::Box(body),
             layer: Layer::FIRST,
@@ -112,7 +112,7 @@ impl BodyForm {
 
     /// A box of `size`, `[width, height]` in meters, on the first layer, when `BodyBox` takes
     /// that size: at every angle, as the size alone decides.
-    pub fn boxed(size: [Num; 2]) -> Option<BodyForm> {
+    pub fn box_sized(size: [Num; 2]) -> Option<BodyForm> {
         BodyBox::new(size, Num::ZERO).map(|_| BodyForm {
             form: Form::Box(size),
             layer: Layer::FIRST,
@@ -150,8 +150,8 @@ impl BodyForm {
         }
     }
 
-    /// The radius of a circle, as a walker sees it; `None` for a box, which never walks.
-    pub(crate) const fn radius(self) -> Option<Num> {
+    /// The radius of a circle form, as a walker sees it; `None` for a box, which never walks.
+    pub(crate) const fn circle_radius(self) -> Option<Num> {
         match self.form {
             Form::Circle(radius) => Some(radius),
             Form::Box(_) => None,
@@ -181,7 +181,7 @@ impl<'de> Deserialize<'de> for Body {
         let body = match fields.shape {
             Shape::Circle(radius) => Body::new(radius)
                 .ok_or_else(|| D::Error::custom("a body radius not positive or beyond 64 m"))?,
-            Shape::Box(body) => Body::boxed(body),
+            Shape::Box(body) => Body::of_box(body),
         };
         Ok(body.on(fields.layer))
     }
@@ -272,7 +272,7 @@ mod tests {
         // angle, which keeps the form's layer; the box has half edges and no radius.
         let form = BodyForm::circle(Num::int(2)).unwrap();
         assert_eq!(form.at(Num::int(90)), circle);
-        let boxed = BodyForm::boxed([Num::int(4), Num::int(2)])
+        let boxed = BodyForm::box_sized([Num::int(4), Num::int(2)])
             .unwrap()
             .on(Layer::new(1));
         let turned = boxed.at(Num::int(90));
@@ -283,10 +283,13 @@ mod tests {
         );
         assert_eq!((turned.radius(), turned.layer()), (None, Layer::new(1)));
         assert!(boxed.is_box() && !form.is_box());
-        assert_eq!((boxed.radius(), form.radius()), (None, Some(Num::int(2))));
+        assert_eq!(
+            (boxed.circle_radius(), form.circle_radius()),
+            (None, Some(Num::int(2)))
+        );
         let decoded = postcard::from_bytes::<Body>(&postcard::to_allocvec(&turned).unwrap());
         assert_eq!(decoded.ok(), Some(turned));
         // A box of a size `BodyBox` refuses is no form.
-        assert_eq!(BodyForm::boxed([Num::int(126), Num::int(1)]), None);
+        assert_eq!(BodyForm::box_sized([Num::int(126), Num::int(1)]), None);
     }
 }

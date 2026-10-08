@@ -91,7 +91,7 @@ impl Mine {
 
     /// A mineral at `at` holding `amount`.
     fn mineral(&mut self, at: Position, amount: u32) -> StableId {
-        let body = BodyForm::boxed([Num::int(2), Num::ONE])
+        let body = BodyForm::box_sized([Num::int(2), Num::ONE])
             .unwrap()
             .at(Num::ZERO);
         let parts = (self.mineral, Team::new(2), body, Node::new(amount));
@@ -100,7 +100,7 @@ impl Mine {
 
     /// Player 0's hall at `at`.
     fn hall(&mut self, at: Position) -> StableId {
-        let body = BodyForm::boxed([Num::int(4), Num::int(2)])
+        let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
             .unwrap()
             .at(Num::ZERO);
         let parts = (

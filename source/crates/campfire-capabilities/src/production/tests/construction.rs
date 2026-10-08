@@ -96,7 +96,7 @@ impl Yard {
     fn new(rules: Rules<'_>) -> Yard {
         let mut shop = Shop::ordering();
         let depot = shop.depot;
-        let form = BodyForm::boxed([Num::int(4), Num::int(2)]).unwrap();
+        let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
         let log = Rc::clone(&shop.spawned);
         let world = &mut shop.sim.world;
         world.insert_non_send(Spawner::new(move |world, at, owner| {

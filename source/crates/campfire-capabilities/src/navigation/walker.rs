@@ -43,7 +43,7 @@ impl Walker {
         };
         Some(Walker {
             layer: form.layer(),
-            radius: form.radius()?,
+            radius: form.circle_radius()?,
         })
     }
 }

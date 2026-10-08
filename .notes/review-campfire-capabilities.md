@@ -12,12 +12,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 - [ ] `combat/mod.rs` (8 free-function systems, `Wielded`, `GoingOff`, `IntervalDue`, the `RowParts` and `Attacker` aliases, about 620 lines) and `stats/mod.rs:263-302` (`expire_modifiers`, `clear_dead_modifiers`, `fill_row`), while `DamagePass`, `Refresh` and `HeldPass` are unit-struct namespaces in their own files. Two conventions for one job. Target: one type per system, in its own file. `mod.rs` keeps `install`, the sets and the module list. **Decided: crate-wide. Every capability's systems move into unit-struct files by concern, and each `fill_row` becomes a method of its column type; done after the other items, one capability per commit.**
 
-## 12. One concept has several types or names
-
-- [ ] `units/unit_state_book.rs:36-52` (`fields`, `field_named`), `stats/param_table.rs:93`: each caller of `NameTable` tests `has_run(run)` before `values` or `named`, because those index `starts[run + 1]` and panic out of range. `get_named` has the same panic. Target: accessors that answer for a missing run (empty slice, `None`).
-- [ ] `scripts/script_consts.rs:10-47`: four parallel `Vec<ImmutableString>` tables, each with a `set_*` and a getter. Target: one name-table type, one instance per id kind.
-- [ ] `units/body.rs:49-60,72-78,112-136`: `Body::boxed(BodyBox)` and `BodyForm::boxed([Num; 2])`, and `Body::radius` (`pub`) and `BodyForm::radius` (`pub(crate)`): the same names with different arguments and visibility. Target: names that say whether they take a form or a built body.
-
 ## 13. A fact is derived in several places in one module
 
 - [ ] `production/gather_loop.rs:244,347,747`: "a drop-off of this owner that takes this resource" is spelled in `drop_off()`, in the `chosen` closure of `step`, and in `resolve`. Target: one `GatherView` method.

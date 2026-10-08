@@ -342,7 +342,7 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     let team = |index| TeamSet::of(Team::new(index));
     let building = scene.spawn(1, 5, 0, None);
     let body = BodyBox::new([Num::int(6), Num::int(2)], Num::ZERO).unwrap();
-    scene.sim.insert(building, Body::boxed(body));
+    scene.sim.insert(building, Body::of_box(body));
     let seer = scene.spawn(0, -1, 0, Some(4));
     scene.sim.step();
     assert_eq!(scene.seen_by(building), team(1).with(Team::new(0)));

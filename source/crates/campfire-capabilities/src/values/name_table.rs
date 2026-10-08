@@ -34,23 +34,26 @@ impl<V> NameTable<V> {
         run + 1 < self.starts.len()
     }
 
-    /// The place of `name` in run `run`.
+    /// The place of `name` in run `run`; none for a run it does not hold.
     pub(crate) fn named(&self, run: usize, name: &str) -> Option<usize> {
-        self.names.sorted_named(self.run(run), name)
+        self.names.sorted_named(self.run(run)?, name)
     }
 
+    /// The value of `name` in run `run`; none for a run it does not hold.
     pub(crate) fn get_named(&self, run: usize, name: &str) -> Option<&V> {
         let at = self.named(run, name)?;
-        Some(&self.values[self.run(run)][at])
+        Some(&self.values(run)[at])
     }
 
-    /// The values of run `run`, in the order of their names.
+    /// The values of run `run`, in the order of their names; none for a run it does not hold.
     pub(crate) fn values(&self, run: usize) -> &[V] {
-        &self.values[self.run(run)]
+        self.run(run).map_or(&[], |range| &self.values[range])
     }
 
-    fn run(&self, run: usize) -> Range<usize> {
-        self.starts[run] as usize..self.starts[run + 1] as usize
+    /// Where run `run` lies in the buffers, when it holds the run.
+    fn run(&self, run: usize) -> Option<Range<usize>> {
+        let end = *self.starts.get(run + 1)?;
+        Some(self.starts[run] as usize..end as usize)
     }
 }
 
@@ -91,5 +94,8 @@ mod tests {
         assert_eq!(table.named(2, "b"), Some(1));
         assert_eq!(table.values(0), [1, 3]);
         assert!(table.values(1).is_empty());
+        // A run past the last holds nothing.
+        assert!(table.values(3).is_empty());
+        assert_eq!((table.named(3, "a"), table.get_named(3, "a")), (None, None));
     }
 }

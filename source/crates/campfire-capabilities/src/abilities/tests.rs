@@ -1051,7 +1051,7 @@ fn on_resolve(ctx, caster, target) {
     let boxed = |game: &mut Match| {
         let caster = game.caster(clamped, 1);
         let body = BodyBox::new([Num::int(4), Num::int(2)], Num::ZERO).unwrap();
-        game.sim.insert(caster, Body::boxed(body));
+        game.sim.insert(caster, Body::of_box(body));
         caster
     };
     let near = |x: &str, z: &str| ground(x.parse().unwrap(), z.parse().unwrap());

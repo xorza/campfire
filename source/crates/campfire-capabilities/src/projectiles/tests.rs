@@ -463,7 +463,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     let near = |x: &str, z: &str| point(x.parse().unwrap(), z.parse().unwrap());
     let block = volley.unit(1, near("3.5", "0.3"), target());
     let body = BodyBox::new([Num::int(2), Num::ONE], Num::ZERO).unwrap();
-    volley.sim.insert(block, Body::boxed(body));
+    volley.sim.insert(block, Body::of_box(body));
     let dot = volley.unit(1, near("2.6", "0"), target());
     volley.fire_line(source, volley.dart);
     for _ in 0..7 {

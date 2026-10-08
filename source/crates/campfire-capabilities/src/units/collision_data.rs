@@ -34,7 +34,7 @@ impl<'de> Deserialize<'de> for CollisionData {
                 .ok_or_else(|| D::Error::custom("a collision radius is positive, up to 64 m"))?,
             (None, Some([width, height])) => {
                 let side = |side: Scalar| side.checked::<D::Error>("collision box: ");
-                BodyForm::boxed([side(width)?, side(height)?]).ok_or_else(|| {
+                BodyForm::box_sized([side(width)?, side(height)?]).ok_or_else(|| {
                     D::Error::custom(
                         "a collision box's sides are at least 2⁻¹⁰ m, its diagonal at most 126 m",
                     )

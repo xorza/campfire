@@ -670,7 +670,7 @@ fn setup(
                     crate_type,
                     UnitKit {
                         step: None,
-                        body: BodyForm::boxed([Num::int(2), Num::int(2)]),
+                        body: BodyForm::box_sized([Num::int(2), Num::int(2)]),
                         ..grunt()
                     },
                 ),

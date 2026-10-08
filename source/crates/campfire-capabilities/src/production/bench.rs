@@ -75,13 +75,13 @@ pub(crate) fn gather(c: &mut Criterion) {
     let player = Owner::new(PlayerSlot::new(0));
     let at = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
     for field in [0, 40] {
-        let body = BodyForm::boxed([Num::int(16), Num::int(2)]).unwrap();
+        let body = BodyForm::box_sized([Num::int(16), Num::int(2)]).unwrap();
         let parts = (drop_off_type, Team::new(0), player, body.at(Num::ZERO));
         spawn(&mut world, at(Num::int(field), Num::ZERO), parts);
         let nodes: Vec<NodeAt> = (0..NODES)
             .map(|nth| {
                 let pos = at(Num::int(field - 7 + 2 * nth), Num::int(3));
-                let body = BodyForm::boxed([Num::int(2), Num::ONE]).unwrap();
+                let body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
                 let parts = (
                     node_type,
                     Team::new(2),

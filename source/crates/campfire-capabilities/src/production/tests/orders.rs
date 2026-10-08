@@ -125,7 +125,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     let player = PlayerSlot::new(0);
     let producer = shop.id();
     shop.producer(producer, 1, 0, Some(player), train, TrainQueue::default());
-    let body = BodyForm::boxed([Num::int(4), Num::int(2)])
+    let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
         .unwrap()
         .at(Num::ZERO);
     shop.sim.insert(producer, body);

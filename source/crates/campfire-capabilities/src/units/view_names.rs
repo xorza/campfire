@@ -6,7 +6,7 @@ use campfire_script::rhai::{Dynamic, INT, ImmutableString};
 
 use crate::players::resource_id::ResourceId;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::script_consts::ScriptConsts;
+use crate::scripts::script_names::ScriptNames;
 use crate::units::action_id::ActionId;
 use crate::units::path_id::PathId;
 use crate::units::tag::Tag;
@@ -30,8 +30,11 @@ pub(crate) struct ViewNames {
     teams: Option<Rc<Teams>>,
     /// The name of each path, by index, once a mode sets them.
     paths: Arc<NameList>,
-    /// The names scripts read, as they read them.
-    consts: ScriptConsts,
+    /// The names scripts read of the actions, unit types, tracks and damage kinds, by id.
+    action_names: ScriptNames,
+    unit_type_names: ScriptNames,
+    track_names: ScriptNames,
+    damage_kind_names: ScriptNames,
     /// The players' resources the mode declares, by resource id.
     resource_names: Arc<[DeclaredName]>,
 }
@@ -50,7 +53,7 @@ impl ViewNames {
 
     /// Gives scripts the names of the unit types as the view holds them.
     pub(crate) fn share_type_names(&mut self) {
-        self.consts.set_unit_types(self.types.names());
+        self.unit_type_names.set(self.types.names());
     }
 
     /// Names the teams and the paths.
@@ -66,18 +69,18 @@ impl ViewNames {
         resources: Arc<[DeclaredName]>,
     ) {
         let kinds = damage_kinds.iter().map(DeclaredName::as_str);
-        self.consts.set_damage_kinds(kinds);
+        self.damage_kind_names.set(kinds);
         self.resource_names = resources;
     }
 
     /// Names the tracks the mode declares, by track id.
     pub(crate) fn set_track_names<'a>(&mut self, names: impl Iterator<Item = &'a str>) {
-        self.consts.set_tracks(names);
+        self.track_names.set(names);
     }
 
     /// Names the match's actions, by action id.
     pub(crate) fn set_action_names<'a>(&mut self, names: impl Iterator<Item = &'a str>) {
-        self.consts.set_actions(names);
+        self.action_names.set(names);
     }
 
     /// Whether the match loaded `unit_type`.
@@ -87,7 +90,8 @@ impl ViewNames {
 
     /// Whether `kind` is one of the mode's damage kinds; any is, before a mode names them.
     pub(crate) fn has_damage_kind(&self, kind: DamageKind) -> bool {
-        self.consts.has_damage_kind(kind)
+        let count = self.damage_kind_names.len();
+        count == 0 || kind.index() < count
     }
 
     /// Whether `team` is one of the mode's teams; any team is before a mode sets them, as every
@@ -134,22 +138,25 @@ impl ViewNames {
 
     /// The damage kind `name`, when the mode declares it.
     pub(crate) fn damage_kind_named(&self, name: &str) -> Option<DamageKind> {
-        self.consts.damage_kind_named(name)
+        let at = self.damage_kind_names.position(name)?;
+        Some(DamageKind::new(
+            u8::try_from(at).expect("the load keeps damage kinds within u8"),
+        ))
     }
 
     /// The name of track `track`.
     pub(crate) fn track_name(&self, track: TrackId) -> Option<ImmutableString> {
-        self.consts.track(track)
+        self.track_names.get(track.index())
     }
 
     /// The name of damage kind `kind`; none before a mode names the damage kinds.
     pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> Option<ImmutableString> {
-        self.consts.damage_kind(kind)
+        self.damage_kind_names.get(kind.index())
     }
 
     /// The name of ability `id` in its package.
     pub(crate) fn ability_name(&self, id: ActionId) -> Option<ImmutableString> {
-        self.consts.action(id)
+        self.action_names.get(id.index())
     }
 
     /// The name of `path`.
@@ -170,7 +177,7 @@ impl ViewNames {
 
     /// The name of `unit_type`.
     pub(crate) fn unit_type_name(&self, unit_type: UnitType) -> Option<ImmutableString> {
-        self.consts.unit_type(unit_type)
+        self.unit_type_names.get(unit_type.index())
     }
 
     /// The tag `name`, when the match has it.

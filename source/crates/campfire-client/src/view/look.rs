@@ -156,7 +156,7 @@ mod tests {
         assert_eq!(Shape::of(false, false, None), STRUCTURE);
         // A box of 4 × 2 m turned a quarter: its first half edge points along +z, which Bevy's
         // turn of -π/2 about y takes x to; it stands as tall as a structure, and reaches √5 m.
-        let form = BodyForm::boxed([Num::int(4), Num::int(2)]).unwrap();
+        let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
         let boxed = Shape::of(false, false, Some(&form.at(Num::int(90))));
         let expected = Footing::Box {
             half: [2.0, 1.0],
