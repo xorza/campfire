@@ -11,15 +11,21 @@ use crate::actions::action_book::internals::{self, TestWeapon};
 use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlot;
 use crate::actions::channel_call::ChannelCall;
+use crate::actions::in_progress::InProgress;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::targets::Targets;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_rules::{CombatRules, Leech};
+use crate::combat::damage::Damage;
+use crate::combat::damage::DamageCause;
+use crate::combat::deaths::Fallen;
 use crate::combat::internals::Armed;
 use crate::combat::pass_queue::PassEntry;
 use crate::combat::recent_attack::RecentAttack;
 use crate::geometry::metric::Metric;
+use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -27,18 +33,29 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::lifetime::{Ends, Lifetime};
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
+use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_data::PoolData;
+use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_rule::StatRule;
+use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
+use crate::units::block::Block;
+use crate::units::body::Body;
+use crate::units::dead::Dead;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
+use crate::units::owner::Owner;
 use crate::units::relations::Relations;
+use crate::units::spawn_point::SpawnPoint;
+use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
+use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
@@ -47,6 +64,8 @@ use crate::values::rank::Rank;
 use crate::values::relation::Relation;
 use crate::values::relation_set::RelationSet;
 use crate::values::stat::Stat;
+use campfire_sim::Position;
+use campfire_sim::SimRng;
 fn at(x: i64, y: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
 }
@@ -1035,7 +1054,7 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
             slots.start_attack(0, Tick::new(0));
         }
         fight.sim.world.resource_mut::<PassQueue>().clear();
-        fight.sim.world.run_system_once(strike).unwrap();
+        fight.sim.world.run_system_once(Attacks::strike).unwrap();
         let queue = fight.sim.world.resource::<PassQueue>();
         let mut rolls: Vec<_> = (0..attackers.len())
             .map(|at| {
