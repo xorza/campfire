@@ -2198,6 +2198,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_state",
  "bevy_time",
+ "campfire-capabilities",
  "campfire-common",
  "campfire-log",
  "campfire-net",

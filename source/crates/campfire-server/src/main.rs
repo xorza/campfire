@@ -28,6 +28,7 @@ use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
+use campfire_capabilities::CapabilitySet;
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
@@ -109,6 +110,7 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
+    let capabilities = packages.manifest().capabilities;
     let Started {
         opening,
         server,
@@ -120,7 +122,14 @@ fn main() -> ExitCode {
     let certificate = tls.certificate();
     let listening = announce(&opening, &mode, address, certificate, &server.key);
     let tick = TickRate::new(opening.terms().tick_hz).length();
-    let mut app = server_app(opening, ServerConfig(server), data, tick, listening);
+    let mut app = server_app(
+        opening,
+        ServerConfig(server),
+        data,
+        tick,
+        listening,
+        capabilities,
+    );
     let server = app
         .world_mut()
         .spawn((
@@ -206,6 +215,7 @@ fn server_app(
     data: ServerDir,
     tick: Duration,
     listening: Listening,
+    capabilities: CapabilitySet,
 ) -> App {
     let mut app = App::new();
     app.add_plugins((
@@ -214,7 +224,7 @@ fn server_app(
         StatesPlugin,
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    app.add_plugins(SimServer { tick });
+    app.add_plugins(SimServer { tick, capabilities });
     match opening {
         Opening::New(lobby) => app.insert_resource(*lobby),
         Opening::Restored(restore) => app.insert_resource(*restore),

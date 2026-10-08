@@ -158,7 +158,9 @@ impl Plugin for SimClient {
         app.add_plugins(ClientPlugins {
             tick_duration: rate.length(),
         });
-        app.add_plugins(NetProtocol);
+        app.add_plugins(NetProtocol {
+            capabilities: self.packages.manifest().capabilities,
+        });
         app.insert_resource(PredictionManager::default());
         let world = app.world_mut();
         SimUpdate::prepare(world, PREDICTION_SEED, rate);

@@ -17,7 +17,8 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
-    Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team,
+    Area, CapabilitySet, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy,
+    Team,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
@@ -100,6 +101,8 @@ pub(crate) mod tick_hashes;
 #[derive(Debug)]
 pub struct SimServer {
     pub tick: Duration,
+    /// The mode's declared capabilities, whose components alone replicate.
+    pub capabilities: CapabilitySet,
 }
 
 impl Plugin for SimServer {
@@ -107,7 +110,12 @@ impl Plugin for SimServer {
         app.add_plugins(ServerPlugins {
             tick_duration: self.tick,
         });
-        app.add_plugins((NetProtocol, RoomPlugin));
+        app.add_plugins((
+            NetProtocol {
+                capabilities: self.capabilities,
+            },
+            RoomPlugin,
+        ));
         let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
         app.insert_resource(rooms);
         app.add_observer(
