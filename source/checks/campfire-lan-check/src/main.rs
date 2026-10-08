@@ -31,7 +31,6 @@ use campfire_net::{
     ClientDir, InputLogged, LinkLost, Listening, OrderScript, ServerDir, SessionWritten,
     TicksCaughtUp,
 };
-use campfire_package::PackageDir;
 use campfire_protocol::SessionLog;
 use campfire_verifier::Verified;
 use tracing::{error, info};
@@ -61,6 +60,11 @@ mod session_kind;
 mod target_name;
 mod verdict;
 
+/// The workspace's `packages` directory, where the check finds the test packages. It is not
+/// `campfire-package`'s `PackageDir::workspace`: that one's `internals` feature would set the
+/// check's build apart from the build of the processes it starts, and the workspace would compile
+/// twice.
+const PACKAGES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
 /// The test lane mode, a hero a side, 30 ticks a second, within the workspace's packages.
 const MODE: &str = "test/modes/lane";
 /// The packages the verifier holds, the lane mode's among them.
@@ -155,7 +159,7 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     let lan = LanMatch {
         binaries: &binaries,
         dir,
-        mode: &PackageDir::workspace(MODE),
+        mode: &Path::new(PACKAGES_DIR).join(MODE),
         scripts: &scripts,
     };
     let played = lan.play()?;
@@ -276,7 +280,7 @@ fn verify(
             let file = host_data(dir, session)?.published_log(written.session);
             let path = replayer.log_path(dir);
             let status = Command::new(executable)
-                .arg(PackageDir::workspace(PACKAGES))
+                .arg(Path::new(PACKAGES_DIR).join(PACKAGES))
                 .arg(file)
                 .current_dir(dir)
                 .env("CAMPFIRE_LOG", &path)

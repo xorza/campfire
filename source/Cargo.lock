@@ -2054,7 +2054,6 @@ dependencies = [
  "campfire-common",
  "campfire-log",
  "campfire-net",
- "campfire-package",
  "campfire-protocol",
  "campfire-sim",
  "campfire-store",

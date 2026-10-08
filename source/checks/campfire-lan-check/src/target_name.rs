@@ -16,7 +16,9 @@ pub(crate) enum TargetName {
 }
 
 impl TargetName {
-    /// The package of each target the check runs, which holds a binary of the same name.
+    /// The package of each target the check runs, which holds a binary of the same name. CI's
+    /// LAN check step builds these and the check in one command, so that they share features: a
+    /// package added here goes into that command too, or CI compiles the workspace twice.
     pub(crate) const RUN: [TargetName; 3] =
         [TargetName::Server, TargetName::Client, TargetName::Verifier];
 

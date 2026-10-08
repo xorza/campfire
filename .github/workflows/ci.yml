@@ -48,8 +48,16 @@ jobs:
         run: cargo test --workspace --tests --all-features --locked
       - name: Benches
         run: cargo test --workspace --all-features --locked --bench '*'
+      # One build for the check and the processes it starts, which then share every feature: alone,
+      # `cargo run -p campfire-lan-check` selects other features and compiles the workspace again.
+      # The check builds the processes with the cargo `CARGO` names, as `cargo run` sets it, and
+      # finds every crate fresh.
       - name: LAN check
-        run: cargo run --locked -p campfire-lan-check -- "$RUNNER_TEMP/lan-check"
+        run: |
+          exe=""
+          if [ "$RUNNER_OS" = Windows ]; then exe=.exe; fi
+          cargo build --locked -p campfire-lan-check -p campfire-server -p campfire-client -p campfire-verifier
+          CARGO=cargo "target/debug/campfire-lan-check$exe" "$RUNNER_TEMP/lan-check"
       - name: Keep the LAN match
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -58,8 +66,8 @@ jobs:
           path: ${{ runner.temp }}/lan-check
           retention-days: 7
           if-no-files-found: ignore
-      # The LAN check's build of the processes writes the verifier in target/debug last, after the
-      # tests' build of it with every feature. A tar keeps the executable bits, which an artifact
+      # The LAN check's build writes the check and the verifier in target/debug last, after the
+      # tests' build of them with every feature. A tar keeps the executable bits, which an artifact
       # drops. Its paths stay relative: GNU tar reads the `D:` of a Windows path as a remote host.
       - name: Pack the verifier
         run: |
