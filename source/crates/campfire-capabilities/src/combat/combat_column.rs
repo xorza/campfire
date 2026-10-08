@@ -157,8 +157,8 @@ impl CombatColumn {
     }
 
     /// Fills a row of the script view with what combat holds: whether the unit lives and whether it
-    /// may be a target, in the core's row; whether it stays when dead, and who struck it recently, in
-    /// combat's column.
+    /// may be a target, in the core's row; whether it stays when dead, and who struck it recently,
+    /// in combat's column.
     pub(super) fn fill_row(
         parts: ROQueryItem<'_, '_, RowParts>,
         fill: &mut RowFill<'_, CombatColumn>,

@@ -21,9 +21,9 @@ use crate::units::team::Team;
 pub(super) struct Dying;
 
 impl Dying {
-    /// A unit at zero life dies: its attack target, and the action it ordered or has under way, end,
-    /// so nothing it began goes on after a respawn, and the Mode stage learns of it; one no strike
-    /// took there died with no killer.
+    /// A unit at zero life dies: its attack target, and the action it ordered or has under way,
+    /// end, so nothing it began goes on after a respawn, and the Mode stage learns of it; one no
+    /// strike took there died with no killer.
     pub(super) fn die(
         mut commands: Commands<'_, '_>,
         life: Res<'_, LifePool>,
@@ -58,8 +58,8 @@ impl Dying {
         }
     }
 
-    /// Despawns the dead whose unit type despawns, at the end of the tick they died in, or of the tick
-    /// a later stage stopped keeping them.
+    /// Despawns the dead whose unit type despawns, at the end of the tick they died in, or of the
+    /// tick a later stage stopped keeping them.
     pub(super) fn despawn_dead(
         mut commands: Commands<'_, '_>,
         dead: Query<'_, '_, (Entity, &OnDeath), (With<Dead>, Without<Kept>)>,

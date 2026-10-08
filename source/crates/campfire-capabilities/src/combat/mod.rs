@@ -1,11 +1,8 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_math::RngStream;
-use campfire_sim::{Capability, SimSet, StableId, StateRegistry};
+use campfire_sim::{Capability, SimSet, StateRegistry};
 
-use crate::actions::action_book::ActionBook;
-use crate::actions::action_slots::ActionSlots;
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::{Actions, ActionsSet};
 use crate::combat::attacks::Attacks;
@@ -23,7 +20,6 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::shots::Shots;
-use crate::combat::wielded::Wielded;
 use crate::scripts::ctx::Ctx;
 use crate::stats::StatsSet;
 use crate::stats::life_pool::LifePool;
@@ -155,34 +151,6 @@ impl Combat {
         registry.register_component::<OnDeath>();
         registry.register_component::<RecentAttackers>();
         registry.register_component::<Respawn>();
-    }
-
-    /// The target of the attack of a unit with `slots` whose windup ends by `now`, if one does.
-    fn going_off(slots: &ActionSlots, now: Tick) -> Option<StableId> {
-        let target = slots.attacking()?;
-        let resolves_at = slots.in_progress()?.resolves_at()?;
-        (resolves_at <= now).then_some(target)
-    }
-
-    /// The weapon of the attack under way of a unit with `slots`.
-    fn wielded<'a>(book: &'a ActionBook, slots: &ActionSlots) -> Wielded<'a> {
-        let underway = slots.in_progress().expect("an attack is under way");
-        let slot = slots.slot(underway.slot()).expect("an attack's slot");
-        let id = slot.action.expect("an attack's slot holds its weapon");
-        let action = book.get(id).expect("a slot's action is in the book");
-        let rank = slot.rank.expect("an attack's weapon is learned");
-        Wielded {
-            slot: underway.slot(),
-            action: id,
-            rank,
-            weapon: action
-                .kind
-                .weapon()
-                .expect("an attack's action is a weapon"),
-            values: *action.values(rank),
-            resource_cost: action.resource_cost(rank),
-            projectile: action.delivery.map(|delivery| delivery.unit_type),
-        }
     }
 
     /// The match's life pool; `None` when its mode names none.

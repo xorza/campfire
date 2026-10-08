@@ -1,15 +1,16 @@
-use bevy_ecs::change_detection::DetectChanges;
-use bevy_ecs::system::RunSystemOnce;
 use std::collections::BTreeMap;
 
-use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
+use bevy_ecs::change_detection::DetectChanges;
+use bevy_ecs::system::RunSystemOnce;
+use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
-use campfire_sim::{EntityIndex, SimComponent};
+use campfire_sim::{EntityIndex, Position, SimComponent, SimRng, StableId};
 
 use super::*;
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_book::internals::{self, TestWeapon};
 use crate::actions::action_range::ActionRange;
-use crate::actions::action_slots::ActionSlot;
+use crate::actions::action_slots::{ActionSlot, ActionSlots};
 use crate::actions::channel_call::ChannelCall;
 use crate::actions::in_progress::InProgress;
 use crate::actions::slot_kind::SlotKind;
@@ -18,8 +19,7 @@ use crate::capability_set::test_match::TestMatch;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_rules::{CombatRules, Leech};
-use crate::combat::damage::Damage;
-use crate::combat::damage::DamageCause;
+use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::deaths::Fallen;
 use crate::combat::internals::Armed;
 use crate::combat::pass_queue::PassEntry;
@@ -64,8 +64,7 @@ use crate::values::rank::Rank;
 use crate::values::relation::Relation;
 use crate::values::relation_set::RelationSet;
 use crate::values::stat::Stat;
-use campfire_sim::Position;
-use campfire_sim::SimRng;
+
 fn at(x: i64, y: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
 }
