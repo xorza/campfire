@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::StableId;
@@ -15,10 +16,14 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
+use crate::units::row_fill::RowFill;
 use crate::units::unit_row::UnitRow;
 use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 use crate::values::rank::Rank;
+
+/// The part of a unit the actions read into its row: its slots.
+pub(super) type RowParts = Option<&'static ActionSlots>;
 
 /// What the action pipeline adds to the script view: the match's actions and slot kinds, and each
 /// unit's ability slots, the unit its attacks aim at, and the range of its first weapon, a row
@@ -271,5 +276,13 @@ impl ActionsColumn {
     /// The ability slots of the unit in row `row`.
     fn run(&self, row: usize) -> &[SlotRow] {
         self.rows.now().slots(row)
+    }
+
+    /// Adds a unit's actions to the actions' column of the script view.
+    pub(super) fn fill_row(
+        slots: ROQueryItem<'_, '_, RowParts>,
+        fill: &mut RowFill<'_, ActionsColumn>,
+    ) {
+        fill.column.push(slots);
     }
 }
