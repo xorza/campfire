@@ -121,6 +121,7 @@ impl Mode {
         let view = world.non_send::<View>().clone();
         let rate = *world.resource::<TickRate>();
         let walkers = mem::take(&mut books.walkers);
+        let loadout_ranks = books.loadout_ranks;
         // A window past what ticks can count covers the whole match.
         let assist_window = setup.data.combat.assist_window_ms.map(|ms| rate.window(ms));
         let resource_count = books.resources.len();
@@ -139,6 +140,7 @@ impl Mode {
             world.resource::<ScriptBook>(),
             placed,
             GameMap::new(paths.names().map(ImmutableString::from), &markers),
+            loadout_ranks,
         );
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, &brush, book.teams.count());

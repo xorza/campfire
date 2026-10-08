@@ -6,12 +6,6 @@ Paths are relative to `source/crates/campfire-capabilities/src/` unless they nam
 
 Fix the root cause of a group, not its items one by one. Most groups give the structural target first, and their items are the places that target removes.
 
-## 8. One set is declared once, and listed again by hand
-
-A fixed set (hooks, fields, tag properties, API members) has one declaration, and a second list repeats it. Adding a member means editing every list. Target: one table per set, and the other lists are derived from it or checked against it.
-
-- [ ] `mode/mode_books.rs:92` and `books/book_builder.rs:140` compute the life pool twice. `mode/mode_book.rs:130` and `books/book_builder.rs:153` compute `loadout_ranks()` twice. Target: the builder derives each once and carries it.
-
 ## 9. Hot paths pay for the rare case on every event
 
 A hot path here runs per damage, per draw, per kill, or per script field read. Each item makes the common case pay for a case that seldom applies.

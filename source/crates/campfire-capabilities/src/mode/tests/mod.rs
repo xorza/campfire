@@ -34,6 +34,7 @@ use crate::mode::map_data::{
     GridData, MapData, MapNavigationData, MapPoint, MarkerData, PathData, PlacedUnitData,
 };
 use crate::mode::match_end::MatchResult;
+use crate::mode::mode_books::ModeBooksInput;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
 use crate::mode::mode_units::ModeUnits;
@@ -787,16 +788,18 @@ impl Game {
             let rules = &files.data.navigation;
             let map =
                 ModeMap::resolve(&files.map, &files.teams, relations, rules, unit_type).unwrap();
-            let unit_types = &setup.units.unit_types;
-            ModeBooks::build(
-                &files.data,
-                unit_types,
-                &mut view.types_mut(),
+            let data = &files.data;
+            ModeBooks::build(ModeBooksInput {
+                data,
+                unit_types: &setup.units.unit_types,
+                types: &mut view.types_mut(),
+                walkers: &walkers,
                 stats,
+                life: data.combat.life_pool(&data.pools),
+                loadout_ranks: data.loadout_ranks(),
                 map,
-                None,
-                &walkers,
-            )
+                shop: None,
+            })
         };
         assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
         sim.install(|world, schedule, registry| {

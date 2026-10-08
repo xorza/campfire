@@ -98,12 +98,14 @@ impl ModeBook {
     }
 
     /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
-    /// seat, with the units its map places and `map` as scripts read it.
+    /// seat, with the units its map places, `map` as scripts read it, and `loadout_ranks`, the
+    /// ranks of every loadout entry.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
         scripts: &ScriptBook,
         placed: Vec<PlacedUnit>,
         map: GameMap,
+        loadout_ranks: u8,
     ) -> ModeBook {
         let teams = setup
             .teams
@@ -128,7 +130,7 @@ impl ModeBook {
             roster: Roster::new(setup.units.avatars, &setup.units.loadout),
             teams: Rc::new(teams),
             choices: ChoiceBook::new(&setup.data.choices),
-            loadout_ranks: setup.data.loadout_ranks(),
+            loadout_ranks,
             types,
             actions,
             placed,

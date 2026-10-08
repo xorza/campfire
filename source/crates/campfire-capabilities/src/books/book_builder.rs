@@ -22,7 +22,7 @@ use crate::items::item_data::ItemData;
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
 use crate::items::shop_data::ShopData;
-use crate::mode::mode_books::ModeBooks;
+use crate::mode::mode_books::{ModeBooks, ModeBooksInput};
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::{SlotAction, UnitTypeSetup};
 use crate::mode::unit_kit::{InventorySpec, KitSections, UnitKit};
@@ -71,6 +71,8 @@ pub(crate) struct BookBuilder<'a> {
     stats: StatBook,
     /// The life pool, none when the mode names none.
     life: Option<PoolId>,
+    /// The ranks of every loadout entry.
+    loadout_ranks: u8,
     /// Where each package's scripts start among the match's.
     script_starts: Vec<usize>,
 }
@@ -139,6 +141,7 @@ impl<'a> BookBuilder<'a> {
             stats: BookBuilder::stat_book(input, &books.types),
             books,
             life: data.combat.life_pool(&data.pools),
+            loadout_ranks: data.loadout_ranks(),
             script_starts,
         }
     }
@@ -151,7 +154,6 @@ impl<'a> BookBuilder<'a> {
         for (index, package) in (0..).zip(&input.packages) {
             self.modifiers(index, package)?;
         }
-        let loadout_ranks = input.data.loadout_ranks();
         for (index, package) in (0..).zip(&input.packages) {
             let units = &package.content.units;
             match package.kind {
@@ -171,7 +173,8 @@ impl<'a> BookBuilder<'a> {
                     self.books.units.avatars.push(package.name);
                 }
                 BookKind::Loadout => {
-                    let actions = self.actions(index, package, |_| Some(loadout_ranks))?;
+                    let ranks = self.loadout_ranks;
+                    let actions = self.actions(index, package, |_| Some(ranks))?;
                     self.package_units(index, units, &actions)?;
                     for (id, ability) in actions {
                         self.books.units.loadout.push(id, ability);
@@ -180,7 +183,6 @@ impl<'a> BookBuilder<'a> {
             }
         }
         let mut parts = self.books;
-        let stats = self.stats;
         let mode_units = &input.packages[0].content.units;
         let types = &parts.types;
         let standing = |name: &str| {
@@ -201,15 +203,17 @@ impl<'a> BookBuilder<'a> {
             .shop
             .as_ref()
             .map(|shop| BookBuilder::shop(shop, items, &data.resources, &map));
-        let mode = ModeBooks::build(
-            input.data,
-            &parts.units.unit_types,
-            &mut parts.types,
-            stats,
+        let mode = ModeBooks::build(ModeBooksInput {
+            data,
+            unit_types: &parts.units.unit_types,
+            types: &mut parts.types,
+            walkers: &parts.walkers,
+            stats: self.stats,
+            life: self.life,
+            loadout_ranks: self.loadout_ranks,
             map,
             shop,
-            &parts.walkers,
-        );
+        });
         Ok(Books { parts, mode })
     }
 
