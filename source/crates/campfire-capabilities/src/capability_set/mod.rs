@@ -88,7 +88,8 @@ impl Row {
     }
 }
 
-/// Every capability once, in the order they install: each after the ones it builds on. A declared
+/// Every capability once, in the order they install: each after the ones it builds on, and orders
+/// after production and items, whose actions it applies when they are installed. A declared
 /// capability the release does not run yet installs nothing.
 const CAPABILITIES: [Row; Capability::ALL.len()] = [
     row(Capability::Stats, Stats::install, &[]).registering(StatsApi::register),
@@ -115,14 +116,14 @@ const CAPABILITIES: [Row; Capability::ALL.len()] = [
         &[Capability::Combat],
     )
     .registering(AbilitiesApi::register),
+    row(Capability::Production, Production::install, &[]).registering(ProductionApi::register),
+    row(Capability::Items, Items::install, &[Capability::Stats]).registering(ItemsApi::register),
     row(
         Capability::Orders,
         Orders::install,
         &[Capability::Combat, Capability::Navigation],
     )
     .registering(OrdersApi::register),
-    row(Capability::Production, Production::install, &[]).registering(ProductionApi::register),
-    row(Capability::Items, Items::install, &[Capability::Stats]).registering(ItemsApi::register),
     planned(Capability::Character),
     planned(Capability::Hitboxes),
     planned(Capability::Physics),

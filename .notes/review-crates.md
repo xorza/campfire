@@ -12,7 +12,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 Design: one table per capability names what it owns — its data and map sections, its replicated components, its script module, its order actions — and every consumer reads that table with the manifest's `CapabilitySet`. The load refuses a section whose owner is undeclared, by that table, so the builders that follow never test for it (a `debug_assert!` at most). `CapabilitySet::install` already gates each `install`; these are what leak past it.
 
-- [ ] source/crates/campfire-capabilities/src/orders/mod.rs:112, :240, :430, :518-529 (fix in capabilities) — `apply_production_orders` runs in every mode and adds a `Commands` sync point before `trade_items`; it, `trade_items` and `check_player_orders` resolve every unit of every order before matching the action. Target: each capability installs the systems for its own order actions (`Production::install` adds `apply_production_orders` to `OrdersSet::Orders`), and each matches `order.action` before walking `order.units`.
 
 ## Every state operation walks every entity once per type, and checkpoints batch the walks onto single ticks [medium]
 

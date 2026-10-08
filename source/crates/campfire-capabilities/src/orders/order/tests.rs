@@ -90,3 +90,37 @@ fn an_order_names_its_units_in_increasing_stable_id_each_once() {
         [id(2), id(5)]
     );
 }
+
+#[test]
+fn only_the_cores_actions_go_to_each_unit() {
+    let item = ItemId::nth(0);
+    let target = BuildTarget::Point {
+        x: Num::ZERO,
+        z: Num::ZERO,
+        angle: Num::ZERO,
+    };
+    let to_units = [
+        Action::Move {
+            x: Num::ZERO,
+            z: Num::ZERO,
+        },
+        Action::Attack { target: id(4) },
+        Action::Slot {
+            slot: 0,
+            target: ActionTarget::None,
+        },
+        Action::Build { slot: 0, target },
+        Action::Stop,
+    ];
+    let elsewhere = [
+        Action::Learn { slot: 0 },
+        Action::Buy { item },
+        Action::Sell { slot: 0 },
+        Action::Swap { from: 0, to: 1 },
+        Action::CancelTrain { place: 0 },
+        Action::Rally { target: None },
+        Action::CancelBuild,
+    ];
+    assert!(to_units.iter().all(|action| action.to_units()));
+    assert!(!elsewhere.iter().any(|action| action.to_units()));
+}
