@@ -3,7 +3,7 @@ use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
-use crate::actions::effect_lists::Does;
+use crate::actions::capability_does::CapabilityDoes;
 use crate::combat::damage_pass::DamagePass;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::CallError;
@@ -40,23 +40,23 @@ impl CombatEffect {
         reason = "its signature is the one every capability's listed effects queue by"
     )]
     pub(crate) fn queue_listed(
-        does: Does,
+        does: CapabilityDoes,
         unit: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         _: &View,
     ) -> Result<(), CallError> {
         let effect = match does {
-            Does::Damage { amount, kind } => CombatEffect::Damage {
+            CapabilityDoes::Damage { amount, kind } => CombatEffect::Damage {
                 target: unit,
                 amount: amount.number(frame),
                 kind,
             },
-            Does::Heal { amount } => CombatEffect::Heal {
+            CapabilityDoes::Heal { amount } => CombatEffect::Heal {
                 unit,
                 amount: amount.number(frame),
             },
-            Does::Restore { pool, amount } => CombatEffect::Restore {
+            CapabilityDoes::Restore { pool, amount } => CombatEffect::Restore {
                 unit,
                 pool,
                 amount: amount.number(frame),

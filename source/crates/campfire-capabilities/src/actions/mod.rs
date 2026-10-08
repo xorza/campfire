@@ -46,6 +46,7 @@ pub(crate) mod action_target;
 pub(crate) mod actions_api;
 pub(crate) mod actions_column;
 pub(crate) mod actions_effect;
+pub(crate) mod capability_does;
 pub(crate) mod construct_data;
 pub(crate) mod cost_target;
 pub(crate) mod delivery;

@@ -4,8 +4,8 @@ use campfire_common::{Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, Position, StableId};
 
+use crate::actions::capability_does::CapabilityDoes;
 use crate::actions::effect_data::EffectTo;
-use crate::actions::effect_lists::Does;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::navigation_column::NavigationColumn;
@@ -108,7 +108,7 @@ impl NavigationEffect {
     /// Queues a listed forced move of `unit`, whose other unit is the acting unit or `reached`,
     /// the unit the list reached, by the rules of the script's calls.
     pub(crate) fn queue_listed(
-        does: Does,
+        does: CapabilityDoes,
         unit: StableId,
         reached: Option<StableId>,
         frame: &mut Frame,
@@ -122,10 +122,10 @@ impl NavigationEffect {
             EffectTo::Source => acting.ok_or(ApiError::NoActingUnit),
         };
         let effect = match does {
-            Does::Dash { to, speed } => other(to).and_then(|to| {
+            CapabilityDoes::Dash { to, speed } => other(to).and_then(|to| {
                 NavigationEffect::dash(view, frame, unit, DashTo::Unit(to), speed.number(frame))
             }),
-            Does::KnockBack { from, distance, ms } => other(from).and_then(|from| {
+            CapabilityDoes::KnockBack { from, distance, ms } => other(from).and_then(|from| {
                 let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
                 // Whole, as the load checked, so the floor is exact.
                 let ms = ms.number(frame).floor();

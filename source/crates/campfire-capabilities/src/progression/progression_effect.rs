@@ -3,7 +3,7 @@ use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
-use crate::actions::effect_lists::Does;
+use crate::actions::capability_does::CapabilityDoes;
 use crate::progression::Progression;
 use crate::progression::progression_column::ProgressionColumn;
 use crate::scripts::effects::Effect;
@@ -27,13 +27,13 @@ impl ProgressionEffect {
     /// Queues the listed `does`, experience, to `unit` in `frame`; a unit `view` does not hold,
     /// or that does not have the track, fails the call, as `ctx.add_xp` does.
     pub(crate) fn queue_listed(
-        does: Does,
+        does: CapabilityDoes,
         unit: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         view: &View,
     ) -> Result<(), CallError> {
-        let Does::Xp { track, amount } = does else {
+        let CapabilityDoes::Xp { track, amount } = does else {
             unreachable!("progression queues only its own listed effects")
         };
         if !ProgressionColumn::has(view, unit, track) {

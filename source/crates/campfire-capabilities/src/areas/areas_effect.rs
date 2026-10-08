@@ -2,7 +2,7 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{Position, StableId};
 
-use crate::actions::effect_lists::Does;
+use crate::actions::capability_does::CapabilityDoes;
 use crate::areas::Areas;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::effects::Effect;
@@ -30,13 +30,13 @@ impl AreasEffect {
         reason = "its signature is the one every capability's listed effects queue by"
     )]
     pub(crate) fn queue_listed(
-        does: Does,
+        does: CapabilityDoes,
         unit: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         view: &View,
     ) -> Result<(), CallError> {
-        let Does::Launch { area, launch } = does else {
+        let CapabilityDoes::Launch { area, launch } = does else {
             unreachable!("areas queue only their own listed effects")
         };
         let (Some(source), Some(action)) = (frame.acting(), frame.action()) else {
