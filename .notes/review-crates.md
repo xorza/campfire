@@ -12,11 +12,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing. Blocked: see `review-crates_QUESTIONS.md`, "Sharing the parsed scripts needs Rhai's `sync` feature, or a cache that stays on one thread".
 
-## The LAN check leaks its child processes [medium]
-
-- [ ] source/checks/campfire-lan-check/src/lan_match.rs:97 — after the server starts, each `?` in `play` (:97, :124, :127, :129-144, :150) drops the `Child` handles with no kill. Target: a guard type that owns every child, and kills and waits on each one on drop.
-- [ ] source/checks/campfire-lan-check/src/lan_match.rs:338 — `free_port` reports a failed probe bind as `CheckError::Start { process: Server }`, which blames a server that never started. Target: a case of its own.
-
 ## Guards that do not guard, and core resources that a restore can drop [low]
 
 - [ ] source/crates/campfire-script/src/script_host/mod.rs:79-80 — `set_hashing_seed` is `OnceCell::set`. Its `Err` holds the value just passed, not the stored seed, so the `assert_eq!` never fires. Target: after the set, assert `hashing::get_hashing_seed() == &Some(HASHING_SEED)`. This becomes a precondition of the shared API modules, whose function hashes use the seed.

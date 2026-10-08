@@ -52,6 +52,7 @@ mod failure;
 mod lan_match;
 mod mode;
 mod process;
+mod process_group;
 mod process_log;
 mod process_outcome;
 mod run_dir;
