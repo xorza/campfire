@@ -131,7 +131,7 @@ pub use crate::scripts::name_kind::NameKind;
 pub use crate::scripts::script_api::api_owner::ApiOwner;
 pub use crate::scripts::script_api::data_table::DataTable;
 pub use crate::scripts::script_api::enum_record::EnumRecord;
-pub use crate::scripts::script_api::member_spec::{EnumArgs, NameArgs};
+pub use crate::scripts::script_api::member_spec::{EnumArgs, Forms, MemberSpec, NameArgs};
 pub use crate::scripts::script_api::status::Status;
 pub use crate::scripts::script_api::{MemberKind, ScriptApi};
 pub use crate::scripts::script_book::ScriptBook;

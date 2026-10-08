@@ -27,7 +27,7 @@ impl OrdersApi {
         api.bind_for(
             order(
                 "order_attack",
-                "(unit, target)",
+                &[&["unit", "target"]],
                 "`unit` attacks `target`, a living enemy that one of its weapons selects",
             ),
             |ctx: &mut Ctx, unit: Unit, target: Unit| OrdersApi::attack(ctx, &unit, &target),
@@ -35,7 +35,7 @@ impl OrdersApi {
         .bind_for(
             order(
                 "order_follow_path",
-                "(unit)",
+                &[&["unit"]],
                 "`unit` drops its target and walks its path again",
             ),
             |ctx: &mut Ctx, unit: Unit| OrdersApi::order(ctx, &unit, UnitOrder::FollowPath),
@@ -43,7 +43,7 @@ impl OrdersApi {
         .bind_for(
             order(
                 "order_move",
-                "(unit, pos)",
+                &[&["unit", "pos"]],
                 "`unit` drops its target and walks to `pos`, within the map, off its path",
             ),
             |ctx: &mut Ctx, unit: Unit, to: Position| {
@@ -58,7 +58,7 @@ impl OrdersApi {
         .bind_for(
             order(
                 "order_reset",
-                "(unit)",
+                &[&["unit"]],
                 "`unit` drops its target and walks home, taking no order until there, where its pools fill",
             ),
             |ctx: &mut Ctx, unit: Unit| {

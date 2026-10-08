@@ -39,24 +39,24 @@ impl CombatApi {
         };
         let damage = call(
             "damage",
-            "(target, amount, kind)",
+            &[&["target", "amount", "kind"]],
             "deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target`",
         )
         .name(2, NameKind::DamageKind);
         let heal = call(
             "heal",
-            "(unit, amount)",
+            &[&["unit", "amount"]],
             "heals `unit`'s life pool, times one plus its `heal_scale` stat",
         );
         let restore = call(
             "restore",
-            "(unit, pool, amount)",
+            &[&["unit", "pool", "amount"]],
             "gives `unit` back `amount` of its `pool`, unscaled",
         )
         .name(1, NameKind::Pool);
         let attack_hit = call(
             "attack_hit",
-            "(target)",
+            &[&["target"]],
             "an extra attack of the acting unit on `target`: no crit, and no `on_attack`",
         )
         .roles(RoleSet::ACTING);
@@ -138,7 +138,7 @@ impl CombatApi {
         let recent_attackers = MemberSpec::method(
             ApiOwner::Unit,
             "recent_attackers",
-            "(ms)",
+            &[&["ms"]],
             "the living units that struck it within the last `ms`, rounded up to whole ticks",
         )
         .capability(Capability::Combat);

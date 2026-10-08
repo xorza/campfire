@@ -10,10 +10,6 @@ Fix the root cause of a group, not its items one by one. Most groups give the st
 
 A fixed set (hooks, fields, tag properties, API members) has one declaration, and a second list repeats it. Adding a member means editing every list. Target: one table per set, and the other lists are derived from it or checked against it.
 
-- [ ] `scripts/script_api/mod.rs:81-102,383-433`: `ApiMember` declares nine of `MemberSpec`'s fields again. Target: `ApiMember` holds the `MemberSpec` and what the registry adds (signatures, writable, status).
-- [ ] `scripts/script_api/mod.rs:383-409` (`record`): the doc says a second form "must agree on the rest", but the assert compares only kind, roles, capability, status, names and enums. A later form's `description` and `applies` are dropped silently. Target: compare every field the member keeps. This is automatic when `ApiMember` holds the spec.
-- [ ] `scripts/script_api/mod.rs:329-352`: `record_enum`, `record_hook` and `record_tag_property` assert one record each, but `record_field` (and so `record_data` and `ApiBuilder::action_fields`) pushes duplicates with no check. Target: the same uniqueness assert on (table, name).
-- [ ] `scripts/script_api/mod.rs:443-472` (`name_args_text`): finds parameter names by splitting the `signature` text, and panics when a name role is outside the first form. Target: `MemberSpec` carries its parameter names as data.
 - [ ] `books/book_builder.rs:589-593` and `campfire-package/src/mode_packages.rs:329` (`walkers()`), used as `ModeSetup::walkers` (`mode/mode_setup.rs:29`, `mode/mod.rs:123`): the walker kinds are derived twice from `UnitTypeFile::walks()` and `Walker::of_form`. Target: one derivation, and the grid's list comes from the books.
 - [ ] `mode/mode_books.rs:92` and `books/book_builder.rs:140` compute the life pool twice. `mode/mode_book.rs:130` and `books/book_builder.rs:153` compute `loadout_ranks()` twice. Target: the builder derives each once and carries it.
 

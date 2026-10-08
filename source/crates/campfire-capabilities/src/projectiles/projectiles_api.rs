@@ -22,7 +22,7 @@ impl ProjectilesApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let projectile = MemberSpec::call(
             "projectile",
-            "(from, direction) or (from, unit)",
+            &[&["from", "direction"], &["from", "unit"]],
             "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION)

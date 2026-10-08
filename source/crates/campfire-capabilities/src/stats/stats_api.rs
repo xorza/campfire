@@ -46,19 +46,28 @@ impl StatsApi {
             },
         )
         .bind(
-            method("stat", "(name)", "its value of a stat the mode declares")
-                .name(0, NameKind::Stat),
+            method(
+                "stat",
+                &[&["name"]],
+                "its value of a stat the mode declares",
+            )
+            .name(0, NameKind::Stat),
             |unit: Unit, name: &str| StatsColumn::stat_named(unit.view(), unit.row_index(), name),
         )
         .bind(
-            method("pool", "(name)", "the current amount of its pool `name`")
-                .name(0, NameKind::Pool),
+            method(
+                "pool",
+                &[&["name"]],
+                "the current amount of its pool `name`",
+            )
+            .name(0, NameKind::Pool),
             |unit: Unit, name: &str| {
                 StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::current)
             },
         )
         .bind(
-            method("pool_max", "(name)", "the maximum of its pool `name`").name(0, NameKind::Pool),
+            method("pool_max", &[&["name"]], "the maximum of its pool `name`")
+                .name(0, NameKind::Pool),
             |unit: Unit, name: &str| {
                 StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::max)
             },
@@ -66,7 +75,7 @@ impl StatsApi {
         .bind(
             method(
                 "has_modifier",
-                "(id)",
+                &[&["id"]],
                 "whether it carries the modifier of the script's package",
             )
             .name(0, NameKind::Modifier),
@@ -85,7 +94,7 @@ impl StatsApi {
         };
         let add = call(
             "add_modifier",
-            "(unit, id) or (unit, id, duration_ms)",
+            &[&["unit", "id"], &["unit", "id", "duration_ms"]],
             "applies the modifier `id` of the script's package to `unit` from the acting unit, with \
              the call's action at its rank, which gives each param the modifier reads and does not \
              declare, and returns its handle",
@@ -102,7 +111,7 @@ impl StatsApi {
         .bind(
             call(
                 "add_player_modifier",
-                "(player, id)",
+                &[&["player", "id"]],
                 "gives `player` the modifier `id` of the script's package, which every living unit \
                  it owns that the modifier's `affects` selects holds from no source and with no \
                  action, so the modifier declares each param it reads",
@@ -114,7 +123,7 @@ impl StatsApi {
         .bind(
             call(
                 "remove",
-                "(handle)",
+                &[&["handle"]],
                 "ends the modifier, projectile or area at once",
             ),
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(handle.remove()),

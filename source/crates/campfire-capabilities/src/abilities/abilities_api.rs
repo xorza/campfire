@@ -38,7 +38,7 @@ impl AbilitiesApi {
         };
         let cut = call(
             "reduce_cooldowns",
-            "(unit, kind, fraction)",
+            &[&["unit", "kind", "fraction"]],
             "takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind`",
         )
         .name(1, NameKind::SlotKind);
@@ -63,7 +63,7 @@ impl AbilitiesApi {
         .bind(
             call(
                 "reduce_cooldown",
-                "(unit, id, ms)",
+                &[&["unit", "id", "ms"]],
                 "takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package",
             )
             .name(1, NameKind::Ability),
@@ -86,7 +86,7 @@ impl AbilitiesApi {
         .bind(
             call(
                 "add_charge",
-                "(unit, id)",
+                &[&["unit", "id"]],
                 "gives `unit`'s ability `id`, of the script's package, a charge, up to its most",
             )
             .name(1, NameKind::Ability),

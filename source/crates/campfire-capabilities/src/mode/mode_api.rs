@@ -66,7 +66,7 @@ impl ModeApi {
             .hook(Hook::OnPlayerLeave, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnGenerate, Status::Planned)
             .bind_for(
-                MemberSpec::call("save", "()", "asks for a save at the end of the tick")
+                MemberSpec::call("save", &[&[]], "asks for a save at the end of the tick")
                     .roles(RoleSet::MODE),
                 |ctx: &mut Ctx| ctx.queue(ModeEffect::Save),
             )
@@ -80,7 +80,7 @@ impl ModeApi {
             .plan(
                 MemberSpec::call(
                     "generate",
-                    "(region)",
+                    &[&["region"]],
                     "builds the map's region `region` through `on_generate`",
                 )
                 .roles(RoleSet::MODE),
@@ -143,7 +143,7 @@ impl ModeApi {
             },
         )
         .bind_for(
-            MemberSpec::call("team_of", "(player)", "the name of `player`'s team")
+            MemberSpec::call("team_of", &[&["player"]], "the name of `player`'s team")
                 .roles(RoleSet::MODE),
             |ctx: &mut Ctx, player: INT| -> Checked<Dynamic> {
                 let book = ModeBook::of_or_fail(ctx)?;
@@ -170,7 +170,7 @@ impl ModeApi {
         .bind(
             MemberSpec::call(
                 "enemy_team",
-                "(team)",
+                &[&["team"]],
                 "the one team that is `team`'s enemy, in a mode of two playing teams",
             )
             .name(0, NameKind::Team),
@@ -186,7 +186,7 @@ impl ModeApi {
         );
         let avatars = MemberSpec::call(
             "avatars",
-            "() or (team)",
+            &[&[], &["team"]],
             "the avatars, living or dead, of every team or of `team`, by stable id",
         );
         api.bind(avatars, |ctx: &mut Ctx| ctx.view().avatars(None))
@@ -197,7 +197,7 @@ impl ModeApi {
             .bind(
                 MemberSpec::call(
                     "units_tagged",
-                    "(tag)",
+                    &[&["tag"]],
                     "the units of a tag, living or dead, by stable id",
                 )
                 .name(0, NameKind::Tag),
@@ -223,7 +223,7 @@ impl ModeApi {
         };
         let choose = mode(
             "choose",
-            "(player, choice, values)",
+            &[&["player", "choice", "values"]],
             "records `values`, as many as `choice` takes, each a value it offers, none twice and, \
              in a unique choice, none another player chose, as what `player` chose of it; one \
              value may be given alone",
@@ -244,7 +244,7 @@ impl ModeApi {
         .bind_for(
             mode(
                 "chosen",
-                "(player, choice)",
+                &[&["player", "choice"]],
                 "the values `player` chose of `choice`, in order; empty before the player chose",
             )
             .name(1, NameKind::Choice),
@@ -255,7 +255,7 @@ impl ModeApi {
         .bind_for(
             mode(
                 "available",
-                "(player, choice, value)",
+                &[&["player", "choice", "value"]],
                 "whether `player` may choose `value` of `choice`: no other player chose it in a \
                  unique choice",
             )
@@ -267,7 +267,7 @@ impl ModeApi {
         .bind_for(
             mode(
                 "offers",
-                "(choice)",
+                &[&["choice"]],
                 "the values `choice` offers, in order: the avatars in the order of the mode's \
                  dependencies, or the loadout entries by id",
             )
@@ -283,7 +283,7 @@ impl ModeApi {
         };
         let spawn_unit = mode(
             "spawn_unit",
-            "(type, team, pos) or (type, team, pos, player)",
+            &[&["type", "team", "pos"], &["type", "team", "pos", "player"]],
             "spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by \
              `player` if given, when the call ends; the new unit, for `grant` and its `.state`",
         )
@@ -291,7 +291,7 @@ impl ModeApi {
         .name(1, NameKind::Team);
         let grant = mode(
             "grant",
-            "(unit, kind, ids)",
+            &[&["unit", "kind", "ids"]],
             "puts the actions `ids`, loadout entries the mode depends on, in the slot kind \
              `kind` of `unit`, after its slots of that kind, at the kind's first rank",
         )
@@ -333,7 +333,7 @@ impl ModeApi {
         .bind_for(
             mode(
                 "spawn_group",
-                "(team, path, from, types)",
+                &[&["team", "path", "from", "types"]],
                 "spawns `types` of `team` in order at the end `from` of `path`, walking it from \
                  there",
             )
@@ -356,13 +356,13 @@ impl ModeApi {
         };
         let end = mode(
             "end",
-            "(team) or (())",
+            &[&["team"], &["()"]],
             "ends the match, once: `team` wins, `()` is a draw",
         );
         api.bind_for(
             mode(
                 "timer",
-                "(name, ms, repeat, data)",
+                &[&["name", "ms", "repeat", "data"]],
                 "calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one",
             ),
             |ctx: &mut Ctx, name: ImmutableString, ms: INT, repeat: bool, data: Dynamic| {
@@ -372,7 +372,7 @@ impl ModeApi {
         .bind_for(
             mode(
                 "respawn",
-                "(unit, ms)",
+                &[&["unit", "ms"]],
                 "brings back `unit`, dead and of a type that stays, `ms` from the call",
             )
             .capability(Capability::Combat),
@@ -381,7 +381,7 @@ impl ModeApi {
         .bind_for(
             mode(
                 "learn",
-                "(avatar, slot)",
+                &[&["avatar", "slot"]],
                 "the ability in `slot` a rank more, up to its last",
             )
             .capability(Capability::Abilities),
@@ -390,7 +390,7 @@ impl ModeApi {
         .bind(
             MemberSpec::call(
                 "add_resource",
-                "(player, name, amount)",
+                &[&["player", "name", "amount"]],
                 "adds `amount` of the player resource `name`, one the mode declares, to `player`",
             )
             .name(1, NameKind::Resource),
@@ -401,7 +401,7 @@ impl ModeApi {
         .bind(
             MemberSpec::call(
                 "set_relation",
-                "(a, b, relation)",
+                &[&["a", "b", "relation"]],
                 "sets how teams `a` and `b` regard each other, their vision as it was",
             )
             .name(0, NameKind::Team)
@@ -433,7 +433,7 @@ impl ModeApi {
                 MemberSpec::method(
                     ApiOwner::GameMap,
                     "markers",
-                    "(tag)",
+                    &[&["tag"]],
                     "the markers with `tag`, in the map's order",
                 )
                 .name(0, NameKind::MarkerTag),

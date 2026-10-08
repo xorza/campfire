@@ -35,7 +35,7 @@ impl ProgressionApi {
         };
         let add_xp = call(
             "add_xp",
-            "(unit, track, amount)",
+            &[&["unit", "track", "amount"]],
             "gives `unit` `amount` of experience on `track`, one of its unit type's",
         )
         .name(1, NameKind::Track);
@@ -53,13 +53,13 @@ impl ProgressionApi {
         )
         .plan(call(
             "grant_perk",
-            "(unit, id)",
+            &[&["unit", "id"]],
             "gives `unit` the perk `id`, with no point and no requirement",
         ))
         .bind(
             method(
                 "xp",
-                "(track)",
+                &[&["track"]],
                 "its experience on `track`, one of its unit type's",
             )
             .name(0, NameKind::Track),
@@ -72,7 +72,7 @@ impl ProgressionApi {
         .bind(
             method(
                 "track_level",
-                "(track)",
+                &[&["track"]],
                 "its level on `track`, one of its unit type's",
             )
             .name(0, NameKind::Track),
@@ -93,7 +93,11 @@ impl ProgressionApi {
                 Ok(INT::from(points.get()))
             },
         )
-        .plan(method("has_perk", "(id)", "whether it has the perk `id`"))
+        .plan(method(
+            "has_perk",
+            &[&["id"]],
+            "whether it has the perk `id`",
+        ))
         .hook(Hook::OnLevelUp, Status::Runs(ApiVersion::FIRST))
         .data(DataTable::Mode, &["tracks"], &[])
         .data(DataTable::Track, &["levels", "level"], &[]);

@@ -624,8 +624,8 @@ impl<'a> LoadCheck<'a> {
             }
             for used in &facts.ctx_names {
                 let member = self.api.member(ApiOwner::Ctx, &used.name).filter(|member| {
-                    member.kind == used.kind
-                        && roles.iter().any(|&role| member.roles.contains(role))
+                    member.spec.kind == used.kind
+                        && roles.iter().any(|&role| member.spec.roles.contains(role))
                 });
                 let Some(member) = member else {
                     return Err(fail(ScriptProblem::UnknownCtx(used.name.clone())));
@@ -633,7 +633,7 @@ impl<'a> LoadCheck<'a> {
                 if member.status == Status::Planned {
                     return Err(fail(ScriptProblem::Planned(used.name.clone())));
                 }
-                if let Some(capability) = member.capability {
+                if let Some(capability) = member.spec.capability {
                     self.require(capability, &at)?;
                 }
             }
@@ -783,14 +783,16 @@ impl<'a> LoadCheck<'a> {
         let mut problem = ScriptProblem::UnknownMember(name.to_owned());
         let mut undeclared = None;
         let handles = self.api.members().iter().filter(|member| {
-            member.owner != ApiOwner::Ctx && member.name == name && member.kind == kind
+            member.spec.owner != ApiOwner::Ctx
+                && member.spec.name == name
+                && member.spec.kind == kind
         });
         for member in handles {
             if member.status == Status::Planned {
                 problem = ScriptProblem::Planned(name.to_owned());
                 continue;
             }
-            match member.capability {
+            match member.spec.capability {
                 Some(capability) if !self.packages.manifest.capabilities.contains(capability) => {
                     undeclared.get_or_insert(capability);
                 }

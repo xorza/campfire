@@ -27,7 +27,7 @@ impl VisionApi {
         VisionApi::register_queries(api);
         let reveal = MemberSpec::call(
             "reveal",
-            "(pos, radius, ms)",
+            &[&["pos", "radius", "ms"]],
             "shows the acting unit's vision group the cells within `radius` of `pos` for `ms`, from this tick's Vision stage; no hidden unit",
         )
         .roles(RoleSet::ACTING)
@@ -72,7 +72,7 @@ impl VisionApi {
         let can_see = MemberSpec::method(
             ApiOwner::Unit,
             "can_see",
-            "(unit)",
+            &[&["unit"]],
             "whether its team sees the other unit",
         )
         .capability(Capability::Vision);
@@ -81,7 +81,7 @@ impl VisionApi {
         });
         let visible = MemberSpec::call(
             "find_visible",
-            "(of, pos, radius, filter)",
+            &[&["of", "pos", "radius", "filter"]],
             "as `find`, of the units `of`'s team sees",
         )
         .name(3, NameKind::Filter)
@@ -100,7 +100,7 @@ impl VisionApi {
         );
         let nearest = MemberSpec::call(
             "nearest_visible",
-            "(of, radius, filter)",
+            &[&["of", "radius", "filter"]],
             "the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",
         )
         .name(2, NameKind::Filter)

@@ -33,19 +33,19 @@ impl NavigationApi {
     fn register_forced(api: &mut ApiBuilder<'_>) {
         let dash = MemberSpec::call(
             "dash",
-            "(unit, to, speed)",
+            &[&["unit", "to", "speed"]],
             "moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch",
         )
         .capability(Capability::Navigation);
         let knock_back = MemberSpec::call(
             "knock_back",
-            "(unit, from, distance, ms)",
+            &[&["unit", "from", "distance", "ms"]],
             "moves `unit` `distance` straight away from `from` over `ms`",
         )
         .capability(Capability::Navigation);
         let teleport = MemberSpec::call(
             "teleport",
-            "(unit, pos)",
+            &[&["unit", "pos"]],
             "puts `unit` at `pos` at once, or at the nearest place it may stand",
         )
         .capability(Capability::Navigation);

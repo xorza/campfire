@@ -119,7 +119,7 @@ impl Unit {
         api.bind(
             method(
                 "has_tag",
-                "(tag)",
+                &[&["tag"]],
                 "whether it has the tag, of its type or a modifier",
             )
             .name(0, NameKind::Tag),
@@ -131,7 +131,7 @@ impl Unit {
         .bind(
             method(
                 "is_enemy_of",
-                "(unit)",
+                &[&["unit"]],
                 "whether its team may attack the other's, hostile or neutral",
             ),
             |unit: Unit, other: Unit| {

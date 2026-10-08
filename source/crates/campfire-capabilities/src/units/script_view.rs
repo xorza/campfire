@@ -786,7 +786,7 @@ impl View {
     pub(crate) fn register_queries(api: &mut ApiBuilder<'_>) {
         let find = MemberSpec::call(
             "find",
-            "(of, pos, radius, filter)",
+            &[&["of", "pos", "radius", "filter"]],
             "the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
         )
         .name(3, NameKind::Filter);

@@ -19,7 +19,7 @@ impl AreasApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let area = MemberSpec::call(
             "area",
-            "(pos)",
+            &[&["pos"]],
             "lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION)
