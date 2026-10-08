@@ -9,9 +9,9 @@ use crate::sim_server::team_rooms::TeamRooms;
 
 /// Which player a client link carries the inputs of, their team, and whether the log refused one
 /// of its messages, which ended the link. A link with one stands in its team's room, and only
-/// while it has one.
+/// while it has one. Immutable, so replicon's owner filter reads it: a change inserts a new one.
 #[derive(Component, Debug, Clone, Copy)]
-#[component(on_insert = enter_team_room, on_remove = leave_team_room)]
+#[component(immutable, on_insert = enter_team_room, on_remove = leave_team_room)]
 pub struct PlayerLink {
     slot: PlayerSlot,
     team: Team,
@@ -41,8 +41,12 @@ impl PlayerLink {
         self.team
     }
 
-    pub(crate) const fn refuse(&mut self) {
-        self.refused = true;
+    /// The link as the log refused one of its messages.
+    pub(crate) const fn into_refused(self) -> PlayerLink {
+        PlayerLink {
+            refused: true,
+            ..self
+        }
     }
 }
 

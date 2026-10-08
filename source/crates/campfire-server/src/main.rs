@@ -63,7 +63,7 @@ const FILE_FILTER: &str = "info,campfire_server=debug,campfire_net=debug,campfir
                            campfire_script=debug,lightyear_prediction=debug";
 
 fn main() -> ExitCode {
-    Logging {
+    let _log = Logging {
         terminal: TERMINAL_FILTER,
         file: FILE_FILTER,
     }

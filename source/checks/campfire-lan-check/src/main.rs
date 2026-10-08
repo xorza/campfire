@@ -77,7 +77,7 @@ const SCRIPTS: [&str; 2] = [
 ];
 
 fn main() -> ExitCode {
-    Logging {
+    let _log = Logging {
         terminal: "info",
         file: "info",
     }

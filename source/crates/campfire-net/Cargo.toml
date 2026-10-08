@@ -26,6 +26,7 @@ campfire-store.workspace = true
 
 bevy_app.workspace = true
 bevy_ecs.workspace = true
+bevy_replicon.workspace = true
 bevy_state.workspace = true
 bevy_time.workspace = true
 criterion = { workspace = true, optional = true }

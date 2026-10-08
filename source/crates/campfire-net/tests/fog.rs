@@ -4,7 +4,7 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
 use campfire_capabilities::internals::set_relation;
-use campfire_capabilities::{Action, Attitude, Owner, Relations, SeenBy, Team};
+use campfire_capabilities::{Action, Attitude, Owner, Progress, Relations, Route, SeenBy, Team};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{InProcessMatch, MatchSetup};
@@ -114,6 +114,33 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         (held_from, held_until),
         (first + 1 - lobby, last + 1 - lobby)
     );
+
+    // The state only an owner's prediction reads reaches the owner's link alone: the client's
+    // hero, which walked, holds its route and its progress; a west creep, which the client sees
+    // walk and no player owns, holds neither there, though the server's does.
+    let client = local.client(0).world();
+    let (hero_id, _) = unit(local.server(), |app, entity| {
+        app.world().get::<Owner>(entity).is_some()
+    });
+    let on_client = |id| client.resource::<EntityIndex>().get(id).unwrap();
+    let hero_on_client = client.entity(on_client(hero_id));
+    assert!(hero_on_client.contains::<Route>() && hero_on_client.contains::<Progress>());
+    let (creep, creep_entity) = unit(local.server(), |app, entity| {
+        let unit = app.world().entity(entity);
+        unit.contains::<Progress>()
+            && !unit.contains::<Owner>()
+            && unit.get::<Team>() == Some(&Team::new(0))
+    });
+    assert!(
+        local
+            .server()
+            .world()
+            .entity(creep_entity)
+            .contains::<Route>()
+    );
+    let creep_on_client = client.entity(on_client(creep));
+    assert!(creep_on_client.contains::<Position>());
+    assert!(!creep_on_client.contains::<Route>() && !creep_on_client.contains::<Progress>());
 }
 
 /// The stable ids of the units `client`'s world holds, predicted or not, in order.

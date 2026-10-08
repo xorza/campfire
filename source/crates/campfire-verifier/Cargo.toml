@@ -7,7 +7,7 @@ autotests = false
 
 [dependencies]
 campfire-common.workspace = true
-campfire-log.workspace = true
+campfire-log = { workspace = true, features = ["start"] }
 campfire-package.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true

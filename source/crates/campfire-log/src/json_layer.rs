@@ -1,0 +1,215 @@
+use tracing::Subscriber;
+use tracing_subscriber::fmt;
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::fmt::format::{Format, Json, JsonFields};
+use tracing_subscriber::registry::LookupSpan;
+
+/// The file's layer: an event a line, as JSON, with its spans.
+pub(crate) fn json<S, W>(writer: W) -> fmt::Layer<S, JsonFields, Format<Json>, W>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    W: for<'w> MakeWriter<'w> + 'static,
+{
+    fmt::layer()
+        .json()
+        .with_current_span(true)
+        .with_span_list(true)
+        .with_writer(writer)
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::cell::RefCell;
+    use std::io::{self, Write};
+    use std::mem;
+    use std::rc::{Rc, Weak};
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+
+    use tracing::dispatcher::DefaultGuard;
+    use tracing::level_filters::LevelFilter;
+    use tracing::subscriber;
+    use tracing_subscriber::Layer;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    use crate::error_report::ErrorReport;
+    use crate::json_layer::json;
+    use crate::log_event::LogEvent;
+    use crate::log_line::LogLine;
+
+    thread_local! {
+        /// The check the fixtures of the thread share, while one of them holds it.
+        static SHARED: RefCell<Weak<Kept>> = const { RefCell::new(Weak::new()) };
+    }
+
+    /// The events at Warn and Error that the code a test runs logs on its thread, records of the
+    /// `log` crate among them. A test takes those it causes; when the thread's last check drops,
+    /// each event left fails the test, as the LAN check fails a match that logs one.
+    #[derive(Debug)]
+    pub struct LogCheck(Rc<Kept>);
+
+    /// The thread's subscriber, and the events it kept, as JSON lines.
+    #[derive(Debug)]
+    struct Kept {
+        lines: Arc<Mutex<Vec<u8>>>,
+        _subscriber: DefaultGuard,
+    }
+
+    impl LogCheck {
+        /// The thread's check: the one its fixtures share, or a new one, which becomes the
+        /// thread's subscriber.
+        pub fn start() -> LogCheck {
+            SHARED.with(|shared| {
+                let held = shared.borrow().upgrade();
+                LogCheck(held.unwrap_or_else(|| {
+                    let kept = Rc::new(Kept::install());
+                    *shared.borrow_mut() = Rc::downgrade(&kept);
+                    kept
+                }))
+            })
+        }
+
+        /// Removes the kept events of `E`, and reads them, in the order they came.
+        pub fn take<E: LogEvent>(&self) -> Vec<E> {
+            let mut lines = self.0.lines.lock().unwrap();
+            let text = String::from_utf8(mem::take(&mut *lines)).unwrap();
+            let mut taken = Vec::new();
+            for line in text.lines() {
+                if let Some(event) = LogLine::parse(line).unwrap().read::<E>() {
+                    taken.push(
+                        event.unwrap_or_else(|error| panic!("{line}: {}", ErrorReport::of(&error))),
+                    );
+                } else {
+                    lines.extend_from_slice(line.as_bytes());
+                    lines.push(b'\n');
+                }
+            }
+            taken
+        }
+    }
+
+    impl Kept {
+        /// Makes the thread's subscriber one that keeps its events at Warn and Error, with no
+        /// time, so a failure names the same lines in every run.
+        fn install() -> Kept {
+            let lines = Arc::new(Mutex::new(Vec::new()));
+            let writer = {
+                let lines = Arc::clone(&lines);
+                move || Captured(Arc::clone(&lines))
+            };
+            let layer = json(writer).without_time().with_filter(LevelFilter::WARN);
+            Kept {
+                lines,
+                _subscriber: tracing_subscriber::registry().with(layer).set_default(),
+            }
+        }
+    }
+
+    impl Drop for Kept {
+        fn drop(&mut self) {
+            let lines = String::from_utf8(mem::take(&mut *self.lines.lock().unwrap())).unwrap();
+            assert!(
+                lines.is_empty() || thread::panicking(),
+                "the test logged events at Warn or Error that it did not take:\n{lines}"
+            );
+        }
+    }
+
+    /// The JSON lines, as `Logging` writes them to its file, of every event `f` logs on this
+    /// thread.
+    pub(crate) fn capture(f: impl FnOnce()) -> Vec<String> {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let writer = {
+            let buffer = Arc::clone(&buffer);
+            move || Captured(Arc::clone(&buffer))
+        };
+        subscriber::with_default(tracing_subscriber::registry().with(json(writer)), f);
+        let bytes = buffer.lock().unwrap().clone();
+        String::from_utf8(bytes)
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// A writer into a shared buffer.
+    #[derive(Debug)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Captured {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::panic;
+
+    use serde::Deserialize;
+    use tracing::{error, info, warn};
+
+    use crate::json_layer::internals::LogCheck;
+    use crate::log_event::LogEvent;
+
+    #[derive(Debug, PartialEq, Eq, Deserialize)]
+    struct Refused {
+        port: u16,
+    }
+
+    impl LogEvent for Refused {
+        const MESSAGE: &'static str = "refused a link";
+
+        fn log(&self) {
+            warn!(port = self.port, "{}", Self::MESSAGE);
+        }
+    }
+
+    #[test]
+    fn a_check_fails_on_each_warning_its_test_does_not_take() {
+        let check = LogCheck::start();
+        info!("opened");
+        Refused { port: 4433 }.log();
+        assert_eq!(check.take::<Refused>(), [Refused { port: 4433 }]);
+        assert_eq!(check.take::<Refused>(), []);
+
+        // A second check shares the first's events, and the first keeps them once it drops.
+        let second = LogCheck::start();
+        Refused { port: 1 }.log();
+        drop(second);
+        Refused { port: 2 }.log();
+        assert_eq!(
+            check.take::<Refused>(),
+            [Refused { port: 1 }, Refused { port: 2 }]
+        );
+        drop(check);
+
+        // The last check's drop fails with each event left at Warn and Error, and not the Info one.
+        let failure = panic::catch_unwind(|| {
+            let _check = LogCheck::start();
+            info!("opened");
+            warn!(port = 1, "closed");
+            error!("lost");
+        })
+        .unwrap_err();
+        assert_eq!(
+            failure.downcast_ref::<String>().unwrap(),
+            concat!(
+                "the test logged events at Warn or Error that it did not take:\n",
+                r#"{"level":"WARN","fields":{"message":"closed","port":1},"#,
+                r#""target":"campfire_log::json_layer::tests"}"#,
+                "\n",
+                r#"{"level":"ERROR","fields":{"message":"lost"},"#,
+                r#""target":"campfire_log::json_layer::tests"}"#,
+                "\n",
+            )
+        );
+    }
+}

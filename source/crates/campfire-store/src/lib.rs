@@ -14,6 +14,7 @@ mod durable_file;
 mod exchange;
 mod latest_writer;
 mod secret_file;
+mod stream_writer;
 mod worker;
 
 pub use crate::append_writer::AppendWriter;
@@ -29,4 +30,6 @@ pub use crate::exchange::Exchange;
 pub use crate::latest_writer::LatestWriter;
 pub use crate::secret_file::SecretFile;
 pub use crate::secret_file::error::SecretReadError;
+pub use crate::stream_writer::StreamWriter;
+pub use crate::stream_writer::stream_sender::StreamSender;
 pub use crate::worker::Worker;

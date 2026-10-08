@@ -21,7 +21,7 @@ use crate::args::Args;
 mod args;
 
 fn main() -> ExitCode {
-    Logging {
+    let _log = Logging {
         terminal: "info",
         file: "info,campfire_runner=debug,campfire_script=debug",
     }

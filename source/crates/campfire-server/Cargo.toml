@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 campfire-capabilities.workspace = true
 campfire-common.workspace = true
-campfire-log.workspace = true
+campfire-log = { workspace = true, features = ["start"] }
 campfire-net.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
