@@ -16,7 +16,6 @@ use crate::capability_set::test_match::TestMatch;
 use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::geometry::grid::Grid;
-use crate::geometry::region::Region;
 use crate::items::inventory::ItemStack;
 use crate::items::item_book::ItemSpec;
 use crate::items::shop::ShopPlace;
@@ -1215,7 +1214,7 @@ fn shop_match() -> Match {
         item(125, &[], 1),
     ]);
     let share = Share::deserialize(toml::Value::String("0.7".to_owned())).unwrap();
-    let region = Region::new([Num::int(-5); 2], [Num::int(5); 2]);
+    let region = Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap();
     let places = vec![ShopPlace {
         team: Team::new(0),
         region,

@@ -5,6 +5,7 @@ use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::geometry::approach::Approach;
 use crate::geometry::fraction::Fraction;
 use crate::geometry::polygon::Polygon;
 use crate::geometry::squared_distance::SquaredDistance;
@@ -28,14 +29,6 @@ pub(crate) struct BodyBox {
     /// the half edges.
     #[serde(skip)]
     bound: Num,
-}
-
-/// How a straight path comes to a box: its nearest distance against a reach, and the share of
-/// the path at its first nearest point, where it enters a box it meets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BoxApproach {
-    pub(crate) nearest: Ordering,
-    pub(crate) share: Fraction,
 }
 
 /// A box in raw integers: its half edges in bits, or in halves of a bit at twice the scale.
@@ -232,13 +225,13 @@ impl BodyBox {
         from: Position,
         to: Position,
         reach: Num,
-    ) -> BoxApproach {
+    ) -> Approach {
         let frame = self.frame();
         let start = sub(flat(from), flat(centre));
         let path = sub(flat(to), flat(from));
         let reach = SquaredDistance::of(reach);
         if let Some(share) = frame.entry(start, path) {
-            return BoxApproach {
+            return Approach {
                 nearest: SquaredDistance::ZERO.cmp(&reach),
                 share,
             };
@@ -263,7 +256,7 @@ impl BodyBox {
                 take((distance, Fraction::new(along, length)));
             }
         }
-        BoxApproach {
+        Approach {
             nearest: best.0.cmp(&reach),
             share: best.1,
         }

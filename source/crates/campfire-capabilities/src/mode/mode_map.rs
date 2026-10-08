@@ -10,7 +10,6 @@ use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::metric::Metric;
 use crate::geometry::polygon::Polygon;
-use crate::geometry::region::Region;
 use crate::geometry::shape::Shape;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{MapData, MapPoint};
@@ -72,7 +71,7 @@ pub(crate) struct MarkerSpec {
     pub(crate) name: Box<str>,
     pub(crate) tags: NameList,
     pub(crate) pos: Option<Position>,
-    pub(crate) region: Option<Region>,
+    pub(crate) region: Option<Bounds>,
     pub(crate) team: Option<Team>,
     pub(crate) params: BTreeMap<DeclaredName, ModeParam>,
 }

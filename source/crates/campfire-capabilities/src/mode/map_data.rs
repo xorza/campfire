@@ -8,7 +8,6 @@ use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::metric::Metric;
 use crate::geometry::polygon::Polygon;
-use crate::geometry::region::Region;
 use crate::mode::error::ModeError;
 use crate::mode::mode_data::ModeParam;
 use crate::navigation::navigation_rules::NavigationRules;
@@ -233,14 +232,13 @@ impl MapPoint {
 impl RegionData {
     /// The box on the ground plane it gives, when its points fit `metric` and lie within
     /// `bounds`, `min` below `max` on every axis of the metric.
-    pub(crate) fn region(self, metric: Metric, bounds: Bounds) -> Option<Region> {
+    pub(crate) fn region(self, metric: Metric, bounds: Bounds) -> Option<Bounds> {
         let (min, max) = (self.min.position()?, self.max.position()?);
         let (low, high) = (min.get(), max.get());
-        let below =
-            low.x < high.x && low.z < high.z && (metric == Metric::Planar || low.y < high.y);
+        let below = metric == Metric::Planar || low.y < high.y;
         let fits = self.min.fits(metric) && self.max.fits(metric);
-        (fits && below && bounds.contains(min) && bounds.contains(max))
-            .then(|| Region::new([low.x, low.z], [high.x, high.z]))
+        let within = bounds.contains(min) && bounds.contains(max);
+        Bounds::new([low.x, low.z], [high.x, high.z]).filter(|_| fits && below && within)
     }
 }
 

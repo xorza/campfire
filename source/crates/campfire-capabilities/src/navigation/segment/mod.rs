@@ -29,7 +29,8 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::Position;
 
-    use crate::geometry::metric::{Approach, Metric};
+    use crate::geometry::approach::Approach;
+    use crate::geometry::metric::Metric;
     use crate::navigation::segment::Segment;
 
     impl Segment {

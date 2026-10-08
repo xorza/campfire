@@ -4,8 +4,9 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::{Deserialize, Serialize};
 
+use crate::geometry::approach::Approach;
 use crate::geometry::body_box::BodyBox;
-use crate::geometry::metric::{Approach, Metric};
+use crate::geometry::metric::Metric;
 
 /// A body's shape on the ground plane around its unit's position: a circle of a radius, 0 for
 /// a point or a unit with no body, or a box.
@@ -60,13 +61,29 @@ impl Shape {
         to: Position,
         reach: Num,
     ) -> bool {
+        self.approach(Metric::Planar, at, from, to, reach).nearest == Ordering::Less
+    }
+
+    /// How the straight path from `from` to `to` comes to the shape at `at` in `metric`, against
+    /// `reach`: to a circle's centre against `reach` and its radius, a sum past every number
+    /// reaching every distance, as `Metric::reaches` counts it; to a box against `reach`.
+    pub(crate) fn approach(
+        self,
+        metric: Metric,
+        at: Position,
+        from: Position,
+        to: Position,
+        reach: Num,
+    ) -> Approach {
         match self {
             Shape::Circle(radius) => {
-                let path = Metric::Planar.offset(from, to);
-                let off = Metric::Planar.offset(from, at);
-                Approach::of(path, off, reach + *radius).nearest == Ordering::Less
+                let reach = reach.checked_add(radius).unwrap_or(Num::MAX);
+                Approach::of(metric.offset(from, to), metric.offset(from, at), reach)
             }
-            Shape::Box(body) => body.approach(at, from, to, reach).nearest == Ordering::Less,
+            Shape::Box(body) => {
+                debug_assert!(metric == Metric::Planar, "a box lies on a planar map");
+                body.approach(at, from, to, reach)
+            }
         }
     }
 }

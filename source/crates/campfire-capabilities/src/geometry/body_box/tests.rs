@@ -1,5 +1,4 @@
 use super::*;
-use crate::geometry::metric::Approach;
 
 impl BodyBox {
     /// Whether `at` lies inside the box at `centre` or on its edge.
@@ -269,7 +268,7 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let through = approach(at("-10", "0"), at("10", "0"), "0");
     assert_eq!(
         through,
-        BoxApproach {
+        Approach {
             nearest: Ordering::Equal,
             share: share(2, 5)
         }
@@ -291,7 +290,7 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let beside = approach(at("-10", "3"), at("10", "3"), "2");
     assert_eq!(
         beside,
-        BoxApproach {
+        Approach {
             nearest: Ordering::Equal,
             share: share(2, 5)
         }
@@ -308,7 +307,7 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let corner = approach(at("5", "5"), at("10", "0"), "5");
     assert_eq!(
         corner,
-        BoxApproach {
+        Approach {
             nearest: Ordering::Less,
             share: share(1, 10)
         }
@@ -321,7 +320,7 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let still = approach(at("5", "0"), at("5", "0"), "3");
     assert_eq!(
         still,
-        BoxApproach {
+        Approach {
             nearest: Ordering::Equal,
             share: Fraction::ZERO
         }
@@ -332,7 +331,7 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let stops = approach(at("10", "0"), at("3", "0"), "1");
     assert_eq!(
         stops,
-        BoxApproach {
+        Approach {
             nearest: Ordering::Equal,
             share: Fraction::ONE
         }

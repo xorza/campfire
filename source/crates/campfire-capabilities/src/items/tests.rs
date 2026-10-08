@@ -16,7 +16,7 @@ use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::geometry::region::Region;
+use crate::geometry::bounds::Bounds;
 use crate::items::inventory::ItemStack;
 use crate::items::item_book::ItemSpec;
 use crate::items::item_id::ItemId;
@@ -168,7 +168,7 @@ impl Carrier {
         let share = Share::deserialize(toml::Value::String("0.5".to_owned())).unwrap();
         let places = vec![ShopPlace {
             team: Team::new(0),
-            region: Region::new([Num::int(-5); 2], [Num::int(5); 2]),
+            region: Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap(),
         }];
         let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
         sim.world

@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
-use crate::geometry::region::Region;
+use crate::geometry::bounds::Bounds;
 use crate::items::item_id::ItemId;
 use crate::players::resource_id::ResourceId;
 use crate::units::team::Team;
@@ -22,7 +22,7 @@ pub(crate) struct Shop {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ShopPlace {
     pub(crate) team: Team,
-    pub(crate) region: Region,
+    pub(crate) region: Bounds,
 }
 
 impl Shop {
