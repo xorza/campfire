@@ -149,7 +149,7 @@ impl BodyIndex {
         let widest = if widest > Num::ZERO {
             widest
         } else {
-            Body::MAX_RADIUS
+            Shape::MAX_BOUND
         };
         BodyIndex {
             bucket: widest + widest,

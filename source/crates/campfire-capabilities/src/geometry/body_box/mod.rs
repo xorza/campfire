@@ -7,15 +7,13 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::geometry::approach::Approach;
 use crate::geometry::fraction::Fraction;
+use crate::geometry::halves::Flat;
 use crate::geometry::polygon::Polygon;
+use crate::geometry::shape::Shape;
 use crate::geometry::squared_distance::SquaredDistance;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-
-/// A point or a vector on the ground plane, `[x, z]` in a `Num`'s bits, or in halves of a bit
-/// at twice the scale.
-type Flat = [i128; 2];
 
 /// A box body: a parallelogram on the ground plane around its unit's position, held as its two
 /// half edges `a` and `b`, each `[x, z]`, rounded once as it was made. Its corners are the
@@ -73,11 +71,9 @@ impl BodyBox {
     /// The least size: 2⁻¹⁰ m, about a millimeter, many bits above the rounding of a half
     /// edge, so the rounded box never lies flat at any angle.
     pub(crate) const MIN_SIZE: Num = Num::from_bits(1 << (Num::FRAC_BITS - 10));
-    /// The longest diagonal, unrounded: 126 m, so the corners stay within `MAX_REACH` of the
+    /// The longest diagonal, unrounded: 126 m, so the corners stay within `Shape::MAX_BOUND` of the
     /// position whatever the rounding.
     pub(crate) const MAX_DIAGONAL: Num = Num::int(126);
-    /// The farthest a corner lies from the position: the widest body's reach.
-    const MAX_REACH: Num = Num::int(64);
 
     /// The box of `size`, `[width, height]` in meters along `a` and `b`, turned by `angle`
     /// degrees counterclockwise: each component of a half edge is the exact product of half a
@@ -111,12 +107,12 @@ impl BodyBox {
     }
 
     /// The box of the half edges `half`; `None` for one that lies flat or turns clockwise, or
-    /// whose corners reach past `MAX_REACH`.
+    /// whose corners reach past `Shape::MAX_BOUND`.
     fn of_halves(half: [[Num; 2]; 2]) -> Option<BodyBox> {
         // A component past the reach makes a corner past it; refused first, the products below
         // stay within i128 whatever an untrusted snapshot holds.
         let within =
-            |num: &Num| num.to_bits().unsigned_abs() <= BodyBox::MAX_REACH.to_bits().unsigned_abs();
+            |num: &Num| num.to_bits().unsigned_abs() <= Shape::MAX_BOUND.to_bits().unsigned_abs();
         if !half.iter().flatten().all(within) {
             return None;
         }
@@ -131,7 +127,7 @@ impl BodyBox {
         let root = farthest.unsigned_abs().floor_root();
         let up = root + u128::from(root * root < farthest.unsigned_abs());
         let bound = Num::from_bits(i64::try_from(up).ok()?);
-        (bound <= BodyBox::MAX_REACH).then_some(BodyBox { half, bound })
+        (bound <= Shape::MAX_BOUND).then_some(BodyBox { half, bound })
     }
 
     /// The sine and the cosine of `angle` degrees, exact at each multiple of 90°.
@@ -354,7 +350,7 @@ impl BodyBox {
 
     /// Whether a point `off`, from the box's position in halves of a bit, comes closer than
     /// `reach` to the box, exactly: as a grid's cell centres, whole only in halves, see it.
-    pub(crate) fn closer_twice(&self, off: [i128; 2], reach: Num) -> bool {
+    pub(crate) fn closer_twice(&self, off: Flat, reach: Num) -> bool {
         let reach = reach
             .checked_mul_int(2)
             .expect("a reach within a body and a walker doubles");
@@ -364,7 +360,7 @@ impl BodyBox {
     /// Whether the insides of the box and of a square share a point: the square's centre `off`
     /// from the box's position, and its half side `half`, both in halves of a bit, as a grid's
     /// cells lie. Touching is not overlap.
-    pub(crate) fn overlaps_square_twice(&self, off: [i128; 2], half: i128) -> bool {
+    pub(crate) fn overlaps_square_twice(&self, off: Flat, half: i128) -> bool {
         let square = Frame {
             halves: [[half, 0], [0, half]],
         };

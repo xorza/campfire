@@ -14,9 +14,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 ## 12. One concept has several types or names
 
-- [ ] `values/grid/mod.rs:73,148,191,250`, `values/polygon/mod.rs:19,120`, `values/body_box/mod.rs:13-14`: the "Num in halves of a bit" conversion is a closure defined three times in `Grid` and a free function in `polygon`. The `[i128; 2]` point is declared as `Flat` and as `Twice`, and again as the return type of `Grid::center_twice`. Target: one point type with one constructor.
-- [ ] `values/grid/mod.rs:141-183` (`box_spans_closer`) and `:185-223` (`box_covers`): the same run-collecting loop. Only the span bounds and the predicate are different. Target: one helper that takes the span and the predicate.
-- [ ] `values/body_box/mod.rs:84-86` (`BodyBox::MAX_REACH`, 64 m) and `units/body.rs:40` (`Body::MAX_RADIUS`, 64 m): one bound in two constants that must stay equal. Target: one constant.
 - [ ] `values/relation.rs:5-12`, `values/attitude.rs:5-15`, `values/engine_enum.rs:5-10`, `values/stat.rs:11-16,42-47`: the script enum `Relation` (`EngineEnum::Relation`, doc `Relation::Hostile`) is the Rust type `Attitude`, and the Rust type `Relation` is the filter selector (enemies, hostiles, neutrals, allies, all). Target: one name per concept in Rust and in scripts.
 - [ ] `actions/action_book.rs` (`Checked<'a>`, the action-check result), `scripts/error.rs` (`Checked<T>`, the script result) and `production/gather_loop.rs` (`Checked`): three types with the same name. `actions_column.rs`, `abilities_api.rs` and `areas_api.rs` import the script one beside the action one. Target: rename the two that are not the script result (for example `CheckedAction`).
 - [ ] `actions/range.rs` (`Range`) against `std::ops::Range`: `actions_column.rs` imports both and writes `range::Range`. Target: rename (for example `Reach`).

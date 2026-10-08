@@ -7,6 +7,7 @@ pub(crate) mod body_box;
 pub(crate) mod bounds;
 pub(crate) mod fraction;
 pub(crate) mod grid;
+pub(crate) mod halves;
 pub(crate) mod metric;
 pub(crate) mod polygon;
 pub(crate) mod shape;

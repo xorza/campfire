@@ -15,6 +15,7 @@ use crate::actions::gather_spec::GatherSpec;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::CapabilitySet;
 use crate::geometry::bounds::Bounds;
+use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::players::player_resources::PlayerResources;
@@ -50,7 +51,7 @@ pub(crate) fn gather(c: &mut Criterion) {
     SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
     // A match without navigation runs no gather; its install inserts these two.
     world.insert_resource(Bounds::WORLD);
-    world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
+    world.insert_resource(BodyIndex::new(Shape::MAX_BOUND));
     let mut schedule = SimUpdate::schedule();
     let set = CapabilitySet::new(&[Capability::Production]).unwrap();
     set.install(&mut world, &mut schedule, &mut StateRegistry::new(), None);

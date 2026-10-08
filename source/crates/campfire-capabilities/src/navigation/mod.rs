@@ -118,7 +118,7 @@ impl Navigation {
         view.add_column(NavigationColumn::default());
         view.add_source::<RowParts, _>(world, fill_row);
         world.insert_resource(Paths::default());
-        world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
+        world.insert_resource(BodyIndex::new(Shape::MAX_BOUND));
         world.insert_resource(StaticChanges::default());
         StaticsDirty::install(world);
         world.insert_resource(ByType::<Walker>::default());

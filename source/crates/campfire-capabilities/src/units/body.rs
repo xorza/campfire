@@ -35,13 +35,9 @@ enum Form {
 }
 
 impl Body {
-    /// The widest body: wider than any structure a map stands, and small enough that two bodies'
-    /// radii and a range add up within a `Num`.
-    pub const MAX_RADIUS: Num = Num::from_bits(64 << Num::FRAC_BITS);
-
-    /// A circle on the first layer; `None` unless `radius` is positive and at most `MAX_RADIUS`.
+    /// A circle on the first layer; `None` unless `radius` is positive and at most `Shape::MAX_BOUND`.
     pub const fn new(radius: Num) -> Option<Body> {
-        if radius.to_bits() <= 0 || radius.to_bits() > Body::MAX_RADIUS.to_bits() {
+        if radius.to_bits() <= 0 || radius.to_bits() > Shape::MAX_BOUND.to_bits() {
             return None;
         }
         Some(Body {
