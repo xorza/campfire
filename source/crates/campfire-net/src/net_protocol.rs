@@ -103,8 +103,14 @@ impl NetProtocol {
 
 impl Plugin for NetProtocol {
     fn build(&self, app: &mut App) {
+        // Lightyear resends a message 1.5 round trips after it went out unacknowledged, and never
+        // when that is zero, as a round trip measured in process reads; the floor keeps a resend
+        // on such a link, and is below 1.5 round trips of any link across a network.
         let reliable = || ChannelSettings {
-            mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
+            mode: ChannelMode::OrderedReliable(ReliableSettings {
+                rtt_resend_min_delay: Duration::from_millis(20),
+                ..ReliableSettings::default()
+            }),
             ..ChannelSettings::default()
         };
         app.add_channel::<InputChannel>(reliable())

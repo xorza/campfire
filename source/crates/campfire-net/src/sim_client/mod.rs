@@ -358,18 +358,21 @@ fn receive_receipt(
     }
 }
 
-/// Stops a client whose slot a newer login of its player took.
+/// Stops a client whose slot a newer login of its player took, and ends its link, which tells
+/// the server that the notice arrived.
 fn receive_superseded(
-    mut receivers: Query<'_, '_, &mut MessageReceiver<Superseded>, With<Client>>,
+    mut receivers: Query<'_, '_, (Entity, &mut MessageReceiver<Superseded>), With<Client>>,
     mut state: ResMut<'_, JoinState>,
+    mut commands: Commands<'_, '_>,
 ) {
-    for mut receiver in &mut receivers {
+    for (client, mut receiver) in &mut receivers {
         if receiver.receive().count() > 0 {
             state.supersede();
             LinkLost {
                 reason: "a newer login of the player took the slot".to_owned(),
             }
             .log();
+            commands.trigger(Disconnect { entity: client });
         }
     }
 }

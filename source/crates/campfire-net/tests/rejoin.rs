@@ -15,6 +15,7 @@ use campfire_net::{
 use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
+use lightyear::prelude::Unlinked;
 use tempfile::TempDir;
 
 /// Steps a client and the server may take to link, offer, join and play again.
@@ -171,6 +172,42 @@ fn a_second_login_takes_the_slot_and_ends_the_first_link() {
             .get::<PlayerLink>(local.link(0))
             .is_none()
     );
+}
+
+#[test]
+fn a_superseded_client_hears_of_it_though_the_first_notice_is_lost() {
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    local.start_match();
+    for _ in 0..10 {
+        local.step();
+    }
+    let slot = slot_of(&local, 0);
+    // The server's packets to the first client are lost as a second login takes the slot: the
+    // server keeps the old link, as its notice has not arrived, and the first client plays on.
+    local.lose_server_packets(0, true);
+    let second = local.add_client(0);
+    step_until(&mut local, REJOIN_STEPS, |local| playing(local, second));
+    let loss = |local: &InProcessMatch| local.client(0).world().resource::<JoinState>().loss();
+    for _ in 0..10 {
+        local.step();
+    }
+    assert_eq!(loss(&local), None);
+    let first = local.link(0);
+    assert!(local.server().world().get::<Unlinked>(first).is_none());
+    // The packets pass again: the reliable channel sends the notice again, and the first client
+    // stops and ends its link. The newer login keeps the slot, and no input is logged.
+    local.lose_server_packets(0, false);
+    step_until(&mut local, 20, |local| loss(local).is_some());
+    assert_eq!(loss(&local), Some(Loss::Superseded));
+    assert_eq!(
+        local.log().take::<LinkLost>(),
+        [LinkLost {
+            reason: "a newer login of the player took the slot".to_owned()
+        }]
+    );
+    assert_eq!(slot_of(&local, second), slot);
+    assert!(playing(&local, second));
+    assert!(local.server_inputs().is_empty());
 }
 
 #[test]

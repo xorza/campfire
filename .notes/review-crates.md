@@ -12,10 +12,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing. Blocked: see `review-crates_QUESTIONS.md`, "Sharing the parsed scripts needs Rhai's `sync` feature, or a cache that stays on one thread".
 
-## A superseded link ends after one send of its notice [medium]
-
-- [ ] source/crates/campfire-net/src/sim_server/offering.rs:73-100 — `tell` queues `Superseded` in frame N, and `end` unlinks in frame N+1, after the first send. So the reliable channel never sends it again. If that packet is lost, the old client rejoins and supersedes the newer login. That is the ping-pong that `Superseded` is there to stop. Target: the link ends when the message is acknowledged, or after a timeout that allows a resend.
-
 ## The LAN check leaks its child processes [medium]
 
 - [ ] source/checks/campfire-lan-check/src/lan_match.rs:97 — after the server starts, each `?` in `play` (:97, :124, :127, :129-144, :150) drops the `Child` handles with no kill. Target: a guard type that owns every child, and kills and waits on each one on drop.

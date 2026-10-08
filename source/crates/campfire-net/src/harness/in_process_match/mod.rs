@@ -579,6 +579,17 @@ impl InProcessMatch {
             .is_some_and(|avatar| world.resource::<EntityIndex>().get(avatar).is_some())
     }
 
+    /// Loses every packet the server sends `client` while `lost`, as a link that drops one way
+    /// does, though the client's own packets arrive; with `false`, passes them again.
+    pub fn lose_server_packets(&mut self, client: usize, lost: bool) {
+        let world = self.server.world_mut();
+        let mut delay = world.get_mut::<DelayLine>(self.links[client]);
+        delay
+            .as_mut()
+            .expect("a link passes through a delay line")
+            .lose_all(lost);
+    }
+
     /// One frame of the server alone, which shifts where in a step its ticks fall.
     pub fn server_frame(&mut self) {
         self.server.update();

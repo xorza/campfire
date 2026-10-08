@@ -1,12 +1,15 @@
+use std::time::Duration;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
-use bevy_ecs::system::{Commands, Query};
+use bevy_ecs::system::{Commands, Query, Res};
+use bevy_time::{Real, Time};
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
 use campfire_protocol::{CertificateHash, ConnectChallenge, Delegation, SessionTerms};
 use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{
-    Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlink, UnlinkReason,
+    Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlink, UnlinkReason, Unlinked,
 };
 use tracing::debug;
 
@@ -51,12 +54,19 @@ pub(crate) struct Joined;
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Refused(pub JoinError);
 
-/// A link whose seat a newer login of its player took: the server tells its client, then ends
-/// it once the word went out.
+/// A link whose seat a newer login of its player took: the server tells its client, which ends
+/// the link once the word arrives. The reliable channel sends the word again while it is lost,
+/// so the server keeps the link, until `LINGER` after it first sent it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Superseding {
-    told: bool,
+    /// When the word first went out, in the server's real time.
+    told: Option<Duration>,
 }
+
+/// How long the server keeps a superseded link whose client has not ended it: many resends of a
+/// reliable message over a link that loses its packets a while. Past it, the client is as good
+/// as gone, and the server ends the link itself.
+const LINGER: Duration = Duration::from_secs(5);
 
 impl Superseding {
     /// Ends `link`'s seat, as a newer login of its player took it: the link carries the slot no
@@ -65,29 +75,35 @@ impl Superseding {
         if let Ok(mut older) = commands.get_entity(link) {
             older
                 .remove::<(Joined, PlayerLink)>()
-                .insert((Refused(JoinError::Superseded), Superseding { told: false }));
+                .insert((Refused(JoinError::Superseded), Superseding { told: None }));
         }
     }
 
-    /// Tells each superseded link's client.
+    /// Tells each superseded link's client, once.
     pub(crate) fn tell(
+        time: Res<'_, Time<Real>>,
         mut links: Query<'_, '_, (&mut Superseding, &mut MessageSender<Superseded>)>,
     ) {
         for (mut superseding, mut sender) in &mut links {
-            if !superseding.told {
+            if superseding.told.is_none() {
                 sender.send::<MatchChannel>(Superseded);
-                superseding.told = true;
+                superseding.told = Some(time.elapsed());
             }
         }
     }
 
-    /// Ends each superseded link whose client was told, once its messages went out.
+    /// Ends each superseded link whose client was told `LINGER` ago and has not ended it.
     pub(crate) fn end(
-        links: Query<'_, '_, (Entity, &Superseding)>,
+        time: Res<'_, Time<Real>>,
+        links: Query<'_, '_, (Entity, &Superseding), Without<Unlinked>>,
         mut commands: Commands<'_, '_>,
     ) {
+        let now = time.elapsed();
         for (link, superseding) in &links {
-            if superseding.told {
+            if superseding
+                .told
+                .is_some_and(|told| now.saturating_sub(told) >= LINGER)
+            {
                 commands.entity(link).remove::<Superseding>();
                 commands.trigger(Unlink {
                     entity: link,
@@ -195,5 +211,54 @@ impl Offering {
             )
             .map_err(JoinError::Connect)?;
         Ok(delegation)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy_app::{App, Update};
+    use bevy_ecs::observer::On;
+    use bevy_ecs::resource::Resource;
+    use bevy_ecs::system::ResMut;
+    use bevy_time::{TimePlugin, TimeUpdateStrategy};
+
+    use super::*;
+
+    #[derive(Resource, Debug, Default)]
+    struct Unlinks(Vec<Entity>);
+
+    #[test]
+    fn a_superseded_link_its_client_never_ends_ends_after_its_linger() {
+        // Frames of 500 ms from real time 0; the word went out at 1 s, so the link ends in the
+        // frame at 6 s, 1 + `LINGER`, and once.
+        let mut app = App::new();
+        app.add_plugins(TimePlugin);
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+            500,
+        )));
+        app.init_resource::<Unlinks>();
+        app.add_observer(
+            |unlink: On<'_, '_, Unlink>, mut unlinks: ResMut<'_, Unlinks>| {
+                unlinks.0.push(unlink.entity);
+            },
+        );
+        app.add_systems(Update, Superseding::end);
+        let told = Superseding {
+            told: Some(Duration::from_secs(1)),
+        };
+        let link = app.world_mut().spawn(told).id();
+        let untold = app.world_mut().spawn(Superseding { told: None }).id();
+        let mut ended_at = None;
+        for _ in 0..16 {
+            app.update();
+            let now = app.world().resource::<Time<Real>>().elapsed();
+            if ended_at.is_none() && !app.world().resource::<Unlinks>().0.is_empty() {
+                ended_at = Some(now);
+            }
+        }
+        assert_eq!(app.world().resource::<Unlinks>().0, [link]);
+        assert_eq!(ended_at, Some(Duration::from_secs(6)));
+        assert!(app.world().get::<Superseding>(link).is_none());
+        assert!(app.world().get::<Superseding>(untold).is_some());
     }
 }
