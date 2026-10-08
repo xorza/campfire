@@ -9,9 +9,9 @@ use campfire_script::ScriptId;
 use campfire_sim::TickRate;
 
 use crate::scripts::error::ParamProblem;
-use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
+use crate::scripts::script_role::ScriptRole;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::applier::Applier;
 use crate::stats::error::ModifierError;
@@ -137,7 +137,7 @@ impl ModifierBook {
                 name: modifier.name.as_str().into(),
                 spec,
                 script: modifier.script,
-                hooks: scripts.defines(modifier.script, &MODIFIER_HOOKS),
+                hooks: scripts.defines(modifier.script, ScriptRole::Modifier),
                 tags,
             });
         }
@@ -316,16 +316,6 @@ impl ModifierEntry {
             .then_with(|| (*self.name).cmp(name))
     }
 }
-
-/// The hooks of a modifier's script that combat events call.
-const MODIFIER_HOOKS: [Hook; 6] = [
-    Hook::OnAttack,
-    Hook::OnInterval,
-    Hook::OnAttackHit,
-    Hook::OnDamageTaken,
-    Hook::OnKill,
-    Hook::OnTakedown,
-];
 
 #[cfg(test)]
 pub(crate) mod internals {

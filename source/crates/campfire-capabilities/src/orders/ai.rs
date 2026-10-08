@@ -7,6 +7,7 @@ use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_book::ScriptBook;
+use crate::scripts::script_role::ScriptRole;
 
 /// A unit type's AI: its compiled script, and its period in whole ticks, at least one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +26,7 @@ impl Ai {
         rate: TickRate,
     ) -> Result<Ai, AiError> {
         let thinks = scripts
-            .defines(Some(script), &[Hook::OnThink])
+            .defines(Some(script), ScriptRole::Ai)
             .contains(Hook::OnThink);
         let period = Orders::ai_period(data, rate, thinks)?;
         Ok(Ai { script, period })

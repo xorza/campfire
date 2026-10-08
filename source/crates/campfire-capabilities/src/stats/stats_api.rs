@@ -120,11 +120,6 @@ impl StatsApi {
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(handle.remove()),
         );
         api.hook(Hook::OnInterval, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnDamageTaken, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnKill, Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnTakedown, Status::Runs(ApiVersion::FIRST))
             .tag_property(TagProperty::Immune, Status::Runs(ApiVersion::FIRST));
         api.data(
             DataTable::Modifier,

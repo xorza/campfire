@@ -12,6 +12,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::hook::Hook;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::api_owner::ApiOwner;
@@ -124,7 +125,12 @@ impl CombatApi {
         )
         .data(DataTable::Leech, &["attack", "other"], &[])
         .data(DataTable::Combat, &["on_death"], &[])
-        .action_fields(ActionDataField::of(Some(Capability::Combat)));
+        .action_fields(ActionDataField::of(Some(Capability::Combat)))
+        .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnDamageTaken, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnKill, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnTakedown, Status::Runs(ApiVersion::FIRST));
     }
 
     /// What combat adds to a `Unit` handle.

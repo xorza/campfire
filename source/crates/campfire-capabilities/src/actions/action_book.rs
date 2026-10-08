@@ -15,8 +15,8 @@ use crate::actions::purse::Purse;
 use crate::actions::range::Range;
 use crate::actions::rank_values::RankValues;
 use crate::actions::targets::Targets;
-use crate::scripts::hook::Hook;
 use crate::scripts::script_book::ScriptBook;
+use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
@@ -58,16 +58,7 @@ impl ActionBook {
             script.is_some(),
             "an action has a script exactly when its data names one"
         );
-        let hooks = scripts.defines(
-            script,
-            &[
-                Hook::OnResolve,
-                Hook::OnHit,
-                Hook::OnEnd,
-                Hook::OnChannelTick,
-                Hook::OnInterrupt,
-            ],
-        );
+        let hooks = scripts.defines(script, ScriptRole::Action);
         let id = ActionId::nth(u32::try_from(self.actions.len()).expect("actions fit u32"));
         Arc::make_mut(&mut self.actions).push(Action {
             package,
