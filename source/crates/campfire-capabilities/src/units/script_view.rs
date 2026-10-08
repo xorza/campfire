@@ -26,7 +26,7 @@ use crate::units::path_id::PathId;
 use crate::units::row_fill::RowFill;
 use crate::units::row_parts::RowParts;
 use crate::units::tag::Tag;
-use crate::units::target_index::TargetIndex;
+use crate::units::target_index::{TargetIndex, TargetQuery};
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::track_id::TrackId;
@@ -373,23 +373,19 @@ impl View {
         filter: &str,
         seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> Checked<Array> {
-        if radius < Num::ZERO {
-            return Err(ApiError::NegativeRadius.fail().into());
-        }
+        let radius = ApiError::radius(radius)?;
         let filter = Filter::parse(filter, self.names().types()).map_err(ApiError::fail)?;
         let rows = self.rows();
         let units = rows.units();
+        let query = TargetQuery {
+            team: units[of.row_index()].team,
+            from: pos,
+            shape: Shape::POINT,
+            radius,
+            filter: &filter,
+        };
         let mut targets = self.0.targets.borrow_mut();
-        targets.index(units);
-        let of = units[of.row_index()].team;
-        let found = targets.find_near(pos, radius, |body| {
-            let row = &units[body.key];
-            let attitude = rows.relations().between(of, row.team);
-            let reaches = rows
-                .metric()
-                .reaches(pos, Shape::POINT, radius, body.at, body.shape);
-            reaches && filter.selects(attitude, row.tags.tags) && seen(rows.columns(), body.key)
-        });
+        let found = targets.find(&rows, query, seen);
         let unit = |&at: &usize| Dynamic::from(Unit::new(units[at].id, at, self.clone()));
         Ok(found.iter().map(unit).collect())
     }
@@ -405,34 +401,29 @@ impl View {
         filter: &str,
         seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> Checked<Dynamic> {
-        if radius < Num::ZERO {
-            return Err(ApiError::NegativeRadius.fail().into());
-        }
+        let radius = ApiError::radius(radius)?;
         let filter = Filter::parse(filter, self.names().types()).map_err(ApiError::fail)?;
         let rows = self.rows();
-        let units = rows.units();
-        let mut targets = self.0.targets.borrow_mut();
-        targets.index(units);
-        let of = &units[of.row_index()];
-        let reach = of.shape.bound().checked_add(radius).unwrap_or(Num::MAX);
+        let of = rows.units()[of.row_index()];
+        let query = TargetQuery {
+            team: of.team,
+            from: of.pos,
+            shape: of.shape,
+            radius,
+            filter: &filter,
+        };
         let metric = rows.metric();
         let mut nearest = None;
-        targets.visit_near(of.pos, reach, |body| {
-            let row = &units[body.key];
-            let attitude = rows.relations().between(of.team, row.team);
-            let reaches = metric.reaches(of.pos, of.shape, radius, body.at, body.shape);
-            if !(reaches
-                && filter.selects(attitude, row.tags.tags)
-                && seen(rows.columns(), body.key))
-            {
-                return;
-            }
-            let distance = metric.offset(of.pos, body.at).length_squared_bits();
-            let candidate = (distance, body.id, body.key);
-            if nearest.is_none_or(|best| candidate < best) {
-                nearest = Some(candidate);
-            }
-        });
+        self.0
+            .targets
+            .borrow_mut()
+            .visit(&rows, query, seen, |body| {
+                let distance = metric.offset(of.pos, body.at).length_squared_bits();
+                let candidate = (distance, body.id, body.key);
+                if nearest.is_none_or(|best| candidate < best) {
+                    nearest = Some(candidate);
+                }
+            });
         Ok(nearest.map_or(Dynamic::UNIT, |(_, id, at)| {
             Dynamic::from(Unit::new(id, at, self.clone()))
         }))

@@ -55,9 +55,7 @@ impl VisionApi {
         let view = ctx.view();
         let acting = ctx.acting().and_then(|id| view.row(id));
         let team = acting.ok_or_else(|| ApiError::NoActingUnit.fail())?.team;
-        if radius < Num::ZERO {
-            return Err(ApiError::NegativeRadius.fail().into());
-        }
+        let radius = ApiError::radius(radius)?;
         let ticks = view.lasting(ms).map_err(ApiError::fail)?;
         ctx.queue(VisionEffect {
             team,

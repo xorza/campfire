@@ -1,8 +1,13 @@
 use campfire_math::Num;
 use campfire_sim::Position;
 
+use crate::geometry::shape::Shape;
 use crate::units::body_grid::{BodyGrid, GridBody, Placed};
+use crate::units::filter::Filter;
+use crate::units::team::Team;
 use crate::units::unit_row::UnitRow;
+use crate::units::unit_rows::UnitRows;
+use crate::units::view_column::ViewColumns;
 
 /// The bodies of the units of the script view that may be targets, by row, which a query that
 /// reaches by distance indexes once after each read; and the rows such a query found.
@@ -13,6 +18,18 @@ pub(crate) struct TargetIndex {
     found: Vec<usize>,
 }
 
+/// What a query of the targets asks: those whose bodies `radius`, not negative, from the edge of
+/// a body of `shape` at `from` reaches in the map's metric, and that `filter` selects relative to
+/// `team`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TargetQuery<'a> {
+    pub(crate) team: Team,
+    pub(crate) from: Position,
+    pub(crate) shape: Shape,
+    pub(crate) radius: Num,
+    pub(crate) filter: &'a Filter,
+}
+
 impl TargetIndex {
     /// Forgets the bodies, as a read changed the rows they came from.
     pub(crate) const fn forget(&mut self) {
@@ -20,7 +37,7 @@ impl TargetIndex {
     }
 
     /// Indexes the bodies of the targets among `rows`, unless it did since the last read.
-    pub(crate) fn index(&mut self, rows: &[UnitRow]) {
+    fn index(&mut self, rows: &[UnitRow]) {
         if self.indexed {
             return;
         }
@@ -35,28 +52,61 @@ impl TargetIndex {
         self.indexed = true;
     }
 
-    /// Calls `visit` with each target's body whose bounding box comes within `reach` of `at`.
-    pub(crate) fn visit_near(&self, at: Position, reach: Num, visit: impl FnMut(&GridBody<usize>)) {
-        debug_assert!(self.indexed, "a query indexes the bodies first");
-        self.bodies.visit_near(at, reach, visit);
+    /// Calls `visit` with the body of each target of `rows` that `query` reaches and `seen` lets
+    /// by the rows' columns, in the order the grid holds them.
+    pub(crate) fn visit(
+        &mut self,
+        rows: &UnitRows,
+        query: TargetQuery<'_>,
+        seen: impl Fn(&ViewColumns, usize) -> bool,
+        visit: impl FnMut(&GridBody<usize>),
+    ) {
+        self.index(rows.units());
+        TargetIndex::each_reached(&self.bodies, rows, query, seen, visit);
     }
 
-    /// The rows of the targets whose body's bounding box comes within `reach` of `at` and that
-    /// `keep` keeps, in row order.
-    pub(crate) fn find_near(
+    /// The rows of the targets of `rows` that `query` reaches and `seen` lets, in row order.
+    pub(crate) fn find(
         &mut self,
-        at: Position,
-        reach: Num,
-        mut keep: impl FnMut(&GridBody<usize>) -> bool,
+        rows: &UnitRows,
+        query: TargetQuery<'_>,
+        seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> &[usize] {
-        debug_assert!(self.indexed, "a query indexes the bodies first");
+        self.index(rows.units());
         self.found.clear();
-        self.bodies.visit_near(at, reach, |body| {
-            if keep(body) {
-                self.found.push(body.key);
-            }
+        TargetIndex::each_reached(&self.bodies, rows, query, seen, |body| {
+            self.found.push(body.key);
         });
         self.found.sort_unstable();
         &self.found
+    }
+
+    /// Calls `visit` with each body of `bodies` that `query` reaches and `seen` lets.
+    fn each_reached(
+        bodies: &BodyGrid<usize>,
+        rows: &UnitRows,
+        query: TargetQuery<'_>,
+        seen: impl Fn(&ViewColumns, usize) -> bool,
+        mut visit: impl FnMut(&GridBody<usize>),
+    ) {
+        let TargetQuery {
+            team,
+            from,
+            shape,
+            radius,
+            filter,
+        } = query;
+        let reach = shape.bound().checked_add(radius).unwrap_or(Num::MAX);
+        let metric = rows.metric();
+        bodies.visit_near(from, reach, |body| {
+            let row = &rows.units()[body.key];
+            let attitude = rows.relations().between(team, row.team);
+            if metric.reaches(from, shape, radius, body.at, body.shape)
+                && filter.selects(attitude, row.tags.tags)
+                && seen(rows.columns(), body.key)
+            {
+                visit(body);
+            }
+        });
     }
 }

@@ -133,9 +133,7 @@ impl UnitsApi {
         to: Position,
         radius: Num,
     ) -> Checked<bool> {
-        if radius < Num::ZERO {
-            return Err(ApiError::NegativeRadius.fail().into());
-        }
+        let radius = ApiError::radius(radius)?;
         let metric = Ctx::of_call(call).view().metric();
         Ok(metric.reaches(from, Shape::POINT, radius, to, Shape::POINT))
     }
