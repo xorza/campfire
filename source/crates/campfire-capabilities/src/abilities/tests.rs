@@ -2,24 +2,32 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
 use bevy_ecs::bundle::Bundle;
-use campfire_common::{PlayerSlot, StateHash};
+use bevy_ecs::world::Mut;
+use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_script::NumError;
-use campfire_sim::{Capability, EntityIndex, SimRng, StateCopy, TickInput, TickInputs};
+use campfire_sim::{
+    Capability, EntityIndex, Position, SimRng, SimTick, StableId, StateCopy, TickInput, TickInputs,
+};
 
 use super::*;
 use crate::actions::Actions;
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_call::Started;
 use crate::actions::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
 use crate::actions::action_data_field::ActionDataField;
+use crate::actions::action_kind::ActionKind;
 use crate::actions::action_range::ActionRange;
+use crate::actions::action_slots::{ActionSlot, ActionSlots};
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{
     DamageFields, EffectData, EffectTo, Effecting, LaunchFields, ModifierFields, MoveData,
     PurgeFields, RestoreFields, XpFields,
 };
+use crate::actions::effect_lists::EffectLists;
 use crate::actions::error::ActionField;
+use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::kind_data::KindData;
 use crate::actions::range_field::RangeField;
 use crate::actions::slot_aim::SlotAim;
@@ -30,7 +38,6 @@ use crate::areas::Areas;
 use crate::areas::area::Area;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
-use crate::combat;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::internals::Armed;
@@ -39,9 +46,11 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::geometry::body_box::BodyBox;
 use crate::navigation::Navigation;
+use crate::navigation::destination::Destination;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::orders::order::{Action, Order};
+use crate::players::player_resources::PlayerResources;
 use crate::players::resource_id::ResourceId;
 use crate::progression::Progression;
 use crate::progression::experience::Experience;
@@ -53,6 +62,8 @@ use crate::projectiles::projectile::Projectile;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
+use crate::scripts::hook::Hook;
+use crate::scripts::pool::Pool;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_failures::internals::FailedCall;
@@ -60,7 +71,6 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
-use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
@@ -70,6 +80,7 @@ use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_graph::StatGraph;
@@ -78,8 +89,14 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
+use crate::units::action_id::ActionId;
+use crate::units::body::Body;
+use crate::units::dead::Dead;
+use crate::units::forced_move::ForcedMove;
 use crate::units::move_step::MoveStep;
+use crate::units::owner::Owner;
 use crate::units::tag_data::TagData;
+use crate::units::team::Team;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_state::UnitState;
@@ -93,9 +110,11 @@ use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::package_path::PackagePath;
 use crate::values::param::{Param, Scaling};
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
+use crate::{combat, stats};
 
 /// Lash Out as the reference Husk had it when these tests were written: the engine's tests keep
 /// their own copy, so a balance change to the reference hero changes none of them.
