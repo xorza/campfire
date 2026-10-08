@@ -377,7 +377,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 266] = [
+static FLAWS: [Flaw; 268] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -415,11 +415,50 @@ static FLAWS: [Flaw; 266] = [
         MODE_DIR,
         |problem| manifest_fails(problem, "declares Orders without Navigation"),
     ),
+    // A section of the mode's data or of its map is its capability's, declared or refused: the
+    // map's vision grid without `vision`, its pathing grid without `navigation`, `[supply]`
+    // without `production`.
     flaw(
         MANIFEST,
         Edit::Replace(r#", "vision", "progression""#, r#", "progression""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Vision, at: Place::UnitType(name) } if name == "caster_creep"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Vision,
+                    at: Place::MapGrid
+                }
+            )
+        },
+    ),
+    flaw(
+        MANIFEST,
+        Edit::Replace(r#", "orders", "navigation""#, ""),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Navigation,
+                    at: Place::MapNavigation
+                }
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Set("supply", "{ max = 10 }"),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Production,
+                    at: Place::Supply
+                }
+            )
+        },
     ),
     // Tracks are progression's: positive and ascending, at most one the `level` track, and each a
     // unit type lists one the mode declares.

@@ -716,6 +716,7 @@ impl Game {
             Capability::Stats,
             Capability::Combat,
             Capability::Navigation,
+            Capability::Vision,
             Capability::Abilities,
             Capability::Progression,
             Capability::Production,

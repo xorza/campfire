@@ -241,14 +241,11 @@ impl<'a> LoadCheck<'a> {
         if data.players.bot_takeover && !data.players.late_join {
             return Err(LoadProblem::BotTakeoverWithoutLateJoin);
         }
+        self.sections_owned()?;
         self.damage_kinds()?;
         self.pools_and_resources()?;
-        self.layers()?;
         self.tracks()?;
-        if data.combat.stats().next().is_some() || data.combat.life.is_some() {
-            self.require(Capability::Combat, &Place::Combat)?;
-            self.stats_declared(data.combat.stats(), &Place::Combat)?;
-        }
+        self.stats_declared(data.combat.stats(), &Place::Combat)?;
         self.slot_kinds()?;
         self.choices()?;
         self.items()?;
@@ -260,9 +257,6 @@ impl<'a> LoadCheck<'a> {
             Some((Place::UnitType(name.clone()), unit_type.passive.as_ref()?))
         });
         passives_held_once(held.chain(action_passives(&content.actions)))?;
-        if !packages.map.paths.is_empty() {
-            self.require(Capability::Navigation, &Place::Paths)?;
-        }
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.grid.is_none()
         {
@@ -1247,14 +1241,9 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's tracks are progression's: no more than a unit holds, and at most one the
-    /// `level` track.
+    /// The mode's tracks: no more than a unit holds, and at most one the `level` track.
     fn tracks(&self) -> Result<(), LoadProblem> {
         let tracks = &self.packages.data.tracks;
-        if tracks.is_empty() {
-            return Ok(());
-        }
-        self.require(Capability::Progression, &Place::Tracks)?;
         if tracks.len() > TrackId::LIMIT {
             return Err(LoadProblem::TooMany(Limit::Tracks));
         }
@@ -1264,12 +1253,47 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's layers are navigation's.
-    fn layers(&self) -> Result<(), LoadProblem> {
-        if self.packages.data.navigation.layers.is_empty() {
-            return Ok(());
+    /// Each section of the mode's data and of its map that it holds belongs to a capability the
+    /// mode declares, as each of a unit type's does: a match builds a section's grids, books and
+    /// rules only for the capability that runs them.
+    fn sections_owned(&self) -> Result<(), LoadProblem> {
+        let (data, map) = (&self.packages.data, &self.packages.map);
+        let combat = &data.combat;
+        let sections = [
+            (
+                !combat.damage_kinds.is_empty()
+                    || combat.stats().next().is_some()
+                    || combat.life.is_some(),
+                Capability::Combat,
+                Place::Combat,
+            ),
+            (!data.stats.is_empty(), Capability::Stats, Place::Stats),
+            (
+                !data.tracks.is_empty(),
+                Capability::Progression,
+                Place::Tracks,
+            ),
+            (
+                !data.navigation.layers.is_empty(),
+                Capability::Navigation,
+                Place::Navigation,
+            ),
+            (data.supply.is_some(), Capability::Production, Place::Supply),
+            (data.shop.is_some(), Capability::Items, Place::Shop),
+            (
+                map.navigation.is_some(),
+                Capability::Navigation,
+                Place::MapNavigation,
+            ),
+            (!map.paths.is_empty(), Capability::Navigation, Place::Paths),
+            (map.grid.is_some(), Capability::Vision, Place::MapGrid),
+        ];
+        for (held, capability, at) in sections {
+            if held {
+                self.require(capability, &at)?;
+            }
         }
-        self.require(Capability::Navigation, &Place::Navigation)
+        Ok(())
     }
 
     /// The layer a `collision` section at `at` names, if any, is one the mode declares.
@@ -1607,7 +1631,6 @@ impl<'a> LoadCheck<'a> {
             return Ok(());
         };
         let at = Place::Shop;
-        self.require(Capability::Items, &at)?;
         if let Some(name) = shop.items.iter().find(|name| !items.contains_key(*name)) {
             return Err(unknown(&at, name, NameKind::Item));
         }

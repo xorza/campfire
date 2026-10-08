@@ -164,6 +164,10 @@ impl Navigation {
         walls: &[Wall],
         walkers: Vec<Walker>,
     ) {
+        debug_assert!(
+            world.contains_resource::<StaticChanges>(),
+            "a map's pathing grid is navigation's, which the load checked the mode declares"
+        );
         let terrain = Terrain::new(&cells, walls);
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
