@@ -18,7 +18,9 @@ use campfire_sim::{
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::actions::slot_kinds::{SlotKindData, SlotKinds};
+use crate::actions::slot_kinds::SlotKinds;
+
+use crate::actions::slot_kind_data::SlotKindData;
 use crate::capability_set::CapabilitySet;
 use crate::combat::Combat;
 use crate::combat::internals;

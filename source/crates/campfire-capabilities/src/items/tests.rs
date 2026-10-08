@@ -8,11 +8,12 @@ use serde::Deserialize;
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_data::{ActionData, Targeting};
+use crate::actions::action_data::ActionData;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting, HealFields};
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::targeting::Targeting;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;

@@ -3,7 +3,7 @@ use campfire_sim::TickRate;
 
 use crate::actions::action::Aim;
 use crate::actions::action::Passive;
-use crate::actions::action_data::{ActionData, Targeting};
+use crate::actions::action_data::ActionData;
 use crate::actions::action_names::ActionNames;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery::Delivery;
@@ -15,6 +15,7 @@ use crate::actions::kind_data::KindData;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::rank_values::LoadedRanks;
 use crate::actions::rank_values::RankValues;
+use crate::actions::targeting::Targeting;
 use crate::actions::weapon::Weapon;
 use crate::units::modifier_id::ModifierId;
 use crate::values::error::TimeTooLarge;

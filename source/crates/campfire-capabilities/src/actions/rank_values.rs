@@ -3,7 +3,9 @@ use std::num::NonZeroU8;
 use campfire_common::Ticks;
 use campfire_sim::TickRate;
 
-use crate::actions::action_data::{ActionData, RankToggle};
+use crate::actions::action_data::ActionData;
+
+use crate::actions::rank_fields::RankToggle;
 
 use crate::actions::cost_target::CostTarget;
 

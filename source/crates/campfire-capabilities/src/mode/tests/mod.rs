@@ -13,12 +13,14 @@ use campfire_sim::{
 use super::*;
 use crate::actions::Actions;
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_data::{ActionData, Targeting};
+use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
-use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
+use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
+use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::targeting::Targeting;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::combat_rules::CombatRules;
 use crate::combat::damage::{Damage, DamageCause};

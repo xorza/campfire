@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_math::Num;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_kind::ActionKind;
@@ -15,13 +14,16 @@ use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
 use crate::actions::kind_data::KindData;
 use crate::actions::placement_data::PlacementData;
+use crate::actions::range_field::RangeField;
+use crate::actions::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
 use crate::actions::requires_data::RequiresData;
+use crate::actions::targeting::Targeting;
 use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::stats::pool_cost::PoolCost;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
-use crate::values::number::{Number, ParamRef};
+use crate::values::number::Number;
 use crate::values::package_path::PackagePath;
 use crate::values::param::Param;
 use crate::values::rank::Rank;
@@ -439,90 +441,14 @@ impl ActionData {
     }
 }
 
-/// An action's capability fields at one rank, as data gives them: times in milliseconds, its
-/// cost in its caster's pools, and in its caster's player's resources.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RankFields {
-    pub range: ActionRange,
-    pub cooldown_ms: u64,
-    pub cost: PoolCost,
-    pub resource_cost: Vec<ResourceAmount>,
-    pub windup_ms: u64,
-    pub charges: Option<RankCharges>,
-    pub toggle: Option<RankToggle>,
-    pub channel: Option<RankChannel>,
-    /// A charged action's most, in milliseconds.
-    pub charge_ms: Option<u64>,
-}
-
-/// A channel at one rank: how long it runs, and the time between its ticks, both positive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RankChannel {
-    pub duration_ms: u64,
-    pub tick_ms: u64,
-}
-
-/// A toggle's cost at one rank: in the caster's pools, paid as each attack goes off, or at each
-/// whole second it is on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RankToggle {
-    pub per: TogglePer,
-    pub cost: PoolCost,
-}
-
-/// When a toggle pays its cost.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TogglePer {
-    Attack,
-    Second,
-}
-
-/// An action's charges at one rank: how many it holds at most, and how long one takes to come
-/// back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RankCharges {
-    pub max: NonZeroU8,
-    pub recharge_ms: u64,
-}
-
-/// What an action targets. In data: `none`, `point`, `direction`, or a filter of the units it
-/// may target, such as `enemies` or `enemies:avatar`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Targeting {
-    None,
-    Point,
-    Direction,
-    Unit(FilterData),
-}
-
-/// A range as data writes it: a range, or `{ param = "<name>" }`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
-pub enum RangeField {
-    Range(ActionRange),
-    Param(ParamRef),
-}
-
-impl<'de> Deserialize<'de> for Targeting {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Targeting, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        match text.as_str() {
-            "none" => Ok(Targeting::None),
-            "point" => Ok(Targeting::Point),
-            "direction" => Ok(Targeting::Direction),
-            filter => FilterData::parse(filter)
-                .map(Targeting::Unit)
-                .ok_or_else(|| Error::custom(format!("unknown targeting {filter:?}"))),
-        }
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
-    use crate::actions::action_data::{ActionData, Targeting};
+    use crate::actions::action_data::ActionData;
+
     use crate::actions::action_kind::ActionKind;
+    use crate::actions::targeting::Targeting;
 
     impl ActionData {
         /// A cast of `targeting` and nothing more, as a table that names its targeting alone reads.

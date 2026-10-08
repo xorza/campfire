@@ -43,7 +43,7 @@ mod vision;
 
 pub use crate::abilities::Abilities;
 pub use crate::actions::Actions;
-pub use crate::actions::action_data::{ActionData, RangeField, Targeting, Toggle};
+pub use crate::actions::action_data::{ActionData, Toggle};
 pub use crate::actions::action_data_field::ActionDataField;
 pub use crate::actions::action_kind::ActionKind;
 pub use crate::actions::action_range::ActionRange;
@@ -56,7 +56,9 @@ pub use crate::actions::effect_data::{
 };
 pub use crate::actions::error::ActionField;
 pub use crate::actions::kind_data::KindData;
+pub use crate::actions::range_field::RangeField;
 pub use crate::actions::slot_kind::SlotKind;
+pub use crate::actions::targeting::Targeting;
 pub use crate::areas::Areas;
 pub use crate::areas::area::Area;
 pub use crate::books::book_input::{BookInput, BookKind, BookPackage};

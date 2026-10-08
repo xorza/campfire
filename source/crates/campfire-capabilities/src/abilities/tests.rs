@@ -9,12 +9,10 @@ use campfire_sim::{Capability, EntityIndex, SimRng, StateCopy, TickInput, TickIn
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_data::{
-    ActionData, ChannelData, ChargeData, ChargesData, RangeField, Targeting, Toggle,
-};
+use crate::actions::action_call::Started;
+use crate::actions::action_data::{ActionData, ChannelData, ChargeData, ChargesData, Toggle};
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_range::ActionRange;
-use crate::actions::action_slots::{SlotAim, Started};
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{
@@ -23,7 +21,11 @@ use crate::actions::effect_data::{
 };
 use crate::actions::error::ActionField;
 use crate::actions::kind_data::KindData;
-use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
+use crate::actions::range_field::RangeField;
+use crate::actions::slot_aim::SlotAim;
+use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
+use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::targeting::Targeting;
 use crate::areas::Areas;
 use crate::areas::area::Area;
 use crate::areas::area_data::{AreaData, AreaInside};

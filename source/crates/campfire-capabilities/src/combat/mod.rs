@@ -11,11 +11,14 @@ use campfire_sim::{
 };
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_slots::{ActionSlots, InProgress, SlotAim};
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_queues::EffectQueues;
-use crate::actions::purse::{Payer, Purse};
+use crate::actions::in_progress::InProgress;
+use crate::actions::payer::Payer;
+use crate::actions::purse::Purse;
 use crate::actions::rank_values::RankValues;
+use crate::actions::slot_aim::SlotAim;
 use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};

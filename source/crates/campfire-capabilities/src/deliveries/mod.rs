@@ -9,7 +9,8 @@ use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::effect_lists::{EffectLists, ListsOf};
+use crate::actions::effect_lists::EffectLists;
+use crate::actions::lists_of::ListsOf;
 use crate::combat::CombatSet;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::deliverers::Deliverers;

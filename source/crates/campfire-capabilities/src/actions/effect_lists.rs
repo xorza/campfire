@@ -4,30 +4,28 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::TickRate;
-use serde::{Deserialize, Serialize};
 
 use crate::actions::action_data::ActionData;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::actions_effect::ActionsEffect;
+use crate::actions::amount::Amount;
 use crate::actions::capability_does::CapabilityDoes;
+use crate::actions::does::Does;
 use crate::actions::effect_data::{
     DamageFields, EffectData, EffectTo, Effecting, HealFields, LaunchFields, ModifierFields,
     MoveData, PurgeFields, RestoreFields, SpawnFields, XpFields,
 };
 use crate::actions::effect_names::EffectNames;
 use crate::actions::effect_queues::EffectQueues;
+use crate::actions::launch_id::LaunchId;
+use crate::actions::lists_of::ListsOf;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
-use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_effect::StatsEffect;
 use crate::units::action_id::ActionId;
-use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
 use crate::units::spawner::SpawnAt;
-use crate::units::tag::Tag;
-use crate::units::unit_type::UnitType;
-use crate::values::number::Number;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, by
 /// action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`, and by launch id
@@ -40,51 +38,11 @@ pub(crate) struct EffectLists {
     launches: Vec<[Range<u32>; 2]>,
 }
 
-/// A launch of an effect list, by its place among the match's launches, whose own lists its area
-/// runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub(crate) struct LaunchId(u32);
-
-/// Whose lists a call runs: an action's, or those a launch holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ListsOf {
-    Action(ActionId),
-    Launch(LaunchId),
-}
-
 /// An effect of a list: what it does, and to whom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Listed {
     pub(crate) does: Does,
     pub(crate) to: EffectTo,
-}
-
-/// What a listed effect does, its names resolved: an effect the action pipeline queues itself,
-/// as `stats` and the core are below it, or one a capability above it queues.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Does {
-    Modifier {
-        id: ModifierId,
-        duration_ms: Option<Amount>,
-    },
-    Purge {
-        tag: Tag,
-    },
-    /// A unit of the mode's type `unit_type`, despawning `duration_ms` after it spawns when given.
-    Spawn {
-        unit_type: UnitType,
-        duration_ms: Option<Amount>,
-    },
-    Capability(CapabilityDoes),
-}
-
-/// A number of a listed effect: a value, or the param at its place among its action's, which the
-/// frame holds at the call's rank.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Amount {
-    Value(Num),
-    Param(usize),
 }
 
 impl EffectLists {
@@ -318,32 +276,6 @@ impl EffectLists {
     }
 }
 
-impl Amount {
-    /// `number`, its param resolved by `names`, which the load checked a sim number.
-    fn of(number: &Number, names: &impl EffectNames) -> Amount {
-        match number {
-            Number::Value(value) => Amount::Value(
-                value
-                    .to_num()
-                    .expect("the load checked each number of an effect list"),
-            ),
-            Number::Param(reference) => Amount::Param(names.param(&reference.param)),
-        }
-    }
-
-    /// Its value in `frame`, a call of its action: 0 for a scaling param below zero, which its
-    /// source's stats can make it, as the load checks every other number not negative.
-    pub(crate) fn number(self, frame: &Frame) -> Num {
-        match self {
-            Amount::Value(value) => value,
-            Amount::Param(at) => StatsCall::ability_value(frame, at)
-                .to_num()
-                .expect("the load checked that an effect's param is a number")
-                .max(Num::ZERO),
-        }
-    }
-}
-
 /// A position in the buffer, which a match's data keeps within `u32`.
 fn position(len: usize) -> u32 {
     u32::try_from(len).expect("a match's effects fit u32")
@@ -352,8 +284,9 @@ fn position(len: usize) -> u32 {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::actions::action_data::ActionData;
-    use crate::actions::effect_lists::{EffectLists, LaunchId};
+    use crate::actions::effect_lists::EffectLists;
     use crate::actions::effect_names::EffectNames;
+    use crate::actions::launch_id::LaunchId;
     use crate::progression::progression_column::ProgressionColumn;
     use crate::stats::Stats;
     use crate::stats::param_book::ParamBook;

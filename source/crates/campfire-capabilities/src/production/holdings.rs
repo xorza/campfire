@@ -1,15 +1,8 @@
 use campfire_common::PlayerSlot;
 
+use crate::production::held::Held;
 use crate::production::requirements::Required;
 use crate::stats::player_modifiers::PlayerModifiers;
-use crate::units::unit_type::UnitType;
-
-/// A living, complete unit a player owns, by its type, for a requirement to find.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Held {
-    pub(crate) owner: PlayerSlot,
-    pub(crate) unit_type: UnitType,
-}
 
 /// What the players hold as a tick's trains and builds start: their living, complete units, by
 /// type, each once, in order, and their modifiers.
@@ -38,15 +31,5 @@ impl Holdings<'_> {
                 .is_some_and(|held| held.holds(owner, modifier))
         });
         units && modifiers
-    }
-}
-
-impl Held {
-    /// Fills `held` with `units`, each once, in order.
-    pub(crate) fn collect(held: &mut Vec<Held>, units: impl IntoIterator<Item = Held>) {
-        held.clear();
-        held.extend(units);
-        held.sort_unstable();
-        held.dedup();
     }
 }

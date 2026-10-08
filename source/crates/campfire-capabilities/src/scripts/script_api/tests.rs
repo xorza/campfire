@@ -12,7 +12,7 @@ use crate::actions::action_data::ActionData;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::requires_data::RequiresData;
-use crate::actions::slot_kinds::SlotKindData;
+use crate::actions::slot_kind_data::SlotKindData;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::CapabilitySet;
 use crate::combat::combat_data::CombatData;

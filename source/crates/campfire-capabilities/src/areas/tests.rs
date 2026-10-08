@@ -3,7 +3,7 @@ use campfire_sim::SimComponent;
 use serde::Serialize;
 
 use crate::actions::action_book;
-use crate::actions::effect_lists::LaunchId;
+use crate::actions::launch_id::LaunchId;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
 use crate::stats::Stats;

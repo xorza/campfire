@@ -7,7 +7,8 @@ use campfire_sim::{EntityIndex, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::effect_lists::{EffectLists, ListsOf};
+use crate::actions::effect_lists::EffectLists;
+use crate::actions::lists_of::ListsOf;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_event::{CombatEvent, CombatEvents};

@@ -16,11 +16,8 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 The coding guide says one major struct per file, with the same name.
 
-- [ ] `actions/action_slots.rs`: `InProgress` (with a 70-line impl), `OrderPhase`, `Started`, `ChannelStep`, `ChannelCall`, `ActionCall` and `SlotAim` are beside `ActionSlots`. Target: `in_progress.rs` (with the order, charge and channel satellites), `slot_aim.rs` and `channel_call.rs`. `ActionSlot` and `SlotCharges` stay.
-- [ ] `actions/action_book.rs` (`Checked`, about 100 lines of geometry) → `checked.rs`. `actions/purse.rs` (`Payer`) → its own file, or merged as in group 2. `actions/effect_lists.rs` (`Does`, `Amount`, `LaunchId`, `ListsOf`, each with its impl) → own files. `actions/action_data.rs` (`Targeting` with its own `Deserialize`, `RankFields`, `RankChannel`, `RankToggle`, `RankCharges`, `TogglePer`, `RangeField`) → own files. `actions/slot_kinds.rs` (`SlotKindData`, `SlotRanks` with its own `Deserialize`) → own file.
 - [ ] `production/gather_loop.rs` (769 lines): `GatherLoop`, `GatherView`, `Step`, `Gather`, `Place`, `FoundNode`, `HeldNode` and `Checked`. `GatherView` has a second `impl` at `:701`. Target: `gather_loop/` with the view, the step and the systems in their own files.
 - [ ] `production/construction.rs` (636 lines): `Construction`, `BuildView`, `BuildingAt`, `Step`, `Start`, `Building` and `Placed`. Target: `construction/`, split the same way.
-- [ ] `production/holdings.rs`: `Held` and `Holdings`. Target: one file each.
 - [ ] `scripts/script_api/mod.rs` (479 lines): `ScriptApi`, `ApiMember`, `MemberKind`, `HookStatus`, `TagPropertyStatus` and `DataField`, and the 130-line Markdown writer `write_reference` (`:196-326`) in the registry. Target: one file per type, and the writer in its own module.
 - [ ] `combat/mod.rs`: `Wielded` (with logic in `strikes`), `GoingOff` and `IntervalDue`. Target: `wielded.rs`, `going_off.rs`, `interval_due.rs` (see group 10 for the systems).
 - [ ] `units/body.rs:23-31,105-160` (`BodyForm`, `Form`), `values/metric.rs:109` (`Approach`), `units/spawner.rs:14-22` (`SpawnAt`), `units/script_view.rs:106` (`View`, beside `ScriptView` and `CoreSource`). Target: `body_form.rs`, `approach.rs`, `spawn_at.rs`, `view.rs`.
