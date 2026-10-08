@@ -140,7 +140,7 @@ impl EffectLists {
                 duration_ms,
             }) => {
                 return Does::Spawn {
-                    unit_type: names.standing_type(unit_type),
+                    unit_type: names.package_type(unit_type),
                     duration_ms: duration_ms.as_ref().map(amount),
                 };
             }
@@ -177,7 +177,7 @@ impl EffectLists {
                 let launch = LaunchId(position(self.launches.len()));
                 self.launches.push(lists);
                 CapabilityDoes::Launch {
-                    area: names.delivery_type(area),
+                    area: names.package_type(area),
                     launch,
                 }
             }
@@ -441,20 +441,12 @@ pub(crate) mod internals {
                 .expect("the load checked an effect's tag")
         }
 
-        fn delivery_type(&self, name: &DeclaredName) -> UnitType {
+        fn package_type(&self, name: &DeclaredName) -> UnitType {
             let scope = TypeScope::of_package(self.package);
             self.view
                 .types_mut()
                 .named(scope, name.as_str())
-                .expect("the load checked a launch's area type")
-        }
-
-        fn standing_type(&self, name: &DeclaredName) -> UnitType {
-            let scope = TypeScope::of_package(self.package);
-            self.view
-                .types_mut()
-                .named(scope, name.as_str())
-                .expect("the load checked a spawn's unit type")
+                .expect("the load checked an effect's unit type")
         }
     }
 }

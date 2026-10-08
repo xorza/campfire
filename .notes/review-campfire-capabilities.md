@@ -12,13 +12,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 - [ ] `combat/mod.rs` (8 free-function systems, `Wielded`, `GoingOff`, `IntervalDue`, the `RowParts` and `Attacker` aliases, about 620 lines) and `stats/mod.rs:263-302` (`expire_modifiers`, `clear_dead_modifiers`, `fill_row`), while `DamagePass`, `Refresh` and `HeldPass` are unit-struct namespaces in their own files. Two conventions for one job. Target: one type per system, in its own file. `mod.rs` keeps `install`, the sets and the module list. **Decided: crate-wide. Every capability's systems move into unit-struct files by concern, and each `fill_row` becomes a method of its column type; done after the other items, one capability per commit.**
 
-## 14. `BookBuilder` functions do too much
-
-- [ ] `books/book_builder.rs:516-619` (`unit_type`, about 100 lines): AI, kit, production, walker, slot list and passive in one body that borrows `self.books` four times. Target: one method per part.
-- [ ] `books/book_builder.rs:374-467` (`action`, about 95 lines): builds `BuildNames` twice with the same fields except `action` (`:382`, `:454`), and inlines the construct, requirement and params steps. Target: a `BuildNames` constructor that takes the action, and one method per step.
-- [ ] `books/book_builder.rs:727-766`: `ActionNames` and `EffectNames` are both implemented for `BuildNames` with the same bodies for `damage_kind` and `modifier`/`unit_type`. `delivery_type` is the same as `standing_type` (`:759-765`). Target: one resolver each, or merge the traits.
-- [ ] `books/book_input.rs:38-44`: `BookInput::damage_kind` looks up a name in `combat.damage_kinds`, which is a combat-rules lookup. Target: a `CombatRules` method beside `life_pool`.
-
 ## 15. A file holds several major types
 
 The coding guide says one major struct per file, with the same name.
