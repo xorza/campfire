@@ -131,7 +131,7 @@ impl CombatColumn {
                 // A strike later than the view's tick, as a rollback can leave, is not recent.
                 .filter(|attack| now.since(attack.tick).is_some_and(|age| age <= window))
                 .filter_map(|attack| view.unit(attack.source))
-                .filter(|attacker| attacker.row().alive)
+                .filter(|attacker| attacker.read(|row| row.alive))
                 .map(Dynamic::from)
                 .collect()
         });

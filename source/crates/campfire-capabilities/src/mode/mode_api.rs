@@ -729,8 +729,7 @@ impl ModeApi {
     /// Brings back `unit`, which is dead and stays when dead, `ms` after this call, in ticks
     /// rounded up, at least one.
     fn respawn(ctx: &Ctx, unit: &Unit, ms: INT) -> Checked<()> {
-        let row = unit.row();
-        if row.alive {
+        if unit.read(|row| row.alive) {
             return Err(ApiError::RespawnAlive.fail().into());
         }
         if !CombatColumn::stays(unit) {
@@ -738,7 +737,7 @@ impl ModeApi {
         }
         let ticks = ctx.view().ticks(ms)?;
         ctx.queue(ModeEffect::Respawn {
-            unit: row.id,
+            unit: unit.id,
             ticks,
         })
     }
@@ -746,13 +745,15 @@ impl ModeApi {
     /// Queues a rank more of the ability in `slot` of `unit`: one that has a rank above its
     /// rank, counting the ranks this call queued already.
     fn learn(ctx: &Ctx, unit: &Unit, slot: INT) -> Checked<()> {
-        let row = unit.row();
         let slot = u8::try_from(slot)
             .ok()
             .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
         let slot_row = ActionsColumn::slot(ctx.view(), unit.row_index(), slot)
             .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
-        let effect = ModeEffect::Learn { unit: row.id, slot };
+        let effect = ModeEffect::Learn {
+            unit: unit.id,
+            slot,
+        };
         let mut frame = ctx.write()?;
         let queued = frame
             .effects

@@ -623,10 +623,10 @@ impl View {
         self.0.borrow().types.named(TypeScope::Mode, name)
     }
 
-    /// The name of the unit type of `row`, `()` for a unit of no type.
-    pub(crate) fn unit_type_name(&self, row: &UnitRow) -> Dynamic {
+    /// The name of `unit_type`, `()` for a unit of no type.
+    pub(crate) fn unit_type_name(&self, unit_type: Option<UnitType>) -> Dynamic {
         let view = self.0.borrow();
-        row.unit_type.map_or(Dynamic::UNIT, |unit_type| {
+        unit_type.map_or(Dynamic::UNIT, |unit_type| {
             Dynamic::from(view.consts.unit_type(unit_type))
         })
     }
@@ -666,9 +666,9 @@ impl View {
         self.0.borrow().row(id)
     }
 
-    /// The row at `at` among the rows, as a handle names it.
-    pub(crate) fn row_at(&self, at: usize) -> UnitRow {
-        self.0.borrow().units[at]
+    /// What `read` reads of the row at `at` among the rows, as a handle names it, in place.
+    pub(crate) fn read_row<R>(&self, at: usize, read: impl FnOnce(&UnitRow) -> R) -> R {
+        read(&self.0.borrow().units[at])
     }
 
     /// Calls `visit` with each row the view read, and its place, in order of stable id.
@@ -697,10 +697,10 @@ impl View {
         })
     }
 
-    /// The param `name` of the unit type of `row`.
-    pub(crate) fn param_named(&self, row: &UnitRow, name: &str) -> Option<Dynamic> {
+    /// The param `name` of `unit_type`.
+    pub(crate) fn param_named(&self, unit_type: UnitType, name: &str) -> Option<Dynamic> {
         let view = self.0.borrow();
-        let value = view.types.param_named(row.unit_type?, name)?;
+        let value = view.types.param_named(unit_type, name)?;
         Some(value.to_dynamic())
     }
 
@@ -720,7 +720,7 @@ impl View {
         }
         self.0.borrow_mut().index_bodies();
         let view = self.0.borrow();
-        let of = of.row().team;
+        let of = view.units[of.row_index()].team;
         let filter = Filter::parse(filter, &view.types).map_err(ApiError::fail)?;
         let mut found = view.found.borrow_mut();
         found.clear();
@@ -755,7 +755,7 @@ impl View {
         }
         self.0.borrow_mut().index_bodies();
         let view = self.0.borrow();
-        let of = of.row();
+        let of = &view.units[of.row_index()];
         let filter = Filter::parse(filter, &view.types).map_err(ApiError::fail)?;
         let reach = of.shape.bound().checked_add(radius).unwrap_or(Num::MAX);
         let mut nearest = None;

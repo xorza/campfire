@@ -40,9 +40,10 @@ impl Unit {
         self.row
     }
 
-    /// The unit's row. A handle comes only from its view's rows, and lives only within a call.
-    pub(crate) fn row(&self) -> UnitRow {
-        self.view.row_at(self.row)
+    /// What `read` reads of the unit's row, in place. A handle comes only from its view's rows,
+    /// and lives only within a call.
+    pub(crate) fn read<R>(&self, read: impl FnOnce(&UnitRow) -> R) -> R {
+        self.view.read_row(self.row, read)
     }
 
     /// The `Unit` handle's fields and methods.
@@ -55,24 +56,24 @@ impl Unit {
         let field = |name, description| MemberSpec::field(ApiOwner::Unit, name, description);
         api.ty::<Unit>("Unit")
             .bind(field("pos", "where it stands"), |unit: &mut Unit| {
-                unit.row().pos
+                unit.read(|row| row.pos)
             })
             .bind(
                 field(
                     "radius",
                     "its body's radius, 0 with no body, `()` for a box",
                 ),
-                |unit: &mut Unit| match unit.row().shape {
+                |unit: &mut Unit| match unit.read(|row| row.shape) {
                     Shape::Circle(radius) => Dynamic::from(radius),
                     Shape::Box(_) => Dynamic::UNIT,
                 },
             )
             .bind(field("alive", "whether it lives"), |unit: &mut Unit| {
-                unit.row().alive
+                unit.read(|row| row.alive)
             })
             .bind(
                 field("is_avatar", "whether it is an avatar"),
-                |unit: &mut Unit| unit.row().is_avatar(),
+                |unit: &mut Unit| unit.read(UnitRow::is_avatar),
             )
             .bind(
                 field("params", "its unit type's params, unresolved"),
@@ -83,19 +84,21 @@ impl Unit {
                     "state",
                     "its script state, by name, which a call may write and read back",
                 ),
-                |unit: &mut Unit| UnitStateAccess::of_row(unit.id, unit.row().unit_type, unit.row),
+                |unit: &mut Unit| {
+                    UnitStateAccess::of_row(unit.id, unit.read(|row| row.unit_type), unit.row)
+                },
             )
             .bind(field("team", "its team's name"), |unit: &mut Unit| {
-                unit.view.team_name(unit.row().team)
+                unit.view.team_name(unit.read(|row| row.team))
             })
             .bind(
                 field("unit_type", "its unit type's name"),
-                |unit: &mut Unit| unit.view.unit_type_name(&unit.row()),
+                |unit: &mut Unit| unit.view.unit_type_name(unit.read(|row| row.unit_type)),
             )
             .bind(
                 field("owner", "its player's slot, `()` with none"),
                 |unit: &mut Unit| {
-                    unit.row().owner.map_or(Dynamic::UNIT, |slot| {
+                    unit.read(|row| row.owner).map_or(Dynamic::UNIT, |slot| {
                         Dynamic::from_int(INT::from(slot.get()))
                     })
                 },
@@ -105,7 +108,10 @@ impl Unit {
                     "spawn_pos",
                     "where it spawned, where it respawns; `()` with none",
                 ),
-                |unit: &mut Unit| unit.row().spawn.map_or(Dynamic::UNIT, Dynamic::from),
+                |unit: &mut Unit| {
+                    unit.read(|row| row.spawn)
+                        .map_or(Dynamic::UNIT, Dynamic::from)
+                },
             );
         api.ty::<UnitParams>("UnitParams")
             .index(|params: &mut UnitParams, name: &str| params.get(name));
@@ -125,7 +131,7 @@ impl Unit {
             .name(0, NameKind::Tag),
             |unit: Unit, name: &str| -> Checked<bool> {
                 let tag = unit.view.tag_named(name).map_err(ApiError::fail)?;
-                Ok(unit.row().tags.tags.contains(tag))
+                Ok(unit.read(|row| row.tags.tags.contains(tag)))
             },
         )
         .bind(
@@ -135,7 +141,8 @@ impl Unit {
                 "whether its team may attack the other's, hostile or neutral",
             ),
             |unit: Unit, other: Unit| {
-                let attitude = unit.view.attitude(unit.row().team, other.row().team);
+                let teams = [&unit, &other].map(|unit| unit.read(|row| row.team));
+                let attitude = unit.view.attitude(teams[0], teams[1]);
                 attitude.may_attack()
             },
         )
@@ -154,8 +161,8 @@ impl UnitParams {
     /// The param `name`; one the unit's type does not declare fails the call.
     fn get(&self, name: &str) -> Checked<Dynamic> {
         let unit = &self.0;
-        unit.view
-            .param_named(&unit.row(), name)
+        unit.read(|row| row.unit_type)
+            .and_then(|unit_type| unit.view.param_named(unit_type, name))
             .ok_or_else(|| ApiError::UnknownParam.fail().into())
     }
 }

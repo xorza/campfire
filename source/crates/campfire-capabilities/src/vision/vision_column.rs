@@ -52,7 +52,7 @@ impl VisionColumn {
 
     /// `unit.can_see(other)`: whether `unit`'s team sees `other`.
     pub(crate) fn can_see(unit: &Unit, other: &Unit) -> bool {
-        let team = unit.row().team;
+        let team = unit.read(|row| row.team);
         let seen = unit
             .view()
             .column(|column: &VisionColumn| column.rows.now()[other.row_index()].contains(team));
@@ -61,7 +61,7 @@ impl VisionColumn {
 
     /// `ctx.find_visible`: `ctx.find`, of the units `of`'s team sees.
     pub(crate) fn find(of: &Unit, pos: Position, radius: Num, filter: &str) -> Checked<Array> {
-        let team = of.row().team;
+        let team = of.read(|row| row.team);
         of.view().find(of, pos, radius, filter, |columns, row| {
             VisionColumn::sees(columns, row, team)
         })
@@ -70,7 +70,7 @@ impl VisionColumn {
     /// `ctx.nearest_visible`: the nearest living target `radius` from the edge of `of`'s body
     /// reaches that `filter` selects and `of`'s team sees.
     pub(crate) fn nearest(of: &Unit, radius: Num, filter: &str) -> Checked<Dynamic> {
-        let team = of.row().team;
+        let team = of.read(|row| row.team);
         of.view().nearest(of, radius, filter, |columns, row| {
             VisionColumn::sees(columns, row, team)
         })
