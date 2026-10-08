@@ -167,13 +167,13 @@ impl ModifierHandle {
                 |m: &mut ModifierHandle| ModifierState(m.clone()),
             );
         api.ty::<ModifierState>("ModifierState")
-            .index(|state: &mut ModifierState, name: &str| {
+            .index(|_, state: &mut ModifierState, name: &str| {
                 let data = state.0.data();
                 let at = data.field_named(name)?;
                 Ok(data.state[at].to_dynamic(&data.view))
             })
             .index_set(
-                |state: &mut ModifierState, name: &str, value: Dynamic| -> Checked<()> {
+                |_, state: &mut ModifierState, name: &str, value: Dynamic| -> Checked<()> {
                     let mut data = state.0.data();
                     let at = data.field_named(name)?;
                     let value = StateValue::from_dynamic(data.fields[at].kind, &value)

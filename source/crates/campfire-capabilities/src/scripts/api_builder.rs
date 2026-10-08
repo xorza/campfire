@@ -186,26 +186,8 @@ impl<'a> ApiBuilder<'a> {
 
     /// Binds `get` as the indexer of `T`, through which scripts read names the data declares, as
     /// `ctx.p.<name>`, and as the getter of each such name scripts use: the load check reads those
-    /// names against the data.
+    /// names against the data. `get` has the running call's context, for a `T` that reads it.
     pub(crate) fn index<T: Variant + Clone>(
-        &mut self,
-        get: fn(&mut T, &str) -> Checked<Dynamic>,
-    ) -> &mut Self {
-        self.host.engine_mut().register_fn(
-            INDEX_GETTER,
-            move |target: &mut T, name: ImmutableString| get(target, &name),
-        );
-        self.host.forward_properties(move |engine, name| {
-            let property = ImmutableString::from(name);
-            engine.register_fn(format!("{GETTER}{name}"), move |target: &mut T| {
-                get(target, &property)
-            });
-        });
-        self
-    }
-
-    /// Binds `get` as `index` does, for a `T` that reads the running call's context.
-    pub(crate) fn index_in_call<T: Variant + Clone>(
         &mut self,
         get: fn(NativeCallContext<'_>, &mut T, &str) -> Checked<Dynamic>,
     ) -> &mut Self {
@@ -226,27 +208,9 @@ impl<'a> ApiBuilder<'a> {
     }
 
     /// Binds `set` as the indexer of `T` that writes, as `ctx.state.<name> = value`, and as the
-    /// setter of each such name scripts use.
+    /// setter of each such name scripts use. `set` has the running call's context, as `index`'s
+    /// getter does.
     pub(crate) fn index_set<T: Variant + Clone>(
-        &mut self,
-        set: fn(&mut T, &str, Dynamic) -> Checked<()>,
-    ) -> &mut Self {
-        self.host.engine_mut().register_fn(
-            INDEX_SETTER,
-            move |target: &mut T, name: ImmutableString, value: Dynamic| set(target, &name, value),
-        );
-        self.host.forward_properties(move |engine, name| {
-            let property = ImmutableString::from(name);
-            engine.register_fn(
-                format!("{SETTER}{name}"),
-                move |target: &mut T, value: Dynamic| set(target, &property, value),
-            );
-        });
-        self
-    }
-
-    /// Binds `set` as `index_set` does, for a `T` that reads the running call's context.
-    pub(crate) fn index_set_in_call<T: Variant + Clone>(
         &mut self,
         set: fn(NativeCallContext<'_>, &mut T, &str, Dynamic) -> Checked<()>,
     ) -> &mut Self {

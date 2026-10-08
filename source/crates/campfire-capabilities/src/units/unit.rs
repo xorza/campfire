@@ -114,7 +114,7 @@ impl Unit {
                 },
             );
         api.ty::<UnitParams>("UnitParams")
-            .index(|params: &mut UnitParams, name: &str| params.get(name));
+            .index(|_, params: &mut UnitParams, name: &str| params.get(name));
         UnitStateAccess::register(api);
     }
 

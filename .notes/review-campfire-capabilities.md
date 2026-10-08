@@ -11,7 +11,6 @@ Fix the root cause of a group, not its items one by one. Most groups give the st
 The same steps to begin a frame, call a hook within the budget, apply on success and record on failure are written in each system. Also, each capability applies its effects in a different shape. Target: one `ScriptBatch` (or `Calls`) method that runs a hook and does all of those steps, and one shape for `Effect::apply`.
 
 - [ ] `combat/mod.rs` (8 free-function systems, `Wielded`, `GoingOff`, `IntervalDue`, the `RowParts` and `Attacker` aliases, about 620 lines) and `stats/mod.rs:263-302` (`expire_modifiers`, `clear_dead_modifiers`, `fill_row`), while `DamagePass`, `Refresh` and `HeldPass` are unit-struct namespaces in their own files. Two conventions for one job. Target: one type per system, in its own file. `mod.rs` keeps `install`, the sets and the module list. **Skipped: see Q1 in `review-campfire-capabilities_QUESTIONS.md`.**
-- [ ] `scripts/api_builder.rs:153-232`: `index`, `index_in_call`, `index_set` and `index_set_in_call` repeat the same register-then-`forward_properties` body. Only the closure's `NativeCallContext` parameter is different. Target: one shared body.
 - [ ] `mode/mode_api.rs:220,278,343`: the `mode` closure (`MemberSpec::call(..).roles(RoleSet::MODE)`) is defined three times. Target: one helper.
 - [ ] `mode/mode_api.rs:493-498,501-575`: `ModeApi::choice(ctx, name)` fetches the `ModeBook` again, but `choose`, `chosen`, `offers` and `available` already hold it. Target: `choice(book, name)`, as `team(book, name)` does.
 

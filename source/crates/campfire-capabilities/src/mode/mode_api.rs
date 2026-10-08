@@ -204,8 +204,8 @@ impl ModeApi {
                 |ctx: &mut Ctx, tag: &str| ctx.view().units_tagged(tag),
             );
         api.ty::<StateAccess>("ModeState")
-            .index(|state: &mut StateAccess, name: &str| ModeApi::state(&state.0, name))
-            .index_set(|state: &mut StateAccess, name: &str, value: Dynamic| {
+            .index(|_, state: &mut StateAccess, name: &str| ModeApi::state(&state.0, name))
+            .index_set(|_, state: &mut StateAccess, name: &str, value: Dynamic| {
                 ModeApi::set_state(&state.0, name, &value)
             });
     }

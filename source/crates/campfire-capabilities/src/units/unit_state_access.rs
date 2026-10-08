@@ -47,10 +47,8 @@ impl UnitStateAccess {
     /// Indexes `UnitState` by field name, to read and to write.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         api.ty::<UnitStateAccess>("UnitState")
-            .index_in_call(|call, state: &mut UnitStateAccess, name| {
-                state.get(&Ctx::of_call(&call), name)
-            })
-            .index_set_in_call(|call, state: &mut UnitStateAccess, name, value| {
+            .index(|call, state: &mut UnitStateAccess, name| state.get(&Ctx::of_call(&call), name))
+            .index_set(|call, state: &mut UnitStateAccess, name, value| {
                 state.set(&Ctx::of_call(&call), name, &value)
             });
     }

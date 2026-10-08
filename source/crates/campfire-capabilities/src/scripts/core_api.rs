@@ -57,7 +57,7 @@ impl CoreApi {
             Status::Runs(ApiVersion::FIRST),
         );
         api.ty::<Params>("Params")
-            .index(|params: &mut Params, name: &str| params.get(name));
+            .index(|_, params: &mut Params, name: &str| params.get(name));
     }
 
     /// Draws whether a chance of `p` comes true, on the running call's sequence.
