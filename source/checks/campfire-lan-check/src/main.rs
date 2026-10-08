@@ -16,11 +16,12 @@
 //! Run it with `cargo run -p campfire-lan-check [-- <run root>]`. Each run's logs and session log
 //! go into a new directory below the run root, named for the run's start. `cargo run -p
 //! campfire-lan-check -- verify <run directory>` verifies the session log of a run, perhaps from
-//! another machine, with this machine's verifier, and compares the server's final hash.
+//! another machine, with this machine's verifier, and compares the server's final hash; with
+//! `--verifier <verifier>`, it runs that verifier and needs no cargo.
 
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{self, Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::SystemTime;
 
@@ -94,11 +95,11 @@ fn main() -> ExitCode {
                 return ExitCode::from(ExitStatus::Failure);
             }
         },
-        Mode::Verify { dir } => dir.clone(),
+        Mode::Verify { dir, .. } => dir.clone(),
     };
     let result = match mode {
         Mode::Play { .. } => play(&dir),
-        Mode::Verify { .. } => verify_run(&dir),
+        Mode::Verify { verifier, .. } => verify_run(&dir, verifier),
     };
     report(result, &dir)
 }
@@ -185,12 +186,12 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     verdict.orders(&published_inputs(dir, &server_again)?, &caught_up, &bots);
     let impostor = ProcessLog::read(Process::Impostor, &Process::Impostor.log_path(dir))?;
     verdict.impostor(played.impostor, &impostor.read_all::<LinkLost>()?);
-    verify(&binaries, dir, SessionKind::Lan, &mut verdict)?;
+    verify(&binaries.verifier, dir, SessionKind::Lan, &mut verdict)?;
 
     let local = lan.play_local()?;
     let log = ProcessLog::read(Process::Local, &Process::Local.log_path(dir))?;
     verdict.process(Process::Local, local, &log);
-    verify(&binaries, dir, SessionKind::Local, &mut verdict)?;
+    verify(&binaries.verifier, dir, SessionKind::Local, &mut verdict)?;
     Ok(verdict)
 }
 
@@ -236,13 +237,17 @@ fn host_data(dir: &Path, session: SessionKind) -> Result<ServerDir, CheckError> 
     ServerDir::open(&path).map_err(|error| refused(&path, error))
 }
 
-/// Verifies the session logs of the matches played in `dir` with this machine's verifier, and
-/// compares each host's final hash.
-fn verify_run(dir: &Path) -> Result<Verdict, CheckError> {
-    let binaries = build()?;
+/// Verifies the session logs of the matches played in `dir` with `verifier`, or the one cargo
+/// builds with the processes when none is given, and compares each host's final hash.
+fn verify_run(dir: &Path, verifier: Option<PathBuf>) -> Result<Verdict, CheckError> {
+    let verifier = match verifier {
+        // The verifier runs in the run's directory, where a relative path would name another file.
+        Some(verifier) => path::absolute(verifier).map_err(CheckError::WorkingDir)?,
+        None => build()?.verifier,
+    };
     let mut verdict = Verdict::default();
     for session in [SessionKind::Lan, SessionKind::Local] {
-        verify(&binaries, dir, session, &mut verdict)?;
+        verify(&verifier, dir, session, &mut verdict)?;
     }
     Ok(verdict)
 }
@@ -253,10 +258,10 @@ fn build() -> Result<Binaries, CheckError> {
     Binaries::build(&cargo)
 }
 
-/// Checks that the host of `session` wrote the session log into `dir`, and that this machine's
-/// verifier ends without failure or warning, at the host's final hash.
+/// Checks that the host of `session` wrote the session log into `dir`, and that the verifier
+/// `executable` ends without failure or warning, at the host's final hash.
 fn verify(
-    binaries: &Binaries,
+    executable: &Path,
     dir: &Path,
     session: SessionKind,
     verdict: &mut Verdict,
@@ -270,7 +275,7 @@ fn verify(
             // the run, in that system's syntax, which another may not read.
             let file = host_data(dir, session)?.published_log(written.session);
             let path = replayer.log_path(dir);
-            let status = Command::new(&binaries.verifier)
+            let status = Command::new(executable)
                 .arg(PackageDir::workspace(PACKAGES))
                 .arg(file)
                 .current_dir(dir)

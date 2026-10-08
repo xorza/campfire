@@ -1,11 +1,6 @@
 name: Set up the Rust build
 description: Installs the Linux packages the client links, the toolchain of rust-toolchain.toml, and the build cache.
 
-inputs:
-  save-cache:
-    description: Whether this job saves the build cache.
-    required: true
-
 runs:
   using: composite
   steps:
@@ -34,9 +29,8 @@ runs:
             rustup toolchain uninstall "$toolchain"
           fi
         done
-        rustup toolchain list
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         workspaces: source -> target
         shared-key: build
-        save-if: ${{ inputs.save-cache }}
+        save-if: ${{ github.ref == 'refs/heads/master' }}

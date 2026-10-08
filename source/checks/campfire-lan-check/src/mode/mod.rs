@@ -9,8 +9,12 @@ pub(crate) enum Mode {
     /// Play a LAN match and check it, logging into a new directory below `root`.
     Play { root: PathBuf },
     /// Verify the session log of a match played in `dir`, perhaps on another machine, with this
-    /// machine's verifier, and compare the server's final hash.
-    Verify { dir: PathBuf },
+    /// machine's verifier, and compare the server's final hash: `verifier` when it is given, or
+    /// the one the cargo that runs the check builds.
+    Verify {
+        dir: PathBuf,
+        verifier: Option<PathBuf>,
+    },
 }
 
 /// Plays a LAN match of the real server and clients and checks it, or verifies a run's session
@@ -37,15 +41,19 @@ enum Command {
     Verify {
         /// The run's directory
         dir: PathBuf,
+        /// The verifier to run, built beforehand, so that the check needs no cargo; by default,
+        /// cargo builds the workspace's
+        #[arg(long)]
+        verifier: Option<PathBuf>,
     },
 }
 
 impl Mode {
-    /// The mode the command line clap read as `line` names: `[<run root>]`, or `verify <run
-    /// directory>`.
+    /// The mode the command line clap read as `line` names: `[<run root>]`, or `verify
+    /// [--verifier <verifier>] <run directory>`.
     pub(crate) fn of(line: CommandLine) -> Mode {
         match line.command {
-            Some(Command::Verify { dir }) => Mode::Verify { dir },
+            Some(Command::Verify { dir, verifier }) => Mode::Verify { dir, verifier },
             None => Mode::Play {
                 root: line
                     .root
