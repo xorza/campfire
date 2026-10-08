@@ -144,6 +144,7 @@ pub use crate::stats::move_step::MoveStep;
 pub use crate::stats::pool_id::PoolId;
 pub use crate::stats::pools::Pools;
 pub use crate::stats::stat_graph::StatGraph;
+pub use crate::stats::stat_id::StatId;
 pub use crate::stats::stats_data::StatsData;
 pub use crate::units::Units;
 pub use crate::units::action_id::ActionId;

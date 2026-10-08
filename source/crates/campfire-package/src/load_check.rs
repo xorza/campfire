@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
+use campfire_capabilities::StatId;
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
@@ -79,13 +80,19 @@ struct ScriptUse<'a> {
 }
 
 impl<'a> LoadCheck<'a> {
-    pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<(), LoadError> {
+    /// Checks `packages` against the script API `api`; the order the stats refresh computes the
+    /// mode's stats in.
+    pub(crate) fn run(
+        packages: &'a ModePackages,
+        api: &'a ScriptApi,
+    ) -> Result<Vec<StatId>, LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
-        let mut tags = packages.tag_names();
-        if EngineTag::ALL.len() + tags.len() > UnitTypeData::TAG_LIMIT {
+        let names = packages.tag_names();
+        if EngineTag::ALL.len() + names.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
+        let mut tags: BTreeSet<&str> = names.iter().map(DeclaredName::as_str).collect();
         tags.extend(EngineTag::ALL.map(EngineTag::name));
         // A dependency's delivery types are in its own scope, so they share no name with
         // another package's; an avatar is in the mode's, by its package's name.
@@ -135,15 +142,15 @@ impl<'a> LoadCheck<'a> {
                 .dependent(view, dependent)
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
-        packages
+        let stat_order = packages
             .stat_graph()
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
-        let input = packages.book_input(check.rate);
+        let input = packages.book_input(check.rate, &stat_order);
         Books::build(&input).map_err(|error| check.book_error(error))?;
         // After the build, which resolved the map's names.
         check.map_walkable().map_err(fail)?;
-        Ok(())
+        Ok(stat_order)
     }
 
     /// The load error of what building the books refused, at the fastest rate the mode allows.

@@ -304,6 +304,15 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = ModePackages::from_package_dir(&edited([])).unwrap();
     assert_eq!(tags(&packages), 25);
+    // Each once, in order, as a match declares them: `ward` after `slowed`.
+    assert!(packages.tag_names().is_sorted_by(|a, b| a < b));
+    let at = |name: &str| {
+        packages
+            .tag_names()
+            .iter()
+            .position(|tag| tag.as_str() == name)
+    };
+    assert!(at("slowed").unwrap() < at("ward").unwrap());
     let [(path, layers)] = <[_; 1]>::try_from(layers(224)).unwrap();
     let edit = Edit::Set(&path, &layers);
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();

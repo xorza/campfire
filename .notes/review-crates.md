@@ -10,8 +10,7 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 ## A match build repeats the load's work [low]
 
-- [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing.
-- [ ] source/crates/campfire-package/src/mode_packages.rs:206-237 — `book_input` recomputes `tag_names()` and `stat_graph().order()` for each match, and the load computes them two times (load_check.rs:85, :139, :142). Target: compute them once in `assemble`, and keep them on `ModePackages`.
+- [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing. Blocked: see `review-crates_QUESTIONS.md`, "Sharing the parsed scripts needs Rhai's `sync` feature, or a cache that stays on one thread".
 
 ## Untrusted package files are read without bounds and held whole [medium]
 

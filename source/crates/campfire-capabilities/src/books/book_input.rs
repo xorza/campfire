@@ -25,14 +25,14 @@ pub struct BookInput<'a> {
     /// Whether the mode declares `progression`, whose tracks then load.
     pub progression: bool,
     /// Every tag the packages name but the engine's, in the order a match declares them.
-    pub tag_names: Vec<&'a str>,
+    pub tag_names: &'a [DeclaredName],
     /// The mode's package, then each dependency's.
     pub packages: Vec<BookPackage<'a>>,
     pub scripts: &'a ScriptBook,
     pub rate: TickRate,
     /// The places of the mode's stats in the order the stats refresh computes them, which the
     /// mode's stat graph gives.
-    pub stat_order: Vec<StatId>,
+    pub stat_order: &'a [StatId],
 }
 
 impl BookInput<'_> {
