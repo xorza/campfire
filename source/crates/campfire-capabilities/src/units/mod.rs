@@ -1,13 +1,11 @@
 use bevy_ecs::change_detection::CheckChangeTicks;
-use bevy_ecs::entity::Entity;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Commands, NonSend, NonSendMut, Query, Res, ResMut};
+use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StateRegistry, TickRate};
+use campfire_sim::{EntityIndex, Position, SimSet, StateRegistry, TickRate};
 
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
@@ -23,12 +21,12 @@ use crate::units::move_step::MoveStep;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
-use crate::units::row_fill::RowFill;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_state_book::UnitStateBook;
+use crate::units::unit_ticks::UnitTicks;
 use crate::units::unit_type::UnitType;
 use crate::units::units_call::UnitsCall;
 use crate::units::units_column::UnitsColumn;
@@ -88,6 +86,7 @@ pub(crate) mod unit_state;
 pub(crate) mod unit_state_access;
 pub(crate) mod unit_state_book;
 pub(crate) mod unit_tags;
+pub(crate) mod unit_ticks;
 pub(crate) mod unit_type;
 pub(crate) mod unit_type_data;
 pub(crate) mod unit_types;
@@ -139,7 +138,7 @@ impl Units {
         world.insert_resource(UnitStateBook::default());
         world.insert_resource(NewUnitStates::default());
         view.add_column(UnitsColumn::default());
-        view.add_source::<Option<&'static UnitState>, _>(world, fill_state);
+        view.add_source::<Option<&'static UnitState>, _>(world, UnitsColumn::fill_state);
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
         world.insert_resource(Metric::default());
@@ -164,10 +163,10 @@ impl Units {
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(budgets);
         schedule.add_systems((
-            begin_tick
+            UnitTicks::begin_tick
                 .in_set(SimSet::Inputs)
                 .in_set(UnitsSet::BeginTick),
-            end_lifespans.in_set(SimSet::Vision),
+            UnitTicks::end_lifespans.in_set(SimSet::Vision),
         ));
     }
 
@@ -186,39 +185,6 @@ impl Units {
     pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
         world.non_send_mut::<ScriptHost>().compile(source)
     }
-}
-
-fn begin_tick(
-    mut budgets: ResMut<'_, ScriptBudgets>,
-    mut failures: NonSendMut<'_, ScriptFailures>,
-    mut new_states: ResMut<'_, NewUnitStates>,
-) {
-    budgets.begin_tick();
-    failures.clear();
-    new_states.clear();
-}
-
-/// Despawns each unit whose timed life ends with this tick, at its end, as the dead despawn: it
-/// is seen and sees in this tick's Vision stage for the last time.
-fn end_lifespans(
-    tick: Res<'_, SimTick>,
-    units: Query<'_, '_, (Entity, &Lifespan)>,
-    mut commands: Commands<'_, '_>,
-) {
-    let now = tick.start();
-    for (entity, lifespan) in &units {
-        if lifespan.ends_after(now) {
-            commands.entity(entity).despawn();
-        }
-    }
-}
-
-/// Adds a unit's script state to the view's column of it.
-fn fill_state(
-    state: ROQueryItem<'_, '_, Option<&'static UnitState>>,
-    fill: &mut RowFill<'_, UnitsColumn>,
-) {
-    fill.column.push(state);
 }
 
 #[cfg(test)]

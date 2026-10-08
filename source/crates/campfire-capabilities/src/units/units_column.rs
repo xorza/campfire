@@ -1,11 +1,13 @@
 use std::ops::Range;
 
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
+use crate::units::row_fill::RowFill;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_state_book::{StateField, UnitStateBook};
 use crate::units::unit_type::UnitType;
@@ -128,6 +130,14 @@ impl UnitsColumn {
             let start = rows.rows[row].start as usize;
             rows.values[start + at] = value;
         });
+    }
+
+    /// Adds a unit's script state to the view's column of it.
+    pub(super) fn fill_state(
+        state: ROQueryItem<'_, '_, Option<&'static UnitState>>,
+        fill: &mut RowFill<'_, UnitsColumn>,
+    ) {
+        fill.column.push(state);
     }
 }
 
