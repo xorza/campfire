@@ -639,7 +639,7 @@ fn stats_out_of_their_limits_are_refused() {
     // A snapshot's values pass the same limits, and carry less than a bit, at 30 ticks a second
     // fewer than 30 parts, between its ends alone.
     let carrying = |current: i64, max: i64, carry: u32| {
-        let mut meters = [None; Pools::LIMIT];
+        let mut meters = [None; PoolId::LIMIT];
         meters[0] = Some((Num::int(current), Num::int(max), carry));
         let bytes = postcard::to_allocvec(&meters).unwrap();
         postcard::from_bytes::<Pools>(&bytes).ok()

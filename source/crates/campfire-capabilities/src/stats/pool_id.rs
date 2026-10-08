@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use crate::stats::pool_data::PoolData;
-use crate::stats::pools::Pools;
 use crate::values::declared_name::DeclaredName;
 
 /// A pool, by its place among the pools the mode declares, in the order of their names.
@@ -11,9 +10,12 @@ pub struct PoolId(u8);
 impl PoolId {
     pub const FIRST: PoolId = PoolId(0);
 
-    /// `None` past `Pools::LIMIT`.
+    /// The most pools a mode declares, and so a unit holds.
+    pub const LIMIT: usize = 8;
+
+    /// `None` past `PoolId::LIMIT`.
     pub const fn new(index: u8) -> Option<PoolId> {
-        if index as usize >= Pools::LIMIT {
+        if index as usize >= PoolId::LIMIT {
             return None;
         }
         Some(PoolId(index))

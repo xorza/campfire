@@ -14,16 +14,13 @@ use crate::stats::pool_id::PoolId;
 /// allocates nothing.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Pools([Option<Meter>; Pools::LIMIT]);
+pub struct Pools([Option<Meter>; PoolId::LIMIT]);
 
 impl Pools {
-    /// The most pools a mode declares.
-    pub const LIMIT: usize = 8;
-
     /// Full pools of each maximum in `maxes`, a pool named at most once; `None` unless every
     /// maximum is positive.
     pub fn new(maxes: impl IntoIterator<Item = (PoolId, Num)>) -> Option<Pools> {
-        let mut pools = Pools([None; Pools::LIMIT]);
+        let mut pools = Pools([None; PoolId::LIMIT]);
         for (pool, max) in maxes {
             debug_assert!(pools.0[pool.index()].is_none(), "a pool is named once");
             pools.0[pool.index()] = Some(Meter::new(max)?);

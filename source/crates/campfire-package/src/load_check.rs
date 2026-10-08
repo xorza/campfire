@@ -5,7 +5,7 @@ use campfire_capabilities::{
     ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books, CollisionData,
     CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting, EngineTag,
     EnumRecord, FilterData, Hook, ItemData, KindData, MemberKind, Metric, ModifierData,
-    ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
+    ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, PoolId,
     ProjectileHits, Range, RangeField, Rank, ResourceId, Scalar, ScriptApi, ScriptRole, Share,
     Stat, StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
@@ -1306,12 +1306,12 @@ impl<'a> LoadCheck<'a> {
         }
     }
 
-    /// The mode's pools and player resources: at most `Pools::LIMIT` pools and
+    /// The mode's pools and player resources: at most `PoolId::LIMIT` pools and
     /// `ResourceId::LIMIT` resources, no pool named as a resource, each pool with stats the mode
     /// declares; and with `combat`, a life pool among them.
     fn pools_and_resources(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
-        if data.pools.len() > Pools::LIMIT {
+        if data.pools.len() > PoolId::LIMIT {
             return Err(LoadProblem::TooMany(Limit::Pools));
         }
         if data.resources.len() > ResourceId::LIMIT {

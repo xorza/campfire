@@ -1,4 +1,4 @@
-use campfire_capabilities::{Pools, ResourceId, TrackId};
+use campfire_capabilities::{PoolId, ResourceId, TrackId};
 use thiserror::Error;
 
 /// What a mode declares more of than a match holds.
@@ -15,7 +15,7 @@ pub enum Limit {
     Tracks,
     #[error("more damage kinds than a match tells apart")]
     DamageKinds,
-    #[error("more than {} pools", Pools::LIMIT)]
+    #[error("more than {} pools", PoolId::LIMIT)]
     Pools,
     #[error("more than {} player resources", ResourceId::LIMIT)]
     Resources,
