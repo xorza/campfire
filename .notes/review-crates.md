@@ -14,7 +14,7 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 ## The JSON log file writes on the thread that logs [low]
 
-- [ ] source/crates/campfire-log/src/logging.rs:62 — the file layer writes through an unbuffered `Mutex<File>`, with one `write(2)` per event on the thread that logs, the server tick included. The design lets this file stay outside the workers (a Decide item). Target: a writer that store's `Worker` owns, fed by a bounded queue. `tracing-appender` would also do it, but it is a new dependency to propose.
+- [ ] source/crates/campfire-log/src/logging.rs:62 — the file layer writes through an unbuffered `Mutex<File>`, with one `write(2)` per event on the thread that logs, the server tick included. The design lets this file stay outside the workers (a Decide item). Target: a writer that store's `Worker` owns, fed by a bounded queue. `tracing-appender` would also do it, but it is a new dependency to propose. Blocked: see `review-crates_QUESTIONS.md`, "The JSON log file's writer: a worker of `store`, which the design does not let `log` use".
 
 ## Layout, visibility and guide rules [low]
 

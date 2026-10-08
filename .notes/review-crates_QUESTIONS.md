@@ -31,3 +31,20 @@
 | C. Leave it | Each match parses its scripts. | The verifier parses the whole mode once per checkpoint. |
 
 **Blocked:** this item only. The other item of its group (tag names and stat order once) is done.
+
+## The JSON log file's writer: a worker of `store`, which the design does not let `log` use
+
+**Item:** `source/crates/campfire-log/src/logging.rs:62`. The file layer writes through an unbuffered `Mutex<File>`, one `write(2)` per event, on the thread that logs, the server's tick thread included.
+
+**Why it is blocked:** the target is a writer that `store`'s `Worker` owns, fed by a bounded queue. The design says `log` depends on `common` alone (02-engine-core.md, Dependencies), and lists `log`'s JSON file among the allowed writers outside `store` (Storage, Enforced). So the fix changes the crate graph that the design fixes, which is your call.
+
+**Options:**
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| A. `log` depends on `store`; a `Worker` writes the lines (recommended) | Each event goes into a bounded queue of byte buffers, and a worker named `log` writes them. A full queue makes the logging thread wait, so no line is lost. The design's dependency line and the allowed-writers list change to match. | One more edge in the crate graph; `store` depends on no engine crate, so no cycle. A crash that aborts loses the lines still in the queue, at most its bound. |
+| B. A `BufWriter` in the `Mutex`, flushed at each Warn or Error and every N lines | No thread, no new edge. | Writes still run on the logging thread, fewer of them; a crash that aborts loses the unflushed Info lines. |
+| C. `tracing-appender`'s non-blocking writer | The established crate for this. | A new dependency, which you approve first; it drops lines when its queue is full unless set to block. |
+| D. Leave it | — | One syscall per event on the tick thread. |
+
+**Blocked:** this item only.
