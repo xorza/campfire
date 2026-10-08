@@ -84,13 +84,58 @@ impl Gatherer {
 impl SimComponent for Gatherer {
     const NAME: &'static str = "production.gatherer";
 
-    // A load of a resource the mode lacks would join no amount; a step's tick of any value is
+    // A load of a resource the mode lacks would join no amount, and one with no last node has no
+    // node to go back to; a loop's node is the last it chose. A step's tick of any value is
     // compared, not counted from.
     fn check(&self, world: &World, _: Entity) -> bool {
         let resources = world
             .get_resource::<PlayerResources>()
             .map_or(0, PlayerResources::resources);
-        self.load
-            .is_none_or(|load| load.resource.index() < resources)
+        let load = self
+            .load
+            .is_none_or(|load| load.resource.index() < resources && self.last.is_some());
+        let order = self.order.is_none_or(|order| self.last == Some(order.node));
+        load && order
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_math::{Num, Vec3};
+    use campfire_sim::IdAllocator;
+
+    use super::*;
+    use crate::values::declared_name::DeclaredName;
+
+    #[test]
+    fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
+        // A match of gold alone: wood, the second of two resources, is not its own.
+        let mut world = World::new();
+        world.insert_resource(PlayerResources::new(1, 1));
+        let entity = world.spawn_empty().id();
+        let names = ["gold", "wood"].map(|name| DeclaredName::new(name).unwrap());
+        let [gold, wood] = ["gold", "wood"].map(|name| ResourceId::named(&names, name).unwrap());
+        let mut ids = IdAllocator::default();
+        let [first, second] = [0, 1].map(|z| NodeAt {
+            node: ids.allocate(),
+            at: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::int(z))).unwrap(),
+        });
+        let load = |resource| Load {
+            resource,
+            amount: 5,
+        };
+        let order = |node| GatherOrder {
+            slot: 0,
+            node,
+            step: GatherStep::ToNode,
+        };
+        let checks = |order, load, last| Gatherer { order, load, last }.check(&world, entity);
+        assert!(checks(None, None, None));
+        assert!(checks(None, Some(load(gold)), Some(first)));
+        assert!(checks(Some(order(first)), None, Some(first)));
+        assert!(!checks(None, Some(load(wood)), Some(first)));
+        assert!(!checks(None, Some(load(gold)), None));
+        assert!(!checks(Some(order(first)), None, Some(second)));
+        assert!(!checks(Some(order(first)), None, None));
     }
 }

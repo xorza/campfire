@@ -266,11 +266,7 @@ impl GatherView<'_, '_> {
         route: Option<&Route>,
     ) -> Step {
         let to = Body::shape_of(place.body.as_ref()).nearest_point(place.at, from);
-        let Some(destination) = destination else {
-            return Step::Stop;
-        };
-        let short = route.is_some_and(|route| route.arrived_short_of(to));
-        if destination.get().is_none() && short {
+        if Destination::gives_up(destination, route, to) {
             Step::Stop
         } else {
             Step::Walk(to)
@@ -531,17 +527,10 @@ impl GatherLoop {
         let with = |step| Some(GatherOrder { step, ..order });
         match step {
             Step::Hold => {}
-            Step::Walk(to) => {
-                let mut destination = world
-                    .get_mut::<Destination>(entity)
-                    .expect("a worker walks");
-                if destination.get() != Some(to) {
-                    destination.set(Some(to));
-                }
-            }
-            Step::Stand => GatherLoop::stand(world, entity),
+            Step::Walk(to) => Destination::go(world, entity, Some(to)),
+            Step::Stand => Destination::go(world, entity, None),
             Step::Stop => {
-                GatherLoop::stand(world, entity);
+                Destination::go(world, entity, None);
                 set(world, None);
             }
             Step::Interrupt(node) => {
@@ -558,11 +547,11 @@ impl GatherLoop {
                 }),
             ),
             Step::Wait => {
-                GatherLoop::stand(world, entity);
+                Destination::go(world, entity, None);
                 set(world, with(GatherStep::Waiting { since: now }));
             }
             Step::Take(node) => {
-                GatherLoop::stand(world, entity);
+                Destination::go(world, entity, None);
                 let id = *world.get::<StableId>(entity).expect("a worker has an id");
                 world
                     .get_mut::<Node>(node)
@@ -611,7 +600,7 @@ impl GatherLoop {
     /// and sends it `back` to a node, or ends its loop with none; a load that would overflow
     /// stays, and the worker stands.
     fn deliver(world: &mut World, entity: Entity, order: GatherOrder, back: Option<NodeAt>) {
-        GatherLoop::stand(world, entity);
+        Destination::go(world, entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
         if let Some(load) = gatherer.load() {
             let owner = world.get::<Owner>(entity).map(|owner| owner.slot());
@@ -633,15 +622,6 @@ impl GatherLoop {
             step: GatherStep::ToNode,
             ..order
         }));
-    }
-
-    /// Stops the walk of the worker of `entity`.
-    fn stand(world: &mut World, entity: Entity) {
-        if let Some(mut destination) = world.get_mut::<Destination>(entity)
-            && destination.get().is_some()
-        {
-            destination.set(None);
-        }
     }
 
     /// Despawns each node that ran out, as the tick ends; its waiting workers look for another

@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_math::{FloorRoot, Num, U256, Vec3};
+use campfire_math::{FloorRoot, Num, SinCos, U256, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -54,6 +54,13 @@ enum Feature {
     Corner(usize),
 }
 
+/// A box's point nearest a point: its squared distance, and what of the box it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Nearest {
+    distance: SquaredDistance,
+    feature: Feature,
+}
+
 /// The values of `t` for which `q₀ + t·v` lies within one of a box's slabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Span {
@@ -97,7 +104,7 @@ impl BodyBox {
         if square(width) + square(height) > square(BodyBox::MAX_DIAGONAL) {
             return None;
         }
-        let (sin, cos) = BodyBox::turn(angle);
+        let SinCos { sin, cos } = BodyBox::turn(angle);
         let half = |size: Num, by: Num| {
             size.checked_mul_div_int(by, 2)
                 .expect("half a size within 126 m times at most 1 fits")
@@ -135,23 +142,34 @@ impl BodyBox {
     }
 
     /// The sine and the cosine of `angle` degrees, exact at each multiple of 90°.
-    fn turn(angle: Num) -> (Num, Num) {
+    fn turn(angle: Num) -> SinCos {
         const FULL: i64 = 360 << Num::FRAC_BITS;
         const QUARTER: i64 = 90 << Num::FRAC_BITS;
         let degrees = angle.to_bits().rem_euclid(FULL);
         if degrees % QUARTER == 0 {
             return match degrees / QUARTER {
-                0 => (Num::ZERO, Num::ONE),
-                1 => (Num::ONE, Num::ZERO),
-                2 => (Num::ZERO, -Num::ONE),
-                _ => (-Num::ONE, Num::ZERO),
+                0 => SinCos {
+                    sin: Num::ZERO,
+                    cos: Num::ONE,
+                },
+                1 => SinCos {
+                    sin: Num::ONE,
+                    cos: Num::ZERO,
+                },
+                2 => SinCos {
+                    sin: Num::ZERO,
+                    cos: -Num::ONE,
+                },
+                _ => SinCos {
+                    sin: -Num::ONE,
+                    cos: Num::ZERO,
+                },
             };
         }
         let radians = Num::from_bits(degrees)
             .checked_mul_div_int(Num::PI, 180)
             .expect("an angle below 360° fits in radians");
-        let turned = radians.sin_cos();
-        (turned.sin, turned.cos)
+        radians.sin_cos()
     }
 
     pub(crate) const fn half_edges(&self) -> [[Num; 2]; 2] {
@@ -171,7 +189,9 @@ impl BodyBox {
 
     /// The squared distance from `at` to the nearest point of the box at `centre`; 0 inside.
     pub(crate) fn distance(&self, centre: Position, at: Position) -> SquaredDistance {
-        self.frame().nearest_to(sub(flat(at), flat(centre))).0
+        self.frame()
+            .nearest_to(sub(flat(at), flat(centre)))
+            .distance
     }
 
     /// How the distance from `at` to the box at `centre` lies against `reach`.
@@ -185,7 +205,7 @@ impl BodyBox {
         let frame = self.frame();
         let off = sub(flat(at), flat(centre));
         let corners = frame.corners();
-        let point = match frame.nearest_to(off).1 {
+        let point = match frame.nearest_to(off).feature {
             Feature::Inside => off,
             Feature::Corner(corner) => corners[corner],
             Feature::Edge(edge) => {
@@ -223,13 +243,13 @@ impl BodyBox {
                 share,
             };
         }
-        let mut best = (frame.nearest_to(start).0, Fraction::ZERO);
+        let mut best = (frame.nearest_to(start).distance, Fraction::ZERO);
         let mut take = |candidate: (SquaredDistance, Fraction)| {
             if candidate.0 < best.0 || candidate.0 == best.0 && candidate.1 < best.1 {
                 best = candidate;
             }
         };
-        take((frame.nearest_to(add(start, path)).0, Fraction::ONE));
+        take((frame.nearest_to(add(start, path)).distance, Fraction::ONE));
         // Apart from the box, a path comes nearest at one of its ends, or where a corner's
         // nearest point lies inside it.
         let length = dot(path, path);
@@ -256,7 +276,7 @@ impl BodyBox {
     pub(crate) fn push_out(&self, centre: Position, at: Vec3, radius: Num) -> Option<Vec3> {
         let frame = self.frame();
         let off = sub(flat_vec(at), flat(centre));
-        let (distance, feature) = frame.nearest_to(off);
+        let Nearest { distance, feature } = frame.nearest_to(off);
         let radius_bits = i128::from(radius.to_bits());
         let moved = match feature {
             Feature::Inside => frame.out_through(frame.nearest_edge_inside(off), off, radius),
@@ -311,10 +331,10 @@ impl BodyBox {
         // Apart, two convex shapes come nearest at a corner of one.
         let from_ours = ours
             .corners()
-            .map(|corner| theirs.nearest_to(sub(corner, apart)).0);
+            .map(|corner| theirs.nearest_to(sub(corner, apart)).distance);
         let from_theirs = theirs
             .corners()
-            .map(|corner| ours.nearest_to(add(corner, apart)).0);
+            .map(|corner| ours.nearest_to(add(corner, apart)).distance);
         let nearest = from_ours
             .into_iter()
             .chain(from_theirs)
@@ -345,7 +365,7 @@ impl BodyBox {
         let reach = reach
             .checked_mul_int(2)
             .expect("a reach within a body and a walker doubles");
-        self.frame_twice().nearest_to(off).0 < SquaredDistance::of(reach)
+        self.frame_twice().nearest_to(off).distance < SquaredDistance::of(reach)
     }
 
     /// Whether the insides of the box and of a square share a point: the square's centre `off`
@@ -414,12 +434,15 @@ impl Frame {
 
     /// The nearest point's squared distance from `off`, and what of the box it is; the first
     /// edge on a tie.
-    fn nearest_to(&self, off: Flat) -> (SquaredDistance, Feature) {
+    fn nearest_to(&self, off: Flat) -> Nearest {
         if self.holds(off) {
-            return (SquaredDistance::ZERO, Feature::Inside);
+            return Nearest {
+                distance: SquaredDistance::ZERO,
+                feature: Feature::Inside,
+            };
         }
         let corners = self.corners();
-        let mut best: Option<(SquaredDistance, Feature)> = None;
+        let mut best: Option<Nearest> = None;
         for edge in 0..4 {
             let (start, end) = (corners[edge], corners[(edge + 1) % 4]);
             let along_edge = sub(end, start);
@@ -427,18 +450,24 @@ impl Frame {
             let along = dot(off_start, along_edge);
             let length = dot(along_edge, along_edge);
             let found = if along <= 0 {
-                (square(off_start), Feature::Corner(edge))
+                Nearest {
+                    distance: square(off_start),
+                    feature: Feature::Corner(edge),
+                }
             } else if along >= length {
-                (square(sub(off, end)), Feature::Corner((edge + 1) % 4))
+                Nearest {
+                    distance: square(sub(off, end)),
+                    feature: Feature::Corner((edge + 1) % 4),
+                }
             } else {
                 let across = cross(along_edge, off_start).unsigned_abs();
                 let square = U256::product(across, across);
-                (
-                    SquaredDistance::new(square, length.unsigned_abs()),
-                    Feature::Edge(edge),
-                )
+                Nearest {
+                    distance: SquaredDistance::new(square, length.unsigned_abs()),
+                    feature: Feature::Edge(edge),
+                }
             };
-            if best.is_none_or(|(distance, _)| found.0 < distance) {
+            if best.is_none_or(|best| found.distance < best.distance) {
                 best = Some(found);
             }
         }

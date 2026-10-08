@@ -12,8 +12,8 @@ mod u256;
 mod vec3;
 
 pub use crate::floor_root::FloorRoot;
-pub use crate::num::Num;
 pub use crate::num::error::ParseNumError;
+pub use crate::num::{Num, SinCos};
 pub use crate::product_sum::ProductSum;
 pub use crate::rng::Rng;
 pub use crate::rng::rng_opener::RngOpener;

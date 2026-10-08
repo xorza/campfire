@@ -109,14 +109,21 @@ impl Site {
 impl SimComponent for Site {
     const NAME: &'static str = "production.site";
 
-    // A build the book lacks, or of a rank past its ranks, has no time to grow toward; a paid
-    // resource the mode lacks, or an amount below 0, has no refund to give.
+    // A build the book lacks, or of a rank past its ranks, has no time to grow toward, and a
+    // progress past that time would take life back; a paid resource the mode lacks, or an amount
+    // below 0, has no refund to give.
     fn check(&self, world: &World, _: Entity) -> bool {
         let build = world
             .get_resource::<ActionBook>()
             .and_then(|book| book.get(self.action))
             .is_some_and(|action| {
-                action.kind.kind() == ActionKind::Build && action.has_rank(self.rank)
+                let ticks = || action.values(self.rank).windup.get();
+                action.kind.kind() == ActionKind::Build
+                    && action.has_rank(self.rank)
+                    && i64::try_from(ticks())
+                        .ok()
+                        .and_then(Num::from_int)
+                        .is_some_and(|time| self.progress <= time)
             });
         let resources = world
             .get_resource::<PlayerResources>()

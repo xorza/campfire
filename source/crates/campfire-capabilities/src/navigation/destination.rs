@@ -42,6 +42,26 @@ impl Destination {
             destination.set_if_neq(Destination::to(target));
         }
     }
+
+    /// Whether a unit with `destination` and `route` gives up a walk to `target`: it cannot
+    /// walk, or it stands, as its route arrived short of `target`.
+    pub(crate) fn gives_up(
+        destination: Option<&Destination>,
+        route: Option<&Route>,
+        target: Position,
+    ) -> bool {
+        destination.is_none_or(|destination| {
+            destination.get().is_none() && route.is_some_and(|route| route.arrived_short_of(target))
+        })
+    }
+
+    /// Sets the destination of the unit of `entity`, which walks, to `target`, leaving one that
+    /// does not change untouched.
+    pub(crate) fn go(world: &mut World, entity: Entity, target: Option<Position>) {
+        if let Some(mut destination) = world.get_mut::<Destination>(entity) {
+            destination.set_if_neq(Destination::to(target));
+        }
+    }
 }
 
 impl SimComponent for Destination {

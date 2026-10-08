@@ -95,10 +95,11 @@ pub struct Orders;
 
 impl Orders {
     /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
-    /// are learned, trains are cancelled and rally points set, and, on the server, items trade; in Think, the resets whose units arrived end, then the units due this
-    /// tick think; in Act, before combat starts attacks, units walk their paths and chase their
-    /// targets. It builds on the core `Units` installs, on combat and on navigation. Without the
-    /// core's scripts, as on a client, no unit thinks.
+    /// are learned, trains are cancelled and rally points set, and, on the server, items trade; in
+    /// Think, the resets whose units arrived end, then the units due this tick think; in Act,
+    /// before combat starts attacks, units walk their paths and chase their targets. It builds on
+    /// the core `Units` installs, on combat and on navigation. Without the core's scripts, as on a
+    /// client, no unit thinks.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.init_resource::<PlayerOrders>();
         world.init_resource::<TickOrders>();
@@ -218,9 +219,10 @@ struct Mover {
 /// Checks each order of the tick, in input order, so a later order in the tick wins, for each of
 /// its units, by stable id. An order to a unit its player does not control, that is dead or
 /// resets, is dropped, and so are a move of a unit with nowhere to walk, an attack on a unit that
-/// is not a living enemy or that none of its weapons selects, and a slot's action of a kind other
-/// than a cast or a train: a client can send anything. A move to two units or more that walk moves
-/// them as a group: each walks to its own goal by the group's box, as one party, the order's.
+/// is not a living enemy or that none of its weapons selects, a slot's action of a kind other
+/// than a cast, a train or a gather, a gather at no unit, and a build of a slot that holds none:
+/// a client can send anything. A move to two units or more that walk moves them as a group: each
+/// walks to its own goal by the group's box, as one party, the order's.
 fn check_player_orders(
     (tick, bounds, orders, index): (
         Res<'_, SimTick>,
@@ -395,14 +397,14 @@ fn learn_ranks(
 }
 
 /// Applies each production order of the tick, in input order, to each of its units by stable id
-/// that its player controls, dead or not: a cancel of a train or a rally to a unit with a train
-/// queue, a cancel of a build to a site. A cancel of a train names an entry by its place in the
-/// queue as it stands; a place past its end is ignored. Its entry leaves the queue and its player
-/// gets back the player resources it paid; a head's leaving starts the next one's time in this
-/// tick. A cancel of a build gives back the build's `cancel_refund` of each player resource its
-/// build paid, each rounded down, and despawns the site, with no death. A refund that would carry
-/// an amount past an `i64` refuses its cancel. A rally sets the producer's rally point, a point
-/// taken into the bounds, or a unit, or clears it.
+/// that its player controls: a cancel of a train or a rally to a unit with a train queue, dead or
+/// not, a cancel of a build to a living site, as a dead one refunds nothing. A cancel of a train
+/// names an entry by its place in the queue as it stands; a place past its end is ignored. Its
+/// entry leaves the queue and its player gets back the player resources it paid; a head's leaving
+/// starts the next one's time in this tick. A cancel of a build gives back the build's
+/// `cancel_refund` of each player resource its build paid, each rounded down, and despawns the
+/// site, with no death. A refund that would carry an amount past an `i64` refuses its cancel. A
+/// rally sets the producer's rally point, a point taken into the bounds, or a unit, or clears it.
 fn apply_production_orders(
     (tick, bounds, orders, index): (
         Res<'_, SimTick>,
@@ -412,7 +414,7 @@ fn apply_production_orders(
     ),
     builds: Option<Res<'_, BuildSpecs>>,
     mut resources: Option<ResMut<'_, PlayerResources>>,
-    mut units: Query<'_, '_, (&Owner, Option<&mut TrainQueue>, Option<&Site>)>,
+    mut units: Query<'_, '_, (&Owner, Option<&mut TrainQueue>, Option<&Site>, Has<Dead>)>,
     mut commands: Commands<'_, '_>,
     (mut refund, mut cancelled): (Local<'_, Vec<ResourceAmount>>, Local<'_, Vec<Entity>>),
 ) {
@@ -430,7 +432,7 @@ fn apply_production_orders(
             let Some(entity) = index.get(unit) else {
                 continue;
             };
-            let Ok((owner, queue, site)) = units.get_mut(entity) else {
+            let Ok((owner, queue, site, dead)) = units.get_mut(entity) else {
                 continue;
             };
             if owner.slot() != order.slot {
@@ -459,7 +461,7 @@ fn apply_production_orders(
                         None => commands.entity(entity).remove::<Rally>(),
                     };
                 }
-                (Action::CancelBuild, _, Some(site)) if !cancelled.contains(&entity) => {
+                (Action::CancelBuild, _, Some(site)) if !dead && !cancelled.contains(&entity) => {
                     let spec = builds
                         .as_deref()
                         .and_then(|builds| builds.of(site.action()))
@@ -483,12 +485,12 @@ fn apply_production_orders(
 /// Applies each buy, sale and swap of the tick, in input order, to each of its units by stable id,
 /// so a later one in the tick sees what an earlier one changed: to a unit its player controls that
 /// carries an inventory, dead or not. A buy of an item the shop sells, and a sale, need the unit
-/// dead or in a shop of its team; a buy pays its price, which the player affords, and needs room for the item
-/// once the components it gives up left; a sale gives back the shop's share of the stack's cost.
-/// A swap swaps two of the unit's slots anywhere. Each slot whose item type changes holds its new
-/// item's action, or none, afresh; a swapped slot keeps its action's cooldown. An order that
-/// fails a check is dropped: a client can send anything. A client predicts no trade, as its
-/// resources and slots come from the server.
+/// dead or in a shop of its team; a buy pays its price, which the player affords, and needs room
+/// for the item once the components it gives up left; a sale gives back the shop's share of the
+/// stack's cost. A swap swaps two of the unit's slots anywhere. Each slot whose item type changes
+/// holds its new item's action, or none, afresh; a swapped slot keeps its action's cooldown. An
+/// order that fails a check is dropped: a client can send anything. A client predicts no trade, as
+/// its resources and slots come from the server.
 fn trade_items(
     (orders, index): (Res<'_, TickOrders>, Res<'_, EntityIndex>),
     (book, shop, resources): (

@@ -8,11 +8,11 @@ use crate::values::shape::Shape;
 /// the bodies of the cells it covers, grown by the widest body's bound, the radius of the least
 /// circle that holds it, so it meets every body that may reach into the box, each once, and few
 /// others. A sort, not a grid over the map, as a map may be wide and its bodies few, as the
-/// broadphase finds its pairs. A cell is twice the widest bound, a meter at least. Its buffer stays between builds, so a build allocates nothing
-/// once it has grown, and costs `n log n`; a query finds the bodies of each row of cells it
-/// covers from where each row starts, searches only those, and never costs more than a pass over
-/// every body. A grid whose rows spread far wider than its bodies keeps no row starts, and a
-/// query searches all its bodies for each row.
+/// broadphase finds its pairs. A cell is twice the widest bound, a meter at least. Its buffer stays
+/// between builds, so a build allocates nothing once it has grown, and costs `n log n`; a query
+/// finds the bodies of each row of cells it covers from where each row starts, searches only those,
+/// and never costs more than a pass over every body. A grid whose rows spread far wider than its
+/// bodies keeps no row starts, and a query searches all its bodies for each row.
 #[derive(Debug)]
 pub(crate) struct BodyGrid<K> {
     /// A cell's side, in raw units.

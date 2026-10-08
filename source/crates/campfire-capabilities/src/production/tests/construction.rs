@@ -263,6 +263,18 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
     for (tick, life) in (7..=10).zip(lives) {
         yard.shop.tick();
         let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
+        if tick == 7 {
+            // A restore checks a site's progress against its build's time, 4 ticks: a progress
+            // of 4 passes, one a bit past it fails.
+            let site = yard.shop.sim.get::<Site>(depot);
+            let mut restored = Site::new(site.action(), site.rank(), Num::ZERO, &[], None);
+            let world = &yard.shop.sim.world;
+            let entity = yard.shop.sim.entity(depot);
+            restored.progress_by(Num::int(4), Num::int(8));
+            assert!(restored.check(world, entity));
+            restored.progress_by(Num::EPSILON, Num::int(8));
+            assert!(!restored.check(world, entity));
+        }
         let progress = (tick < 10).then(|| Num::int(tick - 6));
         assert_eq!(yard.site(depot), (life, progress), "tick {tick}");
         let status = *yard.shop.sim.get::<StatusTags>(depot);
@@ -402,7 +414,8 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
     let index = yard.shop.sim.world.resource::<EntityIndex>();
     assert_eq!(index.get(depot), None);
 
-    // A site that dies stops, and gives nothing back.
+    // A site that dies stops, gives nothing back, and takes no cancel: it stands, dead, with no
+    // refund.
     let mut yard = Yard::new(Rules::of(Style::Alone));
     let builder = yard.builder(half(-6, 0), 0, 0);
     yard.build_at(builder, 0, 0);
@@ -411,6 +424,8 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
     for _ in 0..4 {
         yard.shop.tick();
     }
+    assert_eq!((yard.gold(), yard.site(depot).1), (85, Some(Num::ONE)));
+    yard.order(0, depot, Action::CancelBuild);
     assert_eq!((yard.gold(), yard.site(depot).1), (85, Some(Num::ONE)));
 }
 

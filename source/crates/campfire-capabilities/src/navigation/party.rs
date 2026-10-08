@@ -11,6 +11,25 @@ pub(crate) struct Party {
     pub(crate) goal: Position,
 }
 
+/// The order parties sort in: by key, then goal, each coordinate by its bits. The ticks their
+/// members asked in do not part them, as an ask that waits keeps its first tick through a later
+/// one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct PartyOrder {
+    key: PartyKey,
+    goal: [i64; 3],
+}
+
+impl Party {
+    pub(crate) const fn order(self) -> PartyOrder {
+        let goal = self.goal.get();
+        PartyOrder {
+            key: self.key,
+            goal: [goal.x.to_bits(), goal.y.to_bits(), goal.z.to_bits()],
+        }
+    }
+}
+
 /// Which group a party is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) enum PartyKey {

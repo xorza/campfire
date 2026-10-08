@@ -6,9 +6,9 @@ use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_type::UnitType;
 
-/// What each train with a `requires` needs its player to hold, by action: unit types of which it
-/// owns a living, complete unit, and player modifiers, one run of each after another. Package
-/// data, not state.
+/// What each train and build with a `requires` needs its player to hold, by action: unit types of
+/// which it owns a living, complete unit, and player modifiers, one run of each after another.
+/// Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Requirements {
     /// By action, as the book loads them in order.
@@ -24,7 +24,7 @@ struct Needs {
     modifiers: Range<u32>,
 }
 
-/// What one train needs.
+/// What one train or build needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Required<'a> {
     pub(crate) units: &'a [UnitType],

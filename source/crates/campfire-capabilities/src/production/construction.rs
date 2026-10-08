@@ -311,11 +311,7 @@ impl BuildView<'_, '_> {
                 panic!("a building's body is a box");
             };
             let to = boxed.nearest_point(placed.at, from);
-            let Some(destination) = destination else {
-                return Step::End;
-            };
-            let short = route.is_some_and(|route| route.arrived_short_of(to));
-            return if destination.get().is_none() && short {
+            return if Destination::gives_up(destination, route, to) {
                 Step::End
             } else {
                 Step::Walk(to)
@@ -379,11 +375,12 @@ impl Construction {
     }
 
     /// Runs each builder's build order, in Act, by stable id, as `BuildView::step` says; a
-    /// builder in range stops its walk. A build that starts pays its whole cost, goes on cooldown, and spawns its building as a site, of
-    /// the builder's team and player, through the mode's spawner, which moves each walker its box
-    /// overlaps out to the nearest cell it may stand in; its life starts at `start_life` of its
-    /// maximum, rounded down, at least the least amount above 0. Each build sees the sites the
-    /// builds before it placed. An `alone` build's order then ends; another's builds its site.
+    /// builder in range stops its walk. A build that starts pays its whole cost, goes on
+    /// cooldown, and spawns its building as a site, of the builder's team and player, through the
+    /// mode's spawner, which moves each walker its box overlaps out to the nearest cell it may
+    /// stand in; its life starts at `start_life` of its maximum, rounded down, at least the least
+    /// amount above 0. Each build sees the sites the builds before it placed. An `alone` build's
+    /// order then ends; another's builds its site.
     pub(crate) fn start_builds(
         world: &mut World,
         builders: &mut QueryState<(Entity, &StableId, &Builder), Without<Dead>>,
@@ -411,17 +408,10 @@ impl Construction {
                 .expect("a build view is always valid")
                 .step(entity, &held);
             match step {
-                Step::Walk(to) => {
-                    let mut destination = world
-                        .get_mut::<Destination>(entity)
-                        .expect("a builder walks");
-                    if destination.get() != Some(to) {
-                        destination.set(Some(to));
-                    }
-                }
-                Step::Build => Construction::stand(world, entity),
+                Step::Walk(to) => Destination::go(world, entity, Some(to)),
+                Step::Build => Destination::go(world, entity, None),
                 Step::Take(site) => {
-                    Construction::stand(world, entity);
+                    Destination::go(world, entity, None);
                     let id = *world.get::<StableId>(entity).expect("a builder has an id");
                     let mut held = world.get_mut::<Site>(site).expect("a site to take");
                     held.hold(id);
@@ -431,19 +421,10 @@ impl Construction {
                     builder.set(None);
                 }
                 Step::Start(start) => {
-                    Construction::stand(world, entity);
+                    Destination::go(world, entity, None);
                     Construction::spawn_site(world, entity, start, &mut paid);
                 }
             }
-        }
-    }
-
-    /// Stops the walk of the builder of `entity`, which builds where it stands.
-    fn stand(world: &mut World, entity: Entity) {
-        if let Some(mut destination) = world.get_mut::<Destination>(entity)
-            && destination.get().is_some()
-        {
-            destination.set(None);
         }
     }
 
@@ -532,9 +513,9 @@ impl Construction {
     /// Grows each site, in the Mode stage before the trains finish, by stable id: its progress
     /// adds its build's rate for the count of builders that build it, a `builder` site's the one
     /// that holds it alone, toward the build's time in ticks, and its life the gain of that
-    /// progress, within its maximum. A builder builds a site
-    /// while it lives, its order is to build it, its body is within its build's range of the
-    /// site's, and no tag blocks its `use` group. A site that reaches its time completes: it loses
+    /// progress, within its maximum. A builder builds a site while it lives, its order is to
+    /// build it, its body is within its build's range of the site's, and no tag blocks its `use`
+    /// group. A site that reaches its time completes: it loses
     /// its site and its `constructing` tag, and its builders' orders end.
     pub(crate) fn progress_sites(
         (index, book, builds, metric, life): (

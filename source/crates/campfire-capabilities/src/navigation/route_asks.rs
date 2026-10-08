@@ -9,7 +9,7 @@ use campfire_sim::{Position, StableId};
 
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::group_box::GroupBox;
-use crate::navigation::party::{Party, PartyKey};
+use crate::navigation::party::Party;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
@@ -148,29 +148,16 @@ impl RouteAsks {
         let waiting = &self.waiting;
         self.parties.sort_unstable_by_key(|&index| {
             let ask = waiting[index as usize];
-            (
-                RouteAsks::party_key(ask.party.expect("an ask of a party")),
-                ask.id,
-            )
+            (ask.party.expect("an ask of a party").order(), ask.id)
         });
-    }
-
-    /// The order parties sort in: by key, then goal. The ticks their members asked in do not
-    /// part them, as an ask that waits keeps its first tick through a later one.
-    fn party_key(party: Party) -> (PartyKey, [i64; 3]) {
-        let goal = party.goal.get();
-        (
-            party.key,
-            [goal.x.to_bits(), goal.y.to_bits(), goal.z.to_bits()],
-        )
     }
 
     /// The range of `parties` that holds the asks of `party`.
     fn party_run(&self, party: Party) -> Range<usize> {
-        let key = RouteAsks::party_key(party);
+        let key = party.order();
         let of = |&index: &u32| {
             let ask = self.waiting[index as usize];
-            RouteAsks::party_key(ask.party.expect("an ask of a party"))
+            ask.party.expect("an ask of a party").order()
         };
         let start = self.parties.partition_point(|index| of(index) < key);
         let end = self.parties.partition_point(|index| of(index) <= key);
