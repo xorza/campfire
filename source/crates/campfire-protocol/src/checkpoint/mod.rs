@@ -78,27 +78,31 @@ impl Checkpoint {
         session_id: SessionId,
         aux: &[u8; 32],
     ) -> Signature {
-        Signature::sign(secp, server_key, &self.message(session_id), aux)
+        let mut message = Vec::new();
+        self.write_message(session_id, &mut message);
+        Signature::sign(secp, server_key, &message, aux)
     }
 
-    /// Whether `signature` is `server_key`'s over the record.
+    /// Whether `signature` is `server_key`'s over the record, its message written into `message`.
     pub(crate) fn signed_by<C: Verification>(
         &self,
         secp: &Secp256k1<C>,
         server_key: &XOnlyPublicKey,
         session_id: SessionId,
         signature: &Signature,
+        message: &mut Vec<u8>,
     ) -> bool {
-        signature.verifies(secp, server_key, &self.message(session_id))
+        self.write_message(session_id, message);
+        signature.verifies(secp, server_key, message)
     }
 
-    /// `domain ‖ session id ‖ postcard of the record`.
-    fn message(&self, session_id: SessionId) -> Vec<u8> {
-        let mut message = Vec::new();
+    /// Writes `domain ‖ session id ‖ postcard of the record` into `message`, in place of what
+    /// it held.
+    fn write_message(&self, session_id: SessionId, message: &mut Vec<u8>) {
+        message.clear();
         message.extend_from_slice(SIGNATURE_DOMAIN);
         message.extend_from_slice(session_id.as_bytes());
-        self.encode(&mut message);
-        message
+        self.encode(message);
     }
 }
 

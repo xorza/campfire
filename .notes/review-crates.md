@@ -8,11 +8,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-net/src/net_protocol.rs:94,102,106,107,110 — `SpawnPoint`, `Respawn`, `Route`, `Progress` and `ModifierClocks` replicate to every observer, though only the owner's prediction reads them; `Progress` changes every tick a unit walks, and `Route` resends its whole `Vec` on change. Target: an immutable `OwnedBy(Option<PlayerSlot>)` on each unit, a replicon `VisibilityFilter` scoped to these five components, with `PlayerLink` as its client component. Blocked: see `review-crates_QUESTIONS.md`, "Owner-only replication needs `bevy_replicon` as a direct dependency".
 
-## The server signs and then verifies its own inputs, allocating each time [medium]
-
-- [ ] source/crates/campfire-protocol/src/session_log/mod.rs:784 — `record_server` always verifies the server's own Schnorr signature (~25.6 µs). Net's `ServerSigner::serve` signs and then records each `ServerInput::Bot`, so each bot input pays both on the tick thread. Target: `record_server` takes the signer and signs the message it already built. A signature the log made needs no check; a `debug_assert!` stays. Verification stays on decode and on replay.
-- [ ] source/crates/campfire-protocol/src/server_input/mod.rs:183 — `message` builds a fresh `Vec` on each sign and verify, and its `+ 64` guess reallocates for a Join or Renew's delegation JSON. `Checkpoint::message` (checkpoint/mod.rs:96) and `SessionResult::message` (session_result/mod.rs:53) have the same shape. Target: one scratch buffer on the log, cleared and refilled, which all three use.
-
 ## A failed script call allocates and loses its case [medium]
 
 - [ ] source/crates/campfire-script/src/script_host/error.rs:33 — `ScriptError::Runtime(error.to_string())` formats Rhai's message on every failed call, and the runner formats it again (`campfire-runner/src/session/mod.rs:297`). An AI script that fails for each unit allocates two times per unit per tick. Target: an enum of the cases callers tell apart, with the boxed Rhai error kept as it came. It is formatted only when it is logged.

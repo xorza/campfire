@@ -4,6 +4,7 @@ use campfire_capabilities::{MatchEnd, MatchResult, Mode, SavesData, ScriptFailur
 use campfire_common::{SegmentSeed, StateHash, Tick, Ticks};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::{ModePackages, PackageStore};
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, Signing};
 use campfire_protocol::{
     AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError,
     Outcome, PlayerInput, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds,
@@ -228,16 +229,33 @@ impl Session {
         input: ServerInput<'_>,
         signature: &Signature,
     ) -> Result<(), ServerInputRefused> {
-        if let Some(change) = self
-            .log
-            .change_of(&input)
-            .map_err(ServerInputRefused::Log)?
-        {
-            self.rules.check(change).map_err(ServerInputRefused::Rule)?;
-        }
+        self.check_rules(&input)?;
         self.log
             .record_server(input, signature)
             .map_err(ServerInputRefused::Log)
+    }
+
+    /// Logs a server input as `record_server` does, signed in the log with the server's `key`;
+    /// see `SessionLog::serve`.
+    pub fn serve<C: Signing>(
+        &mut self,
+        input: ServerInput<'_>,
+        secp: &Secp256k1<C>,
+        key: &Keypair,
+        aux: &[u8; 32],
+    ) -> Result<(), ServerInputRefused> {
+        self.check_rules(&input)?;
+        self.log
+            .serve(input, secp, key, aux)
+            .map_err(ServerInputRefused::Log)
+    }
+
+    /// Refuses a change of a slot's controller that the mode's `[players]` does not allow.
+    fn check_rules(&self, input: &ServerInput<'_>) -> Result<(), ServerInputRefused> {
+        if let Some(change) = self.log.change_of(input).map_err(ServerInputRefused::Log)? {
+            self.rules.check(change).map_err(ServerInputRefused::Rule)?;
+        }
+        Ok(())
     }
 
     /// Seals the next tick in the log of the session in `world` and runs it with the inputs and

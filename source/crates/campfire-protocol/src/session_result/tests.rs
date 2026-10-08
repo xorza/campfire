@@ -13,8 +13,14 @@ fn a_results_signature_holds_only_over_it() {
         state_hash: StateHash::new([3; 32]),
     };
     let signature = result.sign(&secp, &server, id, &[0; 32]);
-    assert!(result.signed_by(&secp, &key, id, &signature));
-    assert!(!result.signed_by(&secp, &key, SessionId::new([9; 32]), &signature));
+    assert!(result.signed_by(&secp, &key, id, &signature, &mut Vec::new()));
+    assert!(!result.signed_by(
+        &secp,
+        &key,
+        SessionId::new([9; 32]),
+        &signature,
+        &mut Vec::new()
+    ));
     let others = [
         SessionResult {
             tick: Tick::new(8),
@@ -34,6 +40,9 @@ fn a_results_signature_holds_only_over_it() {
         },
     ];
     for other in others {
-        assert!(!other.signed_by(&secp, &key, id, &signature), "{other:?}");
+        assert!(
+            !other.signed_by(&secp, &key, id, &signature, &mut Vec::new()),
+            "{other:?}"
+        );
     }
 }

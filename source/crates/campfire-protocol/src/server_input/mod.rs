@@ -164,10 +164,13 @@ impl<'a> ServerInput<'a> {
         place: InputPlace,
         aux: &[u8; 32],
     ) -> Signature {
-        Signature::sign(secp, server_key, &self.message(session_id, place), aux)
+        let mut message = Vec::new();
+        self.write_message(session_id, place, &mut message);
+        Signature::sign(secp, server_key, &message, aux)
     }
 
-    /// Whether `signature` is `server_key`'s over the input at `place`.
+    /// Whether `signature` is `server_key`'s over the input at `place`, its message written into
+    /// `message`.
     pub(crate) fn signed_by<C: Verification>(
         &self,
         secp: &Secp256k1<C>,
@@ -175,19 +178,26 @@ impl<'a> ServerInput<'a> {
         session_id: SessionId,
         place: InputPlace,
         signature: &Signature,
+        message: &mut Vec<u8>,
     ) -> bool {
-        signature.verifies(secp, server_key, &self.message(session_id, place))
+        self.write_message(session_id, place, message);
+        signature.verifies(secp, server_key, message)
     }
 
-    /// `domain ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, little-endian.
-    fn message(&self, session_id: SessionId, place: InputPlace) -> Vec<u8> {
-        let mut message = Vec::with_capacity(SIGNATURE_DOMAIN.len() + 32 + 8 + 4 + 64);
+    /// Writes `domain ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, little-endian, into
+    /// `message`, in place of what it held.
+    pub(crate) fn write_message(
+        &self,
+        session_id: SessionId,
+        place: InputPlace,
+        message: &mut Vec<u8>,
+    ) {
+        message.clear();
         message.extend_from_slice(SIGNATURE_DOMAIN);
         message.extend_from_slice(session_id.as_bytes());
         message.extend_from_slice(&place.tick.get().to_le_bytes());
         message.extend_from_slice(&place.index.to_le_bytes());
-        self.encode(&mut message);
-        message
+        self.encode(message);
     }
 
     fn wire(&self) -> Wire<'_> {

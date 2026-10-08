@@ -1146,16 +1146,10 @@ fn mixed_log() -> SessionLog {
     .unwrap()
 }
 
-/// `input` signed by the server key at the next place of `log`, recorded into it.
+/// `input` served into `log`, which signs it with the server key at its next place. A log file
+/// with it decodes, recording each server input with its signature, which `record_server` checks.
 fn serve(log: &mut SessionLog, input: ServerInput<'_>) -> Result<(), ServerInputError> {
-    let signature = input.sign(
-        &Secp256k1::new(),
-        &TestKey::server(),
-        log.session_id(),
-        log.next_place(),
-        &AUX,
-    );
-    log.record_server(input, &signature)
+    log.serve(input, &Secp256k1::new(), &TestKey::server(), &AUX)
 }
 
 /// A packet of `inputs`, `(stamp, payload)` each, that the session key of `key` signs on the chain
