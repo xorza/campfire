@@ -85,7 +85,7 @@ impl Launching {
                     },
                 };
                 Projectile::new(source, flight, payload)
-                    .expect("a Self::launch flies within its range and carries what holds")
+                    .expect("a launch flies within its range and carries what holds")
             });
         }
         launches.clear();
