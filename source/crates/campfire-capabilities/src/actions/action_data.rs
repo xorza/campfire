@@ -7,6 +7,7 @@ use serde::{Deserialize, Deserializer};
 
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_kind::ActionKind;
+use crate::actions::action_range::ActionRange;
 use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
@@ -14,7 +15,6 @@ use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
 use crate::actions::kind_data::KindData;
 use crate::actions::placement_data::PlacementData;
-use crate::actions::range::Range;
 use crate::actions::requires_data::RequiresData;
 use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::hook::Hook;
@@ -224,7 +224,7 @@ impl ActionData {
     ) -> Result<RankFields, ActionField> {
         let whole = |field, ranked: Option<&Ranked<Number>>| self.whole_at(rank, field, ranked);
         let range = match &self.range {
-            None => Range::Global,
+            None => ActionRange::Global,
             Some(ranked) => match ranked.get(rank).ok_or(ActionField::Range)? {
                 RangeField::Range(range) => *range,
                 RangeField::Param(reference) => {
@@ -232,7 +232,7 @@ impl ActionData {
                         .param_at(rank, reference.param.as_str(), ActionField::Range)?
                         .to_num();
                     let meters = meters.filter(|meters| *meters >= Num::ZERO);
-                    Range::Meters(meters.ok_or(ActionField::Range)?)
+                    ActionRange::Meters(meters.ok_or(ActionField::Range)?)
                 }
             },
         };
@@ -443,7 +443,7 @@ impl ActionData {
 /// cost in its caster's pools, and in its caster's player's resources.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RankFields {
-    pub range: Range,
+    pub range: ActionRange,
     pub cooldown_ms: u64,
     pub cost: PoolCost,
     pub resource_cost: Vec<ResourceAmount>,
@@ -499,7 +499,7 @@ pub enum Targeting {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum RangeField {
-    Range(Range),
+    Range(ActionRange),
     Param(ParamRef),
 }
 

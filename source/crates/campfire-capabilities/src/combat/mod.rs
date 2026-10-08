@@ -700,8 +700,8 @@ pub(crate) mod internals {
     use campfire_sim::StableId;
 
     use crate::actions::action_book::internals::{self, TestWeapon};
+    use crate::actions::action_range::ActionRange;
     use crate::actions::action_slots::ActionSlots;
-    use crate::actions::range::Range;
     use crate::actions::slot_kind::SlotKind;
     #[cfg(test)]
     use crate::combat::combat_bindings::CombatBindings;
@@ -803,7 +803,7 @@ pub(crate) mod internals {
                 projectile: self.projectile,
                 ..TestWeapon::new(
                     Filter::of_relations(RelationSet::Enemies),
-                    Range::Meters(self.range),
+                    ActionRange::Meters(self.range),
                     self.windup,
                 )
             };

@@ -7,11 +7,11 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{ActionSlots, SlotAim};
 use crate::actions::action_target::ActionTarget;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
-use crate::actions::range::Range;
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
 use crate::navigation::destination::Destination;
@@ -160,7 +160,7 @@ impl BuildView<'_, '_> {
         let KindSpec::Build(unit_type) = self.book.get(action)?.kind else {
             return None;
         };
-        let Range::Meters(range) = self.book.range(slots, slot) else {
+        let ActionRange::Meters(range) = self.book.range(slots, slot) else {
             panic!("the load checked a build's range in meters");
         };
         let spec = self
@@ -566,7 +566,7 @@ impl Construction {
             else {
                 continue;
             };
-            let Range::Meters(range) = book.range(slots, slot) else {
+            let ActionRange::Meters(range) = book.range(slots, slot) else {
                 panic!("the load checked a build's range in meters");
             };
             let reaches = metric.reaches(from, Body::shape_of(body), range, at, site_body.shape());

@@ -10,10 +10,10 @@ use campfire_sim::{Position, StableId};
 use crate::actions::action::{Action, Aim};
 use crate::actions::action_data::ActionData;
 use crate::actions::action_parts::ActionParts;
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{ActionCall, ActionSlots, ResolvedCast, SlotAim};
 use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::Purse;
-use crate::actions::range::Range;
 use crate::actions::rank_values::RankValues;
 use crate::actions::targets::Targets;
 use crate::geometry::shape::Shape;
@@ -124,7 +124,7 @@ impl ActionBook {
         aim: SlotAim,
         relation: impl Fn(Team) -> Relation,
         living: impl Fn(StableId) -> Option<LivingUnit>,
-    ) -> Option<Checked<'_>> {
+    ) -> Option<CheckedAction<'_>> {
         let slot = slots.slot(aim.slot)?;
         let (id, rank) = (slot.action?, slot.rank?);
         let action = self.get(id)?;
@@ -148,7 +148,7 @@ impl ActionBook {
             }
             _ => return None,
         };
-        Some(Checked {
+        Some(CheckedAction {
             id,
             target,
             action,
@@ -174,7 +174,7 @@ impl ActionBook {
     }
 
     /// The range of the learned action in `slot` of `slots`, at its rank.
-    pub(crate) fn range(&self, slots: &ActionSlots, slot: u8) -> Range {
+    pub(crate) fn range(&self, slots: &ActionSlots, slot: u8) -> ActionRange {
         let slot = slots.slot(slot).expect("a unit's slot");
         slot.values_in(self)
             .expect("a learned slot's action is in the book")
@@ -185,7 +185,7 @@ impl ActionBook {
 /// An action that passes its checks: its id, the target it keeps, none for an action that takes
 /// none whatever its order named, and the action and its values at the slot's rank.
 #[derive(Debug)]
-pub(crate) struct Checked<'a> {
+pub(crate) struct CheckedAction<'a> {
     pub(crate) id: ActionId,
     pub(crate) target: ActionTarget,
     pub(crate) action: &'a Action,
@@ -193,7 +193,7 @@ pub(crate) struct Checked<'a> {
     pub(crate) values: RankValues,
 }
 
-impl Checked<'_> {
+impl CheckedAction<'_> {
     /// How the cast `call` it checked resolves: at the target it keeps.
     pub(crate) const fn resolved(&self, call: ActionCall) -> ResolvedCast {
         let aim = SlotAim {
@@ -213,7 +213,7 @@ impl Checked<'_> {
     /// at `position` with a body of `shape`, when its aim clamps, as `targets` measure reach: the
     /// farthest point along the line that it reaches.
     pub(crate) fn clamp(&mut self, position: Position, shape: Shape, targets: &Targets<'_, '_>) {
-        let (Aim::Point { clamp: true }, Range::Meters(range), ActionTarget::Point(at)) =
+        let (Aim::Point { clamp: true }, ActionRange::Meters(range), ActionTarget::Point(at)) =
             (self.action.aim, self.values.range, self.target)
         else {
             return;
@@ -278,7 +278,7 @@ impl Checked<'_> {
         shape: Shape,
         targets: &Targets<'_, '_>,
     ) -> bool {
-        let Range::Meters(range) = self.values.range else {
+        let ActionRange::Meters(range) = self.values.range else {
             return true;
         };
         match (self.action.aim, self.target) {
@@ -304,13 +304,13 @@ pub(crate) mod internals {
 
     use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
+    use crate::actions::action_range::ActionRange;
     use crate::actions::actions_column::ActionsColumn;
     use crate::actions::delivery::{Delivery, DeliveryShape};
     use crate::actions::fan::Fan;
     #[cfg(any(test, feature = "bench"))]
     use crate::actions::gather_spec::GatherSpec;
     use crate::actions::kind_spec::KindSpec;
-    use crate::actions::range::Range;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
     use crate::players::resource_amount::ResourceAmount;
@@ -329,7 +329,7 @@ pub(crate) mod internals {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct TestWeapon {
         pub(crate) aim: Filter,
-        pub(crate) range: Range,
+        pub(crate) range: ActionRange,
         pub(crate) windup: Ticks,
         pub(crate) projectile: Option<UnitType>,
         pub(crate) rate: StatId,
@@ -341,7 +341,7 @@ pub(crate) mod internals {
     impl TestWeapon {
         /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
         /// rate and damage, costing nothing.
-        pub(crate) fn new(aim: Filter, range: Range, windup: Ticks) -> TestWeapon {
+        pub(crate) fn new(aim: Filter, range: ActionRange, windup: Ticks) -> TestWeapon {
             TestWeapon {
                 aim,
                 range,
@@ -417,7 +417,7 @@ pub(crate) mod internals {
                 hold: None,
                 aim: Aim::None,
                 ranks: vec![RankValues {
-                    range: Range::Global,
+                    range: ActionRange::Global,
                     cooldown: Ticks::ZERO,
                     cost: PoolCost::default(),
                     windup: time,
@@ -454,7 +454,7 @@ pub(crate) mod internals {
                 hold: None,
                 aim: Aim::Point { clamp: false },
                 ranks: vec![RankValues {
-                    range: Range::Meters(range),
+                    range: ActionRange::Meters(range),
                     cooldown: Ticks::ZERO,
                     cost: PoolCost::default(),
                     windup: time,
@@ -491,7 +491,7 @@ pub(crate) mod internals {
                 hold: None,
                 aim: Aim::Unit(aim),
                 ranks: vec![RankValues {
-                    range: Range::Meters(range),
+                    range: ActionRange::Meters(range),
                     cooldown: Ticks::ZERO,
                     cost: PoolCost::default(),
                     windup: time,

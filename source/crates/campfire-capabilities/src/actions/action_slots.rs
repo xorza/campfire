@@ -7,7 +7,7 @@ use campfire_sim::{Position, SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::actions::action_book::{ActionBook, Checked};
+use crate::actions::action_book::{ActionBook, CheckedAction};
 use crate::actions::action_data::TogglePer;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_target::ActionTarget;
@@ -433,7 +433,7 @@ impl ActionSlots {
 
     /// Starts the ordered cast that passed its checks as `checked`, from `position` at `now`: a
     /// charged action charges until its most; any other winds up, to resolve as its windup ends.
-    pub(crate) fn begin(&mut self, checked: &Checked<'_>, position: Position, now: Tick) {
+    pub(crate) fn begin(&mut self, checked: &CheckedAction<'_>, position: Position, now: Tick) {
         let values = checked.values;
         if let Some(most) = values.charge {
             self.charge(checked.target, position, now, now.after(most));

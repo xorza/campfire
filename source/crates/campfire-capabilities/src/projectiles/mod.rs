@@ -9,8 +9,8 @@ use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry};
 
 use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::range::Range;
 use crate::actions::targets::{TargetKey, Targets};
 use crate::combat::CombatSet;
 use crate::combat::pass_queue::PassQueue;
@@ -144,8 +144,8 @@ impl Projectiles {
             .get(unit_type)
             .expect("a delivery's projectile type has a spec");
         match (spec.range, action.values(by.rank).range) {
-            (Some(range), _) | (None, Range::Meters(range)) => Some(range),
-            (None, Range::Global) => None,
+            (Some(range), _) | (None, ActionRange::Meters(range)) => Some(range),
+            (None, ActionRange::Global) => None,
         }
     }
 

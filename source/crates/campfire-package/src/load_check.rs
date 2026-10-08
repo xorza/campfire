@@ -2,12 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books, CollisionData,
-    CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting, EngineTag,
-    EnumRecord, FilterData, Hook, ItemData, KindData, MemberKind, Metric, ModifierData,
-    ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, PoolId,
-    ProjectileHits, Range, RangeField, Rank, ResourceId, Scalar, ScriptApi, ScriptRole, Share,
-    Stat, StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    ActionData, ActionKind, ActionRange, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
+    CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
+    Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, KindData, MemberKind, Metric,
+    ModifierData, ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param,
+    ParamProblem, PoolId, ProjectileHits, RangeField, Rank, ResourceId, Scalar, ScriptApi,
+    ScriptRole, Share, Stat, StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData,
+    UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -916,10 +917,11 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::Gather(GatherProblem::Aims(id.to_owned())));
         };
         self.filter_data(filter, &at)?;
-        let global = action
-            .range
-            .as_ref()
-            .is_some_and(|range| range.values().contains(&RangeField::Range(Range::Global)));
+        let global = action.range.as_ref().is_some_and(|range| {
+            range
+                .values()
+                .contains(&RangeField::Range(ActionRange::Global))
+        });
         if global {
             return Err(LoadProblem::Gather(GatherProblem::Global(id.to_owned())));
         }
@@ -946,10 +948,11 @@ impl<'a> LoadCheck<'a> {
         if action.targeting != Targeting::Point {
             return Err(LoadProblem::Build(BuildProblem::Aims(id.to_owned())));
         }
-        let global = action
-            .range
-            .as_ref()
-            .is_some_and(|range| range.values().contains(&RangeField::Range(Range::Global)));
+        let global = action.range.as_ref().is_some_and(|range| {
+            range
+                .values()
+                .contains(&RangeField::Range(ActionRange::Global))
+        });
         if global {
             return Err(LoadProblem::Build(BuildProblem::Global(id.to_owned())));
         }
@@ -1058,7 +1061,9 @@ impl<'a> LoadCheck<'a> {
             } => {
                 self.require(Capability::Combat, &at)?;
                 let global = action.range.as_ref().is_some_and(|range| {
-                    range.values().contains(&RangeField::Range(Range::Global))
+                    range
+                        .values()
+                        .contains(&RangeField::Range(ActionRange::Global))
                 });
                 if !matches!(action.targeting, Targeting::Unit(_)) {
                     return Err(LoadProblem::AttackAims(id.to_owned()));

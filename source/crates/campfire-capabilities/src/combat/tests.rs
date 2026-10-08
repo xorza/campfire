@@ -8,8 +8,8 @@ use campfire_sim::{EntityIndex, SimComponent};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{ActionSlot, ChannelCall};
-use crate::actions::range::Range;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::assist_window::AssistWindow;
@@ -246,7 +246,11 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             .unwrap();
         let weapon = TestWeapon {
             damage,
-            ..TestWeapon::new(aim, Range::Meters(Num::int(range)), Ticks::new(windup))
+            ..TestWeapon::new(
+                aim,
+                ActionRange::Meters(Num::int(range)),
+                Ticks::new(windup),
+            )
         };
         internals::weapon(&mut fight.sim.world, weapon)
     };
@@ -386,7 +390,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
         }),
         ..TestWeapon::new(
             Filter::of_relations(RelationSet::Enemies),
-            Range::Meters(Num::int(2)),
+            ActionRange::Meters(Num::int(2)),
             Ticks::new(2),
         )
     };

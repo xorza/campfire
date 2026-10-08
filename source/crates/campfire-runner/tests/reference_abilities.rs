@@ -12,9 +12,9 @@ use bevy_ecs::bundle::Bundle;
 
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
-    Action, ActionId, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove, ModifierId,
-    Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner, PackagePath, Param, Pools,
-    Projectile, Range, RangeField, Rank, Ranked, RecentAttackers, Scalar, Scaling, SeenBy,
+    Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
+    ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner, PackagePath, Param,
+    Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers, Scalar, Scaling, SeenBy,
     SlotKind, Stat, Targeting, Team,
 };
 use campfire_common::PlayerSlot;
@@ -218,10 +218,10 @@ fn every_reference_ability_reads_into_the_schema() {
     let Some(Ranked::PerRank(ranges)) = &rime.content.actions["snow_owl"].range else {
         panic!("a range per rank");
     };
-    assert_eq!(ranges[1], RangeField::Range(Range::Meters(half * 65)));
+    assert_eq!(ranges[1], RangeField::Range(ActionRange::Meters(half * 65)));
     let wraps = &husk.content.actions["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
-    let eleven = RangeField::Range(Range::Meters(Num::int(11)));
+    let eleven = RangeField::Range(ActionRange::Meters(Num::int(11)));
     assert_eq!(wraps.range, Some(Ranked::One(eleven)));
 }
 

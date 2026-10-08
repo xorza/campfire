@@ -821,7 +821,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     let mut armed = |aim: &str| {
         let weapon = TestWeapon::new(
             Filter::parse(aim, &UnitTypes::default()).unwrap(),
-            Range::Meters(Num::int(20)),
+            ActionRange::Meters(Num::int(20)),
             Ticks::new(2),
         );
         let weapon = internals::weapon(&mut game.sim.world, weapon);

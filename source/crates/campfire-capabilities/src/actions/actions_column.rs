@@ -6,9 +6,9 @@ use campfire_sim::StableId;
 
 use crate::actions::action::Action;
 use crate::actions::action_book::ActionBook;
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::delivery::Delivery;
-use crate::actions::range;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::scripts::error::{ApiError, Checked};
@@ -125,7 +125,7 @@ impl ActionsColumn {
             return;
         };
         let attack_range = book.weapon_for(slots, None).map(|slot| {
-            let range::Range::Meters(range) = book.range(slots, slot) else {
+            let ActionRange::Meters(range) = book.range(slots, slot) else {
                 panic!("the load gives every attack a range in meters");
             };
             range
@@ -206,7 +206,7 @@ impl ActionsColumn {
     }
 
     /// The range of action `id` at `rank`, one of its ranks.
-    pub(crate) fn range(view: &View, id: ActionId, rank: Rank) -> range::Range {
+    pub(crate) fn range(view: &View, id: ActionId, rank: Rank) -> ActionRange {
         ActionsColumn::read(view, |column| {
             column
                 .book

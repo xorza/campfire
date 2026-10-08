@@ -14,9 +14,9 @@ use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::range::Range;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
 use crate::items::ItemsSet;
@@ -786,7 +786,7 @@ fn chase(
                 slots.set_attack_target(None);
                 Destination::walk_to(&mut destination, route, None);
             }
-            Some((unit, Range::Meters(range)))
+            Some((unit, ActionRange::Meters(range)))
                 if !targets.reaches(position, Body::shape_of(body), range, &unit) =>
             {
                 Destination::walk_to(&mut destination, route, Some(unit.pos));

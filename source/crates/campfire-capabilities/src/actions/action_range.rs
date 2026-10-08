@@ -6,20 +6,20 @@ use serde::{Deserialize, Deserializer};
 
 /// How far an action reaches. In data: meters as a decimal string, or `global`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Range {
+pub enum ActionRange {
     Meters(Num),
     Global,
 }
-impl<'de> Deserialize<'de> for Range {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Range, D::Error> {
+impl<'de> Deserialize<'de> for ActionRange {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ActionRange, D::Error> {
         let text = String::deserialize(deserializer)?;
         if text == "global" {
-            return Ok(Range::Global);
+            return Ok(ActionRange::Global);
         }
         Num::from_str(&text)
             .ok()
             .filter(|meters| *meters >= Num::ZERO)
-            .map(Range::Meters)
+            .map(ActionRange::Meters)
             .ok_or_else(|| Error::custom(format!("range {text:?} is not meters or global")))
     }
 }

@@ -86,7 +86,7 @@ impl Calls<'_, '_> {
 
     /// `calc_damage` of `damage` in `batch`, its `ctx` pure: the number it returns, an integer
     /// as a number.
-    pub(crate) fn weigh(
+    pub(crate) fn weigh_damage(
         batch: &mut ScriptBatch<'_>,
         ctx: &Ctx,
         damage: Damage,

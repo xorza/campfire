@@ -13,13 +13,13 @@ use crate::actions::action_data::{
     ActionData, ChannelData, ChargeData, ChargesData, RangeField, Targeting, Toggle,
 };
 use crate::actions::action_data_field::ActionDataField;
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{SlotAim, Started};
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
 use crate::actions::error::ActionField;
 use crate::actions::kind_data::KindData;
-use crate::actions::range::Range;
 use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
 use crate::areas::Areas;
 use crate::areas::area::Area;
@@ -183,7 +183,9 @@ fn lash_out() -> ActionData {
 fn strike() -> ActionData {
     ActionData {
         script: Some(PackagePath::parse("strike.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(5),
+        )))),
         cooldown_ms: Some(Ranked::One(int(1001))),
         cost: BTreeMap::from([
             (DeclaredName::new("mana").unwrap(), Ranked::One(int(10))),
@@ -510,13 +512,17 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     // its caster over 100 ms, 3 ticks.
     let aim = ActionData {
         windup_ms: Some(Ranked::One(int(300))),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(10))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(10),
+        )))),
         ..strike()
     };
     let aim = game.load("aim", &aim, STRIKE);
     let shove = ActionData {
         script: Some(PackagePath::parse("shove.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(5),
+        )))),
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
     };
     let script =
@@ -614,7 +620,9 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     };
     let lunge = ActionData {
         script: Some(PackagePath::parse("lunge.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(10))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(10),
+        )))),
         on_resolve: vec![
             effect(Effecting::Move(knock_back), EffectTo::Reached),
             effect(Effecting::Move(dash), EffectTo::Source),
@@ -1003,7 +1011,9 @@ fn on_resolve(ctx, caster, target) {
 "#;
     let leap = |clamp| ActionData {
         script: Some(PackagePath::parse("leap.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(4))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(4),
+        )))),
         clamp_to_range: clamp,
         ..ActionData::cast(Targeting::Point)
     };
@@ -1078,7 +1088,9 @@ impl Reaching {
         let mut game = Match::with(ScriptLimits::ROOMY, &declared);
         let hop = ActionData {
             script: Some(PackagePath::parse("hop.rhai").unwrap()),
-            range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(4))))),
+            range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+                Num::int(4),
+            )))),
             ..ActionData::cast(Targeting::Point)
         };
         let jab = ActionData {
@@ -1421,7 +1433,9 @@ fn on_interrupt(ctx, caster, target) {
     Stats::load_modifier(&mut game.sim.world, 0, "ward", &ward, None);
     let drain = ActionData {
         script: Some(PackagePath::parse("drain.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(5),
+        )))),
         channel: Some(ChannelData {
             duration_ms: Ranked::One(int(300)),
             tick_ms: Ranked::One(int(100)),
@@ -1507,7 +1521,9 @@ fn on_resolve(ctx, caster, target) {
     game.load_stats();
     let draw = ActionData {
         script: Some(PackagePath::parse("draw.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(5),
+        )))),
         charge: Some(ChargeData {
             max_ms: Ranked::One(int(3000)),
         }),
@@ -1602,7 +1618,7 @@ fn on_resolve(ctx, caster, target) {
     game.load_stats();
     let near = game.load("strike", &strike(), script);
     let global = ActionData {
-        range: Some(Ranked::One(RangeField::Range(Range::Global))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Global))),
         ..strike()
     };
     let far = game.load("far", &global, script);
@@ -1934,7 +1950,9 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.cost = BTreeMap::new();
     claws.params = BTreeMap::new();
     claws.targeting = Targeting::Unit(FilterData::parse("enemies").unwrap());
-    claws.range = Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(2)))));
+    claws.range = Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        Num::int(2),
+    ))));
     claws.rate = Some(Stat::named("armor").unwrap());
     claws.damage = Some(Stat::named("attack_damage").unwrap());
     claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
@@ -2783,9 +2801,9 @@ fn sapper(ranged: bool) -> ActionData {
     ActionData {
         kind: ActionKind::Attack,
         script: None,
-        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(
-            meters,
-        ))))),
+        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            Num::int(meters),
+        )))),
         rate: Some(Stat::named("armor").unwrap()),
         damage: Some(Stat::named("attack_damage").unwrap()),
         damage_kind: Some(DeclaredName::new("physical").unwrap()),
@@ -2863,7 +2881,9 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
         let target = game.spawn(1, ground(Num::int(out), Num::ZERO), Modifiers::default());
         let attacker = if by_cast {
             let data = ActionData {
-                range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+                range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+                    Num::int(5),
+                )))),
                 ..strike()
             };
             let cast = game.load("swing", &data, extra);

@@ -7,7 +7,7 @@ use crate::actions::action_data::{ActionData, RankToggle};
 
 use crate::actions::cost_target::CostTarget;
 
-use crate::actions::range::Range;
+use crate::actions::action_range::ActionRange;
 use crate::players::resource_amount::ResourceAmount;
 use crate::stats::pool_cost::PoolCost;
 use crate::values::declared_name::DeclaredName;
@@ -25,7 +25,7 @@ pub(crate) struct LoadedRanks {
 /// An action's capability fields at one rank, times in ticks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RankValues {
-    pub(crate) range: Range,
+    pub(crate) range: ActionRange,
     pub(crate) cooldown: Ticks,
     pub(crate) cost: PoolCost,
     pub(crate) windup: Ticks,

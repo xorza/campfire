@@ -11,10 +11,10 @@ use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId};
 
 use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
+use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::kind_spec::KindSpec;
-use crate::actions::range::Range;
 use crate::geometry::metric::Metric;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
@@ -170,7 +170,7 @@ impl GatherView<'_, '_> {
         let (KindSpec::Gather(spec), Aim::Unit(filter)) = (action.kind, action.aim) else {
             return None;
         };
-        let Range::Meters(range) = self.book.range(slots, slot) else {
+        let ActionRange::Meters(range) = self.book.range(slots, slot) else {
             panic!("the load checked a gather's range in meters");
         };
         let rank = held.rank.expect("a gather's slot is learned");
@@ -406,7 +406,7 @@ impl GatherLoop {
     /// the node it gathered last; any other ends.
     pub(crate) fn check_gathers(
         mut parts: ParamSet<'_, '_, (GatherView<'_, '_>, Query<'_, '_, &mut Gatherer>)>,
-        mut checked: Local<'_, Vec<Checked>>,
+        mut checked: Local<'_, Vec<CheckedGather>>,
     ) {
         checked.clear();
         {
@@ -418,7 +418,7 @@ impl GatherLoop {
             }
         }
         let mut gatherers = parts.p1();
-        for &Checked {
+        for &CheckedGather {
             entity,
             order,
             load,
@@ -712,7 +712,7 @@ pub(crate) struct HeldNode {
 
 /// A gather order as its check leaves it: the worker, its loop, and its load.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Checked {
+pub(crate) struct CheckedGather {
     entity: Entity,
     order: Option<GatherOrder>,
     load: Option<Load>,
@@ -720,14 +720,14 @@ pub(crate) struct Checked {
 
 impl GatherView<'_, '_> {
     /// The check of the gather order of the worker of `entity`, when it applied this tick.
-    fn resolve(&self, entity: Entity) -> Option<Checked> {
+    fn resolve(&self, entity: Entity) -> Option<CheckedGather> {
         let (_, _, _, _, &team, owner, slots, gatherer, ..) = self.workers.get(entity).ok()?;
         let order = gatherer.order()?;
         if order.step != GatherStep::Ordered {
             return None;
         }
         let checked = |order, load| {
-            Some(Checked {
+            Some(CheckedGather {
                 entity,
                 order,
                 load,

@@ -3,8 +3,8 @@ use campfire_script::rhai::{Dynamic, INT};
 use campfire_sim::{Capability, Position};
 
 use crate::abilities::abilities_effect::AbilitiesEffect;
+use crate::actions::action_range::ActionRange;
 use crate::actions::actions_column::ActionsColumn;
-use crate::actions::range::Range;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
@@ -122,8 +122,8 @@ impl AbilitiesApi {
             (action, frame.rank())
         };
         match ActionsColumn::range(ctx.view(), action, rank) {
-            Range::Meters(meters) => Dynamic::from(meters),
-            Range::Global => Dynamic::UNIT,
+            ActionRange::Meters(meters) => Dynamic::from(meters),
+            ActionRange::Global => Dynamic::UNIT,
         }
     }
 

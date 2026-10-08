@@ -166,7 +166,7 @@ impl Mode {
         if hooks.contains(Hook::CalcDamage) {
             let ctx = ctx.clone();
             world.insert_non_send(DamageWeigher::new(move |batch, damage| {
-                Calls::weigh(batch, &ctx, damage)
+                Calls::weigh_damage(batch, &ctx, damage)
             }));
         }
         if hooks.contains(Hook::CalcHeal) {
