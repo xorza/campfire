@@ -86,15 +86,6 @@ impl StreamWriter {
             .expect("no thread panics holding a stream's failure")
             .take()
     }
-
-    /// The failure that stopped the worker, once; none while it writes.
-    pub fn take_failure(&self) -> Option<io::Error> {
-        self.shared
-            .failure
-            .lock()
-            .expect("no thread panics holding a stream's failure")
-            .take()
-    }
 }
 
 impl StreamShared {

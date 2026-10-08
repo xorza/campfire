@@ -84,10 +84,9 @@ fn a_failed_write_stops_the_stream_keeps_its_failure_and_drops_what_follows() {
     for _ in 0..3 {
         sender.put(|out| out.extend_from_slice(b"yyyy"));
     }
-    let failure = writer.take_failure().unwrap();
+    // Closed, the writer gives the failure that stopped it.
+    let failure = writer.close().unwrap();
     assert_eq!(failure.to_string(), "refused");
-    assert!(writer.take_failure().is_none());
-    drop(writer);
     assert!(written.lock().unwrap().is_empty());
     // A sender that outlives its writer puts nothing, and does not wait.
     sender.put(|out| out.extend_from_slice(b"zzzzzz"));

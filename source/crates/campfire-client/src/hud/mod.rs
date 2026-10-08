@@ -63,10 +63,6 @@ struct HudPalette {
     target: Handle<StandardMaterial>,
 }
 
-/// On the ring under the unit the own avatar attacks.
-#[derive(Component, Debug)]
-struct TargetMark;
-
 /// The scratch `add_gauges` builds each unit's gauges in.
 #[derive(Debug, Default)]
 struct GaugeScratch {
@@ -487,7 +483,6 @@ impl Hud {
         if let Some((root, look)) = target {
             let ring = commands
                 .spawn((
-                    TargetMark,
                     Mesh3d(palette.ring.clone()),
                     MeshMaterial3d(palette.target.clone()),
                     Transform::from_translation(Vec3::Y * 0.04)
@@ -552,9 +547,10 @@ mod tests {
         app.add_plugins((View, Hud));
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());
-        // With no own avatar there is no target to mark.
-        let mut marks = app.world_mut().query_filtered::<(), With<TargetMark>>();
-        assert_eq!(marks.iter(app.world()).count(), 0);
+        // With no own avatar there is no target to mark: nothing wears the target's material.
+        let target = app.world().resource::<HudPalette>().target.clone();
+        let mut worn = app.world_mut().query::<&MeshMaterial3d<StandardMaterial>>();
+        assert!(worn.iter(app.world()).all(|material| material.0 != target));
 
         // A unit of 600 life at (3, 0, −2), whose life gauge showed it full.
         let life = PoolId::new(0).unwrap();

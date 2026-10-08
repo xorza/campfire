@@ -14,7 +14,7 @@ use crate::sim_server::player_link::PlayerLink;
 /// owner inserts a new one.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[component(immutable)]
-pub(crate) struct OwnedBy(pub(crate) Option<PlayerSlot>);
+pub(crate) struct OwnedBy(pub(super) Option<PlayerSlot>);
 
 impl VisibilityFilter for OwnedBy {
     type ClientComponent = PlayerLink;

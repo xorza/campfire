@@ -42,7 +42,7 @@ impl PlayerLink {
     }
 
     /// The link as the log refused one of its messages.
-    pub(crate) const fn into_refused(self) -> PlayerLink {
+    pub(super) const fn into_refused(self) -> PlayerLink {
         PlayerLink {
             refused: true,
             ..self
