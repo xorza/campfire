@@ -277,8 +277,8 @@ pub(crate) fn assert_casts(reference: &Reference3v3, showcase: &Showcase, world:
     // Cyclone, Gale's first, charges as its first cast starts and starts its cooldown as the
     // second releases it; the toggles, Dread and Chill Arrows, start as they turn on; Night Step
     // spends a charge. Kensho walks to Cinder for Flicker Strike, Cinder to Veil for Wildfire,
-    // and Rime toward (0, 10) for Snow Owl, whose first rank, all her level 6 gives, reaches 25 m
-    // of the 30.
+    // and Rime from her post at (0, -20) toward (0, 15) for Snow Owl, whose second rank, which
+    // her level 7 gives, reaches 32.5 m of the 35.
     let expected = [
         (0, 2, INVENTORY, false),
         (7, 5, 0, false),

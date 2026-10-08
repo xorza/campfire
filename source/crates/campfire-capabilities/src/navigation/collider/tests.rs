@@ -1,3 +1,5 @@
+use std::array;
+
 use bevy_ecs::world::World;
 use campfire_sim::IdAllocator;
 
@@ -102,11 +104,11 @@ fn overlapping_bodies_part_to_the_sum_of_their_radii() {
         [(Num::int(2), Num::int(3)), (Num::int(4), Num::int(3))]
     );
 
-    // On a 3-4-5 line: (0.3, 0.4), each a whole number of bits below, are √(5 033 164² +
-    // 6 710 886²) = 8 388 607.x bits apart, the root floored to 8 388 607. The overlap of
-    // 2 m less that, 25 165 825 bits, splits 12 582 912 back and 12 582 913 forward, each
-    // along (5 033 164, 6 710 886) ÷ 8 388 607 and rounded once: (7 549 747, 10 066 330)
-    // back and (7 549 747, 10 066 331) forward.
+    // On a 3-4-5 line: (0.3, 0.4), each a whole number of bits below, lie (5 033 164,
+    // 6 710 886) bits apart, √70 368 730 755 892 = 8 388 607.92 bits. That offset made 2 m
+    // long, 33 554 432 bits, is (20 132 657.92, 26 843 546.56), rounded up (20 132 658,
+    // 26 843 547): a change of (15 099 494, 20 132 661), split (7 549 747, 10 066 330) back and
+    // (7 549 747, 10 066 331) forward.
     let tenth = |n: i64| Num::from_bits((n << Num::FRAC_BITS) / 10);
     let mut slant = row(&[(Num::int(0), Num::int(0), true), (tenth(3), tenth(4), true)]);
     resolve(&mut slant);
@@ -116,6 +118,82 @@ fn overlapping_bodies_part_to_the_sum_of_their_radii() {
         (tenth(3) + bits(7_549_747), tenth(4) + bits(10_066_331)),
     ];
     assert_eq!(places(&slant), expected);
+
+    // Centres 1 bit apart along each axis are √2 bits apart. That offset made 33 554 432 bits
+    // long is 2²⁴·√2 = 23 726 566.41 bits along each axis, rounded up 23 726 567: a change of
+    // 23 726 566, split 11 863 283 each way. The pair ends 23 726 567·√2 = 33 554 432.84 bits
+    // apart.
+    let mut close = row(&[(Num::ZERO, Num::ZERO, true), (bits(1), bits(1), true)]);
+    resolve(&mut close);
+    assert_eq!(
+        places(&close),
+        [
+            (-bits(11_863_283), -bits(11_863_283)),
+            (bits(11_863_284), bits(11_863_284))
+        ]
+    );
+}
+
+#[test]
+fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
+    // Offsets in bits from the first body to the second, with their radii in meters. The
+    // squared lengths 2, 74, 2⁴⁹ + 2²⁵ + 1 and 2⁶⁰ + 24 690·2³⁰ + 12 345² + 2⁵⁸ are not
+    // squares; 81 and 25·2⁴⁰ are. The last two pairs stand at `Shape::MAX_BOUND`.
+    let cases: [([i64; 2], [i64; 2]); 6] = [
+        ([1, 1], [1, 1]),
+        ([0, -9], [1, 1]),
+        ([3 << 20, -4 << 20], [1, 1]),
+        ([-(1 << 24), (1 << 24) + 1], [1, 1]),
+        ([-7, 5], [1, 64]),
+        ([(1 << 30) + 12_345, -(1 << 29)], [64, 64]),
+    ];
+    for (offset, radii) in cases {
+        let mut pair = row(&[
+            (Num::int(5), Num::int(-5), true),
+            (
+                Num::int(5) + Num::from_bits(offset[0]),
+                Num::int(-5) + Num::from_bits(offset[1]),
+                true,
+            ),
+        ]);
+        for (collider, radius) in pair.iter_mut().zip(radii) {
+            collider.shape = Shape::Circle(Num::int(radius));
+        }
+        let before: [[i64; 2]; 2] =
+            array::from_fn(|i| [pair[i].at.x, pair[i].at.z].map(Num::to_bits));
+        resolve(&mut pair);
+        let moved: [[i128; 2]; 2] = array::from_fn(|i| {
+            let after = [pair[i].at.x, pair[i].at.z].map(Num::to_bits);
+            [0, 1].map(|axis| i128::from(after[axis] - before[i][axis]))
+        });
+        let reach = i128::from((radii[0] + radii[1]) << Num::FRAC_BITS);
+        let along = offset.map(i128::from);
+        let square = along[0] * along[0] + along[1] * along[1];
+        let parted = [0, 1].map(|axis| along[axis] + moved[1][axis] - moved[0][axis]);
+        for axis in 0..2 {
+            // `n` is the exact |along| · reach ÷ √square rounded up when
+            // (n − 1)² · square < along² · reach² ≤ n² · square, or both are 0.
+            let n = parted[axis].unsigned_abs();
+            let exact = (along[axis] * reach).unsigned_abs().pow(2);
+            let square = square.cast_unsigned();
+            let case = format!("{offset:?} with radii {radii:?}, axis {axis}");
+            assert_eq!(parted[axis].signum(), along[axis].signum(), "{case}");
+            assert!(exact <= n.pow(2) * square, "{case}");
+            assert!(n == 0 || (n - 1).pow(2) * square < exact, "{case}");
+            // Both walk, so they share the change, the second taking the odd bit.
+            let change = parted[axis] - along[axis];
+            assert_eq!(moved[0][axis], -(change / 2), "{case}");
+            assert_eq!(moved[1][axis], change - change / 2, "{case}");
+        }
+        // Each coordinate under a bit outward puts the length at most √2 bits past the reach.
+        let length = parted[0] * parted[0] + parted[1] * parted[1];
+        let case = format!("{offset:?} with radii {radii:?}");
+        assert!(
+            reach.pow(2) <= length && length < (reach + 2).pow(2),
+            "{case}"
+        );
+        assert!(!pair[0].overlaps(&pair[1]), "{case}");
+    }
 }
 
 #[test]

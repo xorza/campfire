@@ -295,7 +295,7 @@ impl Reference3v3 {
             (2, cast(SECOND, Aim::Nothing)),
             (4, cast(FIRST, Aim::Nothing)),
             (2, cast(FIRST, at(5))),
-            (4, cast(THIRD, Aim::Point { x: 0, z: 10 })),
+            (4, cast(THIRD, Aim::Point { x: 0, z: 15 })),
             (3, cast(THIRD, Aim::Nothing)),
             (2, cast(ULTIMATE, Aim::Nothing)),
             (0, cast(ULTIMATE, hero(3))),
