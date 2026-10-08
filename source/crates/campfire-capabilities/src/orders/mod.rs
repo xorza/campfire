@@ -6,9 +6,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_script::{ScriptError, ScriptId};
-use campfire_sim::{
-    EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs,
-};
+use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
