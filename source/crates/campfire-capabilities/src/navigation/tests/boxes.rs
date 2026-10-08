@@ -1,5 +1,6 @@
 use super::*;
 use crate::geometry::body_box::BodyBox;
+use crate::units::forced_move::{DashTo, ForcedMove};
 
 const HALF: Num = Num::HALF;
 const QUARTER: Num = Num::QUARTER;

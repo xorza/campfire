@@ -1,6 +1,7 @@
 use campfire_common::PlayerSlot;
 
 use super::*;
+use crate::navigation::party::{Party, PartyKey};
 
 /// Over 1 m cells from (0, 0) to (20, 12), a wall from (4, 0) to (6, 4), as in
 /// `a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it`, and `more` walls,
