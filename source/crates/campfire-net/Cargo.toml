@@ -40,6 +40,7 @@ tracing.workspace = true
 [dev-dependencies]
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-protocol = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 

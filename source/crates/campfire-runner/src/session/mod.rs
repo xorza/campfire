@@ -372,11 +372,11 @@ impl Session {
             begun.tick,
             "the state stands at the checkpoint's boundary"
         );
-        self.state.snapshot(world, snapshot);
+        let state_hash = self.state.snapshot(world, snapshot);
         Some(Checkpoint {
             segment: begun.segment,
             tick: begun.tick,
-            state_hash: self.state.hash(world),
+            state_hash,
             snapshot: SnapshotFingerprint::of(snapshot),
             carry: begun.carry.clone(),
         })

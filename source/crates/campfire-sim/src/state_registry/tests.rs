@@ -230,6 +230,11 @@ fn a_digest_is_blake3_over_its_domain_and_its_bytes() {
 fn snapshot_restores_the_same_state() {
     let mut original = varied_world();
     let bytes = snapshot(&original);
+    // A snapshot's state hash is the one its state hashes to.
+    assert_eq!(
+        registry().snapshot(&original, &mut Vec::new()),
+        registry().hash(&original)
+    );
     let mut restored = restore(&bytes).unwrap();
     assert_eq!(registry().hash(&restored), registry().hash(&original));
     assert_eq!(snapshot(&restored), bytes);
@@ -517,7 +522,10 @@ fn entity(world: &World, id: StableId) -> Entity {
 
 #[test]
 fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
-    let mut following = Following::new(registry(), plain_world());
+    // A world whose queries skip the unpredicted, as a predicting client's do.
+    let mut world = plain_world();
+    Unpredicted::register(&mut world);
+    let mut following = Following::new(registry(), world);
     let (first, second) = (StableId::new(0), StableId::new(1));
     assert_eq!(by_type(&following.copy), by_type(&following.world));
     // No tick resource: each delta holds its absence, `None`, a 0 byte.
@@ -604,6 +612,16 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
             vec![allocator(&following.world), absent.clone(), moved]
         )
     );
+
+    // A value of an entity the world's default filters hide, as a client hides the units it
+    // does not predict: copied all the same.
+    let hidden = following.step(|world| {
+        let fifth = entity(world, fifth);
+        world.entity_mut(fifth).insert(Unpredicted);
+        world.get_mut::<Health>(fifth).unwrap().0 = Num::from_int(32).unwrap();
+    });
+    let health_32 = ("test.health", encoded(&[(fifth, Some(health(32)))]));
+    assert_eq!(hidden, (vec![], vec![], vec![absent.clone(), health_32]));
 
     // A resource inserted, then removed.
     let tick = SimTick::new(Tick::new(5));

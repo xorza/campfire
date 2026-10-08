@@ -62,6 +62,19 @@ impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
         self.pending = true;
     }
 
+    /// Sends `job`, which the caller filled beforehand, and gives back the job given back last,
+    /// whose buffers the caller keeps for the next it fills.
+    pub fn send_filled(&mut self, job: J) -> J {
+        assert!(!self.pending, "one job at a time");
+        self.jobs
+            .as_ref()
+            .expect("an exchange closes only as it drops")
+            .send(job)
+            .expect("the worker runs");
+        self.pending = true;
+        mem::take(&mut self.spare)
+    }
+
     /// Whether a job was sent and its answer not taken.
     pub const fn pending(&self) -> bool {
         self.pending

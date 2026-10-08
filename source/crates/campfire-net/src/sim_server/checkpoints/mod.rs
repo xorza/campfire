@@ -26,11 +26,6 @@ use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
 
 pub(crate) mod error;
 
-/// How often, in ticks, the main thread sends the state changed to the checkpoint thread when no
-/// checkpoint is due, so what the match records for the next delta stays as small as this many
-/// ticks of changes, and no delta copies more.
-const SEND_EVERY: Ticks = Ticks::new(100);
-
 /// A session's checkpoints on its server: the boundaries it checkpoints at, and the thread that
 /// takes them. At a boundary due, right after the tick before it, the main thread begins the
 /// checkpoint, which starts its segment, and sends the state changed since the last delta to the
@@ -41,8 +36,6 @@ pub(crate) struct Checkpoints {
     /// The ticks whose boundaries a checkpoint is due at, ascending.
     plan: Vec<Tick>,
     thread: CheckpointThread,
-    /// The boundary the last delta was made at.
-    sent: Tick,
 }
 
 impl Checkpoints {
@@ -53,7 +46,6 @@ impl Checkpoints {
         let mut base = StateDelta::default();
         Session::track(world, &mut base);
         let session = world.resource::<Session>();
-        let sent = session.log().next_tick();
         let thread = CheckpointThread::start(
             session.registry().clone(),
             base,
@@ -64,7 +56,6 @@ impl Checkpoints {
         world.insert_resource(Checkpoints {
             plan: Vec::new(),
             thread,
-            sent,
         });
     }
 
@@ -76,9 +67,12 @@ impl Checkpoints {
     }
 
     /// At the boundary before the next tick: begins the checkpoint due there, as the plan or a
-    /// save of the mode's says, once the last delta came back; past the seed chain's last segment,
-    /// ends the session aborted instead. With none due, sends the state changed when `SEND_EVERY`
-    /// ticks passed since the last delta and it came back.
+    /// save of the mode's says, and sends it with the state changed since the last delta, queued
+    /// behind the delta on the thread, if one is; past the seed chain's last segment, ends the
+    /// session aborted instead. The log begins one checkpoint at a time, so one due while the
+    /// last one's record is still to come waits for it. With none due, sends the state changed
+    /// whenever the thread is free, so each delta holds the ticks since the last, few unless a
+    /// snapshot kept the thread.
     pub(crate) fn begin(world: &mut World) {
         let session = world.resource::<Session>();
         let next = session.log().next_tick();
@@ -87,12 +81,17 @@ impl Checkpoints {
         let due = saved || checkpoints.plan.first() == Some(&next);
         checkpoints.plan.retain(|&tick| tick > next);
         if !due {
-            if checkpoints.sent.after(SEND_EVERY) <= next && !checkpoints.thread.pending() {
+            if !checkpoints.thread.pending() {
                 Checkpoints::send(world, None);
             }
             return;
         }
-        if let Err(error) = Checkpoints::settle(world) {
+        let recording = world
+            .resource::<Session>()
+            .log()
+            .begun_checkpoint()
+            .is_some();
+        if recording && let Err(error) = Checkpoints::settle(world) {
             world
                 .resource_mut::<Faults>()
                 .report(Fault::Snapshot(error));
@@ -122,11 +121,16 @@ impl Checkpoints {
         }
     }
 
-    /// Waits for the delta on the thread, and logs the record of its checkpoint; an error when
-    /// its snapshot was not written.
+    /// Waits for every delta on the thread and queued for it, and logs the record of each
+    /// checkpoint among them; an error when a snapshot was not written.
     pub(crate) fn settle(world: &mut World) -> Result<(), DurableError> {
-        let returned = world.resource_mut::<Checkpoints>().thread.wait();
-        Checkpoints::record(world, returned)
+        loop {
+            let returned = world.resource_mut::<Checkpoints>().thread.wait();
+            if returned.is_none() {
+                return Ok(());
+            }
+            Checkpoints::record(world, returned)?;
+        }
     }
 
     /// Takes the save commands of the seated players: on a local server, a save makes a
@@ -213,12 +217,10 @@ impl Checkpoints {
     /// Sends the thread the state changed since the last delta, with the checkpoint `begun` at
     /// the boundary before the next tick, when one is.
     fn send(world: &mut World, begun: Option<CheckpointBegun>) {
-        let next = world.resource::<Session>().log().next_tick();
         world.resource_scope(|world, mut checkpoints: Mut<'_, Checkpoints>| {
             checkpoints
                 .thread
                 .send(begun, |delta| Session::changes(world, delta));
-            checkpoints.sent = next;
         });
     }
 

@@ -29,6 +29,12 @@ fn each_job_comes_back_with_its_answer_and_its_buffer_is_reused() {
         (exchange.spare.as_ptr(), exchange.spare.capacity()),
         (buffer, capacity)
     );
+    // A job filled beforehand goes as it is, and the caller keeps the buffer given back last.
+    let given = exchange.send_filled(vec![4, 5]);
+    assert_eq!((given.as_ptr(), given.capacity()), (buffer, capacity));
+    assert_eq!(given, [10]);
+    assert_eq!(exchange.wait(), Some(9));
+    assert_eq!(exchange.spare, [4, 5]);
 }
 
 #[test]

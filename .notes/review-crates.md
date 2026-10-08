@@ -8,25 +8,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-net/src/net_protocol.rs:94,102,106,107,110 — `SpawnPoint`, `Respawn`, `Route`, `Progress` and `ModifierClocks` replicate to every observer, though only the owner's prediction reads them; `Progress` changes every tick a unit walks, and `Route` resends its whole `Vec` on change. Target: an immutable `OwnedBy(Option<PlayerSlot>)` on each unit, a replicon `VisibilityFilter` scoped to these five components, with `PlayerLink` as its client component. Blocked: see `review-crates_QUESTIONS.md`, "Owner-only replication needs `bevy_replicon` as a direct dependency".
 
-## What a capability owns is decided in many places, so an undeclared one leaks [medium]
-
-Design: one table per capability names what it owns — its data and map sections, its replicated components, its script module, its order actions — and every consumer reads that table with the manifest's `CapabilitySet`. The load refuses a section whose owner is undeclared, by that table, so the builders that follow never test for it (a `debug_assert!` at most). `CapabilitySet::install` already gates each `install`; these are what leak past it.
-
-
-## Every state operation walks every entity once per type, and checkpoints batch the walks onto single ticks [medium]
-
-Design: one walk serves hash, snapshot, check and copy. Each registered type resolves its `ComponentId` once, at `track`. An operation lists the archetypes holding the type; a type with none writes an empty section with no walk. Otherwise the operation visits `EntityIndex` in id order and tests each entity's archetype by id, with no `TypeId` hash and no default query filter. Hash and snapshot are one pass, as the bytes are the same. Checkpoints then become a stream: each tick appends its changes to a front buffer, and the checkpoint thread swaps it out when free, as `AppendWriter` does. A due checkpoint is a marker in that stream, so no tick sends 100 ticks of changes, and none waits for the disk.
-
-- [ ] source/crates/campfire-sim/src/state_registry/mod.rs:472 — `encode_component` walks the whole `EntityIndex` per type with `world.get::<C>`, a `TypeId` hash each: O(types × entities) per hash and snapshot, a type no entity holds included. Target: the one walk.
-- [ ] source/crates/campfire-sim/src/state_registry/mod.rs:606 — `check_component` repeats it on every restore. Target: the one walk.
-- [ ] source/crates/campfire-sim/src/state_registry/mod.rs:520 — `copy_component` reads through `world.query`, which applies `DefaultQueryFilters`, so an entity with `Disabled` or `Unpredicted` is hashed but never copied (latent); and it builds about 50 fresh `QueryState`s on each `changes()`. Target: the one walk, reading change ticks by `ComponentId`.
-- [ ] source/crates/campfire-sim/src/state_registry/mod.rs:214 — each checkpoint calls `snapshot` and then `hash` (`campfire-runner/src/session/mod.rs:375-379`, `campfire-net/.../checkpoint_thread.rs:129-134`), serializing the world twice. Target: `snapshot` returns its `StateHash`.
-- [ ] source/crates/campfire-sim/src/state_registry/hash_sink.rs:22 — `combine` (mod.rs:386) allocates a fresh 16 KiB `HashSink` per hash, every tick under per-tick hashing. Target: scratch on its owner.
-- [ ] source/crates/campfire-net/src/sim_server/checkpoints/mod.rs:32,90-92 — `SEND_EVERY = 100`: one tick in 100 pays `Session::changes`, up to 100 ticks of changes. Target: the stream; a tick pays its own changes.
-- [ ] source/crates/campfire-net/src/sim_server/checkpoints/mod.rs:95 — a due checkpoint's `begin` calls `settle` (`Exchange::wait`), so the tick waits on the job in flight, which can be the last snapshot's write and fsync. Target: the stream's marker; `settle` goes from the tick.
-- [ ] source/crates/campfire-protocol/src/session_log/mod.rs:909 — `begin_checkpoint` stores `begun.clone()`, a deep copy of every `Box<Delegation>` JSON and carried payload, just built by `carry()` (:951) with a temporary `Vec<&Due>`. Target: one `CheckpointBegun`, handed out by reference.
-- [ ] source/crates/campfire-protocol/src/checkpoint/log_carry.rs:43 — `Vec<CarriedInput { payload: Vec<u8> }>` is nested, and `wire()` (:88) collects two `Vec`s on each encode (sign, verify, journal, log write). Target: one payload buffer with a `Range<u32>` per input; `Serialize` straight from `LogCarry`.
-
 ## Who the player commands is guessed from markers, five ways [medium]
 
 Design: one fact, two parts. A player's units are the units its `Owner` slot names; the client learns its slot from `MatchStart`. A player's avatar, in a mode with avatars, is its owned unit whose type is one of the mode's avatar types (`ModeUnits::avatars`), a typed fact both ends hold from the packages. One method on one type answers both parts for the client, the HUD and both bots. `With<Predicted>`, `With<Experience>` and `.single()` stop being identity.

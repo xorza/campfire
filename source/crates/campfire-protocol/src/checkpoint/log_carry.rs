@@ -155,3 +155,18 @@ impl LogCarry {
         Ok(LogCarry { slots, pending })
     }
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::checkpoint::log_carry::LogCarry;
+
+    impl LogCarry {
+        /// A carry of no slot and no input, for a test of a checkpoint outside a log.
+        pub const fn empty() -> LogCarry {
+            LogCarry {
+                slots: Vec::new(),
+                pending: Vec::new(),
+            }
+        }
+    }
+}
