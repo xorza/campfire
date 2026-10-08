@@ -549,11 +549,7 @@ impl ModeApi {
             return Ok(Array::new());
         };
         Ok(values
-            .iter()
-            .map(|offer| {
-                let offer = offer.expect("a chosen choice has every value");
-                Dynamic::from(ImmutableString::from(book.roster.id(choice.offers, offer)))
-            })
+            .map(|offer| Dynamic::from(ImmutableString::from(book.roster.id(choice.offers, offer))))
             .collect())
     }
 
