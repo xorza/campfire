@@ -11,5 +11,5 @@ Design: [Navigation](../design/04-capabilities/navigation.md). Rules: [Issue log
 
 ## Ready
 
-- `Collider::part` moves a pushed body by the overlap over the floor root of the squared distance between the centres, so the move overshoots by the share that root falls short: two centres 1 bit apart along each axis have the root 1 of 2, and part by √2 times their overlap.
+- **Plan: F2.** `Collider::part` moves a pushed body by the overlap over the floor root of the squared distance between the centres, so the move overshoots by the share that root falls short: two centres 1 bit apart along each axis have the root 1 of 2, and part by √2 times their overlap.
 
