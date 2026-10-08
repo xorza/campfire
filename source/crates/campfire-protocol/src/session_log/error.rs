@@ -132,7 +132,7 @@ pub enum SeedError {
 
 /// Why a header does not start a log. A published header is untrusted, so each is an expected
 /// failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum HeaderError {
     /// More slots than a `u32` counts.
     #[error("more slots than a u32 counts")]
@@ -160,6 +160,10 @@ pub enum HeaderError {
     /// The file starts the slot `slot` as no known kind of start.
     #[error("slot {} starts as no known kind", .slot.get())]
     UnknownStart { slot: PlayerSlot },
+    /// The terms let a journal record hold more than a journal frame takes: inputs, payloads, a
+    /// window of stamps or slots past what a record of 16 MiB holds.
+    #[error("the terms let a journal record pass 16 MiB")]
+    RecordTooLarge,
 }
 
 /// Why a log does not load a save.

@@ -14,9 +14,9 @@ pub trait LogEvent: DeserializeOwned {
 pub(crate) mod internals {
     use std::fmt::Debug;
 
+    use crate::json_layer::internals::capture;
     use crate::log_event::LogEvent;
     use crate::log_line::LogLine;
-    use crate::logging::internals::capture;
 
     /// Asserts that `event` logs one JSON line, which reads back as `event`.
     pub fn round_trip<E: LogEvent + PartialEq + Debug>(event: &E) {

@@ -95,11 +95,12 @@ pub struct Orders;
 
 impl Orders {
     /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
-    /// are learned, trains are cancelled and rally points set, and, on the server, items trade; in
-    /// Think, the resets whose units arrived end, then the units due this tick think; in Act,
-    /// before combat starts attacks, units walk their paths and chase their targets. It builds on
-    /// the core `Units` installs, on combat and on navigation. Without the core's scripts, as on a
-    /// client, no unit thinks.
+    /// are learned, and, with production, trains are cancelled and rally points set, and, with
+    /// items, on the server, items trade; in Think, the resets whose units arrived end, then the
+    /// units due this tick think; in Act, before combat starts attacks, units walk their paths and
+    /// chase their targets. It builds on the core `Units` installs, on combat and on navigation,
+    /// and installs after production and items, whose actions it applies only when they are
+    /// installed. Without the core's scripts, as on a client, no unit thinks and no item trades.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.init_resource::<PlayerOrders>();
         world.init_resource::<TickOrders>();
@@ -109,7 +110,6 @@ impl Orders {
                 check_player_orders,
                 apply_player_orders,
                 learn_ranks,
-                apply_production_orders,
             )
                 .chain()
                 .in_set(SimSet::Inputs)
@@ -129,17 +129,31 @@ impl Orders {
         ));
         registry.register_component::<NextThink>();
         registry.register_component::<Resetting>();
+        let production = world.contains_resource::<BuildSpecs>();
+        if production {
+            schedule.add_systems(
+                apply_production_orders
+                    .in_set(SimSet::Inputs)
+                    .in_set(OrdersSet::Orders)
+                    .after(learn_ranks),
+            );
+        }
         if !world.contains_non_send::<Ctx>() {
             return;
         }
         world.insert_resource(ByType::<Ai>::default());
-        schedule.add_systems((
-            trade_items
+        schedule.add_systems((end_dead_resets, think).chain().in_set(SimSet::Think));
+        if world.contains_resource::<ItemBook>() {
+            let trade = trade_items
                 .in_set(SimSet::Inputs)
                 .in_set(OrdersSet::Orders)
-                .after(apply_production_orders),
-            (end_dead_resets, think).chain().in_set(SimSet::Think),
-        ));
+                .after(learn_ranks);
+            if production {
+                schedule.add_systems(trade.after(apply_production_orders));
+            } else {
+                schedule.add_systems(trade);
+            }
+        }
     }
 
     /// The think period of `data` at `rate`, a tick at the least, for a script that defines
@@ -238,6 +252,9 @@ fn check_player_orders(
 ) {
     let now = tick.start();
     for order in orders.iter() {
+        if !order.action.to_units() {
+            continue;
+        }
         let controlled = order
             .units
             .iter()
@@ -327,7 +344,7 @@ fn check_player_orders(
                 | Action::Swap { .. }
                 | Action::CancelTrain { .. }
                 | Action::Rally { .. }
-                | Action::CancelBuild => None,
+                | Action::CancelBuild => unreachable!("an action that goes to no unit was skipped"),
             };
             checked.0.extend(unit_order.map(|order| (entity, order)));
         }
@@ -412,7 +429,7 @@ fn apply_production_orders(
         Res<'_, TickOrders>,
         Res<'_, EntityIndex>,
     ),
-    builds: Option<Res<'_, BuildSpecs>>,
+    builds: Res<'_, BuildSpecs>,
     mut resources: Option<ResMut<'_, PlayerResources>>,
     mut units: Query<'_, '_, (&Owner, Option<&mut TrainQueue>, Option<&Site>, Has<Dead>)>,
     mut commands: Commands<'_, '_>,
@@ -428,6 +445,12 @@ fn apply_production_orders(
                 .refund(slot, amounts)
     };
     for order in orders.iter() {
+        if !matches!(
+            order.action,
+            Action::CancelTrain { .. } | Action::Rally { .. } | Action::CancelBuild
+        ) {
+            continue;
+        }
         for &unit in order.units {
             let Some(entity) = index.get(unit) else {
                 continue;
@@ -463,8 +486,7 @@ fn apply_production_orders(
                 }
                 (Action::CancelBuild, _, Some(site)) if !dead && !cancelled.contains(&entity) => {
                     let spec = builds
-                        .as_deref()
-                        .and_then(|builds| builds.of(site.action()))
+                        .of(site.action())
                         .expect("a site's build is in the book");
                     refund.clear();
                     refund.extend(site.paid().iter().map(|paid| ResourceAmount {
@@ -494,7 +516,7 @@ fn apply_production_orders(
 fn trade_items(
     (orders, index): (Res<'_, TickOrders>, Res<'_, EntityIndex>),
     (book, shop, resources): (
-        Option<Res<'_, ItemBook>>,
+        Res<'_, ItemBook>,
         Option<Res<'_, Shop>>,
         Option<ResMut<'_, PlayerResources>>,
     ),
@@ -512,11 +534,17 @@ fn trade_items(
     >,
     (mut given_up, mut before): (Local<'_, Vec<u32>>, Local<'_, Vec<Option<ItemId>>>),
 ) {
-    let (Some(book), Some(mut resources)) = (book, resources) else {
+    let Some(mut resources) = resources else {
         return;
     };
     for order in orders.iter() {
         let action = order.action;
+        if !matches!(
+            action,
+            Action::Buy { .. } | Action::Sell { .. } | Action::Swap { .. }
+        ) {
+            continue;
+        }
         for &unit in order.units {
             let Some(Ok((owner, &team, &pos, mut inventory, mut slots, dead))) =
                 index.get(unit).map(|entity| units.get_mut(entity))

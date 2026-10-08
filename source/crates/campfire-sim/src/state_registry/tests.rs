@@ -100,6 +100,7 @@ fn shuffled_world() -> World {
 /// A despawned id, an entity with no registered component, and extreme values.
 fn varied_world() -> World {
     let mut world = plain_world();
+    world.insert_resource(SimTick::new(Tick::new(7)));
     let gone = allocate(&mut world);
     let gone = world.spawn((gone, health(5))).id();
     world.despawn(gone);
@@ -230,6 +231,11 @@ fn a_digest_is_blake3_over_its_domain_and_its_bytes() {
 fn snapshot_restores_the_same_state() {
     let mut original = varied_world();
     let bytes = snapshot(&original);
+    // A snapshot's state hash is the one its state hashes to.
+    assert_eq!(
+        registry().snapshot(&original, &mut Vec::new()),
+        registry().hash(&original)
+    );
     let mut restored = restore(&bytes).unwrap();
     assert_eq!(registry().hash(&restored), registry().hash(&original));
     assert_eq!(snapshot(&restored), bytes);
@@ -274,15 +280,13 @@ fn flawed_snapshots_are_refused() {
         "test.position",
     ];
     // Sim positions and the tick play no part in these flaws: every case has none and tick 0.
-    let with = |bodies: [Vec<u8>; 4]| -> Vec<u8> {
+    let at_tick = |bodies: [Vec<u8>; 4], tick: Option<u64>| -> Vec<u8> {
         let mut sections: Vec<_> = names.iter().copied().zip(bodies).collect();
         sections.insert(2, ("sim.position", Vec::new()));
-        sections.insert(
-            3,
-            ("sim.tick", postcard::to_allocvec(&Some(0_u64)).unwrap()),
-        );
+        sections.insert(3, ("sim.tick", postcard::to_allocvec(&tick).unwrap()));
         frame(&sections)
     };
+    let with = |bodies| at_tick(bodies, Some(0));
     let allocator = |next: u64| postcard::to_allocvec(&Some(next)).unwrap();
     let valid = with([encoded(&[0_u64, 1]), allocator(2), Vec::new(), Vec::new()]);
     assert!(restore(&valid).is_ok());
@@ -330,6 +334,15 @@ fn flawed_snapshots_are_refused() {
             ]),
             SnapshotError::Trailing,
         ),
+        // The sim's own resources, recorded absent.
+        (
+            at_tick([Vec::new(), allocator(0), Vec::new(), Vec::new()], None),
+            SnapshotError::Missing("sim.tick"),
+        ),
+        (
+            with([Vec::new(), vec![0], Vec::new(), Vec::new()]),
+            SnapshotError::Missing("sim.id_allocator"),
+        ),
         (
             with([vec![0xFF], allocator(2), Vec::new(), Vec::new()]),
             // One byte with the continuation bit set: the varint of an id ends early.
@@ -368,13 +381,15 @@ fn a_resource_the_snapshot_lacks_is_removed() {
     // so its hash is the snapshot's.
     let mut with_extra = registry();
     Extra::register(&mut with_extra);
+    let mut plain = plain_world();
+    plain.init_resource::<SimTick>();
     let mut bytes = Vec::new();
-    with_extra.snapshot(&plain_world(), &mut bytes);
+    with_extra.snapshot(&plain, &mut bytes);
     let mut world = World::new();
     world.insert_resource(Extra);
     with_extra.restore(&bytes, &mut world).unwrap();
     assert!(world.get_resource::<Extra>().is_none());
-    assert_eq!(with_extra.hash(&world), with_extra.hash(&plain_world()));
+    assert_eq!(with_extra.hash(&world), with_extra.hash(&plain));
 }
 
 #[derive(Resource, Debug, Serialize, Deserialize)]
@@ -517,7 +532,10 @@ fn entity(world: &World, id: StableId) -> Entity {
 
 #[test]
 fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
-    let mut following = Following::new(registry(), plain_world());
+    // A world whose queries skip the unpredicted, as a predicting client's do.
+    let mut world = plain_world();
+    Unpredicted::register(&mut world);
+    let mut following = Following::new(registry(), world);
     let (first, second) = (StableId::new(0), StableId::new(1));
     assert_eq!(by_type(&following.copy), by_type(&following.world));
     // No tick resource: each delta holds its absence, `None`, a 0 byte.
@@ -604,6 +622,16 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
             vec![allocator(&following.world), absent.clone(), moved]
         )
     );
+
+    // A value of an entity the world's default filters hide, as a client hides the units it
+    // does not predict: copied all the same.
+    let hidden = following.step(|world| {
+        let fifth = entity(world, fifth);
+        world.entity_mut(fifth).insert(Unpredicted);
+        world.get_mut::<Health>(fifth).unwrap().0 = Num::from_int(32).unwrap();
+    });
+    let health_32 = ("test.health", encoded(&[(fifth, Some(health(32)))]));
+    assert_eq!(hidden, (vec![], vec![], vec![absent.clone(), health_32]));
 
     // A resource inserted, then removed.
     let tick = SimTick::new(Tick::new(5));

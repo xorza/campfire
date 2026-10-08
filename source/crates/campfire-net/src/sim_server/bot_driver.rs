@@ -1,20 +1,18 @@
 use std::mem;
 use std::ops::Range;
 
-use bevy_ecs::query::{QueryState, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{Experience, Order, Owner};
+use campfire_capabilities::{HeldPlayerUnits, Order};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
-use campfire_sim::StableId;
 
+use crate::bot_script::BotScript;
 use crate::events::avatar_missing::AvatarMissing;
-use crate::events::input_dropped::InputDropped;
+use crate::events::bot_payload_dropped::BotPayloadDropped;
 use crate::order_script::OrderScript;
-use crate::sim_client::bot_script::BotScript;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_signer::ServerSigner;
 
@@ -38,12 +36,9 @@ pub(crate) struct BotDriver {
     /// kept so no tick allocates.
     full: Vec<PlayerSlot>,
     kept: Vec<Waiting>,
-    /// The avatars, by their owners' slots, kept so no tick builds the query again.
-    avatars: Avatars,
+    /// Who each slot commands, kept so no tick builds its query again.
+    players: HeldPlayerUnits,
 }
-
-/// The query of the avatars and their owners.
-type Avatars = QueryState<(&'static StableId, &'static Owner), With<Experience>>;
 
 /// A bot the driver plays: its slot, its script, and the tick the script's ticks count from.
 #[derive(Debug)]
@@ -74,7 +69,7 @@ impl BotDriver {
             body: Vec::new(),
             full: Vec::new(),
             kept: Vec::new(),
-            avatars: world.query_filtered(),
+            players: HeldPlayerUnits::new(world),
         }
     }
 
@@ -142,15 +137,14 @@ impl BotDriver {
                 });
             }
             let avatar = self
-                .avatars
-                .iter(world)
-                .find(|(_, owner)| owner.slot() == driven.slot)
-                .map(|(&id, _)| id);
+                .players
+                .avatar(world, driven.slot)
+                .map(|avatar| avatar.id);
             for scripted in driven.script.due_orders(script_tick) {
                 let Some(unit) = avatar else {
                     AvatarMissing {
                         slot: driven.slot,
-                        action: format!("{:?}", scripted.action),
+                        action: scripted.action,
                     }
                     .log();
                     continue;
@@ -188,8 +182,9 @@ impl BotDriver {
                     kept.push(waiting);
                 }
                 Err(ServerInputRefused::Log(ServerInputError::PayloadTooLarge)) => {
-                    InputDropped {
-                        name: format!("a bot's payload of {} bytes", waiting.payload.len()),
+                    BotPayloadDropped {
+                        slot: waiting.slot,
+                        len: waiting.payload.len(),
                     }
                     .log();
                 }

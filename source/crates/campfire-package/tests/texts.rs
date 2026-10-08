@@ -3,7 +3,7 @@
 
 use campfire_package::{
     Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, MessageId, ModePackages,
-    PackageRef, Texts,
+    PackageName, PackageRef, Texts,
 };
 
 use crate::moba::{Edit, edited, edited_at};
@@ -63,7 +63,10 @@ fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
 #[test]
 fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on() {
     let file_name = |error: LoadError, file: &str| {
-        assert_eq!(error.package, PackageRef::Name("moba-de".to_owned()));
+        assert_eq!(
+            error.package,
+            PackageRef::Name(PackageName::new("moba-de").unwrap())
+        );
         assert!(
             matches!(&*error.problem, LoadProblem::Locale { path, problem: LocaleProblem::FileName } if path.as_str() == file),
             "{error:?}"
@@ -94,7 +97,10 @@ fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on()
     );
     let packages = ModePackages::from_package_dir(&edited([])).unwrap();
     let error = Texts::new(&packages, &[german([stray]).unwrap()]).unwrap_err();
-    assert_eq!(error.package, PackageRef::Name("moba-de".to_owned()));
+    assert_eq!(
+        error.package,
+        PackageRef::Name(PackageName::new("moba-de").unwrap())
+    );
     assert!(
         matches!(&*error.problem, LoadProblem::Locale { path, problem: LocaleProblem::Stray(id) } if path.as_str() == "locale/hero-husk/de.ftl" && id.as_str() == "hero-nme"),
         "{error:?}"

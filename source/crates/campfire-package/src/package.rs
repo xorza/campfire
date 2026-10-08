@@ -11,7 +11,7 @@ use crate::package_text::PackageText;
 use crate::script_facts::{Function, ScriptFacts};
 
 /// Where a package holds its game scripts.
-const SCRIPTS: &str = "scripts";
+pub(crate) const SCRIPTS: &str = "scripts";
 
 /// A package as the load read it: its header, its fingerprint, each of its scripts, and its
 /// human text.

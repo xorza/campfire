@@ -1,15 +1,17 @@
-use campfire_log::LogEvent;
+use campfire_capabilities::Action;
+use campfire_log::{JsonText, LogEvent, LogLine};
 use campfire_sim::StableId;
 use serde::Deserialize;
 use tracing::warn;
 
 /// The client dropped an order to `units` units, the first of them `unit`, whose payload passes
-/// the session's max length; `action` is the order's action, as its `Debug` writes it.
+/// the session's max length, with its action.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct OrderDropped {
     pub unit: StableId,
     pub units: usize,
-    pub action: String,
+    #[serde(deserialize_with = "LogLine::json")]
+    pub action: Action,
 }
 
 impl LogEvent for OrderDropped {
@@ -19,7 +21,7 @@ impl LogEvent for OrderDropped {
         warn!(
             unit = self.unit.get(),
             units = self.units,
-            action = %self.action,
+            action = %JsonText(&self.action),
             "{}",
             Self::MESSAGE
         );
@@ -38,7 +40,7 @@ mod tests {
         round_trip(&OrderDropped {
             unit: IdAllocator::default().allocate(),
             units: 3,
-            action: "Stop".to_owned(),
+            action: Action::Learn { slot: 2 },
         });
     }
 }

@@ -7,10 +7,13 @@ use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::query::{Allow, Has, With, Without};
+use bevy::ecs::hierarchy::{ChildOf, Children};
+use bevy::ecs::lifecycle::RemovedComponents;
+use bevy::ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
+use bevy::ecs::schedule::common_conditions::resource_exists;
+use bevy::ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy::ecs::world::World;
 use bevy::math::primitives::{Annulus, Plane3d};
 use bevy::math::{Quat, Vec3};
@@ -19,14 +22,16 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use campfire_capabilities::{
-    ActionSlots, Combat, Dead, Learning, Level, Owner, Points, PoolId, Pools, Team,
+    ActionSlots, Combat, Dead, Learning, Level, PlayerUnits, Points, PoolId, Pools, Team,
 };
+use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
-use lightyear::prelude::Predicted;
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind};
 use crate::hud::ring::Ring;
-use crate::view::{CAMERA, Drawn, Glide, Look};
+use crate::view::drawing::Drawing;
+use crate::view::look::Look;
+use crate::view::{CAMERA, ViewSystems};
 
 mod gauge;
 mod ring;
@@ -55,37 +60,48 @@ struct HudPalette {
     cooldown: Handle<StandardMaterial>,
     learnable: Handle<StandardMaterial>,
     hit: Handle<StandardMaterial>,
+    target: Handle<StandardMaterial>,
 }
 
-/// The ring under the unit the own avatar attacks, hidden while it attacks none.
-#[derive(Component, Debug)]
-struct TargetMark;
+/// The scratch `add_gauges` builds each unit's gauges in.
+#[derive(Debug, Default)]
+struct GaugeScratch {
+    kinds: Vec<GaugeKind>,
+    ranks: Vec<Ranked>,
+}
 
-/// The drawn units with no gauges yet: each one's team, its pools, its ability slots, and whether
-/// it is the player's own.
+/// An ability slot whose ability ranks up, and its count of ranks.
+#[derive(Debug, Clone, Copy)]
+struct Ranked {
+    slot: u8,
+    ranks: u8,
+}
+
+/// The drawn units with no gauges yet: each one's drawing, its team, its pools, and its ability
+/// slots.
 type Ungauged<'w, 's> = Query<
     'w,
     's,
     (
         Entity,
+        &'static Drawing,
         &'static Team,
         Option<&'static Pools>,
         Option<&'static ActionSlots>,
-        Has<Predicted>,
-        Has<Owner>,
     ),
-    (With<Drawn>, Without<Gauged>, Allow<Unpredicted>),
+    (Without<Gauged>, Allow<Unpredicted>),
 >;
 
 /// On a unit: its gauges are made.
 #[derive(Component, Debug)]
 struct Gauged;
 
-/// What the gauges show of each unit.
+/// What the gauges show of each unit, and its drawing.
 type Shown<'w, 's> = Query<
     'w,
     's,
     (
+        &'static Drawing,
         Has<Dead>,
         Option<&'static Pools>,
         Option<&'static ActionSlots>,
@@ -95,9 +111,40 @@ type Shown<'w, 's> = Query<
     Allow<Unpredicted>,
 >;
 
-/// The fill of each gauge: a drawn quad that neither a gauge nor a unit's drawing holds.
-type Fills<'w, 's> =
-    Query<'w, 's, &'static mut Transform, (With<Mesh3d>, Without<Gauge>, Without<Glide>)>;
+/// The gauged units whose gauges may show something else this frame: what they show changed, or
+/// they are new.
+type Restated<'w, 's> = Query<
+    'w,
+    's,
+    Entity,
+    (
+        With<Gauged>,
+        Or<(
+            Changed<Pools>,
+            Changed<ActionSlots>,
+            Changed<Points>,
+            Changed<Level>,
+            Added<Dead>,
+            Added<Gauged>,
+        )>,
+        Allow<Unpredicted>,
+    ),
+>;
+
+/// The drawn units whose pools changed.
+type Hurt<'w, 's> =
+    Query<'w, 's, (&'static Pools, &'static Drawing), (Changed<Pools>, Allow<Unpredicted>)>;
+
+/// The fill of each gauge: a drawn quad that no gauge holds.
+type Fills<'w, 's> = Query<'w, 's, &'static mut Transform, (With<Mesh3d>, Without<Gauge>)>;
+
+/// The ring under the unit the own avatar attacks, a child of the root of that unit's drawing,
+/// which the unit's despawn takes along.
+#[derive(Debug, Clone, Copy)]
+struct Marked {
+    root: Entity,
+    ring: Entity,
+}
 
 /// How far over a drawing's top its gauges start.
 const ABOVE: f32 = 0.35;
@@ -109,13 +156,13 @@ impl Plugin for Hud {
             Update,
             (
                 Hud::add_gauges,
-                Hud::mark_hits,
+                Hud::mark_hits.run_if(resource_exists::<Life>),
                 Hud::fill_gauges,
-                Hud::place_gauges,
                 Hud::widen_rings,
                 Hud::mark_target,
             )
-                .chain(),
+                .chain()
+                .after(ViewSystems),
         );
     }
 }
@@ -140,17 +187,9 @@ impl Hud {
                 ..StandardMaterial::default()
             })
         };
-        let ring = meshes.add(Annulus::new(0.55, 0.7).mesh());
-        commands.spawn((
-            TargetMark,
-            Mesh3d(ring.clone()),
-            MeshMaterial3d(flat(Color::srgb(1.0, 0.35, 0.2))),
-            Transform::default(),
-            Visibility::Hidden,
-        ));
         commands.insert_resource(HudPalette {
             quad: meshes.add(Plane3d::default().mesh().size(1.0, 1.0)),
-            ring,
+            ring: meshes.add(Annulus::new(0.55, 0.7).mesh()),
             back: flat(Color::srgb(0.1, 0.1, 0.12)),
             friend: flat(Color::srgb(0.3, 0.85, 0.35)),
             foe: flat(Color::srgb(0.9, 0.3, 0.25)),
@@ -158,83 +197,101 @@ impl Hud {
             cooldown: flat(Color::srgb(0.9, 0.9, 0.9)),
             learnable: flat(Color::srgb(1.0, 0.72, 0.1)),
             hit: flat(Color::srgb(1.0, 0.8, 0.3)),
+            target: flat(Color::srgb(1.0, 0.35, 0.2)),
         });
     }
 
-    /// Gives each drawn unit its gauges, once the client holds its own avatar, whose team tells
-    /// friend from foe: life for every unit with the life pool; for the own avatar, each other
-    /// pool, then, when an ability ranks up, a row of learn marks, then a cooldown per ability
-    /// slot, then the rank ticks of each ability that ranks up.
+    /// Gives each drawn unit its gauges, once the client plays, its team telling friend from
+    /// foe: life for every unit with the life pool; for the own avatar, each other pool, then,
+    /// when an ability ranks up, a row of learn marks, then a cooldown per ability slot, then the
+    /// rank ticks of each ability that ranks up. The gauges stand over the drawing's top, facing
+    /// the camera, as children of its root.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a system takes each resource and query it reads"
+    )]
     fn add_gauges(
         palette: Res<'_, HudPalette>,
         life: Option<Res<'_, Life>>,
         learning: Option<Learning<'_>>,
-        own: Query<'_, '_, &Team, (With<Owner>, With<Predicted>)>,
+        state: Option<Res<'_, JoinState>>,
+        players: PlayerUnits<'_, '_>,
         drawn: Ungauged<'_, '_>,
+        looks: Query<'_, '_, &Look>,
+        mut scratch: Local<'_, GaugeScratch>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Ok(&own_team) = own.single() else {
+        let state = state.as_deref();
+        let (Some(slot), Some(own_team)) = (
+            state.and_then(JoinState::slot),
+            state.and_then(JoinState::team),
+        ) else {
             return;
         };
+        let avatar = players.avatar(slot).map(|avatar| avatar.entity);
         let life = life.map(|life| life.0);
-        for (unit, team, pools, slots, predicted, owned) in &drawn {
+        let facing = Quat::from_rotation_arc(Vec3::Y, CAMERA.normalize());
+        let GaugeScratch { kinds, ranks } = &mut *scratch;
+        for (unit, drawing, team, pools, slots) in &drawn {
             commands.entity(unit).insert(Gauged);
-            let mine = predicted && owned;
+            // A projectile's drawing has no look, and no gauges.
+            let Ok(look) = looks.get(drawing.root()) else {
+                continue;
+            };
+            let mine = Some(unit) == avatar;
             let friend = *team == own_team;
-            let mut kinds = Vec::new();
-            let has = |pool| pools.is_some_and(|pools| pools.max(pool).is_some());
-            if life.is_some_and(has) {
-                kinds.push((
-                    GaugeKind::Life { shown: None },
-                    if friend {
-                        &palette.friend
-                    } else {
-                        &palette.foe
-                    },
-                ));
+            kinds.clear();
+            let current = |pool| pools.and_then(|pools| pools.current(pool));
+            if let Some(life) = life
+                && pools.is_some_and(|pools| pools.max(life).is_some())
+            {
+                kinds.push(GaugeKind::Life {
+                    shown: current(life),
+                });
             }
             let mut row = 1;
             if mine && let Some(pools) = pools {
                 for pool in pools.ids().filter(|&pool| Some(pool) != life) {
-                    kinds.push((GaugeKind::Pool { pool, row }, &palette.resource));
+                    kinds.push(GaugeKind::Pool { pool, row });
                     row += 1;
                 }
             }
             if mine && let Some(slots) = slots {
-                let ranks: Vec<(u8, u8)> = (0..)
-                    .zip(slots.iter())
-                    .filter_map(|(slot, held)| Some((slot, learning.as_ref()?.ranks(held)?)))
-                    .collect();
+                ranks.clear();
+                ranks.extend((0..).zip(slots.iter()).filter_map(|(slot, held)| {
+                    Some(Ranked {
+                        slot,
+                        ranks: learning.as_ref()?.ranks(held)?,
+                    })
+                }));
                 if !ranks.is_empty() {
-                    for &(slot, _) in &ranks {
-                        kinds.push((GaugeKind::Learnable { slot, row }, &palette.learnable));
-                    }
+                    kinds.extend(ranks.iter().map(|ranked| GaugeKind::Learnable {
+                        slot: ranked.slot,
+                        row,
+                    }));
                     row += 1;
                 }
-                for (slot, _) in (0..).zip(slots.iter()) {
-                    kinds.push((
-                        GaugeKind::Cooldown {
+                kinds.extend(
+                    (0..)
+                        .zip(slots.iter())
+                        .map(|(slot, _)| GaugeKind::Cooldown {
                             slot,
                             row,
                             cooling: None,
-                        },
-                        &palette.cooldown,
-                    ));
-                }
+                        }),
+                );
                 row += 1;
-                for (slot, ranks) in ranks {
-                    for rank in 1..=ranks {
-                        let tick = GaugeKind::Rank {
-                            slot,
-                            rank,
-                            ranks,
-                            row,
-                        };
-                        kinds.push((tick, &palette.cooldown));
-                    }
+                for &Ranked { slot, ranks } in &*ranks {
+                    kinds.extend((1..=ranks).map(|rank| GaugeKind::Rank {
+                        slot,
+                        rank,
+                        ranks,
+                        row,
+                    }));
                 }
             }
-            for (kind, fill) in kinds {
+            let top = Vec3::Y * (look.height() + ABOVE);
+            for &kind in &*kinds {
                 let layout = kind.layout();
                 let back = commands
                     .spawn((
@@ -246,17 +303,19 @@ impl Hud {
                 let fill = commands
                     .spawn((
                         Mesh3d(palette.quad.clone()),
-                        MeshMaterial3d(fill.clone()),
+                        MeshMaterial3d(palette.fill(kind, friend).clone()),
                         layout.fill(0.0),
                     ))
                     .id();
-                commands
+                let gauge = commands
                     .spawn((
-                        Gauge { unit, kind, fill },
-                        Transform::default(),
+                        Gauge { kind, fill },
+                        layout.place(top, facing),
                         Visibility::Hidden,
                     ))
-                    .add_children(&[back, fill]);
+                    .add_children(&[back, fill])
+                    .id();
+                commands.entity(drawing.root()).add_child(gauge);
             }
         }
     }
@@ -265,154 +324,175 @@ impl Hud {
     fn mark_hits(
         time: Res<'_, Time>,
         palette: Res<'_, HudPalette>,
-        life: Option<Res<'_, Life>>,
-        units: Query<'_, '_, (&Pools, &Drawn), Allow<Unpredicted>>,
-        drawings: Query<'_, '_, (&Transform, &Glide)>,
+        life: Res<'_, Life>,
+        units: Hurt<'_, '_>,
+        roots: Query<'_, '_, (&Transform, &Children)>,
         mut gauges: Query<'_, '_, &mut Gauge>,
         mut commands: Commands<'_, '_>,
     ) {
-        for mut gauge in &mut gauges {
-            let unit = gauge.unit;
-            let GaugeKind::Life { shown } = &mut gauge.kind else {
+        for (pools, drawing) in &units {
+            let Ok((root, children)) = roots.get(drawing.root()) else {
                 continue;
             };
-            let (Some(life), Ok((pools, drawn))) = (&life, units.get(unit)) else {
-                continue;
-            };
-            let Some(current) = pools.current(life.0) else {
-                continue;
-            };
-            let hit = shown.is_some_and(|shown| current < shown);
-            *shown = Some(current);
-            let Ok((transform, glide)) = drawings.get(drawn.drawing()) else {
-                continue;
-            };
-            if hit {
-                commands.spawn((
-                    Mesh3d(palette.ring.clone()),
-                    MeshMaterial3d(palette.hit.clone()),
-                    Transform::from_translation(glide.ground(transform) + Vec3::Y * 0.05)
-                        .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
-                    Ring {
-                        since: time.elapsed_secs(),
-                    },
-                ));
+            let mut gauges = gauges.iter_many_mut(children);
+            while let Some(mut gauge) = gauges.fetch_next() {
+                let GaugeKind::Life { shown } = &mut gauge.kind else {
+                    continue;
+                };
+                let current = pools.current(life.0);
+                if current
+                    .zip(*shown)
+                    .is_some_and(|(current, shown)| current < shown)
+                {
+                    commands.spawn((
+                        Mesh3d(palette.ring.clone()),
+                        MeshMaterial3d(palette.hit.clone()),
+                        Transform::from_translation(root.translation + Vec3::Y * 0.05)
+                            .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
+                        Ring {
+                            since: time.elapsed(),
+                        },
+                    ));
+                }
+                *shown = current;
             }
         }
     }
 
-    /// Sets each gauge's fill from its unit, and hides the gauges of the dead, of unlearned
+    /// Sets the gauges' fills of each unit whose gauges may show something else, and of the own
+    /// avatar, whose cooldowns fill with the ticks; hides the gauges of the dead, of unlearned
     /// abilities' cooldowns, and the learn marks of the abilities the unit may not learn now. A
     /// dead unit may learn, so its learn marks show.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a system takes each resource and query it reads"
+    )]
     fn fill_gauges(
         tick: Option<Res<'_, SimTick>>,
         life: Option<Res<'_, Life>>,
+        state: Option<Res<'_, JoinState>>,
         learning: Option<Learning<'_>>,
+        players: PlayerUnits<'_, '_>,
+        restated: Restated<'_, '_>,
+        mut revived: RemovedComponents<'_, '_, Dead>,
         units: Shown<'_, '_>,
-        mut gauges: Query<'_, '_, (&mut Gauge, &mut Visibility)>,
-        mut fills: Fills<'_, '_>,
+        roots: Query<'_, '_, &Children>,
+        (mut gauges, mut fills): (Query<'_, '_, (&mut Gauge, &mut Visibility)>, Fills<'_, '_>),
+        mut touched: Local<'_, Vec<Entity>>,
     ) {
+        let avatar = state
+            .as_deref()
+            .and_then(JoinState::slot)
+            .and_then(|slot| players.avatar(slot))
+            .map(|avatar| avatar.entity);
+        touched.clear();
+        touched.extend(restated.iter().chain(revived.read()).chain(avatar));
+        touched.sort_unstable();
+        touched.dedup();
         let now = tick.map(|tick| tick.start());
-        for (mut gauge, mut visibility) in &mut gauges {
-            let Ok((dead, pools, slots, points, level)) = units.get(gauge.unit) else {
+        for &unit in &*touched {
+            let Ok((drawing, dead, pools, slots, points, level)) = units.get(unit) else {
                 continue;
             };
-            let fill = |pool| {
-                let pools = pools?;
-                Some(Gauge::share(pools.current(pool)?, pools.max(pool)?))
+            let Ok(children) = roots.get(drawing.root()) else {
+                continue;
             };
-            let fraction = match &mut gauge.kind {
-                GaugeKind::Life { .. } => life.as_ref().and_then(|life| fill(life.0)),
-                GaugeKind::Pool { pool, .. } => fill(*pool),
-                GaugeKind::Cooldown { slot, cooling, .. } => {
-                    let learned = slots
+            let mut gauges = gauges.iter_many_mut(children);
+            while let Some((mut gauge, mut visibility)) = gauges.fetch_next() {
+                let fill = |pool| {
+                    let pools = pools?;
+                    Some(Gauge::share(pools.current(pool)?, pools.max(pool)?))
+                };
+                let fraction = match &mut gauge.kind {
+                    GaugeKind::Life { .. } => life.as_ref().and_then(|life| fill(life.0)),
+                    GaugeKind::Pool { pool, .. } => fill(*pool),
+                    GaugeKind::Cooldown { slot, cooling, .. } => {
+                        let learned = slots
+                            .and_then(|slots| slots.slot(*slot))
+                            .filter(|state| state.rank > 0);
+                        learned.zip(now).map(|(state, now)| {
+                            if cooling.is_none_or(|cooling| cooling.ready_at != state.ready_at) {
+                                *cooling = Some(Cooling {
+                                    ready_at: state.ready_at,
+                                    seen_at: now,
+                                });
+                            }
+                            cooling.map_or(1.0, |cooling| cooling.filled(now))
+                        })
+                    }
+                    GaugeKind::Rank { slot, rank, .. } => slots
                         .and_then(|slots| slots.slot(*slot))
-                        .filter(|state| state.rank > 0);
-                    learned.zip(now).map(|(state, now)| {
-                        if cooling.is_none_or(|cooling| cooling.ready_at != state.ready_at) {
-                            *cooling = Some(Cooling {
-                                ready_at: state.ready_at,
-                                seen_at: now,
+                        .map(|held| if held.rank >= *rank { 1.0 } else { 0.0 }),
+                    GaugeKind::Learnable { slot, .. } => {
+                        let held = slots.and_then(|slots| slots.slot(*slot));
+                        let learnable = learning
+                            .as_ref()
+                            .zip(held)
+                            .zip(points.zip(level))
+                            .is_some_and(|((learning, held), (&points, &level))| {
+                                learning.learnable(held, points, level)
                             });
-                        }
-                        cooling.map_or(1.0, |cooling| cooling.filled(now))
-                    })
+                        learnable.then_some(1.0)
+                    }
+                };
+                let learns = matches!(gauge.kind, GaugeKind::Learnable { .. });
+                let shown = fraction.filter(|_| !dead || learns);
+                visibility.set_if_neq(if shown.is_some() {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                });
+                if let (Some(fraction), Ok(mut fill)) = (shown, fills.get_mut(gauge.fill)) {
+                    fill.set_if_neq(gauge.kind.layout().fill(fraction));
                 }
-                GaugeKind::Rank { slot, rank, .. } => slots
-                    .and_then(|slots| slots.slot(*slot))
-                    .map(|held| if held.rank >= *rank { 1.0 } else { 0.0 }),
-                GaugeKind::Learnable { slot, .. } => {
-                    let held = slots.and_then(|slots| slots.slot(*slot));
-                    let learnable = learning
-                        .as_ref()
-                        .zip(held)
-                        .zip(points.zip(level))
-                        .is_some_and(|((learning, held), (&points, &level))| {
-                            learning.learnable(held, points, level)
-                        });
-                    learnable.then_some(1.0)
-                }
-            };
-            let learns = matches!(gauge.kind, GaugeKind::Learnable { .. });
-            let shown = fraction.filter(|_| !dead || learns);
-            visibility.set_if_neq(if shown.is_some() {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            });
-            if let (Some(fraction), Ok(mut fill)) = (shown, fills.get_mut(gauge.fill)) {
-                fill.set_if_neq(gauge.kind.layout().fill(fraction));
             }
-        }
-    }
-
-    /// Puts each gauge over its unit's drawing, facing the camera, and removes the gauges of units
-    /// that are gone.
-    fn place_gauges(
-        units: Query<'_, '_, &Drawn, Allow<Unpredicted>>,
-        drawings: Query<'_, '_, (&Transform, &Glide, &Look)>,
-        mut gauges: Query<'_, '_, (Entity, &Gauge, &mut Transform), Without<Glide>>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        let facing = Quat::from_rotation_arc(Vec3::Y, CAMERA.normalize());
-        for (entity, gauge, mut transform) in &mut gauges {
-            let drawing = units
-                .get(gauge.unit)
-                .ok()
-                .and_then(|drawn| drawings.get(drawn.drawing()).ok());
-            let Some((drawing, glide, look)) = drawing else {
-                commands.entity(entity).despawn();
-                continue;
-            };
-            let top = glide.ground(drawing) + Vec3::Y * (look.height() + ABOVE);
-            transform.set_if_neq(gauge.kind.layout().place(top, facing));
         }
     }
 
     /// Puts the target ring on the ground under the unit the own avatar attacks, as wide as the
-    /// unit's drawing, or hides it.
+    /// unit's drawing, when the target changes: a child of the target's drawing, which carries it
+    /// along. A ring whose unit is gone went with the unit's drawing.
     fn mark_target(
-        index: Res<'_, EntityIndex>,
-        own: Query<'_, '_, &ActionSlots, With<Predicted>>,
-        units: Query<'_, '_, &Drawn, Allow<Unpredicted>>,
-        drawings: Query<'_, '_, (&Transform, &Glide, &Look), Without<TargetMark>>,
-        mark: Single<'_, '_, (&mut Transform, &mut Visibility), With<TargetMark>>,
+        (index, state, palette): (
+            Res<'_, EntityIndex>,
+            Option<Res<'_, JoinState>>,
+            Res<'_, HudPalette>,
+        ),
+        players: PlayerUnits<'_, '_>,
+        own: Query<'_, '_, &ActionSlots>,
+        units: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
+        looks: Query<'_, '_, &Look>,
+        mut marked: Local<'_, Option<Marked>>,
+        mut commands: Commands<'_, '_>,
     ) {
-        let target = own
-            .iter()
-            .find_map(ActionSlots::attack_target)
+        let target = state
+            .as_deref()
+            .and_then(JoinState::slot)
+            .and_then(|slot| players.avatar(slot))
+            .and_then(|avatar| own.get(avatar.entity).ok())
+            .and_then(ActionSlots::attack_target)
             .and_then(|target| index.get(target))
             .and_then(|target| units.get(target).ok())
-            .and_then(|drawn| drawings.get(drawn.drawing()).ok());
-        let (mut transform, mut visibility) = mark.into_inner();
-        let Some((drawing, glide, look)) = target else {
-            *visibility = Visibility::Hidden;
+            .and_then(|drawing| Some((drawing.root(), looks.get(drawing.root()).ok()?)));
+        if marked.map(|marked| marked.root) == target.map(|(root, _)| root) {
             return;
-        };
-        *visibility = Visibility::Visible;
-        *transform = Transform::from_translation(glide.ground(drawing) + Vec3::Y * 0.04)
-            .with_rotation(Quat::from_rotation_x(-FRAC_PI_2))
-            .with_scale(Vec3::splat(2.0 * look.radius()));
+        }
+        if let Some(old) = marked.take() {
+            commands.entity(old.ring).try_despawn();
+        }
+        if let Some((root, look)) = target {
+            let ring = commands
+                .spawn((
+                    Mesh3d(palette.ring.clone()),
+                    MeshMaterial3d(palette.target.clone()),
+                    Transform::from_translation(Vec3::Y * 0.04)
+                        .with_rotation(Quat::from_rotation_x(-FRAC_PI_2))
+                        .with_scale(Vec3::splat(2.0 * look.radius())),
+                    ChildOf(root),
+                ))
+                .id();
+            *marked = Some(Marked { root, ring });
+        }
     }
 
     fn widen_rings(
@@ -421,7 +501,7 @@ impl Hud {
         mut commands: Commands<'_, '_>,
     ) {
         for (entity, ring, mut transform) in &mut rings {
-            match ring.scale(time.elapsed_secs()) {
+            match ring.scale(time.elapsed()) {
                 Some(scale) => transform.scale = Vec3::splat(scale),
                 None => commands.entity(entity).despawn(),
             }
@@ -429,29 +509,95 @@ impl Hud {
     }
 }
 
+impl HudPalette {
+    /// The material a gauge of `kind` fills with, for a unit of the client's team if `friend`.
+    const fn fill(&self, kind: GaugeKind, friend: bool) -> &Handle<StandardMaterial> {
+        match kind {
+            GaugeKind::Life { .. } if friend => &self.friend,
+            GaugeKind::Life { .. } => &self.foe,
+            GaugeKind::Pool { .. } => &self.resource,
+            GaugeKind::Learnable { .. } => &self.learnable,
+            GaugeKind::Cooldown { .. } | GaugeKind::Rank { .. } => &self.cooldown,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use bevy::asset::{AssetApp, AssetPlugin};
-    use bevy::time::TimePlugin;
+    use bevy::time::{TimePlugin, TimeUpdateStrategy};
+    use campfire_math::Num;
+    use campfire_sim::{IdAllocator, Position};
 
     use super::*;
+    use crate::view::View;
 
     #[test]
-    fn the_hud_systems_run_together() {
+    fn a_ring_marks_each_drop_of_life_where_the_unit_is_drawn() {
         // Bevy checks that a system's queries do not conflict when it first runs.
         let mut app = App::new();
         app.add_plugins((TimePlugin, AssetPlugin::default()));
         app.init_asset::<Mesh>();
         app.init_asset::<StandardMaterial>();
         app.init_resource::<EntityIndex>();
-        app.add_plugins(Hud);
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+        Unpredicted::register(app.world_mut());
+        app.add_plugins((View, Hud));
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());
-        // With no own avatar there is no target to mark.
-        let mut marks = app
+        // With no own avatar there is no target to mark: nothing wears the target's material.
+        let target = app.world().resource::<HudPalette>().target.clone();
+        let mut worn = app.world_mut().query::<&MeshMaterial3d<StandardMaterial>>();
+        assert!(worn.iter(app.world()).all(|material| material.0 != target));
+
+        // A unit of 600 life at (3, 0, −2), whose life gauge showed it full.
+        let life = PoolId::new(0).unwrap();
+        app.insert_resource(Life(life));
+        let pools = |max| Pools::new([(life, Num::int(max))]).unwrap();
+        let at = Position::new(campfire_math::Vec3::new(
+            Num::int(3),
+            Num::ZERO,
+            Num::int(-2),
+        ));
+        let unit = app
             .world_mut()
-            .query_filtered::<&Visibility, With<TargetMark>>();
-        let marks: Vec<_> = marks.iter(app.world()).collect();
-        assert_eq!(marks, [&Visibility::Hidden]);
+            .spawn((
+                IdAllocator::default().allocate(),
+                at.unwrap(),
+                Team::new(0),
+                pools(600),
+            ))
+            .id();
+        app.update();
+        let root = app.world().get::<Drawing>(unit).unwrap().root();
+        let shown = |shown| GaugeKind::Life {
+            shown: Some(Num::int(shown)),
+        };
+        let gauge = app
+            .world_mut()
+            .spawn((
+                Gauge {
+                    kind: shown(600),
+                    fill: Entity::PLACEHOLDER,
+                },
+                ChildOf(root),
+            ))
+            .id();
+        let mut rings = app.world_mut().query::<(&Ring, &Transform)>();
+        // Unchanged, its pools mark nothing; a drop to 450 marks one ring on the ground under it,
+        // a rise to 500 none, and the gauge keeps what it showed last.
+        app.update();
+        assert_eq!(rings.iter(app.world()).count(), 0);
+        app.world_mut().entity_mut(unit).insert(pools(450));
+        app.update();
+        let (_, ring) = rings.single(app.world()).unwrap();
+        assert_eq!(ring.translation, Vec3::new(3.0, 0.05, -2.0));
+        assert_eq!(app.world().get::<Gauge>(gauge).unwrap().kind, shown(450));
+        app.world_mut().entity_mut(unit).insert(pools(500));
+        app.update();
+        assert_eq!(app.world().get::<Gauge>(gauge).unwrap().kind, shown(500));
+        assert_eq!(rings.iter(app.world()).count(), 1);
     }
 }

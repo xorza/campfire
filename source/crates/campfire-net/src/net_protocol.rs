@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
-    ActionSlots, Area, Body, Dead, Destination, ForcedMove, Level, MatchEnd, ModifierClocks,
-    Modifiers, MoveStep, Owner, Points, Pools, Progress, Projectile, Relations, Respawn, Route,
-    SpawnPoint, Team, UnitType,
+    ActionSlots, Area, Body, CapabilitySet, Dead, Destination, ForcedMove, Level, MatchEnd,
+    ModifierClocks, Modifiers, MoveStep, Owner, Points, Pools, Progress, Projectile, Relations,
+    Respawn, Route, SpawnPoint, Team, UnitType,
 };
 use campfire_protocol::SignedReceipt;
-use campfire_sim::{Position, StableId};
+use campfire_sim::{Capability, Position, StableId};
 use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings, NetworkDirection,
     PredictionBuilderExt, ReliableSettings,
@@ -36,27 +36,82 @@ pub(crate) struct MatchChannel;
 pub(crate) struct JoinChannel;
 
 /// What the server and the client must register alike, in the same order: the messages, their
-/// channels, and the sim components that replicate. The client predicts where its own units are,
-/// where they walk to and by which route, which it plans on its own pathing grid, the forced moves
-/// it learns of, which it continues as the server does, and their death and respawn, which it learns from the server: its sim stops a dead unit and brings it back as
-/// the server's does, and a rollback restores both. It learns each unit's type once and its
-/// level as it changes, and derives its own units' stats, tags and step from them and their
-/// modifiers as the server does, so the server sends a unit's step only with the unit. It starts
-/// their actions as the server does, and learns their pools and the actions' effects from the
-/// server. It learns the teams' relations as a script changes them.
+/// channels, and the sim components that replicate, the core's and those of the mode's declared
+/// capabilities alone, so a capability the mode lacks costs no prediction history and no
+/// replication rule. The client predicts where its own units are, where they walk to and by which
+/// route, which it plans on its own pathing grid, the forced moves it learns of, which it continues
+/// as the server does, and their death and respawn, which it learns from the server: its sim stops
+/// a dead unit and brings it back as the server's does, and a rollback restores both. It learns
+/// each unit's type once and its level as it changes, and derives its own units' stats, tags and
+/// step from them and their modifiers as the server does, so the server sends a unit's step only
+/// with the unit. It starts their actions as the server does, and learns their pools and the
+/// actions' effects from the server. It learns the teams' relations as it sits, and again as a
+/// script changes them.
 #[derive(Debug)]
-pub struct NetProtocol;
+pub struct NetProtocol {
+    pub capabilities: CapabilitySet,
+}
 
 impl NetProtocol {
     /// How often a headless app's loop runs, a server's or a bot's: often enough that no fixed
     /// tick waits long for its frame.
     pub const FRAME: Duration = Duration::from_millis(2);
+
+    /// Registers the sim components `capability` replicates.
+    fn register_components(app: &mut App, capability: Capability) {
+        match capability {
+            Capability::Stats => {
+                app.component::<Level>().replicate().predict();
+                app.component::<Pools>().replicate();
+                app.component::<Modifiers>().replicate().predict();
+                app.component::<ModifierClocks>().replicate().predict();
+            }
+            Capability::Combat => {
+                app.component::<Dead>().replicate().predict();
+                app.component::<Respawn>().replicate().predict();
+            }
+            Capability::Projectiles => {
+                app.component::<Projectile>().replicate_once();
+            }
+            Capability::Areas => {
+                app.component::<Area>().replicate_once();
+            }
+            Capability::Navigation => {
+                app.component::<MoveStep>().replicate_once();
+                app.component::<Destination>().replicate().predict();
+                app.component::<Route>().replicate().predict();
+                app.component::<Progress>().replicate().predict();
+                app.component::<ForcedMove>().replicate().predict();
+            }
+            Capability::Progression => {
+                app.component::<Points>().replicate().predict();
+            }
+            Capability::Abilities
+            | Capability::Orders
+            | Capability::Character
+            | Capability::Hitboxes
+            | Capability::Vision
+            | Capability::Physics
+            | Capability::World
+            | Capability::Mode
+            | Capability::Production
+            | Capability::Items
+            | Capability::Quests
+            | Capability::Interaction => {}
+        }
+    }
 }
 
 impl Plugin for NetProtocol {
     fn build(&self, app: &mut App) {
+        // Lightyear resends a message 1.5 round trips after it went out unacknowledged, and never
+        // when that is zero, as a round trip measured in process reads; the floor keeps a resend
+        // on such a link, and is below 1.5 round trips of any link across a network.
         let reliable = || ChannelSettings {
-            mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
+            mode: ChannelMode::OrderedReliable(ReliableSettings {
+                rtt_resend_min_delay: Duration::from_millis(20),
+                ..ReliableSettings::default()
+            }),
             ..ChannelSettings::default()
         };
         app.add_channel::<InputChannel>(reliable())
@@ -88,25 +143,58 @@ impl Plugin for NetProtocol {
 
         app.component::<StableId>().replicate_once();
         app.component::<UnitType>().replicate_once();
-        app.component::<Level>().replicate().predict();
         app.component::<Owner>().replicate();
         app.component::<Team>().replicate_once();
         app.component::<SpawnPoint>().replicate_once();
         app.component::<Body>().replicate_once();
-        app.component::<Pools>().replicate();
-        app.component::<Projectile>().replicate_once();
-        app.component::<Area>().replicate_once();
-        app.component::<ActionSlots>().replicate().predict();
-        app.component::<Points>().replicate().predict();
-        app.component::<Dead>().replicate().predict();
-        app.component::<Respawn>().replicate().predict();
-        app.component::<MoveStep>().replicate_once();
         app.component::<Position>().replicate().predict();
-        app.component::<Destination>().replicate().predict();
-        app.component::<Route>().replicate().predict();
-        app.component::<Progress>().replicate().predict();
-        app.component::<ForcedMove>().replicate().predict();
-        app.component::<Modifiers>().replicate().predict();
-        app.component::<ModifierClocks>().replicate().predict();
+        app.component::<ActionSlots>().replicate().predict();
+        for capability in self.capabilities.iter() {
+            NetProtocol::register_components(app, capability);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy_app::TaskPoolPlugin;
+    use bevy_state::app::StatesPlugin;
+    use bevy_time::TimePlugin;
+    use lightyear::prelude::ComponentRegistry;
+    use lightyear::prelude::server::ServerPlugins;
+
+    use super::*;
+
+    #[test]
+    fn a_capability_the_mode_lacks_registers_no_component() {
+        // Of each kind: the core's, stats', combat's, navigation's, progression's, projectiles'.
+        let registered = |declared: &[Capability]| {
+            let mut app = App::new();
+            app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+            app.add_plugins(ServerPlugins {
+                tick_duration: Duration::from_millis(50),
+            });
+            app.add_plugins(NetProtocol {
+                capabilities: CapabilitySet::new(declared).unwrap(),
+            });
+            let registry = app.world().resource::<ComponentRegistry>();
+            [
+                registry.is_registered::<Position>(),
+                registry.is_registered::<Level>(),
+                registry.is_registered::<Dead>(),
+                registry.is_registered::<Destination>(),
+                registry.is_registered::<Points>(),
+                registry.is_registered::<Projectile>(),
+            ]
+        };
+        assert_eq!(registered(&[]), [true, false, false, false, false, false]);
+        let declared = [
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Navigation,
+            Capability::Progression,
+            Capability::Projectiles,
+        ];
+        assert_eq!(registered(&declared), [true; 6]);
     }
 }

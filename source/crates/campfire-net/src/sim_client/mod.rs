@@ -11,7 +11,7 @@ use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_capabilities::{Dead, MatchEnd, Order, Owner, Relations};
+use campfire_capabilities::{Dead, MatchEnd, Order, PlayerUnits, Relations};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
@@ -29,6 +29,7 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info};
 
+use crate::bot_script::BotScript;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::LinkLost;
@@ -46,7 +47,6 @@ use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
 use crate::offer::Offer;
 use crate::order_script::ScriptedInput;
 use crate::save_command::SaveCommand;
-use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::{JoinState, LinkLoss, Retry, Started};
 use crate::sim_client::receipt_writer::ReceiptWriter;
@@ -57,7 +57,6 @@ use crate::superseded::Superseded;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-pub(crate) mod bot_script;
 pub(crate) mod chain_history;
 pub(crate) mod client_dir;
 pub(crate) mod join_state;
@@ -158,7 +157,9 @@ impl Plugin for SimClient {
         app.add_plugins(ClientPlugins {
             tick_duration: rate.length(),
         });
-        app.add_plugins(NetProtocol);
+        app.add_plugins(NetProtocol {
+            capabilities: self.packages.manifest().capabilities,
+        });
         app.insert_resource(PredictionManager::default());
         let world = app.world_mut();
         SimUpdate::prepare(world, PREDICTION_SEED, rate);
@@ -201,20 +202,24 @@ impl Plugin for SimClient {
         app.init_resource::<PendingSaves>();
         app.init_resource::<Faults>();
         app.add_observer(lose_link);
+        // The systems on the join state run in the order of a link's life, as one frame may bring
+        // an offer and the match's start; none reads what another's commands make, so the order
+        // needs no sync point. The faults of the frame apply last.
+        let link = (
+            retry_link,
+            send_leave.run_if(resource_exists::<LeaveRequest>),
+            send_saves,
+            answer_offer,
+            receive_superseded,
+            receive_match_start,
+            receive_receipt,
+        )
+            .chain_ignore_deferred();
         app.add_systems(
             Update,
             (
-                retry_link,
-                send_leave.run_if(resource_exists::<LeaveRequest>),
-                send_saves,
-                answer_offer,
-                receive_superseded,
-                receive_match_start,
-                receive_receipt,
+                (link, receive_relations, receive_match_end, report_deaths),
                 Faults::watch,
-                receive_relations,
-                receive_match_end,
-                report_deaths,
             )
                 .chain(),
         );
@@ -352,18 +357,21 @@ fn receive_receipt(
     }
 }
 
-/// Stops a client whose slot a newer login of its player took.
+/// Stops a client whose slot a newer login of its player took, and ends its link, which tells
+/// the server that the notice arrived.
 fn receive_superseded(
-    mut receivers: Query<'_, '_, &mut MessageReceiver<Superseded>, With<Client>>,
+    mut receivers: Query<'_, '_, (Entity, &mut MessageReceiver<Superseded>), With<Client>>,
     mut state: ResMut<'_, JoinState>,
+    mut commands: Commands<'_, '_>,
 ) {
-    for mut receiver in &mut receivers {
+    for (client, mut receiver) in &mut receivers {
         if receiver.receive().count() > 0 {
             state.supersede();
             LinkLost {
                 reason: "a newer login of the player took the slot".to_owned(),
             }
             .log();
+            commands.trigger(Disconnect { entity: client });
         }
     }
 }
@@ -477,9 +485,6 @@ fn report_deaths(
     }
 }
 
-/// The client's own avatar: the one unit it predicts under a player's control.
-type OwnAvatar<'w, 's> = Query<'w, 's, &'static StableId, (With<Owner>, With<Predicted>)>;
-
 /// Adds the bot script's mode inputs due by the tick about to run, and its orders for the
 /// player's own avatar once the client predicts it, as a link that came back replicates it a
 /// little later: an order due before waits, and goes out late. Then stamps the pending orders
@@ -497,7 +502,7 @@ fn send_orders(
     prediction: Res<'_, PredictionManager>,
     timeline_config: Res<'_, InputTimelineConfig>,
     bot: Option<ResMut<'_, BotScript>>,
-    avatar: OwnAvatar<'_, '_>,
+    players: PlayerUnits<'_, '_>,
     signer: Res<'_, Signer>,
     mut pending: ResMut<'_, PendingOrders>,
     mut state: ResMut<'_, JoinState>,
@@ -518,9 +523,9 @@ fn send_orders(
         for input in bot.due_inputs(stamp) {
             pending.push_input(input.clone());
         }
-        if let Ok(&unit) = avatar.single() {
+        if let Some(avatar) = players.avatar(playing.chain.slot()) {
             for scripted in bot.due_orders(stamp) {
-                pending.push(Order::one(unit, scripted.action));
+                pending.push(Order::one(avatar.id, scripted.action));
             }
         }
     }
@@ -538,7 +543,7 @@ fn send_orders(
                     OrderDropped {
                         unit: units[0],
                         units: units.len(),
-                        action: format!("{:?}", order.action),
+                        action: order.action,
                     }
                     .log();
                 }

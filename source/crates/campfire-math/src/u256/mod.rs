@@ -6,6 +6,13 @@ pub struct U256 {
     low: u128,
 }
 
+/// A division's quotient and its rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Division {
+    quotient: u128,
+    rest: u128,
+}
+
 impl U256 {
     pub const ZERO: U256 = U256 { high: 0, low: 0 };
 
@@ -47,14 +54,33 @@ impl U256 {
     }
 
     /// `self / divisor` for a positive divisor below 2¹²⁷, rounded to nearest, ties to even;
-    /// `None` when it passes `u128`.
+    /// `None` when it passes `u128`. A value that fits `u128` divides natively.
     pub const fn round_div(self, divisor: u128) -> Option<u128> {
         debug_assert!(0 < divisor && divisor < 1 << 127);
         if self.high >= divisor {
             return None;
         }
-        // Long division a bit at a time: the remainder stays below the divisor, so below 2¹²⁷,
-        // and doubling it never overflows.
+        let Division { quotient, rest } = if self.high == 0 {
+            Division {
+                quotient: self.low / divisor,
+                rest: self.low % divisor,
+            }
+        } else {
+            self.long_division(divisor)
+        };
+        // The rest is below the divisor, so below 2¹²⁷, and doubling it never overflows.
+        let twice = rest << 1;
+        if twice > divisor || (twice == divisor && quotient & 1 == 1) {
+            quotient.checked_add(1)
+        } else {
+            Some(quotient)
+        }
+    }
+
+    /// `self / divisor` and its rest by long division a bit at a time, for a high half below
+    /// the divisor, so the quotient fits `u128`: the rest stays below the divisor, so below
+    /// 2¹²⁷, and doubling it never overflows.
+    const fn long_division(self, divisor: u128) -> Division {
         let mut rest = self.high;
         let mut quotient: u128 = 0;
         let mut bit = 128;
@@ -67,12 +93,7 @@ impl U256 {
                 quotient |= 1;
             }
         }
-        let twice = rest << 1;
-        if twice > divisor || (twice == divisor && quotient & 1 == 1) {
-            quotient.checked_add(1)
-        } else {
-            Some(quotient)
-        }
+        Division { quotient, rest }
     }
 
     /// `self × rhs`; `None` past 256 bits.

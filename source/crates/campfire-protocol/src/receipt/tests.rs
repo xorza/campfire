@@ -18,7 +18,9 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
         receipt,
         signature: receipt.sign(&secp, &server, &[0; 32]),
     };
-    let bytes = signed.encode();
+    // A buffer that held other bytes is cleared first, so the file decodes.
+    let mut bytes = vec![9; 3];
+    signed.encode(&mut bytes);
     assert_eq!(SignedReceipt::decode(&bytes), Ok(signed));
     assert_eq!(
         SignedReceipt::decode(&bytes[1..]),

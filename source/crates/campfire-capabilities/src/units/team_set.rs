@@ -10,7 +10,7 @@ pub struct TeamSet(Bits256);
 
 impl TeamSet {
     pub(crate) const NONE: TeamSet = TeamSet(Bits256::NONE);
-    pub(crate) const ALL: TeamSet = TeamSet(Bits256::ALL);
+    pub const ALL: TeamSet = TeamSet(Bits256::ALL);
 
     #[must_use]
     pub(crate) const fn with(self, team: Team) -> TeamSet {
@@ -25,6 +25,13 @@ impl TeamSet {
 
     pub const fn contains(self, team: Team) -> bool {
         self.0.contains(team.index() as usize)
+    }
+
+    /// Its teams, in order.
+    pub fn teams(self) -> impl Iterator<Item = Team> {
+        self.0
+            .iter()
+            .map(|index| Team::new(u8::try_from(index).expect("a team's bit fits its index")))
     }
 }
 
@@ -56,5 +63,8 @@ mod tests {
         assert!(!TeamSet::of(Team::new(64)).contains(Team::new(0)));
         assert_eq!(TeamSet::NONE.union(TeamSet::NONE), TeamSet::NONE);
         assert_eq!(union.union(TeamSet::ALL), TeamSet::ALL);
+        assert_eq!(union.teams().collect::<Vec<_>>(), [a, c, d]);
+        assert_eq!(TeamSet::NONE.teams().count(), 0);
+        assert_eq!(TeamSet::ALL.teams().count(), Team::LIMIT);
     }
 }

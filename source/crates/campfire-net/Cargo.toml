@@ -26,6 +26,7 @@ campfire-store.workspace = true
 
 bevy_app.workspace = true
 bevy_ecs.workspace = true
+bevy_replicon.workspace = true
 bevy_state.workspace = true
 bevy_time.workspace = true
 criterion = { workspace = true, optional = true }
@@ -40,6 +41,7 @@ tracing.workspace = true
 [dev-dependencies]
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-protocol = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 

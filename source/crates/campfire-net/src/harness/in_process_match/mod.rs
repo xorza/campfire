@@ -12,7 +12,8 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{
-    Action, Body, Leaver, MoveStep, Order, Owner, PlayersData, SaveBy, SavesData, Team,
+    Action, Body, CapabilitySet, Leaver, MoveStep, Order, Owner, PlayersData, SaveBy, SavesData,
+    Team,
 };
 use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
@@ -29,6 +30,7 @@ use lightyear::prelude::{
 };
 use lightyear::transport::plugin::TransportSystems;
 
+use crate::bot_script::BotScript;
 use crate::harness::in_process_match::delay_line::DelayLine;
 use crate::harness::in_process_match::link_model::LinkModel;
 use crate::local::local_pace::LocalPace;
@@ -37,7 +39,6 @@ use crate::match_clock::MatchClock;
 use crate::order_script::OrderScript;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
-use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::JoinState;
 use crate::sim_client::receipt_writer::ReceiptWriter;
@@ -241,7 +242,8 @@ impl InProcessMatch {
         let tick = TickRate::new(tick_hz).length();
 
         let pace = Arc::new(Pace::default());
-        let mut server = InProcessMatch::server_app(&setup, tick, &pace);
+        let capabilities = packages.manifest().capabilities;
+        let mut server = InProcessMatch::server_app(&setup, capabilities, tick, &pace);
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
@@ -286,10 +288,15 @@ impl InProcessMatch {
     }
 
     /// The server's app, its frames `setup.server_frames` a tick of `tick`, before any link.
-    fn server_app(setup: &MatchSetup, tick: Duration, pace: &Arc<Pace>) -> App {
+    fn server_app(
+        setup: &MatchSetup,
+        capabilities: CapabilitySet,
+        tick: Duration,
+        pace: &Arc<Pace>,
+    ) -> App {
         let mut server = App::new();
         server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-        server.add_plugins(SimServer { tick });
+        server.add_plugins(SimServer { tick, capabilities });
         server.insert_resource(LocalSession);
         server.add_plugins(LocalPace {
             pace: Arc::clone(pace),
@@ -485,7 +492,8 @@ impl InProcessMatch {
             .unwrap()
             .expect("a session whose match started");
         let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
-        let mut server = InProcessMatch::server_app(&self.setup, tick, &self.pace);
+        let capabilities = self.packages.manifest().capabilities;
+        let mut server = InProcessMatch::server_app(&self.setup, capabilities, tick, &self.pace);
         self.server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
         server.cleanup();
@@ -569,6 +577,17 @@ impl InProcessMatch {
         let world = self.clients[client].world();
         self.spawned_avatar(client)
             .is_some_and(|avatar| world.resource::<EntityIndex>().get(avatar).is_some())
+    }
+
+    /// Loses every packet the server sends `client` while `lost`, as a link that drops one way
+    /// does, though the client's own packets arrive; with `false`, passes them again.
+    pub fn lose_server_packets(&mut self, client: usize, lost: bool) {
+        let world = self.server.world_mut();
+        let mut delay = world.get_mut::<DelayLine>(self.links[client]);
+        delay
+            .as_mut()
+            .expect("a link passes through a delay line")
+            .lose_all(lost);
     }
 
     /// One frame of the server alone, which shifts where in a step its ticks fall.

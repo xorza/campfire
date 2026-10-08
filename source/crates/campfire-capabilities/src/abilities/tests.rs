@@ -56,7 +56,7 @@ use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
-use crate::stats::live_shares::LiveShares;
+use crate::stats::live_carriers::LiveCarriers;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
@@ -952,7 +952,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
         assert_eq!(hashes[0], hashes[1], "{script}");
         if script == spin {
             // The call ran exactly its limit of operations.
-            assert_eq!(spent, [ScriptLimits::ROOMY.per_call]);
+            assert_eq!(spent, [ScriptLimits::ROOMY.per_call.get()]);
         }
     }
 }
@@ -1560,7 +1560,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
     let mut left = Vec::new();
     for spins in [true, false] {
         let limits = ScriptLimits {
-            player: ScriptLimits::ROOMY.per_call,
+            player: ScriptLimits::ROOMY.per_call.get(),
             ..ScriptLimits::ROOMY
         };
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
@@ -1606,7 +1606,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
         let spent = if spins {
             0
         } else {
-            ScriptLimits::ROOMY.per_call
+            ScriptLimits::ROOMY.per_call.get()
         };
         assert_eq!(
             budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
@@ -1615,7 +1615,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
         left.push(budgets.get_mut(Pool::Player(PlayerSlot::new(1))).left());
     }
     assert_eq!(left[0], left[1]);
-    assert!(left[0] < ScriptLimits::ROOMY.per_call);
+    assert!(left[0] < ScriptLimits::ROOMY.per_call.get());
 }
 
 #[test]
@@ -3209,6 +3209,14 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     veil.game.sim.check_copy(&mut copy);
     let vamp = Num::from_bits(1_847_173);
     assert_eq!(veil.values(ward)[1], vamp);
+    // Veil's own spell vamp, and Ward's, are live changes, so both refresh every pass.
+    let ward_entity = veil.game.sim.entity(ward);
+    let mut carriers = [veil.game.sim.entity(source), ward_entity];
+    carriers.sort_unstable();
+    assert_eq!(
+        veil.game.sim.world.resource::<LiveCarriers>().units(),
+        carriers
+    );
     // Veil goes: the change keeps the value it last had. Read with no source it would fall to
     // 0.06 alone, 1 006 633 bits.
     let entity = veil.game.sim.entity(source);
@@ -3218,7 +3226,6 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     assert_eq!(veil.values(ward)[1], vamp);
     // At no stack it adds nothing, and is no live change that refreshes its unit every pass.
     let dual_path = Stats::modifier(&veil.game.sim.world, 0, "dual_path").unwrap();
-    let ward_entity = veil.game.sim.entity(ward);
     let mut modifiers = veil
         .game
         .sim
@@ -3229,14 +3236,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     veil.game.sim.step();
     veil.game.sim.check_copy(&mut copy);
     assert_eq!(veil.values(ward)[1], Num::ZERO);
-    assert!(
-        !veil
-            .game
-            .sim
-            .world
-            .entity(ward_entity)
-            .contains::<LiveShares>()
-    );
+    assert_eq!(veil.game.sim.world.resource::<LiveCarriers>().units(), []);
 }
 
 #[test]

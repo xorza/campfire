@@ -13,7 +13,7 @@ use campfire_capabilities::{
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
     EffectProblem, GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages,
-    PackageRef, Place, ScriptProblem, Way,
+    PackageName, PackageRef, Place, ScriptProblem, Way,
 };
 use campfire_script::ScriptError;
 use campfire_script::rhai::ParseErrorType;
@@ -125,7 +125,10 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     // 5 m/s, slower than the 3v3's cap of 6: a homing projectile might never catch a hero.
     let edit = Edit::Set("units.caster_creep_bolt.projectile.speed", r#""5.0""#);
     let error = ModePackages::from_package_dir(&edited([(UNITS, edit)])).unwrap_err();
-    assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
+    assert_eq!(
+        error.package,
+        PackageRef::Name(PackageName::new(MODE).unwrap())
+    );
     let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotFaster(Place::UnitType(name))) if name == "caster_creep_bolt");
     assert!(at_caster(&error.problem), "{error:?}");
     // Along a line, the same speed loads: it chases no one.
@@ -304,6 +307,15 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = ModePackages::from_package_dir(&edited([])).unwrap();
     assert_eq!(tags(&packages), 25);
+    // Each once, in order, as a match declares them: `ward` after `slowed`.
+    assert!(packages.tag_names().is_sorted_by(|a, b| a < b));
+    let at = |name: &str| {
+        packages
+            .tag_names()
+            .iter()
+            .position(|tag| tag.as_str() == name)
+    };
+    assert!(at("slowed").unwrap() < at("ward").unwrap());
     let [(path, layers)] = <[_; 1]>::try_from(layers(224)).unwrap();
     let edit = Edit::Set(&path, &layers);
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
@@ -368,7 +380,10 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
         };
         assert!(load(case.allowed).is_ok(), "{case:?}");
         let error = load(case.allowed + 1).unwrap_err();
-        assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
+        assert_eq!(
+            error.package,
+            PackageRef::Name(PackageName::new(MODE).unwrap())
+        );
         assert!(
             matches!(*error.problem, LoadProblem::TooMany(limit) if limit == case.limit),
             "{case:?}: {error:?}"
@@ -377,7 +392,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 266] = [
+static FLAWS: [Flaw; 270] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -415,11 +430,50 @@ static FLAWS: [Flaw; 266] = [
         MODE_DIR,
         |problem| manifest_fails(problem, "declares Orders without Navigation"),
     ),
+    // A section of the mode's data or of its map is its capability's, declared or refused: the
+    // map's vision grid without `vision`, its pathing grid without `navigation`, `[supply]`
+    // without `production`.
     flaw(
         MANIFEST,
         Edit::Replace(r#", "vision", "progression""#, r#", "progression""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Vision, at: Place::UnitType(name) } if name == "caster_creep"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Vision,
+                    at: Place::MapGrid
+                }
+            )
+        },
+    ),
+    flaw(
+        MANIFEST,
+        Edit::Replace(r#", "orders", "navigation""#, ""),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Navigation,
+                    at: Place::MapNavigation
+                }
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Set("supply", "{ max = 10 }"),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Production,
+                    at: Place::Supply
+                }
+            )
+        },
     ),
     // Tracks are progression's: positive and ascending, at most one the `level` track, and each a
     // unit type lists one the mode declares.
@@ -513,6 +567,21 @@ static FLAWS: [Flaw; 266] = [
         Edit::Set("tick_hz", "{ min = 40, max = 60, default = 30 }"),
         MODE_DIR,
         |problem| manifest_fails(problem, "the tick rate range does not hold its default"),
+    ),
+    // A call of no operation, which Rhai would read as no limit.
+    flaw(
+        MANIFEST,
+        Edit::Set(
+            "script_limits",
+            "{ per_call = 0, player = 40000, think = 200000, mode = 100000 }",
+        ),
+        MODE_DIR,
+        |problem| {
+            manifest_fails(
+                problem,
+                "invalid value: integer `0`, expected a nonzero u64",
+            )
+        },
     ),
     // A player's pool below the whole call of 20 000.
     flaw(
@@ -1012,6 +1081,17 @@ static FLAWS: [Flaw; 266] = [
         Edit::Replace("fn on_resolve(", "fn on_cast("),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_cast"),
+    ),
+    // A handle's member every form of which is of a capability the mode does not declare: the
+    // 3v3 has no `production`, whose `unit.load` it is.
+    flaw(
+        CREEP_AI,
+        Edit::Replace(
+            "if target == () {\n        ctx.order_follow_path",
+            "if unit.load > 0 {\n        ctx.order_follow_path",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Script(path) } if path.as_str() == "scripts/creep_ai.rhai"),
     ),
     flaw(
         CREEP_AI,

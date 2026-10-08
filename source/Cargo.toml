@@ -43,6 +43,9 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "bevy_color",
 ] }
 bevy_app = "=0.19.1"
+# The version Lightyear builds, for the component-scope visibility filter that Lightyear uses but
+# does not re-export: the pin follows Lightyear's at each upgrade.
+bevy_replicon = { version = "=0.44.2", default-features = false, features = ["server"] }
 bevy_ecs = { version = "=0.19.1", features = ["debug"] }
 bevy_state = "=0.19.1"
 bevy_time = "=0.19.1"

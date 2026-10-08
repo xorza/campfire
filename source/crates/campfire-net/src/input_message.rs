@@ -20,14 +20,18 @@ struct InputFrame {
 }
 
 impl InputMessage {
-    /// A message of `inputs`, with `signature` over the chain head after the last.
-    pub fn new<'a>(
-        inputs: impl IntoIterator<Item = PlayerInput<'a>>,
-        signature: Signature,
-    ) -> InputMessage {
+    /// A message of `inputs`, with `signature` over the chain head after the last. Its buffers
+    /// take their exact sizes first, from a pass over the inputs.
+    pub fn new<'a, I>(inputs: I, signature: Signature) -> InputMessage
+    where
+        I: IntoIterator<Item = PlayerInput<'a>>,
+        I::IntoIter: ExactSizeIterator + Clone,
+    {
+        let inputs = inputs.into_iter();
+        let bytes = inputs.clone().map(|input| input.payload.len()).sum();
         let mut message = InputMessage {
-            frames: Vec::new(),
-            payloads: Vec::new(),
+            frames: Vec::with_capacity(inputs.len()),
+            payloads: Vec::with_capacity(bytes),
             signature,
         };
         for input in inputs {
@@ -90,6 +94,10 @@ mod tests {
         ];
         let message = InputMessage::new(sent, signature);
         assert_eq!(message.payloads, b"abcde");
+        // Three frames and 2 + 0 + 3 bytes, each buffer at its exact size, which
+        // `Vec::with_capacity` gives.
+        let capacities = (message.frames.capacity(), message.payloads.capacity());
+        assert_eq!(capacities, (3, 5));
         let received: Vec<_> = message.inputs(slot).unwrap().collect();
         assert_eq!(received, sent);
         assert_eq!(message.signature(), &signature);

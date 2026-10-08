@@ -1,3 +1,7 @@
+use std::error::Error as StdError;
+
+use nostr::error::ErrorKind;
+
 use super::*;
 use crate::harness::test_key::TestKey;
 
@@ -102,9 +106,25 @@ fn a_flawed_delegation_is_refused() {
     forged[sig_at] = if forged[sig_at] == b'0' { b'1' } else { b'0' };
     let forged = String::from_utf8(forged).unwrap();
 
+    // A delegation with no other tag and no content is far below the most bytes one holds, and
+    // one padded past it by a tag of its own is refused before it is read.
+    assert!(json.len() < Delegation::MAX_JSON / 4, "{}", json.len());
+    let pad = |tags: &mut Vec<Vec<String>>| {
+        tags.push(vec!["pad".to_owned(), "x".repeat(Delegation::MAX_JSON)]);
+    };
+    // Text nostr reads as no event: an error of its kind `Malformed`, which the delegation's
+    // keeps as its source.
+    let malformed = || {
+        let error = Event::from_json("[").unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Malformed);
+        DelegationError::NotEvent(EventError::new(error))
+    };
+    let not_event = Delegation::parse("not JSON").unwrap_err();
+    assert!(StdError::source(&not_event).is_some());
     let cases = [
-        ("not JSON".to_owned(), DelegationError::NotEvent),
-        ("{}".to_owned(), DelegationError::NotEvent),
+        (event(KIND, tags(pad)), DelegationError::TooLong),
+        ("not JSON".to_owned(), malformed()),
+        ("{}".to_owned(), malformed()),
         (
             json.replace("\"content\":\"\"", "\"content\":\"x\""),
             DelegationError::WrongId,

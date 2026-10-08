@@ -28,6 +28,7 @@ use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
+use campfire_capabilities::CapabilitySet;
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
@@ -45,12 +46,10 @@ use tracing::{error, info};
 use crate::args::Args;
 use crate::opening::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, Restore};
-use crate::server_config::ServerConfig;
 use crate::server_tls::ServerTls;
 
 mod args;
 mod opening;
-mod server_config;
 mod server_tls;
 
 /// The segments of a session's seed chain: the most checkpoints it may take, less one.
@@ -64,7 +63,7 @@ const FILE_FILTER: &str = "info,campfire_server=debug,campfire_net=debug,campfir
                            campfire_script=debug,lightyear_prediction=debug";
 
 fn main() -> ExitCode {
-    Logging {
+    let _log = Logging {
         terminal: TERMINAL_FILTER,
         file: FILE_FILTER,
     }
@@ -109,6 +108,7 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
+    let capabilities = packages.manifest().capabilities;
     let Started {
         opening,
         server,
@@ -120,7 +120,7 @@ fn main() -> ExitCode {
     let certificate = tls.certificate();
     let listening = announce(&opening, &mode, address, certificate, &server.key);
     let tick = TickRate::new(opening.terms().tick_hz).length();
-    let mut app = server_app(opening, ServerConfig(server), data, tick, listening);
+    let mut app = server_app(opening, data, tick, listening, capabilities);
     let server = app
         .world_mut()
         .spawn((
@@ -202,10 +202,10 @@ impl Started {
 /// event logged once its transport listens, and the end once every player left.
 fn server_app(
     opening: Opening,
-    config: ServerConfig,
     data: ServerDir,
     tick: Duration,
     listening: Listening,
+    capabilities: CapabilitySet,
 ) -> App {
     let mut app = App::new();
     app.add_plugins((
@@ -214,12 +214,11 @@ fn server_app(
         StatesPlugin,
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    app.add_plugins(SimServer { tick });
+    app.add_plugins(SimServer { tick, capabilities });
     match opening {
         Opening::New(lobby) => app.insert_resource(*lobby),
         Opening::Restored(restore) => app.insert_resource(*restore),
     };
-    app.insert_resource(config);
     app.insert_resource(data);
     app.add_observer(
         move |added: On<'_, '_, Add, Linked>, servers: Query<'_, '_, (), With<RawServer>>| {

@@ -193,6 +193,7 @@ fn state_section(hasher: &mut Hasher) {
     let mut world = World::new();
     world.init_resource::<EntityIndex>();
     world.init_resource::<IdAllocator>();
+    world.init_resource::<SimTick>();
     let mut entities = Vec::new();
     for i in 0..300 {
         let id = world.resource_mut::<IdAllocator>().allocate();
@@ -317,7 +318,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "443b14892444a7e1a629e15d6c2d53e7f34bab98c96f523b4c083a29f16bbae9",
+            digest: "57c33ccef3deb9b9aeb4b036ca25708eb56bbfefffd53562f7e9bf0fd3bfdb80",
         },
         Section {
             name: "tick",

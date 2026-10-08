@@ -332,7 +332,10 @@ impl Runs {
             ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
         ));
         app.add_plugins((
-            SimServer { tick: self.tick },
+            SimServer {
+                tick: self.tick,
+                capabilities: self.packages.manifest().capabilities,
+            },
             LocalPace {
                 pace: Arc::clone(&self.pace),
                 tick: self.tick,

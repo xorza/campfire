@@ -9,7 +9,7 @@ use wtransport::tls::{Certificate, CertificateChain, PrivateKey};
 
 use crate::server_tls::error::TlsError;
 
-pub(crate) mod error;
+mod error;
 
 /// How long a new certificate holds, in seconds: the 14 days WebTransport allows a self-signed
 /// one at most.

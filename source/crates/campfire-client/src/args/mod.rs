@@ -10,7 +10,7 @@ use clap::Parser;
 
 use crate::args::error::ServerBotError;
 
-pub(crate) mod error;
+mod error;
 
 /// What the command line names: the orders file a bot plays, the player's key file, the data
 /// directory, the mode to play, and the server: as its listing gives it, or a local one.

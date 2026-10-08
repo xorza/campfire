@@ -20,10 +20,10 @@ pub struct SessionPrivate {
 
 impl SessionPrivate {
     /// The file's bytes: the tag, then the record in postcard.
-    pub fn encode(&self) -> Vec<u8> {
-        let mut bytes = PRIVATE_TAG.to_vec();
-        postcard::to_io(self, &mut bytes).expect("postcard into a Vec cannot fail");
-        bytes
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        out.clear();
+        out.extend_from_slice(PRIVATE_TAG);
+        postcard::to_io(self, out).expect("postcard into a Vec cannot fail");
     }
 
     /// The record of a file's `bytes`; an error for bytes that `encode` did not write.

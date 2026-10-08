@@ -2,16 +2,18 @@ use std::fmt;
 
 use bevy::camera::Camera;
 use bevy::ecs::query::{Allow, With, Without};
-use bevy::ecs::system::{Query, Single, SystemParam};
+use bevy::ecs::system::{Query, Res, Single, SystemParam};
 use bevy::math::primitives::InfinitePlane3d;
 use bevy::math::{Vec2, Vec3};
 use bevy::transform::components::{GlobalTransform, Transform};
 use bevy::window::{PrimaryWindow, Window};
-use campfire_capabilities::{Dead, Owner, Team};
+use campfire_capabilities::{Dead, PlayerUnits, Team};
+use campfire_net::JoinState;
 use campfire_sim::{StableId, Unpredicted};
-use lightyear::prelude::Predicted;
 
-use crate::view::{Drawn, Footing, Look};
+use crate::view::drawing::Drawing;
+use crate::view::footing::Footing;
+use crate::view::look::Look;
 
 /// What the cursor points at, as the player sees the match: the ground point under it, and the
 /// living unit drawn there.
@@ -19,20 +21,17 @@ use crate::view::{Drawn, Footing, Look};
 pub(crate) struct Pointer<'w, 's> {
     window: Single<'w, 's, &'static Window, With<PrimaryWindow>>,
     camera: Single<'w, 's, (&'static Camera, &'static GlobalTransform)>,
-    own: OwnAvatar<'w, 's>,
+    state: Res<'w, JoinState>,
+    players: PlayerUnits<'w, 's>,
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, (&'static Transform, &'static Look)>,
 }
 
-/// The player's own avatar: the unit it predicts under a player's control.
-type OwnAvatar<'w, 's> =
-    Query<'w, 's, (&'static StableId, &'static Team), (With<Owner>, With<Predicted>)>;
-
-/// The living units the client holds, and the entity each is drawn by.
+/// The living units the client holds, and the drawing of each.
 type LivingUnits<'w, 's> = Query<
     'w,
     's,
-    (&'static StableId, &'static Team, &'static Drawn),
+    (&'static StableId, &'static Team, &'static Drawing),
     (Without<Dead>, Allow<Unpredicted>),
 >;
 
@@ -44,10 +43,14 @@ pub(crate) struct Pointed {
 }
 
 impl Pointer<'_, '_> {
-    /// The player's own avatar, once the client holds it.
+    /// The player's own avatar, once the client plays and holds it.
     pub(crate) fn own_avatar(&self) -> Option<Pointed> {
-        let (&id, &team) = self.own.single().ok()?;
-        Some(Pointed { id, team })
+        let avatar = self.players.avatar(self.state.slot()?)?;
+        let team = self.state.team()?;
+        Some(Pointed {
+            id: avatar.id,
+            team,
+        })
     }
 
     /// The point of the ground under the cursor, when the cursor is over the window and the ground.
@@ -66,7 +69,7 @@ impl Pointer<'_, '_> {
             .iter()
             .filter(|&(&id, _, _)| Some(id) != own)
             .filter_map(|(&id, &team, drawn)| {
-                let (transform, look) = self.drawings.get(drawn.drawing()).ok()?;
+                let (transform, look) = self.drawings.get(drawn.root()).ok()?;
                 let center = Vec2::new(transform.translation.x, transform.translation.z);
                 Some((Pointed { id, team }, center, look.footing()))
             });

@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, PlayerSlot};
+use campfire_common::Fingerprint;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
@@ -73,11 +73,13 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
     }
 }
 
-/// The start of the match in slot 1 at sim tick 0, Lightyear tick 40, with a new chain.
+/// The start of the match in slot 1, of team 1, at sim tick 0, Lightyear tick 40, with a new
+/// chain.
 const START: MatchStart = MatchStart {
     start_tick: 40,
     first: Tick::new(0),
     slot: PlayerSlot::new(1),
+    team: Team::new(1),
     chain: None,
     loaded: false,
 };
@@ -169,11 +171,16 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     assert_eq!(check(CertificateHash::new([3; 32])), Ok(()));
     assert!(check(CertificateHash::new([4; 32])).is_err());
     assert_eq!(state.clock(), None);
+    assert_eq!((state.slot(), state.team()), (None, None));
 
     // The match starts once: sim tick 0 is Lightyear tick 40, and the player's chain in slot 1
     // starts from the delegation's id.
     assert_eq!(state.start(START), Started::Playing { discarded: 0 });
     assert_eq!(state.start(START), Started::No);
+    assert_eq!(
+        (state.slot(), state.team()),
+        (Some(PlayerSlot::new(1)), Some(Team::new(1)))
+    );
     let clock = state.clock().unwrap();
     assert_eq!(
         [39, 40, 42].map(|tick| clock.sim_tick(NetTick(tick))),

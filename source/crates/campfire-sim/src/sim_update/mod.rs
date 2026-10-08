@@ -71,7 +71,8 @@ pub enum SimEdge {
 impl SimUpdate {
     /// The schedule with no game systems yet: the stages in order, each with its `SimEdge` after
     /// it, and `SimEdge::Start` before the first. The tick's random sequences start before
-    /// `SimSet::Inputs`; after `SimSet::Vision` the tick advances and its inputs are cleared. Two
+    /// `SimEdge::Start`; after `SimEdge::After(SimSet::Vision)` the tick advances and its inputs
+    /// are cleared, so an edge's systems read the tick's random sequences and inputs. Two
     /// systems with conflicting access and no order fail the build, since either order could win.
     /// A set membership that a longer path already implies fails it too, so the redundant edge
     /// shows in every test that builds the schedule, not only as a log line of a running match.
@@ -99,8 +100,8 @@ impl SimUpdate {
         }
         schedule.configure_sets(SimEdge::After(SimSet::Vision).after(SimSet::Vision));
         schedule.add_systems((
-            start_tick.before(SimSet::Inputs),
-            end_tick.after(SimSet::Vision),
+            start_tick.before(SimEdge::Start),
+            end_tick.after(SimEdge::After(SimSet::Vision)),
         ));
         schedule
     }

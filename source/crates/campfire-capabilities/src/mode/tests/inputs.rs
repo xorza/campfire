@@ -258,3 +258,31 @@ fn on_input(ctx, player, name, value) {
         [(game.strike, basic, 0), (game.blink, spell, 1)]
     );
 }
+
+#[test]
+fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
+    // Player 0 picks hero X, of an avatar's type, and owns a grunt besides; player 1 owns only a
+    // grunt, and player 2 nothing. A second hero of player 0 of a higher id is not its avatar.
+    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
+    let hero = game.pick(0, "hero-x");
+    let grunt = *game.sim.world.get::<UnitType>(game.entity(1)).unwrap();
+    let hero_type = *game.sim.world.get::<UnitType>(hero).unwrap();
+    let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+    for (slot, unit_type) in [(0, grunt), (1, grunt), (0, hero_type)] {
+        let id = game.sim.world.resource_mut::<IdAllocator>().allocate();
+        let owner = Owner::new(PlayerSlot::new(slot));
+        game.sim
+            .world
+            .spawn((id, at, unit_type, Team::new(0), owner));
+    }
+    let world = &mut game.sim.world;
+    let mut players = HeldPlayerUnits::new(world);
+    let avatar = |players: &mut HeldPlayerUnits, slot| {
+        players
+            .avatar(world, PlayerSlot::new(slot))
+            .map(|avatar| avatar.entity)
+    };
+    assert_eq!(avatar(&mut players, 0), Some(hero));
+    assert_eq!(avatar(&mut players, 1), None);
+    assert_eq!(avatar(&mut players, 2), None);
+}

@@ -6,14 +6,13 @@ use campfire_capabilities::PoolId;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 
-use crate::view::View;
+use crate::view::float_num::FloatNum;
 
-/// A bar over a unit: its life, or, for the player's own avatar, another pool, the cooldown of one
-/// ability slot, a rank of one, or a mark that one may learn its next rank. It draws with two
-/// children: a back of its full width, and `fill`.
+/// A bar over a unit, a child of the root of the unit's drawing: its life, or, for the player's
+/// own avatar, another pool, the cooldown of one ability slot, a rank of one, or a mark that one
+/// may learn its next rank. It draws with two children: a back of its full width, and `fill`.
 #[derive(Component, Debug)]
 pub(crate) struct Gauge {
-    pub(crate) unit: Entity,
     pub(crate) kind: GaugeKind,
     pub(crate) fill: Entity,
 }
@@ -74,7 +73,7 @@ impl Gauge {
             return 0.0;
         }
         let ratio = current.checked_div(max).unwrap_or(Num::ZERO);
-        View::float(ratio).clamp(0.0, 1.0)
+        ratio.float().clamp(0.0, 1.0)
     }
 }
 
@@ -154,7 +153,8 @@ impl Layout {
         ))
     }
 
-    /// The gauge's transform over a unit whose top is at `top`, facing the camera with `facing`.
+    /// The gauge's transform over a unit whose top is `top` over its drawing's root, facing the
+    /// camera with `facing`.
     pub(crate) fn place(self, top: Vec3, facing: Quat) -> Transform {
         Transform::from_translation(top + facing * self.center).with_rotation(facing)
     }

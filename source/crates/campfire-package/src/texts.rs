@@ -8,6 +8,7 @@ use fluent_bundle::{FluentError, FluentResource};
 use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
+use crate::files::package_name::PackageName;
 use crate::language::Language;
 use crate::locale_package::LocalePackage;
 use crate::message_id::MessageId;
@@ -19,7 +20,7 @@ type Bundle = FluentBundle<Arc<FluentResource>>;
 /// what a client shows. The sim never reads it.
 pub struct Texts {
     /// By package name.
-    packages: BTreeMap<String, PackageBundles>,
+    packages: BTreeMap<PackageName, PackageBundles>,
 }
 
 /// A package's messages in each language: its own file of the language first, then the locale
@@ -93,7 +94,7 @@ impl Texts {
 /// The bundle of `language` of `resources`, in order: an earlier one's message wins, as a
 /// package's own file comes before the translations.
 fn bundle(language: &Language, resources: Vec<Arc<FluentResource>>) -> Bundle {
-    let mut bundle = Bundle::new_concurrent(vec![language.identifier()]);
+    let mut bundle = Bundle::new_concurrent(vec![language.identifier().clone()]);
     for resource in resources {
         if let Err(errors) = bundle.add_resource(resource) {
             debug_assert!(

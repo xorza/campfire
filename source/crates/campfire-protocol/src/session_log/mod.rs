@@ -3,10 +3,11 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::mem;
 use std::ops::Range;
 
-use campfire_common::{PlayerSlot, Tick, Ticks};
-use secp256k1::{Secp256k1, VerifyOnly};
+use campfire_common::{PlayerSlot, Tick};
+use secp256k1::{Keypair, Secp256k1, Signing, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
+use crate::bytes::Bytes;
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::checkpoint_begun::CheckpointBegun;
 use crate::checkpoint::error::CheckpointDecodeError;
@@ -17,6 +18,7 @@ use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 use crate::journal::Journal;
 use crate::journal::error::JournalReplayError;
+use crate::journal::journal_frames::MAX_RECORD;
 use crate::journal::record_sink::RecordSink;
 use crate::player_input::PlayerInput;
 use crate::server_input::error::ServerInputDecodeError;
@@ -29,7 +31,11 @@ use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{
     CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, ServerInputError,
 };
+use crate::session_log::paged_bytes::{BytesAt, PagedBytes};
+use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::session_header::SessionHeader;
+use crate::session_log::spill::Spill;
+use crate::session_log::stamp_count::StampCount;
 use crate::session_result::SessionResult;
 use crate::session_terms::SessionTerms;
 use crate::signature::Signature;
@@ -39,7 +45,11 @@ use crate::slot_start::SlotStart;
 pub(crate) mod applied;
 pub(crate) mod durable_head;
 pub(crate) mod error;
+pub(crate) mod paged_bytes;
+pub(crate) mod paged_vec;
 pub(crate) mod session_header;
+pub(crate) mod spill;
+pub(crate) mod stamp_count;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
 const LOG_TAG: &[u8] = b"campfire/session-log/v2";
@@ -75,6 +85,8 @@ pub struct SessionLog {
     /// Present once the segment is published.
     revealed: Option<ServerSeed>,
     secp: Secp256k1<VerifyOnly>,
+    /// The scratch each server signature's message is written into, cleared and refilled.
+    message: Vec<u8>,
     /// Each slot's controller and counts, by slot.
     slots: Vec<Slot>,
     /// Every delegation a player held, the header's and the joins' and renewals', which a
@@ -89,12 +101,14 @@ pub struct SessionLog {
     loaded: bool,
     /// How the session ended, once it did.
     result: Option<LoggedResult>,
-    inputs: Vec<LoggedInput>,
-    payloads: Vec<u8>,
-    packets: Vec<Packet>,
-    server: Vec<LoggedServer>,
+    /// The whole session's inputs, payloads, packets, server inputs, entries and tick ends grow
+    /// by pages, so a record never copies the history before it.
+    inputs: PagedVec<LoggedInput>,
+    payloads: PagedBytes,
+    packets: PagedVec<Packet>,
+    server: PagedVec<LoggedServer>,
     /// The packets and the server inputs, in the order they were logged.
-    entries: Vec<Entry>,
+    entries: PagedVec<Entry>,
     /// The server inputs logged since the last tick was sealed.
     server_since: u32,
     /// Every change of a slot's controller, in the order logged, so by tick.
@@ -102,9 +116,9 @@ pub struct SessionLog {
     /// The changes of the tick last sealed.
     sealed_changes: Range<usize>,
     /// For each sealed tick, the end of the entries logged before it ran.
-    tick_ends: Vec<u32>,
+    tick_ends: PagedVec<u32>,
     /// While a rewound log replays, the tick ends it had; empty otherwise.
-    to_replay: Vec<u32>,
+    to_replay: PagedVec<u32>,
     /// Inputs applied in a tick not yet sealed, earliest first.
     pending: BinaryHeap<Reverse<Due>>,
     /// Indices of the inputs applied in the tick last sealed.
@@ -157,27 +171,11 @@ enum Control {
     Reserved,
 }
 
-/// A player's inputs as their stamps count them: the last stamp, the inputs of that stamp, and
-/// the inputs in all.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct StampCount {
-    last: Option<Tick>,
-    at_last: u32,
-    total: u64,
-}
-
-/// The last tick a slot's inputs were scheduled to apply in, and how many apply there.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Spill {
-    tick: Tick,
-    count: u32,
-}
-
 #[derive(Debug)]
 struct LoggedInput {
     slot: PlayerSlot,
     stamp: Tick,
-    payload: Range<u32>,
+    payload: BytesAt,
 }
 
 /// A player's packet: its inputs, and the signature over the chain head after the last.
@@ -260,54 +258,6 @@ struct Due {
     index: u32,
 }
 
-impl StampCount {
-    /// Counts one more input, stamped `stamp`; an error for a stamp before the last, or one
-    /// more than `max` inputs of one stamp.
-    const fn add(&mut self, stamp: Tick, max: u32) -> Result<(), InputError> {
-        match self.last {
-            Some(last) if stamp.get() < last.get() => return Err(InputError::StampBack),
-            Some(last) if stamp.get() == last.get() => {
-                if self.at_last == max {
-                    return Err(InputError::TooManyInputs);
-                }
-                self.at_last += 1;
-            }
-            _ => {
-                self.last = Some(stamp);
-                self.at_last = 1;
-            }
-        }
-        self.total += 1;
-        Ok(())
-    }
-}
-
-impl Spill {
-    /// The tick an input that may apply from tick `earliest` on applies in: the first, from
-    /// there and from the last, that fewer than `max` of the slot's inputs fill.
-    const fn take(&mut self, earliest: Tick, max: u32) -> Tick {
-        if self.count == 0 || earliest.get() > self.tick.get() {
-            self.tick = earliest;
-            self.count = 1;
-        } else if self.count < max {
-            self.count += 1;
-        } else {
-            self.tick = self.tick.after(Ticks::ONE);
-            self.count = 1;
-        }
-        self.tick
-    }
-
-    /// How many of the slot's inputs apply in `tick` so far.
-    const fn at(self, tick: Tick) -> u32 {
-        if self.tick.get() == tick.get() {
-            self.count
-        } else {
-            0
-        }
-    }
-}
-
 impl SegmentStart {
     /// Writes the begin of the checkpoint that starts segment `segment`, and its record once it
     /// has one, into `journal`.
@@ -366,14 +316,19 @@ impl Control {
 impl SessionLog {
     /// A log with nothing recorded; an error when the header starts another count of slots than
     /// the terms plan, or a slot otherwise than its plan, when a player's delegation names
-    /// another server or session than `header`, whose terms the session id hashes, or when there
-    /// are more slots than a `u32` counts.
+    /// another server or session than `header`, whose terms the session id hashes, when there
+    /// are more slots than a `u32` counts, or when the terms let a journal record hold more than
+    /// a journal frame takes, so no entry the log takes later can.
     pub fn new(header: SessionHeader) -> Result<SessionLog, HeaderError> {
         if u32::try_from(header.slots.len()).is_err() {
             return Err(HeaderError::TooManySlots);
         }
         if header.slots.len() != header.terms.slots.len() {
             return Err(HeaderError::SlotCount);
+        }
+        let fits = |bound| usize::try_from(bound).is_ok_and(|bound| bound <= MAX_RECORD);
+        if !header.terms.largest_record().is_some_and(fits) {
+            return Err(HeaderError::RecordTooLarge);
         }
         let session_id = header.terms.session_id();
         let slots_len = header.slots.len();
@@ -411,16 +366,17 @@ impl SessionLog {
             header,
             revealed: None,
             secp: Secp256k1::verification_only(),
-            inputs: Vec::new(),
-            payloads: Vec::new(),
-            packets: Vec::new(),
-            server: Vec::new(),
-            entries: Vec::new(),
+            message: Vec::new(),
+            inputs: PagedVec::default(),
+            payloads: PagedBytes::default(),
+            packets: PagedVec::default(),
+            server: PagedVec::default(),
+            entries: PagedVec::default(),
             server_since: 0,
             changes: Vec::new(),
             sealed_changes: 0..0,
-            tick_ends: Vec::new(),
-            to_replay: Vec::new(),
+            tick_ends: PagedVec::default(),
+            to_replay: PagedVec::default(),
             pending: BinaryHeap::new(),
             due: Vec::new(),
             position_bound: POSITION_BOUND,
@@ -773,17 +729,64 @@ impl SessionLog {
         input: ServerInput<'_>,
         signature: &Signature,
     ) -> Result<(), ServerInputError> {
+        let change = self.change_of(&input)?;
+        let place = self.next_place();
+        let server_key = &self.header.terms.server_key;
+        let id = self.session_id;
+        if !input.signed_by(
+            &self.secp,
+            server_key,
+            id,
+            place,
+            signature,
+            &mut self.message,
+        ) {
+            return Err(ServerInputError::BadSignature);
+        }
+        self.log_server(input, change, signature);
+        Ok(())
+    }
+
+    /// Logs a server input as `record_server` does, signed here with the server's `key`, the
+    /// terms' server key, with BIP-340's auxiliary randomness `aux`. A signature the log made
+    /// over the message it wrote needs no check, which is the most a server input costs.
+    pub fn serve<C: Signing>(
+        &mut self,
+        input: ServerInput<'_>,
+        secp: &Secp256k1<C>,
+        key: &Keypair,
+        aux: &[u8; 32],
+    ) -> Result<(), ServerInputError> {
+        let server_key = self.header.terms.server_key;
+        debug_assert_eq!(
+            key.x_only_public_key().0,
+            server_key,
+            "the server signs with the terms' server key"
+        );
+        let change = self.change_of(&input)?;
+        let place = self.next_place();
+        input.write_message(self.session_id, place, &mut self.message);
+        let signature = Signature::sign(secp, key, &self.message, aux);
+        debug_assert!(
+            signature.verifies(&self.secp, &server_key, &self.message),
+            "a signature the log made verifies"
+        );
+        self.log_server(input, change, &signature);
+        Ok(())
+    }
+
+    /// Logs a server input `change_of` allowed, with its `signature`.
+    fn log_server(
+        &mut self,
+        input: ServerInput<'_>,
+        change: Option<SlotChangeKind>,
+        signature: &Signature,
+    ) {
         debug_assert!(
             self.to_replay.is_empty(),
             "a log that replays takes no input"
         );
         debug_assert!(self.result.is_none(), "a session that ended takes no input");
-        let change = self.change_of(&input)?;
-        let place = self.next_place();
-        let server_key = &self.header.terms.server_key;
-        if !input.signed_by(&self.secp, server_key, self.session_id, place, signature) {
-            return Err(ServerInputError::BadSignature);
-        }
         let slot = input.slot();
         let at = slot.index();
         let next = self.next_tick();
@@ -863,7 +866,6 @@ impl SessionLog {
         });
         self.server_since += 1;
         self.journal_last_entry();
-        Ok(())
     }
 
     /// Ends the last segment at the boundary before the next tick, and starts the next there, as
@@ -921,7 +923,8 @@ impl SessionLog {
     ) -> Result<(), CheckpointError> {
         let begun = self.begun.as_ref().ok_or(CheckpointError::NotBegun)?;
         let server_key = &self.header.terms.server_key;
-        if !record.signed_by(&self.secp, server_key, self.session_id, signature) {
+        let id = self.session_id;
+        if !record.signed_by(&self.secp, server_key, id, signature, &mut self.message) {
             return Err(CheckpointError::BadSignature);
         }
         if record.segment != begun.segment {
@@ -997,7 +1000,8 @@ impl SessionLog {
         );
         assert!(self.result.is_none(), "a session ends once");
         let server_key = &self.header.terms.server_key;
-        if !result.signed_by(&self.secp, server_key, self.session_id, signature) {
+        let id = self.session_id;
+        if !result.signed_by(&self.secp, server_key, id, signature, &mut self.message) {
             return Err(ResultError::BadSignature);
         }
         if result.tick != self.next_tick() {
@@ -1055,7 +1059,7 @@ impl SessionLog {
         self.server_since = 0;
         if !self.to_replay.is_empty() && self.tick_ends.len() == self.to_replay.len() {
             // Caught up: the entries logged after the last tick wait again, as they did.
-            self.to_replay = Vec::new();
+            self.to_replay = PagedVec::default();
             for at in end..offset(self.entries.len()) {
                 if self.replay_entry(at) {
                     self.server_since += 1;
@@ -1250,7 +1254,10 @@ impl SessionLog {
     /// Writes the entries at `entries` of the log's.
     fn put_entries(&self, out: &mut Vec<u8>, entries: Range<u32>) {
         put(out, &(entries.end - entries.start));
-        for &entry in &self.entries[entries.start as usize..entries.end as usize] {
+        for &entry in self
+            .entries
+            .range(entries.start as usize..entries.end as usize)
+        {
             match entry {
                 Entry::Packet(at) => {
                     put(out, &PACKET_ENTRY);
@@ -1274,7 +1281,7 @@ impl SessionLog {
         for index in packet.inputs.clone() {
             let input = self.input(index);
             put(out, &input.stamp);
-            put(out, input.payload);
+            put(out, &Bytes(input.payload));
         }
         put(out, &packet.signature);
     }
@@ -1512,7 +1519,7 @@ impl SessionLog {
         });
         let mut start = 0;
         let mut segments = (1..).zip(self.segments.iter().skip(1)).peekable();
-        for (tick, &end) in (0..).zip(&self.tick_ends) {
+        for (tick, &end) in (0..).zip(self.tick_ends.iter()) {
             if let Some((number, segment)) =
                 segments.next_if(|(_, segment)| segment.tick == Tick::new(tick))
             {
@@ -1618,12 +1625,11 @@ impl SessionLog {
     /// Logs `input`'s payload, and gives its index.
     fn push_input(&mut self, input: PlayerInput<'_>) -> u32 {
         let index = offset(self.inputs.len());
-        let payload_start = offset(self.payloads.len());
-        self.payloads.extend_from_slice(input.payload);
+        let payload = self.payloads.push(input.payload);
         self.inputs.push(LoggedInput {
             slot: input.slot,
             stamp: input.stamp,
-            payload: payload_start..offset(self.payloads.len()),
+            payload,
         });
         index
     }
@@ -1707,7 +1713,7 @@ impl SessionLog {
         PlayerInput {
             slot: logged.slot,
             stamp: logged.stamp,
-            payload: &self.payloads[logged.payload.start as usize..logged.payload.end as usize],
+            payload: self.payloads.get(logged.payload),
         }
     }
 }

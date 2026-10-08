@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer};
 use crate::files::backends::Backends;
 use crate::files::dependency::Dependency;
 use crate::files::package_header::PackageHeader;
+use crate::files::package_name::PackageName;
 use crate::files::tick_range::TickRange;
 use crate::files::version::Version;
 use crate::language::Language;
@@ -24,7 +25,7 @@ pub struct ModeManifest {
     pub max_move_speed: Speed,
     pub script_limits: ScriptLimits,
     /// By name; in the workspace each is a path, relative to the manifest.
-    pub dependencies: BTreeMap<String, Dependency>,
+    pub dependencies: BTreeMap<PackageName, Dependency>,
 }
 
 impl ModeManifest {
@@ -40,7 +41,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            name: String,
+            name: PackageName,
             version: Version,
             api: ApiVersion,
             language: Language,
@@ -51,7 +52,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
             max_move_speed: Speed,
             script_limits: ScriptLimits,
             #[serde(default)]
-            dependencies: BTreeMap<String, Dependency>,
+            dependencies: BTreeMap<PackageName, Dependency>,
         }
         let fields = Fields::deserialize(deserializer)?;
         Ok(ModeManifest {

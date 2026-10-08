@@ -72,7 +72,7 @@ fn installed(declared: &[Capability], budgets: Option<ScriptBudgets>) -> World {
 fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions() {
     let all = [Stats, Combat, Navigation, Projectiles, Abilities, Orders];
     let limits = ScriptLimits {
-        per_call: 1,
+        per_call: NonZeroU64::MIN,
         player: 1,
         think: 1,
         mode: 1,

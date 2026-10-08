@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::fs;
+use std::fs::{self, File};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
@@ -7,6 +7,7 @@ use campfire_capabilities::PackagePath;
 
 use crate::error::ContentError;
 use crate::package_files::PackageFiles;
+use crate::package_walk::{FileLimits, PackageWalk};
 
 /// Where a package's files are: on disk, as a workspace holds them before a package is built, or
 /// in memory, as a test builds them. Both read into the same `PackageFiles`.
@@ -70,28 +71,31 @@ impl PackageDir {
         &self.root
     }
 
-    /// Every file under the package's root, read once into memory. A link or any other entry
-    /// that is neither a file nor a directory fails, as does a path that is not UTF-8 or that a
-    /// package path does not spell.
+    /// The files under the package's root that a load reads, read once into memory, and the
+    /// fingerprint of every file, within a package's limits. A link or any other entry that is
+    /// neither a file nor a directory fails, as does a path that is not UTF-8 or that a package
+    /// path does not spell.
     pub fn read(&self) -> Result<PackageFiles, ContentError> {
-        let mut files = BTreeMap::new();
+        self.read_within(FileLimits::PACKAGE)
+    }
+
+    /// See `read`, within `limits`.
+    fn read_within(&self, limits: FileLimits) -> Result<PackageFiles, ContentError> {
+        let mut walk = PackageWalk::new(limits);
         match &self.source {
-            Source::Disk => self.read_disk(&self.root, &mut files)?,
+            Source::Disk => self.read_disk(&self.root, &mut walk)?,
             Source::Memory(tree) => {
                 for (path, bytes) in tree.iter().filter(|(path, _)| path.starts_with(&self.root)) {
-                    files.insert(self.package_path(path)?, bytes.clone());
+                    let size = u64::try_from(bytes.len()).expect("a file length fits u64");
+                    walk.add(self.package_path(path)?, size, bytes.as_slice())?;
                 }
             }
         }
-        Ok(PackageFiles::new(files))
+        Ok(walk.finish())
     }
 
-    /// Reads every file under `dir` on disk into `files`.
-    fn read_disk(
-        &self,
-        dir: &Path,
-        files: &mut BTreeMap<PackagePath, Vec<u8>>,
-    ) -> Result<(), ContentError> {
+    /// Takes every file under `dir` on disk into `walk`.
+    fn read_disk(&self, dir: &Path, walk: &mut PackageWalk) -> Result<(), ContentError> {
         let io = |error| ContentError::Scan {
             dir: dir.to_owned(),
             error,
@@ -101,17 +105,19 @@ impl PackageDir {
             let path = entry.path();
             let kind = entry.file_type().map_err(io)?;
             if kind.is_dir() {
-                self.read_disk(&path, files)?;
+                self.read_disk(&path, walk)?;
                 continue;
             }
             if !kind.is_file() {
                 return Err(ContentError::NotAFile(path));
             }
-            let bytes = fs::read(&path).map_err(|error| ContentError::Scan {
+            let open = |error| ContentError::Scan {
                 dir: path.clone(),
                 error,
-            })?;
-            files.insert(self.package_path(&path)?, bytes);
+            };
+            let file = File::open(&path).map_err(open)?;
+            let size = file.metadata().map_err(open)?.len();
+            walk.add(self.package_path(&path)?, size, file)?;
         }
         Ok(())
     }

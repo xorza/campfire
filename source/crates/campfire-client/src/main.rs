@@ -21,7 +21,6 @@
 use std::env;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bevy::DefaultPlugins;
 use bevy::app::{App, PluginGroup, ScheduleRunnerPlugin, TaskPoolPlugin};
@@ -71,7 +70,7 @@ const FILE_FILTER: &str = "info,campfire_client=debug,campfire_net=debug,campfir
                            lightyear_prediction=debug,wgpu=warn,wgpu_hal=off,naga=warn";
 
 fn main() -> ExitCode {
-    Logging {
+    let _log = Logging {
         terminal: TERMINAL_FILTER,
         file: FILE_FILTER,
     }
@@ -115,7 +114,7 @@ fn main() -> ExitCode {
 
     let mut app = App::new();
     let local = matches!(connection, Connection::Local(_));
-    add_ends(&mut app, script, local.then_some(&pace), tick);
+    add_ends(&mut app, script, local.then_some(&pace));
     app.add_plugins((
         SimClient {
             main_key,
@@ -140,7 +139,7 @@ fn main() -> ExitCode {
 
 /// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD and the
 /// orders, with the keys of a local match that `pace` follows.
-fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>, tick: Duration) {
+fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>) {
     if let Some(script) = script {
         app.add_plugins((
             TaskPoolPlugin::default(),
@@ -166,7 +165,7 @@ fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>
                 ..WindowPlugin::default()
             })
             .disable::<LogPlugin>(),
-        View { tick },
+        View,
         Hud,
         Orders,
     ));

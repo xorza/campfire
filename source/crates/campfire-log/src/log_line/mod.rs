@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
+use serde::de::DeserializeOwned;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
@@ -49,6 +50,17 @@ impl LogLine {
         String::deserialize(deserializer)?
             .parse()
             .map_err(D::Error::custom)
+    }
+
+    /// Reads a field that an event logs as `JsonText`, its JSON in a string, back as a `T`: for
+    /// `#[serde(deserialize_with = "LogLine::json")]`.
+    pub fn json<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: DeserializeOwned,
+    {
+        let text = String::deserialize(deserializer)?;
+        serde_json::from_str(&text).map_err(D::Error::custom)
     }
 }
 

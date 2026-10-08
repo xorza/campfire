@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
@@ -62,12 +63,23 @@ impl Items {
 /// Keeps the modifiers of each unit's carried items, as passives from the unit itself at rank 1,
 /// each once however many items hold it, and releases those of items it carries no more. No unit
 /// type's or action's passive is an item's modifier, which the load checks, so every passive of
-/// an item's modifier is an item's. The modifiers' params are the match's param book's.
+/// an item's modifier is an item's. The modifiers' params are the match's param book's. What a
+/// unit holds follows from its inventory, its modifiers and the books only, so a run visits only
+/// the units whose inventory or modifiers changed since its last, unless a book changed.
 fn hold_items(
     (items, book): (Option<Res<'_, ItemBook>>, Option<Res<'_, ModifierBook>>),
     (tick, rate, params): (Res<'_, SimTick>, Res<'_, TickRate>, Res<'_, ParamBook>),
     sources: ParamSources<'_, '_>,
-    mut units: Query<'_, '_, (&StableId, &Inventory, &mut Modifiers, &mut ModifierClocks)>,
+    mut units: Query<
+        '_,
+        '_,
+        (
+            &StableId,
+            Ref<'_, Inventory>,
+            &mut Modifiers,
+            &mut ModifierClocks,
+        ),
+    >,
     mut held: Local<'_, Vec<ModifierId>>,
 ) {
     let (Some(items), Some(book)) = (items, book) else {
@@ -76,8 +88,12 @@ fn hold_items(
     if items.modifiers().is_empty() {
         return;
     }
+    let every = items.is_changed() || book.is_changed() || params.is_changed();
     let now = tick.start();
     for (&id, inventory, modifiers, clocks) in &mut units {
+        if !(every || inventory.is_changed() || modifiers.is_changed()) {
+            continue;
+        }
         held.clear();
         held.extend(inventory.slots().iter().flatten().flat_map(|carried| {
             let item = items

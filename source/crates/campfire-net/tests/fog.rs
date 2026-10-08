@@ -2,11 +2,13 @@
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use campfire_capabilities::{Action, Owner, SeenBy, Team};
+use bevy_ecs::query::Allow;
+use campfire_capabilities::internals::set_relation;
+use campfire_capabilities::{Action, Attitude, Owner, Progress, Relations, Route, SeenBy, Team};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{InProcessMatch, MatchSetup};
-use campfire_net::{MatchClock, TickHashes};
+use campfire_net::{JoinRefused, JoinState, LinkLost, MatchClock, TickHashes};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
@@ -112,6 +114,109 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         (held_from, held_until),
         (first + 1 - lobby, last + 1 - lobby)
     );
+
+    // The state only an owner's prediction reads reaches the owner's link alone: the client's
+    // hero, which walked, holds its route and its progress; a west creep, which the client sees
+    // walk and no player owns, holds neither there, though the server's does.
+    let client = local.client(0).world();
+    let (hero_id, _) = unit(local.server(), |app, entity| {
+        app.world().get::<Owner>(entity).is_some()
+    });
+    let on_client = |id| client.resource::<EntityIndex>().get(id).unwrap();
+    let hero_on_client = client.entity(on_client(hero_id));
+    assert!(hero_on_client.contains::<Route>() && hero_on_client.contains::<Progress>());
+    let (creep, creep_entity) = unit(local.server(), |app, entity| {
+        let unit = app.world().entity(entity);
+        unit.contains::<Progress>()
+            && !unit.contains::<Owner>()
+            && unit.get::<Team>() == Some(&Team::new(0))
+    });
+    assert!(
+        local
+            .server()
+            .world()
+            .entity(creep_entity)
+            .contains::<Route>()
+    );
+    let creep_on_client = client.entity(on_client(creep));
+    assert!(creep_on_client.contains::<Position>());
+    assert!(!creep_on_client.contains::<Route>() && !creep_on_client.contains::<Progress>());
+}
+
+/// The stable ids of the units `client`'s world holds, predicted or not, in order.
+fn held(local: &mut InProcessMatch, client: usize) -> Vec<StableId> {
+    let world = local.client_mut(client).world_mut();
+    let mut units = world.query_filtered::<&StableId, Allow<Unpredicted>>();
+    let mut ids: Vec<StableId> = units.iter(world).copied().collect();
+    ids.sort_unstable();
+    ids
+}
+
+#[test]
+fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_sits() {
+    // A solo match: the west hero at (0, −2) sees 6 m, so the east tower at (8, −3) is hidden.
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    local.start_match();
+    let east_tower = Position::new(Vec3::new(Num::int(8), Num::ZERO, Num::int(-3))).unwrap();
+    let (tower, tower_entity) = unit(local.server(), |app, entity| {
+        app.world().get::<Position>(entity) == Some(&east_tower)
+    });
+    let hero = local.avatar(0);
+    let (west, east) = (Team::new(0), Team::new(1));
+    set_relation(
+        local.server_mut().world_mut(),
+        west,
+        east,
+        Attitude::Neutral,
+    );
+    for _ in 0..10 {
+        local.step();
+    }
+    let seen = local.server().world().get::<SeenBy>(tower_entity).unwrap();
+    assert!(!seen.get().contains(west));
+    assert!(held(&mut local, 0).contains(&hero));
+    assert!(!held(&mut local, 0).contains(&tower));
+
+    // A second login of the player takes the seat in a new app: it holds the hero and not the
+    // hidden tower, and the relations a script set before it sat.
+    let second = local.add_client(0);
+    let playing = |local: &InProcessMatch| {
+        let state = local.client(second).world().resource::<JoinState>();
+        state.clock().is_some()
+    };
+    for _ in 0..300 {
+        if playing(&local) {
+            break;
+        }
+        local.step();
+    }
+    assert!(playing(&local));
+    for _ in 0..5 {
+        local.step();
+    }
+    let units = held(&mut local, second);
+    assert!(units.contains(&hero), "{units:?}");
+    assert!(!units.contains(&tower), "{units:?}");
+    let relations = |app: &App| app.world().resource::<Relations>().clone();
+    assert_ne!(relations(local.server()), Relations::default());
+    assert_eq!(relations(local.client(second)), relations(local.server()));
+    assert_eq!(local.log().take::<LinkLost>().len(), 1);
+
+    // A client whose player has no slot is refused, and its link, still connected, holds no unit.
+    let stranger = local.add_client(1);
+    for _ in 0..60 {
+        local.step();
+    }
+    assert!(
+        local
+            .client(stranger)
+            .world()
+            .resource::<JoinState>()
+            .clock()
+            .is_none()
+    );
+    assert_eq!(held(&mut local, stranger), []);
+    assert_eq!(local.log().take::<JoinRefused>().len(), 1);
 }
 
 /// The sim tick of the server message that last updated `unit` on the client.

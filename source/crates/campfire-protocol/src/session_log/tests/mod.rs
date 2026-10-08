@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{Fingerprint, SegmentSeed, StateHash};
+use campfire_common::{Fingerprint, SegmentSeed, StateHash, Ticks};
 use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
@@ -599,6 +599,30 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     };
     assert_eq!(SessionLog::new(bot).err(), Some(mismatch));
 
+    // The largest record of the terms, a checkpoint's: each of the 2 slots carries a delegation
+    // of at most 4,096 bytes and its length, 4,101, and its inputs still to apply, 2 a stamp
+    // over the delay, the lead and the next tick, 5 stamps, each a tick, a slot, a stamp, a
+    // length and 4 bytes, 10 + 5 + 10 + 5 + 4 = 34: 4,101 + 340 + 256 = 4,697 a slot; then two
+    // hashes, the signature and the slack, 64 + 64 + 256 = 384: 2 × 4,697 + 384 = 9,778. A
+    // packet takes 2 × 19 + 320 = 358, a server input 4,101 + 320 = 4,421, the header
+    // 2 × 4,357 + 2 × 32 + 5 + 256 = 9,039.
+    assert_eq!(terms().largest_record(), Some(9_778));
+    // A lead of 2¹⁸ ticks lets each slot hold 2 × (2¹⁸ + 3) inputs of 34 bytes, past 16 MiB in
+    // all.
+    let mut far = header();
+    far.terms.max_input_lead = Ticks::new(1 << 18);
+    assert_eq!(
+        SessionLog::new(far).err(),
+        Some(HeaderError::RecordTooLarge)
+    );
+    let mut endless = header();
+    endless.terms.max_input_delay = Ticks::new(u64::MAX);
+    assert_eq!(endless.terms.largest_record(), None);
+    assert_eq!(
+        SessionLog::new(endless).err(),
+        Some(HeaderError::RecordTooLarge)
+    );
+
     // The session id hashes the terms, so a change to any of them leaves every delegation
     // naming another session.
     let changes: [fn(&mut SessionTerms); 12] = [
@@ -659,7 +683,7 @@ fn refuses(other: &SessionHeader, error: ScopeError) {
         slot: PlayerSlot::new(1),
         error,
     };
-    assert_eq!(SessionLog::new(other.clone()).err(), Some(refused));
+    assert_eq!(SessionLog::new(other.clone()).err(), Some(refused.clone()));
     assert_eq!(
         SessionLog::decode(&frame(other, &[], &[], None)).err(),
         Some(LogError::Header(refused))
@@ -1122,16 +1146,10 @@ fn mixed_log() -> SessionLog {
     .unwrap()
 }
 
-/// `input` signed by the server key at the next place of `log`, recorded into it.
+/// `input` served into `log`, which signs it with the server key at its next place. A log file
+/// with it decodes, recording each server input with its signature, which `record_server` checks.
 fn serve(log: &mut SessionLog, input: ServerInput<'_>) -> Result<(), ServerInputError> {
-    let signature = input.sign(
-        &Secp256k1::new(),
-        &TestKey::server(),
-        log.session_id(),
-        log.next_place(),
-        &AUX,
-    );
-    log.record_server(input, &signature)
+    log.serve(input, &Secp256k1::new(), &TestKey::server(), &AUX)
 }
 
 /// A packet of `inputs`, `(stamp, payload)` each, that the session key of `key` signs on the chain

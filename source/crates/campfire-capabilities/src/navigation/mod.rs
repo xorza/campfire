@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, Allow, Has, ROQueryItem, With, Without};
+use bevy_ecs::query::{Added, Allow, Changed, Has, Or, ROQueryItem, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
@@ -34,6 +34,7 @@ use crate::navigation::route_asks::{AskingUnits, RouteAsks};
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
 use crate::navigation::segment::Segment;
 use crate::navigation::static_changes::StaticChanges;
+use crate::navigation::statics_dirty::StaticsDirty;
 use crate::navigation::steering::{Steered, Steering};
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
@@ -79,6 +80,7 @@ pub(crate) mod route_asks;
 pub(crate) mod route_planner;
 pub(crate) mod segment;
 pub(crate) mod static_changes;
+pub(crate) mod statics_dirty;
 pub(crate) mod steering;
 pub(crate) mod terrain;
 pub(crate) mod walker;
@@ -122,6 +124,7 @@ impl Navigation {
         world.insert_resource(Bounds::WORLD);
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
         world.insert_resource(StaticChanges::default());
+        StaticsDirty::install(world);
         world.insert_resource(ByType::<Walker>::default());
         world
             .resource_mut::<EffectQueues>()
@@ -164,12 +167,17 @@ impl Navigation {
         walls: &[Wall],
         walkers: Vec<Walker>,
     ) {
+        debug_assert!(
+            world.contains_resource::<StaticChanges>(),
+            "a map's pathing grid is navigation's, which the load checked the mode declares"
+        );
         let terrain = Terrain::new(&cells, walls);
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&cells));
         world.insert_resource(PathingGrid::new(cells, walkers, &terrain));
         world.insert_resource(Walls::new(walls));
+        world.resource_mut::<StaticsDirty>().set();
     }
 
     /// Makes room for the box of `entity`, which just spawned: each walker of its layer whose
@@ -244,20 +252,21 @@ impl Navigation {
 /// walk, those the client only holds among them. It runs as each tick starts, so a structure that
 /// died or spawned in the tick before counts from this one, again as Collide starts, so
 /// collision parts walkers from the static bodies as they stand then, and as a box spawns, so
-/// the walkers it moves out land clear of it. Each change goes to
-/// `changes` for the walkers' routes. Every run reads them into `statics`, a buffer it keeps.
+/// the walkers it moves out land clear of it. Each change goes to `changes` for the walkers'
+/// routes. A run with no static body moved, changed, come or gone since this run of it last ran,
+/// or since any run took a body that came or went, ends there; every other run reads them into
+/// `statics`, a buffer it keeps.
 fn track_static_bodies(
     mut index: ResMut<'_, BodyIndex>,
-    mut changes: ResMut<'_, StaticChanges>,
+    (mut changes, mut dirty): (ResMut<'_, StaticChanges>, ResMut<'_, StaticsDirty>),
     grid: Option<ResMut<'_, PathingGrid>>,
-    bodies: Query<
-        '_,
-        '_,
-        (&StableId, &Position, &Body),
-        (Without<MoveStep>, Without<Dead>, Allow<Unpredicted>),
-    >,
+    bodies: StaticBodies<'_, '_>,
+    moved: ChangedStatics<'_, '_>,
     mut statics: Local<'_, Vec<IndexedBody>>,
 ) {
+    if !dirty.take() && moved.is_empty() {
+        return;
+    }
     statics.clear();
     statics.extend(
         bodies
@@ -273,6 +282,30 @@ fn track_static_bodies(
         grid.update(&index);
     }
 }
+
+/// The static bodies: the living units that cannot walk, those the client only holds among them.
+type StaticBodies<'w, 's> = Query<
+    'w,
+    's,
+    (&'static StableId, &'static Position, &'static Body),
+    (Without<MoveStep>, Without<Dead>, Allow<Unpredicted>),
+>;
+
+/// The static bodies whose place or body changed, or that are new.
+type ChangedStatics<'w, 's> = Query<
+    'w,
+    's,
+    (),
+    (
+        With<StableId>,
+        With<Position>,
+        With<Body>,
+        Or<(Changed<Position>, Changed<Body>, Added<StableId>)>,
+        Without<MoveStep>,
+        Without<Dead>,
+        Allow<Unpredicted>,
+    ),
+>;
 
 /// The parts of a unit navigation reads into its row: the path it is on, whether it walks, and
 /// its body, for its layer.

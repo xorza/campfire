@@ -21,6 +21,7 @@ mod package_index;
 mod package_store;
 mod package_text;
 mod package_view;
+mod package_walk;
 mod script_facts;
 mod texts;
 
@@ -39,6 +40,7 @@ pub use crate::error::place::Place;
 pub use crate::error::script_problem::ScriptProblem;
 pub use crate::error::{ContentError, LoadError, PackageRef, StoreError};
 pub use crate::files::avatar_data::AvatarData;
+pub use crate::files::package_name::PackageName;
 pub use crate::files::tick_range::TickRange;
 pub use crate::language::Language;
 pub use crate::locale_package::LocalePackage;

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use campfire_capabilities::{
     ActionData, BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag,
-    MapData, ModeData, PackageContent, Param, ScriptBook, StatGraph, UnitTypeFile, Walker,
+    MapData, ModeData, PackageContent, Param, ScriptBook, StatGraph, StatId, UnitTypeFile, Walker,
 };
 use campfire_common::Fingerprint;
 use campfire_script::{ScriptHost, ScriptId};
@@ -20,6 +20,7 @@ use crate::error::{LoadError, PackageRef, StoreError};
 use crate::files::manifest::Manifest;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
+use crate::files::package_name::PackageName;
 use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
 use crate::modifier_ways::ModifierWays;
@@ -48,6 +49,11 @@ pub struct ModePackages {
     pub(crate) dependencies: Vec<Dependent>,
     /// The hooks each script defines, as the load read them, in the order a match compiles them.
     scripts: ScriptBook,
+    /// Every tag its packages name but the engine's, in the order a match declares them.
+    tag_names: Vec<DeclaredName>,
+    /// The places of the mode's stats in the order the stats refresh computes them, which the
+    /// load check found from the stat graph.
+    stat_order: Vec<StatId>,
 }
 
 impl ModePackages {
@@ -124,10 +130,6 @@ impl ModePackages {
         &self.manifest
     }
 
-    pub const fn mode(&self) -> &Package {
-        &self.mode
-    }
-
     pub const fn data(&self) -> &ModeData {
         &self.data
     }
@@ -170,7 +172,8 @@ impl ModePackages {
             self.manifest.tick_hz.contains(rate.hz()),
             "a session's rate is within the manifest's range"
         );
-        Books::build(&self.book_input(rate)).expect("the load built the books at the fastest rate")
+        Books::build(&self.book_input(rate, &self.stat_order))
+            .expect("the load built the books at the fastest rate")
     }
 
     /// Compiles every script of its packages by `compile`, in the order a match compiles them,
@@ -202,10 +205,14 @@ impl ModePackages {
         ScriptId::nth(at)
     }
 
-    /// What its books are built from at `rate`.
-    pub(crate) fn book_input(&self, rate: TickRate) -> BookInput<'_> {
+    /// What its books are built from at `rate`, its stats computed in `stat_order`.
+    pub(crate) fn book_input<'a>(
+        &'a self,
+        rate: TickRate,
+        stat_order: &'a [StatId],
+    ) -> BookInput<'a> {
         let packages = self.packages().map(|view| BookPackage {
-            name: &view.package.header.name,
+            name: view.package.header.name.as_str(),
             content: view.content,
             kind: match view.kind {
                 ViewKind::Mode => BookKind::Mode,
@@ -225,14 +232,11 @@ impl ModePackages {
             teams: &self.manifest.teams,
             max_move_speed: self.manifest.max_move_speed,
             progression: self.manifest.capabilities.contains(Capability::Progression),
-            tag_names: self.tag_names().into_iter().collect(),
+            tag_names: &self.tag_names,
             packages: packages.collect(),
             scripts: &self.scripts,
             rate,
-            stat_order: self
-                .stat_graph()
-                .order()
-                .expect("the load checked the stat graph"),
+            stat_order,
         }
     }
 
@@ -284,7 +288,7 @@ impl ModePackages {
     /// mode and of each package it depends on: a change that reads a param its modifier, or else
     /// an action of a way that applies it, declares as a scaling table reads each stat the table
     /// names.
-    pub fn stat_graph(&self) -> StatGraph {
+    pub(crate) fn stat_graph(&self) -> StatGraph {
         let mut graph = StatGraph::new(self.data.stats.keys().cloned());
         for view in self.packages() {
             let content = view.content;
@@ -310,7 +314,7 @@ impl ModePackages {
     /// The ranks of each action `types` place in their slots: those of the slot kind it sits in.
     /// An error names an action they place in kinds of other ranks. A kind the mode does not
     /// declare places nothing.
-    pub fn slotted_ranks<'u>(
+    pub(crate) fn slotted_ranks<'u>(
         &self,
         types: impl IntoIterator<Item = &'u UnitTypeFile>,
     ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
@@ -346,29 +350,44 @@ impl ModePackages {
     /// its and its dependencies' modifiers grant, and those of its `[tags]` and their
     /// immunities. A match declares them in this order after the engine's, so it numbers them
     /// the same however it loads.
-    pub fn tag_names(&self) -> BTreeSet<&str> {
-        let modifiers = self
-            .packages()
-            .flat_map(|view| view.content.modifiers.values())
+    pub fn tag_names(&self) -> &[DeclaredName] {
+        &self.tag_names
+    }
+
+    /// The tag names of a mode of `mode`'s data and content, and of `dependencies`; see
+    /// `tag_names`.
+    fn collect_tag_names(
+        mode: (&ModeData, &PackageContent),
+        dependencies: &[Dependent],
+    ) -> Vec<DeclaredName> {
+        let (data, content) = mode;
+        let contents =
+            iter::once(content).chain(dependencies.iter().map(|dependent| &dependent.content));
+        let modifiers = contents
+            .clone()
+            .flat_map(|content| content.modifiers.values())
             .flat_map(|modifier| &modifier.tags);
-        let avatars = self.avatars().map(|avatar| &avatar.unit);
-        let types = self
-            .packages()
-            .flat_map(|view| view.content.units.values())
+        let avatars = dependencies
+            .iter()
+            .filter_map(|dependent| match &dependent.kind {
+                DependentKind::Avatar(avatar) => Some(&avatar.unit),
+                DependentKind::Loadout => None,
+            });
+        let types = contents
+            .flat_map(|content| content.units.values())
             .chain(avatars)
             .flat_map(|unit_type| &unit_type.core.tags);
-        let declared = self
-            .data
+        let declared = data
             .tags
             .iter()
             .flat_map(|(name, tag)| [name].into_iter().chain(&tag.immune));
-        modifiers
+        let names: BTreeSet<&DeclaredName> = modifiers
             .chain(types)
             .chain(declared)
-            .chain(&self.data.navigation.layers)
-            .map(DeclaredName::as_str)
-            .filter(|name| EngineTag::named(name).is_none())
-            .collect()
+            .chain(&data.navigation.layers)
+            .filter(|name| EngineTag::named(name.as_str()).is_none())
+            .collect();
+        names.into_iter().cloned().collect()
     }
 
     /// The packages it depends on, in the order of their names in its manifest.
@@ -380,7 +399,7 @@ impl ModePackages {
     fn assemble(
         files: &PackageFiles,
         manifest: ModeManifest,
-        dependencies: &[(String, &PackageFiles)],
+        dependencies: &[(PackageName, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
         let mut parser = ScriptHost::new(manifest.script_limits.per_call);
         let api = CapabilitySet::bind_script_api(&mut parser);
@@ -409,16 +428,19 @@ impl ModePackages {
             .collect::<Result<_, _>>()?;
         let dependents = dependencies.iter().map(|dependent| &dependent.package);
         let scripts = ModePackages::read_hooks(iter::once(&mode).chain(dependents));
-        let packages = ModePackages {
+        let tag_names = ModePackages::collect_tag_names((&data, &content), &dependencies);
+        let mut packages = ModePackages {
             mode,
             manifest,
             data,
             map,
             content,
+            tag_names,
             dependencies,
             scripts,
+            stat_order: Vec::new(),
         };
-        LoadCheck::run(&packages, &api)?;
+        packages.stat_order = LoadCheck::run(&packages, &api)?;
         Ok(packages)
     }
 }

@@ -12,6 +12,7 @@ use campfire_net::{InputLogged, Listening, MatchStarted};
 use crate::binaries::Binaries;
 use crate::error::CheckError;
 use crate::process::Process;
+use crate::process_group::ProcessGroup;
 use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
 
@@ -19,7 +20,7 @@ use crate::process_outcome::ProcessOutcome;
 /// what still runs: a match of 11 s, with a restart its clients notice in 5 s, ends in a few more.
 const DEADLINE: Duration = Duration::from_secs(30);
 /// How often the check looks at the processes while it waits.
-const POLL: Duration = Duration::from_millis(50);
+pub(crate) const POLL: Duration = Duration::from_millis(50);
 /// The server's data directory, in the run's directory.
 pub(crate) const SERVER_DATA: &str = "server-data";
 /// The local client's data directory, in the run's directory; its local server's is `server`
@@ -88,17 +89,17 @@ impl LanMatch<'_> {
     pub(crate) fn play(&self) -> Result<Played, CheckError> {
         let deadline = Instant::now() + DEADLINE;
         let address = SocketAddr::from(([127, 0, 0, 1], free_port()?));
-        let mut server = self.server(Process::Server, address)?;
+        let mut children = ProcessGroup::default();
+        let server = children.push(Process::Server, self.server(Process::Server, address)?);
         let Listening {
             certificate,
             server_key,
             tick_hz,
             ..
-        } = match self.listen(&mut server, deadline)? {
+        } = match self.listen(&mut children, server, deadline)? {
             Listened::Yes(listening) => listening,
             Listened::No(outcome) => return Ok(Played::unplayed(outcome, self.scripts.len())),
         };
-        let mut children = vec![(Process::Server, server)];
         let wrong = Bytes32::new(certificate.as_bytes().map(|byte| !byte)).to_string();
         let bots = self
             .scripts
@@ -121,33 +122,28 @@ impl LanMatch<'_> {
             self.start(process, &mut command)
         };
         for (process, script, certificate) in bots.chain([impostor]) {
-            children.push((process, bot(process, process, script, &certificate)?));
+            children.push(process, bot(process, process, script, &certificate)?);
         }
         let restarted = Process::Bot(RESTARTED);
         let stopped = if self.first_order_logged(restarted, deadline)? {
-            let at = 1 + RESTARTED;
-            kill(restarted, &mut children[at].1)?;
             let again = Process::Rejoined(RESTARTED);
             let script = &self.scripts[RESTARTED];
-            children[at] = (
-                again,
-                bot(again, restarted, script, &certificate.to_string())?,
-            );
+            children.replace(1 + RESTARTED, again, || {
+                bot(again, restarted, script, &certificate.to_string())
+            })?;
             Some(ProcessOutcome::Stopped)
         } else {
             None
         };
         let restored = if self.logged_by(SERVER_STOP, deadline)? {
-            kill(Process::Server, &mut children[0].1)?;
-            children[0] = (
-                Process::ServerAgain,
-                self.server(Process::ServerAgain, address)?,
-            );
+            children.replace(server, Process::ServerAgain, || {
+                self.server(Process::ServerAgain, address)
+            })?;
             true
         } else {
             false
         };
-        let mut ended = wait(&mut children, deadline)?;
+        let mut ended = children.wait(deadline)?;
         let (server, server_again) = if restored {
             (ProcessOutcome::Stopped, ended.remove(0))
         } else {
@@ -167,9 +163,14 @@ impl LanMatch<'_> {
         })
     }
 
-    /// Waits until the first server, `server`, listens, ends, or the deadline passed, when the
-    /// check stops it.
-    fn listen(&self, server: &mut Child, deadline: Instant) -> Result<Listened, CheckError> {
+    /// Waits until the first server, at `server` among `children`, listens, ends, or the
+    /// deadline passed, when the check stops it.
+    fn listen(
+        &self,
+        children: &mut ProcessGroup,
+        server: usize,
+        deadline: Instant,
+    ) -> Result<Listened, CheckError> {
         let log = Process::Server.log_path(self.dir);
         loop {
             if let Some(listening) =
@@ -178,9 +179,10 @@ impl LanMatch<'_> {
                 return Ok(Listened::Yes(listening));
             }
             if Instant::now() >= deadline {
-                return Ok(Listened::No(stop(Process::Server, server)?));
+                return Ok(Listened::No(children.stop(server)?));
             }
-            if let Some(status) = server.try_wait().map_err(|error| CheckError::Wait {
+            let ended = children.child_mut(server).try_wait();
+            if let Some(status) = ended.map_err(|error| CheckError::Wait {
                 process: Process::Server,
                 error,
             })? {
@@ -239,7 +241,8 @@ impl LanMatch<'_> {
     /// bot of the second in slot 1, and waits until it ended or the deadline passed.
     pub(crate) fn play_local(&self) -> Result<ProcessOutcome, CheckError> {
         let deadline = Instant::now() + DEADLINE;
-        let mut client = self.start(
+        let mut children = ProcessGroup::default();
+        let client = self.start(
             Process::Local,
             Command::new(&self.binaries.client)
                 .arg("--local")
@@ -256,16 +259,9 @@ impl LanMatch<'_> {
                 )
                 .arg(self.mode),
         )?;
-        while Instant::now() < deadline {
-            if let Some(status) = client.try_wait().map_err(|error| CheckError::Wait {
-                process: Process::Local,
-                error,
-            })? {
-                return Ok(ProcessOutcome::of(status));
-            }
-            thread::sleep(POLL);
-        }
-        stop(Process::Local, &mut client)
+        children.push(Process::Local, client);
+        let mut ended = children.wait(deadline)?;
+        Ok(ended.pop().expect("the local client ran"))
     }
 
     /// Starts `command` as `process`, in the run's directory, logging JSON to its file and text to
@@ -288,59 +284,10 @@ impl LanMatch<'_> {
     }
 }
 
-/// How each of `children` ended, waiting until each did or the deadline passed, when the check
-/// stops each that still runs.
-fn wait(
-    children: &mut [(Process, Child)],
-    deadline: Instant,
-) -> Result<Vec<ProcessOutcome>, CheckError> {
-    let mut outcomes = vec![None; children.len()];
-    while outcomes.iter().any(Option::is_none) && Instant::now() < deadline {
-        for ((process, child), outcome) in children.iter_mut().zip(&mut outcomes) {
-            if outcome.is_none() {
-                *outcome = child
-                    .try_wait()
-                    .map_err(|error| CheckError::Wait {
-                        process: *process,
-                        error,
-                    })?
-                    .map(ProcessOutcome::of);
-            }
-        }
-        thread::sleep(POLL);
-    }
-    let mut ended = Vec::with_capacity(children.len());
-    for ((process, child), outcome) in children.iter_mut().zip(outcomes) {
-        ended.push(match outcome {
-            Some(outcome) => outcome,
-            None => stop(*process, child)?,
-        });
-    }
-    Ok(ended)
-}
-
-/// Kills `child`, which overran the deadline.
-fn stop(process: Process, child: &mut Child) -> Result<ProcessOutcome, CheckError> {
-    kill(process, child)?;
-    Ok(ProcessOutcome::Overran)
-}
-
-/// Kills `child`, as a crash ends a process.
-fn kill(process: Process, child: &mut Child) -> Result<(), CheckError> {
-    child
-        .kill()
-        .and_then(|()| child.wait())
-        .map_err(|error| CheckError::Wait { process, error })?;
-    Ok(())
-}
-
 /// A UDP port on `127.0.0.1` that no socket holds now.
 fn free_port() -> Result<u16, CheckError> {
     UdpSocket::bind(("127.0.0.1", 0))
         .and_then(|socket| socket.local_addr())
         .map(|address| address.port())
-        .map_err(|error| CheckError::Start {
-            process: Process::Server,
-            error,
-        })
+        .map_err(CheckError::Port)
 }

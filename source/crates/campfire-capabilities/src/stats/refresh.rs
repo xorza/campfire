@@ -1,12 +1,12 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, Changed, Has, Or, With, Without};
-use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res};
+use bevy_ecs::query::{Added, Changed, Or, With, Without};
+use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId, TickRate};
 
 use crate::stats::level::Level;
-use crate::stats::live_shares::LiveShares;
+use crate::stats::live_carriers::LiveCarriers;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::move_step::MoveStep;
@@ -64,7 +64,7 @@ impl Refresh {
             Res<'_, EntityIndex>,
         ),
         (params, rate): (Res<'_, ParamBook>, Res<'_, TickRate>),
-        mut commands: Commands<'_, '_>,
+        mut carriers: ResMut<'_, LiveCarriers>,
         mut units: ParamSet<
             '_,
             '_,
@@ -72,16 +72,7 @@ impl Refresh {
                 Query<
                     '_,
                     '_,
-                    (
-                        Entity,
-                        &StableId,
-                        &UnitType,
-                        &Level,
-                        Option<&Modifiers>,
-                        Option<&mut UnitTags>,
-                        Has<LiveShares>,
-                        Option<&StatusTags>,
-                    ),
+                    Entity,
                     (
                         With<UnitStats>,
                         Or<(
@@ -89,16 +80,28 @@ impl Refresh {
                             Changed<Modifiers>,
                             Changed<StatusTags>,
                             Added<UnitStats>,
-                            With<LiveShares>,
                         )>,
                     ),
+                >,
+                Query<
+                    '_,
+                    '_,
+                    (
+                        &StableId,
+                        &UnitType,
+                        &Level,
+                        Option<&Modifiers>,
+                        Option<&mut UnitTags>,
+                        Option<&StatusTags>,
+                    ),
+                    With<UnitStats>,
                 >,
                 Query<'_, '_, (&UnitType, &Level, &UnitStats)>,
                 Query<'_, '_, (&mut UnitStats, Option<&mut MoveStep>, Option<&mut Pools>)>,
                 Query<'_, '_, &mut Modifiers>,
             ),
         >,
-        mut scratch: Local<'_, RefreshScratch>,
+        (mut scratch, mut visits): (Local<'_, RefreshScratch>, Local<'_, Vec<Entity>>),
     ) {
         let (Some(book), Some(pool_book), Some(modifier_book)) = (book, pool_book, modifier_book)
         else {
@@ -106,10 +109,21 @@ impl Refresh {
         };
         let scratch = &mut *scratch;
         scratch.clear();
+        visits.clear();
+        visits.extend(units.p0().iter());
+        visits.extend_from_slice(carriers.units());
+        visits.sort_unstable();
+        visits.dedup();
+        carriers.clear();
         let granting = tag_book
             .as_deref()
             .map_or(TagSet::default(), TagBook::granting);
-        for (entity, &id, &unit_type, level, modifiers, tags, marked, status) in &mut units.p0() {
+        let mut refreshing = units.p1();
+        for &entity in &*visits {
+            let Ok((&id, &unit_type, level, modifiers, tags, status)) = refreshing.get_mut(entity)
+            else {
+                continue;
+            };
             let held = modifiers.into_iter().flat_map(Modifiers::iter);
             let granted = held
                 .filter(|instance| instance.stacks > 0)
@@ -129,17 +143,14 @@ impl Refresh {
                 unit_type,
                 level: level.get(),
             };
-            let live = scratch.add(&book, &modifier_book, unit, modifiers, takes_effect);
-            if live && !marked {
-                commands.entity(entity).insert(LiveShares);
-            } else if !live && marked {
-                commands.entity(entity).remove::<LiveShares>();
+            if scratch.add(&book, &modifier_book, unit, modifiers, takes_effect) {
+                carriers.push(entity);
             }
         }
         if scratch.units.is_empty() {
             return;
         }
-        let sources = units.p1();
+        let sources = units.p2();
         let other = |id| {
             let (&unit_type, level, stats) = sources.get(index.get(id)?).ok()?;
             Some(ParamSource::of_parts(
@@ -151,7 +162,7 @@ impl Refresh {
         };
         scratch.compute(&book, &params, other);
         let count = usize::from(book.len());
-        let mut writes = units.p2();
+        let mut writes = units.p3();
         for (unit, refreshing) in scratch.units.iter().enumerate() {
             let Ok((mut stats, step, pools)) = writes.get_mut(refreshing.entity) else {
                 continue;
@@ -175,10 +186,10 @@ impl Refresh {
         }
         // The value a live change last had is state, so a replay keeps it; a unit that carries
         // one refreshes every pass anyway, so the change its write marks starts no refresh.
-        let mut carriers = units.p3();
+        let mut holders = units.p4();
         for term in scratch.lives() {
             let entity = scratch.units[term.unit as usize].entity;
-            if let Ok(mut modifiers) = carriers.get_mut(entity) {
+            if let Ok(mut modifiers) = holders.get_mut(entity) {
                 let at = term.share as usize;
                 if modifiers.share_value(at) != term.value {
                     modifiers.set_share_value(at, term.value);

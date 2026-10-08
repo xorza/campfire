@@ -2,7 +2,8 @@ use std::mem;
 use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::Tick;
+use campfire_capabilities::Team;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{
     Delegation, DelegationId, DelegationTerms, InputChain, SeedContribution, SessionId,
@@ -125,6 +126,7 @@ pub(crate) struct Playing {
     pub(crate) member: Member,
     pub(crate) chain: InputChain,
     pub(crate) clock: MatchClock,
+    team: Team,
     history: ChainHistory,
 }
 
@@ -195,6 +197,22 @@ impl JoinState {
     pub const fn clock(&self) -> Option<MatchClock> {
         match &self.step {
             Step::Playing(playing) => Some(playing.clock),
+            _ => None,
+        }
+    }
+
+    /// The slot the player plays; `None` while they play none.
+    pub const fn slot(&self) -> Option<PlayerSlot> {
+        match &self.step {
+            Step::Playing(playing) => Some(playing.chain.slot()),
+            _ => None,
+        }
+    }
+
+    /// The team the player plays in; `None` while they play none.
+    pub const fn team(&self) -> Option<Team> {
+        match &self.step {
+            Step::Playing(playing) => Some(playing.team),
             _ => None,
         }
     }
@@ -364,6 +382,7 @@ impl JoinState {
             member,
             chain,
             clock: MatchClock::resumed(NetTick(start.start_tick), start.first),
+            team: start.team,
             history,
         });
         Started::Playing { discarded }

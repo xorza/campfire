@@ -69,6 +69,10 @@ impl Vision {
     /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's order,
     /// and the number of its teams.
     pub fn load_grid(world: &mut World, grid: Grid, brush: &[Polygon], teams: usize) {
+        debug_assert!(
+            world.contains_resource::<Reveals>(),
+            "a map's vision grid is vision's, which the load checked the mode declares"
+        );
         assert!(
             teams <= VisionGrid::MAX_TEAMS,
             "the mode's check limits the teams of a map with vision"

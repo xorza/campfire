@@ -127,8 +127,8 @@ impl<'a> BookBuilder<'a> {
             supply_rules: data.supply,
             ..BookParts::default()
         };
-        for name in &input.tag_names {
-            books.types.declare(name);
+        for name in input.tag_names {
+            books.types.declare(name.as_str());
         }
         for (index, package) in (0..).zip(&input.packages) {
             BookBuilder::declare_types(&mut books.types, index, package);
@@ -291,7 +291,7 @@ impl<'a> BookBuilder<'a> {
         });
         let max_move_speed = input.max_move_speed.get();
         StatBook::new(&input.data.stats, setups, max_move_speed)
-            .with_order(input.stat_order.clone())
+            .with_order(input.stat_order.to_vec())
     }
 
     /// Declares the unit types of the package at `index` in the order its own load reads them,

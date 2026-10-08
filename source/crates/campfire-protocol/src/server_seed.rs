@@ -1,4 +1,5 @@
 use blake3::Hasher;
+use campfire_common::Secret;
 use serde::{Deserialize, Serialize};
 
 use crate::seed_commitment::SeedCommitment;
@@ -10,15 +11,15 @@ const CHAIN_DOMAIN: &[u8] = b"campfire/seed-chain/v1";
 /// outcome of its segment, so it stays secret until the segment is published.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ServerSeed([u8; 32]);
+pub struct ServerSeed(Secret<32>);
 
 impl ServerSeed {
     pub const fn new(bytes: [u8; 32]) -> ServerSeed {
-        ServerSeed(bytes)
+        ServerSeed(Secret::new(bytes))
     }
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
+        self.0.as_bytes()
     }
 
     /// Whether this is segment `segment`'s seed of the chain `commitment` commits to: `segment + 1`
@@ -33,7 +34,7 @@ impl ServerSeed {
 
     /// `C(s_k) = s_(k−1)`, where `C(x) = BLAKE3(domain ‖ x)`.
     pub(crate) fn earlier(&self) -> ServerSeed {
-        ServerSeed(self.link())
+        ServerSeed(Secret::new(self.link()))
     }
 
     /// `C(s_0)`, when this is the first segment's seed.
@@ -43,7 +44,7 @@ impl ServerSeed {
 
     fn link(&self) -> [u8; 32] {
         let mut hasher = Hasher::new();
-        hasher.update(CHAIN_DOMAIN).update(&self.0);
+        hasher.update(CHAIN_DOMAIN).update(self.0.as_bytes());
         *hasher.finalize().as_bytes()
     }
 }

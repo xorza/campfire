@@ -17,7 +17,6 @@ use campfire_runner::{InputRules, Session};
 use tracing::error;
 
 use crate::opening::error::OpeningError;
-use crate::server_config::ServerConfig;
 
 pub(crate) mod error;
 
@@ -35,6 +34,7 @@ pub(crate) enum Opening {
 pub(crate) struct Restore {
     session: RestoredSession,
     packages: ModePackages,
+    server: ServerSetup,
     bots: ServerBots,
 }
 
@@ -60,6 +60,7 @@ impl Opening {
             return Ok(Opening::Restored(Box::new(Restore {
                 session,
                 packages: setup.packages,
+                server: setup.server,
                 bots: setup.bots,
             })));
         }
@@ -138,12 +139,12 @@ impl Restore {
         let Restore {
             session,
             packages,
+            server,
             bots,
         } = world
             .remove_resource::<Restore>()
             .expect("a restore runs while one waits");
         let id = session.log.session_id();
-        let server = world.resource::<ServerConfig>().0;
         match SimServer::restore_match(world, session, &packages, &server, bots) {
             Ok(()) => {
                 let tick = world.resource::<Session>().log().next_tick();

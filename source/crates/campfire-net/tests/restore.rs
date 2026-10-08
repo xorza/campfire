@@ -79,7 +79,9 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
     let ours = fs::read(&path).unwrap();
     let mut private = SessionPrivate::decode(&ours).unwrap();
     private.terms.release = "0.0.9".to_owned();
-    fs::write(&path, private.encode()).unwrap();
+    let mut bytes = Vec::new();
+    private.encode(&mut bytes);
+    fs::write(&path, bytes).unwrap();
     let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let refused = dir.restore().err();
     assert!(

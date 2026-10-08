@@ -1,10 +1,12 @@
 use campfire_common::{PlayerSlot, Tick};
 use serde::{Deserialize, Serialize};
 
+use crate::bytes::Bytes;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
-use crate::session_log::{Spill, StampCount};
+use crate::session_log::spill::Spill;
+use crate::session_log::stamp_count::StampCount;
 
 /// The log's own state at a checkpoint's boundary, so a segment verifies from its checkpoint
 /// alone: each slot's controller, with a player's delegation and chain, the main key of the
@@ -81,7 +83,8 @@ struct InputWire<'a> {
     tick: Tick,
     slot: PlayerSlot,
     stamp: Tick,
-    payload: &'a [u8],
+    #[serde(borrow)]
+    payload: Bytes<'a>,
 }
 
 impl LogCarry {
@@ -111,7 +114,7 @@ impl LogCarry {
                 tick: input.tick,
                 slot: input.slot,
                 stamp: input.stamp,
-                payload: &input.payload,
+                payload: Bytes(&input.payload),
             })
             .collect();
         CarryWire { slots, pending }
@@ -149,9 +152,24 @@ impl LogCarry {
                 tick: input.tick,
                 slot: input.slot,
                 stamp: input.stamp,
-                payload: input.payload.to_vec(),
+                payload: input.payload.0.to_vec(),
             })
             .collect();
         Ok(LogCarry { slots, pending })
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::checkpoint::log_carry::LogCarry;
+
+    impl LogCarry {
+        /// A carry of no slot and no input, for a test of a checkpoint outside a log.
+        pub const fn empty() -> LogCarry {
+            LogCarry {
+                slots: Vec::new(),
+                pending: Vec::new(),
+            }
+        }
     }
 }

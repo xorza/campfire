@@ -14,7 +14,9 @@ use campfire_capabilities::{
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
-use campfire_net::{InputChannel, InputMessage, InputMessageRefused, PlayerLink, TickHashes};
+use campfire_net::{
+    InputChannel, InputMessage, InputMessageRefused, LinkLost, PlayerLink, TickHashes,
+};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_runner::internals::HashTrail;
 use campfire_runner::{Runner, Session};
@@ -361,6 +363,28 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     // A step runs one tick of the server's.
     let after = local.server().world().resource::<SimTick>().start();
     assert_eq!(after, tick.after(Ticks::new(steps)));
+
+    // A second login of the player, which sits after the end, learns it as it sits.
+    let second = local.add_client(0);
+    let ended = |local: &InProcessMatch| {
+        local
+            .client(second)
+            .world()
+            .get_resource::<MatchEnd>()
+            .copied()
+    };
+    for _ in 0..300 {
+        if ended(&local).is_some() {
+            break;
+        }
+        local.step();
+    }
+    assert_eq!(ended(&local), Some(end));
+    // The first client loses its link once told of the newer login.
+    for _ in 0..5 {
+        local.step();
+    }
+    assert_eq!(local.log().take::<LinkLost>().len(), 1);
 }
 
 #[test]

@@ -1,6 +1,8 @@
 use campfire_capabilities::{DeclaredName, PackagePath};
 use derive_more::Display;
 
+use crate::files::package_name::PackageName;
+
 /// Where in a package a load problem is.
 #[derive(Debug, Display, Clone, PartialEq, Eq)]
 pub enum Place {
@@ -8,7 +10,7 @@ pub enum Place {
     UnitType(DeclaredName),
     /// By its package's name.
     #[display("avatar {_0}")]
-    Avatar(String),
+    Avatar(PackageName),
     #[display("action {_0}")]
     Action(DeclaredName),
     #[display("modifier {_0}")]
@@ -51,6 +53,18 @@ pub enum Place {
     /// The mode's `[shop]`.
     #[display("the mode's [shop]")]
     Shop,
+    /// The mode's `[stats]`.
+    #[display("the mode's [stats]")]
+    Stats,
+    /// The mode's `[supply]`.
+    #[display("the mode's [supply]")]
+    Supply,
+    /// The map's `[navigation]`, its pathing grid.
+    #[display("the map's [navigation]")]
+    MapNavigation,
+    /// The map's `[grid]`, its vision grid.
+    #[display("the map's [grid]")]
+    MapGrid,
     /// The mode's `data/mode.toml`.
     #[display("the mode's data/mode.toml")]
     Mode,

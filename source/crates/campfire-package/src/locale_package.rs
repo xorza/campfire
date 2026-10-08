@@ -6,6 +6,7 @@ use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::{LoadError, PackageRef};
 use crate::files::manifest::Manifest;
+use crate::files::package_name::PackageName;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;
 use crate::package_dir::PackageDir;
@@ -16,8 +17,8 @@ use crate::package_text::LOCALE;
 /// package's name, then by language.
 #[derive(Debug)]
 pub struct LocalePackage {
-    pub name: String,
-    translations: BTreeMap<String, BTreeMap<Language, LocaleFile>>,
+    pub name: PackageName,
+    translations: BTreeMap<PackageName, BTreeMap<Language, LocaleFile>>,
 }
 
 impl LocalePackage {
@@ -38,17 +39,16 @@ impl LocalePackage {
         if !ApiVersion::RELEASE.loads(manifest.header.api) {
             return Err(fail(named(), LoadProblem::OtherApi(manifest.header.api)));
         }
-        let mut translations: BTreeMap<String, BTreeMap<Language, LocaleFile>> = BTreeMap::new();
+        let mut translations: BTreeMap<PackageName, BTreeMap<Language, LocaleFile>> =
+            BTreeMap::new();
         for path in files.files_under(LOCALE) {
             let named_file =
                 path.as_str()[LOCALE.len() + 1..]
                     .split_once('/')
                     .and_then(|(package, file)| {
                         let language = Language::parse(file.strip_suffix(".ftl")?)?;
-                        manifest
-                            .dependencies
-                            .contains_key(package)
-                            .then_some((package, language))
+                        let (package, _) = manifest.dependencies.get_key_value(package)?;
+                        Some((package, language))
                     });
             let Some((package, language)) = named_file else {
                 let problem = LoadProblem::Locale {
@@ -59,7 +59,7 @@ impl LocalePackage {
             };
             let file = LocaleFile::read(files, path).map_err(|problem| fail(named(), problem))?;
             translations
-                .entry(package.to_owned())
+                .entry(package.clone())
                 .or_default()
                 .insert(language, file);
         }
@@ -67,7 +67,10 @@ impl LocalePackage {
     }
 
     /// Its translations of the package `package`, by language.
-    pub(crate) fn of(&self, package: &str) -> impl Iterator<Item = (&Language, &LocaleFile)> {
+    pub(crate) fn of(
+        &self,
+        package: &PackageName,
+    ) -> impl Iterator<Item = (&Language, &LocaleFile)> {
         self.translations.get(package).into_iter().flatten()
     }
 }

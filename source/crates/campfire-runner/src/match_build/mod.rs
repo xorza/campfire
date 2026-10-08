@@ -53,3 +53,6 @@ impl MatchBuild {
         packages.books(rate).install(world)
     }
 }
+
+#[cfg(feature = "bench")]
+pub(crate) mod bench;

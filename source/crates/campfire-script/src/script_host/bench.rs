@@ -1,4 +1,5 @@
 use std::hint::black_box;
+use std::num::NonZeroU64;
 
 use criterion::{Criterion, Throughput};
 use rhai::INT;
@@ -9,7 +10,7 @@ use crate::script_host::budget::Budget;
 /// The calls of a case: one for each unit of a kernel's scene, as a tick of 1,000 AIs makes.
 const CALLS: usize = 1000;
 /// The 3v3's limit per call.
-const PER_CALL: u64 = 20_000;
+const PER_CALL: NonZeroU64 = NonZeroU64::new(20_000).unwrap();
 
 /// The script host's own cost of a hook call, `CALLS` times over: an empty hook of two arguments,
 /// `call`, what each AI think pays before its script runs; and a hook that makes one call to a

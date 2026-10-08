@@ -22,6 +22,8 @@ pub(crate) struct DelayLine {
     /// Packets not delivered yet, with the frame each is due in and the order it was sent in.
     held: Vec<Held>,
     sent: u64,
+    /// Whether every packet sent is lost, as a link that drops one way a while.
+    lost: bool,
 }
 
 #[derive(Debug)]
@@ -51,6 +53,7 @@ impl DelayLine {
             draw: model.seed ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15),
             held: Vec::new(),
             sent: 0,
+            lost: false,
         }
     }
 
@@ -91,7 +94,15 @@ impl DelayLine {
         }
     }
 
+    /// Loses every packet sent from now on if `lost`, or passes them by the model again.
+    pub(crate) const fn lose_all(&mut self, lost: bool) {
+        self.lost = lost;
+    }
+
     fn hold(&mut self, payload: SendPayload) {
+        if self.lost {
+            return;
+        }
         let LinkModel {
             delay,
             jitter,

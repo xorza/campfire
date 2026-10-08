@@ -1,16 +1,17 @@
-use bevy_ecs::bundle::Bundle;
-use std::num::{NonZeroU8, NonZeroU32};
+use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
-use campfire_common::PlayerSlot;
+use campfire_common::{PlayerSlot, SegmentSeed};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, Command, IdAllocator, TickInput};
+use campfire_sim::{Capability, Command, IdAllocator, SimUpdate, TickInput};
 use serde::Deserialize;
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
 use crate::actions::action_slots::{InProgress, OrderPhase, SlotAim};
 use crate::actions::slot_kind::SlotKind;
+use crate::capability_set::CapabilitySet;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
@@ -852,7 +853,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     // A pool of 1500 operations: a spinning call runs its 1000 and fails, which leaves 500; the
     // next is ended past those 500, so its unit stays due.
     let limits = ScriptLimits {
-        per_call: 1000,
+        per_call: NonZeroU64::new(1000).unwrap(),
         player: 1000,
         think: 1500,
         mode: 100_000,
@@ -1504,4 +1505,43 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     game.tick(&[]);
     assert_eq!(game.position(walker), place);
     assert_eq!(game.target(walker), None);
+}
+
+#[test]
+fn production_and_items_add_their_order_actions_only_where_they_are_declared() {
+    // The cancels and rallies are production's, the trades items'; a trade, as a server runs it.
+    let scheduled = |declared: &[Capability]| {
+        let mut world = World::new();
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), TestMatch::RATE);
+        let mut schedule = SimUpdate::schedule();
+        let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+        CapabilitySet::new(declared).unwrap().install(
+            &mut world,
+            &mut schedule,
+            &mut StateRegistry::new(),
+            Some(budgets),
+        );
+        schedule.initialize(&mut world).unwrap();
+        let names: Vec<String> = schedule
+            .systems()
+            .unwrap()
+            .map(|(_, system)| system.name().to_string())
+            .collect();
+        ["apply_production_orders", "trade_items"]
+            .map(|wanted| names.iter().any(|name| name.ends_with(wanted)))
+    };
+    let orders = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Orders,
+    ];
+    assert_eq!(scheduled(&orders), [false, false]);
+    let with = |extra: &[Capability]| [&orders[..], extra].concat();
+    assert_eq!(scheduled(&with(&[Capability::Production])), [true, false]);
+    assert_eq!(scheduled(&with(&[Capability::Items])), [false, true]);
+    assert_eq!(
+        scheduled(&with(&[Capability::Production, Capability::Items])),
+        [true, true]
+    );
 }

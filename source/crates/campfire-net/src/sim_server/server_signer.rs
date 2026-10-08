@@ -43,22 +43,14 @@ impl ServerSigner {
     }
 
     /// Logs `input` in `session` before its next tick, signed at the place it takes; see
-    /// `Session::record_server`.
+    /// `Session::serve`.
     pub(crate) fn serve(
         &self,
         session: &mut Session,
         input: ServerInput<'_>,
     ) -> Result<(), ServerInputRefused> {
-        let log = session.log();
         let mut aux = [0; 32];
         (self.entropy)(&mut aux);
-        let signature = input.sign(
-            &self.secp,
-            &self.key,
-            log.session_id(),
-            log.next_place(),
-            &aux,
-        );
-        session.record_server(input, &signature)
+        session.serve(input, &self.secp, &self.key, &aux)
     }
 }

@@ -14,8 +14,6 @@ use crate::session::Session;
 /// The ticks of a measured 3v3 match: 5 minutes at 20 Hz, the pick, then a wave every 30 s from
 /// tick 2399, which fight their lanes' towers.
 const TICKS: u64 = 6000;
-/// How often the checkpointed match copies its changed state, in ticks.
-const CHECKPOINT_EVERY: u64 = 100;
 
 /// The server's tick of the reference 3v3, whole and by stage, from one load of its packages.
 pub(crate) fn server(c: &mut Criterion) {
@@ -27,7 +25,8 @@ pub(crate) fn server(c: &mut Criterion) {
 /// A tick of the reference 3v3 as its packages hold it: its first tick, `first_3v3`, which
 /// builds the sim schedule and labels the pathing grid around the map's static bodies; the worst
 /// of the other ticks of a match of `TICKS` ticks, with no checkpoint and with the main thread's
-/// part of a checkpoint every `CHECKPOINT_EVERY` ticks, the copy of the state that changed; and
+/// part of a delta every tick, the copy of the state that changed, as a server sends one whenever
+/// its checkpoint thread is free; and
 /// the mean tick of such a match, `mean_3v3`, a whole match each iteration, its throughput the
 /// ticks. A rollback re-simulates whole ticks, so it costs its depth times these.
 fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
@@ -54,14 +53,10 @@ fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
             for _ in 0..matches {
                 let mut fixed = reference.start();
                 Session::track(fixed.runner_mut().world_mut(), &mut delta);
-                let mut tick = 0;
                 let cost = MatchCost::of_match(&mut fixed, |runner| {
-                    tick += 1;
                     let start = Instant::now();
                     runner.run_tick();
-                    if tick % CHECKPOINT_EVERY == 0 {
-                        Session::changes(runner.world_mut(), &mut delta);
-                    }
+                    Session::changes(runner.world_mut(), &mut delta);
                     let spent = start.elapsed();
                     black_box(&delta);
                     spent

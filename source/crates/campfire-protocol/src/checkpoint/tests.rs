@@ -7,7 +7,8 @@ use crate::delegation::{Delegation, DelegationTerms};
 use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
-use crate::session_log::{Spill, StampCount};
+use crate::session_log::spill::Spill;
+use crate::session_log::stamp_count::StampCount;
 
 fn delegation() -> Delegation {
     let terms = DelegationTerms {
@@ -85,10 +86,16 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
     let id = SessionId::new([8; 32]);
     let signature = record.sign(&secp, &TestKey::of(41), id, &[0; 32]);
     let key = TestKey::of(41).x_only_public_key().0;
-    assert!(record.signed_by(&secp, &key, id, &signature));
-    assert!(!record.signed_by(&secp, &key, SessionId::new([9; 32]), &signature));
+    assert!(record.signed_by(&secp, &key, id, &signature, &mut Vec::new()));
+    assert!(!record.signed_by(
+        &secp,
+        &key,
+        SessionId::new([9; 32]),
+        &signature,
+        &mut Vec::new()
+    ));
     let stranger = TestKey::of(42).x_only_public_key().0;
-    assert!(!record.signed_by(&secp, &stranger, id, &signature));
+    assert!(!record.signed_by(&secp, &stranger, id, &signature, &mut Vec::new()));
     // A change to any field, the carry's included.
     let changes: [fn(&mut Checkpoint); 5] = [
         |record| record.segment = 2,
@@ -100,7 +107,10 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
     for (at, change) in changes.into_iter().enumerate() {
         let mut other = record.clone();
         change(&mut other);
-        assert!(!other.signed_by(&secp, &key, id, &signature), "change {at}");
+        assert!(
+            !other.signed_by(&secp, &key, id, &signature, &mut Vec::new()),
+            "change {at}"
+        );
     }
 
     // A carried delegation that does not parse, and bytes that do not decode.

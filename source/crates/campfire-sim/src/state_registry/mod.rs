@@ -1,6 +1,10 @@
+use std::any::Any;
+
 use bevy_ecs::change_detection::{DetectChanges, Ref, Tick as ChangeTick};
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
+use bevy_ecs::query::{Allow, QueryState};
 use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::{Mut, World};
 use blake3::Hasher;
@@ -14,13 +18,16 @@ use crate::sim_state::{SimComponent, SimResource};
 use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
 use crate::state_changes::{Removal, StateChanges};
+use crate::state_registry::copy_queries::CopyQueries;
 use crate::state_registry::error::SnapshotError;
 use crate::state_registry::hash_sink::HashSink;
 use crate::state_registry::state_delta::StateDelta;
 use crate::state_registry::writer::{Sink, Writer};
+use crate::unpredicted::Unpredicted;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+mod copy_queries;
 pub(crate) mod error;
 mod hash_sink;
 pub(crate) mod state_delta;
@@ -63,8 +70,11 @@ struct Entry {
     decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
     /// Whether every value of the type keeps its rules, once everything is decoded.
     check: fn(&World) -> bool,
-    /// Writes the type's section of a `StateDelta`.
-    copy: fn(&mut World, &Copying<'_>, &mut Vec<u8>),
+    /// Writes the type's section of a `StateDelta`, through the query `copy_query` made.
+    copy: fn(&mut World, &Copying<'_>, Option<&mut CopyQuery>, &mut Vec<u8>),
+    /// Makes the query a component type copies its values through, once, as a world starts
+    /// recording its changes; none for a resource or the entity list.
+    copy_query: Option<fn(&mut World) -> Box<CopyQuery>>,
     /// Applies the type's section of a `StateDelta`, in one of its two passes.
     apply: fn(&mut World, &[u8], Pass),
     /// Records each removal of the type's component, at its place in the registry, in the
@@ -92,6 +102,14 @@ enum Pass {
     Values,
     Removals,
 }
+
+/// A type's copy query, as a world's `CopyQueries` holds it.
+type CopyQuery = dyn Any + Send + Sync;
+
+/// What a component type's copy reads: each entity that holds it, the disabled and the
+/// unpredicted among them, as the entity index lists them all, with its stable id.
+type Holders<C> =
+    QueryState<(&'static StableId, Ref<'static, C>), (Allow<Disabled>, Allow<Unpredicted>)>;
 
 /// The hash of one registered type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,15 +153,16 @@ impl StateRegistry {
             encode: encode_entities,
             decode: decode_entities,
             check: |_| true,
-            copy: |_, _, _| {},
+            copy: |_, _, _, _| {},
+            copy_query: None,
             apply: |_, _, _| {},
             watch: |_, _| {},
             #[cfg(any(test, feature = "internals"))]
             scramble: |_, _| false,
         };
         registry.register(entities);
-        registry.register_resource::<IdAllocator>();
-        registry.register_resource::<SimTick>();
+        registry.require_resource::<IdAllocator>();
+        registry.require_resource::<SimTick>();
         registry.register_component::<Position>();
         registry
     }
@@ -155,6 +174,7 @@ impl StateRegistry {
             decode: decode_component::<C>,
             check: check_component::<C>,
             copy: copy_component::<C>,
+            copy_query: Some(copy_query::<C>),
             apply: apply_component::<C>,
             watch: watch_component::<C>,
             #[cfg(any(test, feature = "internals"))]
@@ -177,12 +197,26 @@ impl StateRegistry {
     }
 
     pub fn register_resource<R: SimResource>(&mut self) {
+        self.register_resource_decoded::<R>(decode_resource::<R>);
+    }
+
+    /// Registers `R` as a resource every state holds, as the sim's own do: a snapshot that
+    /// records it absent does not restore.
+    fn require_resource<R: SimResource>(&mut self) {
+        self.register_resource_decoded::<R>(decode_required_resource::<R>);
+    }
+
+    fn register_resource_decoded<R: SimResource>(
+        &mut self,
+        decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
+    ) {
         self.register(Entry {
             name: R::NAME,
             encode: encode_resource::<R>,
-            decode: decode_resource::<R>,
+            decode,
             check: check_resource::<R>,
             copy: copy_resource::<R>,
+            copy_query: None,
             apply: apply_resource::<R>,
             watch: |_, _| {},
             #[cfg(any(test, feature = "internals"))]
@@ -210,26 +244,32 @@ impl StateRegistry {
     }
 
     /// Writes the snapshot of `world` into `out`, which is cleared first: the tag, then for each
-    /// type in name order a `u32` name length, the name, a `u64` body length and the body.
-    pub fn snapshot(&self, world: &World, out: &mut Vec<u8>) {
+    /// type in name order a `u32` name length, the name, a `u64` body length and the body. Its
+    /// state hash, `hash`'s, from the bodies it wrote, so a checkpoint encodes its state once.
+    pub fn snapshot(&self, world: &World, out: &mut Vec<u8>) -> StateHash {
         out.clear();
         out.extend_from_slice(SNAPSHOT_TAG);
+        let mut total = Hasher::new();
+        total.update(HASH_DOMAIN);
         for entry in &self.entries {
             out.extend_from_slice(&name_len(entry.name).to_le_bytes());
             out.extend_from_slice(entry.name.as_bytes());
             let len_at = out.len();
             out.extend_from_slice(&[0; BODY_LEN_BYTES]);
             (entry.encode)(world, out);
-            let body_len = u64::try_from(out.len() - len_at - BODY_LEN_BYTES)
-                .expect("snapshot above 2⁶⁴ bytes");
+            let body = &out[len_at + BODY_LEN_BYTES..];
+            fold(&mut total, entry.name, blake3::hash(body).as_bytes());
+            let body_len = u64::try_from(body.len()).expect("snapshot above 2⁶⁴ bytes");
             out[len_at..len_at + BODY_LEN_BYTES].copy_from_slice(&body_len.to_le_bytes());
         }
+        StateHash::new(*total.finalize().as_bytes())
     }
 
     /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
     /// are not the canonical encoding of what they restore, or a value that breaks its type's
     /// rules, each type checked once all are decoded. A resource the snapshot records as absent
-    /// is removed. On an error the world is left partly restored and should be discarded.
+    /// is removed, and one every state holds, the sim's own, recorded absent is refused. On an
+    /// error the world is left partly restored and should be discarded.
     pub fn restore(&self, snapshot: &[u8], world: &mut World) -> Result<(), SnapshotError> {
         assert!(
             world
@@ -314,9 +354,14 @@ impl StateRegistry {
         );
         let changes = StateChanges::new(world.resource::<EntityIndex>());
         world.insert_resource(changes);
+        // A query names the marker of the unpredicted, which only a predicting world registers.
+        world.register_component::<Unpredicted>();
+        let mut queries = CopyQueries::default();
         for (at, entry) in self.entries.iter().enumerate() {
             (entry.watch)(world, u16::try_from(at).expect("the types fit u16"));
+            queries.push(entry.copy_query.map(|make| make(world)));
         }
+        world.insert_resource(queries);
         self.changes(world, delta);
     }
 
@@ -326,20 +371,22 @@ impl StateRegistry {
     pub fn changes(&self, world: &mut World, delta: &mut StateDelta) {
         let now = world.change_tick();
         world.resource_scope(|world, mut changes: Mut<'_, StateChanges>| {
-            changes.settle(world.resource::<EntityIndex>());
-            delta.clear();
-            delta.lost.extend_from_slice(changes.lost());
-            delta.gained.extend_from_slice(changes.gained());
-            for (at, entry) in self.entries.iter().enumerate() {
-                let copying = Copying {
-                    since: changes.since(),
-                    now,
-                    gained: &delta.gained,
-                    removed: changes.removed(u16::try_from(at).expect("the types fit u16")),
-                };
-                (entry.copy)(world, &copying, &mut delta.bytes);
-                delta.end_section();
-            }
+            world.resource_scope(|world, mut queries: Mut<'_, CopyQueries>| {
+                changes.settle(world.resource::<EntityIndex>());
+                delta.clear();
+                delta.lost.extend_from_slice(changes.lost());
+                delta.gained.extend_from_slice(changes.gained());
+                for (at, entry) in self.entries.iter().enumerate() {
+                    let copying = Copying {
+                        since: changes.since(),
+                        now,
+                        gained: &delta.gained,
+                        removed: changes.removed(u16::try_from(at).expect("the types fit u16")),
+                    };
+                    (entry.copy)(world, &copying, queries.get_mut(at), &mut delta.bytes);
+                    delta.end_section();
+                }
+            });
             changes.restart(now);
         });
         // Every write after the copy is newer than its tick.
@@ -387,10 +434,7 @@ impl StateRegistry {
         for entry in &self.entries {
             (entry.encode)(world, &mut sink);
             let hash = sink.finish();
-            total
-                .update(&name_len(entry.name).to_le_bytes())
-                .update(entry.name.as_bytes())
-                .update(&hash);
+            fold(&mut total, entry.name, &hash);
             if let Some(per_type) = per_type.as_deref_mut() {
                 per_type.push(TypeHash {
                     name: entry.name,
@@ -406,6 +450,14 @@ impl Default for StateRegistry {
     fn default() -> StateRegistry {
         StateRegistry::new()
     }
+}
+
+/// Adds the hash of the type `name` to a state hash's `total`.
+fn fold(total: &mut Hasher, name: &str, hash: &[u8; 32]) {
+    total
+        .update(&name_len(name).to_le_bytes())
+        .update(name.as_bytes())
+        .update(hash);
 }
 
 fn name_len(name: &str) -> u32 {
@@ -470,9 +522,23 @@ fn decode_entities(world: &mut World, mut body: &[u8]) -> Result<(), SnapshotErr
 }
 
 fn encode_component<C: SimComponent>(world: &World, sink: &mut dyn Sink) {
+    if !held::<C>(world) {
+        return;
+    }
     let index = world.resource::<EntityIndex>().iter();
     let held = index.filter_map(|(id, entity)| Some((id, world.get::<C>(entity)?)));
     Writer::write_each(sink, held);
+}
+
+/// Whether an archetype of `world` holds `C`: one that none does has an empty section, with no
+/// walk of the entities.
+fn held<C: SimComponent>(world: &World) -> bool {
+    world.components().component_id::<C>().is_some_and(|id| {
+        world
+            .archetypes()
+            .iter()
+            .any(|archetype| !archetype.is_empty() && archetype.contains(id))
+    })
 }
 
 fn decode_component<C: SimComponent>(
@@ -516,9 +582,33 @@ fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(),
     Ok(())
 }
 
-fn copy_component<C: SimComponent>(world: &mut World, copying: &Copying<'_>, out: &mut Vec<u8>) {
-    let mut query = world.query::<(&StableId, Ref<'_, C>)>();
-    let changed = query.iter(world).filter(|(id, value)| {
+fn decode_required_resource<R: SimResource>(
+    world: &mut World,
+    body: &[u8],
+) -> Result<(), SnapshotError> {
+    let Taken { value, rest } = take::<Option<R>>(body)?;
+    if !rest.is_empty() {
+        return Err(SnapshotError::Trailing);
+    }
+    world.insert_resource(value.ok_or(SnapshotError::Missing(R::NAME))?);
+    Ok(())
+}
+
+fn copy_query<C: SimComponent>(world: &mut World) -> Box<CopyQuery> {
+    let holders: Holders<C> = world.query_filtered();
+    Box::new(holders)
+}
+
+fn copy_component<C: SimComponent>(
+    world: &mut World,
+    copying: &Copying<'_>,
+    query: Option<&mut CopyQuery>,
+    out: &mut Vec<u8>,
+) {
+    let holders = query
+        .and_then(|query| query.downcast_mut::<Holders<C>>())
+        .expect("a component type copies through its own query");
+    let changed = holders.iter(world).filter(|(id, value)| {
         let changed = copying
             .since
             .is_none_or(|since| value.last_changed().is_newer_than(since, copying.now));
@@ -574,7 +664,12 @@ fn watch_component<C: SimComponent>(world: &mut World, entry: u16) {
     );
 }
 
-fn copy_resource<R: SimResource>(world: &mut World, copying: &Copying<'_>, out: &mut Vec<u8>) {
+fn copy_resource<R: SimResource>(
+    world: &mut World,
+    copying: &Copying<'_>,
+    _: Option<&mut CopyQuery>,
+    out: &mut Vec<u8>,
+) {
     match world.get_resource_ref::<R>() {
         None => Writer::write(out, &None::<&R>),
         Some(value)
@@ -604,6 +699,9 @@ fn apply_resource<R: SimResource>(world: &mut World, body: &[u8], pass: Pass) {
 }
 
 fn check_component<C: SimComponent>(world: &World) -> bool {
+    if !held::<C>(world) {
+        return true;
+    }
     world.resource::<EntityIndex>().iter().all(|(_, entity)| {
         world
             .get::<C>(entity)

@@ -5,12 +5,22 @@ use campfire_common::{Fingerprint, Ticks};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
+use crate::delegation::Delegation;
 use crate::seed_commitment::SeedCommitment;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
 const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v1";
+
+/// The most bytes postcard writes for a `u64`, and for a `u32` or a length.
+const VARINT_64: u64 = 10;
+const VARINT_32: u64 = 5;
+/// The bytes of a signature, and of a hash.
+const SIGNATURE: u64 = 64;
+const HASH: u64 = 32;
+/// More than a record's tags, small fields and enum tags take, beside what the bound counts.
+const SLACK: u64 = 256;
 
 /// What the server fixes when it opens a session, before any player joins. The session id is
 /// their hash, and every delegation and chain-head signature names the id: the players sign
@@ -74,6 +84,40 @@ impl SessionTerms {
             hasher.update(&[plan.code()]);
         }
         SessionId::new(*hasher.finalize().as_bytes())
+    }
+
+    /// The most bytes a journal record of a session of these terms can hold; `None` past a
+    /// `u64`. Each record is bounded by them: a packet by its inputs and their payloads; a server
+    /// input by a bot's payload or a delegation, whose JSON `Delegation::MAX_JSON` bounds; a
+    /// checkpoint by its carry, each slot's delegation and its inputs still to apply, which the
+    /// stamps' window bounds, as a slot logs at most `max_inputs_per_tick` of a stamp and none
+    /// stamped past `max_input_lead` nor before `max_input_delay`; the header by the terms and
+    /// a delegation a slot.
+    pub(crate) fn largest_record(&self) -> Option<u64> {
+        let payload = u64::from(self.max_payload_len);
+        let inputs = u64::from(self.max_inputs_per_tick);
+        let slots = len(self.slots.len());
+        let delegation = len(Delegation::MAX_JSON) + VARINT_32;
+        let input = VARINT_64 + VARINT_32 + payload;
+        let packet = inputs.checked_mul(input)?.checked_add(SIGNATURE + SLACK)?;
+        let server = payload.max(delegation) + SIGNATURE + SLACK;
+        let window = self
+            .max_input_delay
+            .get()
+            .checked_add(self.max_input_lead.get())?
+            .checked_add(1)?;
+        // Each carried input holds its tick and its slot beside what its packet held.
+        let carried = input + VARINT_64 + VARINT_32;
+        let pending = inputs.checked_mul(window)?.checked_mul(carried)?;
+        let slot = delegation.checked_add(pending)?.checked_add(SLACK)?;
+        let checkpoint = slots
+            .checked_mul(slot)?
+            .checked_add(2 * HASH + SIGNATURE + SLACK)?;
+        let terms = len(self.dependencies.len())
+            .checked_mul(HASH)?
+            .checked_add(len(self.release.len()) + SLACK)?;
+        let header = slots.checked_mul(delegation + SLACK)?.checked_add(terms)?;
+        Some(packet.max(server).max(checkpoint).max(header))
     }
 }
 

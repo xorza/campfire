@@ -1,6 +1,6 @@
 use std::mem;
 use std::sync::Mutex;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 
 use crate::worker::Worker;
 
@@ -11,7 +11,7 @@ use crate::worker::Worker;
 #[derive(Debug)]
 pub struct Exchange<J, A> {
     /// Dropped to close the worker.
-    jobs: Option<Sender<J>>,
+    jobs: Option<SyncSender<J>>,
     done: Mutex<Receiver<Done<J, A>>>,
     /// The job the worker gave back last, for the next.
     spare: J,
@@ -30,8 +30,10 @@ struct Done<J, A> {
 impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
     /// Starts the worker `name`, which does each job with `work`.
     pub fn start(name: &str, mut work: impl FnMut(&mut J) -> A + Send + 'static) -> Exchange<J, A> {
-        let (jobs, received) = mpsc::channel::<J>();
-        let (sent, done) = mpsc::channel();
+        // One job is out at a time, so a channel of one slot each way never makes a send wait,
+        // and, bounded, holds its slot in a buffer it made once.
+        let (jobs, received) = mpsc::sync_channel::<J>(1);
+        let (sent, done) = mpsc::sync_channel(1);
         let worker = Worker::start(name, move || {
             while let Ok(mut job) = received.recv() {
                 let answer = work(&mut job);
@@ -60,6 +62,19 @@ impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
             .send(job)
             .expect("the worker runs");
         self.pending = true;
+    }
+
+    /// Sends `job`, which the caller filled beforehand, and gives back the job given back last,
+    /// whose buffers the caller keeps for the next it fills.
+    pub fn send_filled(&mut self, job: J) -> J {
+        assert!(!self.pending, "one job at a time");
+        self.jobs
+            .as_ref()
+            .expect("an exchange closes only as it drops")
+            .send(job)
+            .expect("the worker runs");
+        self.pending = true;
+        mem::take(&mut self.spare)
     }
 
     /// Whether a job was sent and its answer not taken.

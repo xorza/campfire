@@ -49,6 +49,22 @@ pub enum Action {
     CancelBuild,
 }
 
+impl Action {
+    /// Whether it becomes an order of each of its units, as the core checks and applies it: a
+    /// move, an attack, a slot's action, a build and a stop. Learning, and the actions of
+    /// production and items, apply in systems of their own.
+    pub(crate) const fn to_units(self) -> bool {
+        matches!(
+            self,
+            Action::Move { .. }
+                | Action::Attack { .. }
+                | Action::Slot { .. }
+                | Action::Build { .. }
+                | Action::Stop
+        )
+    }
+}
+
 impl Order {
     /// The capability that orders go to.
     pub const CAPABILITY: Capability = Capability::Orders;

@@ -7,7 +7,7 @@ use campfire_capabilities::{
     Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, Metric, ModifierData,
     ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
     ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Share, Stat,
-    Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -79,13 +79,19 @@ struct ScriptUse<'a> {
 }
 
 impl<'a> LoadCheck<'a> {
-    pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<(), LoadError> {
+    /// Checks `packages` against the script API `api`; the order the stats refresh computes the
+    /// mode's stats in.
+    pub(crate) fn run(
+        packages: &'a ModePackages,
+        api: &'a ScriptApi,
+    ) -> Result<Vec<StatId>, LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
-        let mut tags = packages.tag_names();
-        if EngineTag::ALL.len() + tags.len() > UnitTypeData::TAG_LIMIT {
+        let names = packages.tag_names();
+        if EngineTag::ALL.len() + names.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
+        let mut tags: BTreeSet<&str> = names.iter().map(DeclaredName::as_str).collect();
         tags.extend(EngineTag::ALL.map(EngineTag::name));
         // A dependency's delivery types are in its own scope, so they share no name with
         // another package's; an avatar is in the mode's, by its package's name.
@@ -98,7 +104,7 @@ impl<'a> LoadCheck<'a> {
                 if units.contains_key(name.as_str()) {
                     return Err(fail(LoadProblem::Repeated {
                         at: Place::UnitTypes,
-                        name: name.clone(),
+                        name: name.to_string(),
                     }));
                 }
                 unit_types += 1;
@@ -135,15 +141,15 @@ impl<'a> LoadCheck<'a> {
                 .dependent(view, dependent)
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
-        packages
+        let stat_order = packages
             .stat_graph()
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
-        let input = packages.book_input(check.rate);
+        let input = packages.book_input(check.rate, &stat_order);
         Books::build(&input).map_err(|error| check.book_error(error))?;
         // After the build, which resolved the map's names.
         check.map_walkable().map_err(fail)?;
-        Ok(())
+        Ok(stat_order)
     }
 
     /// The load error of what building the books refused, at the fastest rate the mode allows.
@@ -241,14 +247,11 @@ impl<'a> LoadCheck<'a> {
         if data.players.bot_takeover && !data.players.late_join {
             return Err(LoadProblem::BotTakeoverWithoutLateJoin);
         }
+        self.sections_owned()?;
         self.damage_kinds()?;
         self.pools_and_resources()?;
-        self.layers()?;
         self.tracks()?;
-        if data.combat.stats().next().is_some() || data.combat.life.is_some() {
-            self.require(Capability::Combat, &Place::Combat)?;
-            self.stats_declared(data.combat.stats(), &Place::Combat)?;
-        }
+        self.stats_declared(data.combat.stats(), &Place::Combat)?;
         self.slot_kinds()?;
         self.choices()?;
         self.items()?;
@@ -260,9 +263,6 @@ impl<'a> LoadCheck<'a> {
             Some((Place::UnitType(name.clone()), unit_type.passive.as_ref()?))
         });
         passives_held_once(held.chain(action_passives(&content.actions)))?;
-        if !packages.map.paths.is_empty() {
-            self.require(Capability::Navigation, &Place::Paths)?;
-        }
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.grid.is_none()
         {
@@ -655,7 +655,9 @@ impl<'a> LoadCheck<'a> {
                 }
             }
             for used in &facts.members {
-                self.member(facts, &used.name, used.kind).map_err(fail)?;
+                if let Some(capability) = self.member(facts, &used.name, used.kind).map_err(fail)? {
+                    self.require(capability, &at)?;
+                }
             }
             self.enums(facts).map_err(fail)?;
             if let Some(name) = facts
@@ -773,13 +775,15 @@ impl<'a> LoadCheck<'a> {
 
     /// A script may read or call `name`, of `kind`, on a value other than `ctx`: a handle's field
     /// or method that runs, one the engine has of its own, a key of the script's object maps or
-    /// one of its functions. A name only a planned handle member has is planned.
+    /// one of its functions. A name only a planned handle member has is planned. A name whose
+    /// every form that runs is of a capability the mode does not declare gives the first such
+    /// capability, which the match binds no form of.
     fn member(
         &self,
         facts: &ScriptFacts,
         name: &str,
         kind: MemberKind,
-    ) -> Result<(), ScriptProblem> {
+    ) -> Result<Option<Capability>, ScriptProblem> {
         let own = match kind {
             MemberKind::Field => {
                 self.api.builtin(&format!("get${name}"))
@@ -791,19 +795,26 @@ impl<'a> LoadCheck<'a> {
             }
         };
         if own {
-            return Ok(());
+            return Ok(None);
         }
         let mut problem = ScriptProblem::UnknownMember(name.to_owned());
+        let mut undeclared = None;
         let handles = self.api.members().iter().filter(|member| {
             member.owner != ApiOwner::Ctx && member.name == name && member.kind == kind
         });
         for member in handles {
-            if member.status != Status::Planned {
-                return Ok(());
+            if member.status == Status::Planned {
+                problem = ScriptProblem::Planned(name.to_owned());
+                continue;
             }
-            problem = ScriptProblem::Planned(name.to_owned());
+            match member.capability {
+                Some(capability) if !self.packages.manifest.capabilities.contains(capability) => {
+                    undeclared.get_or_insert(capability);
+                }
+                _ => return Ok(None),
+            }
         }
-        Err(problem)
+        undeclared.map(Some).ok_or(problem)
     }
 
     /// A name a script at `at` gives an argument of a name kind is one of its kind that the match
@@ -1247,14 +1258,9 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's tracks are progression's: no more than a unit holds, and at most one the
-    /// `level` track.
+    /// The mode's tracks: no more than a unit holds, and at most one the `level` track.
     fn tracks(&self) -> Result<(), LoadProblem> {
         let tracks = &self.packages.data.tracks;
-        if tracks.is_empty() {
-            return Ok(());
-        }
-        self.require(Capability::Progression, &Place::Tracks)?;
         if tracks.len() > TrackId::LIMIT {
             return Err(LoadProblem::TooMany(Limit::Tracks));
         }
@@ -1264,12 +1270,47 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's layers are navigation's.
-    fn layers(&self) -> Result<(), LoadProblem> {
-        if self.packages.data.navigation.layers.is_empty() {
-            return Ok(());
+    /// Each section of the mode's data and of its map that it holds belongs to a capability the
+    /// mode declares, as each of a unit type's does: a match builds a section's grids, books and
+    /// rules only for the capability that runs them.
+    fn sections_owned(&self) -> Result<(), LoadProblem> {
+        let (data, map) = (&self.packages.data, &self.packages.map);
+        let combat = &data.combat;
+        let sections = [
+            (
+                !combat.damage_kinds.is_empty()
+                    || combat.stats().next().is_some()
+                    || combat.life.is_some(),
+                Capability::Combat,
+                Place::Combat,
+            ),
+            (!data.stats.is_empty(), Capability::Stats, Place::Stats),
+            (
+                !data.tracks.is_empty(),
+                Capability::Progression,
+                Place::Tracks,
+            ),
+            (
+                !data.navigation.layers.is_empty(),
+                Capability::Navigation,
+                Place::Navigation,
+            ),
+            (data.supply.is_some(), Capability::Production, Place::Supply),
+            (data.shop.is_some(), Capability::Items, Place::Shop),
+            (
+                map.navigation.is_some(),
+                Capability::Navigation,
+                Place::MapNavigation,
+            ),
+            (!map.paths.is_empty(), Capability::Navigation, Place::Paths),
+            (map.grid.is_some(), Capability::Vision, Place::MapGrid),
+        ];
+        for (held, capability, at) in sections {
+            if held {
+                self.require(capability, &at)?;
+            }
         }
-        self.require(Capability::Navigation, &Place::Navigation)
+        Ok(())
     }
 
     /// The layer a `collision` section at `at` names, if any, is one the mode declares.
@@ -1607,7 +1648,6 @@ impl<'a> LoadCheck<'a> {
             return Ok(());
         };
         let at = Place::Shop;
-        self.require(Capability::Items, &at)?;
         if let Some(name) = shop.items.iter().find(|name| !items.contains_key(*name)) {
             return Err(unknown(&at, name, NameKind::Item));
         }

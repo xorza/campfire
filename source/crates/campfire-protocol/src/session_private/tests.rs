@@ -26,7 +26,9 @@ fn a_private_record_round_trips_and_other_bytes_are_refused() {
             slots: vec![SlotPlan::Player, SlotPlan::Open],
         },
     };
-    let bytes = private.encode();
+    // A buffer that held other bytes is cleared first, so the file decodes.
+    let mut bytes = vec![9; 3];
+    private.encode(&mut bytes);
     assert_eq!(SessionPrivate::decode(&bytes), Ok(private));
     assert_eq!(
         SessionPrivate::decode(&bytes[1..]),

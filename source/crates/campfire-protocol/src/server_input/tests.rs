@@ -69,19 +69,26 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
     let input = &inputs[0];
     let signature = input.sign(&secp, &server, id, place, &[0; 32]);
     let key = server.x_only_public_key().0;
-    assert!(input.signed_by(&secp, &key, id, place, &signature));
+    assert!(input.signed_by(&secp, &key, id, place, &signature, &mut Vec::new()));
     // At another tick or index, in another session, under another key, or over another input.
     let other_tick = InputPlace {
         tick: Tick::new(8),
         ..place
     };
     let other_index = InputPlace { index: 0, ..place };
-    assert!(!input.signed_by(&secp, &key, id, other_tick, &signature));
-    assert!(!input.signed_by(&secp, &key, id, other_index, &signature));
-    assert!(!input.signed_by(&secp, &key, SessionId::new([9; 32]), place, &signature));
+    assert!(!input.signed_by(&secp, &key, id, other_tick, &signature, &mut Vec::new()));
+    assert!(!input.signed_by(&secp, &key, id, other_index, &signature, &mut Vec::new()));
+    assert!(!input.signed_by(
+        &secp,
+        &key,
+        SessionId::new([9; 32]),
+        place,
+        &signature,
+        &mut Vec::new()
+    ));
     let stranger = TestKey::of(42).x_only_public_key().0;
-    assert!(!input.signed_by(&secp, &stranger, id, place, &signature));
-    assert!(!inputs[4].signed_by(&secp, &key, id, place, &signature));
+    assert!(!input.signed_by(&secp, &stranger, id, place, &signature, &mut Vec::new()));
+    assert!(!inputs[4].signed_by(&secp, &key, id, place, &signature, &mut Vec::new()));
 
     // A delegation that does not parse, and bytes that do not decode.
     let mut bytes = Vec::new();

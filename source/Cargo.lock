@@ -2073,6 +2073,7 @@ name = "campfire-log"
 version = "0.1.0"
 dependencies = [
  "campfire-common",
+ "campfire-store",
  "clap",
  "serde",
  "serde_json",
@@ -2099,6 +2100,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
+ "bevy_replicon",
  "bevy_state",
  "bevy_time",
  "campfire-capabilities",
@@ -2198,6 +2200,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_state",
  "bevy_time",
+ "campfire-capabilities",
  "campfire-common",
  "campfire-log",
  "campfire-net",

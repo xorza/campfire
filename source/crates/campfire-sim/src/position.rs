@@ -35,14 +35,16 @@ impl Position {
     }
 
     /// The offset from here to `to` on the ground plane: heights never count towards a range.
-    pub fn ground_offset(self, to: Position) -> Vec3 {
-        let offset = to.0 - self.0;
+    pub const fn ground_offset(self, to: Position) -> Vec3 {
+        let offset =
+            to.0.checked_sub(self.0)
+                .expect("two places within the bound are less than a Num apart");
         Vec3::new(offset.x, Num::ZERO, offset.z)
     }
 
     /// Whether `to` is within `radius` of here on the ground plane, exactly: the range test of a
     /// planar map.
-    pub fn within_ground(self, to: Position, radius: Num) -> bool {
+    pub const fn within_ground(self, to: Position, radius: Num) -> bool {
         Vec3::ZERO.within(self.ground_offset(to), radius)
     }
 }
