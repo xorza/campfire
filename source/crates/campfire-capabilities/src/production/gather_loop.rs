@@ -1,6 +1,8 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Or, QueryState, Without};
+use std::slice;
+
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemParam, SystemState};
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Ticks};
@@ -16,6 +18,7 @@ use crate::actions::range::Range;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::player_resources::PlayerResources;
+use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 use crate::production::node::Node;
@@ -67,6 +70,7 @@ pub(crate) struct GatherView<'w, 's> {
     nodes_book: Res<'w, NodeBook>,
     metric: Res<'w, Metric>,
     relations: Res<'w, Relations>,
+    resources: Option<Res<'w, PlayerResources>>,
     workers: Query<'w, 's, Worker, Without<Dead>>,
     nodes: Query<
         'w,
@@ -254,6 +258,18 @@ impl GatherView<'_, '_> {
             .map(|(_, id)| id)
     }
 
+    /// Whether player `owner`'s resources take `load`: a match that keeps them, and an amount the
+    /// load does not carry past the largest an amount holds.
+    fn joins(&self, owner: PlayerSlot, load: Load) -> bool {
+        let amount = ResourceAmount {
+            resource: load.resource,
+            amount: i64::from(load.amount),
+        };
+        self.resources
+            .as_ref()
+            .is_some_and(|resources| resources.takes(owner, slice::from_ref(&amount)))
+    }
+
     /// Whether a worker at `from` with a body of `body` and a gather of `gather` reaches `place`.
     fn reaches(&self, from: Position, body: Option<&Body>, gather: Gather, place: Place) -> bool {
         let shape = Body::shape_of(body);
@@ -338,13 +354,17 @@ impl GatherView<'_, '_> {
                 }
             }
             GatherStep::ToDropOff { drop_off } => {
-                let (Some(load), Some(owner)) = (gatherer.load(), owner) else {
+                let Some(load) = gatherer.load() else {
                     return Step::Deliver(node.map(|_| order.node));
+                };
+                // A worker no player owns has no drop-off.
+                let Some(owner) = owner.copied().map(Owner::slot) else {
+                    return Step::Stand;
                 };
                 let chosen = drop_off.and_then(|id| {
                     let (_, &at, body, &unit_type, drop_owner) =
                         self.drop_offs.get(self.index.get(id)?).ok()?;
-                    let takes = drop_owner.slot() == owner.slot()
+                    let takes = drop_owner.slot() == owner
                         && self.nodes_book.takes(unit_type, load.resource);
                     takes.then_some(Place {
                         at,
@@ -352,13 +372,16 @@ impl GatherView<'_, '_> {
                     })
                 });
                 let Some(place) = chosen else {
-                    return match self.drop_off(from, owner.slot(), load.resource) {
+                    return match self.drop_off(from, owner, load.resource) {
                         Some(next) => Step::Choose(next),
                         None => Step::Stand,
                     };
                 };
                 if !self.reaches(from, body, gather, place) {
                     return GatherView::walk(from, place, destination, route);
+                }
+                if !self.joins(owner, load) {
+                    return Step::Stand;
                 }
                 let back = match node {
                     Some(_) => Some(order.node),
@@ -609,24 +632,20 @@ impl GatherLoop {
         GatherLoop::free(world, workers, node, id);
     }
 
-    /// Joins the load of the worker of `entity`, in its loop `order`, to its player's resources,
-    /// and sends it `back` to a node, or ends its loop with none; a load that would overflow
-    /// stays, and the worker stands.
+    /// Joins the load of the worker of `entity`, which its player's resources take, to them, and
+    /// sends it `back` to a node, or ends its loop with none.
     fn deliver(world: &mut World, entity: Entity, order: GatherOrder, back: Option<NodeAt>) {
         Destination::go(world, entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
         if let Some(load) = gatherer.load() {
-            let owner = world.get::<Owner>(entity).map(|owner| owner.slot());
-            let joined = owner
-                .zip(world.get_resource_mut::<PlayerResources>())
-                .is_some_and(|(owner, mut resources)| {
-                    resources
-                        .add(owner, load.resource, i64::from(load.amount))
-                        .is_some()
-                });
-            if !joined {
-                return;
-            }
+            let owner = world
+                .get::<Owner>(entity)
+                .expect("a load joins its owner's");
+            let owner = owner.slot();
+            world
+                .resource_mut::<PlayerResources>()
+                .add(owner, load.resource, i64::from(load.amount))
+                .expect("the step checked the player's resources take the load");
         }
         let mut gatherer = world.get_mut::<Gatherer>(entity).expect("a worker");
         gatherer.carry(None);
