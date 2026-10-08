@@ -31,6 +31,7 @@ use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::life_pool::LifePool;
 use crate::stats::modifier_book::ModifierBook;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_id::StatId;
@@ -255,10 +256,13 @@ impl DamagePass {
         let index = world.resource::<EntityIndex>();
         let source = damage.source.filter(|&source| index.get(source).is_some());
         let mut left = amount.max(Num::ZERO);
-        let takes_effect = TagBook::effective(world, entity);
-        let book = world.resource::<ModifierBook>().clone();
-        if let Some(mut carried) = CarriedMut::of(world, entity) {
-            left = carried.absorb(left, |id| takes_effect(book.tags(id)));
+        let clocks = world.get::<ModifierClocks>(entity);
+        if clocks.is_some_and(ModifierClocks::shielded) {
+            let takes_effect = TagBook::effective(world, entity);
+            let book = world.resource::<ModifierBook>().clone();
+            if let Some(mut carried) = CarriedMut::of(world, entity) {
+                left = carried.absorb(left, |id| takes_effect(book.tags(id)));
+            }
         }
         let LifePool(life) = *world.resource::<LifePool>();
         let living = |world: &World| {

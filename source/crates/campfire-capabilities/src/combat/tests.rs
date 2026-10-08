@@ -926,6 +926,8 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     let shields = |fight: &Fight| {
         let clocks = fight.sim.try_get::<ModifierClocks>(target).unwrap();
         let held = fight.sim.try_get::<Modifiers>(target).unwrap().len();
+        // Every shield held has some left, which the damage pass sees before it absorbs.
+        assert_eq!(clocks.shielded(), held > 0);
         (0..held)
             .map(|at| clocks.shield(at).unwrap())
             .collect::<Vec<_>>()

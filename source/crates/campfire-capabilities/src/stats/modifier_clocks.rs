@@ -56,6 +56,12 @@ impl ModifierClocks {
         self.clocks[at].shield
     }
 
+    /// Whether an instance has a shield left to absorb damage.
+    pub(crate) fn shielded(&self) -> bool {
+        let left = |clock: &Clock| clock.shield.is_some_and(|shield| shield > Num::ZERO);
+        self.clocks.iter().any(left)
+    }
+
     /// The script state of the instance at `at`.
     pub(crate) fn state(&self, at: usize) -> &[StateValue] {
         let start = self.state_start(at);
