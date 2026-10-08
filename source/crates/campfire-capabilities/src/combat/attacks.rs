@@ -36,7 +36,7 @@ use crate::units::view::View;
 
 /// What tells whether a unit's attack strikes: its id, its slots, its tags, and what it pays the
 /// cost from.
-pub(super) type Attacker<'a> = (
+type Attacker<'a> = (
     &'a StableId,
     &'a ActionSlots,
     Option<&'a UnitTags>,
