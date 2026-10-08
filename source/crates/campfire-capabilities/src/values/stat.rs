@@ -12,8 +12,13 @@ pub enum Stat {
     #[display("{}", _0.name())]
     Engine(EngineStat),
     #[display("{_0}")]
-    Declared(DeclaredName),
+    Declared(DeclaredStat),
 }
+
+/// The name of a stat the mode declares, which no engine stat has, as `Stat::declared` gives it:
+/// only a stat that reads a name builds one, so no engine stat has a second form.
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DeclaredStat(DeclaredName);
 
 /// A stat a capability reads, whatever the mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -43,7 +48,7 @@ impl Stat {
     pub fn named(name: &str) -> Option<Stat> {
         EngineStat::named(name)
             .map(Stat::Engine)
-            .or_else(|| DeclaredName::new(name).map(Stat::Declared))
+            .or_else(|| DeclaredName::new(name).map(|name| Stat::Declared(DeclaredStat(name))))
     }
 
     /// How it sorts against the stat `name` names, as `Ord` sorts stats, with no stat built: a
@@ -53,7 +58,7 @@ impl Stat {
             (Stat::Engine(stat), Some(other)) => stat.cmp(&other),
             (Stat::Engine(_), None) => Ordering::Less,
             (Stat::Declared(_), Some(_)) => Ordering::Greater,
-            (Stat::Declared(declared), None) => declared.as_str().cmp(name),
+            (Stat::Declared(declared), None) => declared.0.as_str().cmp(name),
         }
     }
 
@@ -61,7 +66,7 @@ impl Stat {
     pub const fn declared(&self) -> Option<&DeclaredName> {
         match self {
             Stat::Engine(_) => None,
-            Stat::Declared(name) => Some(name),
+            Stat::Declared(declared) => Some(&declared.0),
         }
     }
 }
@@ -69,7 +74,8 @@ impl Stat {
 impl<'de> Deserialize<'de> for Stat {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Stat, D::Error> {
         let name = DeclaredName::deserialize(deserializer)?;
-        Ok(EngineStat::named(name.as_str()).map_or(Stat::Declared(name), Stat::Engine))
+        let engine = EngineStat::named(name.as_str());
+        Ok(engine.map_or(Stat::Declared(DeclaredStat(name)), Stat::Engine))
     }
 }
 
@@ -98,5 +104,9 @@ mod tests {
             }
         }
         assert_eq!(stats[0], Stat::Engine(EngineStat::MoveSpeed));
+        // An engine stat's name reads as the engine stat, so it has no declared form.
+        let read = |name: &str| Stat::deserialize(toml::Value::String(name.to_owned())).unwrap();
+        assert_eq!(read("move_speed"), Stat::Engine(EngineStat::MoveSpeed));
+        assert_eq!(read("armor"), armor);
     }
 }

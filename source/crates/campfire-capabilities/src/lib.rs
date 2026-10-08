@@ -183,7 +183,7 @@ pub use crate::values::ranked::Ranked;
 pub use crate::values::scalar::Scalar;
 pub use crate::values::share::Share;
 pub use crate::values::speed::Speed;
-pub use crate::values::stat::{EngineStat, Stat};
+pub use crate::values::stat::{DeclaredStat, EngineStat, Stat};
 pub use crate::vision::Vision;
 pub use crate::vision::seen_by::SeenBy;
 
