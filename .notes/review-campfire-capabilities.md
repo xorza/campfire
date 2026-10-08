@@ -6,15 +6,6 @@ Paths are relative to `source/crates/campfire-capabilities/src/` unless they nam
 
 Fix the root cause of a group, not its items one by one. Most groups give the structural target first, and their items are the places that target removes.
 
-## 1. Script roles are declared in the spec and enforced by hand
-
-`MemberSpec::roles` is read only by the reference writer (`scripts/script_api/mod.rs:197-231`). `ApiBuilder::bind` (`scripts/api_builder.rs:75-94`) registers the function without the role. The only check is a hand-written `ctx.require(..)` in the body, so the declared roles and the enforced roles are two truths, and they already differ.
-
-Target: `bind` enforces `spec.roles` before it calls `f`, for every member whose roles are not `RoleSet::ALL`. All the bound closures take `&mut Ctx` first, so one wrapper can read the frame's role. The declared role set is then the only truth, and each hand-written `require` is deleted. Add a registry test: each member whose roles are not `ALL` fails when a role outside its set calls it.
-
-- [ ] **(bug)** `mode/mode_api.rs:68` (`save`), `:105` (`players`), `:145` (`team_of`): declared `.roles(RoleSet::MODE)` but nothing checks it. `ctx.save()` from an action, modifier or AI script queues `ModeEffect::Save`, and the save happens. `players` and `team_of` answer every role.
-- [ ] `mode/mode_api.rs:459,468,481,502,535,557,570,602,644,688,722,736,754`: thirteen `ctx.require(RoleSet::MODE)?` calls repeat the spec. They go away when the binder enforces roles.
-
 ## 2. A check is made apart from the act it guards
 
 In each case, one place decides whether an act is possible and a second place does the act. The two places derive the same fact separately, so they can drift. Target: the code that does the act also decides whether it is possible, from one derivation. Either the act returns what it did, or the decision returns a token that the act consumes.

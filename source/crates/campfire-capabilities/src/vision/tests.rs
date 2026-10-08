@@ -273,9 +273,10 @@ fn a_reveal_shows_its_cells_to_the_caster_group_alone_for_its_time_and_no_hidden
     assert_eq!(seen(&scene), [team(1), team(1), team(1)]);
     assert_eq!(*scene.sim.world.resource::<Reveals>(), Reveals::default());
 
-    // A call with no acting unit, a negative radius, a time of 0 or a negative one fails.
+    // The mode's call, which has no acting unit, fails, as do a negative radius, a time of 0 and a
+    // negative one.
     let fails = [
-        (None, "2", 100, ApiError::NoActingUnit),
+        (None, "2", 100, ApiError::NotForRole),
         (Some(caster), "-1", 100, ApiError::NegativeRadius),
         (Some(caster), "2", 0, ApiError::ZeroTime),
         (Some(caster), "2", -1, ApiError::NegativeTime),

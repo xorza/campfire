@@ -24,7 +24,7 @@ impl AreasApi {
         )
         .roles(RoleSet::ACTION)
         .capability(Capability::Areas);
-        api.bind(area, |ctx: &mut Ctx, at: Position| AreasApi::land(ctx, at))
+        api.bind_for(area, |ctx: &mut Ctx, at: Position| AreasApi::land(ctx, at))
             .data(DataTable::Delivery, &["area"], &[])
             .data(
                 DataTable::Area,

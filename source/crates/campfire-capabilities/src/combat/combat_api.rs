@@ -96,7 +96,7 @@ impl CombatApi {
                 CombatApi::restore(ctx, &unit, pool, ApiError::num(amount)?)
             },
         )
-        .bind(attack_hit, |ctx: &mut Ctx, target: Unit| {
+        .bind_for(attack_hit, |ctx: &mut Ctx, target: Unit| {
             CombatApi::attack_hit(ctx, &target)
         })
         .tag_property(

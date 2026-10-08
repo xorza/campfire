@@ -6,7 +6,6 @@ use crate::actions::delivery::{Delivery, DeliveryShape};
 use crate::actions::effect_lists::LaunchId;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::role_set::RoleSet;
 use crate::units::action_id::ActionId;
 use crate::values::action_start::ActionStart;
 
@@ -30,15 +29,13 @@ pub(crate) struct Launcher {
 }
 
 impl Delivering {
-    /// The running action, from its acting unit, for a call that launches one more of its
-    /// deliveries, and the type it delivers; an error outside an action, or for an action whose
-    /// delivery's shape `shape` refuses.
+    /// The running action, from its acting unit, for an action's call that launches one more of
+    /// its deliveries, and the type it delivers; an error for an action whose delivery's shape
+    /// `shape` refuses.
     pub(crate) fn of(ctx: &Ctx, shape: fn(DeliveryShape) -> bool) -> Checked<Launcher> {
-        ctx.require(RoleSet::ACTION)?;
         let frame = ctx.frame();
-        let (Some(source), Some(action)) = (frame.acting(), frame.action()) else {
-            return Err(ApiError::NotForRole.fail().into());
-        };
+        let source = frame.acting().expect("an action's call has its unit");
+        let action = frame.action().expect("an action's call has its action");
         let (rank, start) = (frame.rank(), frame.start());
         drop(frame);
         let delivery = ActionsColumn::delivers(ctx.view(), action);

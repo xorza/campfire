@@ -24,7 +24,7 @@ impl OrdersApi {
                 .roles(RoleSet::AI)
                 .capability(Capability::Orders)
         };
-        api.bind(
+        api.bind_for(
             order(
                 "order_attack",
                 "(unit, target)",
@@ -32,7 +32,7 @@ impl OrdersApi {
             ),
             |ctx: &mut Ctx, unit: Unit, target: Unit| OrdersApi::attack(ctx, &unit, &target),
         )
-        .bind(
+        .bind_for(
             order(
                 "order_follow_path",
                 "(unit)",
@@ -40,7 +40,7 @@ impl OrdersApi {
             ),
             |ctx: &mut Ctx, unit: Unit| OrdersApi::order(ctx, &unit, UnitOrder::FollowPath),
         )
-        .bind(
+        .bind_for(
             order(
                 "order_move",
                 "(unit, pos)",
@@ -55,7 +55,7 @@ impl OrdersApi {
                     })
             },
         )
-        .bind(
+        .bind_for(
             order(
                 "order_reset",
                 "(unit)",
@@ -88,7 +88,6 @@ impl OrdersApi {
 
     /// Queues `order` for `unit`, which must be the unit that thinks.
     fn order(ctx: &Ctx, unit: &Unit, order: UnitOrder) -> Checked<()> {
-        ctx.require(RoleSet::AI)?;
         if ctx.acting() != Some(unit.id) {
             return Err(ApiError::OtherUnit.fail().into());
         }

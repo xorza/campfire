@@ -32,13 +32,13 @@ impl VisionApi {
         )
         .roles(RoleSet::ACTING)
         .capability(Capability::Vision);
-        api.bind(
+        api.bind_for(
             reveal,
             |ctx: &mut Ctx, pos: Position, radius: Num, ms: INT| {
                 VisionApi::reveal(ctx, pos, radius, ms)
             },
         )
-        .bind(
+        .bind_for(
             reveal,
             |ctx: &mut Ctx, pos: Position, radius: INT, ms: INT| {
                 VisionApi::reveal(ctx, pos, ApiError::num(radius)?, ms)

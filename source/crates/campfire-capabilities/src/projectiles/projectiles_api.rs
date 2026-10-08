@@ -27,13 +27,13 @@ impl ProjectilesApi {
         )
         .roles(RoleSet::ACTION)
         .capability(Capability::Projectiles);
-        api.bind(
+        api.bind_for(
             projectile,
             |ctx: &mut Ctx, from: Position, direction: Vec3| {
                 ProjectilesApi::launch(ctx, from, Toward::Direction(direction))
             },
         )
-        .bind(projectile, |ctx: &mut Ctx, from: Position, unit: Unit| {
+        .bind_for(projectile, |ctx: &mut Ctx, from: Position, unit: Unit| {
             ProjectilesApi::launch(ctx, from, Toward::Unit(unit.id))
         })
         .action_fields(ActionDataField::of(Some(Capability::Projectiles)))

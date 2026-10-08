@@ -42,21 +42,21 @@ impl AbilitiesApi {
             "takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind`",
         )
         .name(1, NameKind::SlotKind);
-        api.bind(
+        api.bind_for(
             cast(
                 "range",
                 "the ability's range at its rank in meters, `()` for a global one",
             ),
-            |ctx: &mut Ctx| AbilitiesApi::range(ctx),
+            |ctx: &mut Ctx| Ok(AbilitiesApi::range(ctx)),
         )
-        .bind(
+        .bind_for(
             cast(
                 "charge",
                 "the share of its most a charged action charged, from 0 to 1",
             ),
             |ctx: &mut Ctx| AbilitiesApi::charge(ctx),
         )
-        .bind(
+        .bind_for(
             cast("origin", "where the action's unit stood as it started"),
             |ctx: &mut Ctx| AbilitiesApi::origin(ctx),
         )
@@ -103,31 +103,28 @@ impl AbilitiesApi {
     }
     /// Where the running call's action's unit stood as the action started.
     fn origin(ctx: &Ctx) -> Checked<Position> {
-        ctx.require(RoleSet::ACTION)?;
         let start = ctx.frame().start();
         Ok(start.ok_or_else(|| ApiError::NoStart.fail())?.origin)
     }
 
     /// The share of its most the running call's charged action charged.
     fn charge(ctx: &Ctx) -> Checked<Num> {
-        ctx.require(RoleSet::ACTION)?;
         let start = ctx.frame().start();
         let start = start.ok_or_else(|| ApiError::NoStart.fail())?;
         Ok(start.charge.ok_or_else(|| ApiError::NotCharged.fail())?)
     }
 
     /// The range of the running call's action at its rank: meters, or `()` for a global one.
-    fn range(ctx: &Ctx) -> Checked<Dynamic> {
-        ctx.require(RoleSet::ACTION)?;
+    fn range(ctx: &Ctx) -> Dynamic {
         let (action, rank) = {
             let frame = ctx.frame();
             let action = frame.action().expect("an action's call has its action");
             (action, frame.rank())
         };
-        Ok(match ActionsColumn::range(ctx.view(), action, rank) {
+        match ActionsColumn::range(ctx.view(), action, rank) {
             Range::Meters(meters) => Dynamic::from(meters),
             Range::Global => Dynamic::UNIT,
-        })
+        }
     }
 
     /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `id` of the script's

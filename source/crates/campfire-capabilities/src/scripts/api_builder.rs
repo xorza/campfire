@@ -4,8 +4,10 @@ use campfire_script::rhai::{
 };
 
 use crate::scripts::api_version::ApiVersion;
+use crate::scripts::ctx_fn::CtxFn;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
+use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::member_spec::MemberSpec;
@@ -70,8 +72,8 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Binds `f` as a form of `spec`: a value's or a field's getter, or a call, a method or an
-    /// operator.
+    /// Binds `f` as a form of `spec`, which serves every role: a value's or a field's getter, or
+    /// a call, a method or an operator.
     pub(crate) fn bind<
         A: 'static,
         const N: usize,
@@ -83,14 +85,49 @@ impl<'a> ApiBuilder<'a> {
         spec: MemberSpec,
         f: impl RhaiNativeFunc<A, N, X, R, F> + 'static,
     ) -> &mut Self {
-        let name = match spec.kind {
-            MemberKind::Value | MemberKind::Field => format!("{GETTER}{}", spec.name),
-            MemberKind::Call | MemberKind::Method | MemberKind::Operator => spec.name.to_owned(),
-        };
-        self.host.engine_mut().register_fn(name, f);
+        assert_eq!(
+            spec.roles,
+            RoleSet::ALL,
+            "`{}` serves some roles only, which `bind_for` checks",
+            spec.name
+        );
+        self.host
+            .engine_mut()
+            .register_fn(ApiBuilder::bound_name(&spec), f);
         self.api
             .record(spec, false, Status::Runs(ApiVersion::FIRST));
         self
+    }
+
+    /// Binds `f`, a form of `spec` that takes `ctx` first, as `bind` does, for the roles of
+    /// `spec` only: a call in another role fails before `f` runs.
+    pub(crate) fn bind_for<Args, R>(
+        &mut self,
+        spec: MemberSpec,
+        f: impl CtxFn<Args, R>,
+    ) -> &mut Self {
+        assert_ne!(
+            spec.roles,
+            RoleSet::ALL,
+            "`{}` serves every role, which `bind` binds",
+            spec.name
+        );
+        f.register(
+            self.host.engine_mut(),
+            ApiBuilder::bound_name(&spec),
+            spec.roles,
+        );
+        self.api
+            .record(spec, false, Status::Runs(ApiVersion::FIRST));
+        self
+    }
+
+    /// The name Rhai calls `spec` by: its getter's, for a value or a field.
+    fn bound_name(spec: &MemberSpec) -> String {
+        match spec.kind {
+            MemberKind::Value | MemberKind::Field => format!("{GETTER}{}", spec.name),
+            MemberKind::Call | MemberKind::Method | MemberKind::Operator => spec.name.to_owned(),
+        }
     }
 
     /// Binds `f` as the setter of `spec`, a field scripts may write.

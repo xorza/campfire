@@ -55,12 +55,20 @@ fn probe(ctx, unit) {
         let pool = game.sim.world.get::<Pools>(entity).unwrap().current(MANA);
         assert_eq!(pool, Some(Num::int(50 + 3 * (at + 1))), "{role:?}");
     }
-    // A call given to other roles fails in this one, when it runs.
+    // A call given to other roles fails in this one, when it runs, whether its body reads the role
+    // or not: the binder checks the roles the API declares.
     let refused = [
         ("ctx.timer(\"late\", 100, false, ())", ScriptRole::Action),
         ("ctx.end(())", ScriptRole::Ai),
         ("ctx.state.phase", ScriptRole::Modifier),
         ("ctx.order_follow_path(unit)", ScriptRole::Mode),
+        ("ctx.save()", ScriptRole::Action),
+        ("ctx.players", ScriptRole::Ai),
+        ("ctx.team_of(0)", ScriptRole::Modifier),
+        ("ctx.reveal(unit.pos, 1, 100)", ScriptRole::Mode),
+        ("ctx.attack_hit(unit)", ScriptRole::Mode),
+        ("ctx.origin", ScriptRole::Modifier),
+        ("ctx.area(unit.pos)", ScriptRole::Ai),
     ];
     for (call, role) in refused {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
