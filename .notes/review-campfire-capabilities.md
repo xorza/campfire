@@ -6,19 +6,10 @@ Paths are relative to `source/crates/campfire-capabilities/src/` unless they nam
 
 Fix the root cause of a group, not its items one by one. Most groups give the structural target first, and their items are the places that target removes.
 
-## 3. Snapshot decode accepts state that the code then trusts
-
-A snapshot is untrusted data. Some components validate in their `Deserialize` (`Meter`, `Experience`, `Modifiers`). Others derive `Deserialize` and validate part of their state in `SimComponent::check`, and the rest not at all. Code then indexes, binary-searches or does arithmetic on that state.
-
-Target: a type's own invariants (sorted, bounded, in range) are kept by its `Deserialize`, so a decoded value is always valid. `check` keeps only what needs the world (book references, team counts). The tick bound is done: `Tick` and `Ticks` refuse a value past the limit as they decode.
-
-- [ ] **(bug)** `stats/meter.rs:9-12,41-43,90-98,101-123`: the field doc says that `carry` is "0 while full or empty", but `fill` and `take` reach full and empty without a reset. Only `regen`, `add` and `set_max` reset it. The decode accepts any `carry`, and `Pools::check` (`stats/pools.rs:116-124`) returns `true`. A forged `carry >= hz` adds more than `per_second` over `hz` ticks. Target: one private step after each write resets `carry` at either end, so the invariant holds. Then `Pools::check` rejects `carry >= hz` (it has the `TickRate`) and a nonzero `carry` at either end. The reset must come first: a check alone would reject snapshots that the live code makes today.
-
 ## 6. Capability boundaries are not where the code is
 
 `capability_set/mod.rs:96-135` declares the dependency of each capability. The code names other capabilities' types directly, outside those rows, and some core types hold state that belongs to a capability above them. Target: the dependency rows are true. A capability reaches another only through a registered seam (as `EffectQueues` does for listed effects). Each component sits in the module whose registry name it carries.
 
-- [ ] `stats/stats_api.rs:121-126` registers `OnAttack`, `OnAttackHit`, `OnDamageTaken`, `OnKill` and `OnTakedown` under stats. `scripts/hook.rs:163-170` gives them to `Capability::Combat`. See group 8 for the three lists of this set.
 - [ ] `units/units_api.rs:1-142` (`UnitsApi`): registers only the `Pos` and `Vector` members, the position and vector API, which has no units. Target: a name and module for what it registers.
 - [ ] `values/mod.rs:1-2`: the module doc says data-file value types, but the module also holds runtime geometry (`body_box`, `grid`, `polygon`, `shape`, `metric`, `fraction`, `squared_distance`), runtime indexes (`row_directory`, `name_list`, `name_table`) and runtime records (`hit`, `action_start`, `region`, `bounds`). Target: split by role (data values, geometry, runtime records), so the doc is true.
 
@@ -34,8 +25,6 @@ Some resources are always installed, but each read treats them as optional and r
 
 A fixed set (hooks, fields, tag properties, API members) has one declaration, and a second list repeats it. Adding a member means editing every list. Target: one table per set, and the other lists are derived from it or checked against it.
 
-- [ ] `mode/mode_schema.rs:41-53` and `mode/mode_api.rs:58-66`: the mode's hooks are typed out twice. `Hook::role()` already says which hooks belong to the mode. Target: derive both from `Hook::ALL` by role.
-- [ ] `stats/stats_api.rs:121-126`, `stats/modifier_book.rs:318-327` (`MODIFIER_HOOKS`) and `combat/modifier_hooks.rs:57-118` (the `match`): three lists of the six hooks that a modifier hears. Target: one table beside `CombatEvent`. `CombatApi::register`, `MODIFIER_HOOKS` and `ModifierHooks::hear` come from it. `OnInterval` stays with stats.
 - [ ] `actions/action_data_field.rs:109-142` (`ALL`), `:144-322` (`rule`), `:350` (`given`), `actions/action_data.rs` (struct, `rank_counts`, `param_refs`): adding a field edits the enum, the 32-entry `ALL`, the rule table, the 32-arm `given`, the struct and two iterators. The `runs` flag is `true` in every row, so `runs()`, `FieldRule.runs` and the `Status::Planned` branch (`:100-104`) are dead. Target: one table row per field (name, capability, kind uses, `given: fn(&ActionData) -> bool`), `ALL` derived from it, and `runs` removed (or used by the planned field it exists for).
 - [ ] `actions/action_data.rs:134-150` (`rank_counts`) and `:339-368` (`param_refs`): both list the same seven `Ranked<Number>` fields, the costs and the range. Target: one private iterator of them.
 - [ ] `units/tag_property.rs:19-31`, `units/tag_data.rs:10-20`, `units/tag_properties.rs`: the tag property set (`blocks`, `hidden`, `detects`, `immune`) is spelled in three structures. `TagProperty::ALL` lists the six `Block`s again. `TagProperty::name` builds a `String` on each call. Target: one definition that the others derive from, and `&'static str` names.
