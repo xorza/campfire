@@ -73,6 +73,7 @@ pub(crate) mod tag_data;
 pub(crate) mod tag_properties;
 pub(crate) mod tag_property;
 pub(crate) mod tag_set;
+pub(crate) mod target_index;
 pub(crate) mod team;
 pub(crate) mod team_set;
 pub(crate) mod teams;
@@ -80,6 +81,7 @@ pub(crate) mod track_id;
 pub(crate) mod type_scope;
 pub(crate) mod unit;
 pub(crate) mod unit_row;
+pub(crate) mod unit_rows;
 pub(crate) mod unit_state;
 pub(crate) mod unit_state_access;
 pub(crate) mod unit_state_book;
@@ -91,6 +93,7 @@ pub(crate) mod units_api;
 pub(crate) mod units_call;
 pub(crate) mod units_column;
 pub(crate) mod view_column;
+pub(crate) mod view_names;
 
 /// The core's systems, for the capabilities above it to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
