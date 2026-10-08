@@ -5,13 +5,14 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::combat::deaths::DeathView;
+use crate::scripts::pending_calls::PendingCalls;
 
 /// The deaths whose `on_unit_died` has yet to run, in the order the units died. The Mode stage
 /// adds its tick's deaths and runs the calls from the front; the deaths whose call found the mode
 /// pool spent stay, and run first in a later tick's Mode stage. So a tick ends with only those.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct UnansweredDeaths {
-    deaths: Vec<Unanswered>,
+    deaths: PendingCalls<Unanswered>,
     /// Each death's assisters, one run per death, in order.
     assisters: Vec<StableId>,
 }
@@ -41,11 +42,11 @@ impl UnansweredDeaths {
     pub(crate) fn extend<'a>(&mut self, deaths: impl IntoIterator<Item = DeathView<'a>>) {
         for death in deaths {
             self.assisters.extend_from_slice(death.assisters);
-            self.deaths.push(Unanswered {
+            self.deaths.extend([Unanswered {
                 unit: death.fallen.unit,
                 killer: death.killer,
                 assisters: u32::try_from(death.assisters.len()).expect("assisters fit in u32"),
-            });
+            }]);
         }
     }
 
@@ -66,8 +67,9 @@ impl UnansweredDeaths {
 
     /// Removes the first `count` deaths, whose calls ran.
     pub(crate) fn answered(&mut self, count: usize) {
-        let runs = self.deaths.drain(..count);
+        let runs = self.deaths.iter().take(count);
         let assisters: usize = runs.map(|death| death.assisters as usize).sum();
+        self.deaths.answered(count);
         self.assisters.drain(..assisters);
     }
 }
@@ -78,7 +80,7 @@ impl<'de> Deserialize<'de> for UnansweredDeaths {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<UnansweredDeaths, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
-            deaths: Vec<Unanswered>,
+            deaths: PendingCalls<Unanswered>,
             assisters: Vec<StableId>,
         }
         let Fields { deaths, assisters } = Fields::deserialize(deserializer)?;

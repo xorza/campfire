@@ -5,13 +5,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::mode::mode_book::ModeBook;
 use crate::scripts::ctx::Ctx;
+use crate::scripts::pending_calls::PendingCalls;
 
 /// The joins and leaves whose hook has yet to run, in the order the log took them. The Mode stage
 /// adds its tick's and runs the calls from the front; those whose call found the mode pool spent
 /// stay, and run first in a later tick's Mode stage. So a tick ends with only those.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct UnansweredSlotEvents(pub(crate) Vec<SlotEvent>);
+pub(crate) struct UnansweredSlotEvents(pub(crate) PendingCalls<SlotEvent>);
 
 impl SimResource for UnansweredSlotEvents {
     const NAME: &'static str = "mode.unanswered_slot_events";

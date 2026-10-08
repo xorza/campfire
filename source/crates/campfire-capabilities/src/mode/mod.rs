@@ -52,6 +52,7 @@ use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
+use crate::scripts::pending_calls::PendingCalls;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::StatsSet;
@@ -384,13 +385,13 @@ fn slot_events(world: &mut World) {
     }
     world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredSlotEvents>| {
         let events = world.resource::<TickInputs>().slot_events();
-        unanswered.0.extend_from_slice(events);
+        unanswered.0.extend(events.iter().copied());
         let ctx = world.non_send::<Ctx>().clone();
         let hooks = ModeBook::of_match(&ctx).schema.hooks;
         let now = world.resource::<SimTick>().end();
         let answered = Calls::batch(world, &ctx, now, |call| {
             let mut answered = 0;
-            for event in &unanswered.0 {
+            for event in unanswered.0.iter() {
                 let hook = match event.kind {
                     SlotEventKind::Joined => Hook::OnPlayerJoin,
                     SlotEventKind::Left => Hook::OnPlayerLeave,
@@ -405,7 +406,7 @@ fn slot_events(world: &mut World) {
             }
             answered
         });
-        unanswered.0.drain(..answered);
+        unanswered.0.answered(answered);
     });
 }
 
@@ -503,7 +504,7 @@ fn unit_deaths(world: &mut World, mut units: Local<'_, Vec<Option<Entity>>>) {
 /// chain of level-ups ends within the tick, as levels are finite. A level-up whose call finds the
 /// pool spent waits, with those after it, for a later tick; one whose unit is gone by then runs
 /// no call.
-fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
+fn level_ups(world: &mut World, mut due: Local<'_, PendingCalls<LevelUp>>) {
     if !world.contains_resource::<LevelUps>() {
         return;
     }
@@ -527,7 +528,7 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
         let answered = Calls::batch(world, &ctx, now, |call| {
             let view = call.ctx.view().clone();
             let mut answered = 0;
-            for &LevelUp { unit, track, level } in &*due {
+            for &LevelUp { unit, track, level } in due.iter() {
                 if let Some(handle) = view.unit(unit) {
                     let level = INT::from(level.get());
                     let args = (call.ctx.clone(), handle, view.track_name(track), level);
@@ -544,7 +545,7 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
         });
         if answered < due.len() {
             let mut level_ups = world.resource_mut::<LevelUps>();
-            due.drain(..answered);
+            due.answered(answered);
             due.append(&mut level_ups.0);
             mem::swap(&mut *due, &mut level_ups.0);
             return;

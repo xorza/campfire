@@ -104,8 +104,8 @@ fn a_restore_check_refuses_what_the_match_lacks() {
         track: TrackId::new(track).unwrap(),
         level: Level::new(2).unwrap(),
     };
-    assert!(LevelUps(vec![level_up(1)]).check(world));
-    assert!(!LevelUps(vec![level_up(2)]).check(world));
+    assert!(LevelUps(vec![level_up(1)].into()).check(world));
+    assert!(!LevelUps(vec![level_up(2)].into()).check(world));
 
     // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
     let route = game.sim.world.get::<Route>(grunt).unwrap().clone();

@@ -216,7 +216,7 @@ fn on_player_leave(ctx, player) {
         slot: PlayerSlot::new(2),
         kind: joined,
     };
-    assert_eq!(waiting.0, [join]);
+    assert_eq!(waiting.0.iter().collect::<Vec<_>>(), [&join]);
     // The waiting join is state: it decodes to itself.
     let bytes = postcard::to_allocvec(waiting).unwrap();
     let decoded = postcard::from_bytes::<UnansweredSlotEvents>(&bytes).ok();

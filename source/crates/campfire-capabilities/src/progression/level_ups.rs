@@ -4,6 +4,7 @@ use campfire_sim::{SimResource, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::progression::track_book::TrackBook;
+use crate::scripts::pending_calls::PendingCalls;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
 
@@ -11,7 +12,7 @@ use crate::units::track_id::TrackId;
 /// stage runs the calls from the front; the level-ups whose call found the mode pool spent stay,
 /// and run first in a later tick's Mode stage.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct LevelUps(pub(crate) Vec<LevelUp>);
+pub(crate) struct LevelUps(pub(crate) PendingCalls<LevelUp>);
 
 /// A level a unit reached on a track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
