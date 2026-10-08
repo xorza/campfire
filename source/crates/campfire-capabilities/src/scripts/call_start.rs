@@ -54,16 +54,11 @@ impl CallStart {
         package: u16,
     ) -> CallStart {
         CallStart {
-            role: ScriptRole::Action,
             acting: Some(caster),
             action: Some(action),
             rank,
-            modifier: None,
             package,
-            depth: 0,
-            hit: None,
-            start: None,
-            dash_delivers: None,
+            ..CallStart::mode(ScriptRole::Action)
         }
     }
 
@@ -71,16 +66,10 @@ impl CallStart {
     /// by no action, at rank 1.
     pub(crate) const fn hook(modifier: ModifierId, package: u16, depth: u8) -> CallStart {
         CallStart {
-            role: ScriptRole::Modifier,
-            acting: None,
-            action: None,
-            rank: Rank::FIRST,
             modifier: Some(modifier),
             package,
             depth,
-            hit: None,
-            start: None,
-            dash_delivers: None,
+            ..CallStart::mode(ScriptRole::Modifier)
         }
     }
 }
