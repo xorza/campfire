@@ -11,7 +11,9 @@ use campfire_capabilities::{Dead, PlayerUnits, Team};
 use campfire_net::JoinState;
 use campfire_sim::{StableId, Unpredicted};
 
-use crate::view::{Drawn, Footing, Look};
+use crate::view::drawing::Drawing;
+use crate::view::footing::Footing;
+use crate::view::look::Look;
 
 /// What the cursor points at, as the player sees the match: the ground point under it, and the
 /// living unit drawn there.
@@ -25,11 +27,11 @@ pub(crate) struct Pointer<'w, 's> {
     drawings: Query<'w, 's, (&'static Transform, &'static Look)>,
 }
 
-/// The living units the client holds, and the entity each is drawn by.
+/// The living units the client holds, and the drawing of each.
 type LivingUnits<'w, 's> = Query<
     'w,
     's,
-    (&'static StableId, &'static Team, &'static Drawn),
+    (&'static StableId, &'static Team, &'static Drawing),
     (Without<Dead>, Allow<Unpredicted>),
 >;
 
@@ -67,7 +69,7 @@ impl Pointer<'_, '_> {
             .iter()
             .filter(|&(&id, _, _)| Some(id) != own)
             .filter_map(|(&id, &team, drawn)| {
-                let (transform, look) = self.drawings.get(drawn.drawing()).ok()?;
+                let (transform, look) = self.drawings.get(drawn.root()).ok()?;
                 let center = Vec2::new(transform.translation.x, transform.translation.z);
                 Some((Pointed { id, team }, center, look.footing()))
             });

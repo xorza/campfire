@@ -1,6 +1,8 @@
 use bevy::app::{App, Plugin, Update};
+use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Res, ResMut};
 use bevy::input::ButtonInput;
+use bevy::input::common_conditions::input_just_pressed;
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
 use campfire_capabilities::{Action, ActionTarget, Order};
@@ -8,6 +10,7 @@ use campfire_math::Num;
 use campfire_net::PendingOrders;
 
 use crate::pointer::Pointer;
+use crate::view::ViewSystems;
 
 /// Turns the player's clicks and keys into orders for their avatar: a right click on an enemy
 /// attacks it, and anywhere else walks there; Q, W, E and R cast the abilities of slots 0 to 3,
@@ -26,19 +29,20 @@ const STOP_KEY: KeyCode = KeyCode::KeyS;
 
 impl Plugin for Orders {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (Orders::click, Orders::cast, Orders::stop));
+        app.add_systems(
+            Update,
+            (
+                Orders::click.run_if(input_just_pressed(MouseButton::Right)),
+                Orders::cast.run_if(Orders::cast_pressed),
+                Orders::stop.run_if(input_just_pressed(STOP_KEY)),
+            )
+                .after(ViewSystems),
+        );
     }
 }
 
 impl Orders {
-    fn click(
-        buttons: Res<'_, ButtonInput<MouseButton>>,
-        pointer: Pointer<'_, '_>,
-        mut orders: ResMut<'_, PendingOrders>,
-    ) {
-        if !buttons.just_pressed(MouseButton::Right) {
-            return;
-        }
+    fn click(pointer: Pointer<'_, '_>, mut orders: ResMut<'_, PendingOrders>) {
         let (Some(avatar), Some(point)) = (pointer.own_avatar(), pointer.ground()) else {
             return;
         };
@@ -76,17 +80,15 @@ impl Orders {
         }
     }
 
-    fn stop(
-        keys: Res<'_, ButtonInput<KeyCode>>,
-        pointer: Pointer<'_, '_>,
-        mut orders: ResMut<'_, PendingOrders>,
-    ) {
-        if !keys.just_pressed(STOP_KEY) {
-            return;
-        }
+    fn stop(pointer: Pointer<'_, '_>, mut orders: ResMut<'_, PendingOrders>) {
         if let Some(avatar) = pointer.own_avatar() {
             orders.push(Order::one(avatar.id, Action::Stop));
         }
+    }
+
+    /// Whether a cast key went down this frame.
+    fn cast_pressed(keys: Res<'_, ButtonInput<KeyCode>>) -> bool {
+        keys.any_just_pressed(CAST_KEYS)
     }
 
     /// What a cast key orders of `slot`: with Ctrl held, a learn, and else a cast at `target`.
