@@ -58,7 +58,7 @@ pub struct ActionData {
     pub hold: Option<DeclaredName>,
     pub charges: Option<ChargesData>,
     /// A charged cast.
-    pub charge: Option<ChargeData>,
+    pub charge: Option<ChargeUpData>,
     /// The modifier held while the action has a rank.
     pub passive_modifier: Option<DeclaredName>,
     /// The passive modifier is held only while the action is off cooldown.
@@ -121,6 +121,8 @@ pub struct ChannelData {
     pub tick_ms: Ranked<Number>,
 }
 
+/// An action's `charges`: the uses it stores, at most `max`, each coming back `recharge_ms`
+/// after it is spent.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChargesData {
@@ -128,9 +130,11 @@ pub struct ChargesData {
     pub recharge_ms: Ranked<Number>,
 }
 
+/// An action's `charge`: a cast that charges from its start, in place of its windup, and
+/// resolves when its order is given again or at `max_ms`, whichever is first.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ChargeData {
+pub struct ChargeUpData {
     pub max_ms: Ranked<Number>,
 }
 
@@ -343,7 +347,6 @@ impl ActionData {
             .transpose()
     }
 
-    /// Its channel at `rank`: a length and a time between ticks, neither 0.
     /// Its charge's most at `rank`: whole milliseconds, not 0.
     fn charge_at(&self, rank: Rank) -> Result<Option<u64>, ActionField> {
         let field = ActionField::Charge;
@@ -356,6 +359,7 @@ impl ActionData {
             .transpose()
     }
 
+    /// Its channel at `rank`: a length and a time between ticks, neither 0.
     fn channel_at(&self, rank: Rank) -> Result<Option<RankChannel>, ActionField> {
         let field = ActionField::Channel;
         self.channel

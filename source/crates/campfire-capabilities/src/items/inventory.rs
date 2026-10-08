@@ -49,8 +49,8 @@ impl Inventory {
         }
     }
 
-    pub fn slots(&self) -> &[Option<ItemStack>] {
-        &self.slots
+    pub const fn slots(&self) -> &[Option<ItemStack>] {
+        self.slots.as_slice()
     }
 
     /// The price in `resource` of buying `item` of `book`: its cost less the costs of the

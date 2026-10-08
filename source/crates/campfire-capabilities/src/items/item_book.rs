@@ -42,8 +42,8 @@ impl ItemBook {
     }
 
     /// Every modifier an item holds, each once, in order.
-    pub(crate) fn modifiers(&self) -> &[ModifierId] {
-        &self.modifiers
+    pub(crate) const fn modifiers(&self) -> &[ModifierId] {
+        self.modifiers.as_slice()
     }
 
     pub(crate) fn get(&self, item: ItemId) -> Option<&ItemSpec> {

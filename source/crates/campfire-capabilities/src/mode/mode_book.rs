@@ -296,13 +296,13 @@ impl ModeBook {
         from: PathEnd,
         units: &[GroupUnit],
     ) {
+        let Some(first) = units.first() else {
+            return;
+        };
         let pos = world
             .resource::<Paths>()
             .waypoint(path, 0, from)
             .expect("a path has a waypoint");
-        let Some(first) = units.first() else {
-            return;
-        };
         for &GroupUnit { unit_type, id } in units {
             let walker = (OnPath::new(path), PathWalker::start(from, first.id));
             let at = SpawnAt {

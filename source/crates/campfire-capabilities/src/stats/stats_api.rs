@@ -23,7 +23,7 @@ use crate::units::unit::Unit;
 use crate::values::rank::Rank;
 
 /// The script API of `stats`: `ctx.add_modifier`, `ctx.remove`, the `Modifier` handle, and the
-/// planned crowd control and experience.
+/// planned crowd control.
 #[derive(Debug)]
 pub(crate) struct StatsApi;
 

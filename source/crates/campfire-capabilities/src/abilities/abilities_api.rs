@@ -101,6 +101,7 @@ impl AbilitiesApi {
         .hook(Hook::OnInterrupt, Status::Runs(ApiVersion::FIRST))
         .action_fields(ActionDataField::of(Some(Capability::Abilities)));
     }
+
     /// Where the running call's action's unit stood as the action started.
     fn origin(ctx: &Ctx) -> Checked<Position> {
         let start = ctx.frame().start();

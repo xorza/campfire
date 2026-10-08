@@ -4,32 +4,27 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
-
 use campfire_sim::{SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::effect_lists::EffectLists;
-use crate::actions::effect_queues::EffectQueues;
-use crate::actions::slot_kinds::SlotKinds;
-use crate::scripts::ctx::Ctx;
-use crate::stats::carried_mut::CarriedMut;
-use crate::stats::lifetime::Hold;
-use crate::stats::modifier_clocks::ModifierClocks;
-use crate::stats::param_book::ParamBook;
-
 use crate::actions::action_slots::{ActionSlots, SlotCharges};
 use crate::actions::actions_column::ActionsColumn;
+use crate::actions::effect_lists::EffectLists;
+use crate::actions::effect_queues::EffectQueues;
 use crate::actions::ready_waits::ReadyWaits;
-
+use crate::actions::slot_kinds::SlotKinds;
+use crate::scripts::ctx::Ctx;
 use crate::stats::StatsSet;
 use crate::stats::applier::Applier;
+use crate::stats::carried_mut::CarriedMut;
+use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::ModifierBook;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::param_book::ParamBook;
 use crate::stats::param_sources::ParamSources;
-
 use crate::stats::stat_book::StatBook;
-
 use crate::units::row_fill::RowFill;
 use crate::units::view::View;
 use crate::values::rank::Rank;
@@ -122,9 +117,9 @@ impl Actions {
         registry.register_component::<ActionSlots>();
     }
 
-    /// Adds the start of every action to `schedule`, in Act, and the passives of every action,
-    /// as each stage that changes ranks or cooldowns ends: combat's to run, as every action's unit
-    /// target is one combat finds.
+    /// Adds to `schedule` the holds of every action: its charges as each tick starts, and its
+    /// passives then and as each stage that changes ranks or cooldowns ends. Combat calls it, as
+    /// every action's unit target is one combat finds; the start of an action is the abilities'.
     pub(crate) fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
             hold_charges

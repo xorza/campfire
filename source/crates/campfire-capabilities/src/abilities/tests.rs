@@ -10,7 +10,7 @@ use campfire_sim::{Capability, EntityIndex, SimRng, StateCopy, TickInput, TickIn
 use super::*;
 use crate::actions::Actions;
 use crate::actions::action_call::Started;
-use crate::actions::action_data::{ActionData, ChannelData, ChargeData, ChargesData, Toggle};
+use crate::actions::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_range::ActionRange;
 use crate::actions::cost_target::CostTarget;
@@ -1529,7 +1529,7 @@ fn on_resolve(ctx, caster, target) {
         range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
             Num::int(5),
         )))),
-        charge: Some(ChargeData {
+        charge: Some(ChargeUpData {
             max_ms: Ranked::One(int(3000)),
         }),
         cost: cost("mana", int(10)),

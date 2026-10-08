@@ -44,7 +44,7 @@ mod vision;
 
 pub use crate::abilities::Abilities;
 pub use crate::actions::Actions;
-pub use crate::actions::action_data::{ActionData, ChannelData, ChargeData, ChargesData, Toggle};
+pub use crate::actions::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
 pub use crate::actions::action_data_field::ActionDataField;
 pub use crate::actions::action_kind::ActionKind;
 pub use crate::actions::action_range::ActionRange;
