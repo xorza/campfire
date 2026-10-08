@@ -74,19 +74,17 @@ struct Yard {
 
 /// How a yard's build grows and where it places.
 #[derive(Debug, Clone)]
-struct Rules {
-    style: Style,
-    rates: Vec<Num>,
+struct Rules<'a> {
+    style: Style<'a>,
     near: Vec<PlacementCheck>,
     away: Vec<PlacementCheck>,
     walls: Vec<Wall>,
 }
 
-impl Rules {
-    fn of(style: Style) -> Rules {
+impl<'a> Rules<'a> {
+    fn of(style: Style<'a>) -> Rules<'a> {
         Rules {
             style,
-            rates: Vec::new(),
             near: Vec::new(),
             away: Vec::new(),
             walls: Vec::new(),
@@ -95,7 +93,7 @@ impl Rules {
 }
 
 impl Yard {
-    fn new(rules: Rules) -> Yard {
+    fn new(rules: Rules<'_>) -> Yard {
         let mut shop = Shop::ordering();
         let depot = shop.depot;
         let form = BodyForm::boxed([Num::int(4), Num::int(2)]).unwrap();
@@ -136,7 +134,6 @@ impl Yard {
         let new = NewBuild {
             form,
             style: rules.style,
-            rates: &rules.rates,
             start_life: Some(share("0.1")),
             refund: share("0.5"),
             near: rules.near,
@@ -302,28 +299,23 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
     // and 1.5, 1 with one, then 1.5 with two, 2.5 after tick 1, and 4 after tick 2, which
     // completes it and ends both orders.
     let one = Num::ONE;
+    let rates = [one, one + Num::HALF];
     let cases = [
         (
             Style::Alone,
-            vec![],
             [Some(one), Some(one * 2), Some(one * 3), None],
         ),
         (
             Style::Builder,
-            vec![],
             [Some(one), Some(one * 2), Some(one * 3), None],
         ),
         (
-            Style::Builders,
-            vec![one, one + Num::HALF],
+            Style::Builders(&rates),
             [Some(one), Some(Num::HALF * 5), None, None],
         ),
     ];
-    for (style, rates, progress) in cases {
-        let mut yard = Yard::new(Rules {
-            rates,
-            ..Rules::of(style)
-        });
+    for (style, progress) in cases {
+        let mut yard = Yard::new(Rules::of(style));
         let first = yard.builder(half(-6, 0), 0, 0);
         let second = yard.builder(half(6, 0), 0, 0);
         yard.build_at(first, 0, 0);
@@ -337,7 +329,7 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
             seen.push(yard.site(depot).1);
         }
         assert_eq!(seen, progress, "{style:?}");
-        let builds = style == Style::Builders;
+        let builds = matches!(style, Style::Builders(_));
         assert_eq!(
             joined,
             builds.then_some(BuildTarget::Site(depot)),
@@ -447,7 +439,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         filter: Filter::of_relation(relation),
         distance: Num::int(2),
     };
-    let cases: [(&str, Rules, Option<fn(&mut Yard)>, i64); 6] = [
+    let cases: [(&str, Rules<'_>, Option<fn(&mut Yard)>, i64); 6] = [
         (
             "wall",
             Rules {

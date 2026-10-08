@@ -414,10 +414,10 @@ impl<'a> BookBuilder<'a> {
                     of(placement).iter().map(check).collect()
                 })
             };
-            let (style, rates) = match construct {
-                ConstructData::Alone => (Style::Alone, &[][..]),
-                ConstructData::Builder => (Style::Builder, &[][..]),
-                ConstructData::Builders(rates) => (Style::Builders, rates.as_slice()),
+            let style = match construct {
+                ConstructData::Alone => Style::Alone,
+                ConstructData::Builder => Style::Builder,
+                ConstructData::Builders(rates) => Style::Builders(rates),
             };
             let package = &self.input.packages[usize::from(index)];
             let building = data.unit_type.as_ref().expect(CHECKED);
@@ -425,7 +425,6 @@ impl<'a> BookBuilder<'a> {
             let build = NewBuild {
                 form: self.input.data.navigation.form(collision).expect(CHECKED),
                 style,
-                rates,
                 start_life: data.start_life,
                 refund: data.cancel_refund.unwrap_or(Share::ALL),
                 near: rules(|placement| &placement.near),

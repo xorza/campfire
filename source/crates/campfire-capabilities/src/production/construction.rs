@@ -322,7 +322,7 @@ impl BuildView<'_, '_> {
                 let (.., held) = self.sites.get(site_entity).expect("a placed site stands");
                 match (building.spec.style, held.holder()) {
                     (Style::Alone, _) => Step::End,
-                    (Style::Builders, _) => Step::Build,
+                    (Style::Builders(_), _) => Step::Build,
                     (Style::Builder, Some(holder)) if holder == id => Step::Build,
                     (Style::Builder, Some(holder)) if self.holds(holder, site) => Step::End,
                     (Style::Builder, _) => Step::Take(site_entity),
@@ -474,7 +474,9 @@ impl Construction {
             .resource::<BuildSpecs>()
             .of(action)
             .expect("a build's spec is in the book");
-        let (style, start_life) = (spec.style, spec.start_life);
+        let start_life = spec.start_life;
+        let one_holds = matches!(spec.style, Style::Builder);
+        let stays = !matches!(spec.style, Style::Alone);
         let life = world.get_resource::<LifePool>().map(|life| life.0);
         let mut gain = Num::ZERO;
         if let (Some(life), Some(mut pools)) = (life, world.get_mut::<Pools>(site))
@@ -486,12 +488,12 @@ impl Construction {
             pools.take(life, gain);
         }
         let builder = *world.get::<StableId>(entity).expect("a builder has an id");
-        let holder = (style == Style::Builder).then_some(builder);
+        let holder = one_holds.then_some(builder);
         let held = Site::new(action, start.rank, gain, paid, holder);
         let status = world.get::<StatusTags>(site).copied().unwrap_or_default();
         let status = status.turned(EngineTag::Constructing, true);
         world.entity_mut(site).insert((held, status));
-        let next = (style != Style::Alone).then_some(BuildOrder {
+        let next = stays.then_some(BuildOrder {
             slot: order.slot,
             target: BuildTarget::Site(id),
         });
@@ -591,7 +593,7 @@ impl Construction {
                     usize::from(building.binary_search(&at_site(holder)).is_ok())
                 }
                 (Style::Builder, None) => 0,
-                (Style::Alone | Style::Builders, _) => builders,
+                (Style::Alone | Style::Builders(_), _) => builders,
             };
             let action = book
                 .get(site.action())
