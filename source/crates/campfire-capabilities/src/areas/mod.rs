@@ -30,6 +30,8 @@ use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 
+use crate::actions::delivery::Delivery;
+use crate::deliveries::deliverers::Deliverers;
 use crate::values::hit::Hit;
 use crate::values::shape::Shape;
 
@@ -53,6 +55,9 @@ impl Areas {
     /// units inside. A launch queues as an effect of `areas`.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         Deliveries::install(world, schedule);
+        world
+            .resource_mut::<Deliverers>()
+            .register_area(Areas::deliver);
         world.insert_resource(AreaLaunches::default());
         world.insert_resource(ByType::<AreaSpec>::default());
         world
@@ -84,13 +89,14 @@ impl Areas {
     /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it
     /// aimed at, where the unit it aimed at stands, or at `from` for an action that aims at
     /// nothing; nothing for a unit that is gone.
-    pub(crate) fn deliver(
+    fn deliver(
         world: &mut World,
         by: Delivering,
         from: Position,
-        unit_type: UnitType,
+        delivery: Delivery,
         target: ActionTarget,
     ) {
+        let unit_type = delivery.unit_type;
         let at = match target.point(world) {
             Some(at) => at,
             None if target == ActionTarget::None => from,

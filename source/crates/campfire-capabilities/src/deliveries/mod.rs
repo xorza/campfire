@@ -11,6 +11,7 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::CombatSet;
 use crate::deliveries::delivered::{Delivered, Reached};
+use crate::deliveries::deliverers::Deliverers;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
@@ -20,6 +21,7 @@ use crate::units::hit_handle::HitHandle;
 use crate::units::owner::Owner;
 
 pub(crate) mod delivered;
+pub(crate) mod deliverers;
 pub(crate) mod deliveries_api;
 pub(crate) mod delivering;
 pub(crate) mod delivery_spawner;
@@ -51,6 +53,7 @@ impl Deliveries {
             return;
         }
         world.insert_resource(Deliveries::default());
+        world.insert_resource(Deliverers::default());
         schedule.configure_sets(
             (DeliverySet::Fly, DeliverySet::Trigger)
                 .chain()

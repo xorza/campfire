@@ -1,10 +1,14 @@
 use bevy_ecs::change_detection::{DetectChanges, Ref};
+use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::world::Mut;
 use bevy_ecs::world::World;
 use campfire_sim::{SimSet, SimTick, StableId, StateRegistry, TickRate};
 
+use crate::abilities::cast_spends::CastSpends;
 use crate::actions::ActionsSet;
+use crate::actions::action_slots::ActionSlots;
 use crate::combat::CombatSet;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
@@ -47,6 +51,9 @@ impl Items {
     /// starts once the trades are in, and in Resolve once a use may have spent an item.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.insert_resource(ItemBook::default());
+        world
+            .get_resource_or_init::<CastSpends>()
+            .register(Items::spend_use);
         registry.register_component::<Inventory>();
         schedule.add_systems((
             hold_items
@@ -58,6 +65,20 @@ impl Items {
                 .after(CombatSet::Damage)
                 .before(ActionsSet::HoldAtResolve),
         ));
+    }
+}
+
+impl Items {
+    /// Spends a use of the consumable in `slot` of the unit of `entity`, whose action resolved,
+    /// when the slot is one of its inventory's.
+    fn spend_use(world: &mut World, entity: Entity, slot: u8) {
+        world.resource_scope(|world, book: Mut<'_, ItemBook>| {
+            let mut caster = world.entity_mut(entity);
+            let carried = caster.get_components_mut::<(&mut Inventory, &mut ActionSlots)>();
+            if let Ok((mut inventory, mut slots)) = carried {
+                inventory.spend_use(&book, &mut slots, slot);
+            }
+        });
     }
 }
 

@@ -15,7 +15,6 @@ use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
-use crate::actions::delivery::{Delivery, DeliveryShape};
 use crate::scripts::call_start::CallStart;
 use crate::units::action_id::ActionId;
 
@@ -27,10 +26,8 @@ use crate::actions::action_slots::{
 
 use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::Purse;
-use crate::areas::Areas;
 use crate::combat::CombatSet;
 use crate::items::inventory::Inventory;
-use crate::items::item_book::ItemBook;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 
@@ -42,7 +39,6 @@ use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::forced_move::{DashDelivery, ForcedMove};
 
-use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 
@@ -56,6 +52,8 @@ use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::owner::Owner;
 
+use crate::abilities::cast_spends::CastSpends;
+use crate::deliveries::deliverers::Deliverers;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
@@ -64,6 +62,7 @@ use crate::values::rank::Rank;
 
 pub(crate) mod abilities_api;
 pub(crate) mod abilities_effect;
+pub(crate) mod cast_spends;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
 /// script describes.
@@ -114,6 +113,7 @@ impl Abilities {
     /// only cools down, as the server's does.
     pub fn install(world: &mut World, schedule: &mut Schedule, _: &mut StateRegistry) {
         Deliveries::install(world, schedule);
+        world.init_resource::<CastSpends>();
         schedule.add_systems(start_casts.in_set(SimSet::Act).in_set(ActionsSet::Start));
         if !world.contains_non_send::<Ctx>() {
             schedule.add_systems(
@@ -603,16 +603,8 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
         .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots")
         .finish_cast(now, second, resolved.as_ref());
-    if let Some(resolved) = &resolved
-        && world.contains_resource::<ItemBook>()
-    {
-        world.resource_scope(|world, book: Mut<'_, ItemBook>| {
-            let mut caster = world.entity_mut(entity);
-            let carried = caster.get_components_mut::<(&mut Inventory, &mut ActionSlots)>();
-            if let Ok((mut inventory, mut slots)) = carried {
-                inventory.spend_use(&book, &mut slots, resolved.call.aim.slot);
-            }
-        });
+    if let Some(resolved) = &resolved {
+        CastSpends::spend(world, entity, resolved.call.aim.slot);
     }
 }
 
@@ -629,18 +621,9 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         launch: None,
     };
     let book = world.resource::<ActionBook>();
-    match book.get(by.action).and_then(|action| action.delivery) {
-        Some(Delivery {
-            unit_type,
-            shape: DeliveryShape::Projectile { fan, .. },
-        }) => {
-            Projectiles::deliver(world, by, from, unit_type, fan, aim.target);
-        }
-        Some(Delivery {
-            unit_type,
-            shape: DeliveryShape::Area,
-        }) => Areas::deliver(world, by, from, unit_type, aim.target),
-        None => {}
+    if let Some(delivery) = book.get(by.action).and_then(|action| action.delivery) {
+        let deliver = world.resource::<Deliverers>().of(delivery.shape);
+        deliver(world, by, from, delivery, aim.target);
     }
     ctx.apply(world, now);
     // The player's resources were paid in the call's frame, before its script ran, so a failed

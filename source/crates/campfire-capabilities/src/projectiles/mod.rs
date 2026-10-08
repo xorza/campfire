@@ -10,7 +10,6 @@ use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry};
 use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::fan::Fan;
 use crate::actions::range::Range;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
@@ -30,6 +29,8 @@ use crate::stats::pools::Pools;
 use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
 
+use crate::actions::delivery::{Delivery, DeliveryShape};
+use crate::deliveries::deliverers::Deliverers;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
@@ -56,6 +57,9 @@ impl Projectiles {
     /// and casts resolve, the tick's launches take off, and fly from the next tick.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         Deliveries::install(world, schedule);
+        world
+            .resource_mut::<Deliverers>()
+            .register_projectile(Projectiles::deliver);
         world.insert_resource(Launches::default());
         world.insert_resource(StruckUnits::default());
         world.insert_resource(ByType::<ProjectileSpec>::default());
@@ -99,17 +103,23 @@ impl Projectiles {
     /// projectile at a unit for a homing type, or the fan's projectiles along lines spread evenly
     /// over its spread around the aim, which for an action aimed at a point end there at the
     /// latest; nothing for no target, a unit that is gone, or an aim of no direction.
-    pub(crate) fn deliver(
+    fn deliver(
         world: &mut World,
         by: Delivering,
         from: Position,
-        unit_type: UnitType,
-        fan: Fan,
+        delivery: Delivery,
         target: ActionTarget,
     ) {
+        let Delivery {
+            unit_type,
+            shape: DeliveryShape::Projectile { fan, .. },
+        } = delivery
+        else {
+            panic!("projectiles deliver a fan of projectiles");
+        };
         let book = world.resource::<ActionBook>();
-        let delivers = book.get(by.action).expect("a cast's action is in the book");
-        let to_point = matches!(delivers.aim, Aim::Point { .. });
+        let action = book.get(by.action).expect("a cast's action is in the book");
+        let to_point = matches!(action.aim, Aim::Point { .. });
         let spec = *world
             .resource::<ByType<ProjectileSpec>>()
             .get(unit_type)
