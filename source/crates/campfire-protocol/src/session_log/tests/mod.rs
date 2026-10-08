@@ -1,10 +1,8 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{Fingerprint, SegmentSeed, StateHash};
+use campfire_common::{Fingerprint, SegmentSeed, StateHash, Ticks};
 use secp256k1::{Keypair, XOnlyPublicKey};
-
-use campfire_common::Ticks;
 
 use super::*;
 use crate::delegation::DelegationTerms;

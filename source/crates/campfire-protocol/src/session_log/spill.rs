@@ -1,6 +1,5 @@
-use serde::{Deserialize, Serialize};
-
 use campfire_common::{Tick, Ticks};
+use serde::{Deserialize, Serialize};
 
 /// The last tick a slot's inputs were scheduled to apply in, and how many apply there.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

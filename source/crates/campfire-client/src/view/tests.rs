@@ -5,9 +5,8 @@ use bevy::asset::{AssetApp, AssetPlugin};
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::world::World;
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use campfire_sim::IdAllocator;
-
 use campfire_math::Num;
+use campfire_sim::IdAllocator;
 
 use super::*;
 

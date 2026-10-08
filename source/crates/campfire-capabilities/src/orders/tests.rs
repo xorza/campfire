@@ -1,10 +1,8 @@
-use bevy_ecs::bundle::Bundle;
-use std::num::NonZeroU64;
-use std::num::{NonZeroU8, NonZeroU32};
+use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
-use campfire_common::PlayerSlot;
-use campfire_common::SegmentSeed;
+use campfire_common::{PlayerSlot, SegmentSeed};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Command, IdAllocator, SimUpdate, TickInput};
 use serde::Deserialize;

@@ -33,16 +33,16 @@ impl LocalRelink {
     fn take(
         relinked: Res<'_, Relinked>,
         client: Single<'_, '_, (Entity, Has<Connected>), With<Client>>,
-        mut unlinked_since: Local<'_, bool>,
+        mut unlinked_a_frame: Local<'_, bool>,
         mut commands: Commands<'_, '_>,
     ) {
         let (client, connected) = *client;
         if connected {
-            *unlinked_since = false;
+            *unlinked_a_frame = false;
             return;
         }
-        if !*unlinked_since {
-            *unlinked_since = true;
+        if !*unlinked_a_frame {
+            *unlinked_a_frame = true;
             return;
         }
         if let Some(link) = relinked.0.take() {

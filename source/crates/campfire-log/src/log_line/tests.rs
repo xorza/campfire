@@ -1,8 +1,7 @@
 use std::net::Ipv4Addr;
 
-use tracing::info;
-
 use serde::Serialize;
+use tracing::info;
 
 use super::*;
 use crate::json_text::JsonText;

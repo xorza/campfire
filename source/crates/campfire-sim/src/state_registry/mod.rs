@@ -268,7 +268,8 @@ impl StateRegistry {
     /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
     /// are not the canonical encoding of what they restore, or a value that breaks its type's
     /// rules, each type checked once all are decoded. A resource the snapshot records as absent
-    /// is removed, unless every state holds it. On an error the world is left partly restored and should be discarded.
+    /// is removed, and one every state holds, the sim's own, recorded absent is refused. On an
+    /// error the world is left partly restored and should be discarded.
     pub fn restore(&self, snapshot: &[u8], world: &mut World) -> Result<(), SnapshotError> {
         assert!(
             world

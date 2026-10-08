@@ -75,20 +75,31 @@ impl ProcessGroup {
             .collect()
     }
 
-    /// Stops each process that still runs, and waits for it; how many it stopped.
+    /// Stops each process that still runs, and waits for it; how many it stopped. A process it
+    /// cannot stop does not keep it from the others: the error is the first such process's.
     pub(crate) fn end(&mut self) -> Result<usize, CheckError> {
         let mut stopped = 0;
+        let mut failed = None;
         for (process, child) in &mut self.0 {
-            let running = child.try_wait().map_err(|error| CheckError::Wait {
-                process: *process,
-                error,
-            })?;
-            if running.is_none() {
-                kill(*process, child)?;
-                stopped += 1;
+            let ended = child
+                .try_wait()
+                .map_err(|error| CheckError::Wait {
+                    process: *process,
+                    error,
+                })
+                .and_then(|status| match status {
+                    Some(_) => Ok(false),
+                    None => kill(*process, child).map(|()| true),
+                });
+            match ended {
+                Ok(true) => stopped += 1,
+                Ok(false) => {}
+                Err(error) => {
+                    failed.get_or_insert(error);
+                }
             }
         }
-        Ok(stopped)
+        failed.map_or(Ok(stopped), Err)
     }
 }
 

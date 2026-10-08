@@ -53,7 +53,7 @@ impl<T> PagedVec<T> {
 
     /// The items at `range`, in order.
     pub(crate) fn range(&self, range: Range<usize>) -> impl Iterator<Item = &T> {
-        assert!(range.end <= self.len, "a range within the list");
+        debug_assert!(range.end <= self.len, "a range within the list");
         range.map(|at| &self[at])
     }
 }

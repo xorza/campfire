@@ -1,6 +1,7 @@
-use crate::files::package_name::PackageName;
 use campfire_capabilities::{DeclaredName, PackagePath};
 use derive_more::Display;
+
+use crate::files::package_name::PackageName;
 
 /// Where in a package a load problem is.
 #[derive(Debug, Display, Clone, PartialEq, Eq)]

@@ -11,11 +11,12 @@ pub(crate) mod stream_sender;
 
 /// A file that a worker writes a stream of bytes to, in the order they come, with no sync, as a
 /// log file needs: the caller puts each piece into a buffer, and the worker swaps it for its own
-/// and writes it, so a caller never waits for the disk. The buffer holds at most `bound` bytes,
-/// and a caller waits while it is full, so no piece is lost and memory stays bounded; one piece
-/// longer than the bound goes into an empty buffer. A failed write is not retried: the worker
-/// stops, keeps the failure, and the pieces after it are dropped. Dropping the writer writes
-/// what it holds, then ends the worker; a crash loses what it held.
+/// and writes it, so a caller never waits for the disk. A caller waits while the buffer holds
+/// `bound` bytes or more, so no piece is lost and the buffer holds less than `bound` bytes and
+/// one piece. A failed write is not retried: the worker stops, keeps the failure, and the pieces
+/// after it are dropped. Dropping the writer writes what the buffer holds, then ends the worker;
+/// a piece put after the drop began is dropped, so callers that go on putting never keep it
+/// running. A crash loses what the buffer held.
 #[derive(Debug)]
 pub struct StreamWriter {
     shared: Arc<StreamShared>,
@@ -39,9 +40,10 @@ struct StreamShared {
 #[derive(Debug, Default)]
 struct Pending {
     bytes: Vec<u8>,
+    /// The writer dropped: the worker writes what the buffer holds, and no piece is put any more.
     closing: bool,
-    /// The worker stopped at a failure, or the writer closed, so no piece is kept any more.
-    stopped: bool,
+    /// The worker stopped at a failure, so no piece is kept any more.
+    failed: bool,
 }
 
 impl StreamWriter {
@@ -96,16 +98,16 @@ impl StreamShared {
     }
 
     /// Puts the piece `put` writes at the end of the buffer, once it has room; nothing once the
-    /// stream stopped.
+    /// writer drops or the worker stopped at a failure.
     fn put(&self, put: impl FnOnce(&mut Vec<u8>)) {
         let mut pending = self.lock();
-        while !pending.stopped && pending.bytes.len() >= self.bound {
+        while !pending.closing && !pending.failed && pending.bytes.len() >= self.bound {
             pending = self
                 .emptied
                 .wait(pending)
                 .expect("no thread panics holding a stream's bytes");
         }
-        if pending.stopped {
+        if pending.closing || pending.failed {
             return;
         }
         put(&mut pending.bytes);
@@ -126,10 +128,6 @@ impl StreamShared {
                     .expect("no thread panics holding a stream's bytes");
             }
             if pending.bytes.is_empty() {
-                // Closed: a piece put after this has no worker to write it.
-                pending.stopped = true;
-                drop(pending);
-                self.emptied.notify_all();
                 return;
             }
             taken.clear();
@@ -142,7 +140,7 @@ impl StreamShared {
                     .lock()
                     .expect("no thread panics holding a stream's failure") = Some(error);
                 let mut pending = self.lock();
-                pending.stopped = true;
+                pending.failed = true;
                 pending.bytes.clear();
                 drop(pending);
                 self.emptied.notify_all();
@@ -153,13 +151,14 @@ impl StreamShared {
 }
 
 /// Closes the stream: the worker writes what the buffer holds, then ends, and the writer's
-/// worker joins it as it drops after this.
+/// worker joins it as it drops after this. A caller waiting for room puts nothing.
 impl Drop for StreamWriter {
     fn drop(&mut self) {
         let mut pending = self.shared.lock();
         pending.closing = true;
         drop(pending);
         self.shared.filled.notify_one();
+        self.shared.emptied.notify_all();
     }
 }
 

@@ -1,10 +1,11 @@
+use std::num::NonZeroU64;
+
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
 use campfire_sim::{Capability, StateRegistry};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
-use std::num::NonZeroU64;
 
 use crate::abilities::Abilities;
 use crate::abilities::abilities_api::AbilitiesApi;

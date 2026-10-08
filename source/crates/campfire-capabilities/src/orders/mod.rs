@@ -96,11 +96,11 @@ pub struct Orders;
 impl Orders {
     /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
     /// are learned, and, with production, trains are cancelled and rally points set, and, with
-    /// items, on the server, items trade; in Think, the resets whose units arrived end, then the units due this tick think; in Act,
-    /// before combat starts attacks, units walk their paths and chase their targets. It builds on
-    /// the core `Units` installs, on combat and on navigation, and installs after production and
-    /// items, whose actions it applies only when they are installed. Without the core's scripts,
-    /// as on a client, no unit thinks and no item trades.
+    /// items, on the server, items trade; in Think, the resets whose units arrived end, then the
+    /// units due this tick think; in Act, before combat starts attacks, units walk their paths and
+    /// chase their targets. It builds on the core `Units` installs, on combat and on navigation,
+    /// and installs after production and items, whose actions it applies only when they are
+    /// installed. Without the core's scripts, as on a client, no unit thinks and no item trades.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.init_resource::<PlayerOrders>();
         world.init_resource::<TickOrders>();
@@ -344,7 +344,7 @@ fn check_player_orders(
                 | Action::Swap { .. }
                 | Action::CancelTrain { .. }
                 | Action::Rally { .. }
-                | Action::CancelBuild => unreachable!("a move and the others' actions left"),
+                | Action::CancelBuild => unreachable!("an action that goes to no unit was skipped"),
             };
             checked.0.extend(unit_order.map(|order| (entity, order)));
         }

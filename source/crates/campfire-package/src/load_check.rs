@@ -1,14 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
-use campfire_capabilities::StatId;
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
     Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, Metric, ModifierData,
     ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
     ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Share, Stat,
-    Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};

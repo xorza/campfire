@@ -1,6 +1,5 @@
-use serde::{Deserialize, Serialize};
-
 use campfire_common::Tick;
+use serde::{Deserialize, Serialize};
 
 use crate::session_log::error::InputError;
 

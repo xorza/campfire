@@ -38,14 +38,15 @@ pub(crate) struct JoinChannel;
 /// What the server and the client must register alike, in the same order: the messages, their
 /// channels, and the sim components that replicate, the core's and those of the mode's declared
 /// capabilities alone, so a capability the mode lacks costs no prediction history and no
-/// replication rule. The client predicts where its own units are,
-/// where they walk to and by which route, which it plans on its own pathing grid, the forced moves
-/// it learns of, which it continues as the server does, and their death and respawn, which it learns from the server: its sim stops a dead unit and brings it back as
-/// the server's does, and a rollback restores both. It learns each unit's type once and its
-/// level as it changes, and derives its own units' stats, tags and step from them and their
-/// modifiers as the server does, so the server sends a unit's step only with the unit. It starts
-/// their actions as the server does, and learns their pools and the actions' effects from the
-/// server. It learns the teams' relations as a script changes them.
+/// replication rule. The client predicts where its own units are, where they walk to and by which
+/// route, which it plans on its own pathing grid, the forced moves it learns of, which it continues
+/// as the server does, and their death and respawn, which it learns from the server: its sim stops
+/// a dead unit and brings it back as the server's does, and a rollback restores both. It learns
+/// each unit's type once and its level as it changes, and derives its own units' stats, tags and
+/// step from them and their modifiers as the server does, so the server sends a unit's step only
+/// with the unit. It starts their actions as the server does, and learns their pools and the
+/// actions' effects from the server. It learns the teams' relations as it sits, and again as a
+/// script changes them.
 #[derive(Debug)]
 pub struct NetProtocol {
     pub capabilities: CapabilitySet,

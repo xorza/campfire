@@ -63,11 +63,19 @@ fn pieces_go_out_in_order_and_a_full_buffer_makes_a_caller_wait() {
     // "ab" is written, the worker takes "cdgh", and the late caller puts "ef".
     go.send(()).unwrap();
     waiting.join().unwrap();
+    // The writer closes while the write of "cdgh" waits for its word: a piece put then is
+    // dropped at once, so a caller that goes on putting cannot keep the worker running.
+    let shared = Arc::clone(&writer.shared);
+    let closing = thread::spawn(move || writer.close());
+    while !shared.lock().closing {
+        thread::yield_now();
+    }
+    sender.put(|out| out.extend_from_slice(b"zz"));
+    assert_eq!(shared.lock().bytes, b"ef");
+    // The worker writes "cdgh" and "ef", what the buffer held, then ends, with no failure.
     go.send(()).unwrap();
     go.send(()).unwrap();
-    // Closed, the writer writes what it holds, then ends, with no failure.
-    drop(sender);
-    assert!(writer.close().is_none());
+    assert!(closing.join().unwrap().is_none());
     assert_eq!(*written.lock().unwrap(), b"abcdghef");
 }
 
@@ -77,7 +85,7 @@ fn a_failed_write_stops_the_stream_keeps_its_failure_and_drops_what_follows() {
     let sender = writer.sender();
     sender.put(|out| out.extend_from_slice(b"!x"));
     go.send(()).unwrap();
-    while !writer.shared.lock().stopped {
+    while !writer.shared.lock().failed {
         thread::yield_now();
     }
     // Pieces after the failure are dropped, even past the bound, with no wait.

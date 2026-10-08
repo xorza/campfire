@@ -1,5 +1,6 @@
-use campfire_script::ScriptHost;
 use std::num::NonZeroU64;
+
+use campfire_script::ScriptHost;
 
 use super::*;
 

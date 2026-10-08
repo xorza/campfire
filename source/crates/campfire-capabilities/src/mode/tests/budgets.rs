@@ -1,5 +1,6 @@
-use super::*;
 use std::num::NonZeroU64;
+
+use super::*;
 
 #[test]
 fn a_player_spends_only_their_own_pool() {
