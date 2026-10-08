@@ -634,17 +634,28 @@ fn stats_out_of_their_limits_are_refused() {
         Some(Num::EPSILON)
     );
 
-    // A snapshot's values pass the same limits.
-    let health = |current: i64, max: i64| {
+    // A snapshot's values pass the same limits, and carry less than a bit, at 30 ticks a second
+    // fewer than 30 parts, between its ends alone.
+    let carrying = |current: i64, max: i64, carry: u32| {
         let mut meters = [None; Pools::LIMIT];
-        meters[0] = Some((Num::int(current), Num::int(max), 0_u32));
+        meters[0] = Some((Num::int(current), Num::int(max), carry));
         let bytes = postcard::to_allocvec(&meters).unwrap();
         postcard::from_bytes::<Pools>(&bytes).ok()
     };
+    let health = |current, max| carrying(current, max, 0);
     assert!(health(0, 1).is_some() && health(1, 1).is_some());
     for (current, max) in [(-1, 1), (2, 1), (0, 0)] {
         assert_eq!(health(current, max), None, "{current} of {max}");
     }
+    let mut fight = Fight::new();
+    let unit = fight.unit(Team::new(0), at(0, 0, 0), fighter());
+    let entity = fight.sim.entity(unit);
+    let restores = |current, carry| {
+        let pools = carrying(current, 2, carry).unwrap();
+        pools.check(&fight.sim.world, entity)
+    };
+    assert!(restores(1, 29) && restores(2, 0));
+    assert!(!restores(1, 30) && !restores(2, 1) && !restores(0, 1));
 }
 
 #[test]

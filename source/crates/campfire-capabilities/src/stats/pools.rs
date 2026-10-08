@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::SimComponent;
+use campfire_sim::{SimComponent, TickRate};
 use serde::{Deserialize, Serialize};
 
 use crate::stats::meter::Meter;
@@ -117,9 +117,11 @@ impl SimComponent for Pools {
     const NAME: &'static str = "stats.pools";
 
     // A fixed array of every pool place, whose meters' decode keeps each amount within its maximum;
-    // a place the mode does not declare is never read.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        true
+    // a place the mode does not declare is never read. What a meter carries, regen adds: more
+    // than the match's rate leaves would regenerate past a pool's rate.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        let hz = world.resource::<TickRate>().hz().get();
+        self.0.iter().flatten().all(|meter| meter.settled(hz))
     }
 }
 
