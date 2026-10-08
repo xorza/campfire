@@ -2,12 +2,15 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 use std::slice;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_common::Ticks;
 use campfire_math::{Num, Vec3};
+use campfire_script::rhai::Dynamic;
 use campfire_script::{Budget, ScriptHost, ScriptId};
 use campfire_sim::{
-    Capability, Position, SimComponent, SimResource, SlotEvent, SlotEventKind, StableId, TickInput,
+    Capability, EntityIndex, Position, SimComponent, SimResource, SlotEvent, SlotEventKind,
+    StableId, TickInput, TickInputs,
 };
 
 use super::*;
@@ -42,6 +45,7 @@ use crate::mode::map_point::MapPoint;
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_books::ModeBooksInput;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
+use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::offer::Offer;
 use crate::mode::players_data::PlayersData;

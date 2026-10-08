@@ -1,3 +1,5 @@
+use campfire_script::rhai::{Array, INT};
+
 use super::*;
 
 #[test]

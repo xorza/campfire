@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
+use bevy_ecs::world::Mut;
 use campfire_sim::{SimEdge, SimUpdate};
 
 use super::*;

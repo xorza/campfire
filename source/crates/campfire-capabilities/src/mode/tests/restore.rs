@@ -3,6 +3,7 @@ use campfire_sim::StateDelta;
 use super::*;
 use crate::actions::action_slots::SlotCharges;
 use crate::orders::next_think::NextThink;
+use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::stats::instance::StackEnd;
 use crate::stats::lifetime::{Ends, Lifetime};
 use crate::units::unit_state::UnitState;
