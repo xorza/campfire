@@ -86,6 +86,16 @@ impl Relations {
     /// The teams that see as one with `team`: those it shares vision with, those they share it
     /// with, and so on, `team` among them.
     pub(crate) fn vision_group(&self, team: Team) -> TeamSet {
+        let lowest = self.vision_lowest();
+        let own = lowest[usize::from(team.index())];
+        (0..=u8::MAX)
+            .filter(|&at| lowest[usize::from(at)] == own)
+            .fold(TeamSet::NONE, |group, at| group.with(Team::new(at)))
+    }
+
+    /// The lowest team of each team's vision group, by team index, from one pass over the pairs
+    /// that share vision.
+    pub(crate) fn vision_lowest(&self) -> [u8; Team::LIMIT] {
         let mut root: [u8; Team::LIMIT] =
             array::from_fn(|at| u8::try_from(at).expect("a team index fits u8"));
         let find = |root: &mut [u8; Team::LIMIT], mut at: u8| {
@@ -100,10 +110,11 @@ impl Relations {
             let (a, b) = (find(&mut root, a.index()), find(&mut root, b.index()));
             root[usize::from(a.max(b))] = a.min(b);
         }
-        let own = find(&mut root, team.index());
-        (0..=u8::MAX)
-            .filter(|&at| find(&mut root, at) == own)
-            .fold(TeamSet::NONE, |group, at| group.with(Team::new(at)))
+        // Every link points to a lower team, so in order each team's link is final already.
+        for at in 0..Team::LIMIT {
+            root[at] = root[usize::from(root[at])];
+        }
+        root
     }
 
     fn find(&self, of: Team, other: Team) -> Result<usize, usize> {

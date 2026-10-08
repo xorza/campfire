@@ -18,18 +18,18 @@ impl VisionGroups {
     pub(crate) fn rebuild(&mut self, teams: usize, relations: &Relations) {
         self.group_of.clear();
         self.members.clear();
-        for at in 0..teams {
-            let team = Team::new(u8::try_from(at).expect("teams fit u8"));
-            let found = self
-                .members
-                .iter()
-                .position(|members| members.contains(team));
-            let group = found.unwrap_or_else(|| {
-                self.members.push(relations.vision_group(team));
-                self.members.len() - 1
-            });
-            self.group_of
-                .push(u8::try_from(group).expect("groups fit u8"));
+        debug_assert!(teams <= Team::LIMIT, "teams fit their ids");
+        let lowest = relations.vision_lowest();
+        for (index, low) in (0..=u8::MAX).zip(lowest).take(teams) {
+            let group = if low == index {
+                self.members.push(TeamSet::NONE);
+                u8::try_from(self.members.len() - 1).expect("groups fit u8")
+            } else {
+                self.group_of[usize::from(low)]
+            };
+            let members = &mut self.members[usize::from(group)];
+            *members = members.with(Team::new(index));
+            self.group_of.push(group);
         }
     }
 
@@ -74,5 +74,23 @@ mod tests {
         let first = TeamSet::of(team(0)).with(team(3)).with(team(4));
         assert_eq!(groups.members(0), first);
         assert_eq!(groups.members(2), TeamSet::of(team(2)));
+        // A chain whose later link reaches a lower team: 2 with 5, then 1 with 5, makes 1, 2
+        // and 5 one group, numbered after 0's, as each team's own group says too.
+        let mut relations = Relations::default();
+        relations.set(team(2), team(5), Attitude::Friendly, true);
+        relations.set(team(1), team(5), Attitude::Friendly, true);
+        groups.rebuild(6, &relations);
+        assert_eq!(
+            [0, 1, 2, 3, 4, 5].map(|at| groups.of(team(at))),
+            [0, 1, 1, 2, 3, 1]
+        );
+        assert_eq!(
+            groups.members(1),
+            TeamSet::of(team(1)).with(team(2)).with(team(5))
+        );
+        for at in 0..6 {
+            let own = groups.members(groups.of(team(at)));
+            assert_eq!(relations.vision_group(team(at)), own, "{at}");
+        }
     }
 }
