@@ -38,7 +38,6 @@ use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
 use crate::navigation::walls::Walls;
-use crate::stats::move_step::MoveStep;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::body_grid::Placed;
@@ -46,6 +45,7 @@ use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::engine_tag::EngineTag;
 use crate::units::forced_move::{DashTo, ForcedMove, Goal};
+use crate::units::move_step::MoveStep;
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
 use crate::units::unit_tags::UnitTags;
@@ -147,11 +147,9 @@ impl Navigation {
         ));
         registry.register_component::<Destination>();
         registry.register_component::<PathWalker>();
-        registry.register_component::<MoveStep>();
         registry.register_component::<OnPath>();
         registry.register_component::<Route>();
         registry.register_component::<Progress>();
-        registry.register_component::<ForcedMove>();
     }
 
     /// Gives the match the map's pathing grid over `cells`, with the cells `walls` block, for the

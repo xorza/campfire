@@ -8,9 +8,9 @@ use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_sim::{Position, StableId, Unpredicted};
 
-use crate::stats::move_step::MoveStep;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::move_step::MoveStep;
 
 /// Whether a unit may have become a static body, or stopped being one, since the static index
 /// last took the static bodies: a living unit that cannot walk. A static body that moves or

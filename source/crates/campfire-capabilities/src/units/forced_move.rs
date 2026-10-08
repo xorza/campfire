@@ -145,7 +145,7 @@ impl ForcedMove {
 }
 
 impl SimComponent for ForcedMove {
-    const NAME: &'static str = "navigation.forced_move";
+    const NAME: &'static str = "units.forced_move";
 
     // A dash of no step, or a knock back with no tick left, never ends. A knock back's end lies
     // within twice the world's bound, a distance within it from a place within it, so its way

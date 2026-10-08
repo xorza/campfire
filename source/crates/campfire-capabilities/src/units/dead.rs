@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub struct Dead;
 
 impl SimComponent for Dead {
-    const NAME: &'static str = "combat.dead";
+    const NAME: &'static str = "units.dead";
 
     // A mark, which holds nothing.
     fn check(&self, _: &World, _: Entity) -> bool {

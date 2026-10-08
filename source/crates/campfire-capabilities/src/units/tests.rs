@@ -24,7 +24,6 @@ use crate::stats::pools::Pools;
 use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
-use crate::units::dead::Dead;
 use crate::units::path_id::PathId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;

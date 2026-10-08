@@ -29,7 +29,7 @@ impl MoveStep {
 }
 
 impl SimComponent for MoveStep {
-    const NAME: &'static str = "navigation.move_step";
+    const NAME: &'static str = "units.move_step";
 
     // Its decode keeps it at 0 or more; a unit that walks has a circle for a body, or none, as
     // a box never walks.

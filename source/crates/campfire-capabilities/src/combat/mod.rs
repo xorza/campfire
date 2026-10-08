@@ -180,7 +180,6 @@ impl Combat {
             respawn.in_set(SimSet::Inputs).in_set(CombatSet::Respawn),
             despawn_dead.in_set(SimSet::Vision),
         ));
-        registry.register_component::<Dead>();
         registry.register_component::<Kept>();
         registry.register_component::<OnDeath>();
         registry.register_component::<RecentAttackers>();

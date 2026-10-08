@@ -545,7 +545,10 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
             "sim.position",
             "sim.tick",
             "units.body",
+            "units.dead",
+            "units.forced_move",
             "units.lifespan",
+            "units.move_step",
             "units.owner",
             "units.relations",
             "units.spawn_point",
@@ -576,7 +579,6 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
     (
         Some(Combat),
         &[
-            "combat.dead",
             "combat.kept",
             "combat.on_death",
             "combat.recent_attackers",
@@ -587,8 +589,6 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
         Some(Navigation),
         &[
             "navigation.destination",
-            "navigation.forced_move",
-            "navigation.move_step",
             "navigation.on_path",
             "navigation.path_walker",
             "navigation.progress",
