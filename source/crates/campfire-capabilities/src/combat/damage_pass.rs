@@ -390,7 +390,7 @@ impl DamagePass {
 
     /// Restores `amount` of `unit`'s `pool`, unscaled, when the unit exists, its life is above
     /// zero, and it has the pool.
-    pub(crate) fn restore(world: &mut World, unit: StableId, pool: PoolId, amount: Num) {
+    pub(super) fn restore(world: &mut World, unit: StableId, pool: PoolId, amount: Num) {
         let Some(entity) = DamagePass::living(world, unit) else {
             return;
         };

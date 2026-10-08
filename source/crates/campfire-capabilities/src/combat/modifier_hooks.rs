@@ -58,14 +58,7 @@ impl ModifierHooks {
 
     /// Answers `event` by the hooks of the modifiers that hear it, in the order they are kept.
     pub(crate) fn hear(&self, batch: &mut ScriptBatch<'_>, event: CombatEvent) {
-        let unit = |id| {
-            Some(
-                self.ctx
-                    .view()
-                    .unit(id)
-                    .map_or(Dynamic::UNIT, Dynamic::from),
-            )
-        };
+        let unit = |id| Some(self.ctx.view().unit_value(Some(id)));
         let damage = |damage: Damage| {
             let handle = DamageHandle::new(damage, self.ctx.view().clone());
             Some(Dynamic::from(handle))

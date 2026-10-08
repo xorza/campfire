@@ -50,7 +50,10 @@ pub use crate::actions::action_range::ActionRange;
 pub use crate::actions::action_slots::{ActionSlot, ActionSlots};
 pub use crate::actions::action_target::ActionTarget;
 pub use crate::actions::delivery_data::DeliveryData;
-pub use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData, PlannedEffect};
+pub use crate::actions::effect_data::{
+    DamageFields, EffectData, EffectTo, Effecting, HealFields, LaunchFields, ModifierFields,
+    MoveData, PlannedEffect, PurgeFields, RestoreFields, SpawnFields, XpFields,
+};
 pub use crate::actions::error::ActionField;
 pub use crate::actions::kind_data::KindData;
 pub use crate::actions::slot_kind::SlotKind;

@@ -118,6 +118,7 @@ impl TagBook {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::panic::{self, AssertUnwindSafe};
 
     use super::*;
     use crate::units::block::Block;
@@ -189,5 +190,16 @@ mod tests {
             assert_eq!(tags.tags, set(&[sight, slow_immune]));
             assert_eq!(tags.immune, set(&[slowed]));
         }
+
+        // The book took the types' tags: a later load, a later tag or a second book fails, as it
+        // would be lost.
+        let mut fails = |late: &mut dyn FnMut(&mut UnitTypes)| {
+            panic::catch_unwind(AssertUnwindSafe(|| late(&mut types))).is_err()
+        };
+        assert!(fails(&mut |types| {
+            types.load(TypeScope::Mode, "late", &UnitTypeData::default());
+        }));
+        assert!(fails(&mut |types| types.give_tag(tower, stunned)));
+        assert!(fails(&mut |types| drop(types.tag_book(&data))));
     }
 }

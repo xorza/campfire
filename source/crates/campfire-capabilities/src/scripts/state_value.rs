@@ -72,9 +72,7 @@ impl StateValue {
             StateValue::Num(value) => Dynamic::from(*value),
             StateValue::Bool(value) => Dynamic::from_bool(*value),
             StateValue::Text(text) => Dynamic::from(ImmutableString::from(text.as_str())),
-            StateValue::Entity(id) => id
-                .and_then(|id| view.unit(id))
-                .map_or(Dynamic::UNIT, Dynamic::from),
+            StateValue::Entity(id) => view.unit_value(*id),
             StateValue::EntityList(ids) => Dynamic::from_array(
                 ids.iter()
                     .filter_map(|&id| view.unit(id))

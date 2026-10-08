@@ -28,20 +28,11 @@ impl DamageHandle {
         api.ty::<DamageHandle>("Damage")
             .bind(
                 field("source", "the unit that dealt it, `()` when gone or none"),
-                |d: &mut DamageHandle| {
-                    d.damage
-                        .source
-                        .and_then(|source| d.view.unit(source))
-                        .map_or(Dynamic::UNIT, Dynamic::from)
-                },
+                |d: &mut DamageHandle| d.view.unit_value(d.damage.source),
             )
             .bind(
                 field("target", "the unit it is dealt to"),
-                |d: &mut DamageHandle| {
-                    d.view
-                        .unit(d.damage.target)
-                        .map_or(Dynamic::UNIT, Dynamic::from)
-                },
+                |d: &mut DamageHandle| d.view.unit_value(Some(d.damage.target)),
             )
             .bind(
                 field("amount", "raw in `calc_damage`, final in a hook"),
@@ -85,12 +76,7 @@ impl DamageHandle {
                     "ability",
                     "the action that dealt it: an ability, or an attack's weapon; `()` for none",
                 ),
-                |d: &mut DamageHandle| {
-                    d.damage.ability.map_or(Dynamic::UNIT, |id| {
-                        let name = d.view.ability_name(id);
-                        Dynamic::from(name.expect("an action of the match is named"))
-                    })
-                },
+                |d: &mut DamageHandle| d.view.ability_value(d.damage.ability),
             );
     }
 }

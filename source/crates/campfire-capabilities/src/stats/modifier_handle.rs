@@ -132,9 +132,7 @@ impl ModifierHandle {
                 field("carrier", "the unit that carries it"),
                 |m: &mut ModifierHandle| {
                     let data = m.data();
-                    data.view
-                        .unit(data.carrier)
-                        .map_or(Dynamic::UNIT, Dynamic::from)
+                    data.view.unit_value(Some(data.carrier))
                 },
             )
             .bind(

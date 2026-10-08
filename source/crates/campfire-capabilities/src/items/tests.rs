@@ -10,7 +10,7 @@ use super::*;
 use crate::actions::Actions;
 use crate::actions::action_data::{ActionData, Targeting};
 use crate::actions::action_target::ActionTarget;
-use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
+use crate::actions::effect_data::{EffectData, EffectTo, Effecting, HealFields};
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
@@ -93,9 +93,9 @@ impl Carrier {
         Stats::load_modifier(&mut sim.world, 0, "might", &might, None);
         let might = Stats::modifier(&sim.world, 0, "might").unwrap();
         let heal = EffectData {
-            does: Effecting::Heal {
+            does: Effecting::Heal(HealFields {
                 amount: Number::Value(Scalar::Int(50)),
-            },
+            }),
             to: EffectTo::Source,
         };
         let drink = ActionData {

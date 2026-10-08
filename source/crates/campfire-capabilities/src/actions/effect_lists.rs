@@ -10,7 +10,10 @@ use crate::actions::action_data::ActionData;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::actions_effect::ActionsEffect;
 use crate::actions::capability_does::CapabilityDoes;
-use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
+use crate::actions::effect_data::{
+    DamageFields, EffectData, EffectTo, Effecting, HealFields, LaunchFields, ModifierFields,
+    MoveData, PurgeFields, RestoreFields, SpawnFields, XpFields,
+};
 use crate::actions::effect_names::EffectNames;
 use crate::actions::effect_queues::EffectQueues;
 use crate::scripts::error::CallError;
@@ -121,55 +124,55 @@ impl EffectLists {
     fn resolve(&mut self, does: &Effecting, names: &impl EffectNames) -> Does {
         let amount = |number| Amount::of(number, names);
         let of_capability = match does {
-            Effecting::Modifier { id, duration_ms } => {
+            Effecting::Modifier(ModifierFields { id, duration_ms }) => {
                 return Does::Modifier {
                     id: names.modifier(id),
                     duration_ms: duration_ms.as_ref().map(amount),
                 };
             }
-            Effecting::Purge { tag } => {
+            Effecting::Purge(PurgeFields { tag }) => {
                 return Does::Purge {
                     tag: names.tag(tag),
                 };
             }
-            Effecting::Spawn {
+            Effecting::Spawn(SpawnFields {
                 unit_type,
                 duration_ms,
-            } => {
+            }) => {
                 return Does::Spawn {
                     unit_type: names.standing_type(unit_type),
                     duration_ms: duration_ms.as_ref().map(amount),
                 };
             }
-            Effecting::Damage {
+            Effecting::Damage(DamageFields {
                 amount: dealt,
                 kind,
-            } => CapabilityDoes::Damage {
+            }) => CapabilityDoes::Damage {
                 amount: amount(dealt),
                 kind: names.damage_kind(kind),
             },
-            Effecting::Heal { amount: healed } => CapabilityDoes::Heal {
+            Effecting::Heal(HealFields { amount: healed }) => CapabilityDoes::Heal {
                 amount: amount(healed),
             },
-            Effecting::Restore {
+            Effecting::Restore(RestoreFields {
                 pool,
                 amount: restored,
-            } => CapabilityDoes::Restore {
+            }) => CapabilityDoes::Restore {
                 pool: names.pool(pool),
                 amount: amount(restored),
             },
-            Effecting::Xp {
+            Effecting::Xp(XpFields {
                 track,
                 amount: given,
-            } => CapabilityDoes::Xp {
+            }) => CapabilityDoes::Xp {
                 track: names.track(track),
                 amount: amount(given),
             },
-            Effecting::Launch {
+            Effecting::Launch(LaunchFields {
                 area,
                 on_hit,
                 on_end,
-            } => {
+            }) => {
                 let lists = [self.append(on_hit, names), self.append(on_end, names)];
                 let launch = LaunchId(position(self.launches.len()));
                 self.launches.push(lists);

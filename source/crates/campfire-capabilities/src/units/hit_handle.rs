@@ -24,10 +24,7 @@ impl HitHandle {
         let field = |name, description| {
             MemberSpec::field(ApiOwner::Hit, name, description).capability(Capability::Abilities)
         };
-        let unit = |hit: &HitHandle, id: Option<_>| {
-            id.and_then(|id| hit.view.unit(id))
-                .map_or(Dynamic::UNIT, Dynamic::from)
-        };
+        let unit = |hit: &HitHandle, id| hit.view.unit_value(id);
         api.ty::<HitHandle>("Hit")
             .bind(
                 field(

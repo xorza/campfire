@@ -3,12 +3,13 @@ use std::{iter, slice};
 
 use campfire_capabilities::{
     ActionData, ActionKind, ActionRange, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
-    CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
-    Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, KindData, MemberKind, Metric,
-    ModifierData, ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param,
-    ParamProblem, PoolId, ProjectileHits, RangeField, Rank, ResourceId, Scalar, ScriptApi,
-    ScriptRole, Share, Stat, StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData,
-    UnitTypeFile,
+    CollisionData, CombatRules, DamageFields, DataTable, DeclaredName, DeliveryData, EffectData,
+    EffectTo, Effecting, EngineTag, EnumRecord, FilterData, HealFields, Hook, ItemData, KindData,
+    LaunchFields, MemberKind, Metric, ModifierData, ModifierFields, ModifierProblem, MoveData,
+    NameKind, Number, Offers, PackagePath, Param, ParamProblem, PoolId, ProjectileHits,
+    PurgeFields, RangeField, Rank, ResourceId, RestoreFields, Scalar, ScriptApi, ScriptRole, Share,
+    SpawnFields, Stat, StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    XpFields,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -1162,7 +1163,7 @@ impl<'a> LoadCheck<'a> {
         let aims_point = list == Hook::OnResolve
             && matches!(action.targeting, Targeting::Point | Targeting::Direction);
         for effect in effects {
-            let placed = aims_point && matches!(effect.does, Effecting::Spawn { .. });
+            let placed = aims_point && matches!(effect.does, Effecting::Spawn(SpawnFields { .. }));
             if effect.to == EffectTo::Reached && !reaches && !placed {
                 return Err(fail(EffectProblem::NoUnit));
             }
@@ -1175,20 +1176,20 @@ impl<'a> LoadCheck<'a> {
                 Effecting::Planned(planned) => {
                     return Err(fail(EffectProblem::Planned(*planned)));
                 }
-                Effecting::Damage { kind, .. } => {
+                Effecting::Damage(DamageFields { kind, .. }) => {
                     self.require(Capability::Combat, &at)?;
                     if !data.combat.damage_kinds.contains(kind) {
                         return Err(unknown(NameKind::DamageKind, kind));
                     }
                 }
-                Effecting::Heal { .. } => self.require(Capability::Combat, &at)?,
-                Effecting::Restore { pool, .. } => {
+                Effecting::Heal(HealFields { .. }) => self.require(Capability::Combat, &at)?,
+                Effecting::Restore(RestoreFields { pool, .. }) => {
                     self.require(Capability::Combat, &at)?;
                     if !data.pools.contains_key(pool) {
                         return Err(unknown(NameKind::Pool, pool));
                     }
                 }
-                Effecting::Modifier { duration_ms, .. } => {
+                Effecting::Modifier(ModifierFields { duration_ms, .. }) => {
                     self.require(Capability::Stats, &at)?;
                     if let Some(duration) = duration_ms
                         && !whole_ms(action, duration)
@@ -1196,13 +1197,13 @@ impl<'a> LoadCheck<'a> {
                         return Err(fail(EffectProblem::Duration));
                     }
                 }
-                Effecting::Xp { track, .. } => {
+                Effecting::Xp(XpFields { track, .. }) => {
                     self.require(Capability::Progression, &at)?;
                     if !data.tracks.contains_key(track) {
                         return Err(unknown(NameKind::Track, track));
                     }
                 }
-                Effecting::Purge { tag } => {
+                Effecting::Purge(PurgeFields { tag }) => {
                     self.require(Capability::Stats, &at)?;
                     own_tags(slice::from_ref(tag), &at)?;
                     if !self.tags.contains(tag.as_str()) {
@@ -1210,11 +1211,11 @@ impl<'a> LoadCheck<'a> {
                     }
                 }
                 Effecting::Move(moves) => self.forced_move(action, moves, reaches, &at, fail)?,
-                Effecting::Launch {
+                Effecting::Launch(LaunchFields {
                     area,
                     on_hit,
                     on_end,
-                } => {
+                }) => {
                     self.require(Capability::Areas, &at)?;
                     let unit_type = scope
                         .units
@@ -1229,10 +1230,10 @@ impl<'a> LoadCheck<'a> {
                     self.effect_list(id, action, scope, Hook::OnHit, on_hit, true)?;
                     self.effect_list(id, action, scope, Hook::OnEnd, on_end, false)?;
                 }
-                Effecting::Spawn {
+                Effecting::Spawn(SpawnFields {
                     unit_type,
                     duration_ms,
-                } => scope.spawn(action, unit_type, duration_ms.as_ref(), &at, fail)?,
+                }) => scope.spawn(action, unit_type, duration_ms.as_ref(), &at, fail)?,
             }
             for number in effect.does.numbers() {
                 number_holds(action, number).map_err(fail)?;

@@ -151,11 +151,8 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 continue;
             }
             let view = ctx.view();
-            let caster = view.unit(by.source).map_or(Dynamic::UNIT, Dynamic::from);
-            let target = reach
-                .unit()
-                .and_then(|id| view.unit(id))
-                .map_or(Dynamic::UNIT, Dynamic::from);
+            let caster = view.unit_value(Some(by.source));
+            let target = view.unit_value(reach.unit());
             let owner = batch
                 .world()
                 .resource::<EntityIndex>()

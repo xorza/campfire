@@ -17,7 +17,10 @@ use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{SlotAim, Started};
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
-use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
+use crate::actions::effect_data::{
+    DamageFields, EffectData, EffectTo, Effecting, LaunchFields, ModifierFields, MoveData,
+    PurgeFields, RestoreFields, XpFields,
+};
 use crate::actions::error::ActionField;
 use crate::actions::kind_data::KindData;
 use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
@@ -614,10 +617,10 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
         to: EffectTo::Reached,
         speed: int(30),
     };
-    let damage = Effecting::Damage {
+    let damage = Effecting::Damage(DamageFields {
         amount: int(1),
         kind: DeclaredName::new("true").unwrap(),
-    };
+    });
     let lunge = ActionData {
         script: Some(PackagePath::parse("lunge.rhai").unwrap()),
         range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
@@ -2065,6 +2068,13 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         ..scripted(None, &[])
     };
     Stats::load_modifier(&mut game.sim.world, 0, "stun", &stun, None);
+    // Every type loads before the tag book takes their tags.
+    let target_type = Units::load_type(
+        &mut game.sim.world,
+        TypeScope::Mode,
+        "target",
+        &UnitTypeData::default(),
+    );
     let stunned = TagData {
         blocks: vec![Block::Move, Block::Attack, Block::Cast, Block::Use],
         ..TagData::default()
@@ -2080,12 +2090,6 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
     let strike = game.load("strike", &strike(), script);
     let caster = game.caster(strike, 1);
-    let target_type = Units::load_type(
-        &mut game.sim.world,
-        TypeScope::Mode,
-        "target",
-        &UnitTypeData::default(),
-    );
     let parts = (
         target_type,
         Level::default(),
@@ -2139,6 +2143,13 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         };
         Stats::load_modifier(&mut game.sim.world, 0, name, &data, None);
     }
+    // Every type loads before the tag book takes their tags.
+    let target = Units::load_type(
+        &mut game.sim.world,
+        TypeScope::Mode,
+        "target",
+        &UnitTypeData::default(),
+    );
     let stunned = TagData {
         blocks: vec![Block::Move],
         ..TagData::default()
@@ -2151,9 +2162,9 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         .types_mut()
         .tag_book(&effects);
     game.sim.world.insert_resource(book);
-    let purge = Effecting::Purge {
+    let purge = Effecting::Purge(PurgeFields {
         tag: DeclaredName::new("stunned").unwrap(),
-    };
+    });
     let data = ActionData {
         script: None,
         on_resolve: vec![effect(purge, EffectTo::Reached)],
@@ -2162,12 +2173,6 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     let ability = Actions::load(&mut game.sim.world, 0, "cleanse", &data, None, 1).unwrap();
     EffectLists::load(&mut game.sim.world, ability, 0, &data);
     let [first, second] = [(); 2].map(|()| game.caster(ability, 1));
-    let target = Units::load_type(
-        &mut game.sim.world,
-        TypeScope::Mode,
-        "target",
-        &UnitTypeData::default(),
-    );
     let parts = || {
         (
             target,
@@ -2282,18 +2287,18 @@ const fn effect(effecting: Effecting, to: EffectTo) -> EffectData {
 
 /// 10 experience on `valor`.
 fn valor_xp() -> Effecting {
-    Effecting::Xp {
+    Effecting::Xp(XpFields {
         track: DeclaredName::new("valor").unwrap(),
         amount: int(10),
-    }
+    })
 }
 
 /// The `damage` param as true damage.
 fn true_damage() -> Effecting {
-    Effecting::Damage {
+    Effecting::Damage(DamageFields {
         amount: param("damage"),
         kind: DeclaredName::new("true").unwrap(),
-    }
+    })
 }
 
 #[test]
@@ -2817,17 +2822,17 @@ fn sapper(ranged: bool) -> ActionData {
         ]),
         on_hit: vec![
             effect(
-                Effecting::Modifier {
+                Effecting::Modifier(ModifierFields {
                     id: DeclaredName::new("mark").unwrap(),
                     duration_ms: None,
-                },
+                }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Damage {
+                Effecting::Damage(DamageFields {
                     amount: param("bite"),
                     kind: DeclaredName::new("true").unwrap(),
-                },
+                }),
                 EffectTo::Reached,
             ),
         ],
@@ -2929,19 +2934,19 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
 
 /// `damage` true damage of `amount`.
 fn true_of(amount: Number) -> Effecting {
-    Effecting::Damage {
+    Effecting::Damage(DamageFields {
         amount,
         kind: DeclaredName::new("true").unwrap(),
-    }
+    })
 }
 
 /// A launch of `area` with its lists `on_hit` and `on_end`.
 fn launch(area: &str, on_hit: Vec<EffectData>, on_end: Vec<EffectData>) -> Effecting {
-    Effecting::Launch {
+    Effecting::Launch(LaunchFields {
         area: DeclaredName::new(area).unwrap(),
         on_hit,
         on_end,
-    }
+    })
 }
 
 #[test]
@@ -3656,24 +3661,24 @@ fn fan_of_frost() -> ActionData {
         }),
         on_hit: vec![
             effect(
-                Effecting::Damage {
+                Effecting::Damage(DamageFields {
                     amount: param("damage"),
                     kind: DeclaredName::new("physical").unwrap(),
-                },
+                }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Modifier {
+                Effecting::Modifier(ModifierFields {
                     id: DeclaredName::new("chilled").unwrap(),
                     duration_ms: None,
-                },
+                }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Restore {
+                Effecting::Restore(RestoreFields {
                     pool: DeclaredName::new("mana").unwrap(),
                     amount: int(2),
-                },
+                }),
                 EffectTo::Source,
             ),
         ],

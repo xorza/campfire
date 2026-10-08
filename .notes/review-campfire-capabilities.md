@@ -12,16 +12,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 - [ ] `combat/mod.rs` (8 free-function systems, `Wielded`, `GoingOff`, `IntervalDue`, the `RowParts` and `Attacker` aliases, about 620 lines) and `stats/mod.rs:263-302` (`expire_modifiers`, `clear_dead_modifiers`, `fill_row`), while `DamagePass`, `Refresh` and `HeldPass` are unit-struct namespaces in their own files. Two conventions for one job. Target: one type per system, in its own file. `mod.rs` keeps `install`, the sets and the module list. **Decided: crate-wide. Every capability's systems move into unit-struct files by concern, and each `fill_row` becomes a method of its column type; done after the other items, one capability per commit.**
 
-## 13. A fact is derived in several places in one module
-
-- [ ] `vision/sight_maps/mod.rs:99,115`: `sees` and `sees_any` (in a second `impl SightMaps` block) repeat the detection-or-reveal bitmap choice. `sees(group, cell, hidden)` is `sees_any(group, cell..cell + 1, hidden)`. Target: one method on a range in one `impl` block.
-- [ ] `actions/action_slots.rs:173-208` (`InProgress::slot`, `slot_mut`): the same four-arm destructuring twice. Target: one place names each variant's slot.
-- [ ] `combat/damage_handle.rs:30-48,80-90`, `combat/heal_handle.rs:28-44,53-60`: the `source`, `target` and `ability` bindings are the same closures twice. Target: shared helpers.
-- [ ] `combat/damage_pass.rs:390,397,411`: `heal` and `restore` are `pub(crate)` but only `damage_pass.rs` calls them. `heal_living` is a wrapper with one caller. Target: private, with `heal_living` folded in.
-- [ ] `actions/effect_data.rs:107-199,281-326`: nine `*Fields` structs mirror the `Effecting` variants, and the `Deserialize` impl maps them field by field (45 lines). Target: the variants hold the field structs, or deserialize through a tagged form.
-- [ ] `mode/roster.rs:34-48`: `holds` and `ids` each repeat `match offers { Avatars => len, Loadout => len }`. Target: one `count(offers)`.
-- [ ] `units/unit_types.rs:144-165` (`UnitTypes::tag_book`): a `&mut self` getter that `mem::take`s each type's tags into the `TagBook`. After it, `UnitTypes` holds empty tags, and a later `give_tag` is lost silently. Today the only production call (`mode/mode_books.rs:107`) comes after the last `give_tag`, so this is a trap for later code, not a bug now. Target: a load-time builder consumed by `tag_book(self)`, so the staged tags have one owner.
-
 ## 14. `BookBuilder` functions do too much
 
 - [ ] `books/book_builder.rs:516-619` (`unit_type`, about 100 lines): AI, kit, production, walker, slot list and passive in one body that borrows `self.books` four times. Target: one method per part.

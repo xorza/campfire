@@ -94,25 +94,9 @@ impl SightMaps {
         slot
     }
 
-    /// Whether `group` sees `cell`: with its sight, or for a unit its tags hide, with its
-    /// detection.
-    pub(crate) fn sees(&self, group: usize, cell: usize, hidden: bool) -> bool {
-        let (map, run) = if hidden {
-            let Some(slot) = self.detection[group] else {
-                return false;
-            };
-            (&self.detected, slot * self.words)
-        } else {
-            (&self.revealed, group * self.words)
-        };
-        map[run + cell / 64] & 1 << (cell % 64) != 0
-    }
-}
-
-impl SightMaps {
     /// Whether `group` sees a cell of `cells`, a run: with its sight, or for a unit its tags
     /// hide, with its detection. A word at a time.
-    pub(crate) fn sees_any(&self, group: usize, cells: Range<usize>, hidden: bool) -> bool {
+    pub(crate) fn sees(&self, group: usize, cells: Range<usize>, hidden: bool) -> bool {
         if cells.is_empty() {
             return false;
         }

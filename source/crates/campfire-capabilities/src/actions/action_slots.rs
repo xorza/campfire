@@ -188,21 +188,8 @@ pub(crate) struct SlotAim {
 impl InProgress {
     /// The slot whose action is under way.
     pub(crate) const fn slot(self) -> u8 {
-        match self {
-            InProgress::Attack { slot, .. }
-            | InProgress::Order {
-                aim: SlotAim { slot, .. },
-                ..
-            }
-            | InProgress::Charge {
-                aim: SlotAim { slot, .. },
-                ..
-            }
-            | InProgress::Channel {
-                aim: SlotAim { slot, .. },
-                ..
-            } => slot,
-        }
+        let mut copy = self;
+        *copy.slot_mut()
     }
 
     /// The slot, to move when slots are added before it.

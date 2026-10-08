@@ -343,6 +343,20 @@ impl View {
         Some(Unit::new(id, at, self.clone()))
     }
 
+    /// The handle of unit `id` as a script value: `()` for none, or a unit the view did not read.
+    pub(crate) fn unit_value(&self, id: Option<StableId>) -> Dynamic {
+        id.and_then(|id| self.unit(id))
+            .map_or(Dynamic::UNIT, Dynamic::from)
+    }
+
+    /// The name of action `id` as a script value: `()` for none.
+    pub(crate) fn ability_value(&self, id: Option<ActionId>) -> Dynamic {
+        id.map_or(Dynamic::UNIT, |id| {
+            let name = self.ability_name(id);
+            Dynamic::from(name.expect("an action of the match is named"))
+        })
+    }
+
     /// Unit `id`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, id: StableId) -> Option<LivingUnit> {
         let row = self.row(id).filter(|row| row.targetable)?;

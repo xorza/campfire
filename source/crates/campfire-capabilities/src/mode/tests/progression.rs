@@ -198,8 +198,7 @@ fn on_input(ctx, player, name, value) {
     let script = format!("{killer}{DEATHS_3V3}");
     let mut game = Game::picking(&script, ScriptLimits::ROOMY);
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
-    let core = UnitTypeData::tagged(&["core"]);
-    Units::load_type(&mut game.sim.world, TypeScope::Mode, "core", &core);
+    Units::declare_tags(&mut game.sim.world, ["core"]);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     let hero = |game: &mut Game, slot| {
         let mut owned = game.sim.world.query::<(Entity, &Owner)>();
