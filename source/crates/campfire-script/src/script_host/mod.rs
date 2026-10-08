@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::num::NonZeroU64;
 use std::rc::Rc;
 
 use rhai::config::hashing;
@@ -75,10 +76,19 @@ pub struct ScriptHost {
 }
 
 impl ScriptHost {
-    pub fn new(per_call: u64) -> ScriptHost {
-        if let Err(Some(seed)) = hashing::set_hashing_seed(Some(HASHING_SEED)) {
-            assert_eq!(seed, HASHING_SEED, "Rhai's hashing seed is the engine's");
+    /// A host whose calls each run at most `per_call` operations.
+    pub fn new(per_call: NonZeroU64) -> ScriptHost {
+        // The seed is set once in a process: the set of each host after the first fails, keeps
+        // the seed there, and gives back the one passed, so only the read after tells which
+        // seed holds.
+        if let Err(passed) = hashing::set_hashing_seed(Some(HASHING_SEED)) {
+            debug_assert_eq!(passed, Some(HASHING_SEED));
         }
+        assert_eq!(
+            hashing::get_hashing_seed(),
+            &Some(HASHING_SEED),
+            "Rhai's hashing seed is the engine's"
+        );
         let mut engine = Engine::new_raw();
         for package in [
             ArithmeticPackage::new().as_shared_module(),
@@ -100,7 +110,7 @@ impl ScriptHost {
             .set_max_functions(MAX_FUNCTIONS)
             .set_max_modules(0)
             .set_strict_variables(true)
-            .set_max_operations(per_call)
+            .set_max_operations(per_call.get())
             .disable_symbol("eval");
         if cfg!(debug_assertions) {
             engine

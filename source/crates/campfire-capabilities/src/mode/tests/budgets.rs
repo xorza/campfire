@@ -1,4 +1,5 @@
 use super::*;
+use std::num::NonZeroU64;
 
 #[test]
 fn a_player_spends_only_their_own_pool() {
@@ -14,7 +15,7 @@ fn on_mode_input(ctx, player, name, value) {
 }
 "#;
     let limits = ScriptLimits {
-        per_call: 1000,
+        per_call: NonZeroU64::new(1000).unwrap(),
         player: 1000,
         ..ScriptLimits::ROOMY
     };
@@ -63,7 +64,7 @@ fn on_timer(ctx, name, data) {
 }
 "#;
     let limits = ScriptLimits {
-        per_call: 1000,
+        per_call: NonZeroU64::new(1000).unwrap(),
         mode: 1500,
         ..ScriptLimits::ROOMY
     };

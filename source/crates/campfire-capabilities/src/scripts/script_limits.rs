@@ -1,3 +1,5 @@
+use std::num::NonZeroU64;
+
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -7,7 +9,8 @@ use serde::{Deserialize, Deserializer};
 /// manifest sets them, and each pool holds a whole call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScriptLimits {
-    pub per_call: u64,
+    /// At least one: Rhai reads a limit of 0 operations as no limit.
+    pub per_call: NonZeroU64,
     /// For the calls each player causes: their casts and mode inputs. Each player slot has a
     /// pool of this size.
     pub player: u64,
@@ -22,12 +25,10 @@ impl ScriptLimits {
     /// events is that deep, and the damage pass must end within its tick.
     pub(crate) const CHAIN_DEPTH: u8 = 16;
 
-    /// Whether a call may run at least one operation, and each pool holds a whole call.
+    /// Whether each pool holds a whole call.
     const fn holds_calls(self) -> bool {
-        self.per_call >= 1
-            && self.player >= self.per_call
-            && self.think >= self.per_call
-            && self.mode >= self.per_call
+        let per_call = self.per_call.get();
+        self.player >= per_call && self.think >= per_call && self.mode >= per_call
     }
 }
 
@@ -37,7 +38,7 @@ impl<'de> Deserialize<'de> for ScriptLimits {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            per_call: u64,
+            per_call: NonZeroU64,
             player: u64,
             think: u64,
             mode: u64,
@@ -65,12 +66,14 @@ impl<'de> Deserialize<'de> for ScriptLimits {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use std::num::NonZeroU64;
+
     use crate::scripts::script_limits::ScriptLimits;
 
     impl ScriptLimits {
         /// Limits no test's script comes near, but one that spins without end.
         pub(crate) const ROOMY: ScriptLimits = ScriptLimits {
-            per_call: 10_000,
+            per_call: NonZeroU64::new(10_000).unwrap(),
             player: 100_000,
             think: 100_000,
             mode: 100_000,

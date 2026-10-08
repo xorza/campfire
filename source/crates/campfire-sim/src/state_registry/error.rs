@@ -28,6 +28,9 @@ pub enum SnapshotError {
     /// Bytes remain after the last field.
     #[error("snapshot has trailing bytes")]
     Trailing,
+    /// The resource of this name, which every state holds, is recorded absent.
+    #[error("snapshot lacks {0}, which every state holds")]
+    Missing(&'static str),
     /// A value of the type of this name breaks a rule of its type, such as an id that names
     /// nothing the match's books hold.
     #[error("snapshot value of {0} breaks its rules")]

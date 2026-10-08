@@ -6,7 +6,7 @@ use rhai::{EvalAltResult, INT, ImmutableString};
 use super::*;
 use crate::script_host::error::{NumError, Raised};
 
-const PER_CALL: u64 = 1000;
+const PER_CALL: NonZeroU64 = NonZeroU64::new(1000).unwrap();
 
 fn host() -> ScriptHost {
     ScriptHost::new(PER_CALL)

@@ -1,4 +1,5 @@
 use bevy_ecs::bundle::Bundle;
+use std::num::NonZeroU64;
 use std::num::{NonZeroU8, NonZeroU32};
 
 use bevy_ecs::change_detection::DetectChanges;
@@ -854,7 +855,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     // A pool of 1500 operations: a spinning call runs its 1000 and fails, which leaves 500; the
     // next is ended past those 500, so its unit stays due.
     let limits = ScriptLimits {
-        per_call: 1000,
+        per_call: NonZeroU64::new(1000).unwrap(),
         player: 1000,
         think: 1500,
         mode: 100_000,

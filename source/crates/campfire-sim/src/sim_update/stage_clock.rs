@@ -5,7 +5,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::system::ResMut;
 use bevy_ecs::world::World;
 
-use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick, start_tick};
+use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick};
 
 /// The edges around the stages of a tick: before the first, between each two, after the last.
 const EDGES: usize = SimSet::ALL.len() + 1;
@@ -33,12 +33,7 @@ impl StageClock {
             }
         };
         world.schedule_scope(SimUpdate, |_, schedule| {
-            schedule.add_systems(
-                probe(0)
-                    .after(start_tick)
-                    .after(SimEdge::Start)
-                    .before(SimSet::Inputs),
-            );
+            schedule.add_systems(probe(0).after(SimEdge::Start).before(SimSet::Inputs));
             for (edge, stages) in SimSet::ALL.windows(2).enumerate() {
                 schedule.add_systems(
                     probe(edge + 1)

@@ -256,6 +256,16 @@ fn conflicting_unordered_systems_fail_the_build() {
             expected: &[["end_tick", "sum_ticks"]],
         },
         Case {
+            name: "an RNG reader and a tick reader at the tick's edges, inside its start and end",
+            add: |s| {
+                s.add_systems((
+                    wander.in_set(SimEdge::Start),
+                    sum_ticks.in_set(SimEdge::After(SimSet::Vision)),
+                ));
+            },
+            expected: &[],
+        },
+        Case {
             name: "systems with disjoint access in one step",
             add: |s| {
                 s.add_systems((wander, grow_older, sum_ticks).in_set(SimSet::Mode));

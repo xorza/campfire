@@ -2,6 +2,7 @@ use std::process::Child;
 use std::thread;
 use std::time::Instant;
 
+use campfire_log::ErrorReport;
 use tracing::error;
 
 use crate::error::CheckError;
@@ -96,7 +97,7 @@ impl ProcessGroup {
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
         if let Err(error) = self.end() {
-            error!(%error, "a process of the run could not be stopped");
+            error!(error = %ErrorReport::of(&error), "a process of the run could not be stopped");
         }
     }
 }

@@ -161,8 +161,8 @@ impl StateRegistry {
             scramble: |_, _| false,
         };
         registry.register(entities);
-        registry.register_resource::<IdAllocator>();
-        registry.register_resource::<SimTick>();
+        registry.require_resource::<IdAllocator>();
+        registry.require_resource::<SimTick>();
         registry.register_component::<Position>();
         registry
     }
@@ -197,10 +197,23 @@ impl StateRegistry {
     }
 
     pub fn register_resource<R: SimResource>(&mut self) {
+        self.register_resource_decoded::<R>(decode_resource::<R>);
+    }
+
+    /// Registers `R` as a resource every state holds, as the sim's own do: a snapshot that
+    /// records it absent does not restore.
+    fn require_resource<R: SimResource>(&mut self) {
+        self.register_resource_decoded::<R>(decode_required_resource::<R>);
+    }
+
+    fn register_resource_decoded<R: SimResource>(
+        &mut self,
+        decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
+    ) {
         self.register(Entry {
             name: R::NAME,
             encode: encode_resource::<R>,
-            decode: decode_resource::<R>,
+            decode,
             check: check_resource::<R>,
             copy: copy_resource::<R>,
             copy_query: None,
@@ -255,7 +268,7 @@ impl StateRegistry {
     /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
     /// are not the canonical encoding of what they restore, or a value that breaks its type's
     /// rules, each type checked once all are decoded. A resource the snapshot records as absent
-    /// is removed. On an error the world is left partly restored and should be discarded.
+    /// is removed, unless every state holds it. On an error the world is left partly restored and should be discarded.
     pub fn restore(&self, snapshot: &[u8], world: &mut World) -> Result<(), SnapshotError> {
         assert!(
             world
@@ -565,6 +578,18 @@ fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(),
         Some(value) => world.insert_resource(value),
         None => drop(world.remove_resource::<R>()),
     }
+    Ok(())
+}
+
+fn decode_required_resource<R: SimResource>(
+    world: &mut World,
+    body: &[u8],
+) -> Result<(), SnapshotError> {
+    let Taken { value, rest } = take::<Option<R>>(body)?;
+    if !rest.is_empty() {
+        return Err(SnapshotError::Trailing);
+    }
+    world.insert_resource(value.ok_or(SnapshotError::Missing(R::NAME))?);
     Ok(())
 }
 

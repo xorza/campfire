@@ -952,7 +952,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
         assert_eq!(hashes[0], hashes[1], "{script}");
         if script == spin {
             // The call ran exactly its limit of operations.
-            assert_eq!(spent, [ScriptLimits::ROOMY.per_call]);
+            assert_eq!(spent, [ScriptLimits::ROOMY.per_call.get()]);
         }
     }
 }
@@ -1560,7 +1560,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
     let mut left = Vec::new();
     for spins in [true, false] {
         let limits = ScriptLimits {
-            player: ScriptLimits::ROOMY.per_call,
+            player: ScriptLimits::ROOMY.per_call.get(),
             ..ScriptLimits::ROOMY
         };
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
@@ -1606,7 +1606,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
         let spent = if spins {
             0
         } else {
-            ScriptLimits::ROOMY.per_call
+            ScriptLimits::ROOMY.per_call.get()
         };
         assert_eq!(
             budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
@@ -1615,7 +1615,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
         left.push(budgets.get_mut(Pool::Player(PlayerSlot::new(1))).left());
     }
     assert_eq!(left[0], left[1]);
-    assert!(left[0] < ScriptLimits::ROOMY.per_call);
+    assert!(left[0] < ScriptLimits::ROOMY.per_call.get());
 }
 
 #[test]

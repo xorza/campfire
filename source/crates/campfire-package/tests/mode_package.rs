@@ -386,7 +386,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 269] = [
+static FLAWS: [Flaw; 270] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -561,6 +561,21 @@ static FLAWS: [Flaw; 269] = [
         Edit::Set("tick_hz", "{ min = 40, max = 60, default = 30 }"),
         MODE_DIR,
         |problem| manifest_fails(problem, "the tick rate range does not hold its default"),
+    ),
+    // A call of no operation, which Rhai would read as no limit.
+    flaw(
+        MANIFEST,
+        Edit::Set(
+            "script_limits",
+            "{ per_call = 0, player = 40000, think = 200000, mode = 100000 }",
+        ),
+        MODE_DIR,
+        |problem| {
+            manifest_fails(
+                problem,
+                "invalid value: integer `0`, expected a nonzero u64",
+            )
+        },
     ),
     // A player's pool below the whole call of 20 000.
     flaw(

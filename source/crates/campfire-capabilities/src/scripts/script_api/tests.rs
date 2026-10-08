@@ -1,6 +1,7 @@
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::error::Error;
+use std::num::NonZeroU64;
 use std::{env, fs};
 
 use serde::de::{self, Deserialize, Deserializer, Visitor};
@@ -52,7 +53,7 @@ fn functions(engine: &Engine) -> Vec<(String, Option<TypeId>)> {
 
 #[test]
 fn the_registry_holds_exactly_what_the_engine_binds() {
-    let mut host = ScriptHost::new(1);
+    let mut host = ScriptHost::new(NonZeroU64::MIN);
     let before = functions(host.engine_mut());
     let api = ScriptApi::bind(&mut host, CapabilitySet::apis());
     let mut bound: Vec<String> = functions(host.engine_mut())

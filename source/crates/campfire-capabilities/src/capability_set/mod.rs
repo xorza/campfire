@@ -4,6 +4,7 @@ use campfire_script::ScriptHost;
 use campfire_sim::{Capability, StateRegistry};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
+use std::num::NonZeroU64;
 
 use crate::abilities::Abilities;
 use crate::abilities::abilities_api::AbilitiesApi;
@@ -142,7 +143,7 @@ impl CapabilitySet {
     /// The script API of the release, recorded as a match's engine binds it, with the names the
     /// engine has before: every capability's, whether a mode declares it or not.
     pub fn script_api() -> ScriptApi {
-        CapabilitySet::bind_script_api(&mut ScriptHost::new(1))
+        CapabilitySet::bind_script_api(&mut ScriptHost::new(NonZeroU64::MIN))
     }
 
     /// Binds the script API of the release into `host`, as `script_api` records it, so `host`

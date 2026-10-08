@@ -31,7 +31,7 @@ pub(crate) enum CheckError {
         error: io::Error,
     },
     /// No UDP port on `127.0.0.1` was free for the server to listen on.
-    #[error("no free port on 127.0.0.1")]
+    #[error("no free port on the loopback address")]
     Port(#[source] io::Error),
     #[error("{process} did not start")]
     Start {

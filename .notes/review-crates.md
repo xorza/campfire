@@ -12,13 +12,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing. Blocked: see `review-crates_QUESTIONS.md`, "Sharing the parsed scripts needs Rhai's `sync` feature, or a cache that stays on one thread".
 
-## Guards that do not guard, and core resources that a restore can drop [low]
-
-- [ ] source/crates/campfire-script/src/script_host/mod.rs:79-80 — `set_hashing_seed` is `OnceCell::set`. Its `Err` holds the value just passed, not the stored seed, so the `assert_eq!` never fires. Target: after the set, assert `hashing::get_hashing_seed() == &Some(HASHING_SEED)`. This becomes a precondition of the shared API modules, whose function hashes use the seed.
-- [ ] source/crates/campfire-script/src/script_host/mod.rs:78,103 — `ScriptHost::new(per_call: u64)` passes 0 to `set_max_operations`, and Rhai reads 0 as no limit. Target: take `NonZeroU64`.
-- [ ] source/crates/campfire-sim/src/state_registry/mod.rs:507 — `decode_resource` reads `None` as "remove", and `check_resource` (:614) lets the resource be absent. So a snapshot without `sim.tick` restores, and then `start_tick` panics. Target: the sim's own resources are required, and a `None` section for one of them is an error case.
-- [ ] source/crates/campfire-sim/src/sim_update/mod.rs:101 — `start_tick` and `end_tick` are not ordered around `SimEdge::Start` and `SimEdge::After(SimSet::Vision)`, so an edge system that reads `SimRng` or `TickInputs` cannot be ordered against them (`stage_clock.rs:236,250` works around this). Target: `start_tick.before(SimEdge::Start)` and `end_tick.after(SimEdge::After(SimSet::Vision))`.
-
 ## Storage grows or serializes in steps that copy [low]
 
 - [ ] source/crates/campfire-protocol/src/session_log/mod.rs:92 — six buffers hold the whole session: `inputs`, `payloads`, `packets`, `server`, `entries` and `tick_ends`. They grow by `push` in `record`, `record_server` and `seal` (:667, :859, :1054, :1622). Each doubling copies the full history within one tick. Target: one `PagedVec<T>` type of fixed-size pages, which all six use, so a push never moves earlier data.
