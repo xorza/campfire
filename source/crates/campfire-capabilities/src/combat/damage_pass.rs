@@ -256,8 +256,8 @@ impl DamagePass {
         let source = damage.source.filter(|&source| index.get(source).is_some());
         let mut left = amount.max(Num::ZERO);
         let takes_effect = TagBook::effective(world, entity);
-        let book = world.get_resource::<ModifierBook>().cloned();
-        if let (Some(mut carried), Some(book)) = (CarriedMut::of(world, entity), book) {
+        let book = world.resource::<ModifierBook>().clone();
+        if let Some(mut carried) = CarriedMut::of(world, entity) {
             left = carried.absorb(left, |id| takes_effect(book.tags(id)));
         }
         let LifePool(life) = *world.resource::<LifePool>();

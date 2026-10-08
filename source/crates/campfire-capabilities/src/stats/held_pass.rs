@@ -61,7 +61,7 @@ impl HeldPass {
     /// ability that gave the aura, a player modifier's at rank 1; neither has a duration.
     pub(crate) fn run(
         (book, stats, (tick, rate), metric, players, mut others): (
-            Option<Res<'_, ModifierBook>>,
+            Res<'_, ModifierBook>,
             Option<Res<'_, StatBook>>,
             (Res<'_, SimTick>, Res<'_, TickRate>),
             Res<'_, Metric>,
@@ -75,9 +75,9 @@ impl HeldPass {
         tag_book: Option<Res<'_, TagBook>>,
         (mut held, mut grid): (Local<'_, Vec<Held>>, Local<'_, BodyGrid<Entity>>),
     ) {
-        let (Some(book), Some(_)) = (book, stats) else {
+        if stats.is_none() {
             return;
-        };
+        }
         let rate = *rate;
         held.clear();
         held.extend(others.0.drain(..));

@@ -10,7 +10,6 @@ Fix the root cause of a group, not its items one by one. Most groups give the st
 
 Some resources are always installed, but each read treats them as optional and returns silently when they are missing. This hides a missing install. Other resources are optional, but each read applies its own fallback. Target: a capability's resources are required (`Res<T>`, `resource::<T>()`) after the capability installs. `Option` stays only for what a mode can lack, and the install decides it once.
 
-- [ ] `combat/damage_pass.rs:259`, `combat/mod.rs:435-437`, `stats/mod.rs:192,218`, `stats/refresh.rs:63`, `stats/held_pass.rs:63,77`, `stats/modifier_book.rs:187-203` (`has_way_in`): `ModifierBook` and `ParamBook` are always inserted by `Stats::install` (`stats/mod.rs:114-115`), and `Combat` requires `Stats`. Each site still uses `get_resource` or `Option<Res<_>>` and returns silently. Only `StatBook`, which a mode loads later, is optional.
 - [ ] `values/bounds.rs:25-30` (`Bounds::of`, with a `Bounds::WORLD` fallback, called from eight sites) against `units/mod.rs:132` (`Metric`, always inserted). `navigation/mod.rs:124` inserts `Bounds::WORLD` separately. Two map-wide resources with two contracts. Target: the core installs `Bounds` like `Metric`.
 - [ ] `navigation/mod.rs` (`make_room`, `open_cell`, `route_units`, `force_units`, `teleport`): each gets the `PathingGrid` and `RoutePlanner` options again. `abilities/mod.rs:679` tests `contains_resource::<ItemBook>()`. Target: one decision at install, read as required where the capability runs.
 

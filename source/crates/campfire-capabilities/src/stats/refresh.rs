@@ -60,7 +60,7 @@ impl Refresh {
             Option<Res<'_, StatBook>>,
             Option<Res<'_, PoolBook>>,
             Option<Res<'_, TagBook>>,
-            Option<Res<'_, ModifierBook>>,
+            Res<'_, ModifierBook>,
             Res<'_, EntityIndex>,
         ),
         (params, rate): (Res<'_, ParamBook>, Res<'_, TickRate>),
@@ -103,8 +103,7 @@ impl Refresh {
         >,
         (mut scratch, mut visits): (Local<'_, RefreshScratch>, Local<'_, Vec<Entity>>),
     ) {
-        let (Some(book), Some(pool_book), Some(modifier_book)) = (book, pool_book, modifier_book)
-        else {
+        let (Some(book), Some(pool_book)) = (book, pool_book) else {
             return;
         };
         let scratch = &mut *scratch;

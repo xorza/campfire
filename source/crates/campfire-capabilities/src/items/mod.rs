@@ -89,7 +89,7 @@ impl Items {
 /// unit holds follows from its inventory, its modifiers and the books only, so a run visits only
 /// the units whose inventory or modifiers changed since its last, unless a book changed.
 fn hold_items(
-    (items, book): (Option<Res<'_, ItemBook>>, Option<Res<'_, ModifierBook>>),
+    (items, book): (Res<'_, ItemBook>, Res<'_, ModifierBook>),
     (tick, rate, params): (Res<'_, SimTick>, Res<'_, TickRate>, Res<'_, ParamBook>),
     sources: ParamSources<'_, '_>,
     mut units: Query<
@@ -104,9 +104,6 @@ fn hold_items(
     >,
     mut held: Local<'_, Vec<ModifierId>>,
 ) {
-    let (Some(items), Some(book)) = (items, book) else {
-        return;
-    };
     if items.modifiers().is_empty() {
         return;
     }

@@ -533,20 +533,16 @@ impl SimComponent for Modifiers {
 
     // A modifier, a param the books lack, or another count of shares than its modifier's changes,
     // would be read past the books' places, and a way that lacks a param would fail the next
-    // application of it or its aura's; its clocks are one for each instance; and a stack's life
-    // past the limit would overflow its next end.
+    // application of it or its aura's; and its clocks are one for each instance.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let books = (
-            world.get_resource::<ModifierBook>(),
-            world.get_resource::<ParamBook>(),
-            world.get_resource::<TickRate>(),
+        let (modifiers, params) = (
+            world.resource::<ModifierBook>(),
+            world.resource::<ParamBook>(),
         );
+        let rate = *world.resource::<TickRate>();
         let clocks = world
             .get::<ModifierClocks>(entity)
             .is_some_and(|clocks| clocks.len() == self.instances.len());
-        let (Some(modifiers), Some(params), Some(&rate)) = books else {
-            return self.instances.is_empty() && clocks;
-        };
         clocks
             && self
                 .iter()

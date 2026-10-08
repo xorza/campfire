@@ -171,10 +171,8 @@ impl SimComponent for ModifierClocks {
     // would be read past the instance's or the modifier's places; and an interval or a shield its
     // modifier lacks, or none where it has one, would act on what the modifier does not do.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let (Some(modifiers), Some(book)) = (
-            world.get::<Modifiers>(entity),
-            world.get_resource::<ModifierBook>(),
-        ) else {
+        let book = world.resource::<ModifierBook>();
+        let Some(modifiers) = world.get::<Modifiers>(entity) else {
             return self.clocks.is_empty();
         };
         modifiers.len() == self.clocks.len()

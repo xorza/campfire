@@ -189,9 +189,7 @@ impl Stats {
         let Some(entity) = world.resource::<EntityIndex>().get(carrier) else {
             return;
         };
-        let Some(book) = world.get_resource::<ModifierBook>().cloned() else {
-            return;
-        };
+        let book = world.resource::<ModifierBook>().clone();
         if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.purge(|id| book.tags(id).contains(tag));
         }
@@ -215,9 +213,7 @@ impl Stats {
         if !world.contains_resource::<StatBook>() {
             return;
         }
-        let Some(book) = world.get_resource::<ModifierBook>() else {
-            return;
-        };
+        let book = world.resource::<ModifierBook>();
         let source = applier
             .source
             .and_then(|source| ParamSource::of(world, source));

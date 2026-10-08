@@ -207,22 +207,18 @@ impl ModifierBook {
             && self.check_way(id, ability, rank, params, rate).is_ok()
     }
 
-    /// `has_way` of `world`'s books at its rate; false in a match with no stats.
+    /// `has_way` of `world`'s books at its rate.
     pub(crate) fn has_way_in(
         world: &World,
         id: ModifierId,
         ability: Option<ActionId>,
         rank: Rank,
     ) -> bool {
-        let books = (
-            world.get_resource::<ModifierBook>(),
-            world.get_resource::<ParamBook>(),
-            world.get_resource::<TickRate>(),
+        let (book, params) = (
+            world.resource::<ModifierBook>(),
+            world.resource::<ParamBook>(),
         );
-        let (Some(book), Some(params), Some(&rate)) = books else {
-            return false;
-        };
-        book.has_way(id, ability, rank, params, rate)
+        book.has_way(id, ability, rank, params, *world.resource::<TickRate>())
     }
 
     /// `id` as applied in tick `now` from `source`, by `ability` at its rank or by none, a way

@@ -427,9 +427,7 @@ fn run_intervals(
     let granting = world
         .get_resource::<TagBook>()
         .map_or(TagSet::default(), TagBook::granting);
-    let Some(book) = world.get_resource::<ModifierBook>().cloned() else {
-        return;
-    };
+    let book = world.resource::<ModifierBook>().clone();
     due.clear();
     for (&carrier, modifiers, clocks, tags) in carriers.iter_mut(world) {
         let immune = tags.map_or(TagSet::default(), |tags| tags.immune);
