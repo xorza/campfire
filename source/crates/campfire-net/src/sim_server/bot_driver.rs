@@ -10,7 +10,7 @@ use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
 
 use crate::events::avatar_missing::AvatarMissing;
-use crate::events::input_dropped::InputDropped;
+use crate::events::bot_payload_dropped::BotPayloadDropped;
 use crate::order_script::OrderScript;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
@@ -144,7 +144,7 @@ impl BotDriver {
                 let Some(unit) = avatar else {
                     AvatarMissing {
                         slot: driven.slot,
-                        action: format!("{:?}", scripted.action),
+                        action: scripted.action,
                     }
                     .log();
                     continue;
@@ -182,8 +182,9 @@ impl BotDriver {
                     kept.push(waiting);
                 }
                 Err(ServerInputRefused::Log(ServerInputError::PayloadTooLarge)) => {
-                    InputDropped {
-                        name: format!("a bot's payload of {} bytes", waiting.payload.len()),
+                    BotPayloadDropped {
+                        slot: waiting.slot,
+                        len: waiting.payload.len(),
                     }
                     .log();
                 }

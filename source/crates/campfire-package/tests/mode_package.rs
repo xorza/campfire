@@ -13,7 +13,7 @@ use campfire_capabilities::{
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
     EffectProblem, GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages,
-    PackageRef, Place, ScriptProblem, Way,
+    PackageName, PackageRef, Place, ScriptProblem, Way,
 };
 use campfire_script::ScriptError;
 use campfire_script::rhai::ParseErrorType;
@@ -125,7 +125,10 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     // 5 m/s, slower than the 3v3's cap of 6: a homing projectile might never catch a hero.
     let edit = Edit::Set("units.caster_creep_bolt.projectile.speed", r#""5.0""#);
     let error = ModePackages::from_package_dir(&edited([(UNITS, edit)])).unwrap_err();
-    assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
+    assert_eq!(
+        error.package,
+        PackageRef::Name(PackageName::new(MODE).unwrap())
+    );
     let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotFaster(Place::UnitType(name))) if name == "caster_creep_bolt");
     assert!(at_caster(&error.problem), "{error:?}");
     // Along a line, the same speed loads: it chases no one.
@@ -377,7 +380,10 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
         };
         assert!(load(case.allowed).is_ok(), "{case:?}");
         let error = load(case.allowed + 1).unwrap_err();
-        assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
+        assert_eq!(
+            error.package,
+            PackageRef::Name(PackageName::new(MODE).unwrap())
+        );
         assert!(
             matches!(*error.problem, LoadProblem::TooMany(limit) if limit == case.limit),
             "{case:?}: {error:?}"

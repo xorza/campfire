@@ -12,13 +12,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing. Blocked: see `review-crates_QUESTIONS.md`, "Sharing the parsed scripts needs Rhai's `sync` feature, or a cache that stays on one thread".
 
-## Data in strings, and foreign errors flattened [low]
-
-- [ ] source/crates/campfire-package/src/files/package_header.rs:15 — a package name is a raw `String` here and in files/mode_manifest.rs:27 and locale_package.rs:19-20. But an avatar's package name becomes a unit type name (mode_packages.rs:257, load_check.rs:864) and a locale path component. Target: a checked `PackageName` newtype with the rules of `DeclaredName`.
-- [ ] source/crates/campfire-net/src/sim_server/bot_driver.rs:191-193 — a bot payload that is too large is logged as `InputDropped { name: format!(…) }`, which puts prose in a field that means a mode input's name. Target: an event of its own, with typed fields.
-- [ ] source/crates/campfire-net/src/sim_client/mod.rs:541 and source/crates/campfire-net/src/sim_server/bot_driver.rs:153 — `OrderDropped.action` and `AvatarMissing.action` are `format!("{:?}", action)`. Target: the field is the typed `Action`.
-- [ ] source/crates/campfire-log/src/logging.rs:36 — `ChosenFilter.refused: Option<String>` turns `env::VarError` and the filter's `ParseError` (:108, :116) into text. Target: an enum of the two cases that keeps each error's type.
-
 ## The JSON log file writes on the thread that logs [low]
 
 - [ ] source/crates/campfire-log/src/logging.rs:62 — the file layer writes through an unbuffered `Mutex<File>`, with one `write(2)` per event on the thread that logs, the server tick included. The design lets this file stay outside the workers (a Decide item). Target: a writer that store's `Worker` owns, fed by a bounded queue. `tracing-appender` would also do it, but it is a new dependency to propose.

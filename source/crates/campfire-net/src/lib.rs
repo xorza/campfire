@@ -28,6 +28,7 @@ mod sim_server;
 mod superseded;
 
 pub use crate::events::avatar_missing::AvatarMissing;
+pub use crate::events::bot_payload_dropped::BotPayloadDropped;
 pub use crate::events::checkpoint_failed::CheckpointFailed;
 pub use crate::events::checkpoint_taken::CheckpointTaken;
 pub use crate::events::input_dropped::InputDropped;

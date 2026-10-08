@@ -14,6 +14,7 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer, fmt};
 
+use crate::error::FilterRefused;
 use crate::error_report::ErrorReport;
 
 /// Where a binary logs: to standard error, as text colored only on a terminal, by `RUST_LOG`;
@@ -33,7 +34,7 @@ pub struct Logging {
 #[derive(Debug)]
 struct ChosenFilter {
     filter: EnvFilter,
-    refused: Option<String>,
+    refused: Option<FilterRefused>,
 }
 
 impl Logging {
@@ -69,7 +70,7 @@ impl Logging {
         }
         for (variable, refused) in refusals {
             if let Some(refused) = refused {
-                warn!(variable, error = %refused, "the variable holds no filter, so the default filters");
+                warn!(variable, error = %ErrorReport::of(&refused), "the variable holds no filter, so the default filters");
             }
         }
     }
@@ -105,7 +106,7 @@ impl ChosenFilter {
     fn of(value: Result<String, env::VarError>, default: &str) -> ChosenFilter {
         let refused = match value {
             Err(env::VarError::NotPresent) => None,
-            Err(error) => Some(ErrorReport::of(&error).to_string()),
+            Err(error) => Some(FilterRefused::NotUnicode(error)),
             Ok(text) => match EnvFilter::try_new(&text) {
                 Ok(filter) => {
                     return ChosenFilter {
@@ -113,7 +114,7 @@ impl ChosenFilter {
                         refused: None,
                     };
                 }
-                Err(error) => Some(ErrorReport::of(&error).to_string()),
+                Err(error) => Some(FilterRefused::NotFilter(error)),
             },
         };
         ChosenFilter {
@@ -340,22 +341,27 @@ mod tests {
     fn a_variable_that_holds_no_filter_falls_back_and_says_why() {
         let chosen = |value| {
             let chosen = ChosenFilter::of(value, "warn");
-            (chosen.filter.to_string(), chosen.refused.is_some())
+            let refused = chosen.refused.map(|refused| match refused {
+                FilterRefused::NotUnicode(_) => "not unicode",
+                FilterRefused::NotFilter(_) => "not a filter",
+            });
+            (chosen.filter.to_string(), refused)
         };
-        assert_eq!(
-            chosen(Err(VarError::NotPresent)),
-            ("warn".to_owned(), false)
-        );
+        assert_eq!(chosen(Err(VarError::NotPresent)), ("warn".to_owned(), None));
         assert_eq!(
             chosen(Ok("campfire=debug".to_owned())),
-            ("campfire=debug".to_owned(), false)
+            ("campfire=debug".to_owned(), None)
         );
         assert_eq!(
             chosen(Ok("campfire=loud".to_owned())),
-            ("warn".to_owned(), true)
+            ("warn".to_owned(), Some("not a filter"))
         );
         let unicode = Err(VarError::NotUnicode(OsString::from("x")));
-        assert_eq!(chosen(unicode), ("warn".to_owned(), true));
+        assert_eq!(chosen(unicode), ("warn".to_owned(), Some("not unicode")));
+        // Its report names the case, then the variable's or the filter's own error.
+        let refused = ChosenFilter::of(Ok("campfire=loud".to_owned()), "warn").refused;
+        let report = ErrorReport::of(&refused.unwrap()).to_string();
+        assert!(report.starts_with("the value is no filter: "), "{report}");
     }
 
     #[test]

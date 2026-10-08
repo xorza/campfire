@@ -105,7 +105,7 @@ impl<'a> LoadCheck<'a> {
                 if units.contains_key(name.as_str()) {
                     return Err(fail(LoadProblem::Repeated {
                         at: Place::UnitTypes,
-                        name: name.clone(),
+                        name: name.to_string(),
                     }));
                 }
                 unit_types += 1;

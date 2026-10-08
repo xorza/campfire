@@ -6,6 +6,7 @@ use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
 use crate::files::avatar_data::AvatarData;
 use crate::files::manifest::Manifest;
+use crate::files::package_name::PackageName;
 use crate::package::Package;
 use crate::package_dir::PackageDir;
 use crate::package_files::PackageFiles;
@@ -32,7 +33,7 @@ impl Dependent {
     /// The package of `files`, which the mode names `name`: an avatar or loadout package of that
     /// name.
     pub(crate) fn read(
-        name: &str,
+        name: &PackageName,
         files: &PackageFiles,
         parser: &ScriptHost,
         api: &ScriptApi,
@@ -43,7 +44,7 @@ impl Dependent {
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let header = manifest.header();
-        if header.name != name {
+        if header.name != *name {
             return Err(fail(LoadProblem::OtherName(header.name.clone())));
         }
         let (content, kind) = match &manifest {

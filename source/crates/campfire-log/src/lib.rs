@@ -4,12 +4,15 @@
 //! binary reads its command line through `Logging::command_line`, which prints clap's help and
 //! logs its refusal.
 
+mod error;
 mod error_report;
+mod json_text;
 mod log_event;
 mod log_line;
 mod logging;
 
 pub use crate::error_report::ErrorReport;
+pub use crate::json_text::JsonText;
 pub use crate::log_event::LogEvent;
 pub use crate::log_line::{LogLevel, LogLine};
 pub use crate::logging::Logging;

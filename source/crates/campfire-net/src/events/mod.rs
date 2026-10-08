@@ -1,6 +1,7 @@
 //! The events a tool reads back from the JSON logs of the server and the client.
 
 pub(crate) mod avatar_missing;
+pub(crate) mod bot_payload_dropped;
 pub(crate) mod checkpoint_failed;
 pub(crate) mod checkpoint_taken;
 pub(crate) mod input_dropped;

@@ -1,3 +1,4 @@
+use crate::files::package_name::PackageName;
 use campfire_capabilities::{DeclaredName, PackagePath};
 use derive_more::Display;
 
@@ -8,7 +9,7 @@ pub enum Place {
     UnitType(DeclaredName),
     /// By its package's name.
     #[display("avatar {_0}")]
-    Avatar(String),
+    Avatar(PackageName),
     #[display("action {_0}")]
     Action(DeclaredName),
     #[display("modifier {_0}")]

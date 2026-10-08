@@ -20,6 +20,7 @@ use crate::error::{LoadError, PackageRef, StoreError};
 use crate::files::manifest::Manifest;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
+use crate::files::package_name::PackageName;
 use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
 use crate::modifier_ways::ModifierWays;
@@ -215,7 +216,7 @@ impl ModePackages {
         stat_order: &'a [StatId],
     ) -> BookInput<'a> {
         let packages = self.packages().map(|view| BookPackage {
-            name: &view.package.header.name,
+            name: view.package.header.name.as_str(),
             content: view.content,
             kind: match view.kind {
                 ViewKind::Mode => BookKind::Mode,
@@ -402,7 +403,7 @@ impl ModePackages {
     fn assemble(
         files: &PackageFiles,
         manifest: ModeManifest,
-        dependencies: &[(String, &PackageFiles)],
+        dependencies: &[(PackageName, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
         let mut parser = ScriptHost::new(manifest.script_limits.per_call);
         let api = CapabilitySet::bind_script_api(&mut parser);

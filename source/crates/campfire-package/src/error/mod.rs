@@ -9,6 +9,7 @@ use thiserror::Error;
 use toml::de::Error as TomlError;
 
 use crate::error::load_problem::LoadProblem;
+use crate::files::package_name::PackageName;
 
 pub(crate) mod box_problem;
 pub(crate) mod build_problem;
@@ -89,7 +90,7 @@ pub enum StoreError {
     DependencyCount,
     /// The store holds no package of the fingerprint the terms give the dependency of this name.
     #[error("no package of the fingerprint the session gives {0:?} is held")]
-    MissingDependency(String),
+    MissingDependency(PackageName),
     /// The packages do not load.
     #[error(transparent)]
     Load(LoadError),
@@ -109,7 +110,7 @@ pub struct LoadError {
 #[derive(Debug, Display, Clone, PartialEq, Eq)]
 pub enum PackageRef {
     #[display("{_0}")]
-    Name(String),
+    Name(PackageName),
     #[display("at {}", _0.display())]
     Dir(PathBuf),
     #[display("of fingerprint {_0}")]
@@ -125,8 +126,8 @@ impl LoadError {
     }
 
     /// `problem`, of the package its manifest names `name`.
-    pub(crate) fn of(name: &str, problem: LoadProblem) -> LoadError {
-        LoadError::new(PackageRef::Name(name.to_owned()), problem)
+    pub(crate) fn of(name: &PackageName, problem: LoadProblem) -> LoadError {
+        LoadError::new(PackageRef::Name(name.clone()), problem)
     }
 }
 
@@ -153,7 +154,8 @@ mod tests {
 
     #[test]
     fn a_load_error_names_its_package_and_its_problem_and_the_error_under_it() {
-        let error = |problem| LoadError::of("hero", problem);
+        let hero = PackageName::new("hero").unwrap();
+        let error = |problem| LoadError::of(&hero, problem);
         let path = |text| PackagePath::parse(text).unwrap();
         // A problem that holds an error adds its own step, and one that only holds one is the
         // error itself, so no step shows twice.

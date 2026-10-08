@@ -544,7 +544,7 @@ fn send_orders(
                     OrderDropped {
                         unit: units[0],
                         units: units.len(),
-                        action: format!("{:?}", order.action),
+                        action: order.action,
                     }
                     .log();
                 }
