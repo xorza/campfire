@@ -115,7 +115,7 @@ impl UnitsColumn {
     /// The default of the field at `at` of `unit_type`, as a script reads it.
     pub(crate) fn initial(view: &View, unit_type: UnitType, at: usize) -> Dynamic {
         let value = view
-            .column(|column: &UnitsColumn| column.book.fields(unit_type)[at].decl.initial.clone())
+            .column(|column: &UnitsColumn| column.book.fields(unit_type)[at].decl.initial().clone())
             .expect("a view of units has their state");
         value.to_dynamic(view)
     }

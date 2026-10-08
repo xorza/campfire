@@ -141,13 +141,13 @@ impl ModifierSpec {
                 .iter()
                 .map(|(name, decl)| StateField {
                     name: name.as_str().into(),
-                    kind: decl.kind,
+                    kind: decl.kind(),
                 })
                 .collect(),
             initial: data
                 .state
                 .values()
-                .map(|decl| decl.initial.clone())
+                .map(|decl| decl.initial().clone())
                 .collect(),
         })
     }

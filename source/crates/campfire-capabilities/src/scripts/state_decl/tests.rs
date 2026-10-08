@@ -43,7 +43,16 @@ fn a_field_starts_at_its_default_or_its_types_zero() {
     ];
     for ((kind, default), initial) in cases {
         let declared = format!("{kind:?} {default:?}");
-        let decl = StateDecl::new(kind, default).map(|decl| decl.initial);
-        assert_eq!(decl, initial, "{declared}");
+        let decl = StateDecl::new(kind, default);
+        // A field's type is its first value's.
+        assert!(
+            decl.as_ref().is_none_or(|decl| decl.kind() == kind),
+            "{declared}"
+        );
+        assert_eq!(
+            decl.map(|decl| decl.initial().clone()),
+            initial,
+            "{declared}"
+        );
     }
 }

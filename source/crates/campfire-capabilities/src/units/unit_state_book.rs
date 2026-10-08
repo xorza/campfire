@@ -46,7 +46,7 @@ impl UnitStateBook {
             return None;
         }
         let at = self.0.named(run, name)?;
-        let kind = self.0.values(run)[at].decl.kind;
+        let kind = self.0.values(run)[at].decl.kind();
         Some(StateField { at, kind })
     }
 
@@ -60,7 +60,7 @@ impl UnitStateBook {
         Some(UnitState::new(
             fields
                 .iter()
-                .map(|field| field.decl.initial.clone())
+                .map(|field| field.decl.initial().clone())
                 .collect(),
         ))
     }
@@ -73,6 +73,6 @@ impl UnitStateBook {
             && fields
                 .iter()
                 .zip(values)
-                .all(|(field, value)| value.kind() == field.decl.kind)
+                .all(|(field, value)| value.kind() == field.decl.kind())
     }
 }

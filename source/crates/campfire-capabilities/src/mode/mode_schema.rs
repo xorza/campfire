@@ -62,7 +62,7 @@ impl ModeSchema {
         let state = data.state.iter();
         schema
             .state
-            .push(state.map(|(name, field)| (name.as_str(), field.decl.kind)));
+            .push(state.map(|(name, field)| (name.as_str(), field.decl.kind())));
         let inputs = data.inputs.iter();
         schema
             .inputs
