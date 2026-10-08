@@ -6,12 +6,6 @@ Paths are relative to `source/crates/campfire-capabilities/src/` unless they nam
 
 Fix the root cause of a group, not its items one by one. Most groups give the structural target first, and their items are the places that target removes.
 
-## 2. A check is made apart from the act it guards
-
-In each case, one place decides whether an act is possible and a second place does the act. The two places derive the same fact separately, so they can drift. Target: the code that does the act also decides whether it is possible, from one derivation. Either the act returns what it did, or the decision returns a token that the act consumes.
-
-- [ ] `actions/purse.rs` (`Purse::affords`, `Payer::pay`), `abilities/mod.rs:415-419,562-566,672-677,726-730,758-763`, `production/mod.rs:444-448`, `production/construction.rs:448-452`: `affords` and `pay` are two operations on two types with the same three fields. Every caller builds a `Purse` literal and later a `Payer` literal. Two `Payer` sites set two of three fields to `None`, so they use it as half an operation. Production then gates `paid` on `owner.is_some()` again, which `affords` already decided, and it fetches `resource_cost(rank)` twice. Target: one `Purse::of(pools, resources, owner: Option<&Owner>)`, and one `charge(cost, resources) -> Option<Paid>` that checks and pays together and returns what it took. A train or a site stores the `Paid` for the refund. The `paid` gate and the half-`Payer` sites go away.
-
 ## 3. Snapshot decode accepts state that the code then trusts
 
 A snapshot is untrusted data. Some components validate in their `Deserialize` (`Meter`, `Experience`, `Modifiers`). Others derive `Deserialize` and validate part of their state in `SimComponent::check`, and the rest not at all. Code then indexes, binary-searches or does arithmetic on that state.

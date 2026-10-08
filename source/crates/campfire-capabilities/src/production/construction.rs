@@ -208,12 +208,8 @@ impl BuildView<'_, '_> {
         };
         let building = self.building(slots, order.slot)?;
         let placed = self.placed(building, from, owner, order.target)?;
+        let purse = Purse::of(pools, self.resources.as_deref(), owner);
         let owner = owner.map(|owner| owner.slot());
-        let purse = Purse {
-            pools,
-            resources: self.resources.as_deref(),
-            owner,
-        };
         let aim = SlotAim {
             slot: order.slot,
             target: ActionTarget::Point(placed.at),
@@ -434,7 +430,7 @@ impl Construction {
         let now = world.resource::<SimTick>().start();
         let unit = world.entity(entity);
         let team = *unit.get::<Team>().expect("a builder has a team");
-        let owner = unit.get::<Owner>().map(|owner| owner.slot());
+        let owner = unit.get::<Owner>().copied();
         let order = unit
             .get::<Builder>()
             .and_then(|builder| builder.order())
@@ -445,18 +441,12 @@ impl Construction {
             .and_then(|slot| slot.action)
             .expect("a build's slot holds its action");
         paid.clear();
-        if owner.is_some() {
-            let book = world.resource::<ActionBook>();
-            let cost = book.get(action).expect("a build in the book");
-            paid.extend_from_slice(cost.resource_cost(start.rank));
-        }
+        let book = world.resource::<ActionBook>();
+        let cost = book.get(action).expect("a build in the book");
+        paid.extend_from_slice(cost.resource_cost(start.rank));
         let pay = |world: &mut World, resources: Option<&mut PlayerResources>| {
             let mut pools = world.get_mut::<Pools>(entity);
-            let payer = Payer {
-                pools: pools.as_deref_mut(),
-                resources,
-                owner,
-            };
+            let payer = Payer::of(pools.as_deref_mut(), resources, owner.as_ref());
             payer.pay(&start.cost, paid);
         };
         if world.contains_resource::<PlayerResources>() {
@@ -479,7 +469,7 @@ impl Construction {
             angle: start.angle,
         };
         let spawner = world.non_send::<Spawner>().clone();
-        let site = spawner.spawn(world, at, owner);
+        let site = spawner.spawn(world, at, owner.map(Owner::slot));
         let spec = world
             .resource::<BuildSpecs>()
             .of(action)

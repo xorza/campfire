@@ -407,16 +407,12 @@ fn start_trains(
     }
     let mut training = units.p1();
     for &Keyed { entity, .. } in trains {
-        let (_, _, &unit_type, mut slots, mut queue, mut pools, owner) =
+        let (_, _, &unit_type, mut slots, mut queue, mut pools, held_by) =
             training.get_mut(entity).expect("a unit in the order");
         let ordered = Production::ordered(&slots, &book).expect("an ordered train");
         slots.stop();
-        let owner = owner.map(|owner| owner.slot());
-        let purse = Purse {
-            pools: pools.as_deref(),
-            resources: resources.as_deref(),
-            owner,
-        };
+        let purse = Purse::of(pools.as_deref(), resources.as_deref(), held_by);
+        let owner = held_by.map(|owner| owner.slot());
         let no_target = |_| Attitude::Friendly;
         let Some(checked) = book.check(now, &slots, purse, ordered, no_target, |_| None) else {
             continue;
@@ -441,17 +437,9 @@ fn start_trains(
             continue;
         }
         let values = checked.values;
-        let paid = if owner.is_some() {
-            checked.action.resource_cost(checked.rank)
-        } else {
-            &[]
-        };
-        let payer = Payer {
-            pools: pools.as_deref_mut(),
-            resources: resources.as_deref_mut(),
-            owner,
-        };
-        payer.pay(&values.cost, checked.action.resource_cost(checked.rank));
+        let paid = checked.action.resource_cost(checked.rank);
+        let payer = Payer::of(pools.as_deref_mut(), resources.as_deref_mut(), held_by);
+        payer.pay(&values.cost, paid);
         let queued = Queued {
             action: checked.id,
             rank: checked.rank,

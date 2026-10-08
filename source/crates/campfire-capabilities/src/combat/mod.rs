@@ -307,11 +307,7 @@ fn start_attacks(
                     slot,
                     target: ActionTarget::Unit(target),
                 };
-                let purse = Purse {
-                    pools,
-                    resources: resources.as_deref(),
-                    owner: owner.map(|owner| owner.slot()),
-                };
+                let purse = Purse::of(pools, resources.as_deref(), owner);
                 let attitude = |other| targets.attitude(team, other);
                 let shape = Body::shape_of(body);
                 let started = book
@@ -384,11 +380,7 @@ fn attack_events(
     let resources = world.get_resource::<PlayerResources>();
     going.clear();
     for (&attacker, slots, tags, forced, pools, owner) in attackers.iter(world) {
-        let purse = Purse {
-            pools,
-            resources,
-            owner: owner.map(|owner| owner.slot()),
-        };
+        let purse = Purse::of(pools, resources, owner);
         if let Some(target) = Combat::going_off(slots, now)
             && Combat::wielded(book, slots).strikes(tags, forced, purse)
         {
@@ -552,12 +544,7 @@ fn strike(
         let (_, &source, &from, mut slots, stats, pools, tags, forced, owner) =
             attackers.get_mut(entity).expect("an attacker in the order");
         let target = Combat::going_off(&slots, now).expect("an attack going off");
-        let owner = owner.map(|owner| owner.slot());
-        let purse = Purse {
-            pools: pools.as_deref(),
-            resources: resources.as_deref(),
-            owner,
-        };
+        let purse = Purse::of(pools.as_deref(), resources.as_deref(), owner);
         let wielded = Combat::wielded(&book, &slots);
         if !wielded.strikes(tags, forced, purse) {
             slots.interrupt();
@@ -608,11 +595,7 @@ fn strike(
                 hit: None,
             }),
         }
-        let payer = Payer {
-            pools: pools.map(Mut::into_inner),
-            resources: resources.as_deref_mut(),
-            owner,
-        };
+        let payer = Payer::of(pools.map(Mut::into_inner), resources.as_deref_mut(), owner);
         payer.pay(&values.cost, resource_cost);
     }
 }

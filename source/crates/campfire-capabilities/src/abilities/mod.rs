@@ -26,7 +26,7 @@ use crate::actions::action_slots::{
 };
 
 use crate::actions::action_target::ActionTarget;
-use crate::actions::purse::{Payer, Purse};
+use crate::actions::purse::Purse;
 use crate::areas::Areas;
 use crate::combat::CombatSet;
 use crate::items::inventory::Inventory;
@@ -51,7 +51,6 @@ use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 
 use crate::stats::StatsSet;
-use crate::stats::pool_cost::PoolCost;
 
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
@@ -407,11 +406,7 @@ fn start_casts(
             slots.stop();
             continue;
         }
-        let purse = Purse {
-            pools,
-            resources: resources.as_deref(),
-            owner: owner.map(|owner| owner.slot()),
-        };
+        let purse = Purse::of(pools, resources.as_deref(), owner);
         let attitude = |other| targets.attitude(team, other);
         let shape = Body::shape_of(body);
         let checked = book
@@ -554,11 +549,7 @@ fn predict_casts(
             slots.interrupt();
             continue;
         }
-        let purse = Purse {
-            pools,
-            resources: resources.as_deref(),
-            owner: owner.map(|owner| owner.slot()),
-        };
+        let purse = Purse::of(pools, resources.as_deref(), owner);
         let living = |id| targets.living(id);
         let attitude = |other| targets.attitude(team, other);
         let resolved = book
@@ -652,12 +643,9 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
     ctx.apply(world, now);
     // The player's resources were paid in the call's frame, before its script ran, so a failed
     // call pays nothing and the script cannot spend what the cost took.
-    let payer = Payer {
-        pools: world.get_mut::<Pools>(entity).map(Mut::into_inner),
-        resources: None,
-        owner: None,
-    };
-    payer.pay(&prepared.resolved.values.cost, &[]);
+    if let Some(mut pools) = world.get_mut::<Pools>(entity) {
+        pools.pay(&prepared.resolved.values.cost);
+    }
 }
 
 /// The cast of `entity` checked again, and its params at its rank put in the frame, with its
@@ -685,12 +673,12 @@ fn prepare(
         .expect("a due caster casts");
     let team = *unit.get::<Team>().expect("a caster has a team");
     let book = world.resource::<ActionBook>();
-    let owner = unit.get::<Owner>().map(|owner| owner.slot());
-    let purse = Purse {
-        pools: unit.get::<Pools>(),
-        resources: world.get_resource::<PlayerResources>(),
+    let owner = unit.get::<Owner>();
+    let purse = Purse::of(
+        unit.get::<Pools>(),
+        world.get_resource::<PlayerResources>(),
         owner,
-    };
+    );
     let living = |id| view.living(id);
     let attitude = |other| view.attitude(team, other);
     let Some(checked) = book.check(now, slots, purse, casting, attitude, living) else {
@@ -716,17 +704,17 @@ fn prepare(
             ..CallStart::cast(checked.id, checked.rank, caster.id, package)
         },
     )?;
+    // The check let a cost in player resources pass only for a unit a player owns, in a match
+    // that keeps them.
     let resource_cost = checked.action.resource_cost(checked.rank);
     if !resource_cost.is_empty() {
-        let payer = Payer {
-            pools: None,
-            resources: frame.resources_mut(),
-            owner,
-        };
-        payer.pay(&PoolCost::default(), resource_cost);
+        let owner = owner.expect("a unit that pays player resources has an owner");
+        let resources = frame.resources_mut();
+        let resources = resources.expect("a match that takes player resources keeps them");
+        resources.pay(owner.slot(), resource_cost);
     }
     drop(frame);
-    let pool = owner.map_or(Pool::Think, Pool::Player);
+    let pool = owner.map_or(Pool::Think, |owner| Pool::Player(owner.slot()));
     Ok(Some(Prepared {
         caster,
         pool,
