@@ -353,12 +353,14 @@ fn a_body_is_pushed_out_of_a_box() {
         Some(point("3", "0"))
     );
     // Off the corner (2, 1) by (0.5, 0.5): out to 1 m from it along the diagonal, 2²⁴/√2 =
-    // 11 863 283.2 bits along each axis, to the nearest bit.
+    // 11 863 283.2 bits along each axis, rounded up to 11 863 284, so it ends 16 777 217.1
+    // bits from the corner, past its radius of 2²⁴, and a second push finds no overlap.
     let off_corner = body
         .push_out(centre, point("2.5", "1.5"), Num::ONE)
         .unwrap();
-    assert_eq!(off_corner.x.to_bits(), 45_417_715);
-    assert_eq!(off_corner.z.to_bits(), 28_640_499);
+    assert_eq!(off_corner.x.to_bits(), 45_417_716);
+    assert_eq!(off_corner.z.to_bits(), 28_640_500);
+    assert_eq!(body.push_out(centre, off_corner, Num::ONE), None);
     // At the centre of a square, every edge is as near: out through the first, at z = -1.
     let square = made("2", "2", "0");
     assert_eq!(
@@ -374,6 +376,30 @@ fn a_body_is_pushed_out_of_a_box() {
         upright.push_out(centre, point("0", "2.5"), Num::ONE),
         Some(point("0", "3"))
     );
+    // Turned 30°, its half edges are a = (29 058 990, 16 777 216) and b = (−8 388 608,
+    // 14 529 495) bits, and a body of 1 m moves along a normal `n` of the edge or the way from
+    // the corner, by `n · (2²⁴·√|n|² − out) ÷ |n|²`, where `off` lies `out ÷ √|n|²` beyond the
+    // edge or the corner, each coordinate rounded away from the box.
+    let turned = made("4", "2", "30");
+    let bits = |x: i64, z: i64| Vec3::new(Num::from_bits(x), Num::ZERO, Num::from_bits(z));
+    let cases = [
+        // Off the edge from a to a + b, 1.25·a: n = a, out = a · 0.25·a = 281 474 983 662 184,
+        // a move of (7 264 747.32, 4 194 303.90), rounded (7 264 748, 4 194 304).
+        (bits(36_323_738, 20_971_520), bits(43_588_486, 25_165_824)),
+        // Off the corner a + b = (20 670 382, 31 306 711) by (0.25, 0.25) m: n = (2²², 2²²),
+        // out = 2⁴⁵, a move of 2²⁴/√2 − 2²² = 7 668 979.20 along each axis, rounded 7 668 980.
+        (bits(24_864_686, 35_501_015), bits(32_533_666, 43_169_995)),
+        // Inside at (1, 0) m, 0.5 m from the edge from −a − b to a − b, the nearest of 0.5,
+        // 1.13, 1.5 and 2.87 m: n = (2²⁵, −58 117 980), out = −562 949 923 109 444, a move of
+        // (12 582 911.999 999 999 2, −21 794 242.499 999 998 7), rounded (12 582 912,
+        // −21 794 243).
+        (bits(16_777_216, 0), bits(29_360_128, -21_794_243)),
+    ];
+    for (from, to) in cases {
+        let moved = turned.push_out(centre, from, Num::ONE);
+        assert_eq!(moved, Some(to), "{from:?}");
+        assert_eq!(turned.push_out(centre, to, Num::ONE), None, "{from:?}");
+    }
     // The height stays.
     let high = Vec3::new(num("2.5"), num("7"), Num::ZERO);
     assert_eq!(body.push_out(centre, high, Num::ONE).unwrap().y, num("7"));
@@ -561,20 +587,25 @@ fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, re
     );
 }
 
-/// A body pushed out ends touching the box, within the rounding of its end, a bit and a half,
-/// and a bit more; one left alone did not overlap it.
+/// A body pushed out ends touching the box or apart, so a second push finds no overlap, and
+/// less than 2 bits past touching, as each coordinate rounds outward by less than a bit; one
+/// left alone did not overlap it.
 fn check_push(body: &BodyBox, centre: Position, probe: Position, radius: Num) {
     let two_bits = Num::from_bits(2);
     match body.push_out(centre, probe.get(), radius) {
         Some(moved) => {
+            let case = format!("{body:?} {centre:?} {probe:?} {radius:?}");
+            assert_eq!(body.push_out(centre, moved, radius), None, "{case}");
             let moved = Position::new(moved).unwrap();
             assert_ne!(
-                body.nearest(centre, moved, radius + two_bits),
-                Ordering::Greater
+                body.nearest(centre, moved, radius),
+                Ordering::Less,
+                "{case}"
             );
-            assert_ne!(
-                body.nearest(centre, moved, radius - two_bits),
-                Ordering::Less
+            assert_eq!(
+                body.nearest(centre, moved, radius + two_bits),
+                Ordering::Less,
+                "{case}"
             );
         }
         None => assert_ne!(body.nearest(centre, probe, radius), Ordering::Less),

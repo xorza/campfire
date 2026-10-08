@@ -11,5 +11,4 @@ Design: [Navigation](../design/04-capabilities/navigation.md). Rules: [Issue log
 
 ## Ready
 
-- `BodyBox::push_out` rounds the pushed centre to the nearest bit, so a body it pushes off a corner can end less than its radius from the box and still overlap it, where [Collision](../design/04-capabilities/navigation.md#collision) moves it until its edge touches the box's: in `a_body_is_pushed_out_of_a_box`, the body 0.5 m off each side of the corner (2, 1) ends 2·11 863 283² bits² from it, below 2⁴⁸, the square of its 1 m radius, so it stays a contact in each later tick.
 

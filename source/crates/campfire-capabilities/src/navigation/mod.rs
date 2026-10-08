@@ -205,7 +205,7 @@ impl Navigation {
             } else {
                 let out = boxed
                     .push_out(at, pos.get(), kind.radius)
-                    .unwrap_or(pos.get());
+                    .expect("the box overlaps the walker, so it pushes the walker out");
                 Position::new(out).expect("a push stays near the bounds")
             };
             NavigationEffect::put(world, walker, place, now);

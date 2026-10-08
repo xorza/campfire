@@ -261,26 +261,22 @@ impl BodyBox {
     /// `at` moved out of the box at `centre` when a body of `radius` there overlaps it, as a box
     /// leaves all of an overlap to the body: from the box's nearest point straight away until
     /// the body's edge touches the box, or, from inside, out through the nearest edge, the first
-    /// edge on a tie. `None` when it does not overlap: touching is not overlap.
+    /// edge on a tie; each coordinate of the move rounded away from the box to a whole bit, so
+    /// the body ends touching or apart. `None` when it does not overlap: touching is not
+    /// overlap.
     pub(crate) fn push_out(&self, centre: Position, at: Vec3, radius: Num) -> Option<Vec3> {
         let frame = self.frame();
         let off = sub(flat_vec(at), flat(centre));
         let Nearest { distance, feature } = frame.nearest_to(off);
-        let radius_bits = i128::from(radius.to_bits());
         let moved = match feature {
             Feature::Inside => frame.out_through(frame.nearest_edge_inside(off), off, radius),
             _ if distance >= SquaredDistance::of(radius) => return None,
             Feature::Edge(edge) => frame.out_through(edge, off, radius),
             Feature::Corner(corner) => {
-                // `radius` along the way from the corner: within it, the way is shorter than
-                // 64 m, so its fine root fits.
-                let start = frame.corners()[corner];
-                let away = sub(off, start);
-                let length = fine_root(dot(away, away).unsigned_abs());
-                add(
-                    start,
-                    away.map(|along| divide((radius_bits * along) << FINE, length)),
-                )
+                // Off a corner the push runs along the way from it, and `off` lies the whole
+                // way's length beyond the corner, so `out` is the way's square.
+                let away = sub(off, frame.corners()[corner]);
+                touching(off, away, dot(away, away), radius)
             }
         };
         let place = |num: i128| {
@@ -485,19 +481,11 @@ impl Frame {
     }
 
     /// Where `off` goes along `edge`'s outward normal to leave a body of `radius` touching the
-    /// edge's line from outside: its foot on the line, exact before its one rounding, then
-    /// `radius` out along the normal, its length a fine root. Each rounds to the nearest bit, so
-    /// the end lies within a bit and a half of touching.
+    /// edge's line from outside.
     fn out_through(&self, edge: usize, off: Flat, radius: Num) -> Flat {
         let normal = self.normal(edge);
         let out = dot(normal, sub(off, self.corners()[edge]));
-        let square = dot(normal, normal);
-        let length = fine_root(square.unsigned_abs());
-        let radius = i128::from(radius.to_bits());
-        [0, 1].map(|axis| {
-            let along = normal[axis];
-            off[axis] - divide(out * along, square) + divide((radius * along) << FINE, length)
-        })
+        touching(off, normal, out, radius)
     }
 
     /// Whether the boxes' insides share a point, with `open`; or, without, whether they touch
@@ -631,18 +619,56 @@ fn square(off: Flat) -> SquaredDistance {
     SquaredDistance::whole(dot(off, off).unsigned_abs())
 }
 
-/// `num / den` for a positive `den`, rounded to nearest, half away from zero, as collision
-/// rounds a push.
+/// `num / den` for a positive `den`, rounded to nearest, half away from zero.
 fn divide(num: i128, den: i128) -> i128 {
     (num.abs() + den / 2) / den * num.signum()
+}
+
+/// `off` moved along `normal` until a body of `radius` there touches, from outside, the line
+/// across `normal` that `off` lies `out` ÷ √|normal|² beyond: the move along each axis is
+/// `normal · (radius·√|normal|² − out) ÷ |normal|²`, its magnitude rounded up to a whole bit. As
+/// the box grown by the radius is convex, a point that lies on the outer side of the line
+/// through the touching point across `normal` does not overlap the box, so the end touches it or
+/// lies apart.
+fn touching(off: Flat, normal: Flat, out: i128, radius: Num) -> Flat {
+    let radius = i128::from(radius.to_bits());
+    let square = dot(normal, normal);
+    debug_assert!(square > 0 && radius * radius * square > out * out.abs());
+    [0, 1].map(|axis| {
+        off[axis] + outward(normal[axis].abs(), out, square, radius) * normal[axis].signum()
+    })
+}
+
+/// The least whole `k` with `k · square ≥ along · (radius·√square − out)`: the move of `touching`
+/// along an axis on which `normal` has `along`, rounded up. `k` passes it exactly when
+/// `k · square + along · out` is at least `along · radius · √square`, which squares compare in
+/// `U256`, both sides being whole. A fine root, rounded down, gives a first `k` at most the
+/// least and fewer than 3 below it, which the test then raises.
+///
+/// A box's corners and a body's radius lie within `Shape::MAX_BOUND`, 2³⁰ bits, of their
+/// centres, so `along ≤ √square ≤ 2³¹`, `|out| ≤ √square · 2³²`, and every product fits.
+fn outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
+    let length = fine_root(square.unsigned_abs());
+    let estimate = along * (radius * length - (out << FINE)) / (square << FINE);
+    let bound = U256::product(
+        (along * radius).unsigned_abs().pow(2),
+        square.unsigned_abs(),
+    );
+    let passes = |k: i128| {
+        let side = k * square + along * out;
+        side >= 0 && U256::product(side.unsigned_abs(), side.unsigned_abs()) >= bound
+    };
+    let mut k = estimate.max(0);
+    while !passes(k) {
+        k += 1;
+    }
+    k
 }
 
 /// The bits below a bit that a fine root keeps.
 const FINE: u32 = 31;
 
-/// `√square × 2³¹`, rounded down, for a `square` below 2⁶⁶: a way within a box's reach, so a
-/// unit move along it divides by its length with an error below 2⁻³¹ of the move, half a bit
-/// for a move within 64 m.
+/// `√square × 2³¹`, rounded down, for a `square` below 2⁶⁶: a way within a box's reach.
 fn fine_root(square: u128) -> i128 {
     debug_assert!(square < 1 << 66, "a way within 64 m and a box's edge");
     (square << (2 * FINE)).floor_root().cast_signed()
