@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, With};
+use bevy_ecs::query::{Has, QueryState, With};
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Commands, Res};
+use bevy_ecs::system::{Commands, Local, Res};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{Area, MatchEnd, Mode, Owner, Projectile, Relations};
@@ -66,8 +66,10 @@ impl Door {
     }
 
     /// Seats the player of each offered link that answered, or refuses them.
-    pub(crate) fn take_joins(world: &mut World) {
-        let mut links = world.query_filtered::<JoinLink, Unanswered>();
+    pub(crate) fn take_joins(
+        world: &mut World,
+        mut links: Local<'_, QueryState<JoinLink, Unanswered>>,
+    ) {
         let joins: Vec<(Entity, ConnectChallenge, Join)> = links
             .iter_mut(world)
             .filter_map(|(link, offered, mut receiver)| {

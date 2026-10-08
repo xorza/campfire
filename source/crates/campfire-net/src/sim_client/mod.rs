@@ -203,20 +203,24 @@ impl Plugin for SimClient {
         app.init_resource::<PendingSaves>();
         app.init_resource::<Faults>();
         app.add_observer(lose_link);
+        // The systems on the join state run in the order of a link's life, as one frame may bring
+        // an offer and the match's start; none reads what another's commands make, so the order
+        // needs no sync point. The faults of the frame apply last.
+        let link = (
+            retry_link,
+            send_leave.run_if(resource_exists::<LeaveRequest>),
+            send_saves,
+            answer_offer,
+            receive_superseded,
+            receive_match_start,
+            receive_receipt,
+        )
+            .chain_ignore_deferred();
         app.add_systems(
             Update,
             (
-                retry_link,
-                send_leave.run_if(resource_exists::<LeaveRequest>),
-                send_saves,
-                answer_offer,
-                receive_superseded,
-                receive_match_start,
-                receive_receipt,
+                (link, receive_relations, receive_match_end, report_deaths),
                 Faults::watch,
-                receive_relations,
-                receive_match_end,
-                report_deaths,
             )
                 .chain(),
         );

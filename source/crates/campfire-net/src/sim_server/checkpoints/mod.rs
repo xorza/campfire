@@ -1,3 +1,4 @@
+use bevy_ecs::query::QueryState;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
@@ -37,6 +38,12 @@ pub(crate) struct Checkpoints {
     plan: Vec<Tick>,
     thread: CheckpointThread,
 }
+
+/// The links that may send save commands, with whether each is refused.
+type SaveLinks = QueryState<(
+    &'static PlayerLink,
+    &'static mut MessageReceiver<SaveCommand>,
+)>;
 
 impl Checkpoints {
     /// Starts the checkpoints of the session in `world`, before the next tick runs: the thread's
@@ -136,8 +143,10 @@ impl Checkpoints {
     /// Takes the save commands of the seated players: on a local server, a save makes a
     /// checkpoint due at the boundary after the next tick, unless the mode alone saves, and a load
     /// goes back to the latest save; each refused one is logged.
-    pub(crate) fn take_commands(world: &mut World, mut taken: Local<'_, Vec<SaveCommand>>) {
-        let mut links = world.query::<(&PlayerLink, &mut MessageReceiver<SaveCommand>)>();
+    pub(crate) fn take_commands(
+        world: &mut World,
+        (mut links, mut taken): (Local<'_, SaveLinks>, Local<'_, Vec<SaveCommand>>),
+    ) {
         for (link, mut receiver) in links.iter_mut(world) {
             if !link.refused() {
                 taken.extend(receiver.receive());

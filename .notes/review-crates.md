@@ -8,13 +8,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-net/src/net_protocol.rs:94,102,106,107,110 — `SpawnPoint`, `Respawn`, `Route`, `Progress` and `ModifierClocks` replicate to every observer, though only the owner's prediction reads them; `Progress` changes every tick a unit walks, and `Route` resends its whole `Vec` on change. Target: an immutable `OwnedBy(Option<PlayerSlot>)` on each unit, a replicon `VisibilityFilter` scoped to these five components, with `PlayerLink` as its client component. Blocked: see `review-crates_QUESTIONS.md`, "Owner-only replication needs `bevy_replicon` as a direct dependency".
 
-## Net systems build queries per frame, and its schedule chains what need not be ordered [low]
-
-- [ ] source/crates/campfire-net/src/sim_server/door.rs:70 — `Door::take_joins` builds `world.query_filtered::<JoinLink, Unanswered>()` every frame (500 Hz). Target: a `Local<QueryState<…>>`, as `BotDriver` caches `Avatars`.
-- [ ] source/crates/campfire-net/src/sim_server/checkpoints/mod.rs:136 — the same in `Checkpoints::take_commands`. Target: the same.
-- [ ] source/crates/campfire-net/src/sim_client/mod.rs:204-220 — eleven mostly independent receive systems are `.chain()`ed with the exclusive `Faults::watch` in the middle, adding sync points every frame. Target: only the orderings that matter; `Faults::watch` last.
-- [ ] source/crates/campfire-net/src/input_message.rs:140-151 — `InputMessage::new` grows `frames` and `payloads` by push from empty, though the caller knows both counts. Target: `with_capacity` from them.
-
 ## The server signs and then verifies its own inputs, allocating each time [medium]
 
 - [ ] source/crates/campfire-protocol/src/session_log/mod.rs:784 — `record_server` always verifies the server's own Schnorr signature (~25.6 µs). Net's `ServerSigner::serve` signs and then records each `ServerInput::Bot`, so each bot input pays both on the tick thread. Target: `record_server` takes the signer and signs the message it already built. A signature the log made needs no check; a `debug_assert!` stays. Verification stays on decode and on replay.
