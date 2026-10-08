@@ -1,4 +1,3 @@
-use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
 use campfire_sim::{SimSet, StateRegistry};
@@ -6,8 +5,6 @@ use campfire_sim::{SimSet, StateRegistry};
 use crate::geometry::grid::Grid;
 use crate::geometry::polygon::Polygon;
 use crate::units::by_type::ByType;
-use crate::units::relations::Relations;
-use crate::units::team_set::TeamSet;
 use crate::units::view::View;
 use crate::vision::brush_map::BrushMap;
 use crate::vision::reveals::Reveals;
@@ -70,17 +67,6 @@ impl Vision {
         );
         let brush = BrushMap::new(&grid, brush);
         world.insert_resource(VisionGrid { grid, brush, teams });
-    }
-
-    /// The teams that see `unit`: those the last Vision stage found, or, before it ran, the
-    /// unit's vision group under `relations`, as that stage would give it at the least; every
-    /// team for an entity with no team, as a match without vision sees.
-    fn seen_by(parts: ROQueryItem<'_, '_, RowParts>, relations: &Relations) -> TeamSet {
-        match parts {
-            (Some(seen), _) => seen.get(),
-            (None, Some(&team)) => relations.vision_group(team),
-            (None, None) => TeamSet::ALL,
-        }
     }
 }
 

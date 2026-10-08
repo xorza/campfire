@@ -14,8 +14,10 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pools::Pools;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::relations::Relations;
 use crate::units::tag_properties::TagProperties;
 use crate::units::team::Team;
+use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation::Relation;
@@ -105,7 +107,7 @@ impl Scene {
     fn seen_by(&self, id: StableId) -> TeamSet {
         let relations = self.sim.world.resource::<Relations>();
         let parts = (self.sim.try_get::<SeenBy>(id), self.sim.try_get::<Team>(id));
-        Vision::seen_by(parts, relations)
+        VisionColumn::seen_by(parts, relations)
     }
 }
 
