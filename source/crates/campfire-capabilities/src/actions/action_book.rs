@@ -9,7 +9,7 @@ use campfire_sim::{Position, StableId};
 use crate::actions::action::{Action, Aim};
 use crate::actions::action_data::ActionData;
 use crate::actions::action_parts::ActionParts;
-use crate::actions::action_slots::{ActionSlots, SlotAim};
+use crate::actions::action_slots::{ActionCall, ActionSlots, ResolvedCast, SlotAim};
 use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::Purse;
 use crate::actions::range::Range;
@@ -188,6 +188,21 @@ pub(crate) struct Checked<'a> {
 }
 
 impl Checked<'_> {
+    /// How the cast `call` it checked resolves: at the target it keeps.
+    pub(crate) const fn resolved(&self, call: ActionCall) -> ResolvedCast {
+        let aim = SlotAim {
+            slot: call.aim.slot,
+            target: self.target,
+        };
+        ResolvedCast {
+            call: ActionCall {
+                aim,
+                start: call.start,
+            },
+            values: self.values,
+        }
+    }
+
     /// Moves a point it aims at beyond its range in to the range, along the line from the unit
     /// at `position` with a body of `shape`, when its aim clamps, as `targets` measure reach: the
     /// farthest point along the line that it reaches.

@@ -10,7 +10,7 @@ use crate::actions::action_book::{ActionBook, Checked};
 use crate::actions::action_data::TogglePer;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::rank_values::{ChannelRule, ChargeRule};
+use crate::actions::rank_values::{ChannelRule, ChargeRule, RankValues};
 use crate::actions::slot_kind::SlotKind;
 use crate::stats::pools::Pools;
 use crate::units::action_id::ActionId;
@@ -159,6 +159,14 @@ pub(crate) struct ChannelCall {
 pub(crate) struct ActionCall {
     pub(crate) aim: SlotAim,
     pub(crate) start: ActionStart,
+}
+
+/// A cast that resolved: its call, at the target its check gave, and its action's values at its
+/// rank.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ResolvedCast {
+    pub(crate) call: ActionCall,
+    pub(crate) values: RankValues,
 }
 
 /// The action in `slot`, and what it is aimed at.
@@ -537,15 +545,32 @@ impl ActionSlots {
         }
     }
 
+    /// Ends the cast under way, due in `now`, as the server resolves it and a client predicts
+    /// it: one that `resolved` spends its slot, turns its toggle on to pay a `second` from now,
+    /// and channels from the next tick; one that did not only stops.
+    pub(crate) fn finish_cast(
+        &mut self,
+        now: Tick,
+        second: Ticks,
+        resolved: Option<&ResolvedCast>,
+    ) {
+        self.stop();
+        let Some(&ResolvedCast { call, values }) = resolved else {
+            return;
+        };
+        let slot = call.aim.slot;
+        self.spend(slot, now, values.cooldown, values.charges);
+        if values.toggle.is_some() {
+            self.toggle_on(slot, now.after(second));
+        }
+        if let Some(rule) = values.channel {
+            self.channel(call.aim, now.after(Ticks::new(1)), rule, call.start);
+        }
+    }
+
     /// Channels the action `aim` names from the tick `from`, `rule` its channel at its rank, as
     /// the action `start`ed.
-    pub(crate) const fn channel(
-        &mut self,
-        aim: SlotAim,
-        from: Tick,
-        rule: ChannelRule,
-        start: ActionStart,
-    ) {
+    const fn channel(&mut self, aim: SlotAim, from: Tick, rule: ChannelRule, start: ActionStart) {
         self.underway = Some(InProgress::Channel {
             aim,
             next: from.after(rule.tick),

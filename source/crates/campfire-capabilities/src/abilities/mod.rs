@@ -16,15 +16,14 @@ use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::delivery::{Delivery, DeliveryShape};
-use crate::actions::rank_values::{ChannelRule, ChargeRule};
 use crate::scripts::call_start::CallStart;
 use crate::units::action_id::ActionId;
 
 use crate::actions::action_data::TogglePer;
 use crate::actions::action_slots::{
-    ActionCall, ActionSlot, ActionSlots, ChannelCall, ChannelStep, InProgress, OrderPhase, SlotAim,
+    ActionCall, ActionSlot, ActionSlots, ChannelCall, ChannelStep, InProgress, OrderPhase,
+    ResolvedCast,
 };
-use crate::values::action_start::ActionStart;
 
 use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
@@ -562,90 +561,78 @@ fn predict_casts(
         };
         let living = |id| targets.living(id);
         let attitude = |other| targets.attitude(team, other);
-        let checked = book
+        let resolved = book
             .check(now, &slots, purse, casting, attitude, living)
-            .map(|checked| (checked.values, checked.target));
-        slots.stop();
-        if let Some((values, target)) = checked {
-            slots.spend(casting.slot, now, values.cooldown, values.charges);
-            if values.toggle.is_some() {
-                slots.toggle_on(casting.slot, now.after(second));
-            }
-            if let Some(rule) = values.channel {
-                let aim = SlotAim {
-                    slot: casting.slot,
-                    target,
-                };
-                slots.channel(aim, now.after(Ticks::new(1)), rule, start);
-            }
-        }
+            .map(|checked| {
+                checked.resolved(ActionCall {
+                    aim: casting,
+                    start,
+                })
+            });
+        slots.finish_cast(now, second, resolved.as_ref());
     }
 }
 
 /// A cast ready to run: the caster as the script sees it, the pool its call draws from, its
-/// slot, action and rank, its target as it aimed and as the script sees it, its `on_resolve`,
-/// and its cost, cooldown and charges. Its params wait in the frame.
+/// action and rank, its target as the script sees it, its `on_resolve`, and how it resolves. Its
+/// params wait in the frame.
 #[derive(Debug)]
 struct Prepared {
     caster: Unit,
     pool: Pool,
-    slot: u8,
     action: ActionId,
     rank: u8,
-    aim: ActionTarget,
     target: Dynamic,
     on_resolve: Option<ScriptId>,
-    cost: PoolCost,
-    cooldown: Ticks,
-    charges: Option<ChargeRule>,
-    /// Whether it turns its toggle on.
-    toggles: bool,
-    /// Its channel, which starts the tick after it resolves.
-    channel: Option<ChannelRule>,
-    /// How it started, which each of its hooks reads.
-    start: ActionStart,
+    resolved: ResolvedCast,
 }
 
-/// Resolves one cast: its script runs, then its effects, cost and cooldown apply together, or,
-/// when the cast no longer passes its checks or it fails, none of them.
+/// Resolves one cast: its script runs, then its effects, cost, cooldown and slot's changes apply
+/// together, or, when the cast no longer passes its checks or it fails, none of them, and it
+/// only stops. Of an item's action, a use of its consumable is spent last, as one used up empties
+/// its slot.
 fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, entity: Entity) {
-    let prepared = prepare(batch.world(), ctx, now, caster, entity);
-    let mut channel = None;
-    let outcome = match prepared {
-        Ok(None) => Ok(()),
-        Ok(Some(mut prepared)) => run(batch, ctx, &mut prepared).map(|()| {
-            apply(batch.world(), ctx, now, entity, &prepared);
-            let aim = SlotAim {
-                slot: prepared.slot,
-                target: prepared.aim,
-            };
-            channel = prepared.channel.map(|rule| (aim, rule, prepared.start));
-        }),
-        Err(error) => Err(error),
-    };
-    if let Err(error) = outcome {
+    let ran = prepare(batch.world(), ctx, now, caster, entity).and_then(|prepared| {
+        let Some(mut prepared) = prepared else {
+            return Ok(None);
+        };
+        run(batch, ctx, &mut prepared)?;
+        apply(batch.world(), ctx, now, entity, &prepared);
+        Ok(Some(prepared.resolved))
+    });
+    let resolved = ran.unwrap_or_else(|error| {
         batch.record(Some(caster), Hook::OnResolve, error);
-    }
-    let mut slots = batch
-        .world()
+        None
+    });
+    let world = batch.world();
+    let second = Abilities::second(*world.resource::<TickRate>());
+    world
         .get_mut::<ActionSlots>(entity)
-        .expect("a caster has slots");
-    slots.stop();
-    if let Some((aim, rule, start)) = channel {
-        slots.channel(aim, now.after(Ticks::new(1)), rule, start);
+        .expect("a caster has slots")
+        .finish_cast(now, second, resolved.as_ref());
+    if let Some(resolved) = &resolved
+        && world.contains_resource::<ItemBook>()
+    {
+        world.resource_scope(|world, book: Mut<'_, ItemBook>| {
+            let mut caster = world.entity_mut(entity);
+            let carried = caster.get_components_mut::<(&mut Inventory, &mut ActionSlots)>();
+            if let Ok((mut inventory, mut slots)) = carried {
+                inventory.spend_use(&book, &mut slots, resolved.call.aim.slot);
+            }
+        });
     }
 }
 
 /// Applies a cast that ran: its delivery's launches, then the effects it queued in `frame` and
-/// its handle writes, its cost and its cooldown, and of an item's action, a use of its
-/// consumable.
+/// its handle writes, and its cost in pools.
 fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Prepared) {
     let from = *world.get::<Position>(entity).expect("a caster stands");
+    let ActionCall { aim, start } = prepared.resolved.call;
     let by = Delivering {
         source: prepared.caster.id,
         action: prepared.action,
         rank: prepared.rank,
-        start: Some(prepared.start),
+        start: Some(start),
         launch: None,
     };
     let book = world.resource::<ActionBook>();
@@ -654,12 +641,12 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
             unit_type,
             shape: DeliveryShape::Projectile { fan, .. },
         }) => {
-            Projectiles::deliver(world, by, from, unit_type, fan, prepared.aim);
+            Projectiles::deliver(world, by, from, unit_type, fan, aim.target);
         }
         Some(Delivery {
             unit_type,
             shape: DeliveryShape::Area,
-        }) => Areas::deliver(world, by, from, unit_type, prepared.aim),
+        }) => Areas::deliver(world, by, from, unit_type, aim.target),
         None => {}
     }
     ctx.apply(world, now);
@@ -670,27 +657,7 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         resources: None,
         owner: None,
     };
-    payer.pay(&prepared.cost, &[]);
-    world
-        .get_mut::<ActionSlots>(entity)
-        .expect("a caster has slots")
-        .spend(prepared.slot, now, prepared.cooldown, prepared.charges);
-    if world.contains_resource::<ItemBook>() {
-        world.resource_scope(|world, book: Mut<'_, ItemBook>| {
-            let mut caster = world.entity_mut(entity);
-            let carried = caster.get_components_mut::<(&mut Inventory, &mut ActionSlots)>();
-            if let Ok((mut inventory, mut slots)) = carried {
-                inventory.spend_use(&book, &mut slots, prepared.slot);
-            }
-        });
-    }
-    if prepared.toggles {
-        let second = Abilities::second(*world.resource::<TickRate>());
-        world
-            .get_mut::<ActionSlots>(entity)
-            .expect("a caster has slots")
-            .toggle_on(prepared.slot, now.after(second));
-    }
+    payer.pay(&prepared.resolved.values.cost, &[]);
 }
 
 /// The cast of `entity` checked again, and its params at its rank put in the frame, with its
@@ -763,18 +730,14 @@ fn prepare(
     Ok(Some(Prepared {
         caster,
         pool,
-        slot: casting.slot,
         action: checked.id,
         rank: checked.rank,
-        aim: checked.target,
         target,
         on_resolve: checked.action.hook(Hook::OnResolve),
-        cost: checked.values.cost,
-        cooldown: checked.values.cooldown,
-        charges: checked.values.charges,
-        toggles: checked.values.toggle.is_some(),
-        channel: checked.values.channel,
-        start,
+        resolved: checked.resolved(ActionCall {
+            aim: casting,
+            start,
+        }),
     }))
 }
 
@@ -787,7 +750,7 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
         Hook::OnResolve,
         &mut ctx.frame(),
         ctx.view(),
-        prepared.aim,
+        prepared.resolved.call.aim.target,
     )?;
     let Some(script) = prepared.on_resolve else {
         return Ok(());

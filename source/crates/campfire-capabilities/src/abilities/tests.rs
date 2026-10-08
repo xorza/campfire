@@ -10,10 +10,10 @@ use campfire_sim::{Capability, EntityIndex, SimRng, StateCopy, TickInput, TickIn
 use super::*;
 use crate::actions::Actions;
 use crate::actions::action_data::{
-    ActionData, ChannelData, ChargeData, ChargesData, RangeField, Targeting,
+    ActionData, ChannelData, ChargeData, ChargesData, RangeField, Targeting, Toggle,
 };
 use crate::actions::action_data_field::ActionDataField;
-use crate::actions::action_slots::Started;
+use crate::actions::action_slots::{SlotAim, Started};
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
@@ -77,6 +77,7 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::action_start::ActionStart;
 use crate::values::body_box::BodyBox;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
@@ -1289,6 +1290,74 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
     let unlearned = game.sim.get::<ActionSlots>(learner).slot(0).unwrap();
     assert_eq!((unlearned.rank, unlearned.charges), (0, None));
     assert_eq!(game.failed_calls(), []);
+}
+
+#[test]
+fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
+    // One caster casts, a tick each from tick 0: Step, of 3 charges back in 1000 ms, 30 ticks,
+    // and a cooldown of 100 ms, 3 ticks; Aura, a toggle that pays each second; then Drain, a
+    // channel of 300 ms that ticks each 100 ms. The server resolves each cast, and a client,
+    // with no script, predicts it: after each tick their slots are alike.
+    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+    let cast = || ActionData::cast(Targeting::None);
+    let step = ActionData {
+        charges: Some(ChargesData {
+            max: Ranked::One(int(3)),
+            recharge_ms: Ranked::One(int(1000)),
+        }),
+        cooldown_ms: Some(Ranked::One(int(100))),
+        ..cast()
+    };
+    let aura = ActionData {
+        toggle: Some(Toggle::CostPerSecond(BTreeMap::new())),
+        ..cast()
+    };
+    let drain = ActionData {
+        channel: Some(ChannelData {
+            duration_ms: Ranked::One(int(300)),
+            tick_ms: Ranked::One(int(100)),
+        }),
+        ..cast()
+    };
+    let caster = |sim: &mut TestMatch| {
+        let actions = [("step", &step), ("aura", &aura), ("drain", &drain)];
+        let slots = actions.map(|(name, data)| {
+            let action = Actions::load(&mut sim.world, 0, name, data, None, 1).unwrap();
+            (action, SlotKind::new(0), 1)
+        });
+        sim.spawn(
+            ground(Num::ZERO, Num::ZERO),
+            (Team::new(0), ActionSlots::new(slots)),
+        )
+    };
+    let mut server = TestMatch::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
+    let mut client = TestMatch::client(&declared);
+    let on_server = caster(&mut server);
+    let on_client = caster(&mut client);
+    for slot in 0..3 {
+        for (sim, unit) in [(&mut server, on_server), (&mut client, on_client)] {
+            sim.get_mut::<ActionSlots>(unit)
+                .order(slot, ActionTarget::None);
+            sim.step();
+        }
+        let slots = server.get::<ActionSlots>(on_server);
+        assert_eq!(slots, client.get::<ActionSlots>(on_client), "slot {slot}");
+    }
+    // Step spent a charge in tick 0, its next back in tick 30, and is ready from tick 3; Aura,
+    // cast in tick 1, pays from tick 31; Drain, cast in tick 2, channels from tick 3, ticking in
+    // tick 6, to tick 12.
+    let slots = server.get::<ActionSlots>(on_server);
+    let step = slots.slot(0).unwrap();
+    let charges = step.charges.unwrap();
+    assert_eq!(
+        (charges.count, charges.next, step.ready_at),
+        (2, Tick::new(30), Tick::new(3))
+    );
+    assert_eq!(slots.slot(1).unwrap().toggle, Some(Tick::new(31)));
+    let Some(InProgress::Channel { next, ends, .. }) = slots.in_progress() else {
+        panic!("Drain channels");
+    };
+    assert_eq!((next, ends), (Tick::new(6), Tick::new(12)));
 }
 
 #[test]
