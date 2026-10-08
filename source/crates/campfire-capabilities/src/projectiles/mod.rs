@@ -11,7 +11,7 @@ use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::range::Range;
-use crate::actions::targets::Targets;
+use crate::actions::targets::{TargetKey, Targets};
 use crate::combat::CombatSet;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::shots::Shots;
@@ -249,7 +249,7 @@ fn fly(
         Local<'_, Vec<(Fraction, StableId)>>,
         Local<'_, Vec<StableId>>,
     ),
-    mut grid: Local<'_, BodyGrid<()>>,
+    mut grid: Local<'_, BodyGrid<TargetKey>>,
 ) {
     flying.clear();
     let lines = projectiles

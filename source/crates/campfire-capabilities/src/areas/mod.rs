@@ -12,7 +12,7 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_queues::EffectQueues;
 use crate::areas::area::Area;
 
-use crate::actions::targets::Targets;
+use crate::actions::targets::{TargetKey, Targets};
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_spec::{AreaSpec, Inside};
 use crate::areas::areas_effect::AreasEffect;
@@ -138,7 +138,7 @@ fn trigger(
     (mut order, mut reached, mut grid): (
         Local<'_, Ordered>,
         Local<'_, Vec<StableId>>,
-        Local<'_, BodyGrid<()>>,
+        Local<'_, BodyGrid<TargetKey>>,
     ),
 ) {
     let now = tick.start();
@@ -165,9 +165,7 @@ fn trigger(
             let spec = specs.get(unit_type).expect("an area's type has a spec");
             reached.clear();
             grid.visit_near(pos, spec.radius, |body| {
-                let Some(unit) = targets.body_of(body.id) else {
-                    return;
-                };
+                let unit = Targets::unit_of(body);
                 let attitude = targets.attitude(team, unit.team);
                 if spec.affects.selects(attitude, unit.tags)
                     && targets.reaches(pos, Shape::POINT, spec.radius, &unit)
@@ -227,7 +225,7 @@ fn hold_inside(
     specs: Res<'_, ByType<AreaSpec>>,
     mut held: ResMut<'_, HeldModifiers>,
     areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
-    mut grid: Local<'_, BodyGrid<()>>,
+    mut grid: Local<'_, BodyGrid<TargetKey>>,
 ) {
     let holding = |unit_type| {
         let spec = specs.get(unit_type).expect("an area's type has a spec");
@@ -245,10 +243,10 @@ fn hold_inside(
             continue;
         };
         grid.visit_near(pos, spec.radius, |body| {
-            let reaches = |unit: &_| targets.reaches(pos, Shape::POINT, spec.radius, unit);
-            let Some(unit) = targets.body_of(body.id).filter(reaches) else {
+            let unit = Targets::unit_of(body);
+            if !targets.reaches(pos, Shape::POINT, spec.radius, &unit) {
                 return;
-            };
+            }
             let by = area.by();
             let modifier = match targets.attitude(team, unit.team) {
                 _ if unit.id == by.source => spec.inside.caster,

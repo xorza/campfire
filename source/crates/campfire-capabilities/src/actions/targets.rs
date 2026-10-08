@@ -10,7 +10,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::body::Body;
-use crate::units::body_grid::Placed;
+use crate::units::body_grid::{GridBody, Placed};
 use crate::units::dead::Dead;
 use crate::units::living_unit::LivingUnit;
 use crate::units::relations::Relations;
@@ -42,6 +42,15 @@ pub(crate) struct Targets<'w, 's> {
         ),
         (Without<Dead>, Allow<Unpredicted>),
     >,
+}
+
+/// What a body of the grid of `Targets::placed` holds of its unit: its team, its tags, and
+/// whether they let it be a target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TargetKey {
+    pub(crate) team: Team,
+    pub(crate) tags: TagSet,
+    pub(crate) targetable: bool,
 }
 
 /// A row of the units `Targets` holds.
@@ -116,25 +125,34 @@ impl Targets<'_, '_> {
     }
 
     /// Every living unit with the life pool, those whose tags block it as a target among them,
-    /// as a body to index: the units an area reaches, in no order.
-    pub(crate) fn placed(&self) -> impl Iterator<Item = Placed<()>> + '_ {
+    /// as a body to index, with what a visit needs of it: the units an area reaches, in no order.
+    pub(crate) fn placed(&self) -> impl Iterator<Item = Placed<TargetKey>> + '_ {
         self.units
             .iter()
-            .filter_map(|(&id, &at, _, pools, body, _)| {
+            .filter_map(|(&id, &at, &team, pools, body, tags)| {
                 pools.max(self.life.0)?;
                 Some(Placed {
                     id,
-                    key: (),
+                    key: TargetKey {
+                        team,
+                        tags: tags.map_or(TagSet::default(), |tags| tags.tags),
+                        targetable: Targets::targetable(Some(pools), tags, self.life.0),
+                    },
                     at,
                     shape: Body::shape_of(body),
                 })
             })
     }
 
-    /// The living unit `id` when it has the life pool, whose tags block it as a target or not:
-    /// a unit an area reaches.
-    pub(crate) fn body_of(&self, id: StableId) -> Option<LivingUnit> {
-        self.body(self.units.get(self.index.get(id)?).ok()?)
+    /// The unit of `body`, a body of the grid `placed` built, as it was when the grid was built.
+    pub(crate) const fn unit_of(body: &GridBody<TargetKey>) -> LivingUnit {
+        LivingUnit {
+            id: body.id,
+            pos: body.at,
+            team: body.key.team,
+            shape: body.shape,
+            tags: body.key.tags,
+        }
     }
 
     /// The unit of `row`, when it has the life pool.

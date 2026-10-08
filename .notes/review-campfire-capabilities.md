@@ -10,7 +10,6 @@ Fix the root cause of a group, not its items one by one. Most groups give the st
 
 A hot path here runs per damage, per draw, per kill, or per script field read. Each item makes the common case pay for a case that seldom applies.
 
-- [ ] `areas/mod.rs:134-168` (`trigger`): looks up each reached body again through `targets.body_of(body.id)`, but the grid was built from `targets.placed()` with position and shape. Target: the grid stores what the reach test needs, or the visit gives the shape and position to `reaches`.
 - [ ] `production/placement.rs:57-60` (`passes`): allocates a `Vec` of statics on each call. `walls.cloned().unwrap_or_default()` builds an empty `Arc<[Wall]>` when the match has no walls. Target: an iterator or a kept buffer, and a match on `Option<&Walls>`.
 
 ## 10. Script call plumbing is written once per caller
