@@ -6,10 +6,10 @@ use campfire_script::rhai::Dynamic;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
-use crate::units::script_view::View;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_state_book::{StateField, UnitStateBook};
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 
 /// What the core adds to the script view for units' script state: the fields each unit type

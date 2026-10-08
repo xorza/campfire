@@ -139,7 +139,7 @@ mod tests {
     use crate::capability_set::test_match::TestMatch;
     use crate::scripts::state_value::StateValue;
     use crate::stats::modifier_handle::HandleOf;
-    use crate::units::script_view::View;
+    use crate::units::view::View;
 
     #[test]
     fn a_handle_no_script_holds_serves_the_next_call_again() {

@@ -7,7 +7,7 @@ use crate::capability_set::test_match::TestMatch;
 use crate::orders::ai::Ai;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::by_type::ByType;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
 
@@ -315,7 +315,7 @@ const LOOKUPS: [(&str, &str); 72] = [
     ("mode/mode_call.rs", "param_named"),
     ("mode/mode_schema.rs", "get_named"),
     ("mode/mode_schema.rs", "named"),
-    ("mode/mode_setup.rs", "sorted_named"),
+    ("mode/loadout_setup.rs", "sorted_named"),
     ("mode/roster.rs", "named"),
     ("navigation/paths.rs", "named"),
     ("progression/progression_api.rs", "track_named"),
@@ -333,12 +333,12 @@ const LOOKUPS: [(&str, &str); 72] = [
     ("stats/stats_column.rs", "named"),
     ("stats/stats_column.rs", "pool_id_named"),
     ("stats/stats_column.rs", "pool_named"),
-    ("units/script_view.rs", "damage_kind_named"),
-    ("units/script_view.rs", "param_named"),
-    ("units/script_view.rs", "path_named"),
-    ("units/script_view.rs", "resource_named"),
-    ("units/script_view.rs", "tag_named"),
-    ("units/script_view.rs", "unit_type_named"),
+    ("units/view.rs", "damage_kind_named"),
+    ("units/view.rs", "param_named"),
+    ("units/view.rs", "path_named"),
+    ("units/view.rs", "resource_named"),
+    ("units/view.rs", "tag_named"),
+    ("units/view.rs", "unit_type_named"),
     ("units/teams.rs", "named"),
     ("units/unit.rs", "param_named"),
     ("units/unit.rs", "tag_named"),

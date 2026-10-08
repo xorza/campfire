@@ -13,7 +13,7 @@ use crate::progression::track_book::TrackBook;
 use crate::progression::progression_column::ProgressionColumn;
 use crate::stats::level::Level;
 use crate::units::row_fill::RowFill;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 pub(crate) mod experience;
 pub(crate) mod level_ups;
@@ -68,7 +68,7 @@ pub(crate) mod internals {
     use crate::progression::progression_column::ProgressionColumn;
     use crate::progression::track_book::TrackBook;
     use crate::progression::track_data::TrackData;
-    use crate::units::script_view::View;
+    use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
     use bevy_ecs::world::World;
     use std::collections::BTreeMap;

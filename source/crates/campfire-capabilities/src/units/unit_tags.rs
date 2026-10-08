@@ -40,11 +40,11 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
 
     use crate::units::block::Block;
-    use crate::units::script_view::View;
     use crate::units::tag_book::TagBook;
     use crate::units::tag_properties::TagProperties;
     use crate::units::unit_tags::UnitTags;
     use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
 
     impl UnitTags {
         /// Gives `entity` the tags of its unit type, as a match's spawn does; one of no type

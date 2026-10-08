@@ -11,8 +11,8 @@ use crate::units::body::Body;
 use crate::units::kept_rows::KeptRows;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
-use crate::units::script_view::View;
 use crate::units::unit::Unit;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 
 /// What navigation adds to the script view, a row each: the path each unit walks or stands on,

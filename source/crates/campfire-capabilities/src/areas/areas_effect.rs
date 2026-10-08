@@ -9,8 +9,8 @@ use crate::geometry::bounds::Bounds;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
-use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 
 /// An area a call queued: of `by`, of `unit_type`, at `at`; with `id`, the id the call took for
 /// it, which a script reads, or none for a launch of a list, which takes its id as it lands.

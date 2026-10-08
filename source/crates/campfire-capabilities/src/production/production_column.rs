@@ -8,8 +8,8 @@ use crate::production::supply::PlayerSupply;
 use crate::production::supply_costs::{SupplyCosts, UnitSupply};
 use crate::production::supply_rules::SupplyRules;
 use crate::units::kept_rows::KeptRows;
-use crate::units::script_view::View;
 use crate::units::unit::Unit;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 
 /// What production adds to the script view: what each unit counts for of its player's supply, a

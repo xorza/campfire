@@ -1,5 +1,5 @@
 use crate::mode::choice_data::Offers;
-use crate::mode::mode_setup::LoadoutSetup;
+use crate::mode::loadout_setup::LoadoutSetup;
 use crate::mode::offer::Offer;
 use crate::units::action_id::ActionId;
 use crate::values::name_list::NameList;

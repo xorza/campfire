@@ -1,4 +1,5 @@
-use crate::mode::mode_setup::{LoadoutSetup, UnitTypeSetup};
+use crate::mode::loadout_setup::LoadoutSetup;
+use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::values::name_list::NameList;
 
 /// The mode's unit types that stand, its avatars' among them, its avatars by their packages'

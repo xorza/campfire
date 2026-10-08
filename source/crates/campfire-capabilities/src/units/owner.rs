@@ -5,7 +5,7 @@ use campfire_common::PlayerSlot;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// The player who controls a unit, by slot: design 04's control relation, which `orders` and,
 /// later, `character` read. A player may control many units.

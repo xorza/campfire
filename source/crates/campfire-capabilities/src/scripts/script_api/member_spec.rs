@@ -3,8 +3,8 @@ use campfire_sim::Capability;
 use crate::scripts::applies::Applies;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::MemberKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_kind::MemberKind;
 use crate::values::engine_enum::EngineEnum;
 
 /// A name of the script API as the code that binds it describes it: whose it is, what it is,

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::stats::modifier_book::ModifierBook;
 use crate::units::modifier_id::ModifierId;
-use crate::units::script_view::View;
+use crate::units::view::View;
 use crate::values::rank::Rank;
 
 /// The modifiers each player holds for the units it owns, as an RTS's upgrades: by player, then

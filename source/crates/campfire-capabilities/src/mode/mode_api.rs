@@ -30,7 +30,7 @@ use crate::scripts::script_api::status::Status;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
 use crate::units::new_unit::NewUnit;
-use crate::units::spawner::SpawnAt;
+use crate::units::spawn_at::SpawnAt;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;

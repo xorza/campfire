@@ -6,8 +6,8 @@ use campfire_common::Tick;
 use campfire_sim::{SimEdge, SimResource, SimSet};
 use serde::{Deserialize, Serialize};
 
-use crate::units::script_view::View;
 use crate::units::team::Team;
+use crate::units::view::View;
 
 /// The end of a match: the tick whose stage ended it, and its result. It is state, so the final
 /// state hash a verifier checks holds the result too; once it exists, no later stage runs, nor

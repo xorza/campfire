@@ -17,7 +17,7 @@ use crate::stats::stats_call::StatsCall;
 use crate::units::action_id::ActionId;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::modifier_id::ModifierId;
-use crate::units::script_view::View;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;

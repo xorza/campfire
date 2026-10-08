@@ -481,8 +481,8 @@ pub(crate) mod internals {
     use crate::scripts::error::ApiError;
     use crate::stats::stat_id::StatId;
     use crate::units::filter::Filter;
-    use crate::units::script_view::View;
     use crate::units::unit_types::UnitTypes;
+    use crate::units::view::View;
     use crate::units::view_names::ViewNames;
     use crate::values::filter_data::FilterData;
     use crate::values::stat::Stat;

@@ -215,8 +215,8 @@ pub(crate) mod internals {
     use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
     use crate::units::filter::Filter;
-    use crate::units::script_view::View;
     use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
     use crate::values::damage_kind::DamageKind;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the

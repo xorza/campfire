@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::units::body::BodyForm;
+use crate::units::body_form::BodyForm;
 use crate::units::collision_data::CollisionData;
 use crate::units::layer::Layer;
 use crate::values::declared_name::DeclaredName;

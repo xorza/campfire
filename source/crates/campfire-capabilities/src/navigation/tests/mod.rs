@@ -7,15 +7,16 @@ use crate::geometry::polygon::Polygon;
 use crate::geometry::polygon::error::PolygonError;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{
-    MapData, MapNavigationData, MapPoint, MarkerData, PathData, PlacedUnitData, WallData,
+    MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData, WallData,
 };
+use crate::mode::map_point::MapPoint;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::error::MapProblem;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::wall::Wall;
-use crate::units::body::BodyForm;
+use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::units::unit_type::UnitType;

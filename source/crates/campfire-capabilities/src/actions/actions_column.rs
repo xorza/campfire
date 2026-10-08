@@ -15,8 +15,8 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
-use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 use crate::values::rank::Rank;
 

@@ -34,20 +34,23 @@ use crate::geometry::grid::Grid;
 use crate::geometry::metric::Metric;
 use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::error::ModeError;
+use crate::mode::loadout_setup::LoadoutSetup;
 use crate::mode::map_data::{
-    GridData, MapData, MapNavigationData, MapPoint, MarkerData, PathData, PlacedUnitData,
+    GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData,
 };
+use crate::mode::map_point::MapPoint;
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_books::ModeBooksInput;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
-use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::offer::Offer;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
 use crate::mode::saves_data::SavesData;
+use crate::mode::slot_action::SlotAction;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::{InventorySpec, UnitKit};
+use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::destination::Destination;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
@@ -91,7 +94,8 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
-use crate::units::body::{Body, BodyForm};
+use crate::units::body::Body;
+use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::layer::Layer;

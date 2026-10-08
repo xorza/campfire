@@ -24,8 +24,8 @@ use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::stats_effect::StatsEffect;
 use crate::units::action_id::ActionId;
-use crate::units::script_view::View;
-use crate::units::spawner::SpawnAt;
+use crate::units::spawn_at::SpawnAt;
+use crate::units::view::View;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, by
 /// action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`, and by launch id
@@ -294,11 +294,11 @@ pub(crate) mod internals {
     use crate::stats::stats_column::StatsColumn;
     use crate::units::action_id::ActionId;
     use crate::units::modifier_id::ModifierId;
-    use crate::units::script_view::View;
     use crate::units::tag::Tag;
     use crate::units::track_id::TrackId;
     use crate::units::type_scope::TypeScope;
     use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
     use crate::values::damage_kind::DamageKind;
     use crate::values::declared_name::DeclaredName;
     use bevy_ecs::world::World;

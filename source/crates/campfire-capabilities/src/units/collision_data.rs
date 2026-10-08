@@ -1,7 +1,7 @@
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::units::body::BodyForm;
+use crate::units::body_form::BodyForm;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 

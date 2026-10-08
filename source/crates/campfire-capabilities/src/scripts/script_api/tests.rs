@@ -1,10 +1,12 @@
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::error::Error;
+use std::fmt;
 use std::num::NonZeroU64;
 use std::panic::{self, AssertUnwindSafe};
 use std::{env, fs};
 
+use campfire_sim::Capability;
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 
 use super::*;
@@ -32,7 +34,9 @@ use crate::production::supply_data::SupplyData;
 use crate::production::supply_rules::SupplyRules;
 use crate::progression::track_data::TrackData;
 use crate::projectiles::projectile_data::ProjectileData;
+use crate::scripts::hook::Hook;
 use crate::scripts::name_kind::NameKind;
+use crate::scripts::role_set::RoleSet;
 use crate::stats::modifier_data::{AuraData, ModifierData};
 use crate::units::collision_data::CollisionData;
 use crate::units::tag_data::TagData;

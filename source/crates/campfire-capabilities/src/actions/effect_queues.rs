@@ -4,7 +4,7 @@ use campfire_sim::{Capability, StableId};
 use crate::actions::capability_does::CapabilityDoes;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// How a listed effect of a capability above the action pipeline queues in a call: its `does`
 /// to `unit`, of the list that reached `reached`, if a unit, in the call `frame` holds, which

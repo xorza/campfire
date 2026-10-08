@@ -49,10 +49,11 @@ use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::row_fill::RowFill;
-use crate::units::script_view::View;
-use crate::units::spawner::{SpawnAt, Spawner};
+use crate::units::spawn_at::SpawnAt;
+use crate::units::spawner::Spawner;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 use crate::values::relation::Relation;
 
 #[cfg(feature = "bench")]

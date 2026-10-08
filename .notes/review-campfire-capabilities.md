@@ -18,13 +18,6 @@ The coding guide says one major struct per file, with the same name.
 
 - [ ] `production/gather_loop.rs` (769 lines): `GatherLoop`, `GatherView`, `Step`, `Gather`, `Place`, `FoundNode`, `HeldNode` and `Checked`. `GatherView` has a second `impl` at `:701`. Target: `gather_loop/` with the view, the step and the systems in their own files.
 - [ ] `production/construction.rs` (636 lines): `Construction`, `BuildView`, `BuildingAt`, `Step`, `Start`, `Building` and `Placed`. Target: `construction/`, split the same way.
-- [ ] `scripts/script_api/mod.rs` (479 lines): `ScriptApi`, `ApiMember`, `MemberKind`, `HookStatus`, `TagPropertyStatus` and `DataField`, and the 130-line Markdown writer `write_reference` (`:196-326`) in the registry. Target: one file per type, and the writer in its own module.
-- [ ] `combat/mod.rs`: `Wielded` (with logic in `strikes`), `GoingOff` and `IntervalDue`. Target: `wielded.rs`, `going_off.rs`, `interval_due.rs` (see group 10 for the systems).
-- [ ] `units/body.rs:23-31,105-160` (`BodyForm`, `Form`), `values/metric.rs:109` (`Approach`), `units/spawner.rs:14-22` (`SpawnAt`), `units/script_view.rs:106` (`View`, beside `ScriptView` and `CoreSource`). Target: `body_form.rs`, `approach.rs`, `spawn_at.rs`, `view.rs`.
-- [ ] `mode/mode_setup.rs:35,46,55`: `UnitTypeSetup`, `SlotAction` and `LoadoutSetup` (with its own impl and tests). Target: their own files.
-- [ ] `mode/mode_map.rs:46,58`: `MapGround` (with its own impl) and `MarkerSpec`. Target: their own files.
-- [ ] `mode/map_data.rs:55-138`: `GridData`, `BrushData`, `MapNavigationData`, `WallData`, `PathData`, `PlacedUnitData`, `MarkerData`, `RegionData` and `MapPoint` (with its own impl) beside `MapData`. `PathData` has no doc. Target: at least `MapPoint` and `RegionData` in their own files.
-- [ ] `books/mod.rs:63,92,165`: `BookParts` and `ModeInputs` are in `mod.rs` beside `Books`. `replace` is a free function called twelve times. Target: `book_parts.rs` and `mode_inputs.rs`, and `replace` as a method of its owner.
 
 ## 16. The published surface names some types and not others
 

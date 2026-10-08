@@ -4,8 +4,8 @@ use campfire_sim::{Position, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::scripts::state_decl::StateType;
-use crate::units::script_view::View;
 use crate::units::unit::Unit;
+use crate::units::view::View;
 
 /// A value of script state, of one of the declared types. Units are held by stable id, so a
 /// value outlives the handles a call holds.

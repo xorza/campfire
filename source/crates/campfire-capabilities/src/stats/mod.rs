@@ -34,8 +34,8 @@ use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::row_fill::RowFill;
-use crate::units::script_view::View;
 use crate::units::tag::Tag;
+use crate::units::view::View;
 
 pub(crate) mod application;
 pub(crate) mod applier;
@@ -352,7 +352,7 @@ pub(crate) mod loads {
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_rule::StatRule;
     use crate::stats::stats_column::StatsColumn;
-    use crate::units::script_view::View;
+    use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
     use crate::values::stat::Stat;

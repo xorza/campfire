@@ -4,7 +4,7 @@ use campfire_sim::Capability;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::units::script_view::View;
+use crate::units::view::View;
 use crate::values::hit::Hit;
 
 /// A hit as a script holds it, `Hit` in scripts: read only.

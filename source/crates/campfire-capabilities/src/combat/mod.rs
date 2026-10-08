@@ -17,10 +17,8 @@ use crate::actions::effect_queues::EffectQueues;
 use crate::actions::in_progress::InProgress;
 use crate::actions::payer::Payer;
 use crate::actions::purse::Purse;
-use crate::actions::rank_values::RankValues;
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::targets::Targets;
-use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};
 use crate::combat::combat_column::CombatColumn;
 use crate::combat::combat_effect::CombatEffect;
@@ -28,6 +26,8 @@ use crate::combat::combat_event::{CombatEvent, CombatEvents};
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_pass::DamagePass;
 use crate::combat::deaths::{Deaths, Fallen};
+use crate::combat::going_off::GoingOff;
+use crate::combat::interval_due::IntervalDue;
 use crate::combat::kept::Kept;
 use crate::combat::modifier_hooks::ModifierHooks;
 use crate::combat::on_death::OnDeath;
@@ -35,8 +35,8 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::shots::{Shot, Shots};
+use crate::combat::wielded::Wielded;
 use crate::players::player_resources::PlayerResources;
-use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::StatsSet;
@@ -48,23 +48,19 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::unit_stats::UnitStats;
-use crate::units::action_id::ActionId;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::forced_move::ForcedMove;
-use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::predicting::Predicting;
 use crate::units::row_fill::RowFill;
-use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
-use crate::units::unit_type::UnitType;
-use crate::values::rank::Rank;
+use crate::units::view::View;
 
 pub(crate) mod assist_window;
 pub(crate) mod combat_api;
@@ -78,8 +74,10 @@ pub(crate) mod damage;
 pub(crate) mod damage_handle;
 pub(crate) mod damage_pass;
 pub(crate) mod deaths;
+pub(crate) mod going_off;
 pub(crate) mod heal;
 pub(crate) mod heal_handle;
+pub(crate) mod interval_due;
 pub(crate) mod kept;
 pub(crate) mod modifier_hooks;
 pub(crate) mod on_death;
@@ -88,6 +86,7 @@ pub(crate) mod recent_attack;
 pub(crate) mod recent_attackers;
 pub(crate) mod respawn;
 pub(crate) mod shots;
+pub(crate) mod wielded;
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
 pub(crate) const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
@@ -333,38 +332,6 @@ type Attacker<'a> = (
     Option<&'a Owner>,
 );
 
-/// The weapon of an attack under way: its slot, what it deals, and its values and its cost in
-/// player resources at the slot's rank.
-#[derive(Debug, Clone, Copy)]
-struct Wielded<'a> {
-    slot: u8,
-    /// The weapon's action, which its damage names, and the rank of its slot.
-    action: ActionId,
-    rank: Rank,
-    weapon: Weapon,
-    values: RankValues,
-    resource_cost: &'a [ResourceAmount],
-    /// The type of the homing projectile it fires, if it fires one.
-    projectile: Option<UnitType>,
-}
-
-impl Wielded<'_> {
-    /// Whether its attack, going off, strikes for a unit with `tags`, under a forced move when
-    /// `forced`: neither keeps it from attacking, and `purse` still affords its cost, as the
-    /// checks run again at delivery.
-    fn strikes(&self, tags: Option<&UnitTags>, forced: bool, purse: Purse<'_>) -> bool {
-        !UnitTags::blocks(tags, forced, Block::Attack)
-            && purse.affords(&self.values.cost, self.resource_cost)
-    }
-}
-
-/// An attack that goes off this tick: its attacker and its target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct GoingOff {
-    attacker: StableId,
-    target: StableId,
-}
-
 /// Runs `on_attack` for each attack whose windup ends this tick, by attacker's stable id, before
 /// any of them strikes or fires; not for one that does not strike.
 fn attack_events(
@@ -397,14 +364,6 @@ fn attack_events(
         });
     }
     world.insert_non_send(events);
-}
-
-/// An instance whose interval comes this tick: its carrier, its modifier and its source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct IntervalDue {
-    carrier: StableId,
-    id: ModifierId,
-    source: Option<StableId>,
 }
 
 /// Counts each living carrier's intervals, and runs `on_interval` of each instance whose
@@ -712,7 +671,7 @@ pub(crate) mod internals {
     use crate::combat::pass_queue::PassQueue;
     #[cfg(test)]
     use crate::stats::life_pool::LifePool;
-    use crate::units::script_view::View;
+    use crate::units::view::View;
 
     #[cfg(test)]
     use crate::stats::pool_id::PoolId;

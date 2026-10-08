@@ -19,7 +19,7 @@ use crate::scripts::state_value::StateValue;
 use crate::units::action_id::ActionId;
 use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
-use crate::units::spawner::SpawnAt;
+use crate::units::spawn_at::SpawnAt;
 use crate::units::team::Team;
 use crate::values::rank::Rank;
 use crate::values::relation::Relation;

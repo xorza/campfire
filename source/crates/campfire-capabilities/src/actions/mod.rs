@@ -31,7 +31,7 @@ use crate::stats::param_sources::ParamSources;
 use crate::stats::stat_book::StatBook;
 
 use crate::units::row_fill::RowFill;
-use crate::units::script_view::View;
+use crate::units::view::View;
 use crate::values::rank::Rank;
 
 pub(crate) mod action;
@@ -305,9 +305,9 @@ pub(crate) mod loads {
     use crate::units::by_type::ByType;
     use crate::units::filter::Filter;
     use crate::units::modifier_id::ModifierId;
-    use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
     use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
     use crate::values::damage_kind::DamageKind;
     use crate::values::declared_name::DeclaredName;
     use crate::values::error::TimeTooLarge;

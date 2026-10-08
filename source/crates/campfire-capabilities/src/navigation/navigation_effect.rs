@@ -22,7 +22,7 @@ use crate::scripts::frame::Frame;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove};
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A forced move a call queued, of a living unit that walks: a dash or a knock back, which starts
 /// in place of any under way, or a teleport.

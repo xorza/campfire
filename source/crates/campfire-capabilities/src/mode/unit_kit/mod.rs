@@ -12,7 +12,7 @@ use crate::progression::track_set::TrackSet;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
-use crate::units::body::BodyForm;
+use crate::units::body_form::BodyForm;
 use crate::units::move_step::MoveStep;
 use crate::units::unit_type::UnitType;
 use crate::values::stat::{EngineStat, Stat};

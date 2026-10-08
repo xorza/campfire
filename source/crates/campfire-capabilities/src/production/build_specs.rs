@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
 use crate::units::action_id::ActionId;
-use crate::units::body::BodyForm;
+use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
 use crate::values::share::Share;
 

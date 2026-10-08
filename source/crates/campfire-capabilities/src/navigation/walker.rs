@@ -1,6 +1,8 @@
 use campfire_math::Num;
 
-use crate::units::body::{Body, BodyForm};
+use crate::units::body::Body;
+
+use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
 
 /// A kind of unit that walks, as routes see it: the layer it moves on and its body's radius, 0

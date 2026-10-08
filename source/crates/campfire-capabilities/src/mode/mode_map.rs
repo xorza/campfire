@@ -1,23 +1,19 @@
-use std::collections::BTreeMap;
-
-use bevy_ecs::world::World;
 use campfire_sim::Position;
 
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
 
-use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
-use crate::geometry::metric::Metric;
 use crate::geometry::polygon::Polygon;
 use crate::geometry::shape::Shape;
 use crate::mode::error::ModeError;
-use crate::mode::map_data::{MapData, MapPoint};
-use crate::mode::mode_data::ModeParam;
+use crate::mode::map_data::MapData;
+use crate::mode::map_ground::MapGround;
+use crate::mode::map_point::MapPoint;
+use crate::mode::marker_spec::MarkerSpec;
 use crate::mode::placed_unit::{PlacedPath, PlacedUnit};
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
-use crate::navigation::Navigation;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::error::MapProblem;
 use crate::navigation::navigation_rules::NavigationRules;
@@ -27,14 +23,12 @@ use crate::navigation::route_planner::Walkable;
 use crate::navigation::segment::Segment;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
-use crate::navigation::wall::Wall;
 use crate::navigation::walls::Walls;
-use crate::units::body::BodyForm;
+use crate::units::body_form::BodyForm;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::declared_name::DeclaredName;
-use crate::values::name_list::NameList;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
@@ -49,30 +43,6 @@ pub struct ModeMap {
     pub(crate) grid: Option<Grid>,
     /// The areas of the vision grid's brush, in the map's order.
     pub(crate) brush: Vec<Polygon>,
-}
-
-/// What a client's prediction takes of the map as a match does, and no script reads: its metric,
-/// its bounds, how its teams regard each other, and the cells units plan routes over.
-#[derive(Debug)]
-pub(crate) struct MapGround {
-    metric: Metric,
-    bounds: Bounds,
-    relations: Relations,
-    pathing: Option<Grid>,
-    /// The map's walls, which block cells on the pathing grid; none without it.
-    walls: Vec<Wall>,
-}
-
-/// A marker of the map, names resolved: its name, its tags, its point, its region and its team
-/// if it names them, and its params.
-#[derive(Debug, Clone)]
-pub(crate) struct MarkerSpec {
-    pub(crate) name: Box<str>,
-    pub(crate) tags: NameList,
-    pub(crate) pos: Option<Position>,
-    pub(crate) region: Option<Bounds>,
-    pub(crate) team: Option<Team>,
-    pub(crate) params: BTreeMap<DeclaredName, ModeParam>,
 }
 
 impl ModeMap {
@@ -312,24 +282,5 @@ impl ModeMap {
             }
         }
         Ok(())
-    }
-}
-
-impl MapGround {
-    /// Puts the ground in `world`, its pathing grid for the kinds of `walkers`.
-    pub(crate) fn install(self, world: &mut World, walkers: Vec<Walker>) {
-        let MapGround {
-            metric,
-            bounds,
-            relations,
-            pathing,
-            walls,
-        } = self;
-        world.insert_resource(metric);
-        world.insert_resource(bounds);
-        world.insert_resource(relations);
-        if let Some(pathing) = pathing {
-            Navigation::load_pathing(world, pathing, &walls, walkers);
-        }
     }
 }

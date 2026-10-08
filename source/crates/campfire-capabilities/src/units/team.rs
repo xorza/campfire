@@ -5,7 +5,7 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::units::bits256::Bits256;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A unit's team: its index in the mode's list of teams. How two teams regard each other is
 /// their relation, which the match's relations hold.

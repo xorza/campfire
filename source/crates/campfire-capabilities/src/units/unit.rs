@@ -7,9 +7,9 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
 use crate::units::unit_state_access::UnitStateAccess;
+use crate::units::view::View;
 
 /// A unit as a script holds it, `Unit` in scripts: its values as the view read them.
 #[derive(Debug, Clone)]

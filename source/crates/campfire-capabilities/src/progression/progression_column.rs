@@ -10,8 +10,8 @@ use crate::progression::track_book::TrackBook;
 use crate::scripts::error::{ApiError, Checked};
 use crate::stats::level::Level;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
-use crate::units::script_view::View;
 use crate::units::track_id::TrackId;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 
 /// What progression adds to the script view: the tracks the mode declares, and each unit's

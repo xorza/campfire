@@ -15,7 +15,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::stats::pool_id::PoolId;
 use crate::stats::unit_stats::UnitStats;
-use crate::units::script_view::View;
+use crate::units::view::View;
 use crate::values::damage_kind::DamageKind;
 use campfire_sim::EntityIndex;
 

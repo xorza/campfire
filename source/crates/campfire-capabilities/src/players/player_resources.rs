@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// The players' resources, such as gold: one run of amounts by player slot, then by the
 /// resource's place in the mode's `resources`.

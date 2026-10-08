@@ -54,9 +54,10 @@ use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
-use crate::units::script_view::View;
-use crate::units::spawner::{SpawnAt, Spawner};
+use crate::units::spawn_at::SpawnAt;
+use crate::units::spawner::Spawner;
 use crate::units::team::Team;
+use crate::units::view::View;
 use crate::vision::Vision;
 
 pub(crate) mod calls;
@@ -66,8 +67,12 @@ pub(crate) mod choices;
 pub(crate) mod error;
 pub(crate) mod game_map;
 pub(crate) mod group_unit;
+pub(crate) mod loadout_setup;
 pub(crate) mod map_data;
+pub(crate) mod map_ground;
+pub(crate) mod map_point;
 pub(crate) mod marker;
+pub(crate) mod marker_spec;
 pub(crate) mod match_end;
 pub(crate) mod mode_api;
 pub(crate) mod mode_book;
@@ -84,15 +89,18 @@ pub(crate) mod mode_units;
 pub(crate) mod offer;
 pub(crate) mod placed_unit;
 pub(crate) mod players_data;
+pub(crate) mod region_data;
 pub(crate) mod relation_data;
 pub(crate) mod roster;
 pub(crate) mod save_asked;
 pub(crate) mod saves_data;
+pub(crate) mod slot_action;
 pub(crate) mod team_manifest;
 pub(crate) mod timers;
 pub(crate) mod unanswered_deaths;
 pub(crate) mod unanswered_slot_events;
 pub(crate) mod unit_kit;
+pub(crate) mod unit_type_setup;
 
 /// The mode of a match: the core's rules above the capabilities. Every match installs it after
 /// its capabilities.
@@ -508,7 +516,8 @@ pub(crate) mod internals {
 
     use crate::mode::mode_book::ModeBook;
     use crate::scripts::ctx::Ctx;
-    use crate::units::spawner::{SpawnAt, Spawner};
+    use crate::units::spawn_at::SpawnAt;
+    use crate::units::spawner::Spawner;
     use crate::units::team::Team;
 
     /// Spawns a unit of the mode's type `name` on `team` at `pos`, with the parts its type's

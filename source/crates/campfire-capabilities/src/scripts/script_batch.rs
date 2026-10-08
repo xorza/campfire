@@ -11,7 +11,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A group of script calls in one stage: they share the view as the stage began, and the host,
 /// out of the world while they run.
@@ -114,7 +114,7 @@ impl ScriptBatch<'_> {
 pub(crate) mod internals {
     use bevy_ecs::world::World;
 
-    use crate::units::script_view::View;
+    use crate::units::view::View;
 
     /// Reads the units of `world` into its script view, as each batch of script calls does.
     pub fn read_view(world: &mut World) {

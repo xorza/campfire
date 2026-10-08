@@ -6,9 +6,9 @@ use campfire_sim::SimResource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
+use crate::units::view::View;
 use crate::values::relation::Relation;
 
 /// How the match's teams regard each other, and which friendly pairs share vision: state, which

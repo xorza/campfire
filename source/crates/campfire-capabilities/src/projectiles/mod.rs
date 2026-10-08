@@ -347,8 +347,8 @@ pub(crate) mod internals {
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::units::by_type::ByType;
     use crate::units::engine_tag::EngineTag;
-    use crate::units::script_view::View;
     use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
     use bevy_ecs::world::World;
     use campfire_sim::TickRate;
 

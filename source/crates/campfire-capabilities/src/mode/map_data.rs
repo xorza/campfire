@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_sim::Position;
 use serde::Deserialize;
 
@@ -9,7 +9,9 @@ use crate::geometry::grid::Grid;
 use crate::geometry::metric::Metric;
 use crate::geometry::polygon::Polygon;
 use crate::mode::error::ModeError;
+use crate::mode::map_point::MapPoint;
 use crate::mode::mode_data::ModeParam;
+use crate::mode::region_data::RegionData;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::wall::Wall;
@@ -74,6 +76,7 @@ pub struct WallData {
     pub points: Vec<MapPoint>,
 }
 
+/// A path of the map: its name, and its waypoints in the order a unit walks them from its start.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PathData {
@@ -111,23 +114,6 @@ pub struct MarkerData {
     /// Whether the mode hears units enter and leave its region.
     #[serde(default)]
     pub events: bool,
-}
-
-/// A box of the map, from `min` to `max`, `min` below `max` on every axis.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RegionData {
-    pub min: MapPoint,
-    pub max: MapPoint,
-}
-
-/// A point of the map, in meters: `[x, z]` on the ground plane of a planar map, `[x, y, z]` on a
-/// spatial one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
-pub enum MapPoint {
-    Ground([Scalar; 2]),
-    Space([Scalar; 3]),
 }
 
 impl MapData {
@@ -209,45 +195,13 @@ impl MapData {
     }
 }
 
-impl MapPoint {
-    /// The point as a position, a ground point at height 0; `None` beyond the world's bound.
-    pub fn position(self) -> Option<Position> {
-        let [x, y, z] = match self {
-            MapPoint::Ground([x, z]) => [x, Scalar::Int(0), z],
-            MapPoint::Space(point) => point,
-        }
-        .map(Scalar::to_num);
-        Position::new(Vec3::new(x?, y?, z?))
-    }
-
-    /// Whether it has the shape of a point of a map of `metric`.
-    pub const fn fits(self, metric: Metric) -> bool {
-        matches!(
-            (self, metric),
-            (MapPoint::Ground(_), Metric::Planar) | (MapPoint::Space(_), Metric::Spatial)
-        )
-    }
-}
-
-impl RegionData {
-    /// The box on the ground plane it gives, when its points fit `metric` and lie within
-    /// `bounds`, `min` below `max` on every axis of the metric.
-    pub(crate) fn region(self, metric: Metric, bounds: Bounds) -> Option<Bounds> {
-        let (min, max) = (self.min.position()?, self.max.position()?);
-        let (low, high) = (min.get(), max.get());
-        let below = metric == Metric::Planar || low.y < high.y;
-        let fits = self.min.fits(metric) && self.max.fits(metric);
-        let within = bounds.contains(min) && bounds.contains(max);
-        Bounds::new([low.x, low.z], [high.x, high.z]).filter(|_| fits && below && within)
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
     use crate::geometry::bounds::Bounds;
-    use crate::mode::map_data::{MapData, MapPoint, MarkerData, PlacedUnitData};
+    use crate::mode::map_data::{MapData, MarkerData, PlacedUnitData};
+    use crate::mode::map_point::MapPoint;
     use campfire_math::Num;
 
     use crate::geometry::metric::Metric;
@@ -311,6 +265,8 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+
+    use campfire_math::Vec3;
 
     use super::*;
     use crate::geometry::polygon::error::PolygonError;

@@ -31,9 +31,9 @@ use crate::stats::pools::Pools;
 use crate::stats::stat_id::StatId;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
-use crate::units::script_view::View;
 use crate::units::tag_book::TagBook;
 use crate::units::unit_tags::UnitTags;
+use crate::units::view::View;
 
 /// The tick's damage pass: the queue of damage and heals, dealt in order, with the combat events
 /// they cause.

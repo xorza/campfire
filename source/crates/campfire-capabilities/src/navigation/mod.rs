@@ -49,8 +49,8 @@ use crate::units::dead::Dead;
 use crate::units::forced_move::{DashTo, ForcedMove, Goal};
 use crate::units::move_step::MoveStep;
 use crate::units::row_fill::RowFill;
-use crate::units::script_view::View;
 use crate::units::unit_tags::UnitTags;
+use crate::units::view::View;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;

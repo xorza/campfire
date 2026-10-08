@@ -13,7 +13,7 @@ use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_state_field::ModifierStateField;
 use crate::stats::stats_effect::StatsEffect;
 use crate::units::modifier_id::ModifierId;
-use crate::units::script_view::View;
+use crate::units::view::View;
 
 /// A modifier as a script holds it, `Modifier` in scripts: its carrier and source, and its
 /// stacks and state, which a call may write and read back; the writes apply when the call ends.

@@ -7,7 +7,8 @@ use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::orders::order::{Action, Order};
 use crate::production::rally_target::RallyTarget;
-use crate::units::body::{Body, BodyForm};
+use crate::units::body::Body;
+use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
 
 impl Shop {
