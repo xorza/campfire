@@ -6,7 +6,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::applies::Applies;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::error::Checked;
+use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
@@ -105,7 +105,7 @@ impl StatsApi {
             StatsApi::add_modifier(ctx, &target, id, None)
         })
         .bind(add, |ctx: &mut Ctx, target: Unit, id: &str, ms: INT| {
-            let ticks = ctx.view().ticks(ms)?;
+            let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
             StatsApi::add_modifier(ctx, &target, id, Some(ticks))
         })
         .bind(

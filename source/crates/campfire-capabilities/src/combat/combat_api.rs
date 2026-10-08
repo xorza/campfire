@@ -149,7 +149,10 @@ impl CombatApi {
 
     /// Queues `amount` of `kind` damage to `target`, a kind the mode declares.
     fn damage(ctx: &Ctx, target: &Unit, amount: Num, kind: &str) -> Checked<()> {
-        let kind = ctx.view().damage_kind_named(kind)?;
+        let kind = ctx
+            .view()
+            .damage_kind_named(kind)
+            .ok_or_else(|| ApiError::UnknownDamageKind.fail())?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeDamage.fail().into());
         }

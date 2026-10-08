@@ -731,7 +731,7 @@ pub(crate) mod internals {
         let kind = world
             .non_send::<View>()
             .damage_kind_named(kind)
-            .unwrap_or_else(|_| panic!("the mode declares the damage kind {kind}"));
+            .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
         world.resource_mut::<PassQueue>().push_damage(Damage {
             source,
             target,

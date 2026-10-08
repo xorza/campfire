@@ -49,7 +49,10 @@ impl DamageHandle {
             )
             .bind(
                 field("kind", "one of the mode's `[combat] damage_kinds`"),
-                |d: &mut DamageHandle| d.view.damage_kind_name(d.damage.kind),
+                |d: &mut DamageHandle| {
+                    let name = d.view.damage_kind_name(d.damage.kind);
+                    name.expect("a damage's kind is one of the mode's")
+                },
             )
             .bind(
                 field("attack", "whether an attack dealt it"),
@@ -83,9 +86,10 @@ impl DamageHandle {
                     "the action that dealt it: an ability, or an attack's weapon; `()` for none",
                 ),
                 |d: &mut DamageHandle| {
-                    d.damage
-                        .ability
-                        .map_or(Dynamic::UNIT, |id| Dynamic::from(d.view.ability_name(id)))
+                    d.damage.ability.map_or(Dynamic::UNIT, |id| {
+                        let name = d.view.ability_name(id);
+                        Dynamic::from(name.expect("an action of the match is named"))
+                    })
                 },
             );
     }

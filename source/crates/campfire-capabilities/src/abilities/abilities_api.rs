@@ -131,7 +131,7 @@ impl AbilitiesApi {
     /// package, which it holds.
     fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: &str, ms: INT) -> Checked<()> {
         let action = AbilitiesApi::held(ctx, unit, id)?;
-        let cut = ctx.view().ticks(ms)?;
+        let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {
             unit: unit.id,
             action,

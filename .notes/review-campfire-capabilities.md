@@ -12,11 +12,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 - [ ] `combat/mod.rs` (8 free-function systems, `Wielded`, `GoingOff`, `IntervalDue`, the `RowParts` and `Attacker` aliases, about 620 lines) and `stats/mod.rs:263-302` (`expire_modifiers`, `clear_dead_modifiers`, `fill_row`), while `DamagePass`, `Refresh` and `HeldPass` are unit-struct namespaces in their own files. Two conventions for one job. Target: one type per system, in its own file. `mod.rs` keeps `install`, the sets and the module list. **Skipped: see Q1 in `review-campfire-capabilities_QUESTIONS.md`.**
 
-## 11. One script view type has unrelated jobs
-
-- [ ] `units/script_view.rs:456-481` (`window`, `ticks`, `lasting`, `duration`): tick conversions use only `rate`, but go through the view's `RefCell`. `ticks` returns `Checked<Ticks>`, and `lasting` returns `Result<Ticks, ApiError>`. Target: conversions on `TickRate`, with one error shape.
-- [ ] `units/script_view.rs:500-535,599-640` (name accessors): id to name returns `Checked<Dynamic>` (`team_name`), `Dynamic` with unit for none (`path_name`, `unit_type_name`), or `ImmutableString` (`track_name`, `damage_kind_name`, `ability_name`). Name to id returns `Result<Tag, ApiError>` (`tag_named`), `Checked<DamageKind>` (`damage_kind_named`), or `Option` (`resource_named`, `path_named`, `unit_type_named`). Target: one return shape per direction, and the script wrapping done once at the binding.
-
 ## 12. One concept has several types or names
 
 - [ ] `values/region.rs:1-26` and `values/bounds.rs:10-60`: both are a closed `[x, z]` rectangle with `contains(Position)`. `Bounds::new` validates, and `Region::new` asserts. A third `Region` struct is in `navigation/regions/mod.rs:56`. Target: one rectangle type with a checked constructor, and a different name for the navigation one.

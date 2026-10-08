@@ -475,7 +475,10 @@ fn level_ups(world: &mut World, mut due: Local<'_, PendingCalls<LevelUp>>) {
             for &LevelUp { unit, track, level } in due.iter() {
                 if let Some(handle) = view.unit(unit) {
                     let level = INT::from(level.get());
-                    let args = (call.ctx.clone(), handle, view.track_name(track), level);
+                    let name = view
+                        .track_name(track)
+                        .expect("a track of the match is named");
+                    let args = (call.ctx.clone(), handle, name, level);
                     if call
                         .answer(Some(unit), Pool::Mode, Hook::OnLevelUp, args)
                         .is_break()

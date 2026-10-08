@@ -121,11 +121,10 @@ impl ViewNames {
         }
     }
 
-    /// The name of `team`.
-    pub(crate) fn team_name(&self, team: Team) -> Checked<Dynamic> {
-        let name = self.teams.as_deref().and_then(|teams| teams.name(team));
-        name.map(|name| Dynamic::from(ImmutableString::from(name)))
-            .ok_or_else(|| ApiError::UnknownTeam.fail().into())
+    /// The name of `team`; none for a team the mode does not have.
+    pub(crate) fn team_name(&self, team: Team) -> Option<ImmutableString> {
+        let name = self.teams.as_deref()?.name(team)?;
+        Some(ImmutableString::from(name))
     }
 
     /// The player resource `name`; `None` for one the mode does not declare.
@@ -133,33 +132,29 @@ impl ViewNames {
         ResourceId::named(&self.resource_names, name)
     }
 
-    /// The damage kind `name`; an error for one the mode does not declare.
-    pub(crate) fn damage_kind_named(&self, name: &str) -> Checked<DamageKind> {
-        let found = self.consts.damage_kind_named(name);
-        Ok(found.ok_or_else(|| ApiError::UnknownDamageKind.fail())?)
+    /// The damage kind `name`, when the mode declares it.
+    pub(crate) fn damage_kind_named(&self, name: &str) -> Option<DamageKind> {
+        self.consts.damage_kind_named(name)
     }
 
     /// The name of track `track`.
-    pub(crate) fn track_name(&self, track: TrackId) -> ImmutableString {
+    pub(crate) fn track_name(&self, track: TrackId) -> Option<ImmutableString> {
         self.consts.track(track)
     }
 
-    /// The name of damage kind `kind`.
-    pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> ImmutableString {
+    /// The name of damage kind `kind`; none before a mode names the damage kinds.
+    pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> Option<ImmutableString> {
         self.consts.damage_kind(kind)
     }
 
     /// The name of ability `id` in its package.
-    pub(crate) fn ability_name(&self, id: ActionId) -> ImmutableString {
+    pub(crate) fn ability_name(&self, id: ActionId) -> Option<ImmutableString> {
         self.consts.action(id)
     }
 
-    /// The name of `path`, `()` for none.
-    pub(crate) fn path_name(&self, path: Option<PathId>) -> Dynamic {
-        path.and_then(|path| self.paths.get(path.index()))
-            .map_or(Dynamic::UNIT, |name| {
-                Dynamic::from(ImmutableString::from(name))
-            })
+    /// The name of `path`.
+    pub(crate) fn path_name(&self, path: PathId) -> Option<ImmutableString> {
+        self.paths.get(path.index()).map(ImmutableString::from)
     }
 
     /// The path named `name`.
@@ -172,16 +167,14 @@ impl ViewNames {
         self.types.named(TypeScope::Mode, name)
     }
 
-    /// The name of `unit_type`, `()` for a unit of no type.
-    pub(crate) fn unit_type_name(&self, unit_type: Option<UnitType>) -> Dynamic {
-        unit_type.map_or(Dynamic::UNIT, |unit_type| {
-            Dynamic::from(self.consts.unit_type(unit_type))
-        })
+    /// The name of `unit_type`.
+    pub(crate) fn unit_type_name(&self, unit_type: UnitType) -> Option<ImmutableString> {
+        self.consts.unit_type(unit_type)
     }
 
-    /// The tag `name`; one the match does not have fails the call.
-    pub(crate) fn tag_named(&self, name: &str) -> Result<Tag, ApiError> {
-        self.types.tag_named(name).ok_or(ApiError::UnknownTag)
+    /// The tag `name`, when the match has it.
+    pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
+        self.types.tag_named(name)
     }
 
     /// The param `name` of `unit_type`.

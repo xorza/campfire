@@ -159,8 +159,9 @@ impl View {
 
     /// `ms` in ticks at the match's rate, rounded up, at least one; an error for a negative time
     /// or one too long to count.
-    pub(crate) fn ticks(&self, ms: INT) -> Checked<Ticks> {
-        Ok(self.duration(ms).map_err(ApiError::fail)?)
+    pub(crate) fn ticks(&self, ms: INT) -> Result<Ticks, ApiError> {
+        let ms = u64::try_from(ms).ok().ok_or(ApiError::NegativeTime)?;
+        self.0.rate.duration(ms).ok_or(ApiError::TimeTooLarge)
     }
 
     /// `ms`, more than 0, in ticks as `ticks` gives them: what lasts, as a reveal or a knock
@@ -169,12 +170,7 @@ impl View {
         if ms == 0 {
             return Err(ApiError::ZeroTime);
         }
-        self.duration(ms)
-    }
-
-    fn duration(&self, ms: INT) -> Result<Ticks, ApiError> {
-        let ms = u64::try_from(ms).ok().ok_or(ApiError::NegativeTime)?;
-        self.0.rate.duration(ms).ok_or(ApiError::TimeTooLarge)
+        self.ticks(ms)
     }
 
     /// Sets the match's unit types and tags, as the load built them.
@@ -192,8 +188,8 @@ impl View {
         self.names().resource_named(name)
     }
 
-    /// The damage kind `name`; an error for one the mode does not declare.
-    pub(crate) fn damage_kind_named(&self, name: &str) -> Checked<DamageKind> {
+    /// The damage kind `name`, when the mode declares it.
+    pub(crate) fn damage_kind_named(&self, name: &str) -> Option<DamageKind> {
         self.names().damage_kind_named(name)
     }
 
@@ -203,12 +199,12 @@ impl View {
     }
 
     /// The name of track `track`.
-    pub(crate) fn track_name(&self, track: TrackId) -> ImmutableString {
+    pub(crate) fn track_name(&self, track: TrackId) -> Option<ImmutableString> {
         self.names().track_name(track)
     }
 
-    /// The name of damage kind `kind`.
-    pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> ImmutableString {
+    /// The name of damage kind `kind`; none before a mode names the damage kinds.
+    pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> Option<ImmutableString> {
         self.names().damage_kind_name(kind)
     }
 
@@ -218,7 +214,7 @@ impl View {
     }
 
     /// The name of ability `id` in its package.
-    pub(crate) fn ability_name(&self, id: ActionId) -> ImmutableString {
+    pub(crate) fn ability_name(&self, id: ActionId) -> Option<ImmutableString> {
         self.names().ability_name(id)
     }
 
@@ -271,13 +267,13 @@ impl View {
         self.rows().index(id)
     }
 
-    /// The name of `team`.
-    pub(crate) fn team_name(&self, team: Team) -> Checked<Dynamic> {
+    /// The name of `team`; none for a team the mode does not have.
+    pub(crate) fn team_name(&self, team: Team) -> Option<ImmutableString> {
         self.names().team_name(team)
     }
 
-    /// The name of `path`, `()` for none.
-    pub(crate) fn path_name(&self, path: Option<PathId>) -> Dynamic {
+    /// The name of `path`.
+    pub(crate) fn path_name(&self, path: PathId) -> Option<ImmutableString> {
         self.names().path_name(path)
     }
 
@@ -291,13 +287,13 @@ impl View {
         self.names().unit_type_named(name)
     }
 
-    /// The name of `unit_type`, `()` for a unit of no type.
-    pub(crate) fn unit_type_name(&self, unit_type: Option<UnitType>) -> Dynamic {
+    /// The name of `unit_type`.
+    pub(crate) fn unit_type_name(&self, unit_type: UnitType) -> Option<ImmutableString> {
         self.names().unit_type_name(unit_type)
     }
 
-    /// The tag `name`; one the match does not have fails the call.
-    pub(crate) fn tag_named(&self, name: &str) -> Result<Tag, ApiError> {
+    /// The tag `name`, when the match has it.
+    pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
         self.names().tag_named(name)
     }
 
@@ -314,7 +310,9 @@ impl View {
 
     /// Every unit, living or dead, with the tag `name`, by stable id.
     pub(crate) fn units_tagged(&self, name: &str) -> Checked<Array> {
-        let tag = self.tag_named(name).map_err(ApiError::fail)?;
+        let tag = self
+            .tag_named(name)
+            .ok_or_else(|| ApiError::UnknownTag.fail())?;
         Ok(self.units_where(|row| row.tags.tags.contains(tag)))
     }
 

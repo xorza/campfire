@@ -53,9 +53,10 @@ impl HealHandle {
             .bind(
                 field("ability", "the ability that gave it, `()` for none"),
                 |h: &mut HealHandle| {
-                    h.heal
-                        .ability
-                        .map_or(Dynamic::UNIT, |id| Dynamic::from(h.view.ability_name(id)))
+                    h.heal.ability.map_or(Dynamic::UNIT, |id| {
+                        let name = h.view.ability_name(id);
+                        Dynamic::from(name.expect("an action of the match is named"))
+                    })
                 },
             );
     }

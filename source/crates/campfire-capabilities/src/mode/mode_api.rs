@@ -147,7 +147,9 @@ impl ModeApi {
                     .teams
                     .of(slot)
                     .expect("a player of the session has a team");
-                ctx.view().team_name(team)
+                let name = ctx.view().team_name(team);
+                name.map(Dynamic::from)
+                    .ok_or_else(|| ApiError::UnknownTeam.fail().into())
             },
         )
         .bind(
@@ -176,7 +178,9 @@ impl ModeApi {
                     .teams
                     .sole_enemy(team)
                     .ok_or_else(|| ApiError::NoEnemyTeam.fail())?;
-                ctx.view().team_name(enemy)
+                let name = ctx.view().team_name(enemy);
+                name.map(Dynamic::from)
+                    .ok_or_else(|| ApiError::UnknownTeam.fail().into())
             },
         );
         let avatars = MemberSpec::call(
@@ -435,9 +439,15 @@ impl ModeApi {
             )
             .bind(
                 field("team", "its team's name, `()` with none"),
-                |call: NativeCallContext<'_>, marker: &mut Marker| match marker.info().team {
-                    Some(team) => Ctx::of_call(&call).view().team_name(team),
-                    None => Ok(Dynamic::UNIT),
+                |call: NativeCallContext<'_>, marker: &mut Marker| -> Checked<Dynamic> {
+                    match marker.info().team {
+                        Some(team) => {
+                            let name = Ctx::of_call(&call).view().team_name(team);
+                            name.map(Dynamic::from)
+                                .ok_or_else(|| ApiError::UnknownTeam.fail().into())
+                        }
+                        None => Ok(Dynamic::UNIT),
+                    }
                 },
             )
             .bind(
@@ -701,7 +711,7 @@ impl ModeApi {
 
     /// Queues a timer `ms` milliseconds from the call, rounded up to whole ticks, at least one.
     fn timer(ctx: &Ctx, name: &str, ms: INT, repeat: bool, data: &Dynamic) -> Checked<()> {
-        let ticks = ctx.view().ticks(ms)?;
+        let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         let data = ModeApi::timer_data(data).map_err(ApiError::fail)?;
         ctx.queue(ModeEffect::Timer {
             name: name.to_owned(),
@@ -720,7 +730,7 @@ impl ModeApi {
         if !CombatColumn::stays(unit) {
             return Err(ApiError::RespawnDespawns.fail().into());
         }
-        let ticks = ctx.view().ticks(ms)?;
+        let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(ModeEffect::Respawn {
             unit: unit.id,
             ticks,

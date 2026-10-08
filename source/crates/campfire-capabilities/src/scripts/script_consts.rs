@@ -32,20 +32,21 @@ impl ScriptConsts {
         fill(&mut self.damage_kinds, names);
     }
 
-    pub(crate) fn action(&self, id: ActionId) -> ImmutableString {
-        self.actions[id.index()].clone()
+    pub(crate) fn action(&self, id: ActionId) -> Option<ImmutableString> {
+        self.actions.get(id.index()).cloned()
     }
 
-    pub(crate) fn unit_type(&self, unit_type: UnitType) -> ImmutableString {
-        self.unit_types[unit_type.index()].clone()
+    pub(crate) fn unit_type(&self, unit_type: UnitType) -> Option<ImmutableString> {
+        self.unit_types.get(unit_type.index()).cloned()
     }
 
-    pub(crate) fn track(&self, track: TrackId) -> ImmutableString {
-        self.tracks[track.index()].clone()
+    pub(crate) fn track(&self, track: TrackId) -> Option<ImmutableString> {
+        self.tracks.get(track.index()).cloned()
     }
 
-    pub(crate) fn damage_kind(&self, kind: DamageKind) -> ImmutableString {
-        self.damage_kinds[kind.index()].clone()
+    /// The name of `kind`; none before a mode names them.
+    pub(crate) fn damage_kind(&self, kind: DamageKind) -> Option<ImmutableString> {
+        self.damage_kinds.get(kind.index()).cloned()
     }
 
     /// Whether `kind` is one of the mode's damage kinds; any is, before a mode names them.

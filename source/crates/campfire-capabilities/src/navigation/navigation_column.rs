@@ -109,7 +109,8 @@ impl NavigationColumn {
         let view = unit.view();
         let path =
             view.column(|column: &NavigationColumn| column.rows.now()[unit.row_index()].path);
-        view.path_name(path.flatten())
+        let name = path.flatten().and_then(|path| view.path_name(path));
+        name.map_or(Dynamic::UNIT, Dynamic::from)
     }
 
     /// Whether unit `id`, which `view` read, walks; none does in a view with no navigation.

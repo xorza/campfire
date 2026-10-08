@@ -88,12 +88,21 @@ impl Unit {
                     UnitStateAccess::of_row(unit.id, unit.read(|row| row.unit_type), unit.row)
                 },
             )
-            .bind(field("team", "its team's name"), |unit: &mut Unit| {
-                unit.view.team_name(unit.read(|row| row.team))
-            })
+            .bind(
+                field("team", "its team's name"),
+                |unit: &mut Unit| -> Checked<Dynamic> {
+                    let name = unit.view.team_name(unit.read(|row| row.team));
+                    name.map(Dynamic::from)
+                        .ok_or_else(|| ApiError::UnknownTeam.fail().into())
+                },
+            )
             .bind(
                 field("unit_type", "its unit type's name"),
-                |unit: &mut Unit| unit.view.unit_type_name(unit.read(|row| row.unit_type)),
+                |unit: &mut Unit| {
+                    let unit_type = unit.read(|row| row.unit_type);
+                    let name = unit_type.and_then(|unit_type| unit.view.unit_type_name(unit_type));
+                    name.map_or(Dynamic::UNIT, Dynamic::from)
+                },
             )
             .bind(
                 field("owner", "its player's slot, `()` with none"),
@@ -130,7 +139,10 @@ impl Unit {
             )
             .name(0, NameKind::Tag),
             |unit: Unit, name: &str| -> Checked<bool> {
-                let tag = unit.view.tag_named(name).map_err(ApiError::fail)?;
+                let tag = unit
+                    .view
+                    .tag_named(name)
+                    .ok_or_else(|| ApiError::UnknownTag.fail())?;
                 Ok(unit.read(|row| row.tags.tags.contains(tag)))
             },
         )
