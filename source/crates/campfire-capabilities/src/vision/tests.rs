@@ -1,6 +1,6 @@
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost};
-use campfire_sim::{Capability, IdAllocator, StableId};
+use campfire_sim::{Capability, IdAllocator, Position, StableId};
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
@@ -12,8 +12,12 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pools::Pools;
+use crate::units::body::Body;
+use crate::units::dead::Dead;
 use crate::units::tag_properties::TagProperties;
+use crate::units::team::Team;
 use crate::units::unit::Unit;
+use crate::units::unit_tags::UnitTags;
 use crate::values::relation::Relation;
 
 fn at(x: i64, z: i64) -> Position {

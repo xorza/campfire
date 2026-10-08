@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::rhai::{Array, Dynamic};
@@ -7,10 +8,16 @@ use campfire_sim::Position;
 
 use crate::scripts::error::Checked;
 use crate::units::kept_rows::KeptRows;
+use crate::units::row_fill::RowFill;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
 use crate::units::view_column::{ViewColumn, ViewColumns};
+use crate::vision::Vision;
+use crate::vision::seen_by::SeenBy;
+
+/// The parts of a unit vision reads into its row: the teams that saw it, and its team.
+pub(super) type RowParts = (Option<&'static SeenBy>, Option<&'static Team>);
 
 /// What vision adds to the script view: the teams that see each unit, a row each.
 #[derive(Debug, Default)]
@@ -71,5 +78,14 @@ impl VisionColumn {
         of.view().nearest(of, radius, filter, |columns, row| {
             VisionColumn::sees(columns, row, team)
         })
+    }
+
+    /// Fills a row of the script view with the teams that see the unit.
+    pub(super) fn fill_row(
+        parts: ROQueryItem<'_, '_, RowParts>,
+        fill: &mut RowFill<'_, VisionColumn>,
+    ) {
+        let seen_by = Vision::seen_by(parts, fill.relations);
+        fill.column.push(seen_by);
     }
 }
