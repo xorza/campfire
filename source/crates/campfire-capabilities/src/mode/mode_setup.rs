@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn a_sorted_loadout_keeps_each_id_with_its_ability() {
-        let [arc, blink, haste] = [0, 1, 2].map(ActionId::nth);
+        let [arc, blink, haste] = [0, 1, 2].map(ActionId::new);
         let mut loadout = LoadoutSetup::default();
         loadout.push("haste", haste);
         loadout.push("arc", arc);
@@ -121,8 +121,8 @@ mod tests {
     #[should_panic(expected = "a loadout searched by id is sorted")]
     fn a_loadout_not_sorted_is_not_searched_by_id() {
         let mut loadout = LoadoutSetup::default();
-        loadout.push("haste", ActionId::nth(0));
-        loadout.push("arc", ActionId::nth(1));
+        loadout.push("haste", ActionId::new(0));
+        loadout.push("arc", ActionId::new(1));
         loadout.sorted_place("arc");
     }
 }

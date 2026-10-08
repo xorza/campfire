@@ -360,7 +360,7 @@ pub(crate) fn assert_casts(reference: &Reference3v3, showcase: &Showcase, world:
         // tick before, or a bit more or less.
         let pools = reference.packages().data();
         for (name, cost) in &data.cost {
-            let pool = PoolId::named(&pools.pools, name).unwrap();
+            let pool = PoolId::named(&pools.pools, name.as_str()).unwrap();
             let left = |at| showcase.at(at, player).pools.current(pool).unwrap();
             let paid = |at| toggles_paid(reference, showcase, player, at, name);
             let regen = left(tick - 1) - left(tick - 2) + paid(tick - 1);

@@ -57,7 +57,12 @@ impl Paths {
 
     /// The path named `name`.
     pub fn named(&self, name: &str) -> Option<PathId> {
-        self.names.named(name).map(PathId::new)
+        self.names.named(name).map(Paths::id_at)
+    }
+
+    /// The id of the path at `at`, as the map numbers at most `u32` of them.
+    pub(crate) fn id_at(at: usize) -> PathId {
+        PathId::new(u32::try_from(at).expect("paths fit u32"))
     }
 
     pub fn name(&self, path: PathId) -> &str {

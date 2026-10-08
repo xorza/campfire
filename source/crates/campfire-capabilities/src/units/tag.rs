@@ -12,8 +12,8 @@ impl Tag {
     pub(crate) const LIMIT: usize = Bits256::BITS;
 
     /// The tag at `index` in the list of names, which is below `LIMIT`.
-    pub(crate) fn new(index: usize) -> Tag {
-        Tag(u8::try_from(index).expect("a tag index is below the limit"))
+    pub(crate) const fn new(index: u8) -> Tag {
+        Tag(index)
     }
 
     pub(crate) const fn index(self) -> usize {

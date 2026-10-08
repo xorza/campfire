@@ -30,7 +30,7 @@ impl Progress {
         let world = fixed.runner().world();
         let unit = world.entity(world.resource::<EntityIndex>().get(hero).unwrap());
         let slots = unit.get::<ActionSlots>().unwrap();
-        let track = TrackId::new(0).unwrap();
+        let track = TrackId::new(0);
         Progress {
             ranks: [0, 1, 2, 3].map(|slot| Rank::count(slots.slot(slot).unwrap().rank)),
             points: unit.get::<Points>().unwrap().get(),

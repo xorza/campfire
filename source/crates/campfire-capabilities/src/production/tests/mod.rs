@@ -302,7 +302,7 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
         amount: 5,
     };
     let queued = Queued {
-        action: ActionId::nth(0),
+        action: ActionId::new(0),
         rank: Rank::FIRST,
         time: Ticks::new(30),
         paid: 1,

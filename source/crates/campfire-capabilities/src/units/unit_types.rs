@@ -97,7 +97,8 @@ impl UnitTypes {
             self.tag_names.len() < Tag::LIMIT,
             "the load counted the tags"
         );
-        Tag::new(self.tag_names.push(name))
+        let at = self.tag_names.push(name);
+        Tag::new(u8::try_from(at).expect("tags fit u8"))
     }
 
     /// Gives `unit_type` the tag `tag` too, as the engine tags a type by its sections.
@@ -135,7 +136,8 @@ impl UnitTypes {
 
     /// The tag `name`, once declared.
     pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
-        self.tag_names.named(name).map(Tag::new)
+        let at = self.tag_names.named(name)?;
+        Some(Tag::new(u8::try_from(at).expect("tags fit u8")))
     }
 
     /// The book of the effects `data` gives the tags, by name, beside an engine tag's own, and of

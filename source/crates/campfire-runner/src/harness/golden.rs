@@ -81,7 +81,7 @@ impl Golden {
                     bytes.extend_from_slice(&axis.to_bits().to_le_bytes());
                 }
             }
-            bytes.push(unit.get::<Team>().map_or(u8::MAX, |team| team.index()));
+            bytes.push(unit.get::<Team>().map_or(u8::MAX, |team| team.get()));
             let owner = unit
                 .get::<Owner>()
                 .map_or(u32::MAX, |owner| owner.slot().get());

@@ -49,8 +49,7 @@ impl SimResource for Reveals {
     fn check(&self, world: &World) -> bool {
         let grid = world.get_resource::<VisionGrid>();
         self.0.iter().all(|reveal| {
-            reveal.radius >= Num::ZERO
-                && grid.is_some_and(|grid| usize::from(reveal.team.index()) < grid.teams)
+            reveal.radius >= Num::ZERO && grid.is_some_and(|grid| reveal.team.index() < grid.teams)
         })
     }
 }

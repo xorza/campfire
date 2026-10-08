@@ -11,8 +11,8 @@ use crate::units::track_id::TrackId;
 use crate::values::declared_name::DeclaredName;
 
 use super::*;
-fn track(at: usize) -> TrackId {
-    TrackId::new(at).unwrap()
+fn track(at: u8) -> TrackId {
+    TrackId::new(at)
 }
 
 /// `level`, levels 2 at 100 and 3 at 300; `valor`, level 2 at 50.

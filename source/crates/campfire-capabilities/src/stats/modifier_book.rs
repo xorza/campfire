@@ -113,7 +113,7 @@ impl ModifierBook {
             modifier: |name: &str| {
                 let at = modifiers.binary_search_by(|modifier| modifier.name.as_str().cmp(name));
                 match at {
-                    Ok(at) => ModifierId::nth(start + at),
+                    Ok(at) => ModifierBook::id_at(start + at),
                     Err(_) => self
                         .named(package, name)
                         .expect("the load checked the aura's modifier"),
@@ -150,7 +150,12 @@ impl ModifierBook {
             .entries
             .binary_search_by(|entry| entry.order(package, name))
             .ok()?;
-        Some(ModifierId::nth(at))
+        Some(ModifierBook::id_at(at))
+    }
+
+    /// The id of the modifier at `at` of the book, which numbers at most `u16` of them.
+    fn id_at(at: usize) -> ModifierId {
+        ModifierId::new(u16::try_from(at).expect("modifiers fit u16"))
     }
 
     /// The modifier `id`, when the book holds it.
@@ -369,7 +374,7 @@ pub(crate) mod internals {
                 hooks: HookSet::default(),
                 tags,
             });
-            let id = ModifierId::nth(at);
+            let id = ModifierBook::id_at(at);
             ParamBook::load_modifier(world, id, &BTreeMap::new(), |_| StatId::new(0));
             id
         }
@@ -397,7 +402,7 @@ mod tests {
     use crate::stats::param_book::{ParamBook, ParamTables};
     use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
-    use crate::units::modifier_id::ModifierId;
+
     use crate::units::unit_types::UnitTypes;
     use crate::values::declared_name::DeclaredName;
     use crate::values::number::{Number, ParamRef};
@@ -481,12 +486,12 @@ mod tests {
         let params = ParamBook::new(tables);
         let ways = |ability, rank| -> Vec<Option<ParamProblem>> {
             let rank = Rank::new(rank).unwrap();
-            let check = |at| book.check_way(ModifierId::nth(at), ability, rank, &params, rate);
+            let check = |at| book.check_way(ModifierBook::id_at(at), ability, rank, &params, rate);
             (0..data.len()).map(|at| check(at).err()).collect()
         };
         // By the action at rank 2: no `absent`; 2⁴⁰ past a number; −5 ms no time; `own` has no
         // second rank; 200 ms holds; a time of a scaling table does not, and a shield of it does.
-        let action = Some(ActionId::nth(0));
+        let action = Some(ActionId::new(0));
         let by_action = [Missing, Overflow, Time, Short].map(Some);
         let by_action = [by_action.as_slice(), &[None, Some(ScalingTime), None]].concat();
         assert_eq!(ways(action, 2), by_action);
@@ -501,7 +506,7 @@ mod tests {
         // A live param is the action's scaling table, at a rank it has: not 2⁴⁰, which is no
         // table, nor a place past its params, nor rank 3.
         let live = |at| LiveParam {
-            owner: ParamOwner::Action(ActionId::nth(0)),
+            owner: ParamOwner::Action(ActionId::new(0)),
             at,
         };
         let [second, third] = [2, 3].map(|rank| Rank::new(rank).unwrap());

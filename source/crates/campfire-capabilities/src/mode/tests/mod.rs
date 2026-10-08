@@ -629,7 +629,7 @@ fn setup(
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y, crate_type] = types;
     let hero = UnitKit {
-        tracks: TrackSet::of([0, 1].map(|at| TrackId::new(at).unwrap())),
+        tracks: TrackSet::of([0, 1].map(TrackId::new)),
         ..grunt()
     };
     let unit = |unit_type, kit| UnitTypeSetup {
@@ -864,7 +864,7 @@ impl Game {
     }
 
     /// Each unit: its id, where it stands, its team, and the end of a path it walks from.
-    fn units(&self) -> Vec<(u64, Position, u8, Option<PathEnd>)> {
+    fn units(&self) -> Vec<(u64, Position, usize, Option<PathEnd>)> {
         let world = &self.sim.world;
         world
             .resource::<EntityIndex>()

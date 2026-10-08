@@ -23,8 +23,8 @@ impl PoolId {
 
     /// The pool `name` among the mode's `pools`; `None` when the mode does not declare it, or
     /// it is past the limit.
-    pub fn named(pools: &BTreeMap<DeclaredName, PoolData>, name: &DeclaredName) -> Option<PoolId> {
-        let at = pools.keys().position(|pool| pool == name)?;
+    pub fn named(pools: &BTreeMap<DeclaredName, PoolData>, name: &str) -> Option<PoolId> {
+        let at = pools.keys().position(|pool| pool.as_str() == name)?;
         PoolId::new(u8::try_from(at).ok()?)
     }
 

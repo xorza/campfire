@@ -48,7 +48,7 @@ impl Teams {
     }
 
     pub(crate) fn name(&self, team: Team) -> Option<&str> {
-        self.names.get(usize::from(team.index()))
+        self.names.get(team.index())
     }
 
     /// How many teams the match holds.

@@ -112,7 +112,7 @@ fn on_level_up(ctx, unit, track, level) {
     // level of the `level` track, the first at the spawn, and none with valor's.
     let progress = |game: &Game| {
         let experience = game.sim.world.get::<Experience>(hero).unwrap();
-        let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at).unwrap()).unwrap());
+        let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at)).unwrap());
         assert_eq!(level.level, None);
         let unit_level = game.sim.world.get::<Level>(hero).unwrap().get();
         let points = game.sim.world.get::<Points>(hero).unwrap().get();
@@ -215,7 +215,7 @@ fn on_input(ctx, player, name, value) {
     assert!(game.sim.world.get::<Dead>(y).is_some());
     let xp = |game: &Game| {
         let experience = game.sim.world.get::<Experience>(x).unwrap();
-        experience.get(TrackId::new(0).unwrap()).unwrap().xp
+        experience.get(TrackId::new(0)).unwrap().xp
     };
     assert_eq!(xp(&game), Num::int(175));
     assert_eq!(game.sim.world.get::<Level>(x).unwrap().get(), 2);

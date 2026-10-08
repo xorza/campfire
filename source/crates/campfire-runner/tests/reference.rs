@@ -3,8 +3,7 @@
 
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Dead, DeclaredName, Experience, PlayerResources, PoolId, Pools, ResourceId, Respawn,
-    ScriptFailures, TrackId,
+    Dead, Experience, PlayerResources, PoolId, Pools, ResourceId, Respawn, ScriptFailures, TrackId,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
@@ -54,8 +53,7 @@ pub(crate) fn dead(world: &World, unit: StableId) -> bool {
 
 /// The life `unit` has, of the mode's pool `health`.
 pub(crate) fn life(world: &World, reference: &Reference3v3, unit: StableId) -> Num {
-    let health = DeclaredName::new("health").unwrap();
-    let health = PoolId::named(&reference.packages().data().pools, &health).unwrap();
+    let health = PoolId::named(&reference.packages().data().pools, "health").unwrap();
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
     world.get::<Pools>(entity).unwrap().current(health).unwrap()
 }
@@ -69,5 +67,8 @@ pub(crate) fn level_xp(world: &World, reference: &Reference3v3, unit: StableId) 
         .unwrap();
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
     let experience = world.get::<Experience>(entity).unwrap();
-    experience.get(TrackId::new(at).unwrap()).unwrap().xp
+    experience
+        .get(TrackId::new(u8::try_from(at).unwrap()))
+        .unwrap()
+        .xp
 }

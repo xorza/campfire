@@ -63,7 +63,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
     assert!(slots(strike, 0).check(world, grunt) && slots(strike, 1).check(world, grunt));
     assert!(!slots(strike, u8::MAX).check(world, grunt));
-    assert!(!slots(ActionId::nth(u32::MAX), 1).check(world, grunt));
+    assert!(!slots(ActionId::new(u32::MAX), 1).check(world, grunt));
     let mut ordered = slots(strike, 1);
     ordered.order(1, ActionTarget::None);
     assert!(!ordered.check(world, grunt));
@@ -89,19 +89,19 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     );
 
     // Tracks: the mode has two, 0 and 1.
-    let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track).unwrap()]), None);
+    let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track)]), None);
     assert!(on_tracks(1).check(world, grunt) && !on_tracks(2).check(world, grunt));
     // Track 0 is the `level` track, whose level is the unit's: one that holds its own is
     // refused, one that holds none passes.
     let level_track = |own: bool| {
-        let track = TrackId::new(0).unwrap();
+        let track = TrackId::new(0);
         Experience::new(TrackSet::of([track]), (!own).then_some(track))
     };
     assert!(level_track(false).check(world, grunt) && !level_track(true).check(world, grunt));
     let unit = *world.get::<StableId>(grunt).unwrap();
     let level_up = |track| LevelUp {
         unit,
-        track: TrackId::new(track).unwrap(),
+        track: TrackId::new(track),
         level: Level::new(2).unwrap(),
     };
     assert!(LevelUps(vec![level_up(1)].into()).check(world));

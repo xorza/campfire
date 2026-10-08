@@ -553,7 +553,7 @@ impl<'a> BookBuilder<'a> {
         }
         let books = &mut self.books;
         let pools = file.pools.iter().map(|pool| {
-            let id = PoolId::named(&data.pools, pool).expect(CHECKED);
+            let id = PoolId::named(&data.pools, pool.as_str()).expect(CHECKED);
             (id, &data.pools[pool].max)
         });
         let tracks = TrackSet::of(file.tracks.iter().map(|track| {
@@ -743,7 +743,7 @@ impl EffectNames for BuildNames<'_> {
     }
 
     fn pool(&self, name: &DeclaredName) -> PoolId {
-        PoolId::named(&self.input.data.pools, name).expect(CHECKED)
+        PoolId::named(&self.input.data.pools, name.as_str()).expect(CHECKED)
     }
 
     fn modifier(&self, name: &DeclaredName) -> ModifierId {

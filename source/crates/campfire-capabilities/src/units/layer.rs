@@ -16,7 +16,7 @@ impl Layer {
         Layer(index)
     }
 
-    pub(crate) const fn index(self) -> u8 {
-        self.0
+    pub(crate) const fn index(self) -> usize {
+        self.0 as usize
     }
 }

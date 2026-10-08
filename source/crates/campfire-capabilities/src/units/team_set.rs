@@ -14,7 +14,7 @@ impl TeamSet {
 
     #[must_use]
     pub(crate) const fn with(self, team: Team) -> TeamSet {
-        TeamSet(self.0.with(team.index() as usize))
+        TeamSet(self.0.with(team.index()))
     }
 
     /// The teams in either set.
@@ -24,7 +24,7 @@ impl TeamSet {
     }
 
     pub const fn contains(self, team: Team) -> bool {
-        self.0.contains(team.index() as usize)
+        self.0.contains(team.index())
     }
 
     /// Its teams, in order.

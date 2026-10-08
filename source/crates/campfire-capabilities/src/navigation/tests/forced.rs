@@ -284,7 +284,7 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
     // lower numbered, (3.5, 1.5), takes it. The action it delivers ends there: the way its steps
     // went, 2 m and 1.5 m, along x.
     let short = unit(&mut walk, 5, 3);
-    let delivery = DashDelivery::new(short, ActionId::nth(0), Rank::FIRST, None);
+    let delivery = DashDelivery::new(short, ActionId::new(0), Rank::FIRST, None);
     walk.sim.insert(
         short,
         ForcedMove::Dash {

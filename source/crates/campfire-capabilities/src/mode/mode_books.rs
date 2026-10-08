@@ -123,7 +123,7 @@ impl ModeBooks {
         let layers = &data.navigation.layers;
         for unit_type in unit_types {
             let layer = unit_type.kit.body.map_or(Layer::FIRST, BodyForm::layer);
-            if let Some(name) = layers.get(usize::from(layer.index())) {
+            if let Some(name) = layers.get(layer.index()) {
                 let tag = types
                     .tag_named(name.as_str())
                     .expect("the match declared every tag its packages name");

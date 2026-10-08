@@ -30,7 +30,6 @@ use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
 use crate::navigation::walls::Walls;
 use crate::units::body::BodyForm;
-use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
@@ -302,7 +301,7 @@ impl ModeMap {
             }
             let reach = |at: Position| clearance.regions().reach(cells.nearest_cell(at));
             for (path, name) in self.paths.names().enumerate() {
-                let points = self.paths.points(PathId::new(path));
+                let points = self.paths.points(Paths::id_at(path));
                 if let Some(waypoint) = points.iter().position(|&point| !stands(point)) {
                     let path = declared(name);
                     return Err(MapProblem::WaypointBlocked { path, waypoint });

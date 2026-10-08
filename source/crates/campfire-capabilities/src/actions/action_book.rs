@@ -62,7 +62,7 @@ impl ActionBook {
             "an action has a script exactly when its data names one"
         );
         let hooks = scripts.defines(script, ScriptRole::Action);
-        let id = ActionId::nth(u32::try_from(self.actions.len()).expect("actions fit u32"));
+        let id = ActionId::new(u32::try_from(self.actions.len()).expect("actions fit u32"));
         let at = self
             .by_name
             .binary_search_by(|&held| self.order(held, package, name))
@@ -511,7 +511,7 @@ pub(crate) mod internals {
     /// Adds `action` to the action book of `world`, and shares the book with the script view.
     fn push(world: &mut World, action: Action) -> ActionId {
         let mut book = world.resource_mut::<ActionBook>();
-        let id = ActionId::nth(u32::try_from(book.actions.len()).unwrap());
+        let id = ActionId::new(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(action);
         let book = book.clone();
         ActionsColumn::share(world.non_send::<View>(), book);

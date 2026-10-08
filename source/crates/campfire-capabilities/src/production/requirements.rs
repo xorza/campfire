@@ -74,13 +74,13 @@ mod tests {
     #[test]
     fn each_action_finds_its_own_runs_and_one_with_none_finds_nothing() {
         let mut requirements = Requirements::default();
-        requirements.push(ActionId::nth(1), [UnitType::new(4)], []);
+        requirements.push(ActionId::new(1), [UnitType::new(4)], []);
         requirements.push(
-            ActionId::nth(3),
+            ActionId::new(3),
             [UnitType::new(2), UnitType::new(5)],
-            [ModifierId::nth(0)],
+            [ModifierId::new(0)],
         );
-        let of = |at| requirements.of(ActionId::nth(at));
+        let of = |at| requirements.of(ActionId::new(at));
         assert_eq!(
             of(1),
             Some(Required {
@@ -92,7 +92,7 @@ mod tests {
             of(3),
             Some(Required {
                 units: &[UnitType::new(2), UnitType::new(5)],
-                modifiers: &[ModifierId::nth(0)],
+                modifiers: &[ModifierId::new(0)],
             })
         );
         assert_eq!([of(0), of(2), of(4)], [None; 3]);

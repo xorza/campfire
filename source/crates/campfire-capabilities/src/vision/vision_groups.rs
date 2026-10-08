@@ -40,7 +40,7 @@ impl VisionGroups {
 
     /// The group of `team`.
     pub(crate) fn of(&self, team: Team) -> usize {
-        usize::from(self.group_of[usize::from(team.index())])
+        usize::from(self.group_of[team.index()])
     }
 
     /// The teams of group `group`.

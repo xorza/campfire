@@ -23,7 +23,12 @@ impl Team {
         Team(index)
     }
 
-    pub const fn index(self) -> u8 {
+    pub const fn index(self) -> usize {
+        self.0 as usize
+    }
+
+    /// The team as the wire and the session's receipt write it.
+    pub const fn get(self) -> u8 {
         self.0
     }
 }

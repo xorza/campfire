@@ -9,16 +9,13 @@ impl TrackId {
     /// The most tracks a mode declares: every place a `TrackSet` holds.
     pub const LIMIT: usize = 32;
 
-    /// The track at `index`; `None` past the limit.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "an index below the limit of 32 fits u8"
-    )]
-    pub const fn new(index: usize) -> Option<TrackId> {
-        if index >= TrackId::LIMIT {
-            return None;
-        }
-        Some(TrackId(index as u8))
+    /// The track at `index`, which is below the limit.
+    pub const fn new(index: u8) -> TrackId {
+        assert!(
+            (index as usize) < TrackId::LIMIT,
+            "a track is below the limit"
+        );
+        TrackId(index)
     }
 
     pub const fn index(self) -> usize {

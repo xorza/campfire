@@ -148,7 +148,7 @@ impl Volley {
                 aimed: None,
             },
             payload: LaunchPayload::Attack {
-                action: ActionId::nth(0),
+                action: ActionId::new(0),
                 rank: Rank::FIRST,
                 amount: Num::int(10),
                 kind: DamageKind::new(0),

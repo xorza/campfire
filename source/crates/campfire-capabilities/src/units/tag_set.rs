@@ -41,7 +41,8 @@ impl TagSet {
 
     /// Its tags, in order.
     pub(crate) fn iter(self) -> impl Iterator<Item = Tag> {
-        self.0.iter().map(Tag::new)
+        let tag = |at| Tag::new(u8::try_from(at).expect("a set of 256 bits holds u8 places"));
+        self.0.iter().map(tag)
     }
 }
 
@@ -51,7 +52,7 @@ mod tests {
 
     #[test]
     fn a_set_holds_tags_in_every_word() {
-        let tags = |indices: &[usize]| TagSet::of(indices.iter().map(|&index| Tag::new(index)));
+        let tags = |indices: &[u8]| TagSet::of(indices.iter().map(|&index| Tag::new(index)));
         let set = tags(&[0, 63, 64, 200, 255]);
         let held: Vec<_> = set.iter().map(Tag::index).collect();
         assert_eq!(held, [0, 63, 64, 200, 255]);

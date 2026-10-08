@@ -167,9 +167,9 @@ mod tests {
                 near: Vec::new(),
                 away: Vec::new(),
             };
-            specs.push(ActionId::nth(u32::try_from(at).unwrap() * 2), build);
+            specs.push(ActionId::new(u32::try_from(at).unwrap() * 2), build);
         }
-        let rate = |action, builders| specs.of(ActionId::nth(action)).unwrap().rate(builders);
+        let rate = |action, builders| specs.of(ActionId::new(action)).unwrap().rate(builders);
         let counts = [0, 1, 2, 3, 7];
         assert_eq!(counts.map(|count| rate(0, count)), [Num::ONE; 5]);
         assert_eq!(
@@ -180,6 +180,6 @@ mod tests {
             counts.map(|count| rate(4, count)),
             [Num::ZERO, rates[0], rates[1], rates[2], rates[2]]
         );
-        assert!(specs.of(ActionId::nth(1)).is_none());
+        assert!(specs.of(ActionId::new(1)).is_none());
     }
 }

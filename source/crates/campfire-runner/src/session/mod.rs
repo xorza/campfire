@@ -413,7 +413,7 @@ impl Session {
     /// How the match in `world` ended: as the mode ended it, or aborted when it did not.
     pub fn outcome(world: &World) -> Outcome {
         match world.get_resource::<MatchEnd>().map(|end| end.result()) {
-            Some(MatchResult::Won(team)) => Outcome::Won { team: team.index() },
+            Some(MatchResult::Won(team)) => Outcome::Won { team: team.get() },
             Some(MatchResult::Draw) => Outcome::Draw,
             None => Outcome::Aborted,
         }

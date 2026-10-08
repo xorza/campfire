@@ -87,7 +87,7 @@ impl Relations {
     /// with, and so on, `team` among them.
     pub(crate) fn vision_group(&self, team: Team) -> TeamSet {
         let lowest = self.vision_lowest();
-        let own = lowest[usize::from(team.index())];
+        let own = lowest[team.index()];
         (0..=u8::MAX)
             .filter(|&at| lowest[usize::from(at)] == own)
             .fold(TeamSet::NONE, |group, at| group.with(Team::new(at)))
@@ -98,17 +98,17 @@ impl Relations {
     pub(crate) fn vision_lowest(&self) -> [u8; Team::LIMIT] {
         let mut root: [u8; Team::LIMIT] =
             array::from_fn(|at| u8::try_from(at).expect("a team index fits u8"));
-        let find = |root: &mut [u8; Team::LIMIT], mut at: u8| {
-            while root[usize::from(at)] != at {
-                let up = root[usize::from(at)];
-                root[usize::from(at)] = root[usize::from(up)];
+        let find = |root: &mut [u8; Team::LIMIT], mut at: usize| {
+            while usize::from(root[at]) != at {
+                let up = usize::from(root[at]);
+                root[at] = root[up];
                 at = up;
             }
             at
         };
         for (a, b) in self.vision_pairs() {
             let (a, b) = (find(&mut root, a.index()), find(&mut root, b.index()));
-            root[usize::from(a.max(b))] = a.min(b);
+            root[a.max(b)] = u8::try_from(a.min(b)).expect("a team index fits u8");
         }
         // Every link points to a lower team, so in order each team's link is final already.
         for at in 0..Team::LIMIT {

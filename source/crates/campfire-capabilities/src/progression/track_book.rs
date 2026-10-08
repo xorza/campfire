@@ -44,7 +44,7 @@ impl TrackBook {
             book.thresholds.extend_from_slice(track.levels.get());
             if track.level {
                 assert!(book.level.is_none(), "the load checked the level tracks");
-                book.level = TrackId::new(at);
+                book.level = Some(TrackBook::id_at(at));
             }
         }
         book.starts.push(Tracks::start(book.thresholds.len()));
@@ -54,7 +54,15 @@ impl TrackBook {
     /// The track `name`, if the mode declares it.
     pub(crate) fn named(&self, name: &str) -> Option<TrackId> {
         let at = self.0.names.iter().position(|held| held.as_str() == name)?;
-        TrackId::new(at)
+        Some(TrackBook::id_at(at))
+    }
+
+    /// The id of the track at `at` of the book, whose load keeps it below the limit.
+    fn id_at(at: usize) -> TrackId {
+        let index = u8::try_from(at)
+            .ok()
+            .filter(|&at| usize::from(at) < TrackId::LIMIT);
+        TrackId::new(index.expect("the load keeps the tracks below the limit"))
     }
 
     /// Whether the mode declares `track`.

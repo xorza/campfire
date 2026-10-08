@@ -42,7 +42,7 @@ impl CombatRules {
     /// `None` when it names none.
     pub fn life_pool(&self, pools: &BTreeMap<DeclaredName, PoolData>) -> Option<PoolId> {
         let life = self.life.as_ref()?;
-        Some(PoolId::named(pools, life).expect("the load checked the life pool"))
+        Some(PoolId::named(pools, life.as_str()).expect("the load checked the life pool"))
     }
 
     /// Every stat its rules read.

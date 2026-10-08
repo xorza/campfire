@@ -1798,12 +1798,12 @@ fn an_ability_loads_only_when_its_data_holds() {
     assert_eq!(forever, Err(TimeTooLarge));
     assert_eq!(
         load(&mut game, "lash_out", &lash_out(), LASH_OUT),
-        Ok(ActionId::nth(0))
+        Ok(ActionId::new(0))
     );
     // A direction loads, as every targeting does; no cast can aim one yet.
     assert_eq!(
         load(&mut game, "aimed", &aimed, LASH_OUT),
-        Ok(ActionId::nth(1))
+        Ok(ActionId::new(1))
     );
 
     // A script may serve only the ability's modifiers: a cast of rank 1 in tick 0 then runs no
@@ -2269,7 +2269,7 @@ fn with_valor(more: &[Capability]) -> (Match, TrackId) {
     };
     let tracks = BTreeMap::from([(DeclaredName::new("valor").unwrap(), valor)]);
     Progression::load(&mut game.sim.world, &tracks);
-    (game, TrackId::new(0).unwrap())
+    (game, TrackId::new(0))
 }
 
 /// `effecting` to `to`.
@@ -2641,7 +2641,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     }]));
     // Player 0's caster, at level 1 with 2 points, its spawn's and one more.
     let caster = game.caster(ability, 0);
-    let track = TrackId::new(0).unwrap();
+    let track = TrackId::new(0);
     let mut points = Points::at_spawn(TrackSet::of([track]), Some(track)).unwrap();
     points.gain(1);
     let step = MoveStep::new(Num::ONE).unwrap();

@@ -688,7 +688,7 @@ impl InProcessMatch {
     /// each client's team index. Players take slots in the order their joins arrive, so a
     /// scenario cannot fix which client plays which team.
     pub fn play_by_team(&mut self, scripts: [&str; 2]) -> [usize; 2] {
-        let teams = [0, 1].map(|client| usize::from(self.team(client).index()));
+        let teams = [0, 1].map(|client| self.team(client).index());
         assert_ne!(
             teams[0], teams[1],
             "the two players' avatars are on two teams"

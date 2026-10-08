@@ -32,7 +32,8 @@ impl TagBook {
         let mut book = TagBook::default();
         for (properties, immune) in tags {
             if immune != TagSet::default() {
-                let tag = Tag::new(book.properties.len());
+                let at = book.properties.len();
+                let tag = Tag::new(u8::try_from(at).expect("tags fit u8"));
                 book.granting = book.granting.with(tag);
             }
             book.properties.push(properties);

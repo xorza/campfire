@@ -2,8 +2,8 @@ use std::path::Path;
 
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    ActionId, Actions, DeclaredName, ModeInputs, ModifierId, Order, PoolId, ScriptFailure,
-    ScriptFailures, Stats, Vision,
+    ActionId, Actions, ModeInputs, ModifierId, Order, PoolId, ScriptFailure, ScriptFailures, Stats,
+    Vision,
 };
 use campfire_common::{PlayerSlot, SegmentSeed};
 use campfire_log::internals::LogCheck;
@@ -88,9 +88,7 @@ impl Arena {
 
     /// The pool `name` of the mode.
     pub fn pool(&self, name: &str) -> PoolId {
-        let name = DeclaredName::new(name).unwrap_or_else(|| panic!("{name} is no name"));
-        PoolId::named(&self.packages.data().pools, &name)
-            .unwrap_or_else(|| panic!("no pool {name}"))
+        PoolId::named(&self.packages.data().pools, name).unwrap_or_else(|| panic!("no pool {name}"))
     }
 
     /// Runs one tick, and keeps its script failures.

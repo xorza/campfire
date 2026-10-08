@@ -94,7 +94,7 @@ impl ViewNames {
     /// mode has one at the least.
     pub(crate) fn has_team(&self, team: Team) -> bool {
         let teams = self.teams.as_deref();
-        teams.is_none_or(|teams| usize::from(team.index()) < teams.count())
+        teams.is_none_or(|teams| team.index() < teams.count())
     }
 
     /// Whether `slot` is a player of the session; any slot is before a mode sets the teams.
@@ -159,7 +159,8 @@ impl ViewNames {
 
     /// The path named `name`.
     pub(crate) fn path_named(&self, name: &str) -> Option<PathId> {
-        self.paths.named(name).map(PathId::new)
+        let at = self.paths.named(name)?;
+        Some(PathId::new(u32::try_from(at).expect("paths fit u32")))
     }
 
     /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.

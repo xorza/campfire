@@ -179,7 +179,7 @@ mod tests {
     fn a_site_gains_exactly_its_gain_over_its_time_with_no_rounding_carried() {
         // A gain of 100 over 3 ticks: 33.333… after one, 66.666… after two, rounded down to a
         // bit each, so the ticks add the differences, and the third completes it at exactly 100.
-        let mut site = Site::new(ActionId::nth(0), Rank::FIRST, Num::int(100), &[], None);
+        let mut site = Site::new(ActionId::new(0), Rank::FIRST, Num::int(100), &[], None);
         let time = Num::int(3);
         let third = |of: i64| Num::from_bits(of * Num::int(100).to_bits() / 3);
         let first = site.progress_by(Num::ONE, time);
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(first.life + second.life + last.life, Num::int(100));
         assert_eq!(site.progress(), time);
         // A rate of 0 adds nothing.
-        let mut idle = Site::new(ActionId::nth(0), Rank::FIRST, Num::int(100), &[], None);
+        let mut idle = Site::new(ActionId::new(0), Rank::FIRST, Num::int(100), &[], None);
         assert_eq!(
             idle.progress_by(Num::ZERO, time),
             Progressed {
