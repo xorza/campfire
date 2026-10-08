@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryState, ROQueryItem, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
@@ -227,7 +228,7 @@ impl Production {
                     && let Some(mut destination) = world.get_mut::<Destination>(trained)
                 {
                     let to = Vec3::new(to.get().x, pos.get().y, to.get().z);
-                    destination.set(Position::new(to));
+                    destination.set_if_neq(Destination::to(Position::new(to)));
                 }
                 if let (Some(order), Some(mut gatherer)) =
                     (gathers, world.get_mut::<Gatherer>(trained))

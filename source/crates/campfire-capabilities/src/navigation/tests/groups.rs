@@ -120,7 +120,7 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
     walk.sim
         .get_mut::<Route>(early)
         .ask(at(9, 0, 5), Tick::new(0), None);
-    walk.sim.get_mut::<Destination>(early).set(Some(goal));
+    *walk.sim.get_mut::<Destination>(early) = Destination::to(Some(goal));
     let party = ordered(goal);
     walk.sim
         .get_mut::<Route>(early)

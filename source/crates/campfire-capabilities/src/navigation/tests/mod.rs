@@ -73,7 +73,7 @@ impl Walk {
         let id = self
             .sim
             .spawn(at, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
-        self.sim.get_mut::<Destination>(id).set(to);
+        *self.sim.get_mut::<Destination>(id) = Destination::to(to);
         id
     }
 
@@ -102,7 +102,7 @@ impl Walk {
         if let Some(step) = step {
             self.sim
                 .insert(id, Navigation::walker(MoveStep::new(step).unwrap()));
-            self.sim.get_mut::<Destination>(id).set(to);
+            *self.sim.get_mut::<Destination>(id) = Destination::to(to);
         }
         id
     }
@@ -570,10 +570,10 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
     // first and the third would go before it, 7 each, and none would wait.
     let first = walk.sim.entity(units[0]);
     let mut destination = walk.sim.world.get_mut::<Destination>(first).unwrap();
-    destination.set(Some(near));
+    *destination = Destination::to(Some(near));
     let last = walk.sim.entity(units[3]);
     let mut destination = walk.sim.world.get_mut::<Destination>(last).unwrap();
-    destination.set(Some(place(14)));
+    *destination = Destination::to(Some(place(14)));
     walk.sim.step();
     assert_eq!(waiting(&walk), [true, false, false, false]);
     walk.sim.step();
@@ -703,11 +703,7 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
             .last_changed()
     };
     let before = changed(&walk);
-    walk.sim
-        .world
-        .get_mut::<Destination>(entity)
-        .unwrap()
-        .set(Some(goal));
+    *walk.sim.world.get_mut::<Destination>(entity).unwrap() = Destination::to(Some(goal));
     walk.sim.step();
     assert_eq!(changed(&walk), before);
     assert_eq!(walk.sim.get::<Destination>(walker).get(), None);

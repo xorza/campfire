@@ -1506,6 +1506,16 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     game.tick(&[]);
     assert_eq!(game.position(walker), place);
     assert_eq!(game.target(walker), None);
+    // A second stop finds no destination to drop, and leaves it untouched, as a write would
+    // replicate an avatar's.
+    let entity = game.sim.entity(walker);
+    let changed = |game: &Match| {
+        let unit = game.sim.world.entity(entity);
+        unit.get_ref::<Destination>().unwrap().last_changed()
+    };
+    let before = changed(&game);
+    game.tick(&[(0, &stop)]);
+    assert_eq!(changed(&game), before);
 }
 
 #[test]

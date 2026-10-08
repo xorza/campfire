@@ -14,14 +14,6 @@ Target: a type's own invariants (sorted, bounded, in range) are kept by its `Des
 
 - [ ] **(bug)** `stats/meter.rs:9-12,41-43,90-98,101-123`: the field doc says that `carry` is "0 while full or empty", but `fill` and `take` reach full and empty without a reset. Only `regen`, `add` and `set_max` reset it. The decode accepts any `carry`, and `Pools::check` (`stats/pools.rs:116-124`) returns `true`. A forged `carry >= hz` adds more than `per_second` over `hz` ticks. Target: one private step after each write resets `carry` at either end, so the invariant holds. Then `Pools::check` rejects `carry >= hz` (it has the `TickRate`) and a nonzero `carry` at either end. The reset must come first: a check alone would reject snapshots that the live code makes today.
 
-## 5. Sim state is marked changed when it did not change
-
-`campfire-sim` writes a resource or component into a delta snapshot when its `last_changed` is newer than the last copy (`campfire-sim/src/state_registry/mod.rs:612-614,676-678`). Each `DerefMut` on a `Mut` marks a change, so a write of the same value, or a `&mut` access that writes nothing, makes the delta larger. `stats/carried_mut.rs` already solves this: it reports `Touched` and marks only what changed. `slot_events` guards too (`mode/mod.rs:379`).
-
-Target: every sim-state write goes through an owner that marks only a real change (the `CarriedMut` model, or `set_if_neq`). The guard is done: `a_quiet_tick_changes_no_state_but_the_tick` (`mode/tests/restore.rs`) fails on a write of a quiet tick; the items below change state only on ticks with orders or damage, which it does not reach.
-
-- [ ] `orders/unit_order.rs:112,165` (`UnitOrder::apply`): `destination.set(to)` through `Mut` for every order, also when the value does not change (`Stop`, `Build`, `Gather` set `None` on a unit that is already at `None`). `Destination::walk_to` and `go` exist to prevent this, because an avatar's destination replicates.
-- [ ] `combat/damage_pass.rs:264-268` (`deal`): `get_mut::<Pools>` and `take` for each damage, also when the amount after shields is 0.
 ## 6. Capability boundaries are not where the code is
 
 `capability_set/mod.rs:96-135` declares the dependency of each capability. The code names other capabilities' types directly, outside those rows, and some core types hold state that belongs to a capability above them. Target: the dependency rows are true. A capability reaches another only through a registered seam (as `EffectQueues` does for listed effects). Each component sits in the module whose registry name it carries.

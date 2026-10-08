@@ -164,7 +164,7 @@ fn on_mode_input(ctx, player, name, value) {
     // nothing runs, the input to end again included.
     let grunt = game.entity(1);
     let mut destination = game.sim.world.get_mut::<Destination>(grunt).unwrap();
-    destination.set(Some(at(5, 0)));
+    *destination = Destination::to(Some(at(5, 0)));
     let before = game.units();
     game.tick(&[(0, input("hero", "b"))]);
     let end = MatchEnd::new(Tick::new(2), MatchResult::Won(Team::new(1)));

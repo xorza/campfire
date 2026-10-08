@@ -261,11 +261,20 @@ impl DamagePass {
             left = carried.absorb(left, |id| takes_effect(book.tags(id)));
         }
         let LifePool(life) = *world.resource::<LifePool>();
-        let mut pools = world
-            .get_mut::<Pools>(entity)
-            .expect("a unit that takes damage");
-        let taken = pools.take(life, left);
-        let killed = !pools.above_zero(life);
+        let living = |world: &World| {
+            let pools = world.get::<Pools>(entity);
+            pools.expect("a unit that takes damage").above_zero(life)
+        };
+        // A write marks the pools changed, so damage that takes nothing writes nothing.
+        let taken = if left > Num::ZERO && living(world) {
+            let mut pools = world
+                .get_mut::<Pools>(entity)
+                .expect("a unit that takes damage");
+            pools.take(life, left)
+        } else {
+            Num::ZERO
+        };
+        let killed = !living(world);
         world.resource_scope(|world, index: Mut<'_, EntityIndex>| {
             let mut attackers = world.get_mut::<RecentAttackers>(entity);
             if let (Some(source), Some(attackers)) = (damage.source, attackers.as_deref_mut()) {

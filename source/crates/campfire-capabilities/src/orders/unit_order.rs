@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::change_detection::Mut;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
@@ -109,7 +110,7 @@ impl UnitOrder {
             if slots.approaching() {
                 slots.stop();
                 if let Some(destination) = &mut destination {
-                    destination.set(None);
+                    destination.set_if_neq(Destination::to(None));
                 }
             }
         }
@@ -162,7 +163,7 @@ impl UnitOrder {
             walker.leave();
         }
         if let Some(mut destination) = destination {
-            destination.set(to);
+            destination.set_if_neq(Destination::to(to));
         }
         if let (UnitOrder::Move { party, .. }, Some(to), Some(mut route), Some(mut progress)) =
             (self, to, route, progress)

@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::system::RunSystemOnce;
 use std::collections::BTreeMap;
 
@@ -931,12 +932,19 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     };
 
     // 35: the shield that ends in tick 30 spends its 10, the one of tick 50 its 20, and the one
-    // with no end 5 of its 100; health takes nothing, and the source heals nothing.
+    // with no end 5 of its 100; health takes nothing, and the source heals nothing. The target's
+    // pools, which nothing took from, are not written.
+    let pools_changed = |fight: &Fight| {
+        let unit = fight.sim.world.entity(fight.sim.entity(target));
+        unit.get_ref::<Pools>().unwrap().last_changed()
+    };
+    let before = pools_changed(&fight);
     fight.damage(Some(source), target, 35, ATTACK);
     fight.sim.run_until(1);
     assert_eq!(shields(&fight), [Num::int(95)]);
     assert_eq!(fight.sim.life(target), Num::int(100));
     assert_eq!(fight.sim.life(source), Num::int(40));
+    assert_eq!(pools_changed(&fight), before);
     // An attack of 100: the last shield's 95, then 5 off health, which life steals 5 × 0.5,
     // halved: 1.25. Then a spell of 40, all off health: 40 × 0.25, halved, 5. 40 + 1.25 + 5.
     fight.damage(Some(source), target, 100, ATTACK);

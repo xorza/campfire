@@ -372,7 +372,7 @@ fn route_units(
             None if route.arrived_short() => {
                 if opened {
                     let goal = route.goal().expect("a route that arrived short has a goal");
-                    destination.set(Some(goal));
+                    destination.set_if_neq(Destination::to(Some(goal)));
                     route.ask(goal, now, party(goal));
                     progress.restart();
                 }
@@ -555,7 +555,7 @@ fn forget_dead(
     }
     for (mut destination, mut route, mut progress) in &mut units {
         if destination.get().is_some() {
-            destination.set(None);
+            destination.set_if_neq(Destination::to(None));
         }
         if route.goal().is_some() {
             route.clear();
@@ -594,7 +594,7 @@ fn move_units(
         loop {
             let Some(&waypoint) = route.ahead().first() else {
                 if route.asked().is_none() {
-                    destination.set(None);
+                    destination.set_if_neq(Destination::to(None));
                     if route.reached() {
                         route.clear();
                         progress.restart();
