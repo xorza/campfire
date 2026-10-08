@@ -323,10 +323,33 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
         .world_mut()
         .entity_mut(tower_entity)
         .insert(frail);
+    // The tower, at (8, -3), stands out of the walker's sight at (0, -2): an attack on it does
+    // nothing, on the server and on the client, which does not hold it.
+    let slots = |app: &App| app.world().get::<ActionSlots>(hero_entity(app)).cloned();
+    let attacking = |app: &App| slots(app).and_then(|slots| slots.attacking());
+    let start = hero(local.server());
+    local.order(0, Action::Attack { target: tower });
+    for _ in 0..lead(&local) + 2 {
+        local.step();
+        assert_eq!(attacking(local.server()), None);
+        assert_eq!(attacking(local.client(0)), None);
+    }
+    assert_eq!(hero(local.server()), start);
+    // Once the walker walks east until its client holds the tower, the same attack takes effect.
+    local.order(0, move_to(4, -2));
+    let held = |local: &InProcessMatch| {
+        let index = local.client(0).world().resource::<EntityIndex>();
+        index.get(tower).is_some()
+    };
+    let mut frames = 0;
+    while !held(&local) {
+        assert!(frames < 200, "the walker comes to see the tower");
+        local.step();
+        frames += 1;
+    }
     local.order(0, Action::Attack { target: tower });
     // The client starts the walker's attack as the server does: the first windup each shows has
     // the same target, start and cooldowns.
-    let slots = |app: &App| app.world().get::<ActionSlots>(hero_entity(app)).cloned();
     let mut windups = [None, None];
     let mut frames = 0;
     while !local.server().world().contains_resource::<MatchEnd>() {

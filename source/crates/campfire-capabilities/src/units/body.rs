@@ -152,19 +152,13 @@ pub(crate) mod internals {
         Metric::Planar.reaches(from, Body::shape_of(from_body), range, to, bound)
     }
 
-    /// Whether the circle `walker` at `at`, its radius less `slack`, overlaps the box `body` at
-    /// `centre`: a body collision left inside the box by more than the rounding of its push.
-    pub fn sinks_into(
-        at: Position,
-        walker: &Body,
-        slack: Num,
-        centre: Position,
-        body: &Body,
-    ) -> bool {
+    /// Whether the circle `walker` at `at` overlaps the box `body` at `centre`: a body collision
+    /// left inside the box.
+    pub fn sinks_into(at: Position, walker: &Body, centre: Position, body: &Body) -> bool {
         let (Shape::Circle(radius), Shape::Box(boxed)) = (walker.shape(), body.shape()) else {
             panic!("a circle and a box");
         };
-        boxed.nearest(centre, at, radius - slack) == Ordering::Less
+        boxed.nearest(centre, at, radius) == Ordering::Less
     }
 }
 

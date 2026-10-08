@@ -278,7 +278,8 @@ impl ModeApi {
             "spawn_unit",
             &[&["type", "team", "pos"], &["type", "team", "pos", "player"]],
             "spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by \
-             `player` if given, when the call ends; the new unit, for `grant` and its `.state`",
+             `player` if given, who plays on `team`, when the call ends; the new unit, for \
+             `grant` and its `.state`",
         )
         .name(0, NameKind::UnitType)
         .name(1, NameKind::Team);
@@ -586,7 +587,7 @@ impl ModeApi {
     }
 
     /// Queues the spawn of a unit of `unit_type` on `team` at `pos`, owned by `player` if it
-    /// names one: the new unit, with the id the call takes for it.
+    /// names one, who plays on `team`: the new unit, with the id the call takes for it.
     fn spawn_unit(
         ctx: &Ctx,
         unit_type: &str,
@@ -616,6 +617,9 @@ impl ModeApi {
         }
         let team = ModeApi::team(book, team)?;
         let owner = player.map(|player| book.teams.player(player)).transpose()?;
+        if owner.is_some_and(|slot| book.teams.of(slot) != Some(team)) {
+            return Err(ApiError::PlayerOffTeam.fail().into());
+        }
         let id = ctx.write()?.take_id();
         if let Some(body) = body {
             let spawning = IndexedBody::of(id, pos, &body);

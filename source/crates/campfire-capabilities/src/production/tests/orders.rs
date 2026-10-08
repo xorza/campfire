@@ -10,6 +10,9 @@ use crate::production::rally_target::RallyTarget;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
+use crate::units::team_set::TeamSet;
+use crate::vision::seen_by::SeenBy;
+use crate::vision::vision_grid::VisionGrid;
 
 impl Shop {
     /// Runs a tick in which player `slot` orders `action` to `unit`.
@@ -181,4 +184,24 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     shop.tick();
     let spawned = shop.spawned.borrow()[4];
     assert_eq!(spawned.at.pos, half(0, 0));
+
+    // With a vision grid, a rally to a unit of team 0 at (0, 6) that the producer's team 1 does
+    // not see is ignored: the dead flag stays its rally, and the grunt spawns at its producer.
+    // Once team 1 sees it, the rally takes it, as the living flag's did.
+    VisionGrid::fog(&mut shop.sim.world, 2);
+    let watch = shop
+        .sim
+        .spawn(half(0, 12), (Team::new(0), Body::new(Num::HALF).unwrap()));
+    let team0 = TeamSet::of(Team::new(0));
+    for (at, (seers, place)) in [(team0, half(0, 0)), (team0.with(Team::new(1)), half(-1, 3))]
+        .into_iter()
+        .enumerate()
+    {
+        shop.sim.insert(watch, SeenBy::new(seers));
+        shop.tick_ordering(0, producer, rally(RallyTarget::Unit(watch)));
+        shop.order(producer);
+        shop.tick();
+        let spawned = shop.spawned.borrow()[5 + at];
+        assert_eq!(spawned.at.pos, place, "{seers:?}");
+    }
 }

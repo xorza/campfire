@@ -58,6 +58,7 @@ use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
+use crate::units::team_set::TeamSet;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
@@ -66,6 +67,8 @@ use crate::values::package_path::PackagePath;
 use crate::values::rank::Rank;
 use crate::values::scalar::Scalar;
 use crate::values::share::Share;
+use crate::vision::seen_by::SeenBy;
+use crate::vision::vision_grid::VisionGrid;
 
 const ONE: i64 = 1 << 24;
 /// The reference 3v3's creep and tower AI as they were when these tests were written: the
@@ -412,7 +415,7 @@ fn a_hero_walks_to_its_players_target() {
 fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     let TwoHeroes {
         mut game,
-        heroes: [hero, _],
+        heroes: [hero, other],
     } = two_heroes();
     // Its weapon in slot 0, and a train in slot 1.
     let train = internals::train(&mut game.sim.world, UnitType::new(0), Ticks::ZERO, None);
@@ -441,6 +444,36 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
         game.tick(&[(0, &slot(at))]);
         assert_eq!(ordered(&game), order, "slot {at}");
     }
+
+    // With a vision grid, the train at a unit: at the other hero while no team sees it, nothing
+    // changes; at the hero itself, of its own team with no `SeenBy`, and at the other once team 0
+    // sees it, the order takes its target.
+    VisionGrid::fog(&mut game.sim.world, 1);
+    game.sim.insert(other, SeenBy::new(TeamSet::NONE));
+    let at_unit = |unit| {
+        Order::payload(&[Order::one(
+            hero,
+            Action::Slot {
+                slot: 1,
+                target: ActionTarget::Unit(unit),
+            },
+        )])
+    };
+    let aimed = |unit| InProgress::Order {
+        aim: SlotAim {
+            slot: 1,
+            target: ActionTarget::Unit(unit),
+        },
+        phase: OrderPhase::Ordered,
+    };
+    game.tick(&[(0, &at_unit(other))]);
+    assert_eq!(ordered(&game), Some(train_order));
+    game.tick(&[(0, &at_unit(hero))]);
+    assert_eq!(ordered(&game), Some(aimed(hero)));
+    game.sim
+        .insert(other, SeenBy::new(TeamSet::of(Team::new(0))));
+    game.tick(&[(0, &at_unit(other))]);
+    assert_eq!(ordered(&game), Some(aimed(other)));
 }
 
 #[test]
@@ -597,8 +630,20 @@ fn attack_orders_need_a_living_enemy() {
         game.tick(&[(0, &order)]);
         assert_eq!(game.target(fighter), None, "{order:?}");
     }
-    game.tick(&[(0, &attack(fighter, enemy))]);
-    assert_eq!(game.target(fighter), Some(enemy));
+
+    // With a vision grid, an attack aims only at a unit the fighter's team sees as the order
+    // applies. The enemy has no `SeenBy`, as a unit spawned after the last Vision stage, so its
+    // own team alone sees it; then team 1 alone sees it; then team 0 does too.
+    VisionGrid::fog(&mut game.sim.world, 2);
+    let enemies = TeamSet::of(Team::new(1));
+    for seers in [None, Some(enemies), Some(enemies.with(Team::new(0)))] {
+        if let Some(seers) = seers {
+            game.sim.insert(enemy, SeenBy::new(seers));
+        }
+        game.tick(&[(0, &attack(fighter, enemy))]);
+        let expected = seers.is_some_and(|seers| seers.contains(Team::new(0)));
+        assert_eq!(game.target(fighter), expected.then_some(enemy), "{seers:?}");
+    }
 
     // A dead hero takes no order, and no one can order an attack on it. The fighter, 1 m away,
     // starts in tick 0 and kills it in tick 2.

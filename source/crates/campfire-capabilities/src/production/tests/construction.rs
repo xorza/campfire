@@ -26,6 +26,7 @@ use crate::units::team_set::TeamSet;
 use crate::values::relation_set::RelationSet;
 use crate::values::share::Share;
 use crate::vision::seen_by::SeenBy;
+use crate::vision::vision_grid::VisionGrid;
 
 /// The point at `x` and `z` half meters.
 fn half(x: i64, z: i64) -> Position {
@@ -338,6 +339,27 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
         );
         assert_eq!(yard.order_of(second), None, "{style:?}");
         assert_eq!(yard.site(depot).0, Num::int(100), "{style:?}");
+    }
+}
+
+#[test]
+fn a_build_at_a_site_its_player_does_not_see_does_nothing() {
+    // With a vision grid, the second builder's order to the site the first placed in tick 0 is
+    // ignored while no team sees the site, and joins it once team 0 does.
+    let rates = [Num::ONE, Num::ONE];
+    let mut yard = Yard::new(Rules::of(Style::Builders(&rates)));
+    let first = yard.builder(half(-6, 0), 0, 0);
+    let second = yard.builder(half(6, 0), 0, 0);
+    yard.build_at(first, 0, 0);
+    let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
+    VisionGrid::fog(&mut yard.shop.sim.world, 1);
+    for (seers, joined) in [
+        (TeamSet::NONE, None),
+        (TeamSet::of(Team::new(0)), Some(BuildTarget::Site(depot))),
+    ] {
+        yard.shop.sim.insert(depot, SeenBy::new(seers));
+        yard.order(0, second, at_site(depot));
+        assert_eq!(yard.order_of(second), joined, "{seers:?}");
     }
 }
 

@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use bevy_ecs::change_detection::{DetectChanges, Ref, Tick as ChangeTick};
+use bevy_ecs::change_detection::{CheckChangeTicks, DetectChanges, Ref, Tick as ChangeTick};
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
@@ -354,6 +354,11 @@ impl StateRegistry {
         );
         let changes = StateChanges::new(world.resource::<EntityIndex>());
         world.insert_resource(changes);
+        world.add_observer(
+            |check: On<'_, '_, CheckChangeTicks>, mut changes: ResMut<'_, StateChanges>| {
+                changes.check_ticks(check.present_tick());
+            },
+        );
         // A query names the marker of the unpredicted, which only a predicting world registers.
         world.register_component::<Unpredicted>();
         let mut queries = CopyQueries::default();

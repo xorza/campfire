@@ -17,3 +17,25 @@ impl VisionGrid {
     /// cells times this many costs.
     pub(crate) const MAX_TEAMS: usize = 64;
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+
+    use crate::geometry::bounds::Bounds;
+    use crate::geometry::grid::Grid;
+    use crate::vision::brush_map::BrushMap;
+    use crate::vision::vision_grid::VisionGrid;
+
+    impl VisionGrid {
+        /// Gives `world` a grid of one cell, for `teams` teams, that no Vision stage reads: the
+        /// `SeenBy` a test sets on its units alone tells what each team sees.
+        pub(crate) fn fog(world: &mut World, teams: usize) {
+            let bounds = Bounds::new([-Num::HALF; 2], [Num::HALF; 2]).unwrap();
+            let grid = Grid::new(Num::ONE, bounds).unwrap();
+            let brush = BrushMap::new(&grid, &[]);
+            world.insert_resource(VisionGrid { grid, brush, teams });
+        }
+    }
+}

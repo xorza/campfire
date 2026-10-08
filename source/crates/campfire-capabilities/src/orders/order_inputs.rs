@@ -15,8 +15,10 @@ use crate::navigation::group_box::GroupBox;
 use crate::navigation::party::{Party, PartyKey};
 use crate::orders::order::Action;
 use crate::orders::resetting::Resetting;
+use crate::orders::seen_targets::SeenTargets;
 use crate::orders::tick_orders::TickOrders;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
+use crate::production::build_target::BuildTarget;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
@@ -56,8 +58,9 @@ impl OrderInputs {
     /// of its units, by stable id. An order to a unit its player does not control, that is dead or
     /// resets, is dropped, and so are a move of a unit with nowhere to walk, an attack on a unit
     /// that is not a living enemy or that none of its weapons selects, a slot's action of a kind
-    /// other than a cast, a train or a gather, a gather at no unit, and a build of a slot that
-    /// holds none: a client can send anything. A move to two units or more that walk moves them as
+    /// other than a cast, a train or a gather, a gather at no unit, a build of a slot that holds
+    /// none, and an order whose unit target its player's vision group does not see: a client can
+    /// send anything. A move to two units or more that walk moves them as
     /// a group: each walks to its own goal by the group's box, as one party, the order's.
     pub(super) fn check_player_orders(
         (tick, bounds, orders, index): (
@@ -67,7 +70,7 @@ impl OrderInputs {
             Res<'_, EntityIndex>,
         ),
         book: Res<'_, ActionBook>,
-        targets: Targets<'_, '_>,
+        (targets, visible): (Targets<'_, '_>, SeenTargets<'_, '_>),
         units: Query<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
         mut checked: ResMut<'_, PlayerOrders>,
         mut movers: Local<'_, Vec<Mover>>,
@@ -125,6 +128,7 @@ impl OrderInputs {
                 continue;
             }
             for (entity, (_, team, _, _, slots)) in controlled {
+                let sees = |target| team.is_some_and(|&team| visible.sees(team, target));
                 let unit_order = match order.action {
                     Action::Attack { target } => {
                         let selected = team.and_then(|&team| {
@@ -134,11 +138,13 @@ impl OrderInputs {
                         let armed = slots.is_some_and(|slots| {
                             selected.is_some() && book.weapon_for(slots, selected).is_some()
                         });
-                        armed.then_some(UnitOrder::Attack { target })
+                        (armed && sees(target)).then_some(UnitOrder::Attack { target })
                     }
                     Action::Slot { slot, target } => {
                         let kind = slots.and_then(|slots| slots.kind_in(&book, slot));
+                        let hidden = matches!(target, ActionTarget::Unit(unit) if !sees(unit));
                         match (kind, target) {
+                            _ if hidden => None,
                             (Some(ActionKind::Cast | ActionKind::Train), _) => {
                                 Some(UnitOrder::Slot { slot, target })
                             }
@@ -150,7 +156,8 @@ impl OrderInputs {
                     }
                     Action::Build { slot, target } => {
                         let kind = slots.and_then(|slots| slots.kind_in(&book, slot));
-                        (kind == Some(ActionKind::Build))
+                        let hidden = matches!(target, BuildTarget::Site(site) if !sees(site));
+                        (kind == Some(ActionKind::Build) && !hidden)
                             .then_some(UnitOrder::Build { slot, target })
                     }
                     Action::Stop => Some(UnitOrder::Stop),

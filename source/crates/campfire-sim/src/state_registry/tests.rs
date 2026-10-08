@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
@@ -642,6 +643,54 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
         world.remove_resource::<SimTick>();
     });
     assert_eq!(gone, (vec![], vec![], vec![absent]));
+}
+
+#[test]
+fn a_copy_takes_every_value_after_a_tick_check_finds_the_last_copy_too_old() {
+    let mut following = Following::new(registry(), plain_world());
+    let (first, second) = (StableId::new(0), StableId::new(1));
+    let absent = ("sim.tick", vec![0]);
+
+    // Bevy's check of the change ticks, at `present`, finds the last copy within the maximum
+    // change age: it keeps its tick, and the next copy takes nothing new.
+    let present = following.world.change_tick();
+    following
+        .world
+        .resource_mut::<StateChanges>()
+        .check_ticks(present);
+    assert_eq!(
+        following.step(|_| {}),
+        (vec![], vec![], vec![absent.clone()])
+    );
+
+    // The check finds the last copy one tick older than the maximum age. The first's health
+    // changed after it, but as long ago as that age, to which the check clamps the change's tick,
+    // so it reads as no newer than the copy; the second's changed a tick ago. The next copy takes
+    // every value, as a first does: the allocator and the first's position, which did not
+    // change, among them.
+    let present = following.world.change_tick();
+    let ago = |ticks: u32| ChangeTick::new(present.get().wrapping_sub(ticks));
+    let max_age = ChangeTick::MAX.get();
+    let world = &mut following.world;
+    let mut long_ago = world.get_mut::<Health>(entity(world, first)).unwrap();
+    *long_ago = health(11);
+    long_ago.set_last_changed(ago(max_age));
+    *world.get_mut::<Health>(entity(world, second)).unwrap() = health(21);
+    let mut recorded = world.resource_mut::<StateChanges>();
+    recorded.set_since(ago(max_age + 1));
+    recorded.check_ticks(present);
+    let (_, _, sections) = following.step(|_| {});
+    let allocator = encoded(&[Some(following.world.resource::<IdAllocator>())]);
+    let healths = encoded(&[(first, Some(health(11))), (second, Some(health(21)))]);
+    assert_eq!(
+        sections,
+        [
+            ("sim.id_allocator", allocator),
+            absent,
+            ("test.health", healths),
+            ("test.position", encoded(&[(first, Some(position(1)))])),
+        ]
+    );
 }
 
 /// Stands for a state component that requires another, as a unit's modifiers require their

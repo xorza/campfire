@@ -107,6 +107,8 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.add_player_modifier(9, "drill");
     } else if value == "rally" {
         ctx.add_player_modifier(1, "ral" + "ly");
+    } else if value == "turncoat" {
+        ctx.spawn_unit("grunt", "a", at, 2);
     }
 }
 "#;
@@ -139,14 +141,22 @@ fn on_mode_input(ctx, player, name, value) {
     let held = game.sim.world.resource::<PlayerModifiers>();
     assert_eq!(held.of(PlayerSlot::new(1)).collect::<Vec<_>>(), [drill]);
     assert_eq!(held.of(PlayerSlot::new(0)).count(), 0);
-    // A modifier the package does not declare, a player the session does not have, and a
-    // modifier that reads a param of an action, which a player's never has, fail.
+    // A modifier the package does not declare, a player the session does not have, a modifier
+    // that reads a param of an action, which a player's never has, and a unit of player 2, of
+    // team `b`, on team `a`, fail, and the last spawns nothing.
     game.tick(&[
         (1, input("probe", "stranger")),
         (1, input("probe", "nobody")),
         (1, input("probe", "rally")),
+        (1, input("probe", "turncoat")),
     ]);
     let missing = ApiError::ModifierParam(ParamProblem::Missing);
-    let refused = [ApiError::UnknownModifier, ApiError::UnknownPlayer, missing];
+    let refused = [
+        ApiError::UnknownModifier,
+        ApiError::UnknownPlayer,
+        missing,
+        ApiError::PlayerOffTeam,
+    ];
     assert_eq!(game.failures(), refused.map(FailureKind::Api));
+    assert_eq!(game.sim.world.resource::<EntityIndex>().iter().count(), 5);
 }

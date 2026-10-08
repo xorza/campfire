@@ -5,6 +5,7 @@ use campfire_sim::{EntityIndex, SimTick};
 
 use crate::geometry::bounds::Bounds;
 use crate::orders::order::Action;
+use crate::orders::seen_targets::SeenTargets;
 use crate::orders::tick_orders::TickOrders;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
@@ -15,6 +16,7 @@ use crate::production::site::Site;
 use crate::production::train_queue::TrainQueue;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
+use crate::units::team::Team;
 
 /// The tick's orders that cancel a train or a build, or set a rally.
 #[derive(Debug)]
@@ -30,7 +32,7 @@ impl ProductionOrders {
     /// build's `cancel_refund` of each player resource its build paid, each rounded down, and
     /// despawns the site, with no death. A refund that would carry an amount past an `i64` refuses
     /// its cancel. A rally sets the producer's rally point, a point taken into the bounds, or a
-    /// unit, or clears it.
+    /// unit its player's vision group sees, or clears it; a rally to another unit is ignored.
     pub(super) fn apply_production_orders(
         (tick, bounds, orders, index): (
             Res<'_, SimTick>,
@@ -40,7 +42,18 @@ impl ProductionOrders {
         ),
         builds: Res<'_, BuildSpecs>,
         mut resources: Option<ResMut<'_, PlayerResources>>,
-        mut units: Query<'_, '_, (&Owner, Option<&mut TrainQueue>, Option<&Site>, Has<Dead>)>,
+        mut units: Query<
+            '_,
+            '_,
+            (
+                &Owner,
+                Option<&Team>,
+                Option<&mut TrainQueue>,
+                Option<&Site>,
+                Has<Dead>,
+            ),
+        >,
+        visible: SeenTargets<'_, '_>,
         mut commands: Commands<'_, '_>,
         (mut refund, mut cancelled): (Local<'_, Vec<ResourceAmount>>, Local<'_, Vec<Entity>>),
     ) {
@@ -64,7 +77,7 @@ impl ProductionOrders {
                 let Some(entity) = index.get(unit) else {
                     continue;
                 };
-                let Ok((owner, queue, site, dead)) = units.get_mut(entity) else {
+                let Ok((owner, team, queue, site, dead)) = units.get_mut(entity) else {
                     continue;
                 };
                 if owner.slot() != order.slot {
@@ -80,6 +93,13 @@ impl ProductionOrders {
                             queue.remove(place, now);
                         }
                     }
+                    (
+                        Action::Rally {
+                            target: Some(RallyTarget::Unit(unit)),
+                        },
+                        Some(_),
+                        _,
+                    ) if !team.is_some_and(|&team| visible.sees(team, unit)) => {}
                     (Action::Rally { target }, Some(_), _) => {
                         let target = target.map(|target| match target {
                             RallyTarget::Point { x, z } => {

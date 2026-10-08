@@ -33,6 +33,8 @@ enum ProvingPlan {
     Cast { slot: u8, at: Aim },
     /// The hero attacks the boulder.
     AttackBoulder,
+    /// The hero attacks the hero of player `slot`.
+    AttackHero { slot: u32 },
     /// The player's barracks of that place, by stable id, trains a guard.
     Train { barracks: usize },
     /// The player's barracks of that place posts a ward at a point.
@@ -44,6 +46,8 @@ enum ProvingPlan {
 ///
 /// - Stamp 2: both of north's barracks order a guard with gold for one, and south's barracks
 ///   orders one: the lower id of north's two trains.
+/// - The lancer attacks the sage in tick 5, while north does not see her, which does nothing,
+///   and again in tick 29, once north sees her, until the lancer's cast of tick 30.
 /// - The heroes walk to the middle and trade their abilities: the lancer's fan, quake and snare,
 ///   the sage's orb and nova. The sage then posts a wisp, a unit type of its own package.
 /// - North's barracks compete again once the income of tick 100 comes.
@@ -51,12 +55,14 @@ enum ProvingPlan {
 ///   body near the lane, which its weapon reaches from the box's edge.
 /// - North's east barracks posts a ward by the south's barracks, which no unit of north sees
 ///   otherwise.
-const SCRIPT: [Scripted<ProvingPlan>; 20] = [
+const SCRIPT: [Scripted<ProvingPlan>; 22] = [
     Scripted::new(2, 0, ProvingPlan::Train { barracks: 0 }),
     Scripted::new(2, 0, ProvingPlan::Train { barracks: 1 }),
     Scripted::new(2, 1, ProvingPlan::Train { barracks: 0 }),
     Scripted::new(3, 0, ProvingPlan::Move { x: -1, z: -1 }),
     Scripted::new(3, 1, ProvingPlan::Move { x: 2, z: 2 }),
+    Scripted::new(5, 0, ProvingPlan::AttackHero { slot: 1 }),
+    Scripted::new(29, 0, ProvingPlan::AttackHero { slot: 1 }),
     cast(30, 0, 0, Aim::HeroPoint { slot: 1 }),
     cast(40, 1, 0, Aim::Hero { slot: 0 }),
     cast(60, 0, 1, Aim::HeroPoint { slot: 1 }),
@@ -149,6 +155,12 @@ impl Plan for ProvingPlan {
                 hero,
                 Action::Attack {
                     target: boulder(units),
+                },
+            ),
+            ProvingPlan::AttackHero { slot } => (
+                hero,
+                Action::Attack {
+                    target: units.hero(slot),
                 },
             ),
             ProvingPlan::Train { barracks: at } => (

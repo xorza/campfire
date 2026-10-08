@@ -54,7 +54,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `save` | `()` | mode | core | since 1.0 | asks for a save at the end of the tick |
 | `set_relation` | `(a, b, relation)`, `a` a team, `b` a team, `relation` a `Relation` | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, their vision as it was |
 | `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path, `from` a `PathEnd` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from` of `path`, walking it from there |
-| `spawn_unit` | `(type, team, pos)` or `(type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` and its `.state` |
+| `spawn_unit` | `(type, team, pos)` or `(type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, who plays on `team`, when the call ends; the new unit, for `grant` and its `.state` |
 | `state` | read | mode | core | since 1.0 | the mode's state fields, by name, to read and write |
 | `supply_cap` | `(player)` | every role | production | since 1.0 | what `player`'s living, complete units give of supply, at most the mode's `max` |
 | `supply_used` | `(player)` | every role | production | since 1.0 | what `player`'s living units and queued trains use of its supply |

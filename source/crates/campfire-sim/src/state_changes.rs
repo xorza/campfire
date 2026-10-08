@@ -7,7 +7,8 @@ use crate::stable_id::StableId;
 /// What a match world records for the copies of its state, from `StateRegistry::track` on: the
 /// world's change tick at the last copy, the stable ids it gained and lost, and the ids whose
 /// component of a registered type was removed, by the type's place in the registry. A value
-/// counts as changed when its change tick is newer than the last copy's.
+/// counts as changed when its change tick is newer than the last copy's, which Bevy's check of
+/// the world's change ticks keeps within the maximum change age, as it keeps every value's.
 #[derive(Resource, Debug)]
 pub(crate) struct StateChanges {
     /// None before the first copy, which takes every value.
@@ -86,11 +87,39 @@ impl StateChanges {
         &self.removed[start..end]
     }
 
+    /// Forgets the last copy's tick when Bevy's check of the world's change ticks, at `present`,
+    /// finds it older than the maximum change age. The check clamps every older value's tick to
+    /// that age, so a value changed since the last copy may no longer read as newer than it, and
+    /// a tick past `u32` of age would wrap to read as recent: the next copy takes every value, as
+    /// a first does.
+    pub(crate) fn check_ticks(&mut self, present: ChangeTick) {
+        let aged = self
+            .since
+            .is_some_and(|since| present.get().wrapping_sub(since.get()) > ChangeTick::MAX.get());
+        if aged {
+            self.since = None;
+        }
+    }
+
     /// Starts recording again, for the copy after the one made at `now`.
     pub(crate) fn restart(&mut self, now: ChangeTick) {
         self.since = Some(now);
         self.gained.clear();
         self.lost.clear();
         self.removed.clear();
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use bevy_ecs::change_detection::Tick as ChangeTick;
+
+    use crate::state_changes::StateChanges;
+
+    impl StateChanges {
+        /// Sets the last copy's tick, as a world that copied it long ago would hold it.
+        pub(crate) const fn set_since(&mut self, since: ChangeTick) {
+            self.since = Some(since);
+        }
     }
 }

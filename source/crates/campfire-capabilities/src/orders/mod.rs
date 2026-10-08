@@ -39,6 +39,7 @@ pub(crate) mod order_inputs;
 pub(crate) mod orders_api;
 pub(crate) mod production_orders;
 pub(crate) mod resetting;
+pub(crate) mod seen_targets;
 pub(crate) mod thinking;
 pub(crate) mod tick_orders;
 pub(crate) mod trade_orders;

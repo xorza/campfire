@@ -2,6 +2,7 @@
 //! there to prove: each capability it names takes part.
 
 use bevy_ecs::component::Component;
+use bevy_ecs::world::{EntityRef, World};
 use campfire_capabilities::internals::{reaches, reaches_bound, sinks_into};
 use campfire_capabilities::{
     ActionSlots, Area, Body, Dead, Experience, Level, Lifespan, ModeState, Modifiers, MoveStep,
@@ -37,16 +38,44 @@ struct Seen {
     lancer_reach: Vec<(u64, bool, bool)>,
     /// The tick the lancer first wound up an attack on the boulder.
     first_strike: Option<u64>,
-    /// The walkers left inside the boulder's box after a tick, by more than a push rounds.
+    /// The walkers left inside the boulder's box after a tick.
     sunk: Vec<(u64, StableId)>,
+    /// After each tick around the lancer's two attacks on the sage, whether the lancer's attack
+    /// target was the sage, and whether north saw her.
+    sage_attacked: Vec<(u64, bool, bool)>,
 }
 
 /// The lancer's weapon's range, its `attack` action's in its package.
 const LANCER_RANGE: Num = Num::int(4);
 
+/// The hero of player `slot` in `world`, by its stable id.
+fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
+    world
+        .resource::<EntityIndex>()
+        .iter()
+        .map(|(id, entity)| (id, world.entity(entity)))
+        .find(|(_, unit)| {
+            unit.contains::<Experience>()
+                && unit
+                    .get::<Owner>()
+                    .is_some_and(|owner| owner.slot().get() == slot)
+        })
+        .unwrap()
+}
+
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
     let world = fixed.runner().world();
     look_at_boulder(fixed, tick, seen);
+    if matches!(tick, 4 | 5 | 28 | 29) {
+        let ((_, lancer), (sage, sage_unit)) = (hero(world, 0), hero(world, 1));
+        let target = lancer.get::<ActionSlots>().unwrap().attack_target();
+        let north_sees = sage_unit.get::<SeenBy>().unwrap().get();
+        seen.sage_attacked.push((
+            tick,
+            target == Some(sage),
+            north_sees.contains(Team::new(0)),
+        ));
+    }
     let state = world.resource::<ModeState>().get();
     if seen.states.last().is_none_or(|(_, last)| last != state) {
         seen.states.push((tick, state.to_vec()));
@@ -112,25 +141,18 @@ fn look_at_boulder(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
         *stone.get::<Position>().unwrap(),
         stone.get::<Body>().unwrap(),
     );
-    // A push ends within a bit and a half of touching; two bits of slack hold every rounding.
-    let slack = Num::from_bits(2);
     for (id, unit) in units() {
         let walks = unit.contains::<MoveStep>() && !unit.contains::<Dead>();
         if let (true, Some(walker)) = (walks, unit.get::<Body>())
-            && sinks_into(*unit.get::<Position>().unwrap(), walker, slack, at, body)
+            && sinks_into(*unit.get::<Position>().unwrap(), walker, at, body)
         {
             seen.sunk.push((tick, id));
         }
     }
-    let lancer = units().find(|(_, unit)| {
-        unit.contains::<Experience>()
-            && unit
-                .get::<Owner>()
-                .is_some_and(|owner| owner.slot().get() == 0)
-    });
-    let Some((_, lancer)) = lancer.filter(|(_, unit)| !unit.contains::<Dead>()) else {
+    let (_, lancer) = hero(world, 0);
+    if lancer.contains::<Dead>() {
         return;
-    };
+    }
     let (from, own) = (*lancer.get::<Position>().unwrap(), lancer.get::<Body>());
     let box_reach = reaches(from, own, LANCER_RANGE, at, Some(body));
     let bound_reach = reaches_bound(from, own, LANCER_RANGE, at, Some(body));
@@ -179,6 +201,18 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // Production: the orders of tick 2 train in 1.5 s, 30 ticks. North's two barracks competed
     // for gold for one guard, so north has one guard, and south one.
     assert_eq!(seen.trained, [1, 1]);
+    // Orders at hidden units: an order applies in the Inputs stage, as the last tick's Vision
+    // stage left the units seen. North did not see the sage after tick 4, so the lancer's attack
+    // on her in tick 5 did nothing; it saw her after tick 28, so the same attack in tick 29 took.
+    assert_eq!(
+        seen.sage_attacked,
+        [
+            (4, false, false),
+            (5, false, false),
+            (28, false, true),
+            (29, true, true)
+        ]
+    );
     // Projectiles and areas flew and lay; a hero carried a modifier, the snare's or the aura's.
     assert!(
         seen.projectiles > 0 && seen.areas > 0 && seen.modified_heroes > 0,

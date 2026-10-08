@@ -142,6 +142,10 @@ pub enum ApiError {
     /// A player slot the session does not have.
     #[error("player is not in the session")]
     UnknownPlayer,
+    /// A unit owned by a player of another team: a player's units play on its team, so its
+    /// vision group is theirs.
+    #[error("player is not on the unit's team")]
+    PlayerOffTeam,
     /// A choice the mode does not declare.
     #[error("choice is not one the mode declares")]
     UnknownChoice,
