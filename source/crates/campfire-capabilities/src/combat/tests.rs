@@ -181,10 +181,10 @@ fn an_attack_winds_up_and_strikes_each_period() {
         let bytes = postcard::to_allocvec(attacks).unwrap();
         postcard::from_bytes::<RecentAttackers>(&bytes).unwrap()
     };
-    let mut recent = held(&[attack(dummy, 3), attack(fighter, 4)]);
+    let mut recent = held(&[attack(fighter, 4), attack(dummy, 3)]);
     recent.record(fighter, Tick::new(7), index);
     let attacks = recent.iter().collect::<Vec<_>>();
-    assert_eq!(attacks, [attack(dummy, 3), attack(fighter, 7)]);
+    assert_eq!(attacks, [attack(fighter, 7), attack(dummy, 3)]);
     let mut recent = held(&[attack(dummy, 3)]);
     recent.record(fighter, Tick::new(8), index);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 8)]);
