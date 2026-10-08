@@ -19,6 +19,7 @@ pub(crate) mod number;
 pub(crate) mod package_path;
 pub(crate) mod param;
 pub(crate) mod polygon;
+pub(crate) mod rank;
 pub(crate) mod ranked;
 pub(crate) mod region;
 pub(crate) mod relation;

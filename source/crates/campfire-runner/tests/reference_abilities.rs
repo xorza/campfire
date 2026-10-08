@@ -14,8 +14,8 @@ use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
     Action, ActionId, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove, ModifierId,
     Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner, PackagePath, Param, Pools,
-    Projectile, Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling, SeenBy, SlotKind,
-    Stat, Targeting, Team,
+    Projectile, Range, RangeField, Rank, Ranked, RecentAttackers, Scalar, Scaling, SeenBy,
+    SlotKind, Stat, Targeting, Team,
 };
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
@@ -126,7 +126,7 @@ fn caster(
     pools: (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
-    let slots = ActionSlots::new([(action, SlotKind::new(0), rank)]);
+    let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
     let player = Owner::new(PlayerSlot::new(0));
     spawn_with(arena, 0, 0, pools, (player, slots, parts))
 }
@@ -197,7 +197,7 @@ fn every_reference_ability_reads_into_the_schema() {
     else {
         panic!("damage scales");
     };
-    assert_eq!(base.at(2), Some(Num::int(100)));
+    assert_eq!(base.get(Rank::new(2).unwrap()), Some(&Num::int(100)));
     let ability_power = Stat::named("ability_power").unwrap();
     assert_eq!(*ratios, [(ability_power, half)].into());
     assert!(bonus.is_empty());
@@ -274,7 +274,7 @@ fn arm_with(arena: &mut Arena, unit: StableId, ability: ActionId, damage: i64, p
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
     let weapon = world.get::<ActionSlots>(entity).unwrap().slot(0).unwrap();
     let slots = ActionSlots::new([
-        (ability, SlotKind::new(0), 1),
+        (ability, SlotKind::new(0), Some(Rank::FIRST)),
         (weapon.action.unwrap(), weapon.kind, weapon.rank),
     ]);
     world.entity_mut(entity).insert(slots);

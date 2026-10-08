@@ -7,6 +7,7 @@ use crate::stats::lifetime::Lifetime;
 use crate::stats::live_param::LiveParam;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::values::rank::Rank;
 
 /// A modifier a unit carries, its numbers resolved when it was applied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,7 +18,7 @@ pub(crate) struct Instance {
     /// The ability whose cast, projectile, area or modifier applied it, or whose passive it is,
     /// at its rank on the source.
     pub(crate) ability: Option<ActionId>,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
     /// What keeps it: an ability's passive, which a death keeps, an aura, an area or its
     /// carrier's player, and an application of its own.
     pub(crate) lifetime: Lifetime,

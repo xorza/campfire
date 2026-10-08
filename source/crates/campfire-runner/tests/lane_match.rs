@@ -5,7 +5,7 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_capabilities::{
-    Action, ActionSlots, Deaths, Experience, Hook, Level, Order, PathWalker, Points,
+    Action, ActionSlots, Deaths, Experience, Hook, Level, Order, PathWalker, Points, Rank,
     ScriptFailures, Team, TrackId,
 };
 use campfire_common::{StateHash, Tick};
@@ -32,7 +32,7 @@ impl Progress {
         let slots = unit.get::<ActionSlots>().unwrap();
         let track = TrackId::new(0).unwrap();
         Progress {
-            ranks: [0, 1, 2, 3].map(|slot| slots.slot(slot).unwrap().rank),
+            ranks: [0, 1, 2, 3].map(|slot| Rank::count(slots.slot(slot).unwrap().rank)),
             points: unit.get::<Points>().unwrap().get(),
             xp: unit.get::<Experience>().unwrap().get(track).unwrap().xp,
             level: unit.get::<Level>().unwrap().get(),

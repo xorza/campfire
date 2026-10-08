@@ -178,6 +178,7 @@ pub use crate::values::package_path::PackagePath;
 pub use crate::values::param::{Param, Scaling};
 pub use crate::values::polygon::Polygon;
 pub use crate::values::polygon::error::PolygonError;
+pub use crate::values::rank::Rank;
 pub use crate::values::ranked::Ranked;
 pub use crate::values::scalar::Scalar;
 pub use crate::values::share::Share;

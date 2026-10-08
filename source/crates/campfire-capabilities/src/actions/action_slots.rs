@@ -17,6 +17,7 @@ use crate::actions::slot_kinds::SlotKinds;
 use crate::stats::pools::Pools;
 use crate::units::action_id::ActionId;
 use crate::values::action_start::ActionStart;
+use crate::values::rank::Rank;
 
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank
 /// with its cooldown; the action it was ordered or has under way, one at a time; and the unit its
@@ -30,14 +31,14 @@ pub struct ActionSlots {
     interrupted: Option<ChannelCall>,
 }
 
-/// One slot: the action, none in an inventory slot whose item has none, its kind, its rank, 0
+/// One slot: the action, none in an inventory slot whose item has none, its kind, its rank, none
 /// while not learned, the first tick it may start again, and its charges, for an action with
 /// charges once it has a rank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionSlot {
     pub action: Option<ActionId>,
     pub kind: SlotKind,
-    pub rank: u8,
+    pub rank: Option<Rank>,
     pub ready_at: Tick,
     pub charges: Option<SlotCharges>,
     /// While its toggle is on, the tick it pays its cost each second next.
@@ -55,7 +56,7 @@ pub struct SlotCharges {
 impl ActionSlot {
     /// A slot of `action`, or none, of `kind` at `rank`, ready at once, with no charges and no
     /// toggle on.
-    const fn ready(action: Option<ActionId>, kind: SlotKind, rank: u8) -> ActionSlot {
+    const fn ready(action: Option<ActionId>, kind: SlotKind, rank: Option<Rank>) -> ActionSlot {
         ActionSlot {
             action,
             kind,
@@ -64,6 +65,12 @@ impl ActionSlot {
             charges: None,
             toggle: None,
         }
+    }
+
+    /// Its action's values at its rank, as `book` gives them; none for a slot with no action, one
+    /// not learned, or at a rank its action lacks.
+    pub(crate) fn values_in(self, book: &ActionBook) -> Option<&RankValues> {
+        book.get(self.action?)?.values_at(self.rank?)
     }
 
     /// Its charges at `now` under `rule`, its action's at its rank: none without a rule; full at
@@ -153,7 +160,7 @@ pub(crate) struct ChannelStep {
 pub(crate) struct ChannelCall {
     pub(crate) call: ActionCall,
     pub(crate) action: ActionId,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
 }
 
 /// A call of a started action: the action and its target, and how the action started.
@@ -250,8 +257,9 @@ impl ActionSlots {
     /// The most slots a unit holds: every index a `u8` holds.
     pub const LIMIT: usize = 256;
 
-    /// Slots of `(action, kind, rank)`, in the order of their kinds, each ready at once.
-    pub fn new(slots: impl IntoIterator<Item = (ActionId, SlotKind, u8)>) -> ActionSlots {
+    /// Slots of `(action, kind, rank)`, in the order of their kinds, each ready at once, at its
+    /// rank, none before it is learned.
+    pub fn new(slots: impl IntoIterator<Item = (ActionId, SlotKind, Option<Rank>)>) -> ActionSlots {
         let slots: Vec<ActionSlot> = slots
             .into_iter()
             .map(|(action, kind, rank)| ActionSlot::ready(Some(action), kind, rank))
@@ -270,7 +278,7 @@ impl ActionSlots {
 
     /// Puts `actions` in `kind` at `rank`, each ready at once, after the slots of that kind it
     /// has: the slots of later kinds, and an action under way or cut from one, move along.
-    pub(crate) fn grant(&mut self, kind: SlotKind, actions: &[ActionId], rank: u8) {
+    pub(crate) fn grant(&mut self, kind: SlotKind, actions: &[ActionId], rank: Option<Rank>) {
         self.insert(
             kind,
             actions
@@ -282,7 +290,11 @@ impl ActionSlots {
     /// Puts `count` empty slots of `kind`, an inventory's, of one rank, after the slots of that
     /// kind it has, as `grant` puts actions.
     pub(crate) fn add_empty(&mut self, kind: SlotKind, count: u8) {
-        self.insert(kind, (0..count).map(|_| ActionSlot::ready(None, kind, 1)));
+        let rank = Some(Rank::FIRST);
+        self.insert(
+            kind,
+            (0..count).map(|_| ActionSlot::ready(None, kind, rank)),
+        );
     }
 
     /// Puts `added`, slots of `kind`, after the slots of that kind it has; the slots of later
@@ -363,10 +375,8 @@ impl ActionSlots {
     /// Raises the action in `slot` a rank; the caller checked it has one more.
     pub(crate) fn learn(&mut self, slot: u8) {
         let slot = &mut self.slots[usize::from(slot)];
-        slot.rank = slot
-            .rank
-            .checked_add(1)
-            .expect("a rank below the action's ranks");
+        let next = slot.rank.map_or(Some(Rank::FIRST), Rank::next);
+        slot.rank = Some(next.expect("a rank below the action's ranks"));
     }
 
     /// Orders the action in `slot` at `target`, in place of any other action not resolved yet;
@@ -546,7 +556,7 @@ impl ActionSlots {
         ChannelCall {
             call,
             action: slot.action.expect("a channel's slot holds its action"),
-            rank: slot.rank,
+            rank: slot.rank.expect("a channel's slot is learned"),
         }
     }
 
@@ -692,7 +702,8 @@ impl ActionSlots {
             .iter_mut()
             .filter(|slot| slot.action == Some(action))
         {
-            if let (Some(charges), Some(rule)) = (&mut slot.charges, rules.charge_rule(slot.rank)) {
+            let rule = slot.rank.and_then(|rank| rules.values_at(rank)?.charges);
+            if let (Some(charges), Some(rule)) = (&mut slot.charges, rule) {
                 charges.count = (charges.count + 1).min(rule.max.get());
             }
         }
@@ -709,7 +720,7 @@ impl ActionSlots {
         self.indexed().filter_map(move |(at, slot)| {
             let rule = slot.action.and_then(|action| {
                 let action = book.get(action).expect("a slot's action is in the book");
-                action.charge_rule(slot.rank)
+                action.values_at(slot.rank?)?.charges
             });
             let charges = slot.charges_at(rule, now);
             (charges != slot.charges).then_some((at, charges))
@@ -731,8 +742,8 @@ impl ActionSlots {
     pub(crate) fn pay_attack_toggles(&mut self, book: &ActionBook, pools: &mut Pools) {
         for slot in self.slots.iter_mut().filter(|slot| slot.toggle.is_some()) {
             let toggle = slot
-                .action
-                .and_then(|action| book.get(action)?.toggle_rule(slot.rank))
+                .values_in(book)
+                .and_then(|values| values.toggle)
                 .expect("a toggle that is on has its rule");
             if toggle.per != TogglePer::Attack {
                 continue;
@@ -850,7 +861,7 @@ impl SimComponent for ActionSlots {
         // resolves, no sooner than tick 0.
         let underway = self.underway.is_none_or(|underway| {
             let slot = self.slots.get(usize::from(underway.slot()));
-            let action = slot.and_then(|slot| Some((slot.rank, book.get(slot.action?)?)));
+            let action = slot.and_then(|slot| Some((slot.rank?, book.get(slot.action?)?)));
             let attacks = matches!(underway, InProgress::Attack { .. });
             match underway {
                 InProgress::Channel { .. } => return action.is_some(),
@@ -880,7 +891,7 @@ impl SimComponent for ActionSlots {
                 let rule = self
                     .slots
                     .get(usize::from(aim.slot))
-                    .and_then(|slot| book.get(slot.action?)?.channel_rule(slot.rank));
+                    .and_then(|slot| slot.values_in(book)?.channel);
                 rule.is_some()
             }
             _ => true,
@@ -888,23 +899,20 @@ impl SimComponent for ActionSlots {
         let interrupted = self.interrupted.is_none_or(|cut| {
             let rule = book
                 .get(cut.action)
-                .and_then(|action| action.channel_rule(cut.rank));
+                .and_then(|action| action.values_at(cut.rank)?.channel);
             usize::from(cut.call.aim.slot) < self.slots.len() && rule.is_some()
         });
         // A toggle on only for an action with one, at a rank it has.
         let toggles = self.slots.iter().all(|slot| {
             slot.toggle.is_none()
                 || slot
-                    .action
-                    .and_then(|action| book.get(action)?.toggle_rule(slot.rank))
-                    .is_some()
+                    .values_in(book)
+                    .is_some_and(|values| values.toggle.is_some())
         });
         // Charges no more than the action holds at its rank, and only for an action with them.
         let charges = self.slots.iter().all(|slot| {
             slot.charges.is_none_or(|charges| {
-                let rule = slot
-                    .action
-                    .and_then(|action| book.get(action)?.charge_rule(slot.rank));
+                let rule = slot.values_in(book).and_then(|values| values.charges);
                 rule.is_some_and(|rule| charges.count <= rule.max.get())
             })
         });

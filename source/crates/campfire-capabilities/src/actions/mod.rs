@@ -32,6 +32,7 @@ use crate::stats::stat_book::StatBook;
 
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
+use crate::values::rank::Rank;
 
 pub(crate) mod action;
 pub(crate) mod action_book;
@@ -199,42 +200,47 @@ fn hold_passives(
             let action = actions
                 .get(ability)
                 .expect("a slot's action is in the book");
-            let mut keep = |modifier, hold, holds: bool| {
+            // The modifier is held at `holds`, its action's rank, or released with none.
+            let mut keep = |modifier, hold, holds: Option<Rank>| {
                 let held = carried
                     .modifiers()
                     .get(modifier, Some(id))
                     .filter(|instance| instance.lifetime.held_by(hold))
                     .map(|instance| instance.rank);
-                if !holds {
+                let Some(rank) = holds else {
                     if held.is_some() {
                         carried.release(modifier, Some(id), hold);
                     }
                     return;
-                }
-                if held == Some(slot.rank) {
+                };
+                if held == Some(rank) {
                     return;
                 }
                 let applier = Applier {
                     source: Some(id),
                     ability: Some(ability),
-                    rank: slot.rank,
+                    rank,
                     hold: Some(hold),
                 };
                 let source = sources.get(id);
                 let param = |place: &ParamPlace| {
-                    let (ability, rank) = (Some(ability), slot.rank);
+                    let ability = Some(ability);
                     params.modifier_param(modifier, ability, rank, place, source.as_ref())
                 };
                 carried.apply(book.application(modifier, applier, None, now, *rate, param));
             };
             if let Some(passive) = action.passive {
                 let cooling = passive.while_ready && slot.ready_at > now;
-                waits |= slot.rank > 0 && cooling;
-                keep(passive.modifier, Hold::Passive, slot.rank > 0 && !cooling);
+                waits |= slot.rank.is_some() && cooling;
+                keep(
+                    passive.modifier,
+                    Hold::Passive,
+                    slot.rank.filter(|_| !cooling),
+                );
             }
             if let Some(hold) = action.hold {
                 let runs = slot.toggle.is_some() || slots.channeling() == Some(index);
-                keep(hold, Hold::Running, runs);
+                keep(hold, Hold::Running, slot.rank.filter(|_| runs));
             }
         }
         waiting.set(entity, waits);

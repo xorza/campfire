@@ -22,7 +22,7 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use campfire_capabilities::{
-    ActionSlots, Combat, Dead, Learning, Level, PlayerUnits, Points, PoolId, Pools, Team,
+    ActionSlots, Combat, Dead, Learning, Level, PlayerUnits, Points, PoolId, Pools, Rank, Team,
 };
 use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
@@ -409,7 +409,7 @@ impl Hud {
                     GaugeKind::Cooldown { slot, cooling, .. } => {
                         let learned = slots
                             .and_then(|slots| slots.slot(*slot))
-                            .filter(|state| state.rank > 0);
+                            .filter(|state| state.rank.is_some());
                         learned.zip(now).map(|(state, now)| {
                             if cooling.is_none_or(|cooling| cooling.ready_at != state.ready_at) {
                                 *cooling = Some(Cooling {
@@ -420,9 +420,15 @@ impl Hud {
                             cooling.map_or(1.0, |cooling| cooling.filled(now))
                         })
                     }
-                    GaugeKind::Rank { slot, rank, .. } => slots
-                        .and_then(|slots| slots.slot(*slot))
-                        .map(|held| if held.rank >= *rank { 1.0 } else { 0.0 }),
+                    GaugeKind::Rank { slot, rank, .. } => {
+                        slots.and_then(|slots| slots.slot(*slot)).map(|held| {
+                            if Rank::count(held.rank) >= *rank {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        })
+                    }
                     GaugeKind::Learnable { slot, .. } => {
                         let held = slots.and_then(|slots| slots.slot(*slot));
                         let learnable = learning

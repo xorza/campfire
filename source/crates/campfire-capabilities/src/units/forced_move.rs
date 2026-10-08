@@ -10,6 +10,7 @@ use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::unit_tags::UnitTags;
 use crate::values::action_start::ActionStart;
+use crate::values::rank::Rank;
 
 /// A forced move under way, a dash or a knock back, which moves its unit in the Move stage in
 /// place of its own step. While one moves it, a unit takes no step and starts no action, and the
@@ -44,7 +45,7 @@ pub enum DashTo {
 pub struct DashDelivery {
     pub(crate) source: StableId,
     pub(crate) action: ActionId,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
     pub(crate) start: Option<ActionStart>,
     pub(crate) dashed: Num,
 }
@@ -55,7 +56,7 @@ impl DashDelivery {
     pub(crate) const fn new(
         source: StableId,
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         start: Option<ActionStart>,
     ) -> DashDelivery {
         DashDelivery {

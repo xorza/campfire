@@ -16,6 +16,7 @@ use crate::production::production_data::ProductionData;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
+use crate::values::rank::Rank;
 
 /// A unit's train queue: the trains it was ordered, in order, at most as many as its type's
 /// `production` section holds, and the player resources each paid, one run after another in the
@@ -34,7 +35,7 @@ pub struct TrainQueue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Queued {
     pub action: ActionId,
-    pub rank: u8,
+    pub rank: Rank,
     pub time: Ticks,
     pub paid: u8,
 }

@@ -314,6 +314,7 @@ pub(crate) mod internals {
     use crate::stats::stats_effect::StatsEffect;
     use crate::units::action_id::ActionId;
     use crate::units::modifier_id::ModifierId;
+    use crate::values::rank::Rank;
 
     impl Stats {
         /// The modifier `name` of `package`, as the match loaded it.
@@ -334,6 +335,7 @@ pub(crate) mod internals {
         let (source, ability, rank) = from.map_or((None, None, 1), |(source, ability, rank)| {
             (Some(source), ability, rank)
         });
+        let rank = Rank::new(rank).expect("a modifier is given at a rank");
         let applier = Applier {
             source,
             ability,

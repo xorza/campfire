@@ -69,7 +69,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
     let slots: Vec<_> = slots
         .iter()
-        .map(|slot| (slot.action.unwrap(), slot.rank))
+        .map(|slot| (slot.action.unwrap(), Rank::count(slot.rank)))
         .collect();
     assert_eq!(slots, [(game.strike, 0), (game.blink, 1)]);
 }
@@ -214,7 +214,7 @@ fn on_input(ctx, player, name, value) {
         slots.collect::<Vec<_>>()
     };
     let [basic, spell] = [0, 1].map(SlotKind::new);
-    assert_eq!(slots(&game), [(game.strike, basic, 0)]);
+    assert_eq!(slots(&game), [(game.strike, basic, None)]);
     // A choice not unique: players 1 and 2 both take both heroes, in their own order; then
     // player 1 chooses again, which replaces its values. Too few values, one twice, one the
     // choice does not offer and a choice the mode does not declare fail, and change nothing.
@@ -255,7 +255,10 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(game.failures(), refused.map(FailureKind::Api));
     assert_eq!(
         slots(&game),
-        [(game.strike, basic, 0), (game.blink, spell, 1)]
+        [
+            (game.strike, basic, None),
+            (game.blink, spell, Some(Rank::FIRST))
+        ]
     );
 }
 
@@ -294,7 +297,7 @@ fn on_input(ctx, player, name, value) {
     let last = slots.slot(255).unwrap();
     assert_eq!(
         (last.action, last.kind, last.rank),
-        (Some(game.blink), spell, 1)
+        (Some(game.blink), spell, Some(Rank::FIRST))
     );
     assert!(
         slots

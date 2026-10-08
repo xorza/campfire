@@ -39,7 +39,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     for paid in [10, 20, 30] {
         let queued = Queued {
             action: train,
-            rank: 1,
+            rank: Rank::FIRST,
             time: Ticks::new(4),
             paid: 1,
         };
@@ -82,7 +82,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     let mut queue = TrainQueue::default();
     let queued = Queued {
         action: train,
-        rank: 1,
+        rank: Rank::FIRST,
         time: Ticks::new(4),
         paid: 1,
     };

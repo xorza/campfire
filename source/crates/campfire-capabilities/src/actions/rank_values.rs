@@ -12,6 +12,7 @@ use crate::actions::range::Range;
 use crate::players::resource_amount::ResourceAmount;
 use crate::stats::pool_cost::PoolCost;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 
 /// An action's fields at each rank: its values, and its cost in player resources, one run of
 /// the same resources a rank.
@@ -68,7 +69,7 @@ impl RankValues {
             values: Vec::with_capacity(usize::from(ranks)),
             resource_costs: Vec::new(),
         };
-        for rank in 1..=ranks {
+        for rank in (1..=ranks).filter_map(Rank::new) {
             let fields = data
                 .fields_at(rank, &target)
                 .expect("the load checked the fields");

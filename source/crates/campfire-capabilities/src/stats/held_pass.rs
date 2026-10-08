@@ -26,6 +26,7 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
+use crate::values::rank::Rank;
 use crate::values::shape::Shape;
 
 /// The living units whose held modifiers `HeldPass::run` writes.
@@ -183,7 +184,7 @@ impl HeldPass {
                         modifier,
                         source: None,
                         ability: None,
-                        rank: 1,
+                        rank: Rank::FIRST,
                     });
                 }
             }

@@ -31,7 +31,10 @@ fn on_mode_input(ctx, player, name, value) {
     let hero = owned.single(&game.sim.world).unwrap();
     let ranks = |game: &Game| {
         let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
-        slots.iter().map(|slot| slot.rank).collect::<Vec<_>>()
+        slots
+            .iter()
+            .map(|slot| Rank::count(slot.rank))
+            .collect::<Vec<_>>()
     };
     // Three ranks of two fail at the third, and the call learns none; two in one call count the
     // first queued, and reach the last rank; then neither slot has a rank more, and two slots do

@@ -108,6 +108,7 @@ use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::number::{Number, ParamRef};
 use crate::values::package_path::PackagePath;
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
@@ -645,7 +646,7 @@ fn setup(
                     actions: vec![SlotAction {
                         kind: SlotKind::new(0),
                         ability: strike,
-                        rank: 0,
+                        rank: None,
                     }],
                     ..unit(x, hero)
                 },
@@ -1003,7 +1004,10 @@ impl Game {
             ScriptRole::Ai => ctx.frame().begin_think(&self.sim.world, actor),
             ScriptRole::Action => ctx
                 .frame()
-                .begin(&self.sim.world, CallStart::cast(self.strike, 1, actor, 0))
+                .begin(
+                    &self.sim.world,
+                    CallStart::cast(self.strike, Rank::FIRST, actor, 0),
+                )
                 .unwrap(),
             ScriptRole::Modifier => {
                 let blessing = Stats::modifier(&self.sim.world, 0, "blessing").unwrap();

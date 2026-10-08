@@ -255,7 +255,8 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     stats
         .refill()
         .extend([Num::int(6), Num::int(10), Num::int(25)]);
-    let slots = ActionSlots::new([ground, air].map(|weapon| (weapon, SlotKind::new(0), 1)));
+    let slots =
+        ActionSlots::new([ground, air].map(|weapon| (weapon, SlotKind::new(0), Rank::new(1))));
     let unit = fight.unit(Team::new(0), at(0, 0, 0), dummy());
     fight.sim.insert(unit, (slots, stats));
     let [ground_at, air_at, structure_at, hover_at] = [1, 4, 1, 1];
@@ -320,7 +321,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
         .refill()
         .extend([Num::int(6), Num::int(10), Num::int(25)]);
     let kind = SlotKind::new(0);
-    let slots = ActionSlots::new([(ground, kind, 0), (air, kind, 1)]);
+    let slots = ActionSlots::new([(ground, kind, None), (air, kind, Some(Rank::FIRST))]);
     fight.sim.insert(second, (slots, stats));
     fight.attack(second, hovering);
     fight.sim.run_until(11);
@@ -394,7 +395,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     let unit = fight.unit(Team::new(0), at(0, 0, 0), dummy());
     let dummy = fight.unit(Team::new(1), at(1, 0, 0), dummy());
     let pools = Pools::new([(PoolId::FIRST, Num::int(100)), (mana, Num::int(100))]).unwrap();
-    let slots = ActionSlots::new([(weapon, SlotKind::new(0), 1)]);
+    let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
     let owner = Owner::new(PlayerSlot::new(0));
     fight.sim.insert(unit, (slots, stats, pools, owner));
     fight.attack(unit, dummy);
@@ -595,7 +596,7 @@ fn every_combat_type_is_state_and_restores() {
         .action
         .unwrap();
     let ranked = |rank| {
-        let mut slots = ActionSlots::new([(weapon, SlotKind::new(0), rank)]);
+        let mut slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(rank))]);
         slots.set_attack_target(Some(doomed));
         slots.start_attack(0, Tick::new(2));
         slots.check(&restored.sim.world, entity)
@@ -603,7 +604,7 @@ fn every_combat_type_is_state_and_restores() {
     assert!(ranked(1) && !ranked(0) && !ranked(30));
     // A slot of a kind the mode lacks, kind 1 of its one, is refused; slots not kind after kind
     // fail to decode.
-    let lacks = ActionSlots::new([(weapon, SlotKind::new(1), 1)]);
+    let lacks = ActionSlots::new([(weapon, SlotKind::new(1), Rank::new(1))]);
     assert!(!lacks.check(&restored.sim.world, entity));
     let of_kind = |kind| slot_of_kind(weapon, kind);
     let decodes = |slots: Vec<ActionSlot>| {
@@ -621,7 +622,7 @@ fn every_combat_type_is_state_and_restores() {
 
 /// The one slot of `weapon` in `kind`, at rank 1.
 fn slot_of_kind(weapon: ActionId, kind: u8) -> ActionSlot {
-    let slots = ActionSlots::new([(weapon, SlotKind::new(kind), 1)]);
+    let slots = ActionSlots::new([(weapon, SlotKind::new(kind), Rank::new(1))]);
     slots.slot(0).unwrap()
 }
 
@@ -834,7 +835,7 @@ impl Fight {
 
 const ATTACK: DamageCause = DamageCause::Attack {
     roll: Num::ZERO,
-    rank: 1,
+    rank: Rank::FIRST,
 };
 
 #[test]

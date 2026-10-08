@@ -14,6 +14,7 @@ use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
 use crate::values::action_start::ActionStart;
 use crate::values::damage_kind::DamageKind;
+use crate::values::rank::Rank;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
 /// carries.
@@ -50,14 +51,14 @@ pub(crate) enum Payload {
     Attack {
         /// The weapon's action, which its damage names.
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         amount: Num,
         kind: DamageKind,
         roll: Num,
     },
     Action {
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         start: Option<ActionStart>,
         group: StableId,
     },

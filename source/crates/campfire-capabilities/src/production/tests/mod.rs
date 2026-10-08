@@ -33,6 +33,7 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 
 fn at(x: i64) -> Position {
     Position::new(Vec3::new(Num::from_int(x).unwrap(), Num::ZERO, Num::ZERO)).unwrap()
@@ -144,7 +145,7 @@ impl Shop {
         train: ActionId,
         queue: TrainQueue,
     ) {
-        let slots = ActionSlots::new([(train, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]);
         let parts = (id, at(x), self.barracks, Team::new(team), slots, queue);
         let mut producer = self.sim.world.spawn(parts);
         if let Some(owner) = owner {
@@ -183,7 +184,7 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
     for &time in times {
         let queued = Queued {
             action: train,
-            rank: 1,
+            rank: Rank::FIRST,
             time: Ticks::new(time),
             paid: 0,
         };
@@ -302,7 +303,7 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
     };
     let queued = Queued {
         action: ActionId::nth(0),
-        rank: 1,
+        rank: Rank::FIRST,
         time: Ticks::new(30),
         paid: 1,
     };
@@ -337,7 +338,7 @@ fn a_train_queue_is_state_and_restores() {
         let mut queue = TrainQueue::default();
         let queued = Queued {
             action: train,
-            rank: 1,
+            rank: Rank::FIRST,
             time: Ticks::new(time),
             paid: 0,
         };

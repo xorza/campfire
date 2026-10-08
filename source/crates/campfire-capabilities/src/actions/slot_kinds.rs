@@ -8,6 +8,7 @@ use serde::{Deserialize, Deserializer};
 use crate::actions::slot_kind::SlotKind;
 use crate::stats::level::Level;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 
 /// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order. As a resource,
 /// the match's, which the `learn` order reads; empty until the mode's books install.
@@ -138,15 +139,15 @@ impl SlotKinds {
 
     /// The level of the `level` track that `rank`, from 1, of an action in `kind` needs; none
     /// when the kind gives its ranks no levels.
-    pub(crate) fn level_of(&self, kind: SlotKind, rank: u8) -> Option<Level> {
+    pub(crate) fn level_of(&self, kind: SlotKind, rank: Rank) -> Option<Level> {
         let levels = self.0[kind.index()].ranks.as_ref()?.levels()?;
-        Some(levels[usize::from(rank) - 1])
+        Some(levels[rank.index()])
     }
 
-    /// The rank an action in `kind` has as its unit spawns or it is granted: 1 for a kind with
-    /// no `ranks`, 0 for one whose ranks are learned.
-    pub(crate) fn first_rank(&self, kind: SlotKind) -> u8 {
-        u8::from(self.0[kind.index()].ranks.is_none())
+    /// The rank an action in `kind` has as its unit spawns or it is granted: the first for a kind
+    /// with no `ranks`, none for one whose ranks are learned.
+    pub(crate) fn first_rank(&self, kind: SlotKind) -> Option<Rank> {
+        self.0[kind.index()].ranks.is_none().then_some(Rank::FIRST)
     }
 }
 

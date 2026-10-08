@@ -62,6 +62,7 @@ use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
+use crate::values::rank::Rank;
 
 pub(crate) mod assist_window;
 pub(crate) mod combat_api;
@@ -199,16 +200,17 @@ impl Combat {
         let slot = slots.slot(underway.slot()).expect("an attack's slot");
         let id = slot.action.expect("an attack's slot holds its weapon");
         let action = book.get(id).expect("a slot's action is in the book");
+        let rank = slot.rank.expect("an attack's weapon is learned");
         Wielded {
             slot: underway.slot(),
             action: id,
-            rank: slot.rank,
+            rank,
             weapon: action
                 .kind
                 .weapon()
                 .expect("an attack's action is a weapon"),
-            values: action.values(slot.rank),
-            resource_cost: action.resource_cost(slot.rank),
+            values: *action.values(rank),
+            resource_cost: action.resource_cost(rank),
             projectile: action.delivery.map(|delivery| delivery.unit_type),
         }
     }
@@ -340,7 +342,7 @@ struct Wielded<'a> {
     slot: u8,
     /// The weapon's action, which its damage names, and the rank of its slot.
     action: ActionId,
-    rank: u8,
+    rank: Rank,
     weapon: Weapon,
     values: RankValues,
     resource_cost: &'a [ResourceAmount],
@@ -699,6 +701,7 @@ pub(crate) mod internals {
     use crate::stats::pools::Pools;
     #[cfg(test)]
     use crate::units::team::Team;
+    use crate::values::rank::Rank;
 
     use campfire_sim::StableId;
 
@@ -825,7 +828,7 @@ pub(crate) mod internals {
             values.extend([rate, self.damage]);
             values.resize(count.max(2), Num::ZERO);
             ArmsParts {
-                slots: ActionSlots::new([(id, SlotKind::new(0), 1)]),
+                slots: ActionSlots::new([(id, SlotKind::new(0), Some(Rank::FIRST))]),
                 stats,
             }
         }

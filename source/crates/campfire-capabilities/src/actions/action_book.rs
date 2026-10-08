@@ -22,6 +22,7 @@ use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::values::attitude::Attitude;
+use crate::values::rank::Rank;
 use crate::values::shape::Shape;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
@@ -104,10 +105,9 @@ impl ActionBook {
 
     /// The action `aim` names of a unit with `slots`, when it may go on: its slot holds a learned
     /// action that is ready and, with charges, holds one, `purse` affords its cost in each pool
-    /// and player resource, and its
-    /// target is a living unit the action's filter selects, or the action takes none, which drops
-    /// any target the order named. `attitude` tells how the unit regards a team, and `living`
-    /// finds a living unit.
+    /// and player resource, and its target is a living unit the action's filter selects, or the
+    /// action takes none, which drops any target the order named. `attitude` tells how the unit
+    /// regards a team, and `living` finds a living unit.
     pub(crate) fn check(
         &self,
         now: Tick,
@@ -117,11 +117,11 @@ impl ActionBook {
         attitude: impl Fn(Team) -> Attitude,
         living: impl Fn(StableId) -> Option<LivingUnit>,
     ) -> Option<Checked<'_>> {
-        let slot = slots.slot(aim.slot).filter(|slot| slot.rank > 0)?;
-        let id = slot.action?;
+        let slot = slots.slot(aim.slot)?;
+        let (id, rank) = (slot.action?, slot.rank?);
         let action = self.get(id)?;
-        let values = action.values(slot.rank);
-        let affords = purse.affords(&values.cost, action.resource_cost(slot.rank));
+        let values = *action.values(rank);
+        let affords = purse.affords(&values.cost, action.resource_cost(rank));
         let charged =
             values.charges.is_none() || slot.charges.is_some_and(|charges| charges.count > 0);
         if now < slot.ready_at || !affords || !charged {
@@ -144,7 +144,7 @@ impl ActionBook {
             id,
             target,
             action,
-            rank: slot.rank,
+            rank,
             values,
         })
     }
@@ -168,11 +168,9 @@ impl ActionBook {
     /// The range of the learned action in `slot` of `slots`, at its rank.
     pub(crate) fn range(&self, slots: &ActionSlots, slot: u8) -> Range {
         let slot = slots.slot(slot).expect("a unit's slot");
-        let action = slot
-            .action
-            .and_then(|action| self.get(action))
-            .expect("a learned slot's action is in the book");
-        action.values(slot.rank).range
+        slot.values_in(self)
+            .expect("a learned slot's action is in the book")
+            .range
     }
 }
 
@@ -183,7 +181,7 @@ pub(crate) struct Checked<'a> {
     pub(crate) id: ActionId,
     pub(crate) target: ActionTarget,
     pub(crate) action: &'a Action,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
     pub(crate) values: RankValues,
 }
 

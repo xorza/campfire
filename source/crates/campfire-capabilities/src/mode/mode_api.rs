@@ -36,6 +36,7 @@ use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::engine_enum::EngineEnum;
+use crate::values::rank::Rank;
 
 /// The script API of the mode, which every match has: the teams, the map, the avatars and the
 /// mode's state, which every role reads, and what only the mode's calls do: the players'
@@ -758,7 +759,7 @@ impl ModeApi {
             .queued::<ModeEffect>()
             .filter(|&queued| *queued == effect)
             .count();
-        if usize::from(slot_row.rank) + queued >= usize::from(slot_row.ranks) {
+        if usize::from(Rank::count(slot_row.rank)) + queued >= usize::from(slot_row.ranks) {
             return Err(ApiError::MaxRank.fail().into());
         }
         frame.effects.push(effect);

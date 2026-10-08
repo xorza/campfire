@@ -18,6 +18,7 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_sources::ParamSources;
 use crate::units::modifier_id::ModifierId;
+use crate::values::rank::Rank;
 
 pub(crate) mod inventory;
 pub(crate) mod inventory_data;
@@ -116,12 +117,12 @@ fn hold_items(
                 let applier = Applier {
                     source: Some(id),
                     ability: None,
-                    rank: 1,
+                    rank: Rank::FIRST,
                     hold: Some(Hold::Passive),
                 };
                 let source = sources.get(id);
                 let param = |place: &ParamPlace| {
-                    params.modifier_param(modifier, None, 1, place, source.as_ref())
+                    params.modifier_param(modifier, None, Rank::FIRST, place, source.as_ref())
                 };
                 carried.apply(book.application(modifier, applier, None, now, *rate, param));
             }

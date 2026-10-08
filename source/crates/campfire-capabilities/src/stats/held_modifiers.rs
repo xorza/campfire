@@ -3,6 +3,7 @@ use campfire_sim::StableId;
 
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::values::rank::Rank;
 
 /// The modifiers capabilities other than stats hold on units this tick, which `StatsSet::Hold`
 /// holds as it holds auras': each producer adds to it before that set, which takes all it holds,
@@ -18,5 +19,5 @@ pub(crate) struct Held {
     pub(crate) modifier: ModifierId,
     pub(crate) source: Option<StableId>,
     pub(crate) ability: Option<ActionId>,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
 }

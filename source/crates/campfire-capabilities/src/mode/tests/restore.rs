@@ -58,7 +58,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     // Actions: one the book holds, at a rank it has or 0, and an order of a slot it has.
     let book = world.resource::<ActionBook>();
     let strike = book.named(0, "strike").unwrap();
-    let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), rank)]);
+    let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
     assert!(slots(strike, 0).check(world, grunt) && slots(strike, 1).check(world, grunt));
     assert!(!slots(strike, u8::MAX).check(world, grunt));
     assert!(!slots(ActionId::nth(u32::MAX), 1).check(world, grunt));
@@ -76,7 +76,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut queue = TrainQueue::default();
     let queued = Queued {
         action: strike,
-        rank: 1,
+        rank: Rank::FIRST,
         time: Ticks::new(1),
         paid: 0,
     };

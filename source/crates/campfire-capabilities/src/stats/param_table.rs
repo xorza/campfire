@@ -7,6 +7,7 @@ use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::name_table::NameTable;
 use crate::values::param::Param;
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
@@ -105,12 +106,12 @@ impl ParamTable {
     }
 
     /// Whether every param of run `run` has a value at `rank`.
-    pub(crate) fn holds_rank(&self, run: usize, rank: u8) -> bool {
+    pub(crate) fn holds_rank(&self, run: usize, rank: Rank) -> bool {
         (0..self.len(run)).all(|at| self.has_rank(run, at, rank))
     }
 
     /// Whether the param at `at` of run `run` has a value at `rank`.
-    pub(crate) fn has_rank(&self, run: usize, at: usize, rank: u8) -> bool {
+    pub(crate) fn has_rank(&self, run: usize, at: usize, rank: Rank) -> bool {
         match &self.params.values(run)[at] {
             ParamValue::Ranked(ranked) => ranked.get(rank).is_some(),
             ParamValue::Scaled(scaled) => scaled.base.get(rank).is_some(),
@@ -125,18 +126,18 @@ impl ParamTable {
         &self,
         run: usize,
         at: usize,
-        rank: u8,
+        rank: Rank,
         source: Option<&ParamSource<'_>>,
     ) -> Scalar {
         const HELD: &str = "a param holds the rank its way checked";
         let scaled = match &self.params.values(run)[at] {
-            ParamValue::Ranked(ranked) => return ranked.at(rank).expect(HELD),
+            ParamValue::Ranked(ranked) => return *ranked.get(rank).expect(HELD),
             ParamValue::Scaled(scaled) => scaled,
         };
         let one = 1_i128 << Num::FRAC_BITS;
         let levels = i128::from(source.map_or(1, ParamSource::level).saturating_sub(1));
         let mut sum = ProductSum::ZERO;
-        sum.add(scaled.base.at(rank).expect(HELD).to_bits(), one);
+        sum.add(scaled.base.get(rank).expect(HELD).to_bits(), one);
         sum.add(scaled.per_level.to_bits(), levels * one);
         if let Some(source) = source {
             let ratios = &self.ratios[scaled.ratios_start as usize..scaled.ratios_end as usize];
@@ -184,7 +185,7 @@ mod tests {
         let book = StatBook::new(&BTreeMap::new(), [], Num::ONE);
         let read = |table: &ParamTable, stats: [Num; 2]| {
             let source = ParamSource::new(&book, UnitType::new(0), 1, &stats);
-            match table.value(0, 0, 1, Some(&source)) {
+            match table.value(0, 0, Rank::FIRST, Some(&source)) {
                 Scalar::Decimal(value) => value,
                 other @ Scalar::Int(_) => panic!("{other:?}"),
             }

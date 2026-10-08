@@ -5,6 +5,7 @@ use campfire_sim::{Position, StableId};
 use crate::units::action_id::ActionId;
 use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
+use crate::values::rank::Rank;
 
 /// The projectiles the tick's ranged attacks fire, which `projectiles` launches in
 /// `CombatSet::Fire`. Not state: it empties within the tick.
@@ -21,7 +22,7 @@ pub(crate) struct Shot {
     pub(crate) target: StableId,
     pub(crate) unit_type: UnitType,
     pub(crate) action: ActionId,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
     pub(crate) amount: Num,
     pub(crate) kind: DamageKind,
     pub(crate) roll: Num,

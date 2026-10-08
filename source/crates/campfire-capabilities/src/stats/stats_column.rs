@@ -20,6 +20,7 @@ use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
 use crate::units::view_column::ViewColumn;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 use crate::values::stat::Stat;
 
 /// What stats adds to the script view: the stats, pools and modifiers the mode declares, and each
@@ -293,7 +294,7 @@ impl StatsColumn {
         call: &StatsCall,
         id: ModifierId,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
     ) -> Checked<()> {
         let rate = view.rate();
         StatsColumn::read(view, |column| {

@@ -39,6 +39,7 @@ use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::package_path::PackagePath;
+use crate::values::rank::Rank;
 use crate::values::region::Region;
 use crate::values::scalar::Scalar;
 use crate::values::share::Share;
@@ -393,7 +394,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     // Its weapon in slot 0, and a train in slot 1.
     let train = internals::train(&mut game.sim.world, UnitType::new(0), Ticks::ZERO, None);
     let mut slots = game.sim.get_mut::<ActionSlots>(hero);
-    slots.grant(SlotKind::new(0), &[train], 1);
+    slots.grant(SlotKind::new(0), &[train], Some(Rank::FIRST));
     let ordered = |game: &Match| game.slots(hero).in_progress();
     let slot = |slot| {
         Order::payload(&[Order::one(
@@ -825,7 +826,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
             Ticks::new(2),
         );
         let weapon = internals::weapon(&mut game.sim.world, weapon);
-        let slots = ActionSlots::new([(weapon, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
         let stats = game.arm(standing(), Team::new(0));
         let unit = game.sim.spawn(at(0, 0, 0), (striker, stats));
         game.sim.insert(unit, slots);

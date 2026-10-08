@@ -29,6 +29,7 @@ use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 use crate::values::relation::Relation;
 
 /// Workers in each of the two fields.
@@ -104,7 +105,7 @@ pub(crate) fn gather(c: &mut Criterion) {
                 Team::new(0),
                 player,
                 Body::new(Num::HALF).unwrap(),
-                ActionSlots::new([(action, SlotKind::new(0), 1)]),
+                ActionSlots::new([(action, SlotKind::new(0), Some(Rank::FIRST))]),
                 gatherer,
                 Destination::default(),
             );

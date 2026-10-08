@@ -55,6 +55,7 @@ use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
+use crate::values::rank::Rank;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
 /// loads it from the packages, as a new match does.
@@ -264,7 +265,7 @@ impl ModeBook {
             let applier = Applier {
                 source: Some(id),
                 ability: None,
-                rank: 1,
+                rank: Rank::FIRST,
                 hold: Some(Hold::Passive),
             };
             let add = StatsEffect::Add {
@@ -316,7 +317,7 @@ impl ModeBook {
         world: &mut World,
         unit: StableId,
         kind: SlotKind,
-        rank: u8,
+        rank: Option<Rank>,
         abilities: &[ActionId],
     ) {
         let Some(entity) = world.resource::<EntityIndex>().get(unit) else {

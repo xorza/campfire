@@ -10,6 +10,7 @@ use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_type::UnitType;
 use crate::values::name_list::NameList;
+use crate::values::rank::Rank;
 
 /// What a match of a mode needs, from its packages, with its unit types, abilities and AI loaded
 /// into the match: the input of `Mode::install`.
@@ -47,7 +48,7 @@ pub(crate) struct SlotAction {
     pub(crate) kind: SlotKind,
     pub(crate) ability: ActionId,
     /// Its rank as its unit spawns: its kind's first.
-    pub(crate) rank: u8,
+    pub(crate) rank: Option<Rank>,
 }
 
 /// The entries of the mode's loadout packages, loaded: each one's id and ability, by place.

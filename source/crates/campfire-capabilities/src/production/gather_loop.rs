@@ -173,7 +173,8 @@ impl GatherView<'_, '_> {
         let Range::Meters(range) = self.book.range(slots, slot) else {
             panic!("the load checked a gather's range in meters");
         };
-        let ticks = action.values(held.rank).windup.get().max(1);
+        let rank = held.rank.expect("a gather's slot is learned");
+        let ticks = action.values(rank).windup.get().max(1);
         Some(Gather {
             spec,
             filter,

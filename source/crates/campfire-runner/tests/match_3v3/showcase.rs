@@ -7,7 +7,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::internals;
 use campfire_capabilities::{
     ActionData, ActionSlot, ActionSlots, DeclaredName, Inventory, ItemId, ItemStack, Level,
-    Lifespan, ModifierId, Number, Points, PoolId, Pools, Ranked, Scalar, Stats, Team, Toggle,
+    Lifespan, ModifierId, Number, Points, PoolId, Pools, Rank, Ranked, Scalar, Stats, Team, Toggle,
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
@@ -119,7 +119,10 @@ fn item(reference: &Reference3v3, name: &str) -> ItemId {
 pub(crate) fn assert_farm(showcase: &Showcase) {
     for player in 0..Reference3v3::PLAYERS {
         let hero = showcase.at(Reference3v3::SHOWCASE - 1, player);
-        let ranks: Vec<u8> = hero.slots[..4].iter().map(|slot| slot.rank).collect();
+        let ranks: Vec<u8> = hero.slots[..4]
+            .iter()
+            .map(|slot| Rank::count(slot.rank))
+            .collect();
         assert!(hero.level >= 6, "player {player}: level {}", hero.level);
         assert!(
             ranks.iter().all(|&rank| rank >= 1),
@@ -193,10 +196,11 @@ fn action(reference: &Reference3v3, player: u32, slot: u8) -> &ActionData {
     &view.unwrap().content.actions[&name]
 }
 
-/// A whole number of `ranked` at `rank`.
-fn int(ranked: &Ranked<Number>, rank: u8) -> i64 {
+/// A whole number of `ranked` at `rank`, a learned slot's.
+fn int(ranked: &Ranked<Number>, rank: Option<Rank>) -> i64 {
+    let rank = rank.expect("a learned slot's rank");
     let Some(&Number::Value(Scalar::Int(value))) = ranked.get(rank) else {
-        panic!("a whole number at rank {rank}");
+        panic!("a whole number at rank {rank:?}");
     };
     value
 }

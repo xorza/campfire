@@ -24,6 +24,7 @@ use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::package_path::PackagePath;
 use crate::values::param::Param;
+use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::share::Share;
@@ -213,7 +214,7 @@ impl ActionData {
     /// action's.
     pub fn fields_at(
         &self,
-        rank: u8,
+        rank: Rank,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
     ) -> Result<RankFields, ActionField> {
         let whole = |field, ranked: Option<&Ranked<Number>>| self.whole_at(rank, field, ranked);
@@ -259,9 +260,9 @@ impl ActionData {
 
     /// Its param `name` at `rank`, a ranked one; `field` for one it does not declare, or a
     /// scaling one, whose value is the caster's, not the action's.
-    fn param_at(&self, rank: u8, name: &str, field: ActionField) -> Result<Scalar, ActionField> {
+    fn param_at(&self, rank: Rank, name: &str, field: ActionField) -> Result<Scalar, ActionField> {
         match self.params.get(name) {
-            Some(Param::Ranked(ranked)) => ranked.at(rank).ok_or(field),
+            Some(Param::Ranked(ranked)) => ranked.get(rank).copied().ok_or(field),
             Some(Param::Scaling(_)) | None => Err(field),
         }
     }
@@ -270,7 +271,7 @@ impl ActionData {
     /// and `field` for one that is not a whole number at least 0.
     fn whole_at(
         &self,
-        rank: u8,
+        rank: Rank,
         field: ActionField,
         ranked: Option<&Ranked<Number>>,
     ) -> Result<u64, ActionField> {
@@ -289,7 +290,7 @@ impl ActionData {
     }
 
     /// Its charges at `rank`: a count of 1 to 255, and a recharge.
-    fn charges_at(&self, rank: u8) -> Result<Option<RankCharges>, ActionField> {
+    fn charges_at(&self, rank: Rank) -> Result<Option<RankCharges>, ActionField> {
         let field = ActionField::Charges;
         self.charges
             .as_ref()
@@ -307,7 +308,7 @@ impl ActionData {
     /// Its toggle at `rank`: its cost, in the pools `target` finds alone.
     fn toggle_at(
         &self,
-        rank: u8,
+        rank: Rank,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
     ) -> Result<Option<RankToggle>, ActionField> {
         let field = ActionField::Toggle;
@@ -337,7 +338,7 @@ impl ActionData {
 
     /// Its channel at `rank`: a length and a time between ticks, neither 0.
     /// Its charge's most at `rank`: whole milliseconds, not 0.
-    fn charge_at(&self, rank: u8) -> Result<Option<u64>, ActionField> {
+    fn charge_at(&self, rank: Rank) -> Result<Option<u64>, ActionField> {
         let field = ActionField::Charge;
         self.charge
             .as_ref()
@@ -348,7 +349,7 @@ impl ActionData {
             .transpose()
     }
 
-    fn channel_at(&self, rank: u8) -> Result<Option<RankChannel>, ActionField> {
+    fn channel_at(&self, rank: Rank) -> Result<Option<RankChannel>, ActionField> {
         let field = ActionField::Channel;
         self.channel
             .as_ref()

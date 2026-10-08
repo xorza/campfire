@@ -1,9 +1,8 @@
 use campfire_script::ScriptId;
 
-use crate::actions::action_data::RankToggle;
 use crate::actions::delivery::Delivery;
 use crate::actions::kind_spec::KindSpec;
-use crate::actions::rank_values::{ChannelRule, ChargeRule, RankValues};
+use crate::actions::rank_values::RankValues;
 use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
@@ -11,6 +10,7 @@ use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 use crate::values::attitude::Attitude;
+use crate::values::rank::Rank;
 
 /// An action as a match runs it.
 #[derive(Debug, Clone)]
@@ -65,45 +65,29 @@ impl Action {
     }
 
     /// Whether `rank` is one of its ranks, from 1 to its last.
-    pub(crate) fn has_rank(&self, rank: u8) -> bool {
-        rank > 0 && usize::from(rank) <= self.ranks.len()
+    pub(crate) fn has_rank(&self, rank: Rank) -> bool {
+        rank.index() < self.ranks.len()
     }
 
-    /// Whether a slot may hold it at `rank`: one of its ranks, or 0 before it is learned.
-    pub(crate) fn slots_at(&self, rank: u8) -> bool {
-        usize::from(rank) <= self.ranks.len()
+    /// Whether a slot may hold it at `rank`: one of its ranks, or none before it is learned.
+    pub(crate) fn slots_at(&self, rank: Option<Rank>) -> bool {
+        rank.is_none_or(|rank| self.has_rank(rank))
     }
 
-    /// Its charges at `rank`; none at a rank it does not have, as 0 before it is learned.
-    pub(crate) fn charge_rule(&self, rank: u8) -> Option<ChargeRule> {
-        self.has_rank(rank)
-            .then(|| self.values(rank).charges)
-            .flatten()
+    /// Its capability fields at `rank`; none at a rank it does not have.
+    pub(crate) fn values_at(&self, rank: Rank) -> Option<&RankValues> {
+        self.ranks.get(rank.index())
     }
 
-    /// Its channel at `rank`; none at a rank it does not have, as 0 before it is learned.
-    pub(crate) fn channel_rule(&self, rank: u8) -> Option<ChannelRule> {
-        self.has_rank(rank)
-            .then(|| self.values(rank).channel)
-            .flatten()
+    /// Its capability fields at `rank`, one of its ranks.
+    pub(crate) fn values(&self, rank: Rank) -> &RankValues {
+        self.values_at(rank).expect("a rank the action has")
     }
 
-    /// Its toggle at `rank`; none at a rank it does not have, as 0 before it is learned.
-    pub(crate) fn toggle_rule(&self, rank: u8) -> Option<RankToggle> {
-        self.has_rank(rank)
-            .then(|| self.values(rank).toggle)
-            .flatten()
-    }
-
-    /// Its capability fields at `rank`.
-    pub(crate) fn values(&self, rank: u8) -> RankValues {
-        self.ranks[usize::from(rank - 1)]
-    }
-
-    /// Its cost at `rank` in its caster's player's resources.
-    pub(crate) fn resource_cost(&self, rank: u8) -> &[ResourceAmount] {
+    /// Its cost at `rank`, one of its ranks, in its caster's player's resources.
+    pub(crate) fn resource_cost(&self, rank: Rank) -> &[ResourceAmount] {
         let per_rank = self.resource_costs.len() / self.ranks.len().max(1);
-        let start = usize::from(rank - 1) * per_rank;
+        let start = rank.index() * per_rank;
         &self.resource_costs[start..start + per_rank]
     }
 
@@ -120,11 +104,11 @@ impl Action {
     /// against a unit of `tags` it regards with `attitude`, or with `None`, against any: the one
     /// rule of `ActionBook::weapon_for` and of the script view.
     pub(crate) fn arms(
-        rank: u8,
+        rank: Option<Rank>,
         weapon: Option<Filter>,
         target: Option<(Attitude, TagSet)>,
     ) -> bool {
-        rank > 0
+        rank.is_some()
             && weapon.is_some_and(|filter| {
                 target.is_none_or(|(attitude, tags)| filter.selects(attitude, tags))
             })

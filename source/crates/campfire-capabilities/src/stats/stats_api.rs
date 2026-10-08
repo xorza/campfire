@@ -20,6 +20,7 @@ use crate::stats::stats_column::StatsColumn;
 use crate::stats::stats_effect::StatsEffect;
 use crate::units::tag_property::TagProperty;
 use crate::units::unit::Unit;
+use crate::values::rank::Rank;
 
 /// The script API of `stats`: `ctx.add_modifier`, `ctx.remove`, the `Modifier` handle, and the
 /// planned crowd control and experience.
@@ -152,7 +153,13 @@ impl StatsApi {
     fn add_player_modifier(ctx: &Ctx, player: INT, id: &str) -> Checked<()> {
         let player = ctx.view().player(player)?;
         let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
-        StatsColumn::check_way(ctx.view(), StatsCall::of(&ctx.frame()), id, None, 1)?;
+        StatsColumn::check_way(
+            ctx.view(),
+            StatsCall::of(&ctx.frame()),
+            id,
+            None,
+            Rank::FIRST,
+        )?;
         ctx.queue(StatsEffect::AddPlayer { player, id })
     }
 

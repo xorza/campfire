@@ -152,7 +152,7 @@ impl Yard {
     /// A builder of `team`, owned by player `owner`, at `at`, of a half meter, that walks a meter
     /// a tick, with the build in its slot 0.
     fn builder(&mut self, at: Position, team: u8, owner: u32) -> StableId {
-        let slots = ActionSlots::new([(self.build, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(self.build, SlotKind::new(0), Rank::new(1))]);
         let parts = (
             Team::new(team),
             Owner::new(PlayerSlot::new(owner)),

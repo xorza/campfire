@@ -8,6 +8,7 @@ use crate::units::action_id::ActionId;
 use crate::units::unit_type::UnitType;
 use crate::values::action_start::ActionStart;
 use crate::values::damage_kind::DamageKind;
+use crate::values::rank::Rank;
 
 /// The projectiles that launch this tick: those ranged attacks fire, those actions deliver, and
 /// those scripts launch, which spawn in `CombatSet::Launch`. Not state: it empties within the
@@ -38,14 +39,14 @@ pub(crate) struct Launch {
 pub(crate) enum LaunchPayload {
     Attack {
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         amount: Num,
         kind: DamageKind,
         roll: Num,
     },
     Action {
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         start: Option<ActionStart>,
         cast: u32,
     },

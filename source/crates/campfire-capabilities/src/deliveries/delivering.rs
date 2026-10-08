@@ -8,6 +8,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::action_id::ActionId;
 use crate::values::action_start::ActionStart;
+use crate::values::rank::Rank;
 
 /// What a delivery belongs to: the unit that delivers it, its action at `rank` as it started,
 /// none for an attack's, and the launch whose lists it runs, none for the action's own delivery,
@@ -16,7 +17,7 @@ use crate::values::action_start::ActionStart;
 pub(crate) struct Delivering {
     pub(crate) source: StableId,
     pub(crate) action: ActionId,
-    pub(crate) rank: u8,
+    pub(crate) rank: Rank,
     pub(crate) start: Option<ActionStart>,
     pub(crate) launch: Option<LaunchId>,
 }

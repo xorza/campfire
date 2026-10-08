@@ -4,6 +4,7 @@ use campfire_sim::StableId;
 use crate::units::action_id::ActionId;
 use crate::values::damage_kind::DamageKind;
 use crate::values::hit::Hit;
+use crate::values::rank::Rank;
 
 /// A damage the pass deals: from its source, none from a modifier the mode applied, to its
 /// target, its amount before `calc_damage`, its kind, what dealt it, the ability whose cast,
@@ -26,8 +27,8 @@ pub(crate) struct Damage {
 /// the rank of its weapon's slot, at which the weapon's `on_hit` list reads its params.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DamageCause {
-    Attack { roll: Num, rank: u8 },
-    ExtraAttack { rank: u8 },
+    Attack { roll: Num, rank: Rank },
+    ExtraAttack { rank: Rank },
     Effect,
 }
 
@@ -48,7 +49,7 @@ impl DamageCause {
 
     /// The rank of the weapon an attack dealt it with, an extra one included; `None` for an
     /// effect.
-    pub(crate) const fn weapon_rank(self) -> Option<u8> {
+    pub(crate) const fn weapon_rank(self) -> Option<Rank> {
         match self {
             DamageCause::Attack { rank, .. } | DamageCause::ExtraAttack { rank } => Some(rank),
             DamageCause::Effect => None,

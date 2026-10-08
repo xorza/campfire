@@ -30,6 +30,7 @@ use crate::values::body_box::BodyBox;
 use crate::values::damage_kind::DamageKind;
 use crate::values::filter_data::FilterData;
 use crate::values::grid::Grid;
+use crate::values::rank::Rank;
 use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
@@ -148,7 +149,7 @@ impl Volley {
             },
             payload: LaunchPayload::Attack {
                 action: ActionId::nth(0),
-                rank: 1,
+                rank: Rank::FIRST,
                 amount: Num::int(10),
                 kind: DamageKind::new(0),
                 roll: Num::ZERO,

@@ -28,6 +28,7 @@ use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
+use crate::values::rank::Rank;
 use crate::values::stat::Stat;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
@@ -174,7 +175,7 @@ impl ModifierBook {
         &self,
         id: ModifierId,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
         params: &ParamBook,
         rate: TickRate,
     ) -> Result<(), ParamProblem> {
@@ -197,7 +198,7 @@ impl ModifierBook {
         &self,
         id: ModifierId,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
         params: &ParamBook,
         rate: TickRate,
     ) -> bool {
@@ -211,7 +212,7 @@ impl ModifierBook {
         world: &World,
         id: ModifierId,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
     ) -> bool {
         let books = (
             world.get_resource::<ModifierBook>(),
@@ -415,6 +416,7 @@ mod tests {
     use crate::values::declared_name::DeclaredName;
     use crate::values::number::{Number, ParamRef};
     use crate::values::param::{Param, Scaling};
+    use crate::values::rank::Rank;
     use crate::values::ranked::Ranked;
     use crate::values::scalar::Scalar;
 
@@ -492,6 +494,7 @@ mod tests {
         }
         let params = ParamBook::new(tables);
         let ways = |ability, rank| -> Vec<Option<ParamProblem>> {
+            let rank = Rank::new(rank).unwrap();
             let check = |at| book.check_way(ModifierId::nth(at), ability, rank, &params, rate);
             (0..data.len()).map(|at| check(at).err()).collect()
         };
@@ -515,9 +518,10 @@ mod tests {
             owner: ParamOwner::Action(ActionId::nth(0)),
             at,
         };
-        assert!(params.holds_live(live(3), 2));
-        assert!(!params.holds_live(live(0), 2));
-        assert!(!params.holds_live(live(4), 2));
-        assert!(!params.holds_live(live(3), 3));
+        let [second, third] = [2, 3].map(|rank| Rank::new(rank).unwrap());
+        assert!(params.holds_live(live(3), second));
+        assert!(!params.holds_live(live(0), second));
+        assert!(!params.holds_live(live(4), second));
+        assert!(!params.holds_live(live(3), third));
     }
 }

@@ -17,6 +17,7 @@ use crate::units::path_id::PathId;
 use crate::units::spawner::SpawnAt;
 use crate::units::team::Team;
 use crate::values::attitude::Attitude;
+use crate::values::rank::Rank;
 
 /// A change to the match that a mode call queued.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,7 +44,7 @@ pub(crate) enum ModeEffect {
         unit: StableId,
         kind: SlotKind,
         /// The kind's first rank, which the actions take.
-        rank: u8,
+        rank: Option<Rank>,
         abilities: Vec<ActionId>,
     },
     Respawn {

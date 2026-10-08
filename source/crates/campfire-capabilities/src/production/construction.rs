@@ -39,6 +39,7 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
+use crate::values::rank::Rank;
 use crate::values::shape::Shape;
 
 /// The systems of construction: a build order checked as it applies, builds that start in order
@@ -124,7 +125,7 @@ struct Start {
     angle: Num,
     cost: PoolCost,
     cooldown: Ticks,
-    rank: u8,
+    rank: Rank,
 }
 
 /// A builder's build of its order's slot: the building's type, its spec, and its range.

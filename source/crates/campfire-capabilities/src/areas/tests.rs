@@ -20,6 +20,7 @@ use crate::values::number::{Number, ParamRef};
 use crate::values::relation::Relation;
 
 use super::*;
+use crate::values::rank::Rank;
 
 #[test]
 fn an_area_that_triggers_after_it_ends_fails_to_decode() {
@@ -128,7 +129,7 @@ fn an_area_is_state_and_restores() {
     let by = Delivering {
         source,
         action,
-        rank: 1,
+        rank: Rank::FIRST,
         start: None,
         launch: None,
     };

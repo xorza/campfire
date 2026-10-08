@@ -18,6 +18,7 @@ use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
 use crate::units::view_column::ViewColumn;
+use crate::values::rank::Rank;
 
 /// What the action pipeline adds to the script view: the match's actions and slot kinds, and each
 /// unit's ability slots, the unit its attacks aim at, and the range of its first weapon, a row
@@ -50,7 +51,7 @@ struct ActionsRow {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlotRow {
     pub(crate) action: Option<ActionId>,
-    pub(crate) rank: u8,
+    pub(crate) rank: Option<Rank>,
     pub(crate) ranks: u8,
     pub(crate) weapon: Option<Filter>,
 }
@@ -198,14 +199,14 @@ impl ActionsColumn {
         ActionsColumn::read(view, |column| column.kinds.ranks(kind))
     }
 
-    /// The rank an action in `kind` has as it is granted: 1 for a kind with no `ranks`, 0 for
-    /// one whose ranks are learned.
-    pub(crate) fn first_rank(view: &View, kind: SlotKind) -> u8 {
+    /// The rank an action in `kind` has as it is granted: the first for a kind with no `ranks`,
+    /// none for one whose ranks are learned.
+    pub(crate) fn first_rank(view: &View, kind: SlotKind) -> Option<Rank> {
         ActionsColumn::read(view, |column| column.kinds.first_rank(kind))
     }
 
     /// The range of action `id` at `rank`, one of its ranks.
-    pub(crate) fn range(view: &View, id: ActionId, rank: u8) -> range::Range {
+    pub(crate) fn range(view: &View, id: ActionId, rank: Rank) -> range::Range {
         ActionsColumn::read(view, |column| {
             column
                 .book

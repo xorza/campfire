@@ -17,6 +17,7 @@ use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::param::Param;
+use crate::values::rank::Rank;
 use crate::values::stat::Stat;
 
 /// The params of every action and every modifier of a match, one run each, by id: package data
@@ -61,7 +62,7 @@ impl ParamBook {
         &self,
         modifier: ModifierId,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
         place: &ParamPlace,
         source: Option<&ParamSource<'_>>,
     ) -> ParamRead {
@@ -90,7 +91,7 @@ impl ParamBook {
     pub(crate) fn gives(
         &self,
         ability: Option<ActionId>,
-        rank: u8,
+        rank: Rank,
         name: &DeclaredName,
         rate: Option<TickRate>,
     ) -> Result<(), ParamProblem> {
@@ -122,7 +123,7 @@ impl ParamBook {
     }
 
     /// Whether `live` names a scaling param it holds, with a value at `rank`.
-    pub(crate) fn holds_live(&self, live: LiveParam, rank: u8) -> bool {
+    pub(crate) fn holds_live(&self, live: LiveParam, rank: Rank) -> bool {
         let TableRun { table, run } = self.table(live.owner);
         let at = usize::from(live.at);
         table.has_run(run)
@@ -135,7 +136,7 @@ impl ParamBook {
     pub(crate) fn live_value(
         &self,
         live: LiveParam,
-        rank: u8,
+        rank: Rank,
         source: Option<&ParamSource<'_>>,
     ) -> Num {
         let TableRun { table, run } = self.table(live.owner);

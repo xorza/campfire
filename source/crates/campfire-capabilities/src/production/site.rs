@@ -11,6 +11,7 @@ use crate::actions::action_kind::ActionKind;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::units::action_id::ActionId;
+use crate::values::rank::Rank;
 
 /// A building under construction: the build that placed it, at its rank, its progress in ticks
 /// toward the build's time, the life it gains over that time, the player resources its build
@@ -19,7 +20,7 @@ use crate::units::action_id::ActionId;
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Site {
     action: ActionId,
-    rank: u8,
+    rank: Rank,
     progress: Num,
     gain: Num,
     paid: Vec<ResourceAmount>,
@@ -38,7 +39,7 @@ impl Site {
     /// build paid `paid`, held by `holder`.
     pub(crate) fn new(
         action: ActionId,
-        rank: u8,
+        rank: Rank,
         gain: Num,
         paid: &[ResourceAmount],
         holder: Option<StableId>,
@@ -67,7 +68,7 @@ impl Site {
         self.action
     }
 
-    pub const fn rank(&self) -> u8 {
+    pub const fn rank(&self) -> Rank {
         self.rank
     }
 
@@ -142,7 +143,7 @@ impl<'de> Deserialize<'de> for Site {
         #[derive(Debug, Deserialize)]
         struct Fields {
             action: ActionId,
-            rank: u8,
+            rank: Rank,
             progress: Num,
             gain: Num,
             paid: Vec<ResourceAmount>,
@@ -178,7 +179,7 @@ mod tests {
     fn a_site_gains_exactly_its_gain_over_its_time_with_no_rounding_carried() {
         // A gain of 100 over 3 ticks: 33.333… after one, 66.666… after two, rounded down to a
         // bit each, so the ticks add the differences, and the third completes it at exactly 100.
-        let mut site = Site::new(ActionId::nth(0), 1, Num::int(100), &[], None);
+        let mut site = Site::new(ActionId::nth(0), Rank::FIRST, Num::int(100), &[], None);
         let time = Num::int(3);
         let third = |of: i64| Num::from_bits(of * Num::int(100).to_bits() / 3);
         let first = site.progress_by(Num::ONE, time);
@@ -202,7 +203,7 @@ mod tests {
         assert_eq!(first.life + second.life + last.life, Num::int(100));
         assert_eq!(site.progress(), time);
         // A rate of 0 adds nothing.
-        let mut idle = Site::new(ActionId::nth(0), 1, Num::int(100), &[], None);
+        let mut idle = Site::new(ActionId::nth(0), Rank::FIRST, Num::int(100), &[], None);
         assert_eq!(
             idle.progress_by(Num::ZERO, time),
             Progressed {

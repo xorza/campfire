@@ -77,7 +77,7 @@ impl Mine {
     /// A worker of player `owner` at `at`, of a half meter, walking a meter a tick, with the
     /// gather in its slot 0.
     fn worker(&mut self, at: Position, owner: u32) -> StableId {
-        let slots = ActionSlots::new([(self.gather, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(self.gather, SlotKind::new(0), Rank::new(1))]);
         let parts = (
             Team::new(0),
             Owner::new(PlayerSlot::new(owner)),
@@ -454,7 +454,7 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     let worker_type = mine.shop.grunt;
     let world = &mut mine.shop.sim.world;
     world.insert_non_send(Spawner::new(move |world, at, owner| {
-        let slots = ActionSlots::new([(gather, SlotKind::new(0), 1)]);
+        let slots = ActionSlots::new([(gather, SlotKind::new(0), Rank::new(1))]);
         let parts = (
             at.id,
             at.unit_type,

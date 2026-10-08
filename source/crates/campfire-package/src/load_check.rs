@@ -6,8 +6,8 @@ use campfire_capabilities::{
     CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting, EngineTag,
     EnumRecord, FilterData, Hook, ItemData, KindData, MemberKind, Metric, ModifierData,
     ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
-    ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Share, Stat,
-    StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    ProjectileHits, Range, RangeField, Rank, ResourceId, Scalar, ScriptApi, ScriptRole, Share,
+    Stat, StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -1853,7 +1853,7 @@ impl<'a> LoadCheck<'a> {
                 ranks,
             });
         }
-        for rank in 1..=ranks {
+        for rank in (1..=ranks).filter_map(Rank::new) {
             ability
                 .fields_at(rank, |name| data.cost_target_named(name))
                 .map_err(|field| LoadProblem::ActionField {

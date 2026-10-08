@@ -15,6 +15,7 @@ use crate::units::forced_move::DashDelivery;
 use crate::units::modifier_id::ModifierId;
 use crate::values::action_start::ActionStart;
 use crate::values::hit::Hit;
+use crate::values::rank::Rank;
 
 /// What the running call reads and queues, beside the units the view holds: its role, its
 /// acting unit, what each capability's part of it holds, such as its params or the mode's state,
@@ -29,7 +30,7 @@ pub(crate) struct Frame {
     acting: Option<StableId>,
     /// The action whose params it reads, at `rank`, and its modifier's.
     action: Option<ActionId>,
-    rank: u8,
+    rank: Rank,
     modifier: Option<ModifierId>,
     /// The depth of the chain of combat events it runs in: 0 for a cast.
     depth: u8,
@@ -68,7 +69,7 @@ impl Frame {
         self.action
     }
 
-    pub(crate) const fn rank(&self) -> u8 {
+    pub(crate) const fn rank(&self) -> Rank {
         self.rank
     }
 

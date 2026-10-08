@@ -60,6 +60,7 @@ use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
+use crate::values::rank::Rank;
 
 pub(crate) mod abilities_api;
 pub(crate) mod abilities_effect;
@@ -95,7 +96,7 @@ impl Abilities {
         slots
             .channeling()
             .and_then(|slot| slots.slot(slot))
-            .and_then(|slot| book.get(slot.action?)?.channel_rule(slot.rank))
+            .and_then(|slot| slot.values_in(book)?.channel)
             .map_or(Ticks::ZERO, |rule| rule.tick)
     }
 
@@ -294,8 +295,8 @@ fn run_toggles(
             }
             let next = slot.toggle.expect("a toggle that is on");
             let toggle = slot
-                .action
-                .and_then(|action| book.get(action)?.toggle_rule(slot.rank))
+                .values_in(&book)
+                .and_then(|values| values.toggle)
                 .expect("a toggle that is on has its rule");
             if toggle.per != TogglePer::Second || next > now {
                 continue;
@@ -401,7 +402,8 @@ fn start_casts(
         if slot.toggle.is_some() {
             if now >= slot.ready_at {
                 slots.toggle_off(aim.slot);
-                slots.cool_down(aim.slot, now.after(action.values(slot.rank).cooldown));
+                let rank = slot.rank.expect("a slot whose toggle is on is learned");
+                slots.cool_down(aim.slot, now.after(action.values(rank).cooldown));
             }
             slots.stop();
             continue;
@@ -572,7 +574,7 @@ struct Prepared {
     caster: Unit,
     pool: Pool,
     action: ActionId,
-    rank: u8,
+    rank: Rank,
     target: Dynamic,
     on_resolve: Option<ScriptId>,
     resolved: ResolvedCast,

@@ -42,6 +42,7 @@ use crate::values::scalar::Scalar;
 use crate::values::stat::{EngineStat, Stat};
 
 use super::*;
+use crate::values::rank::Rank;
 /// `value` sixteenths.
 fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))
@@ -665,7 +666,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
         modifier: inspired,
         source: None,
         ability: None,
-        rank: 1,
+        rank: Rank::FIRST,
     };
     game.world.resource_mut::<HeldModifiers>().0.push(held);
     game.step();
