@@ -7,7 +7,8 @@ use crate::delegation::{Delegation, DelegationTerms};
 use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
-use crate::session_log::{Spill, StampCount};
+use crate::session_log::spill::Spill;
+use crate::session_log::stamp_count::StampCount;
 
 fn delegation() -> Delegation {
     let terms = DelegationTerms {

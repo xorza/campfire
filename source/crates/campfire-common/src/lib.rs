@@ -1,9 +1,10 @@
 //! The vocabulary that crates which do not depend on each other share: the player slot, ticks,
-//! segment seeds, secret bytes and 32-byte values of the session log and the sim, and a package's fingerprint.
+//! segment seeds, secret bytes and 32-byte values of the session log and the sim, and a
+//! package's fingerprint.
 //!
 //! A type enters only when two crates that do not depend on each other both name it, and only
 //! as a plain value: construction, parsing, display and serde, no other logic. The crate
-//! depends on nothing but `serde`.
+//! depends on nothing but `serde` and `derive_more`.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 

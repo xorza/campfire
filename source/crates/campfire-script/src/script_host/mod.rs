@@ -43,8 +43,13 @@ pub struct ScriptId(u32);
 impl ScriptId {
     /// The id of the script a host compiles at place `index`, counting from 0: a load names a
     /// match's scripts by the order the match compiles them.
-    pub fn nth(index: usize) -> ScriptId {
-        ScriptId(u32::try_from(index).expect("scripts fit u32"))
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the index is checked to fit u32 just before"
+    )]
+    pub const fn nth(index: usize) -> ScriptId {
+        assert!(index <= u32::MAX as usize, "scripts fit u32");
+        ScriptId(index as u32)
     }
 
     /// Its place among the host's scripts, in the order it compiled them.

@@ -18,13 +18,21 @@ impl InputRules {
         max_payload_len: 64,
         max_inputs_per_tick: 4,
     };
+}
 
-    /// Limits no test reaches.
-    #[cfg(feature = "internals")]
-    pub const ROOMY: InputRules = InputRules {
-        max_input_delay: Ticks::new(10),
-        max_input_lead: Ticks::new(10),
-        max_payload_len: 256,
-        max_inputs_per_tick: 4,
-    };
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use campfire_common::Ticks;
+
+    use crate::input_rules::InputRules;
+
+    impl InputRules {
+        /// Limits no test reaches.
+        pub const ROOMY: InputRules = InputRules {
+            max_input_delay: Ticks::new(10),
+            max_input_lead: Ticks::new(10),
+            max_payload_len: 256,
+            max_inputs_per_tick: 4,
+        };
+    }
 }

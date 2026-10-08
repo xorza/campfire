@@ -7,6 +7,8 @@ use bevy::ecs::world::World;
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use campfire_sim::IdAllocator;
 
+use campfire_math::Num;
+
 use super::*;
 
 /// A view with no window, whose clock moves only as a test sets it.

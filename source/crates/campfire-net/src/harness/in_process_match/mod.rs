@@ -30,6 +30,7 @@ use lightyear::prelude::{
 };
 use lightyear::transport::plugin::TransportSystems;
 
+use crate::bot_script::BotScript;
 use crate::harness::in_process_match::delay_line::DelayLine;
 use crate::harness::in_process_match::link_model::LinkModel;
 use crate::local::local_pace::LocalPace;
@@ -38,7 +39,6 @@ use crate::match_clock::MatchClock;
 use crate::order_script::OrderScript;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
-use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::JoinState;
 use crate::sim_client::receipt_writer::ReceiptWriter;

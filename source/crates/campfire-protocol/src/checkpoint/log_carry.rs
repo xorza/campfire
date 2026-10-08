@@ -5,7 +5,8 @@ use crate::bytes::Bytes;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
-use crate::session_log::{Spill, StampCount};
+use crate::session_log::spill::Spill;
+use crate::session_log::stamp_count::StampCount;
 
 /// The log's own state at a checkpoint's boundary, so a segment verifies from its checkpoint
 /// alone: each slot's controller, with a player's delegation and chain, the main key of the

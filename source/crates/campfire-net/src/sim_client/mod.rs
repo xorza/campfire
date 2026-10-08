@@ -29,6 +29,7 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info};
 
+use crate::bot_script::BotScript;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::LinkLost;
@@ -46,7 +47,6 @@ use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
 use crate::offer::Offer;
 use crate::order_script::ScriptedInput;
 use crate::save_command::SaveCommand;
-use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::{JoinState, LinkLoss, Retry, Started};
 use crate::sim_client::receipt_writer::ReceiptWriter;
@@ -57,7 +57,6 @@ use crate::superseded::Superseded;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-pub(crate) mod bot_script;
 pub(crate) mod chain_history;
 pub(crate) mod client_dir;
 pub(crate) mod join_state;

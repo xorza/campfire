@@ -59,7 +59,9 @@ impl SessionDir {
         let path = data.session_dir(private.terms.session_id());
         DurableFile::create_dir(&path)?;
         let dir = SessionDir { path };
-        DurableFile::write(&dir.private(), &private.encode())?;
+        let mut bytes = Vec::new();
+        private.encode(&mut bytes);
+        DurableFile::write(&dir.private(), &bytes)?;
         Ok(dir)
     }
 

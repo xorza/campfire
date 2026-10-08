@@ -25,17 +25,18 @@ use bevy::window::Window;
 use campfire_capabilities::{
     ActionSlots, Area, Body, Dead, MatchEnd, MatchResult, MoveStep, Owner, Projectile, Team,
 };
-use campfire_math::Num;
 use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use lightyear::prelude::Predicted;
 
 use crate::view::drawing::{Drawing, DrawingOf};
+use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 use crate::view::glide::{Glide, TickClock};
 use crate::view::look::{Look, Pose, Shape};
 
 pub(crate) mod drawing;
+pub(crate) mod float_num;
 pub(crate) mod footing;
 pub(crate) mod glide;
 pub(crate) mod look;
@@ -152,15 +153,6 @@ impl Plugin for View {
 }
 
 impl View {
-    /// A sim number in the renderer's floats.
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "drawing needs no more than an f32's 24 bits of a place"
-    )]
-    pub(crate) const fn float(value: Num) -> f32 {
-        value.to_bits() as f32 / (1_u64 << Num::FRAC_BITS) as f32
-    }
-
     fn set_scene(
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
@@ -450,7 +442,7 @@ fn lean_toward(from: Vec3, to: Vec3) -> Quat {
 /// A sim place on the ground plane, in the renderer's floats.
 fn ground(pos: Position) -> Vec3 {
     let at = pos.get();
-    Vec3::new(View::float(at.x), 0.0, View::float(at.z))
+    Vec3::new(at.x.float(), 0.0, at.z.float())
 }
 
 #[cfg(test)]

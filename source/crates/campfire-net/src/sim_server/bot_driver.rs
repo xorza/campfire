@@ -9,10 +9,10 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
 
+use crate::bot_script::BotScript;
 use crate::events::avatar_missing::AvatarMissing;
 use crate::events::bot_payload_dropped::BotPayloadDropped;
 use crate::order_script::OrderScript;
-use crate::sim_client::bot_script::BotScript;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_signer::ServerSigner;
 

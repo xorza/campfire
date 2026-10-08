@@ -3,7 +3,7 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::mem;
 use std::ops::Range;
 
-use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_common::{PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +34,8 @@ use crate::session_log::error::{
 use crate::session_log::paged_bytes::{BytesAt, PagedBytes};
 use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::session_header::SessionHeader;
+use crate::session_log::spill::Spill;
+use crate::session_log::stamp_count::StampCount;
 use crate::session_result::SessionResult;
 use crate::session_terms::SessionTerms;
 use crate::signature::Signature;
@@ -46,6 +48,8 @@ pub(crate) mod error;
 pub(crate) mod paged_bytes;
 pub(crate) mod paged_vec;
 pub(crate) mod session_header;
+pub(crate) mod spill;
+pub(crate) mod stamp_count;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
 const LOG_TAG: &[u8] = b"campfire/session-log/v2";
@@ -167,22 +171,6 @@ enum Control {
     Reserved,
 }
 
-/// A player's inputs as their stamps count them: the last stamp, the inputs of that stamp, and
-/// the inputs in all.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct StampCount {
-    last: Option<Tick>,
-    at_last: u32,
-    total: u64,
-}
-
-/// The last tick a slot's inputs were scheduled to apply in, and how many apply there.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Spill {
-    tick: Tick,
-    count: u32,
-}
-
 #[derive(Debug)]
 struct LoggedInput {
     slot: PlayerSlot,
@@ -268,54 +256,6 @@ struct Due {
     tick: Tick,
     slot: PlayerSlot,
     index: u32,
-}
-
-impl StampCount {
-    /// Counts one more input, stamped `stamp`; an error for a stamp before the last, or one
-    /// more than `max` inputs of one stamp.
-    const fn add(&mut self, stamp: Tick, max: u32) -> Result<(), InputError> {
-        match self.last {
-            Some(last) if stamp.get() < last.get() => return Err(InputError::StampBack),
-            Some(last) if stamp.get() == last.get() => {
-                if self.at_last == max {
-                    return Err(InputError::TooManyInputs);
-                }
-                self.at_last += 1;
-            }
-            _ => {
-                self.last = Some(stamp);
-                self.at_last = 1;
-            }
-        }
-        self.total += 1;
-        Ok(())
-    }
-}
-
-impl Spill {
-    /// The tick an input that may apply from tick `earliest` on applies in: the first, from
-    /// there and from the last, that fewer than `max` of the slot's inputs fill.
-    const fn take(&mut self, earliest: Tick, max: u32) -> Tick {
-        if self.count == 0 || earliest.get() > self.tick.get() {
-            self.tick = earliest;
-            self.count = 1;
-        } else if self.count < max {
-            self.count += 1;
-        } else {
-            self.tick = self.tick.after(Ticks::ONE);
-            self.count = 1;
-        }
-        self.tick
-    }
-
-    /// How many of the slot's inputs apply in `tick` so far.
-    const fn at(self, tick: Tick) -> u32 {
-        if self.tick.get() == tick.get() {
-            self.count
-        } else {
-            0
-        }
-    }
 }
 
 impl SegmentStart {

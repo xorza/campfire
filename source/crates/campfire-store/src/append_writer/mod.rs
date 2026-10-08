@@ -34,7 +34,7 @@ pub struct AppendWriter {
 
 /// What the caller and the worker share.
 #[derive(Debug)]
-pub(crate) struct AppendShared {
+struct AppendShared {
     pending: Mutex<Pending>,
     wake: Condvar,
     durable: AtomicU64,

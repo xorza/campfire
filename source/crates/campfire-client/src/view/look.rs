@@ -8,7 +8,7 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
 use campfire_capabilities::Body;
 
-use crate::view::View;
+use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 
 /// On a unit's drawing root: the figure that draws the unit, the root's child, the material it
@@ -108,10 +108,9 @@ impl Shape {
             body.and_then(|body| body.radius()),
             body.and_then(|body| body.half_edges()),
         ) {
-            (Some(radius), _) => Footing::Circle(View::float(radius)),
+            (Some(radius), _) => Footing::Circle(radius.float()),
             (None, Some([a, b])) => {
-                let [a, b] =
-                    [a, b].map(|edge| Vec2::new(View::float(edge[0]), View::float(edge[1])));
+                let [a, b] = [a, b].map(|edge| Vec2::new(edge[0].float(), edge[1].float()));
                 Footing::Box {
                     half: [a.length(), b.length()],
                     yaw: (-a.y).atan2(a.x),

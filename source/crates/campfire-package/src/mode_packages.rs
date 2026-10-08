@@ -130,10 +130,6 @@ impl ModePackages {
         &self.manifest
     }
 
-    pub const fn mode(&self) -> &Package {
-        &self.mode
-    }
-
     pub const fn data(&self) -> &ModeData {
         &self.data
     }
@@ -292,7 +288,7 @@ impl ModePackages {
     /// mode and of each package it depends on: a change that reads a param its modifier, or else
     /// an action of a way that applies it, declares as a scaling table reads each stat the table
     /// names.
-    pub fn stat_graph(&self) -> StatGraph {
+    pub(crate) fn stat_graph(&self) -> StatGraph {
         let mut graph = StatGraph::new(self.data.stats.keys().cloned());
         for view in self.packages() {
             let content = view.content;
@@ -318,7 +314,7 @@ impl ModePackages {
     /// The ranks of each action `types` place in their slots: those of the slot kind it sits in.
     /// An error names an action they place in kinds of other ranks. A kind the mode does not
     /// declare places nothing.
-    pub fn slotted_ranks<'u>(
+    pub(crate) fn slotted_ranks<'u>(
         &self,
         types: impl IntoIterator<Item = &'u UnitTypeFile>,
     ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {

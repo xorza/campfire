@@ -6,7 +6,7 @@ use campfire_capabilities::PoolId;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 
-use crate::view::View;
+use crate::view::float_num::FloatNum;
 
 /// A bar over a unit, a child of the root of the unit's drawing: its life, or, for the player's
 /// own avatar, another pool, the cooldown of one ability slot, a rank of one, or a mark that one
@@ -73,7 +73,7 @@ impl Gauge {
             return 0.0;
         }
         let ratio = current.checked_div(max).unwrap_or(Num::ZERO);
-        View::float(ratio).clamp(0.0, 1.0)
+        ratio.float().clamp(0.0, 1.0)
     }
 }
 

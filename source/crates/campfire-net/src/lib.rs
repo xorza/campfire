@@ -5,6 +5,7 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
+mod bot_script;
 mod events;
 mod faults;
 #[cfg(feature = "internals")]
@@ -27,6 +28,7 @@ mod sim_client;
 mod sim_server;
 mod superseded;
 
+pub use crate::bot_script::BotScript;
 pub use crate::events::avatar_missing::AvatarMissing;
 pub use crate::events::bot_payload_dropped::BotPayloadDropped;
 pub use crate::events::checkpoint_failed::CheckpointFailed;
@@ -69,7 +71,6 @@ pub use crate::pace::{Pace, PaceSpeed};
 pub use crate::process_exit::ProcessExit;
 pub use crate::save_command::SaveCommand;
 pub use crate::session_times::SessionTimes;
-pub use crate::sim_client::bot_script::BotScript;
 pub use crate::sim_client::client_dir::ClientDir;
 pub use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
 pub use crate::sim_client::join_state::{JoinState, Loss};

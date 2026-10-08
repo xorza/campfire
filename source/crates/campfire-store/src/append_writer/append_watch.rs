@@ -8,7 +8,7 @@ use crate::append_writer::slow_sync::SlowSync;
 /// What another part of the program sees of an append writer: how many of its records are
 /// durable, and its failure.
 #[derive(Debug, Clone)]
-pub struct AppendWatch(pub(crate) Arc<AppendShared>);
+pub struct AppendWatch(pub(super) Arc<AppendShared>);
 
 impl AppendWatch {
     /// How many records the writer synced.

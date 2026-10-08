@@ -4,6 +4,8 @@ use blake3::Hasher;
 use campfire_common::{Fingerprint, SegmentSeed, StateHash};
 use secp256k1::{Keypair, XOnlyPublicKey};
 
+use campfire_common::Ticks;
+
 use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::{DelegationError, ScopeError};

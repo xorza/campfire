@@ -16,12 +16,14 @@ pub(crate) struct ReceiptWriter(LatestWriter<SignedReceipt, DurableError>);
 impl ReceiptWriter {
     /// A writer into the data directory `data`, which it holds locked while it runs.
     pub(crate) fn start(data: Arc<ClientDir>) -> ReceiptWriter {
+        let mut bytes = Vec::new();
         ReceiptWriter(LatestWriter::start(
             "receipts",
             move |receipt: &SignedReceipt| {
                 DurableFile::create_dir(&data.receipts_dir())?;
                 let file = data.receipt_file(receipt.receipt.session_id);
-                DurableFile::write(&file, &receipt.encode())
+                receipt.encode(&mut bytes);
+                DurableFile::write(&file, &bytes)
             },
         ))
     }

@@ -82,10 +82,10 @@ impl Receipt {
 
 impl SignedReceipt {
     /// The file's bytes: the tag, then the receipt and its signature in postcard.
-    pub fn encode(&self) -> Vec<u8> {
-        let mut bytes = FILE_TAG.to_vec();
-        postcard::to_io(self, &mut bytes).expect("postcard into a Vec cannot fail");
-        bytes
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        out.clear();
+        out.extend_from_slice(FILE_TAG);
+        postcard::to_io(self, out).expect("postcard into a Vec cannot fail");
     }
 
     /// The receipt of a file's `bytes`; an error for bytes that `encode` did not write.
