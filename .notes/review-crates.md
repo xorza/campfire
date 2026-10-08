@@ -12,10 +12,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing. Blocked: see `review-crates_QUESTIONS.md`, "Sharing the parsed scripts needs Rhai's `sync` feature, or a cache that stays on one thread".
 
-## Untrusted package files are read without bounds and held whole [medium]
-
-- [ ] source/crates/campfire-package/src/package_dir/mod.rs:110 and source/crates/campfire-package/src/package_store.rs:16 — `fs::read` takes files of any size and any count. `PackageStore` keeps every byte of every package for the life of the process, assets included, though the load reads only the manifest, `data/`, `map/`, `scripts/` and `locale/`. Target: one walk per package that checks the per-file and per-package limits from metadata before it reads. It reads the files the load needs, and it hashes the other files as a stream for the fingerprint. The store keeps only the files the load reads.
-
 ## A superseded link ends after one send of its notice [medium]
 
 - [ ] source/crates/campfire-net/src/sim_server/offering.rs:73-100 — `tell` queues `Superseded` in frame N, and `end` unlinks in frame N+1, after the first send. So the reliable channel never sends it again. If that packet is lost, the old client rejoins and supersedes the newer login. That is the ping-pong that `Superseded` is there to stop. Target: the link ends when the message is acknowledged, or after a timeout that allows a resend.

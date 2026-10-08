@@ -21,6 +21,7 @@ mod package_index;
 mod package_store;
 mod package_text;
 mod package_view;
+mod package_walk;
 mod script_facts;
 mod texts;
 

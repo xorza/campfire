@@ -3,44 +3,27 @@ use std::io;
 
 use campfire_capabilities::PackagePath;
 use campfire_common::Fingerprint;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
-use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
 
-/// A package's files, read once into memory: each file's bytes by its path in the package, and
-/// the fingerprint over those bytes. A load parses only these bytes, so what it parses is what
-/// the fingerprint names.
+/// A package's files a load reads, read once into memory, each file's bytes by its path in the
+/// package, and the fingerprint over every file of the package. A load parses only these bytes,
+/// so what it parses is what the fingerprint names.
 #[derive(Debug, Clone)]
 pub struct PackageFiles {
-    /// In the order of their paths, in bytes, as the fingerprint lists them.
+    /// In the order of their paths.
     files: BTreeMap<PackagePath, Vec<u8>>,
     fingerprint: Fingerprint,
 }
 
-/// One row of a package's file list, as its fingerprint hashes it.
-#[derive(Debug, Serialize)]
-struct FileRow<'a> {
-    path: &'a str,
-    size: u64,
-    sha256: [u8; 32],
-}
-
 impl PackageFiles {
-    /// The package of `files`: the SHA-256 of the postcard list of each file's path, size and
-    /// SHA-256, in the order of their paths.
-    pub(crate) fn new(files: BTreeMap<PackagePath, Vec<u8>>) -> PackageFiles {
-        let rows: Vec<FileRow<'_>> = files
-            .iter()
-            .map(|(path, bytes)| FileRow {
-                path: path.as_str(),
-                size: u64::try_from(bytes.len()).expect("a file length fits u64"),
-                sha256: Sha256::digest(bytes).into(),
-            })
-            .collect();
-        let list = postcard::to_allocvec(&rows).expect("a file list always encodes");
-        let fingerprint = Fingerprint::new(Sha256::digest(list).into());
+    /// The package of `files`, the ones a load reads, whose files' list hashes to
+    /// `fingerprint`; see `PackageWalk::finish`.
+    pub(crate) const fn new(
+        files: BTreeMap<PackagePath, Vec<u8>>,
+        fingerprint: Fingerprint,
+    ) -> PackageFiles {
         PackageFiles { files, fingerprint }
     }
 

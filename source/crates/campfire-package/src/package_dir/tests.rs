@@ -177,3 +177,71 @@ fn a_package_reads_its_own_files_only() {
         Err(ContentError::Data { .. })
     ));
 }
+
+#[test]
+fn a_package_keeps_what_a_load_reads_streams_the_rest_and_holds_its_limits() {
+    // An asset of 100 000 zeros passes in two chunks of the stream; its row holds its size,
+    // the varint 0xA0 0x8D 0x06 (100 000 = 6 × 2¹⁴ + 13 × 2⁷ + 32), and its hash.
+    let asset = vec![0_u8; 100_000];
+    let tree: BTreeMap<PathBuf, Vec<u8>> = [
+        ("one/manifest.toml", b"m".to_vec()),
+        ("one/data/a.toml", b"ab".to_vec()),
+        ("one/textures/x.png", asset.clone()),
+    ]
+    .into_iter()
+    .map(|(path, bytes)| (PathBuf::from(path), bytes))
+    .collect();
+    let list = [
+        &[3, 11][..],
+        b"data/a.toml",
+        &[2],
+        &Sha256::digest(b"ab"),
+        &[13],
+        b"manifest.toml",
+        &[1],
+        &Sha256::digest(b"m"),
+        &[14],
+        b"textures/x.png",
+        &[0xA0, 0x8D, 0x06],
+        &Sha256::digest(&asset),
+    ]
+    .concat();
+    let expected = Fingerprint::new(Sha256::digest(&list).into());
+    let tree = Arc::new(tree);
+    let dir = PackageDir::in_memory(Arc::clone(&tree), "one");
+    let read = dir.read().unwrap();
+    assert_eq!(read.fingerprint(), expected);
+    // Only the files a load reads stay.
+    assert_eq!(read.files_under("textures").count(), 0);
+    let texture = PackagePath::parse("textures/x.png").unwrap();
+    assert!(matches!(
+        read.read_text(&texture),
+        Err(ContentError::Io { .. })
+    ));
+    // The same files on disk stream from the file, and fingerprint the same.
+    let scratch = TempDir::new().unwrap();
+    for (path, bytes) in tree.iter() {
+        let path = scratch.path().join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, bytes).unwrap();
+    }
+    let disk = PackageDir::new(scratch.path().join("one")).read().unwrap();
+    assert_eq!(disk.fingerprint(), expected);
+
+    // Three files, a read file of at most 2 bytes, 3 bytes read in all: the package fits, the
+    // asset streams past the per-file bound. One file fewer allowed, a byte less per file or in
+    // all, and it does not.
+    let within = |files, file_bytes, read_bytes| {
+        let limits = FileLimits {
+            files,
+            file_bytes,
+            read_bytes,
+        };
+        dir.read_within(limits).map(|files| files.fingerprint())
+    };
+    assert_eq!(within(3, 2, 3).unwrap(), expected);
+    assert!(matches!(within(2, 2, 3), Err(ContentError::TooManyFiles)));
+    let data = PackagePath::parse("data/a.toml").unwrap();
+    assert!(matches!(within(3, 1, 3), Err(ContentError::TooLarge(path)) if path == data));
+    assert!(matches!(within(3, 2, 2), Err(ContentError::TooMuchToRead)));
+}
