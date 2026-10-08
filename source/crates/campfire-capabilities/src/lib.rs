@@ -50,6 +50,7 @@ pub use crate::actions::action_target::ActionTarget;
 pub use crate::actions::delivery_data::DeliveryData;
 pub use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData, PlannedEffect};
 pub use crate::actions::error::{ActionError, ActionField};
+pub use crate::actions::kind_data::KindData;
 pub use crate::actions::range::Range;
 pub use crate::actions::slot_kind::SlotKind;
 pub use crate::areas::Areas;

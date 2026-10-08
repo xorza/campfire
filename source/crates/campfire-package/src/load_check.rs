@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
 use campfire_capabilities::{
-    ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
-    CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
-    Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, Metric, ModifierData,
+    ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books, CollisionData,
+    CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting, EngineTag,
+    EnumRecord, FilterData, Hook, ItemData, KindData, MemberKind, Metric, ModifierData,
     ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
     ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Share, Stat,
     StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
@@ -917,8 +917,14 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// A `gather` of `production`, `id`: aimed at a unit its filter selects, of a range in
-    /// meters, of a player resource of the mode's, its bounce a distance from 0.
-    fn gather(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
+    /// meters, of a player resource of the mode's, `resource`, its `bounce` a distance from 0.
+    fn gather(
+        &self,
+        id: &DeclaredName,
+        action: &ActionData,
+        resource: &DeclaredName,
+        bounce: Option<Scalar>,
+    ) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
         self.require(Capability::Production, &at)?;
         let Targeting::Unit(filter) = &action.targeting else {
@@ -932,14 +938,8 @@ impl<'a> LoadCheck<'a> {
         if global {
             return Err(LoadProblem::Gather(GatherProblem::Global(id.to_owned())));
         }
-        self.resource(
-            action
-                .resource
-                .as_ref()
-                .expect("a gather needs its resource"),
-            &at,
-        )?;
-        let bounce = action.bounce.map_or(Some(Num::ZERO), Scalar::to_num);
+        self.resource(resource, &at)?;
+        let bounce = bounce.map_or(Some(Num::ZERO), Scalar::to_num);
         if bounce.is_none_or(|bounce| bounce < Num::ZERO) {
             return Err(LoadProblem::Gather(GatherProblem::Bounce(id.to_owned())));
         }
@@ -947,12 +947,13 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// A `build` of `production`, `id`: aimed at a point, of a range in meters, of a unit type of
-    /// its package, `units`, with a box body, with a `start_life` above 0 when that type has the
-    /// mode's life pool, and its placement's filters of the mode's names.
+    /// its package, `units`, `name`, with a box body, with a `start_life` above 0 when that type
+    /// has the mode's life pool, and its placement's filters of the mode's names.
     fn build(
         &self,
         id: &DeclaredName,
         action: &ActionData,
+        name: &DeclaredName,
         units: &BTreeMap<DeclaredName, UnitTypeFile>,
     ) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
@@ -967,10 +968,6 @@ impl<'a> LoadCheck<'a> {
         if global {
             return Err(LoadProblem::Build(BuildProblem::Global(id.to_owned())));
         }
-        let name = action
-            .unit_type
-            .as_ref()
-            .expect("a build needs its unit type");
         let Some(building) = units.get(name).filter(|unit_type| !unit_type.delivers()) else {
             return Err(unknown(&at, name, NameKind::UnitType));
         };
@@ -1020,31 +1017,32 @@ impl<'a> LoadCheck<'a> {
                 | ActionKind::Build
                 | ActionKind::Gather
         );
-        if run && let Some(field) = ActionDataField::misused(action, action.kind) {
-            return Err(LoadProblem::KindField {
-                action: id.to_owned(),
-                field,
-            });
-        }
+        let kind = run.then(|| action.kind_data()).transpose();
+        let kind = kind.map_err(|field| LoadProblem::KindField {
+            action: id.to_owned(),
+            field,
+        })?;
         if action.clamp_to_range && action.targeting != Targeting::Point {
             return Err(LoadProblem::ClampAims(id.to_owned()));
         }
         if action.hold.is_some() && action.toggle.is_none() && action.channel.is_none() {
             return Err(LoadProblem::HoldAlone(id.to_owned()));
         }
-        match action.kind {
-            ActionKind::Cast => {
+        let Some(kind) = kind else {
+            return Err(LoadProblem::KindNotRun {
+                action: id.clone(),
+                kind: action.kind,
+            });
+        };
+        match kind {
+            KindData::Cast => {
                 self.require(Capability::Abilities, &at)?;
             }
-            ActionKind::Train => {
+            KindData::Train { unit_type: name } => {
                 self.require(Capability::Production, &at)?;
                 if action.targeting != Targeting::None {
                     return Err(LoadProblem::TrainAims(id.to_owned()));
                 }
-                let name = action
-                    .unit_type
-                    .as_ref()
-                    .expect("a train needs its unit type");
                 match units.get(name) {
                     None => {
                         return Err(LoadProblem::Unknown {
@@ -1064,9 +1062,15 @@ impl<'a> LoadCheck<'a> {
                     Some(_) => {}
                 }
             }
-            ActionKind::Build => self.build(id, action, units)?,
-            ActionKind::Gather => self.gather(id, action)?,
-            ActionKind::Attack => {
+            KindData::Build { unit_type } => self.build(id, action, unit_type, units)?,
+            KindData::Gather {
+                resource, bounce, ..
+            } => self.gather(id, action, resource, bounce)?,
+            KindData::Attack {
+                rate,
+                damage,
+                damage_kind,
+            } => {
                 self.require(Capability::Combat, &at)?;
                 let global = action.range.as_ref().is_some_and(|range| {
                     range.values().contains(&RangeField::Range(Range::Global))
@@ -1077,25 +1081,14 @@ impl<'a> LoadCheck<'a> {
                 if global {
                     return Err(LoadProblem::GlobalAttack(id.to_owned()));
                 }
-                self.stats_declared(action.rate.iter().chain(&action.damage), &at)?;
-                let kinds = &self.packages.data.combat.damage_kinds;
-                if let Some(kind) = action
-                    .damage_kind
-                    .as_ref()
-                    .filter(|kind| !kinds.contains(kind))
-                {
+                self.stats_declared([rate, damage], &at)?;
+                if !self.packages.data.combat.damage_kinds.contains(damage_kind) {
                     return Err(LoadProblem::Unknown {
                         of: NameKind::DamageKind,
                         at,
-                        name: kind.to_string(),
+                        name: damage_kind.to_string(),
                     });
                 }
-            }
-            kind => {
-                return Err(LoadProblem::KindNotRun {
-                    action: id.clone(),
-                    kind,
-                });
             }
         }
         Ok(())

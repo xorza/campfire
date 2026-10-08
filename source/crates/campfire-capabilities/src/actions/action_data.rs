@@ -5,12 +5,14 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
+use crate::actions::kind_data::KindData;
 use crate::actions::placement_data::PlacementData;
 use crate::actions::range::Range;
 use crate::actions::requires_data::RequiresData;
@@ -130,6 +132,35 @@ pub struct ChargeData {
 }
 
 impl ActionData {
+    /// What its kind, one the release runs, needs, as it gives it; an error names the first field
+    /// its kind refuses, or needs and it does not give, as the table of action fields says.
+    pub fn kind_data(&self) -> Result<KindData<'_>, ActionDataField> {
+        if let Some(field) = ActionDataField::misused(self, self.kind) {
+            return Err(field);
+        }
+        let needs = "the table of action fields makes its kind need it";
+        Ok(match self.kind {
+            ActionKind::Cast => KindData::Cast,
+            ActionKind::Attack => KindData::Attack {
+                rate: self.rate.as_ref().expect(needs),
+                damage: self.damage.as_ref().expect(needs),
+                damage_kind: self.damage_kind.as_ref().expect(needs),
+            },
+            ActionKind::Train => KindData::Train {
+                unit_type: self.unit_type.as_ref().expect(needs),
+            },
+            ActionKind::Build => KindData::Build {
+                unit_type: self.unit_type.as_ref().expect(needs),
+            },
+            ActionKind::Gather => KindData::Gather {
+                resource: self.resource.as_ref().expect(needs),
+                take: self.take.expect(needs),
+                bounce: self.bounce,
+            },
+            kind => panic!("the release runs no {kind:?}"),
+        })
+    }
+
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
         let numbers = |ranked: Option<&Ranked<Number>>| ranked.and_then(Ranked::ranks);

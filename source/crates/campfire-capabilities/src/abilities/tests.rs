@@ -18,6 +18,7 @@ use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
 use crate::actions::error::{ActionError, ActionField};
+use crate::actions::kind_data::KindData;
 use crate::actions::range::Range;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
@@ -222,6 +223,25 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
     action.damage_kind = Some(DeclaredName::new("physical").unwrap());
     action.on_hit = sapper(false).on_hit;
     assert_eq!(ActionDataField::misused(&action, ActionKind::Attack), None);
+    // Its kind's fields come as the attack needs them; as a cast, the rate it refuses is the
+    // error.
+    let attack = ActionData {
+        kind: ActionKind::Attack,
+        ..action.clone()
+    };
+    assert_eq!(
+        attack.kind_data(),
+        Ok(KindData::Attack {
+            rate: &Stat::named("armor").unwrap(),
+            damage: &Stat::named("attack_damage").unwrap(),
+            damage_kind: &DeclaredName::new("physical").unwrap(),
+        })
+    );
+    let cast = ActionData {
+        kind: ActionKind::Cast,
+        ..action.clone()
+    };
+    assert_eq!(cast.kind_data(), Err(ActionDataField::Rate));
     let ending = ActionData {
         on_end: action.on_hit.clone(),
         ..action.clone()
@@ -251,6 +271,17 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         ActionDataField::misused(&train, ActionKind::Train),
         Some(ActionDataField::UnitType)
     );
+    // Given its unit type, and none of the params and the hit list a train refuses, it gives
+    // the train that type.
+    let train = ActionData {
+        kind: ActionKind::Train,
+        unit_type: Some(DeclaredName::new("grunt").unwrap()),
+        params: BTreeMap::new(),
+        on_hit: Vec::new(),
+        ..train
+    };
+    let grunt = DeclaredName::new("grunt").unwrap();
+    assert_eq!(train.kind_data(), Ok(KindData::Train { unit_type: &grunt }));
 }
 
 const STRIKE: &str =

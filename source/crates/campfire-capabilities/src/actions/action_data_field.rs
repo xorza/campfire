@@ -347,7 +347,7 @@ impl ActionDataField {
 
     /// Whether `data` gives it: a value, a list or a table that is not empty, or a flag that is
     /// on. A field every action gives, its kind and its targeting, is always given.
-    pub fn given(self, data: &ActionData) -> bool {
+    pub(crate) fn given(self, data: &ActionData) -> bool {
         match self {
             ActionDataField::Kind | ActionDataField::Targeting => true,
             ActionDataField::Script => data.script.is_some(),
@@ -385,7 +385,7 @@ impl ActionDataField {
 
     /// The first field `data` of kind `kind` gives that its kind refuses, or does not give that
     /// its kind needs.
-    pub fn misused(data: &ActionData, kind: ActionKind) -> Option<ActionDataField> {
+    pub(crate) fn misused(data: &ActionData, kind: ActionKind) -> Option<ActionDataField> {
         ActionDataField::ALL
             .into_iter()
             .find(|field| match field.use_by(kind) {

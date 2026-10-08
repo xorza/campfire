@@ -4,7 +4,6 @@ use campfire_sim::TickRate;
 use crate::actions::action::Aim;
 use crate::actions::action::Passive;
 use crate::actions::action_data::{ActionData, Targeting};
-use crate::actions::action_kind::ActionKind;
 use crate::actions::action_names::ActionNames;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery::Delivery;
@@ -13,6 +12,7 @@ use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::ActionError;
 use crate::actions::fan::Fan;
 use crate::actions::gather_spec::GatherSpec;
+use crate::actions::kind_data::KindData;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::rank_values::LoadedRanks;
 use crate::actions::rank_values::RankValues;
@@ -55,47 +55,37 @@ impl ActionParts {
             Targeting::Unit(filter) => Aim::Unit(names.filter(filter)),
         };
         let ranks = RankValues::all(data, ranks, rate, |name| names.cost_target(name))?;
-        let kind = match data.kind {
-            ActionKind::Cast => KindSpec::Cast,
-            ActionKind::Attack => {
-                let checked = "the load checked an attack's weapon fields";
-                KindSpec::Attack(Weapon {
-                    rate: names.stat(data.rate.as_ref().expect(checked)),
-                    damage: names.stat(data.damage.as_ref().expect(checked)),
-                    kind: names.damage_kind(data.damage_kind.as_ref().expect(checked)),
-                })
-            }
-            ActionKind::Train => {
-                let unit = data
-                    .unit_type
-                    .as_ref()
-                    .expect("the load checked a train's unit");
-                KindSpec::Train(names.unit_type(package, unit))
-            }
-            ActionKind::Gather => {
-                let checked = "the load checked a gather's fields";
-                let name = data.resource.as_ref().expect(checked);
-                let Some(CostTarget::Resource(resource)) = names.cost_target(name) else {
+        let checked = "the load checked the fields of its kind";
+        let kind = match data.kind_data().expect(checked) {
+            KindData::Cast => KindSpec::Cast,
+            KindData::Attack {
+                rate,
+                damage,
+                damage_kind,
+            } => KindSpec::Attack(Weapon {
+                rate: names.stat(rate),
+                damage: names.stat(damage),
+                kind: names.damage_kind(damage_kind),
+            }),
+            KindData::Train { unit_type } => KindSpec::Train(names.unit_type(package, unit_type)),
+            KindData::Build { unit_type } => KindSpec::Build(names.unit_type(package, unit_type)),
+            KindData::Gather {
+                resource,
+                take,
+                bounce,
+            } => {
+                let Some(CostTarget::Resource(resource)) = names.cost_target(resource) else {
                     panic!("{checked}");
                 };
-                let bounce = data
-                    .bounce
+                let bounce = bounce
                     .map_or(Some(Num::ZERO), Scalar::to_num)
                     .expect(checked);
                 KindSpec::Gather(GatherSpec {
                     resource,
-                    take: data.take.expect(checked).get(),
+                    take,
                     bounce,
                 })
             }
-            ActionKind::Build => {
-                let unit = data
-                    .unit_type
-                    .as_ref()
-                    .expect("the load checked a build's unit");
-                KindSpec::Build(names.unit_type(package, unit))
-            }
-            kind => panic!("the load runs no {kind:?}"),
         };
         let delivery = data.delivery.as_ref().map(|delivery| {
             let unit_type = names.unit_type(package, delivery.unit_type());

@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -32,8 +34,8 @@ impl Node {
     }
 
     /// Takes `take` from what it holds, or what is left: what was taken.
-    pub(crate) fn take(&mut self, take: u32) -> u32 {
-        let taken = take.min(self.amount);
+    pub(crate) fn take(&mut self, take: NonZeroU32) -> u32 {
+        let taken = take.get().min(self.amount);
         self.amount -= taken;
         taken
     }

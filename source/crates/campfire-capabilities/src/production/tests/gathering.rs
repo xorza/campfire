@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use campfire_sim::{EntityIndex, TickInput, TickInputs};
 
 use super::*;
@@ -59,7 +61,7 @@ impl Mine {
         world.insert_resource(nodes);
         let spec = GatherSpec {
             resource: gold,
-            take: 5,
+            take: NonZeroU32::new(5).unwrap(),
             bounce: Num::int(4),
         };
         let all = Filter::of_relation(Relation::All);

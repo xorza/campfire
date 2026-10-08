@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use campfire_math::Num;
 
 use crate::players::resource_id::ResourceId;
@@ -7,6 +9,6 @@ use crate::players::resource_id::ResourceId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GatherSpec {
     pub(crate) resource: ResourceId,
-    pub(crate) take: u32,
+    pub(crate) take: NonZeroU32,
     pub(crate) bounce: Num,
 }
