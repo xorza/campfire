@@ -31,6 +31,8 @@ use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{
     CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, ServerInputError,
 };
+use crate::session_log::paged_bytes::{BytesAt, PagedBytes};
+use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::session_header::SessionHeader;
 use crate::session_result::SessionResult;
 use crate::session_terms::SessionTerms;
@@ -41,6 +43,8 @@ use crate::slot_start::SlotStart;
 pub(crate) mod applied;
 pub(crate) mod durable_head;
 pub(crate) mod error;
+pub(crate) mod paged_bytes;
+pub(crate) mod paged_vec;
 pub(crate) mod session_header;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
@@ -93,12 +97,14 @@ pub struct SessionLog {
     loaded: bool,
     /// How the session ended, once it did.
     result: Option<LoggedResult>,
-    inputs: Vec<LoggedInput>,
-    payloads: Vec<u8>,
-    packets: Vec<Packet>,
-    server: Vec<LoggedServer>,
+    /// The whole session's inputs, payloads, packets, server inputs, entries and tick ends grow
+    /// by pages, so a record never copies the history before it.
+    inputs: PagedVec<LoggedInput>,
+    payloads: PagedBytes,
+    packets: PagedVec<Packet>,
+    server: PagedVec<LoggedServer>,
     /// The packets and the server inputs, in the order they were logged.
-    entries: Vec<Entry>,
+    entries: PagedVec<Entry>,
     /// The server inputs logged since the last tick was sealed.
     server_since: u32,
     /// Every change of a slot's controller, in the order logged, so by tick.
@@ -106,9 +112,9 @@ pub struct SessionLog {
     /// The changes of the tick last sealed.
     sealed_changes: Range<usize>,
     /// For each sealed tick, the end of the entries logged before it ran.
-    tick_ends: Vec<u32>,
+    tick_ends: PagedVec<u32>,
     /// While a rewound log replays, the tick ends it had; empty otherwise.
-    to_replay: Vec<u32>,
+    to_replay: PagedVec<u32>,
     /// Inputs applied in a tick not yet sealed, earliest first.
     pending: BinaryHeap<Reverse<Due>>,
     /// Indices of the inputs applied in the tick last sealed.
@@ -181,7 +187,7 @@ pub(crate) struct Spill {
 struct LoggedInput {
     slot: PlayerSlot,
     stamp: Tick,
-    payload: Range<u32>,
+    payload: BytesAt,
 }
 
 /// A player's packet: its inputs, and the signature over the chain head after the last.
@@ -421,16 +427,16 @@ impl SessionLog {
             revealed: None,
             secp: Secp256k1::verification_only(),
             message: Vec::new(),
-            inputs: Vec::new(),
-            payloads: Vec::new(),
-            packets: Vec::new(),
-            server: Vec::new(),
-            entries: Vec::new(),
+            inputs: PagedVec::default(),
+            payloads: PagedBytes::default(),
+            packets: PagedVec::default(),
+            server: PagedVec::default(),
+            entries: PagedVec::default(),
             server_since: 0,
             changes: Vec::new(),
             sealed_changes: 0..0,
-            tick_ends: Vec::new(),
-            to_replay: Vec::new(),
+            tick_ends: PagedVec::default(),
+            to_replay: PagedVec::default(),
             pending: BinaryHeap::new(),
             due: Vec::new(),
             position_bound: POSITION_BOUND,
@@ -1113,7 +1119,7 @@ impl SessionLog {
         self.server_since = 0;
         if !self.to_replay.is_empty() && self.tick_ends.len() == self.to_replay.len() {
             // Caught up: the entries logged after the last tick wait again, as they did.
-            self.to_replay = Vec::new();
+            self.to_replay = PagedVec::default();
             for at in end..offset(self.entries.len()) {
                 if self.replay_entry(at) {
                     self.server_since += 1;
@@ -1308,7 +1314,10 @@ impl SessionLog {
     /// Writes the entries at `entries` of the log's.
     fn put_entries(&self, out: &mut Vec<u8>, entries: Range<u32>) {
         put(out, &(entries.end - entries.start));
-        for &entry in &self.entries[entries.start as usize..entries.end as usize] {
+        for &entry in self
+            .entries
+            .range(entries.start as usize..entries.end as usize)
+        {
             match entry {
                 Entry::Packet(at) => {
                     put(out, &PACKET_ENTRY);
@@ -1570,7 +1579,7 @@ impl SessionLog {
         });
         let mut start = 0;
         let mut segments = (1..).zip(self.segments.iter().skip(1)).peekable();
-        for (tick, &end) in (0..).zip(&self.tick_ends) {
+        for (tick, &end) in (0..).zip(self.tick_ends.iter()) {
             if let Some((number, segment)) =
                 segments.next_if(|(_, segment)| segment.tick == Tick::new(tick))
             {
@@ -1676,12 +1685,11 @@ impl SessionLog {
     /// Logs `input`'s payload, and gives its index.
     fn push_input(&mut self, input: PlayerInput<'_>) -> u32 {
         let index = offset(self.inputs.len());
-        let payload_start = offset(self.payloads.len());
-        self.payloads.extend_from_slice(input.payload);
+        let payload = self.payloads.push(input.payload);
         self.inputs.push(LoggedInput {
             slot: input.slot,
             stamp: input.stamp,
-            payload: payload_start..offset(self.payloads.len()),
+            payload,
         });
         index
     }
@@ -1765,7 +1773,7 @@ impl SessionLog {
         PlayerInput {
             slot: logged.slot,
             stamp: logged.stamp,
-            payload: &self.payloads[logged.payload.start as usize..logged.payload.end as usize],
+            payload: self.payloads.get(logged.payload),
         }
     }
 }

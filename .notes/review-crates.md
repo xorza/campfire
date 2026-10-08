@@ -12,10 +12,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing. Blocked: see `review-crates_QUESTIONS.md`, "Sharing the parsed scripts needs Rhai's `sync` feature, or a cache that stays on one thread".
 
-## Storage grows or serializes in steps that copy [low]
-
-- [ ] source/crates/campfire-protocol/src/session_log/mod.rs:92 — six buffers hold the whole session: `inputs`, `payloads`, `packets`, `server`, `entries` and `tick_ends`. They grow by `push` in `record`, `record_server` and `seal` (:667, :859, :1054, :1622). Each doubling copies the full history within one tick. Target: one `PagedVec<T>` type of fixed-size pages, which all six use, so a push never moves earlier data.
-
 ## Secrets print through `Debug` [low]
 
 Design: one `Secret<const N: usize>` type in `campfire-common` holds every secret byte array. Its `Debug` writes the redacted form, and no other type holds secret bytes.
