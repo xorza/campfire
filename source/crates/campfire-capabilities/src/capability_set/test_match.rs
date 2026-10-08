@@ -18,6 +18,7 @@ use campfire_sim::{
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::actions::slot_kinds::{SlotKindData, SlotKinds};
 use crate::capability_set::CapabilitySet;
 use crate::combat::Combat;
 use crate::combat::internals;
@@ -29,6 +30,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::unit_tags::UnitTags;
+use crate::values::declared_name::DeclaredName;
 
 /// A match for a capability's tests: a world that `SimUpdate::prepare` set up, with the core and
 /// the declared capabilities installed and their schedule in it, and its state registry. A
@@ -61,6 +63,15 @@ impl TestMatch {
         set.install(&mut world, &mut schedule, &mut registry, budgets);
         // A match installs the book its package load read; a test fills one as it compiles.
         world.insert_resource(ScriptBook::default());
+        // A mode declares the kinds its units' slots are of: here one, whose one rank comes with
+        // the spawn, which a test that needs others replaces.
+        if world.contains_resource::<SlotKinds>() {
+            let basic = SlotKindData {
+                name: DeclaredName::new("basic").unwrap(),
+                ranks: None,
+            };
+            world.insert_resource(SlotKinds(vec![basic]));
+        }
         if set.contains(Capability::Combat) {
             internals::bind_life(&mut world, PoolId::FIRST);
         }

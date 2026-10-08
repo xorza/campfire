@@ -4,7 +4,8 @@ use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_sim::{Position, SimComponent, StableId};
-use serde::{Deserialize, Serialize};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::{ActionBook, Checked};
 use crate::actions::action_data::TogglePer;
@@ -12,6 +13,7 @@ use crate::actions::action_kind::ActionKind;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::rank_values::{ChannelRule, ChargeRule, RankValues};
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_kinds::SlotKinds;
 use crate::stats::pools::Pools;
 use crate::units::action_id::ActionId;
 use crate::values::action_start::ActionStart;
@@ -19,7 +21,7 @@ use crate::values::action_start::ActionStart;
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank
 /// with its cooldown; the action it was ordered or has under way, one at a time; and the unit its
 /// attacks aim at, which it attacks again each time a weapon is ready, until another order.
-#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ActionSlots {
     slots: Vec<ActionSlot>,
     underway: Option<InProgress>,
@@ -254,7 +256,10 @@ impl ActionSlots {
             .into_iter()
             .map(|(action, kind, rank)| ActionSlot::ready(Some(action), kind, rank))
             .collect();
-        debug_assert!(slots.is_sorted_by_key(|slot| slot.kind));
+        assert!(
+            slots.is_sorted_by_key(|slot| slot.kind),
+            "a unit's slots are kind after kind"
+        );
         ActionSlots {
             slots,
             underway: None,
@@ -788,19 +793,57 @@ impl ActionSlots {
     }
 }
 
+/// A snapshot is untrusted, so slots past the most a unit holds, or not kind after kind, which a
+/// grant's search for its kind's end relies on, fail to decode.
+impl<'de> Deserialize<'de> for ActionSlots {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ActionSlots, D::Error> {
+        #[derive(Debug, Deserialize)]
+        struct Fields {
+            slots: Vec<ActionSlot>,
+            underway: Option<InProgress>,
+            attack_target: Option<StableId>,
+            interrupted: Option<ChannelCall>,
+        }
+        let Fields {
+            slots,
+            underway,
+            attack_target,
+            interrupted,
+        } = Fields::deserialize(deserializer)?;
+        if slots.len() > ActionSlots::LIMIT || !slots.is_sorted_by_key(|slot| slot.kind) {
+            return Err(D::Error::custom(
+                "a unit's slots are at most 256, kind after kind",
+            ));
+        }
+        Ok(ActionSlots {
+            slots,
+            underway,
+            attack_target,
+            interrupted,
+        })
+    }
+}
+
 impl SimComponent for ActionSlots {
     const NAME: &'static str = "actions.slots";
 
     // An action the book lacks, a rank past its ranks, or what is under way of a slot it does
-    // not have, an attack of no weapon or an order of one, has no rules for a cast to follow.
+    // not have, an attack of no weapon or an order of one, has no rules for a cast to follow; a
+    // slot of a kind the mode lacks, or of an action with ranks its kind has no level for, would
+    // be read past the mode's kinds.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let Some(book) = world.get_resource::<ActionBook>() else {
+        let (Some(book), Some(kinds)) = (
+            world.get_resource::<ActionBook>(),
+            world.get_resource::<SlotKinds>(),
+        ) else {
             return self.slots.is_empty() && self.underway.is_none();
         };
         let held = |slot: &ActionSlot| {
-            slot.action.is_none_or(|action| {
-                book.get(action)
-                    .is_some_and(|action| action.slots_at(slot.rank))
+            let Some(action) = slot.action else {
+                return kinds.holds(slot.kind, 0);
+            };
+            book.get(action).is_some_and(|action| {
+                action.slots_at(slot.rank) && kinds.holds(slot.kind, action.ranks.len())
             })
         };
         // An attack under way is at one of its action's ranks, and started its windup before it
@@ -865,12 +908,6 @@ impl SimComponent for ActionSlots {
                 rule.is_some_and(|rule| charges.count <= rule.max.get())
             })
         });
-        self.slots.len() <= ActionSlots::LIMIT
-            && self.slots.iter().all(held)
-            && underway
-            && charges
-            && toggles
-            && channel
-            && interrupted
+        self.slots.iter().all(held) && underway && charges && toggles && channel && interrupted
     }
 }

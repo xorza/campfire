@@ -7,6 +7,7 @@ use campfire_sim::{EntityIndex, SimComponent};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
+use crate::actions::action_slots::{ActionSlot, ChannelCall};
 use crate::actions::range::Range;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
@@ -600,6 +601,28 @@ fn every_combat_type_is_state_and_restores() {
         slots.check(&restored.sim.world, entity)
     };
     assert!(ranked(1) && !ranked(0) && !ranked(30));
+    // A slot of a kind the mode lacks, kind 1 of its one, is refused; slots not kind after kind
+    // fail to decode.
+    let lacks = ActionSlots::new([(weapon, SlotKind::new(1), 1)]);
+    assert!(!lacks.check(&restored.sim.world, entity));
+    let of_kind = |kind| slot_of_kind(weapon, kind);
+    let decodes = |slots: Vec<ActionSlot>| {
+        let held = (
+            slots,
+            None::<InProgress>,
+            None::<StableId>,
+            None::<ChannelCall>,
+        );
+        postcard::from_bytes::<ActionSlots>(&postcard::to_allocvec(&held).unwrap()).is_ok()
+    };
+    assert!(decodes(vec![of_kind(0), of_kind(1)]));
+    assert!(!decodes(vec![of_kind(1), of_kind(0)]));
+}
+
+/// The one slot of `weapon` in `kind`, at rank 1.
+fn slot_of_kind(weapon: ActionId, kind: u8) -> ActionSlot {
+    let slots = ActionSlots::new([(weapon, SlotKind::new(kind), 1)]);
+    slots.slot(0).unwrap()
 }
 
 #[test]

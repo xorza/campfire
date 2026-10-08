@@ -119,6 +119,15 @@ impl SlotKinds {
         Some(SlotKind::new(u8::try_from(at).ok()?))
     }
 
+    /// Whether `kind` is one of the mode's, where an action of `ranks` ranks finds a level for
+    /// each rank, when the kind gives them.
+    pub(crate) fn holds(&self, kind: SlotKind, ranks: usize) -> bool {
+        self.0.get(kind.index()).is_some_and(|data| {
+            let levels = data.ranks.as_ref().and_then(SlotRanks::levels);
+            levels.is_none_or(|levels| ranks <= levels.len())
+        })
+    }
+
     /// How many ranks an action in `kind` has.
     pub fn ranks(&self, kind: SlotKind) -> u8 {
         self.0[kind.index()]
@@ -181,5 +190,12 @@ mod tests {
             refusal("name = \"basic\"\nranks = 1\nlevels = [0]")
                 .starts_with("a level is at least 1")
         );
+        // The mode's kinds hold an action in one of them that finds a level for each of its
+        // ranks: in `basic`, of three levels, three ranks and no more; in `spell`, of none, any.
+        let basic = read("name = \"basic\"\nranks = 3\nlevels = [6, 11, 16]").unwrap();
+        let kinds = SlotKinds(vec![basic, read("name = \"spell\"").unwrap()]);
+        let [basic, spell, past] = [0, 1, 2].map(SlotKind::new);
+        assert!(kinds.holds(basic, 3) && !kinds.holds(basic, 4));
+        assert!(kinds.holds(spell, 30) && !kinds.holds(past, 0));
     }
 }
