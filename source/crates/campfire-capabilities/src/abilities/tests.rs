@@ -20,7 +20,6 @@ use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
 use crate::actions::error::ActionField;
 use crate::actions::kind_data::KindData;
 use crate::actions::range::Range;
-use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
 use crate::areas::Areas;
 use crate::areas::area::Area;

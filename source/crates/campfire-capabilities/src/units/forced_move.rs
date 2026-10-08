@@ -6,9 +6,7 @@ use campfire_sim::{Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::units::action_id::ActionId;
-use crate::units::block::Block;
 use crate::units::body::Body;
-use crate::units::unit_tags::UnitTags;
 use crate::values::action_start::ActionStart;
 use crate::values::rank::Rank;
 
@@ -94,13 +92,6 @@ pub(crate) struct Advanced {
 }
 
 impl ForcedMove {
-    /// Whether a unit with `tags`, under a forced move when `forced`, is kept from `block`: by its
-    /// tags, or by the forced move from a step, a cast or an attack.
-    pub(crate) fn blocks(tags: Option<&UnitTags>, forced: bool, block: Block) -> bool {
-        UnitTags::properties_of(tags).blocks(block)
-            || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
-    }
-
     /// One tick of it from `at`, towards `goal`; none for a dash whose unit is gone or dead, which
     /// ends where it is. A dash goes its step, and ends once it comes within its goal's reach; a
     /// knock back goes its share of the way to its end, and ends on it in its last tick.

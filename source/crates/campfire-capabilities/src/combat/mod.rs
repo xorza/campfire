@@ -274,7 +274,7 @@ fn start_attacks(
 ) {
     let now = tick.start();
     for (&position, &team, mut slots, pools, owner, body, tags, forced) in &mut units {
-        let blocked = ForcedMove::blocks(tags, forced, Block::Attack);
+        let blocked = UnitTags::blocks(tags, forced, Block::Attack);
         match slots.in_progress() {
             Some(
                 InProgress::Order { .. } | InProgress::Charge { .. } | InProgress::Channel { .. },
@@ -354,7 +354,7 @@ impl Wielded<'_> {
     /// `forced`: neither keeps it from attacking, and `purse` still affords its cost, as the
     /// checks run again at delivery.
     fn strikes(&self, tags: Option<&UnitTags>, forced: bool, purse: Purse<'_>) -> bool {
-        !ForcedMove::blocks(tags, forced, Block::Attack)
+        !UnitTags::blocks(tags, forced, Block::Attack)
             && purse.affords(&self.values.cost, self.resource_cost)
     }
 }

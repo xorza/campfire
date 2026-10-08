@@ -53,6 +53,7 @@ use crate::units::block::Block;
 use crate::units::owner::Owner;
 
 use crate::abilities::cast_spends::CastSpends;
+use crate::actions::slot_kind::SlotKind;
 use crate::deliveries::deliverers::Deliverers;
 use crate::units::script_view::View;
 use crate::units::team::Team;
@@ -97,6 +98,19 @@ impl Abilities {
             .and_then(|slot| slots.slot(slot))
             .and_then(|slot| slot.values_in(book)?.channel)
             .map_or(Ticks::ZERO, |rule| rule.tick)
+    }
+
+    /// Whether a unit with `tags`, under a forced move when `forced`, carrying `inventory`, is
+    /// kept from the action of a slot of `kind`: from using it, for one of its inventory's, else,
+    /// and with no slot, from casting it.
+    fn blocked(
+        tags: Option<&UnitTags>,
+        forced: bool,
+        inventory: Option<&Inventory>,
+        kind: Option<SlotKind>,
+    ) -> bool {
+        let group = kind.map_or(Block::Cast, |kind| Inventory::group(inventory, kind));
+        UnitTags::blocks(tags, forced, group)
     }
 
     /// A second at `rate`, the time a toggle pays its cost each.
@@ -183,10 +197,13 @@ fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
     let forced = unit.contains::<ForcedMove>();
     let slots = unit.get::<ActionSlots>();
     let channel = slots.and_then(|slots| slots.slot(slots.channeling()?));
-    let group = channel.map_or(Block::Cast, |slot| {
-        Inventory::group(unit.get::<Inventory>(), slot.kind)
-    });
-    let blocked = ForcedMove::blocks(unit.get::<UnitTags>(), forced, group);
+    let kind = channel.map(|slot| slot.kind);
+    let blocked = Abilities::blocked(
+        unit.get::<UnitTags>(),
+        forced,
+        unit.get::<Inventory>(),
+        kind,
+    );
     world.resource_scope(|world, book: Mut<'_, ActionBook>| {
         let mut slots = world
             .get_mut::<ActionSlots>(entity)
@@ -364,7 +381,7 @@ fn start_casts(
             .slot(underway.slot())
             .expect("a slot the unit has")
             .kind;
-        let blocked = ForcedMove::blocks(tags, forced, Inventory::group(inventory, kind));
+        let blocked = Abilities::blocked(tags, forced, inventory, Some(kind));
         if let InProgress::Charge { .. } = underway {
             if blocked {
                 slots.interrupt();
@@ -489,8 +506,8 @@ fn resolve_casts(
         let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
         let due = slots.in_progress().expect("a due cast is under way");
         let kind = slots.slot(due.slot()).expect("a cast's slot").kind;
-        let group = Inventory::group(unit.get::<Inventory>(), kind);
-        let can_cast = !ForcedMove::blocks(unit.get::<UnitTags>(), forced, group);
+        let carried = unit.get::<Inventory>();
+        let can_cast = !Abilities::blocked(unit.get::<UnitTags>(), forced, carried, Some(kind));
         if !can_cast {
             world
                 .get_mut::<ActionSlots>(entity)
@@ -547,7 +564,7 @@ fn predict_casts(
             continue;
         };
         let kind = slots.slot(casting.slot).expect("a cast's slot").kind;
-        if ForcedMove::blocks(tags, forced, Inventory::group(inventory, kind)) {
+        if Abilities::blocked(tags, forced, inventory, Some(kind)) {
             slots.interrupt();
             continue;
         }

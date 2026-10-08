@@ -1,5 +1,6 @@
 use bevy_ecs::component::Component;
 
+use crate::units::block::Block;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 
@@ -16,6 +17,13 @@ impl UnitTags {
     /// The properties of a unit with `tags`: none for one with no tags.
     pub(crate) fn properties_of(tags: Option<&UnitTags>) -> TagProperties {
         tags.map_or_else(TagProperties::default, |tags| tags.properties)
+    }
+
+    /// Whether a unit with `tags`, under a forced move when `forced`, is kept from `block`: by its
+    /// tags, or by the forced move from a step, a cast or an attack.
+    pub(crate) fn blocks(tags: Option<&UnitTags>, forced: bool, block: Block) -> bool {
+        UnitTags::properties_of(tags).blocks(block)
+            || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
     }
 }
 

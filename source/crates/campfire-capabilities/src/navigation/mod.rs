@@ -686,7 +686,7 @@ fn collide(
 /// when `forced`, stop it. One they stop stands, to the units round it as to itself.
 fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, forced: bool) -> bool {
     destination.is_some_and(|destination| destination.get().is_some())
-        && !ForcedMove::blocks(tags, forced, Block::Move)
+        && !UnitTags::blocks(tags, forced, Block::Move)
 }
 
 /// Moves each unit a forced move moves, by stable id, once the units walked, so a dash at a unit
