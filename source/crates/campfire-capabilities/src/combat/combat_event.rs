@@ -1,6 +1,7 @@
 use campfire_sim::StableId;
 
 use crate::combat::damage::Damage;
+use crate::scripts::script_fn::ScriptFn;
 use crate::units::modifier_id::ModifierId;
 
 /// A combat event, which the modifiers that hear it answer by their scripts' hooks.
@@ -34,3 +35,7 @@ pub(crate) enum CombatEvent {
         depth: u8,
     },
 }
+
+/// What answers each combat event: the hooks of the modifiers that hear it, which
+/// `ModifierHooks` runs with the `ctx` ability scripts get.
+pub(crate) type CombatEvents = ScriptFn<CombatEvent, ()>;

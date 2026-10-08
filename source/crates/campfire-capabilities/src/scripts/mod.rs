@@ -25,6 +25,7 @@ pub(crate) mod script_book;
 pub(crate) mod script_budgets;
 pub(crate) mod script_consts;
 pub(crate) mod script_failures;
+pub(crate) mod script_fn;
 pub(crate) mod script_limits;
 pub(crate) mod script_role;
 pub(crate) mod scripts_call;

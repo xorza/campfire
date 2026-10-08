@@ -10,13 +10,10 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
-use crate::combat::combat_event::CombatEvent;
-use crate::combat::combat_events::CombatEvents;
-use crate::combat::damage::Damage;
-use crate::combat::damage_weigher::DamageWeigher;
+use crate::combat::combat_event::{CombatEvent, CombatEvents};
+use crate::combat::damage::{Damage, DamageWeigher};
 use crate::combat::deaths::{Deaths, Fallen};
-use crate::combat::heal::{Heal, HealCause};
-use crate::combat::heal_weigher::HealWeigher;
+use crate::combat::heal::{Heal, HealCause, HealWeigher};
 use crate::combat::pass_queue::{PassEntry, PassQueue};
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
@@ -147,7 +144,7 @@ impl DamagePass {
                     };
                     let amount = match (&scripts.healer, run.batch()) {
                         (Some(healer), Some(batch)) => {
-                            healer.weigh(batch, heal).unwrap_or_else(|error| {
+                            healer.call(batch, heal).unwrap_or_else(|error| {
                                 batch.record(Some(heal.target), Hook::CalcHeal, error);
                                 heal.amount
                             })
@@ -163,7 +160,7 @@ impl DamagePass {
             }
             let amount = match (&scripts.weigher, run.batch()) {
                 (Some(weigher), Some(batch)) => {
-                    weigher.weigh(batch, damage).unwrap_or_else(|error| {
+                    weigher.call(batch, damage).unwrap_or_else(|error| {
                         batch.record(Some(damage.target), Hook::CalcDamage, error);
                         damage.amount
                     })
@@ -258,9 +255,9 @@ impl DamagePass {
             return;
         }
         if damage.cause.attack() {
-            events.hear(batch, CombatEvent::AttackHit(damage));
+            events.call(batch, CombatEvent::AttackHit(damage));
         }
-        events.hear(batch, CombatEvent::DamageTaken(damage));
+        events.call(batch, CombatEvent::DamageTaken(damage));
         let Landed::Killed { death } = landed else {
             return;
         };
@@ -270,7 +267,7 @@ impl DamagePass {
         assisters.extend_from_slice(kill.assisters);
         let (victim, depth) = (damage.target, damage.depth);
         if let Some(killer) = killer {
-            events.hear(
+            events.call(
                 batch,
                 CombatEvent::Kill {
                     killer,
@@ -280,7 +277,7 @@ impl DamagePass {
             );
         }
         for unit in killer.into_iter().chain(assisters.iter().copied()) {
-            events.hear(
+            events.call(
                 batch,
                 CombatEvent::Takedown {
                     unit,

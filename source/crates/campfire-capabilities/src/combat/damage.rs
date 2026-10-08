@@ -1,6 +1,8 @@
 use campfire_math::Num;
 use campfire_sim::StableId;
 
+use crate::scripts::error::CallError;
+use crate::scripts::script_fn::ScriptFn;
 use crate::units::action_id::ActionId;
 use crate::values::damage_kind::DamageKind;
 use crate::values::hit::Hit;
@@ -21,6 +23,10 @@ pub(crate) struct Damage {
     pub(crate) depth: u8,
     pub(crate) hit: Option<Hit>,
 }
+
+/// What turns each damage of the pass into its final amount: the mode's `calc_damage`, which
+/// the mode gives combat when its script defines one.
+pub(crate) type DamageWeigher = ScriptFn<Damage, Result<Num, CallError>>;
 
 /// What dealt a damage: an attack, with the roll it drew as its windup ended; an extra attack,
 /// from `ctx.attack_hit`, which draws none; or an ability's or modifier's effect. An attack names

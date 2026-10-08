@@ -21,8 +21,7 @@ use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};
 use crate::combat::combat_column::CombatColumn;
 use crate::combat::combat_effect::CombatEffect;
-use crate::combat::combat_event::CombatEvent;
-use crate::combat::combat_events::CombatEvents;
+use crate::combat::combat_event::{CombatEvent, CombatEvents};
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_pass::DamagePass;
 use crate::combat::deaths::{Deaths, Fallen};
@@ -71,16 +70,13 @@ pub(crate) mod combat_column;
 pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
-pub(crate) mod combat_events;
 pub(crate) mod combat_rules;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
 pub(crate) mod damage_pass;
-pub(crate) mod damage_weigher;
 pub(crate) mod deaths;
 pub(crate) mod heal;
 pub(crate) mod heal_handle;
-pub(crate) mod heal_weigher;
 pub(crate) mod kept;
 pub(crate) mod modifier_hooks;
 pub(crate) mod on_death;
@@ -393,7 +389,7 @@ fn attack_events(
         let view = world.non_send::<View>().clone();
         ScriptBatch::run(world, &view, |batch| {
             for &GoingOff { attacker, target } in &*going {
-                events.hear(batch, CombatEvent::Attack { attacker, target });
+                events.call(batch, CombatEvent::Attack { attacker, target });
             }
         });
     }
@@ -460,7 +456,7 @@ fn run_intervals(
             source,
         } in &*due
         {
-            events.hear(
+            events.call(
                 batch,
                 CombatEvent::Interval {
                     carrier,
