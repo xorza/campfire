@@ -96,8 +96,8 @@ impl Arena {
     /// Runs one tick, and keeps its script failures.
     pub fn step(&mut self) {
         self.world.run_schedule(SimUpdate);
-        let failures = self.world.non_send::<ScriptFailures>().get();
-        self.failed.extend_from_slice(failures);
+        let mut failures = self.world.non_send_mut::<ScriptFailures>();
+        self.failed.extend(failures.drain());
     }
 
     /// Runs a tick in which player `slot` orders each of `orders`.

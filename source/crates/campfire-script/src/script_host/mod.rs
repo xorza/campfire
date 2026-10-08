@@ -192,7 +192,7 @@ impl ScriptHost {
         );
         debug_assert!(self.scope.is_empty(), "a call rewinds its scope");
         budget.spend(self.counted.get());
-        result.map_err(|error| ScriptError::from_eval(&error))
+        result.map_err(ScriptError::from_eval)
     }
 }
 

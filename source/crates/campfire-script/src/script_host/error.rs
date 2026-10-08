@@ -3,7 +3,7 @@ use thiserror::Error;
 
 /// Why a script did not compile or a call failed. Scripts come from packages, so each is an
 /// expected failure; a failed call changes nothing.
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Error)]
 pub enum ScriptError {
     /// The source does not compile.
     #[error("script does not compile")]
@@ -19,25 +19,28 @@ pub enum ScriptError {
     #[error("script call raised {:?}", .0.0)]
     Raised(Raised),
     /// Any other failure Rhai reports, such as an integer overflow, a limit of depth or size, a
-    /// missing function or a wrong type: its message, with its position.
-    #[error("script call failed: {0}")]
-    Runtime(String),
+    /// missing function or a wrong type: Rhai's error as it came, which gives its message and
+    /// position only when it is reported.
+    #[error("script call failed")]
+    Runtime(#[source] Box<EvalAltResult>),
 }
 
 impl ScriptError {
-    pub(crate) fn from_eval(error: &EvalAltResult) -> ScriptError {
+    /// The case of `error`, which a call returned: the cases a caller tells apart by what the
+    /// innermost error of a function call's chain is, a raised value moved out of it.
+    pub(crate) fn from_eval(error: Box<EvalAltResult>) -> ScriptError {
         match error.unwrap_inner() {
             EvalAltResult::ErrorTooManyOperations(_) => ScriptError::CallLimit,
             EvalAltResult::ErrorTerminated(..) => ScriptError::TickBudget,
-            EvalAltResult::ErrorRuntime(value, _) => ScriptError::Raised(Raised(value.clone())),
-            _ => ScriptError::Runtime(error.to_string()),
+            EvalAltResult::ErrorRuntime(..) => ScriptError::Raised(Raised::take(*error)),
+            _ => ScriptError::Runtime(error),
         }
     }
 }
 
 /// A value a call raised. An API raises its own error type with `error`, which its caller takes
 /// back with `get`.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Raised(Dynamic);
 
 impl Raised {
@@ -47,8 +50,20 @@ impl Raised {
     }
 
     /// The raised value as a `T`, when it is one.
-    pub fn get<T: Clone + 'static>(&self) -> Option<T> {
-        self.0.clone().try_cast::<T>()
+    pub fn get<T: Variant + Clone>(&self) -> Option<T> {
+        self.0.read_lock::<T>().as_deref().cloned()
+    }
+
+    /// The value `error` raised, at the end of its chain of function calls.
+    fn take(mut error: EvalAltResult) -> Raised {
+        loop {
+            match error {
+                EvalAltResult::ErrorInFunctionCall(.., inner, _)
+                | EvalAltResult::ErrorInModule(.., inner, _) => error = *inner,
+                EvalAltResult::ErrorRuntime(value, _) => return Raised(value),
+                other => unreachable!("a chain that ends in a raised value, not {other:?}"),
+            }
+        }
     }
 }
 

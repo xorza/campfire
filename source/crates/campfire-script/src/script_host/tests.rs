@@ -86,7 +86,31 @@ fn num_arithmetic_is_exact_and_checked() {
             panic!("{body} raises");
         };
         assert_eq!(raised.get::<NumError>(), Some(expected), "{body}");
+        assert_eq!(raised.get::<INT>(), None, "{body}");
     }
+    // A value raised in a function the hook calls comes out of Rhai's chain of calls, as raised;
+    // any other failure there keeps the chain as Rhai gave it.
+    let script = host
+        .compile("fn g() { num(1 << 39) } fn h() { nope() } fn f() { g() } fn e() { h() }")
+        .unwrap();
+    let Err(ScriptError::Raised(raised)) = host.call(&mut ample(), script, "f", ()) else {
+        panic!("g raises");
+    };
+    assert_eq!(raised.get::<NumError>(), Some(NumError::IntegerBeyondNum));
+    let Err(ScriptError::Runtime(error)) = host.call(&mut ample(), script, "e", ()) else {
+        panic!("h fails");
+    };
+    assert!(
+        matches!(*error, EvalAltResult::ErrorInFunctionCall(..)),
+        "{error:?}"
+    );
+    assert!(
+        matches!(
+            error.unwrap_inner(),
+            EvalAltResult::ErrorFunctionNotFound(..)
+        ),
+        "{error:?}"
+    );
     // Integer overflow fails too: Rhai checks it.
     let max = INT::MAX;
     assert!(matches!(
@@ -120,7 +144,8 @@ fn only_what_scripts_need_is_there() {
         ),
     ] {
         let failed = run(&mut host, body).err();
-        let pinned = matches!(&failed, Some(ScriptError::Runtime(text)) if text == error);
+        let pinned =
+            matches!(&failed, Some(ScriptError::Runtime(text)) if text.to_string() == error);
         assert!(pinned, "{body}: {failed:?}");
     }
     // What scripts do need: loops over arrays and ranges, maps, strings, and `print`, which
@@ -188,7 +213,8 @@ fn calls_fail_at_their_limits_the_same_way_in_every_build() {
         Ok(0)
     );
     let deeper = host.call(&mut ample(), down, "down", (33_i64,)).err();
-    let overflow = matches!(&deeper, Some(ScriptError::Runtime(text)) if text == "Stack overflow");
+    let overflow =
+        matches!(&deeper, Some(ScriptError::Runtime(text)) if text.to_string() == "Stack overflow");
     assert!(overflow, "{deeper:?}");
 }
 

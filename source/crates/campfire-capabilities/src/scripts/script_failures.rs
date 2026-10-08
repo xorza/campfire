@@ -1,3 +1,5 @@
+use std::vec;
+
 use campfire_sim::StableId;
 
 use crate::scripts::error::CallError;
@@ -10,7 +12,7 @@ use crate::scripts::hook::Hook;
 pub struct ScriptFailures(Vec<ScriptFailure>);
 
 /// A call that failed: the unit it ran for, if any, its hook, and why.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ScriptFailure {
     pub unit: Option<StableId>,
     pub hook: Hook,
@@ -20,6 +22,11 @@ pub struct ScriptFailure {
 impl ScriptFailures {
     pub fn get(&self) -> &[ScriptFailure] {
         &self.0
+    }
+
+    /// Takes the failures out, for a caller that keeps them past the tick.
+    pub fn drain(&mut self) -> vec::Drain<'_, ScriptFailure> {
+        self.0.drain(..)
     }
 
     pub(crate) fn record(&mut self, unit: Option<StableId>, hook: Hook, error: CallError) {

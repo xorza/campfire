@@ -10,7 +10,7 @@ use crate::values::engine_enum::EngineEnum;
 pub(crate) type Checked<T> = Result<T, Box<EvalAltResult>>;
 
 /// Why a script call failed. A failed call changes nothing.
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Error)]
 pub enum CallError {
     /// The script API refused a call.
     #[error("the script API refused a call")]

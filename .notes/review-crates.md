@@ -8,11 +8,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-net/src/net_protocol.rs:94,102,106,107,110 — `SpawnPoint`, `Respawn`, `Route`, `Progress` and `ModifierClocks` replicate to every observer, though only the owner's prediction reads them; `Progress` changes every tick a unit walks, and `Route` resends its whole `Vec` on change. Target: an immutable `OwnedBy(Option<PlayerSlot>)` on each unit, a replicon `VisibilityFilter` scoped to these five components, with `PlayerLink` as its client component. Blocked: see `review-crates_QUESTIONS.md`, "Owner-only replication needs `bevy_replicon` as a direct dependency".
 
-## A failed script call allocates and loses its case [medium]
-
-- [ ] source/crates/campfire-script/src/script_host/error.rs:33 — `ScriptError::Runtime(error.to_string())` formats Rhai's message on every failed call, and the runner formats it again (`campfire-runner/src/session/mod.rs:297`). An AI script that fails for each unit allocates two times per unit per tick. Target: an enum of the cases callers tell apart, with the boxed Rhai error kept as it came. It is formatted only when it is logged.
-- [ ] source/crates/campfire-script/src/script_host/error.rs:28,32,51 — `from_eval` takes `&EvalAltResult`, though `call` (mod.rs:195) owns the box. So the raised `Dynamic` is cloned, and `Raised::get` clones it again before `try_cast`. Target: `from_eval(Box<EvalAltResult>)` moves the value out, and `get` reads through `read_lock`.
-
 ## A match build repeats the load's work [low]
 
 - [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing.
