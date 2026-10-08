@@ -15,6 +15,7 @@ use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::HeldModifiers;
 use crate::stats::held_pass::HeldPass;
 use crate::stats::level::Level;
+use crate::stats::live_carriers::LiveCarriers;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_handle::ModifierHandle;
@@ -47,8 +48,8 @@ pub(crate) mod instance;
 pub(crate) mod level;
 pub(crate) mod life_pool;
 pub(crate) mod lifetime;
+pub(crate) mod live_carriers;
 pub(crate) mod live_param;
-pub(crate) mod live_shares;
 pub(crate) mod meter;
 pub(crate) mod modifier_book;
 pub(crate) mod modifier_clocks;
@@ -117,6 +118,7 @@ impl Stats {
         }
         world.insert_resource(PlayerModifiers::default());
         world.insert_resource(HeldModifiers::default());
+        world.insert_resource(LiveCarriers::default());
         registry.register_resource::<PlayerModifiers>();
         registry.register_component::<Level>();
         registry.register_component::<Modifiers>();

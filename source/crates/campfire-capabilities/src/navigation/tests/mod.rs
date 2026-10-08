@@ -281,6 +281,21 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     walk.sim.insert(tower, Dead);
     walk.sim.step();
     assert_eq!(blocked(&walk), [15]);
+    // In one tick the tower lives again and the held one dies: as many static bodies, none of
+    // them moved, and the grid follows.
+    let held_entity = walk.sim.entity(held);
+    walk.sim.world.entity_mut(held_entity).insert(Dead);
+    let tower_entity = walk.sim.entity(tower);
+    walk.sim.world.entity_mut(tower_entity).remove::<Dead>();
+    walk.sim.step();
+    assert_eq!(blocked(&walk), [0]);
+    // The tower moves to (−0.5, 1.5): column 1 of row 3, cell 13. Then it goes.
+    *walk.sim.get_mut::<Position>(tower) = place(-2, 6);
+    walk.sim.step();
+    assert_eq!(blocked(&walk), [13]);
+    walk.sim.world.entity_mut(tower_entity).despawn();
+    walk.sim.step();
+    assert_eq!(blocked(&walk), Vec::<usize>::new());
 }
 
 #[test]

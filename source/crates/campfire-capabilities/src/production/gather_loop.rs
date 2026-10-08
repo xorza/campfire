@@ -1,6 +1,6 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Changed, QueryState, Without};
+use bevy_ecs::query::{Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemParam, SystemState};
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Ticks};
@@ -651,9 +651,15 @@ impl GatherLoop {
     }
 
     /// Gives each worker in its loop the engine tag `gathering`, and takes it from one whose loop
-    /// ended.
+    /// ended. The tag follows from the worker's loop alone, so a run visits only the workers whose
+    /// loop or status tags changed since its last.
     pub(crate) fn tag_gatherers(
-        mut workers: Query<'_, '_, (Entity, &Gatherer, Option<&mut StatusTags>)>,
+        mut workers: Query<
+            '_,
+            '_,
+            (Entity, &Gatherer, Option<&mut StatusTags>),
+            Or<(Changed<Gatherer>, Changed<StatusTags>)>,
+        >,
         mut commands: Commands<'_, '_>,
     ) {
         for (entity, gatherer, status) in &mut workers {

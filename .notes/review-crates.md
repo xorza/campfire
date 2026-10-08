@@ -8,36 +8,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-net/src/net_protocol.rs:94,102,106,107,110 — `SpawnPoint`, `Respawn`, `Route`, `Progress` and `ModifierClocks` replicate to every observer, though only the owner's prediction reads them; `Progress` changes every tick a unit walks, and `Route` resends its whole `Vec` on change. Target: an immutable `OwnedBy(Option<PlayerSlot>)` on each unit, a replicon `VisibilityFilter` scoped to these five components, with `PlayerLink` as its client component. Blocked: see `review-crates_QUESTIONS.md`, "Owner-only replication needs `bevy_replicon` as a direct dependency".
 
-## The client links drawings and gauges to units by hand and polls them every frame [medium]
-
-Design: a unit's drawing is a Bevy hierarchy tied to the unit by a relationship. A `DrawingOf(unit)` relationship has a `Drawing` target on the unit with `linked_spawn`, so the unit's despawn takes the whole tree. The tree's root is an anchor with translation only, which is the glide. Its children are the body mesh, which holds the lean and the box's yaw, the gauges at a local offset that faces the camera, and the target ring, which moves under the target's anchor when the target changes. Bevy's propagation then places every child, only when its anchor moves. The per-frame placement, the despawn observer, the gauge polling and the HUD-against-view order all go away. Fills and hit marks change only on `Changed<Pools>`, `Changed<ActionSlots>` and `Added<Dead>`.
-
-- [ ] source/crates/campfire-client/src/view.rs:75 — `Drawn(Entity)` is cleared by a `Despawn` observer (:498), while gauges are found gone by polling (hud/mod.rs:383-385). Target: the relationship.
-- [ ] source/crates/campfire-client/src/hud/gauge.rs:15 — `Gauge { unit }` points one way, so `mark_hits` (hud/mod.rs:274), `fill_gauges` (:316) and `place_gauges` (:378) scan every gauge every frame with random lookups. Target: gauges as anchor children; `place_gauges` goes; fills and hits from change filters.
-- [ ] source/crates/campfire-client/src/hud/mod.rs:108 — the `Hud` and `View` chains (view.rs:256) both run in `Update`, unordered, so bars and rings may sit a frame behind the glide. Target: removed by propagation; the `Orders` pick, which reads drawing transforms, runs after the view's set.
-- [ ] source/crates/campfire-client/src/hud/mod.rs:409 — `mark_target` assigns `Visibility` and `Transform` every frame (:409, :412-415). Target: the ring changes parent only when the target changes.
-- [ ] source/crates/campfire-client/src/view.rs:390 — `lean` visits every drawn unit every frame, projectiles included. Target: the body child of attackers, and a `Changed<ActionSlots>` pass for the reset.
-- [ ] source/crates/campfire-client/src/hud/mod.rs:279 — `mark_hits` scans every gauge in a mode with no life pool. Target: `.run_if(resource_exists::<Life>)` until the change filter replaces it.
-- [ ] source/crates/campfire-client/src/hud/mod.rs:184 — `add_gauges` allocates a kinds `Vec` and a `ranks` `Vec` (:204) per new unit. Target: `Local` scratch.
-- [ ] source/crates/campfire-client/src/orders.rs:29 — `click`, `cast` and `stop` build `Pointer` (two `Single`s and queries) every frame only to return early. Target: input run conditions.
-
-## The client's drawings follow a clock that is not the sim's [medium]
-
-Design: a drawing shows a state between two sim states, and the fraction comes from the clock that runs the sim. For a predicted unit, Lightyear's frame interpolation is the established practice: the drawing lerps between the last two ticks' states by `Time<Fixed>::overstep_fraction()`. That fraction is exact at any speed, at a pause, and after a rollback. A remote unit glides from where it is drawn to its new state over `Time<Fixed>::timestep()`, which is read each frame. Lightyear's interpolation timeline is the full practice for a remote unit, and it is a design step of its own.
-
-- [ ] source/crates/campfire-client/src/view.rs:57 — `TickSeconds` is set once from the pin (:254), and each glide lasts that long (:465). The speed keys of a local match change `TickDuration` and `Time<Fixed>`, so drawings trail at 2× and 4×, and at 0.5× they stop and then jump. Target: the design; `TickSeconds` goes.
-- [ ] source/crates/campfire-client/src/view.rs:84 — `Glide::since` and `Ring::since` (hud/ring/mod.rs:7) hold `elapsed_secs()` as `f32`, which steps 2 ms after 4.6 h. Target: the overstep fraction needs no timestamp; a timestamp that remains is a `Duration`, and only a difference becomes an `f32`.
-- [ ] source/crates/campfire-client/src/view.rs:434 — `Dead` is predicted, so a rollback across a death yields the unit from both `Added<Dead>` and `RemovedComponents<Dead>` in one frame, and the chain applies them in event order, drawing a dead unit alive. Target: the drawing keeps the state it shows, and each touched unit is shown by its current `Has<Dead>`.
-
-## Systems rescan every unit each tick where a change filter or a list would do [low]
-
-Fixes in `campfire-capabilities`. A gate must only skip, never decide: when anything that could matter changed, the full pass runs as today, so a missed source costs time, never a wrong state.
-
-- [ ] source/crates/campfire-capabilities/src/stats/mod.rs:139 — `(Refresh::give_parts, Refresh::run)` runs at `SimEdge::Start` and after each of the 9 stages. Each pass is an `Or<(Changed<…>, With<LiveShares>)>` scan, and `LiveShares` is a marker that `Commands` inserts and removes. That moves units between archetypes and adds two sync points to each of the 10 passes. Keep the passes, because removing the passes after the stages that do not write today breaks when a stage gains a writer. Target: the units with live shares are a sorted list on `Refresh`'s own resource, so no marker, no `Commands` and no sync point.
-- [ ] source/crates/campfire-capabilities/src/navigation/mod.rs:249-267 — `track_static_bodies` (2× a tick, and at each box spawn) collects, sorts and compares every static body when none changed. Target: a skip when no `Position` or `Body` of a non-walker changed, no `MoveStep`, `Dead`, `Body` or `StableId` was added or removed, and nothing despawned; otherwise the full diff, unchanged.
-- [ ] source/crates/campfire-capabilities/src/items/mod.rs:80 — `hold_items` (2× a tick) recomputes every inventory against every item modifier, with no change gate. Target: the units whose `Inventory` or `Modifiers` changed, or all of them when a book changed, as `hold_passives` does.
-- [ ] source/crates/campfire-capabilities/src/production/gather_loop.rs:655 — `tag_gatherers` visits every `Gatherer` each tick, but its output depends only on `Gatherer`. Target: `Changed<Gatherer>`.
-
 ## Net systems build queries per frame, and its schedule chains what need not be ordered [low]
 
 - [ ] source/crates/campfire-net/src/sim_server/door.rs:70 — `Door::take_joins` builds `world.query_filtered::<JoinLink, Unanswered>()` every frame (500 Hz). Target: a `Local<QueryState<…>>`, as `BotDriver` caches `Avatars`.
@@ -113,7 +83,7 @@ Design: one `Secret<const N: usize>` type in `campfire-common` holds every secre
 - [ ] source/crates/campfire-protocol/src/session_log/mod.rs:162 — `StampCount` and `Spill` are wire types that `checkpoint/log_carry.rs:7` also imports, but they sit in the 1765-line `SessionLog` file. Target: a file for each.
 - [ ] source/crates/campfire-protocol/src/receipt/mod.rs:85 — `SignedReceipt::encode() -> Vec<u8>` and `SessionPrivate::encode() -> Vec<u8>` (session_private/mod.rs:23) return new buffers, but `SessionLog::encode(&self, out)` takes an out-param. Target: one shape, `encode(&self, out: &mut Vec<u8>)`.
 - [ ] source/crates/campfire-store/src/append_writer/mod.rs:37 — `AppendShared` and the `AppendWatch` field (append_watch.rs:11) are `pub(crate)`, but only `append_writer` uses them. Target: private, and `pub(super)` for the field.
-- [ ] source/crates/campfire-client/src/view.rs:75 — `Drawn`, `Glide`, `Look` and `Footing` are separate crate-visible types, but they sit in the `View` plugin's file. `View::float` (:279) is a general `Num` to `f32` conversion, but it is a function of the plugin. Target: a file for each type, and the conversion on a type that owns it. The hierarchy redesign moves most of these types.
+- [ ] source/crates/campfire-client/src/view/mod.rs — `View::float` is a general `Num` to `f32` conversion, but it is a function of the plugin. Target: the conversion on a type that owns it.
 - [ ] source/crates/campfire-client/src/args/mod.rs:13 — `pub(crate) mod error;` is used only in `args`, and the same is true of `server_tls/mod.rs:12`. Target: private.
 - [ ] source/crates/campfire-server/src/server_config.rs:7 — `ServerConfig(ServerSetup)` is always inserted (main.rs:123), but only `Restore::run` (opening/mod.rs:146) reads it. Target: the setup goes into `Restore`, and `ServerConfig` goes.
 - [ ] source/crates/campfire-net/src/sim_server/bot_driver.rs:17 — the server imports `crate::sim_client::bot_script::BotScript`. Target: `BotScript` goes beside `order_script`.
