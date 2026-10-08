@@ -13,7 +13,7 @@ internals = [
     "campfire-protocol/internals",
     "campfire-sim/internals",
 ]
-bench = ["internals", "dep:criterion"]
+bench = ["internals", "dep:criterion", "dep:campfire-script"]
 
 [dependencies]
 campfire-capabilities.workspace = true
@@ -22,6 +22,8 @@ campfire-log.workspace = true
 campfire-math.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
+# The match build bench times a script host's compile and bind, as a match's are.
+campfire-script = { workspace = true, optional = true }
 campfire-sim.workspace = true
 
 bevy_ecs.workspace = true
