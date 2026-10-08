@@ -2,7 +2,6 @@ use campfire_common::Ticks;
 use campfire_script::ScriptId;
 use campfire_sim::TickRate;
 
-use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
 use crate::scripts::hook::Hook;
@@ -18,7 +17,8 @@ pub(crate) struct Ai {
 
 impl Ai {
     /// The AI of `data`, whose script is `script`, which defines the hooks `scripts` gives, its
-    /// period at `rate`.
+    /// period at `rate`, a tick at the least; an error for a period too long to count, or a
+    /// script that defines no `on_think`.
     pub(crate) fn of(
         data: &AiData,
         script: ScriptId,
@@ -28,7 +28,10 @@ impl Ai {
         let thinks = scripts
             .defines(Some(script), ScriptRole::Ai)
             .contains(Hook::OnThink);
-        let period = Orders::ai_period(data, rate, thinks)?;
+        let period = rate.duration(data.think_ms).ok_or(AiError::TimeTooLarge)?;
+        if !thinks {
+            return Err(AiError::NoThink);
+        }
         Ok(Ai { script, period })
     }
 }

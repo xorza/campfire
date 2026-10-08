@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, Has, QueryItem, QueryState, With, Without};
+use bevy_ecs::query::{Added, Has, QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
@@ -7,7 +7,7 @@ use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_script::{ScriptError, ScriptId};
 use campfire_sim::{
-    EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs, TickRate,
+    EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs,
 };
 
 use crate::abilities::AbilitiesSet;
@@ -30,11 +30,8 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::party::{Party, PartyKey};
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
-use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::orders::ai::Ai;
-use crate::orders::ai_data::AiData;
-use crate::orders::error::AiError;
 use crate::orders::learning::Learning;
 use crate::orders::next_think::NextThink;
 use crate::orders::order::Action;
@@ -45,8 +42,6 @@ use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::production::ProductionSet;
 use crate::production::build_specs::BuildSpecs;
-use crate::production::builder::Builder;
-use crate::production::gatherer::Gatherer;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
 use crate::production::site::Site;
@@ -66,7 +61,6 @@ use crate::stats::pools::Pools;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
-use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 
@@ -156,16 +150,6 @@ impl Orders {
         }
     }
 
-    /// The think period of `data` at `rate`, a tick at the least, for a script that defines
-    /// `on_think` when `thinks`: what an AI loads with.
-    pub(crate) fn ai_period(data: &AiData, rate: TickRate, thinks: bool) -> Result<Ticks, AiError> {
-        let period = rate.duration(data.think_ms).ok_or(AiError::TimeTooLarge)?;
-        if !thinks {
-            return Err(AiError::NoThink);
-        }
-        Ok(period)
-    }
-
     /// Applies `order`, which its source checked, to the unit of `entity` in `now`, as every
     /// order applies; a unit that resets takes none.
     pub(crate) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
@@ -175,31 +159,10 @@ impl Orders {
             return;
         }
         let parts = unit
-            .get_components_mut::<Ordered>()
+            .get_components_mut::<OrderedUnit>()
             .expect("an ordered unit stands");
-        if order.apply(Orders::ordered(parts), &bounds, now) {
+        if order.apply(parts, &bounds, now) {
             unit.insert(Resetting);
-        }
-    }
-
-    /// The unit an order reads and changes, of its `parts`.
-    fn ordered<'a>(
-        (&at, spawn, slots, walker, destination, route, progress, builder, gatherer): QueryItem<
-            'a,
-            '_,
-            Ordered,
-        >,
-    ) -> OrderedUnit<'a> {
-        OrderedUnit {
-            at,
-            spawn: spawn.map(|spawn| spawn.get()),
-            slots,
-            walker,
-            destination,
-            route,
-            progress,
-            builder,
-            gatherer,
         }
     }
 }
@@ -315,10 +278,7 @@ fn check_player_orders(
                     armed.then_some(UnitOrder::Attack { target })
                 }
                 Action::Slot { slot, target } => {
-                    let kind = slots
-                        .and_then(|slots| slots.slot(slot))
-                        .and_then(|held| book.get(held.action?))
-                        .map(|action| action.kind.kind());
+                    let kind = slots.and_then(|slots| slots.kind_in(&book, slot));
                     match (kind, target) {
                         (Some(ActionKind::Cast | ActionKind::Train), _) => {
                             Some(UnitOrder::Slot { slot, target })
@@ -330,10 +290,7 @@ fn check_player_orders(
                     }
                 }
                 Action::Build { slot, target } => {
-                    let kind = slots
-                        .and_then(|slots| slots.slot(slot))
-                        .and_then(|held| book.get(held.action?))
-                        .map(|action| action.kind.kind());
+                    let kind = slots.and_then(|slots| slots.kind_in(&book, slot));
                     (kind == Some(ActionKind::Build)).then_some(UnitOrder::Build { slot, target })
                 }
                 Action::Stop => Some(UnitOrder::Stop),
@@ -351,31 +308,18 @@ fn check_player_orders(
     }
 }
 
-/// The parts of a unit that an order reads and changes.
-type Ordered = (
-    &'static Position,
-    Option<&'static SpawnPoint>,
-    Option<&'static mut ActionSlots>,
-    Option<&'static mut PathWalker>,
-    Option<&'static mut Destination>,
-    Option<&'static mut Route>,
-    Option<&'static mut Progress>,
-    Option<&'static mut Builder>,
-    Option<&'static mut Gatherer>,
-);
-
 /// Applies the tick's checked player orders, in input order, each as every order applies; a
 /// player orders no reset.
 fn apply_player_orders(
     tick: Res<'_, SimTick>,
     bounds: Res<'_, Bounds>,
     mut checked: ResMut<'_, PlayerOrders>,
-    mut units: Query<'_, '_, Ordered>,
+    mut units: Query<'_, '_, OrderedUnit>,
 ) {
     let now = tick.start();
     for (entity, order) in checked.0.drain(..) {
         let parts = units.get_mut(entity).expect("a checked order's unit");
-        let resets = order.apply(Orders::ordered(parts), &bounds, now);
+        let resets = order.apply(parts, &bounds, now);
         debug_assert!(!resets, "a player orders no reset");
     }
 }
@@ -701,13 +645,10 @@ fn think(
                     now.after(period)
                 }
             };
-            let world = batch.world();
-            match world.get_mut::<NextThink>(entity) {
-                Some(mut due) => *due = NextThink::new(next),
-                None => {
-                    world.entity_mut(entity).insert(NextThink::new(next));
-                }
-            }
+            batch
+                .world()
+                .entity_mut(entity)
+                .insert(NextThink::new(next));
         }
     });
 }

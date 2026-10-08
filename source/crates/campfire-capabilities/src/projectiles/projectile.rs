@@ -43,6 +43,28 @@ pub(crate) enum Flight {
     },
 }
 
+impl Flight {
+    /// A fresh flight homing on `target`, none of it flown.
+    pub(crate) const fn homing(target: StableId) -> Flight {
+        Flight::Homing {
+            target,
+            flown: Num::ZERO,
+            lost: false,
+        }
+    }
+
+    /// A fresh flight along `direction` for `range`, none of it flown, aimed at `aimed` if a
+    /// unit.
+    pub(crate) const fn line(direction: Vec3, range: Num, aimed: Option<StableId>) -> Flight {
+        Flight::Line {
+            direction,
+            flown: Num::ZERO,
+            range,
+            aimed,
+        }
+    }
+}
+
 /// What a projectile carries: an attack's damage of `kind`, the rank of its weapon's slot and the
 /// roll it drew, or the action at `rank` whose `on_hit` and `on_end` it runs, with the projectiles
 /// of its cast in `group`, named by the first of them.

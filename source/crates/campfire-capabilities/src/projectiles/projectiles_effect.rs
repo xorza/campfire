@@ -11,7 +11,6 @@ use crate::projectiles::projectile::Flight;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
-use campfire_math::Num;
 
 /// A projectile a call queued: `id`, the id the call took for it, of `by`, of `unit_type`, from
 /// `from`, toward a direction or homing on a unit.
@@ -37,22 +36,18 @@ impl Effect for ProjectilesEffect {
     fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
         let from = world.resource::<Bounds>().clamp(self.from);
         let flight = match self.toward {
-            Toward::Unit(target) => Flight::Homing {
-                target,
-                flown: Num::ZERO,
-                lost: false,
-            },
+            Toward::Unit(target) => Flight::homing(target),
             Toward::Direction(direction) => {
                 let Some(direction) = world.resource::<Metric>().direction(direction) else {
                     return;
                 };
-                let range = Projectiles::range(world, self.by, self.unit_type);
-                Flight::Line {
+                let range = Projectiles::line_range(world, self.by, self.unit_type);
+                let bounds = *world.resource::<Bounds>();
+                Flight::line(
                     direction,
-                    flown: Num::ZERO,
-                    range: Projectiles::reach(*world.resource::<Bounds>(), range, from, direction),
-                    aimed: None,
-                }
+                    Projectiles::reach(bounds, range, from, direction),
+                    None,
+                )
             }
         };
         let id = Some(self.id);

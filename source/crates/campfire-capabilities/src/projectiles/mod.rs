@@ -97,11 +97,7 @@ impl Projectiles {
             .get(unit_type)
             .expect("a delivery's projectile type has a spec");
         if let (ActionTarget::Unit(unit), true) = (target, spec.homing) {
-            let homing = Flight::Homing {
-                target: unit,
-                flown: Num::ZERO,
-                lost: false,
-            };
+            let homing = Flight::homing(unit);
             Projectiles::push(world, by, unit_type, from, None, [homing]);
             return;
         }
@@ -112,7 +108,7 @@ impl Projectiles {
         let Some(aim) = offset.normalized() else {
             return;
         };
-        let range = Projectiles::range(world, by, unit_type);
+        let range = Projectiles::range(&spec, action.values(by.rank).range);
         let distance = offset.length();
         let range = if to_point {
             Some(range.map_or(distance, |range| range.min(distance)))
@@ -122,31 +118,32 @@ impl Projectiles {
         let bounds = *world.resource::<Bounds>();
         let flights = (0..fan.count.get()).map(|at| {
             let direction = aim.rotated_y(fan.turn(at).sin_cos());
-            Flight::Line {
-                direction,
-                flown: Num::ZERO,
-                range: Projectiles::reach(bounds, range, from, direction),
-                aimed: target.unit(),
-            }
+            let reach = Projectiles::reach(bounds, range, from, direction);
+            Flight::line(direction, reach, target.unit())
         });
         Projectiles::push(world, by, unit_type, from, None, flights);
     }
 
-    /// The range of a line projectile of `unit_type` of `by`: its type's, or else its action's
-    /// at its rank; `None` for a global range.
-    fn range(world: &World, by: Delivering, unit_type: UnitType) -> Option<Num> {
-        let book = world.resource::<ActionBook>();
-        let action = book
+    /// The range of a line projectile of `spec`: its type's, or else `action`'s, its action's at
+    /// its rank; `None` for a global range.
+    fn range(spec: &ProjectileSpec, action: ActionRange) -> Option<Num> {
+        match (spec.range, action) {
+            (Some(range), _) | (None, ActionRange::Meters(range)) => Some(range),
+            (None, ActionRange::Global) => None,
+        }
+    }
+
+    /// The range of a line projectile of `unit_type` of `by`, as `range` gives it.
+    fn line_range(world: &World, by: Delivering, unit_type: UnitType) -> Option<Num> {
+        let action = world
+            .resource::<ActionBook>()
             .get(by.action)
             .expect("a delivery's action is in the book");
         let spec = world
             .resource::<ByType<ProjectileSpec>>()
             .get(unit_type)
             .expect("a delivery's projectile type has a spec");
-        match (spec.range, action.values(by.rank).range) {
-            (Some(range), _) | (None, ActionRange::Meters(range)) => Some(range),
-            (None, ActionRange::Global) => None,
-        }
+        Projectiles::range(spec, action.values(by.rank).range)
     }
 
     /// How far a line of `range` flies from `from` along `direction`: up to the edge of the map's
@@ -168,24 +165,22 @@ impl Projectiles {
     ) {
         let mut launches = world.resource_mut::<Launches>();
         let cast = launches.cast();
-        let before = launches.launches.len();
-        launches
-            .launches
-            .extend(flights.into_iter().map(|flight| Launch {
-                id,
-                source: by.source,
-                from,
-                unit_type,
-                flight,
-                payload: LaunchPayload::Action {
-                    action: by.action,
-                    rank: by.rank,
-                    start: by.start,
-                    cast,
-                },
-            }));
+        let before = launches.len();
+        launches.extend(flights.into_iter().map(|flight| Launch {
+            id,
+            source: by.source,
+            from,
+            unit_type,
+            flight,
+            payload: LaunchPayload::Action {
+                action: by.action,
+                rank: by.rank,
+                start: by.start,
+                cast,
+            },
+        }));
         debug_assert!(
-            id.is_none() || launches.launches.len() == before + 1,
+            id.is_none() || launches.len() == before + 1,
             "a script's id is one flight's"
         );
     }
@@ -268,16 +263,12 @@ fn fly(
 /// Makes each of the tick's shots a launch, homing on its target from where its attacker stood.
 fn take_shots(mut shots: ResMut<'_, Shots>, mut launches: ResMut<'_, Launches>) {
     for shot in shots.0.drain(..) {
-        launches.launches.push(Launch {
+        launches.push(Launch {
             id: None,
             source: shot.source,
             from: shot.from,
             unit_type: shot.unit_type,
-            flight: Flight::Homing {
-                target: shot.target,
-                flown: Num::ZERO,
-                lost: false,
-            },
+            flight: Flight::homing(shot.target),
             payload: LaunchPayload::Attack {
                 action: shot.action,
                 rank: shot.rank,
@@ -295,7 +286,7 @@ fn take_shots(mut shots: ResMut<'_, Shots>, mut launches: ResMut<'_, Launches>) 
 /// group: a cast is one source's, and the stable sort keeps its launches together. A launch whose
 /// source is gone launches nothing.
 fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launches>) {
-    launches.launches.sort_by_key(|launch| launch.source);
+    launches.sort_by_source();
     let mut group: Option<(u32, StableId)> = None;
     for &Launch {
         id,
@@ -304,7 +295,7 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
         unit_type,
         flight,
         payload,
-    } in &launches.launches
+    } in launches.iter()
     {
         spawner.spawn(source, from, unit_type, id, |id| {
             let payload = match payload {

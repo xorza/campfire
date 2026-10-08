@@ -136,17 +136,12 @@ impl Volley {
             .range
             .unwrap();
         let mut launches = self.sim.world.resource_mut::<Launches>();
-        launches.launches.push(Launch {
+        launches.push(Launch {
             id: None,
             source,
             from: at(0, 0),
             unit_type,
-            flight: Flight::Line {
-                direction: Vec3::new(Num::ONE, Num::ZERO, Num::ZERO),
-                flown: Num::ZERO,
-                range,
-                aimed: None,
-            },
+            flight: Flight::line(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO), range, None),
             payload: LaunchPayload::Attack {
                 action: ActionId::new(0),
                 rank: Rank::FIRST,

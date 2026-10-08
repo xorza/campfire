@@ -14,13 +14,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 ## 13. A fact is derived in several places in one module
 
-- [ ] `projectiles/mod.rs:76,86,118,143,294`: the fresh `Flight::Homing { target, flown: ZERO, lost: false }` is written three times, and the fresh `Flight::Line` twice. Target: `Flight::homing` and `Flight::line`.
-- [ ] `projectiles/mod.rs:100-107,150-163`: `deliver` fetches the action and the `ProjectileSpec`, then `range()` fetches both again. Target: `range` takes what `deliver` read.
-- [ ] `projectiles/launches.rs:17`, `projectiles/mod.rs:189,289,316,325`: `Launches.launches` is a `pub(crate)` field that `push`, `take_shots` and `launch` change directly, beside the methods `cast` and `clear`. Target: a private field and methods.
-- [ ] `orders/mod.rs:186,355`, `orders/unit_order.rs:55`: the `Ordered` tuple, `OrderedUnit` and the positional conversion in `Orders::ordered` describe the same nine parts. Target: `OrderedUnit` is the query (a `QueryData` derive), with no tuple and no conversion.
-- [ ] `orders/mod.rs:318-337`: the slot-kind lookup `slots.and_then(..).and_then(|held| book.get(held.action?)).map(|action| action.kind.kind())` is in the `Slot` arm and in the `Build` arm. Target: one method on `ActionSlots` or `ActionBook`.
-- [ ] `orders/ai.rs:30`, `orders/mod.rs:161`: `Ai::of` computes `thinks`, then calls `Orders::ai_period`, which converts the period and tests `thinks`. `Ai::of` is its only caller. Target: both steps in `Ai::of`, and `ai_period` removed.
-- [ ] `orders/mod.rs:705` (`think`): matches `get_mut::<NextThink>` to overwrite or insert. `insert` does both. Target: one `insert`.
 - [ ] `navigation/mod.rs:221,244,406,795`, `navigation/navigation_effect.rs:230`, `navigation/route_asks.rs:345` (`RouteAsks::walkable`), `mode/map_data.rs:208`: each spells `Walkable { clearance, statics, short: None }`. Target: one `Walkable::of(clearance, statics)`, and `RouteAsks::walkable` removed.
 - [ ] `navigation/mod.rs:509-510,665-666`: `tags.is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag()))` twice, beside `UnitTags::properties_of(Option<&UnitTags>)`. Target: `UnitTags::gathers(Option<&UnitTags>)`.
 - [ ] `navigation/statics_dirty.rs:71,86`: `state_inserted` and `state_removed` have the same body. Target: one private function.

@@ -1,3 +1,5 @@
+use std::slice;
+
 use bevy_ecs::resource::Resource;
 use campfire_sim::{Position, StableId};
 
@@ -15,7 +17,7 @@ use crate::values::rank::Rank;
 /// tick.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Launches {
-    pub(crate) launches: Vec<Launch>,
+    launches: Vec<Launch>,
     /// The casts named so far this tick.
     casts: u32,
 }
@@ -57,6 +59,28 @@ impl Launches {
     pub(crate) const fn cast(&mut self) -> u32 {
         self.casts += 1;
         self.casts
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.launches.len()
+    }
+
+    /// The launches, in the order they hold.
+    pub(crate) fn iter(&self) -> slice::Iter<'_, Launch> {
+        self.launches.iter()
+    }
+
+    pub(crate) fn push(&mut self, launch: Launch) {
+        self.launches.push(launch);
+    }
+
+    pub(crate) fn extend(&mut self, launches: impl IntoIterator<Item = Launch>) {
+        self.launches.extend(launches);
+    }
+
+    /// Orders the launches by their source's stable id, each source's in the order launched.
+    pub(crate) fn sort_by_source(&mut self) {
+        self.launches.sort_by_key(|launch| launch.source);
     }
 
     /// Empties it for the next tick.

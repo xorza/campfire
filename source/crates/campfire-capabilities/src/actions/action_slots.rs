@@ -254,6 +254,13 @@ impl InProgress {
 }
 
 impl ActionSlots {
+    /// The kind of the action in `slot`, as `book` gives it; none for a slot that is missing or
+    /// holds none.
+    pub(crate) fn kind_in(&self, book: &ActionBook, slot: u8) -> Option<ActionKind> {
+        let action = self.slot(slot)?.action?;
+        Some(book.get(action)?.kind.kind())
+    }
+
     /// The order they hold ordered, not yet checked, whose action `book` says is of `kind`.
     pub(crate) fn ordered(&self, book: &ActionBook, kind: ActionKind) -> Option<SlotAim> {
         let Some(InProgress::Order {
