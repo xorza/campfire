@@ -12,13 +12,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 
 - [ ] source/crates/campfire-package/src/mode_packages.rs:179-194 with source/crates/campfire-runner/src/match_build.rs:50 — each match parses every script again, though the load parsed them (mode_packages.rs:385-386) with the same engine setup. The verifier builds a match for each checkpoint (`campfire-verifier/src/replay/mod.rs:78`). Target: the load keeps each `AST` in an `Arc` on its `Script`, and each match's host shares it. Together with the shared API modules, a match build parses nothing and binds nothing. Blocked: see `review-crates_QUESTIONS.md`, "Sharing the parsed scripts needs Rhai's `sync` feature, or a cache that stays on one thread".
 
-## Secrets print through `Debug` [low]
-
-Design: one `Secret<const N: usize>` type in `campfire-common` holds every secret byte array. Its `Debug` writes the redacted form, and no other type holds secret bytes.
-
-- [ ] source/crates/campfire-common/src/segment_seed.rs:4 — `SegmentSeed` derives `Debug`. The derived `Debug` of `SimRng` (campfire-sim/src/sim_rng.rs:10), `RngSource` and `RngOpener` (campfire-math/src/rng/rng_opener.rs:10) carries it into each `{:?}` and panic message.
-- [ ] source/crates/campfire-protocol/src/seed_chain/mod.rs:12 — `SeedChain` derives `Debug`, and its root shows every segment's seed. `ServerSeed` (server_seed.rs:11) and `SessionPrivate` (session_private/mod.rs:15) also derive it, and net keeps all three in `Debug` resources.
-
 ## Data in strings, and foreign errors flattened [low]
 
 - [ ] source/crates/campfire-package/src/files/package_header.rs:15 — a package name is a raw `String` here and in files/mode_manifest.rs:27 and locale_package.rs:19-20. But an avatar's package name becomes a unit type name (mode_packages.rs:257, load_check.rs:864) and a locale path component. Target: a checked `PackageName` newtype with the rules of `DeclaredName`.

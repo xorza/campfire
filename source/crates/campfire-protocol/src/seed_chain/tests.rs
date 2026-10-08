@@ -27,6 +27,12 @@ fn each_seed_hashes_to_the_one_before_and_the_first_to_the_commitment() {
     let single = SeedChain::new([5; 32], NonZeroU32::MIN);
     assert_eq!(single.seed(0), s1);
     assert!(s1.check(0, &single.commitment()));
+    // Neither a chain nor its seeds print their bytes.
+    assert_eq!(
+        format!("{CHAIN:?}"),
+        "SeedChain { root: ServerSeed(Secret(..)), len: 2 }"
+    );
+    assert_eq!(format!("{s0:?}"), "ServerSeed(Secret(..))");
 }
 
 #[test]
