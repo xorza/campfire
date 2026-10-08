@@ -82,51 +82,44 @@ impl ModifierHooks {
                 self.call(batch, carrier, heard, Hook::OnInterval, 1, None);
             }
             CombatEvent::Attack { attacker, target } => {
-                self.run(batch, attacker, Hook::OnAttack, 1, unit(target));
+                self.run(batch, attacker, Hook::OnAttack, 1, || unit(target));
             }
             CombatEvent::AttackHit(hit) => {
                 if let Some(attacker) = hit.source {
-                    self.run(
-                        batch,
-                        attacker,
-                        Hook::OnAttackHit,
-                        next(hit.depth),
-                        damage(hit),
-                    );
+                    self.run(batch, attacker, Hook::OnAttackHit, next(hit.depth), || {
+                        damage(hit)
+                    });
                 }
             }
             CombatEvent::DamageTaken(taken) => {
                 let depth = next(taken.depth);
-                self.run(
-                    batch,
-                    taken.target,
-                    Hook::OnDamageTaken,
-                    depth,
-                    damage(taken),
-                );
+                self.run(batch, taken.target, Hook::OnDamageTaken, depth, || {
+                    damage(taken)
+                });
             }
             CombatEvent::Kill {
                 killer,
                 victim,
                 depth,
-            } => self.run(batch, killer, Hook::OnKill, next(depth), unit(victim)),
+            } => self.run(batch, killer, Hook::OnKill, next(depth), || unit(victim)),
             CombatEvent::Takedown {
                 unit: taker,
                 victim,
                 depth,
-            } => self.run(batch, taker, Hook::OnTakedown, next(depth), unit(victim)),
+            } => self.run(batch, taker, Hook::OnTakedown, next(depth), || unit(victim)),
         }
     }
 
-    /// Runs `hook` of each modifier `carrier` holds whose script defines it, with `arg` after
-    /// `ctx` and `m`, at chain depth `depth`.
+    /// Runs `hook` of each modifier `carrier` holds whose script defines it, with what `arg`
+    /// gives after `ctx` and `m`, at chain depth `depth`. `arg` runs only when one hears it: an
+    /// event allocates its handle for no unit that has no hook for it.
     fn run(
         &self,
         batch: &mut ScriptBatch<'_>,
         carrier: StableId,
         hook: Hook,
         depth: u8,
-        arg: Option<Dynamic>,
+        arg: impl FnOnce() -> Option<Dynamic>,
     ) {
         let mut heard = mem::take(&mut *self.heard.borrow_mut());
         heard.clear();
@@ -148,8 +141,11 @@ impl ModifierHooks {
                     }),
             );
         }
-        for &modifier in &heard {
-            self.call(batch, carrier, modifier, hook, depth, arg.clone());
+        if !heard.is_empty() {
+            let arg = arg();
+            for &modifier in &heard {
+                self.call(batch, carrier, modifier, hook, depth, arg.clone());
+            }
         }
         *self.heard.borrow_mut() = heard;
     }
