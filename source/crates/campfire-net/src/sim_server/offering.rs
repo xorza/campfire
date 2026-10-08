@@ -51,7 +51,7 @@ pub(crate) struct Offered {
 pub(crate) struct Joined;
 
 /// Why the server refused a link's join. The link stays connected and receives nothing more.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Refused(pub JoinError);
 
 /// A link whose seat a newer login of its player took: the server tells its client, which ends

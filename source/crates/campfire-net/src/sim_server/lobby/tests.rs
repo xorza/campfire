@@ -95,10 +95,10 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
             .check(challenge, &join([4; 32], delegation.json())),
         Err(JoinError::Connect(ConnectError::BadAnswer))
     );
-    assert_eq!(
+    assert!(matches!(
         lobby.offering.check(challenge, &join([3; 32], "{}")),
-        Err(JoinError::Delegation(DelegationError::NotEvent))
-    );
+        Err(JoinError::Delegation(DelegationError::NotEvent(_)))
+    ));
 
     // Two seats: a refused join takes none; a second join of one main key, from another link,
     // takes its seat back, and gives its older link; and a third player finds both taken.

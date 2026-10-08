@@ -132,7 +132,7 @@ pub enum SeedError {
 
 /// Why a header does not start a log. A published header is untrusted, so each is an expected
 /// failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum HeaderError {
     /// More slots than a `u32` counts.
     #[error("more slots than a u32 counts")]

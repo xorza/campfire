@@ -8,7 +8,7 @@ use secp256k1::{Keypair, Secp256k1, Signing, XOnlyPublicKey};
 
 use crate::delegation::delegation_id::DelegationId;
 use crate::delegation::delegation_tag::DelegationTag;
-use crate::delegation::error::{DelegationError, ScopeError};
+use crate::delegation::error::{DelegationError, EventError, ScopeError};
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
@@ -100,8 +100,7 @@ impl Delegation {
             return Err(DelegationError::TooLong);
         }
         let event = Event::from_json(json)
-            .ok()
-            .ok_or(DelegationError::NotEvent)?;
+            .map_err(|error| DelegationError::NotEvent(EventError::new(error)))?;
         if !event.verify_id() {
             return Err(DelegationError::WrongId);
         }

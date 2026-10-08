@@ -683,7 +683,7 @@ fn refuses(other: &SessionHeader, error: ScopeError) {
         slot: PlayerSlot::new(1),
         error,
     };
-    assert_eq!(SessionLog::new(other.clone()).err(), Some(refused));
+    assert_eq!(SessionLog::new(other.clone()).err(), Some(refused.clone()));
     assert_eq!(
         SessionLog::decode(&frame(other, &[], &[], None)).err(),
         Some(LogError::Header(refused))

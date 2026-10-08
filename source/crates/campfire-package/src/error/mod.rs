@@ -1,5 +1,6 @@
 use std::io;
 use std::path::PathBuf;
+use std::str::Utf8Error;
 
 use campfire_capabilities::PackagePath;
 use campfire_common::Fingerprint;
@@ -26,6 +27,16 @@ pub(crate) mod script_problem;
 /// Why a package file does not load. Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Error)]
 pub enum ContentError {
+    /// The package holds no file at the path.
+    #[error("{path} is missing")]
+    Missing { path: PackagePath },
+    /// The file is not UTF-8 text.
+    #[error("{path} is not text")]
+    NotText {
+        path: PackagePath,
+        #[source]
+        error: Utf8Error,
+    },
     /// The file does not read.
     #[error("{path} does not read")]
     Io {

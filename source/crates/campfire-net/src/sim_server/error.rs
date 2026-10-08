@@ -6,7 +6,7 @@ use campfire_store::DurableError;
 use thiserror::Error;
 
 /// Why the server refused a player's join.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum JoinError {
     #[error(transparent)]
     Delegation(DelegationError),

@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::io;
 
 use campfire_capabilities::PackagePath;
 use campfire_common::Fingerprint;
@@ -46,14 +45,13 @@ impl PackageFiles {
 
     /// The text of the file at `path`, such as a script's source.
     pub fn read_text(&self, path: &PackagePath) -> Result<&str, ContentError> {
-        let io = |error| ContentError::Io {
-            path: path.clone(),
-            error,
-        };
         let bytes = self
             .files
             .get(path)
-            .ok_or_else(|| io(io::Error::from(io::ErrorKind::NotFound)))?;
-        str::from_utf8(bytes).map_err(|error| io(io::Error::new(io::ErrorKind::InvalidData, error)))
+            .ok_or_else(|| ContentError::Missing { path: path.clone() })?;
+        str::from_utf8(bytes).map_err(|error| ContentError::NotText {
+            path: path.clone(),
+            error,
+        })
     }
 }

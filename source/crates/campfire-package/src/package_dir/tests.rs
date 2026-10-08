@@ -62,7 +62,7 @@ fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
     let missing = PackagePath::parse("scripts/x.rhai").unwrap();
     assert!(matches!(
         memory.read_text(&missing),
-        Err(ContentError::Io { .. })
+        Err(ContentError::Missing { .. })
     ));
     // What was read stays as it was read: a later change on disk reaches neither its text nor
     // its fingerprint.
@@ -170,7 +170,7 @@ fn a_package_reads_its_own_files_only() {
     assert!(toml::from_str::<Named>(r#"script = "../x.rhai""#).is_err());
     assert!(matches!(
         walker.read_text(&path("scripts/missing.rhai")),
-        Err(ContentError::Io { .. })
+        Err(ContentError::Missing { .. })
     ));
     assert!(matches!(
         walker.read_data::<Hero>(&path("scripts/strike.rhai")),
@@ -216,7 +216,7 @@ fn a_package_keeps_what_a_load_reads_streams_the_rest_and_holds_its_limits() {
     let texture = PackagePath::parse("textures/x.png").unwrap();
     assert!(matches!(
         read.read_text(&texture),
-        Err(ContentError::Io { .. })
+        Err(ContentError::Missing { .. })
     ));
     // The same files on disk stream from the file, and fingerprint the same.
     let scratch = TempDir::new().unwrap();
@@ -244,4 +244,13 @@ fn a_package_keeps_what_a_load_reads_streams_the_rest_and_holds_its_limits() {
     let data = PackagePath::parse("data/a.toml").unwrap();
     assert!(matches!(within(3, 1, 3), Err(ContentError::TooLarge(path)) if path == data));
     assert!(matches!(within(3, 2, 2), Err(ContentError::TooMuchToRead)));
+
+    // A file a load reads that is not UTF-8 reads, but not as text.
+    let bad = BTreeMap::from([(PathBuf::from("two/data/bad.toml"), vec![0xFF, b'a'])]);
+    let two = PackageDir::in_memory(Arc::new(bad), "two").read().unwrap();
+    let path = PackagePath::parse("data/bad.toml").unwrap();
+    assert!(matches!(
+        two.read_text(&path),
+        Err(ContentError::NotText { path: at, error }) if at == path && error.valid_up_to() == 0
+    ));
 }
