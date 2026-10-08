@@ -4,14 +4,14 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Res};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_capabilities::{Area, Mode, Owner, Projectile, SeenBy};
+use campfire_capabilities::{Area, MatchEnd, Mode, Owner, Projectile, Relations};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
 use campfire_runner::{ServerInputRefused, Session, SlotRuleError};
 use lightyear::prelude::{
     Connected, LocalTimeline, MessageReceiver, MessageSender, PredictionTarget, Replicate, Unlink,
-    UnlinkReason, VisibilityExt,
+    UnlinkReason,
 };
 use tracing::info;
 
@@ -170,7 +170,8 @@ impl Door {
     }
 
     /// Seats `link` as `seat` says: it carries that slot's inputs, learns the match from the
-    /// next tick on, predicts the slot's units and sees every unit its team sees, at once.
+    /// next tick on, the teams' relations and any end at once, predicts the slot's units, and
+    /// stands in its team's room, so it receives every unit its team sees and no other.
     fn seat(world: &mut World, link: Entity, seat: SeatIn) {
         let SeatIn { slot, chain } = seat;
         let team = Mode::team_of(world, slot).expect("every slot has a team");
@@ -197,31 +198,35 @@ impl Door {
                 chain,
                 loaded,
             });
+        let relations = world.resource::<Relations>().clone();
+        world
+            .get_mut::<MessageSender<Relations>>(link)
+            .expect("a client link sends the relations")
+            .send::<MatchChannel>(relations);
+        if let Some(&end) = world.get_resource::<MatchEnd>() {
+            world
+                .get_mut::<MessageSender<MatchEnd>>(link)
+                .expect("a client link sends the match's end")
+                .send::<MatchChannel>(end);
+        }
         let mut units = world.query_filtered::<(
             Entity,
             Option<&Owner>,
-            Option<&SeenBy>,
             Has<Projectile>,
             Has<Area>,
         ), With<Replicate>>();
-        let shown: Vec<(Entity, bool, bool)> = units
+        let owned: Vec<Entity> = units
             .iter(world)
-            .map(|(unit, owner, seen, projectile, area)| {
-                let owned = owner.is_some_and(|owner| owner.slot() == slot) && !projectile && !area;
-                let visible = seen.is_none_or(|seen| seen.get().contains(team));
-                (unit, owned, visible)
+            .filter(|&(_, owner, projectile, area)| {
+                owner.is_some_and(|owner| owner.slot() == slot) && !projectile && !area
             })
+            .map(|(unit, ..)| unit)
             .collect();
         let mut commands = world.commands();
-        for (unit, owned, visible) in shown {
-            if owned {
-                commands
-                    .entity(unit)
-                    .insert(PredictionTarget::manual(vec![link]));
-            }
-            if visible {
-                commands.gain_visibility(unit, link);
-            }
+        for unit in owned {
+            commands
+                .entity(unit)
+                .insert(PredictionTarget::manual(vec![link]));
         }
         world.flush();
         info!(slot = slot.get(), ?link, "a player took their seat");

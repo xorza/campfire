@@ -4,21 +4,9 @@ Whoever addresses an item deletes it. Items whose fix lives in `campfire-capabil
 
 Five root causes hold most items. Each group's first paragraph gives the design that removes the whole class; its items are the places that change.
 
-## Replication is imperative: the server sends and hides on events, so a link that misses an event keeps the wrong state [high]
+## Owner-only state replicates to every observer [medium]
 
-Design: replication says what each link may hold, and Lightyear/replicon keeps it true for every link, entity and change, at any time. Three parts, each a library mechanism:
-
-1. A link receives nothing until it is seated: `ReplicationSender` is inserted by `Door::seat` and removed as the seat ends, not on `LinkOf`.
-2. One immutable `Seat { slot, team }` on the seated link is the `ClientComponent` of two replicon `VisibilityFilter`s (0.44, immutable components, re-evaluated by replicon for each new client, new entity and replaced filter): `Sight(TeamSet)` on each unit, scope `Entity`, visible when it holds the link's team, replaced as `SeenBy` changes; `OwnedBy(PlayerSlot)`, scope the owner-only components, visible to the owner's slot. A unit with no `Sight` (a mode without vision) is visible to every seated link.
-3. State with latest-value meaning goes as replicated resources (`replicate_resource`), not messages: a seated link gets the current value with its first update.
-
-Lightyear 0.30 stores visibility as hidden bits, so today an entity is visible until `lose_visibility`, and every link gets a `ReplicationSender` as it connects (`sim_server/mod.rs:110`).
-
-- [ ] source/crates/campfire-net/src/sim_server/mod.rs:647 — every unit gets `Replicate::to_clients(NetworkTarget::All)`, and `show` (:667-680) hides only from links with a `PlayerLink`: a link that never answers the offer, or was `Refused` (`offering.rs:50`), receives every unit through fog. Target: parts 1 and 2; `show` and its per-link loop go, and `show_units` only replaces `Sight`.
-- [ ] source/crates/campfire-net/src/sim_server/door.rs:216-225 — `Door::seat` gains visibility of the units the team sees and never loses the rest, so a late joiner or a reconnect sees every unseen unit until its `SeenBy` next changes, and a still unit under fog stays visible for good. Target: part 2; the seat's visibility loop goes, and `seat` only inserts `Seat` and the sender.
-- [ ] source/crates/campfire-net/src/sim_server/door.rs:189-199 — `seat` sends only `MatchStart`, while `send_relations` (`sim_server/mod.rs:182`) and `announce_end` (:181) send only on change, to the links present then: a late joiner predicts with default `Relations`, a restore's first change reaches no link, a player seated after the end keeps predicting. Target: part 3 for `Relations` and `MatchEnd`; both message types and their systems go.
-- [ ] source/crates/campfire-net/src/sim_server/mod.rs:619-621 — `send_relations` clones `Relations` per link and serializes each copy; `MatchEnd` (:608-610) the same. Target: removed by part 3.
-- [ ] source/crates/campfire-net/src/net_protocol.rs:94,102,106,107,110 — `SpawnPoint`, `Respawn`, `Route`, `Progress` and `ModifierClocks` replicate to every observer, though only the owner's prediction reads them; `Progress` changes every tick a unit walks, and `Route` resends its whole `Vec` on change. Target: the `OwnedBy` filter of part 2, scope these five.
+- [ ] source/crates/campfire-net/src/net_protocol.rs:94,102,106,107,110 — `SpawnPoint`, `Respawn`, `Route`, `Progress` and `ModifierClocks` replicate to every observer, though only the owner's prediction reads them; `Progress` changes every tick a unit walks, and `Route` resends its whole `Vec` on change. Target: an immutable `OwnedBy(Option<PlayerSlot>)` on each unit, a replicon `VisibilityFilter` scoped to these five components, with `PlayerLink` as its client component. Blocked: see `review-crates_QUESTIONS.md`, "Owner-only replication needs `bevy_replicon` as a direct dependency".
 
 ## What a capability owns is decided in many places, so an undeclared one leaks [medium]
 

@@ -17,7 +17,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
-    Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team, TeamSet,
+    Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
@@ -30,7 +30,8 @@ use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, NetworkTarget,
-    PredictionTarget, Replicate, ReplicationSender, Unlink, UnlinkReason, VisibilityExt,
+    PredictionTarget, Replicate, ReplicationSender, RoomAllocator, RoomPlugin,
+    ServerMultiMessageSender, Unlink, UnlinkReason,
 };
 use tracing::{debug, info, trace, trace_span};
 
@@ -63,6 +64,7 @@ use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
 use crate::sim_server::session_journal::SessionJournal;
+use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::tick_hashes::TickHashes;
 
 #[cfg(feature = "bench")]
@@ -87,6 +89,7 @@ pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
 pub(crate) mod slot_bot_file;
+pub(crate) mod team_rooms;
 pub(crate) mod tick_hashes;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
@@ -104,7 +107,9 @@ impl Plugin for SimServer {
         app.add_plugins(ServerPlugins {
             tick_duration: self.tick,
         });
-        app.add_plugins(NetProtocol);
+        app.add_plugins((NetProtocol, RoomPlugin));
+        let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
+        app.insert_resource(rooms);
         app.add_observer(
             |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
                 commands.entity(added.entity).insert(ReplicationSender);
@@ -595,56 +600,74 @@ fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
     }
 }
 
-/// Logs the end of the match the tick just run ended, and tells each player's client.
+/// Logs the end of the match the tick just run ended, and tells each player's client; a player
+/// seated after learns it as they sit.
 fn announce_end(
     end: Res<'_, MatchEnd>,
-    mut links: Query<'_, '_, &mut MessageSender<MatchEnd>, With<PlayerLink>>,
+    links: Query<'_, '_, Entity, With<PlayerLink>>,
+    mut sender: ServerMultiMessageSender<'_, '_>,
 ) {
     let tick = end.tick().get();
     match end.result() {
         MatchResult::Won(team) => info!(tick, team = team.index(), "the match ended: a team won"),
         MatchResult::Draw => info!(tick, "the match ended in a draw"),
     }
-    for mut sender in &mut links {
-        sender.send::<MatchChannel>(*end);
-    }
+    sender
+        .send_to_entities::<MatchEnd, MatchChannel>(&end, links.iter())
+        .expect("the match channel carries the match's end");
 }
 
 /// Tells each player's client how the teams regard each other, once as the match starts, and
-/// again in each tick a script changes it.
+/// again in each tick a script changes it; a player seated after learns them as they sit.
 fn send_relations(
     relations: Res<'_, Relations>,
-    mut links: Query<'_, '_, &mut MessageSender<Relations>, With<PlayerLink>>,
+    links: Query<'_, '_, Entity, With<PlayerLink>>,
+    mut sender: ServerMultiMessageSender<'_, '_>,
 ) {
-    for mut sender in &mut links {
-        sender.send::<MatchChannel>(relations.clone());
-    }
+    sender
+        .send_to_entities::<Relations, MatchChannel>(&relations, links.iter())
+        .expect("the match channel carries the relations");
 }
 
-/// The units not replicated yet, with their owner if they have one, and whether they are
-/// projectiles or areas.
+/// The units not replicated yet, with their owner if they have one, whether they are projectiles
+/// or areas, and the teams that see them.
 type NewUnits<'w, 's> = Query<
     'w,
     's,
-    (Entity, Option<&'static Owner>, Has<Projectile>, Has<Area>),
+    (
+        Entity,
+        Option<&'static Owner>,
+        Has<Projectile>,
+        Has<Area>,
+        Option<&'static SeenBy>,
+    ),
     (With<Team>, Without<Replicate>),
 >;
 
+/// The replicated units whose seers changed this tick.
+type SeersChanged<'w, 's> =
+    Query<'w, 's, (Entity, &'static StableId, &'static SeenBy), (Changed<SeenBy>, With<Replicate>)>;
+
 /// After a sim tick, replicates each new unit, predicted by its owner's client unless it is a
-/// projectile or an area, which the server's sim alone runs, and shows each unit whose seers
-/// changed to exactly the clients whose team sees it. A unit is hidden in the tick it replicates
-/// in, so a client never receives a unit its team did not see: a projectile shows where it flies,
-/// not where its source stands. Without vision no unit has `SeenBy`, and every client receives
-/// every unit.
+/// projectile or an area, which the server's sim alone runs, and puts each unit in the rooms of
+/// the teams that see it, again as they change, so Lightyear sends a seated client exactly the
+/// units its team sees, and a link with no seat none. A unit stands in its rooms from the tick it
+/// replicates in, so a client never receives a unit its team did not see: a projectile shows
+/// where it flies, not where its source stands. Without vision no unit has `SeenBy`, and every
+/// seated client receives every unit.
 fn show_units(
+    rooms: Res<'_, TeamRooms>,
     links: Query<'_, '_, (Entity, &PlayerLink)>,
     new: NewUnits<'_, '_>,
-    changed: Query<'_, '_, (Entity, &StableId, &SeenBy), Changed<SeenBy>>,
+    changed: SeersChanged<'_, '_>,
     mut commands: Commands<'_, '_>,
 ) {
-    for (unit, owner, projectile, area) in &new {
+    for (unit, owner, projectile, area, seen) in &new {
         let mut replicated = commands.entity(unit);
-        replicated.insert(Replicate::to_clients(NetworkTarget::All));
+        replicated.insert((
+            Replicate::to_clients(NetworkTarget::All),
+            rooms.seeing(seen),
+        ));
         let owner = owner
             .filter(|_| !projectile && !area)
             .and_then(|owner| links.iter().find(|(_, link)| link.slot() == owner.slot()));
@@ -652,30 +675,8 @@ fn show_units(
             replicated.insert(PredictionTarget::manual(vec![link]));
         }
     }
-    for (unit, &id, &seen) in &changed {
-        show(&mut commands, &links, unit, id, seen.get());
-    }
-}
-
-fn show(
-    commands: &mut Commands<'_, '_>,
-    links: &Query<'_, '_, (Entity, &PlayerLink)>,
-    unit: Entity,
-    id: StableId,
-    seen: TeamSet,
-) {
-    for (link, player) in links {
-        let visible = seen.contains(player.team());
-        debug!(
-            unit = id.get(),
-            slot = player.slot().get(),
-            visible,
-            "set a unit's visibility"
-        );
-        if visible {
-            commands.gain_visibility(unit, link);
-        } else {
-            commands.lose_visibility(unit, link);
-        }
+    for (unit, &id, seen) in &changed {
+        debug!(unit = id.get(), "the teams that see a unit changed");
+        commands.entity(unit).insert(rooms.seeing(Some(seen)));
     }
 }
