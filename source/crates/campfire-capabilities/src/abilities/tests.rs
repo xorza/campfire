@@ -1730,9 +1730,10 @@ fn a_cast_draws_from_its_casters_player_pool() {
 fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
     game.load_stats();
-    let load = |game: &mut Match, data: &ActionData, source: &str| {
+    // Each load under its own name, as a package names each action once.
+    let load = |game: &mut Match, name: &str, data: &ActionData, source: &str| {
         let script = Units::compile_hooked(&mut game.sim.world, source).unwrap();
-        Actions::load(&mut game.sim.world, 0, "lash_out", data, Some(script), 5)
+        Actions::load(&mut game.sim.world, 0, name, data, Some(script), 5)
     };
     let mut uneven = lash_out();
     uneven.cost = BTreeMap::from([(
@@ -1777,16 +1778,22 @@ fn an_ability_loads_only_when_its_data_holds() {
         );
     }
     // What only a match's rate decides: i64::MAX ms counts in no tick.
-    let forever = load(&mut game, &forever, LASH_OUT);
+    let forever = load(&mut game, "forever", &forever, LASH_OUT);
     assert_eq!(forever, Err(TimeTooLarge));
-    assert_eq!(load(&mut game, &lash_out(), LASH_OUT), Ok(ActionId::nth(0)));
+    assert_eq!(
+        load(&mut game, "lash_out", &lash_out(), LASH_OUT),
+        Ok(ActionId::nth(0))
+    );
     // A direction loads, as every targeting does; no cast can aim one yet.
-    assert_eq!(load(&mut game, &aimed, LASH_OUT), Ok(ActionId::nth(1)));
+    assert_eq!(
+        load(&mut game, "aimed", &aimed, LASH_OUT),
+        Ok(ActionId::nth(1))
+    );
 
     // A script may serve only the ability's modifiers: a cast of rank 1 in tick 0 then runs no
     // script, and spends 35 of 100 and its 10 000 ms, 300 ticks at 30 a second.
     let modifiers_only = "fn on_damage_taken(ctx, m, d) { }";
-    let passive = load(&mut game, &lash_out(), modifiers_only).unwrap();
+    let passive = load(&mut game, "passive", &lash_out(), modifiers_only).unwrap();
     let caster = game.caster(passive, 1);
     game.cast(caster, ActionTarget::None);
     assert_eq!(game.failed_calls(), []);

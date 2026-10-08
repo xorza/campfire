@@ -762,6 +762,10 @@ impl Game {
         // A spell has one rank; hero X's ability, 2.
         let strike = Actions::load(world, 0, "strike", &blink, None, 2).unwrap();
         let blink = Actions::load(world, 0, "blink", &blink, None, 1).unwrap();
+        // Loaded out of name order, each is found by its name, and only in its package.
+        let named = ["blink", "strike", "dash"].map(|name| Actions::action(world, 0, name));
+        assert_eq!(named, [Some(blink), Some(strike), None]);
+        assert_eq!(Actions::action(world, 1, "blink"), None);
         let mut spell = LoadoutSetup::default();
         spell.push("blink", blink);
         let types = [grunt_type, tower_type, x, y, crate_type];

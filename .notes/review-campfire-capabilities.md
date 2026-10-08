@@ -10,7 +10,6 @@ Fix the root cause of a group, not its items one by one. Most groups give the st
 
 A hot path here runs per damage, per draw, per kill, or per script field read. Each item makes the common case pay for a case that seldom applies.
 
-- [ ] `actions/action_book.rs:97` (`named`): a linear scan with a string compare, called from `ActionsColumn::action_named` on each `reduce_cooldown` and `add_charge` script call (`abilities/abilities_api.rs`, `held`). Target: a `(package, name) -> ActionId` index built at load, as the other books have.
 - [ ] `scripts/scripts_call.rs:62` (`sequence`): a linear `position` over every stream opened this tick, once per draw, so a tick with many drawing units is quadratic. Target: a run sorted by drawer, and a binary search.
 - [ ] `units/relations.rs:88-109` (`vision_group`): builds a 256-entry union-find from all vision pairs and scans all 256 ids on each call. `vision/vision_groups.rs:28` calls it once per team. Target: one pass makes every team's group.
 - [ ] `areas/mod.rs:134-168` (`trigger`): looks up each reached body again through `targets.body_of(body.id)`, but the grid was built from `targets.placed()` with position and shape. Target: the grid stores what the reach test needs, or the visit gives the shape and position to `reaches`.

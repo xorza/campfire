@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
@@ -31,6 +32,8 @@ use crate::values::rank::Rank;
 #[derive(Resource, Debug, Clone, Default)]
 pub(crate) struct ActionBook {
     actions: Arc<Vec<Action>>,
+    /// Every action's id, sorted by package, then name, for `named` to search.
+    by_name: Arc<Vec<ActionId>>,
 }
 
 impl ActionBook {
@@ -60,6 +63,11 @@ impl ActionBook {
         );
         let hooks = scripts.defines(script, ScriptRole::Action);
         let id = ActionId::nth(u32::try_from(self.actions.len()).expect("actions fit u32"));
+        let at = self
+            .by_name
+            .binary_search_by(|&held| self.order(held, package, name))
+            .expect_err("a package loads an action of a name once");
+        Arc::make_mut(&mut self.by_name).insert(at, id);
         Arc::make_mut(&mut self.actions).push(Action {
             package,
             name: name.into(),
@@ -88,10 +96,19 @@ impl ActionBook {
     /// The action `name` of `package`.
     pub(crate) fn named(&self, package: u16, name: &str) -> Option<ActionId> {
         let at = self
-            .actions
-            .iter()
-            .position(|action| action.package == package && &*action.name == name)?;
-        Some(ActionId::nth(u32::try_from(at).expect("actions fit u32")))
+            .by_name
+            .binary_search_by(|&id| self.order(id, package, name))
+            .ok()?;
+        Some(self.by_name[at])
+    }
+
+    /// How action `id` sorts against the action `name` of `package`: by package, then name.
+    fn order(&self, id: ActionId, package: u16, name: &str) -> Ordering {
+        let action = &self.actions[id.index()];
+        action
+            .package
+            .cmp(&package)
+            .then_with(|| (*action.name).cmp(name))
     }
 
     /// The action `aim` names of a unit with `slots`, when it may go on: its slot holds a learned
