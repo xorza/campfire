@@ -7,6 +7,7 @@ use campfire_common::{PlayerSlot, Tick, Ticks};
 use secp256k1::{Keypair, Secp256k1, Signing, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
+use crate::bytes::Bytes;
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::checkpoint_begun::CheckpointBegun;
 use crate::checkpoint::error::CheckpointDecodeError;
@@ -1331,7 +1332,7 @@ impl SessionLog {
         for index in packet.inputs.clone() {
             let input = self.input(index);
             put(out, &input.stamp);
-            put(out, input.payload);
+            put(out, &Bytes(input.payload));
         }
         put(out, &packet.signature);
     }

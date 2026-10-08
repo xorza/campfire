@@ -15,9 +15,6 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 ## Storage grows or serializes in steps that copy [low]
 
 - [ ] source/crates/campfire-protocol/src/session_log/mod.rs:92 — six buffers hold the whole session: `inputs`, `payloads`, `packets`, `server`, `entries` and `tick_ends`. They grow by `push` in `record`, `record_server` and `seal` (:667, :859, :1054, :1622). Each doubling copies the full history within one tick. Target: one `PagedVec<T>` type of fixed-size pages, which all six use, so a push never moves earlier data.
-- [ ] source/crates/campfire-protocol/src/session_log/mod.rs:1277 — `put(out, input.payload)` serializes `&[u8]` as a seq through `postcard::to_io` (:1721), with one `write_all` per byte. The same applies to `Wire::Bot.payload` (server_input/mod.rs:69) and `InputWire.payload` (checkpoint/log_carry.rs:84). Target: one `Bytes` wrapper type that serializes with `serialize_bytes`, which all three use. The wire bytes stay the same.
-- [ ] source/crates/campfire-store/src/exchange/mod.rs:33 — both channels are unbounded `mpsc::channel()`, and its list flavor boxes a block every 31 messages, against the type's doc (:8). Target: `mpsc::sync_channel(1)`.
-- [ ] source/crates/campfire-math/src/u256/mod.rs:51 — `U256::round_div` does a 128-step long division even when `high == 0`, on a per-hit path (capabilities `projectiles/flights.rs:192`). Target: a native `u128` path when the value fits.
 
 ## Secrets print through `Debug` [low]
 

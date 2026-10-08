@@ -4,6 +4,7 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
+mod bytes;
 mod checkpoint;
 mod connect;
 mod controller;

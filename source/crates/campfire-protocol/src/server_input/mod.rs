@@ -2,6 +2,7 @@ use campfire_common::{PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
+use crate::bytes::Bytes;
 use crate::decoded::Decoded;
 use crate::delegation::Delegation;
 use crate::server_input::error::ServerInputDecodeError;
@@ -66,7 +67,8 @@ pub enum AfterLeave {
 enum Wire<'a> {
     Bot {
         slot: u32,
-        payload: &'a [u8],
+        #[serde(borrow)]
+        payload: Bytes<'a>,
     },
     Join {
         slot: u32,
@@ -117,7 +119,10 @@ impl<'a> ServerInput<'a> {
         let delegation =
             |json: &str| Delegation::parse(json).map_err(ServerInputDecodeError::Delegation);
         let input = match wire {
-            Wire::Bot { slot, payload } => ServerInput::Bot {
+            Wire::Bot {
+                slot,
+                payload: Bytes(payload),
+            } => ServerInput::Bot {
                 slot: PlayerSlot::new(slot),
                 payload,
             },
@@ -204,7 +209,7 @@ impl<'a> ServerInput<'a> {
         match self {
             ServerInput::Bot { slot, payload } => Wire::Bot {
                 slot: slot.get(),
-                payload,
+                payload: Bytes(payload),
             },
             ServerInput::Join { slot, delegation } => Wire::Join {
                 slot: slot.get(),

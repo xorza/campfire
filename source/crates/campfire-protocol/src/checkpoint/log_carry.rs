@@ -1,6 +1,7 @@
 use campfire_common::{PlayerSlot, Tick};
 use serde::{Deserialize, Serialize};
 
+use crate::bytes::Bytes;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
@@ -81,7 +82,8 @@ struct InputWire<'a> {
     tick: Tick,
     slot: PlayerSlot,
     stamp: Tick,
-    payload: &'a [u8],
+    #[serde(borrow)]
+    payload: Bytes<'a>,
 }
 
 impl LogCarry {
@@ -111,7 +113,7 @@ impl LogCarry {
                 tick: input.tick,
                 slot: input.slot,
                 stamp: input.stamp,
-                payload: &input.payload,
+                payload: Bytes(&input.payload),
             })
             .collect();
         CarryWire { slots, pending }
@@ -149,7 +151,7 @@ impl LogCarry {
                 tick: input.tick,
                 slot: input.slot,
                 stamp: input.stamp,
-                payload: input.payload.to_vec(),
+                payload: input.payload.0.to_vec(),
             })
             .collect();
         Ok(LogCarry { slots, pending })

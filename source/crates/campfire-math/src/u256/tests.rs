@@ -174,6 +174,16 @@ fn products_match_schoolbook_and_shifts_match_divisions() {
             assert_eq!(product, schoolbook(a, b), "{a} {b}");
             // A low half alone times a u128 is the product of the two.
             assert_eq!(U256::product(a, 1).checked_mul(b), Some(product), "{a} {b}");
+            // A product that fits u128 divides natively as the long division does.
+            for &divisor in values.iter().filter(|&&d| 0 < d && d < 1 << 127) {
+                if product.high == 0 {
+                    let native = Division {
+                        quotient: product.low / divisor,
+                        rest: product.low % divisor,
+                    };
+                    assert_eq!(product.long_division(divisor), native, "{a} {b} {divisor}");
+                }
+            }
             // A shift by k is a division by 2^k, rounded the same way.
             for k in 1..=126 {
                 assert_eq!(
