@@ -53,10 +53,7 @@ impl VisionColumn {
     /// `unit.can_see(other)`: whether `unit`'s team sees `other`.
     pub(crate) fn can_see(unit: &Unit, other: &Unit) -> bool {
         let team = unit.read(|row| row.team);
-        let seen = unit
-            .view()
-            .column(|column: &VisionColumn| column.rows.now()[other.row_index()].contains(team));
-        seen.unwrap_or(true)
+        VisionColumn::sees(unit.view().rows().columns(), other.row_index(), team)
     }
 
     /// `ctx.find_visible`: `ctx.find`, of the units `of`'s team sees.

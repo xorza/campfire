@@ -14,7 +14,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 ## 11. One script view type has unrelated jobs
 
-- [ ] `vision/vision_column.rs:48,54`: `sees` (with `ViewColumns`, `is_none_or`) and `can_see` (with `View::column`, `unwrap_or(true)`) both answer "does `team` see row `row`, true with no vision column". Target: `can_see` uses the same row test as `find` and `nearest`.
 - [ ] `units/script_view.rs:456-481` (`window`, `ticks`, `lasting`, `duration`): tick conversions use only `rate`, but go through the view's `RefCell`. `ticks` returns `Checked<Ticks>`, and `lasting` returns `Result<Ticks, ApiError>`. Target: conversions on `TickRate`, with one error shape.
 - [ ] `units/script_view.rs:500-535,599-640` (name accessors): id to name returns `Checked<Dynamic>` (`team_name`), `Dynamic` with unit for none (`path_name`, `unit_type_name`), or `ImmutableString` (`track_name`, `damage_kind_name`, `ability_name`). Name to id returns `Result<Tag, ApiError>` (`tag_named`), `Checked<DamageKind>` (`damage_kind_named`), or `Option` (`resource_named`, `path_named`, `unit_type_named`). Target: one return shape per direction, and the script wrapping done once at the binding.
 
