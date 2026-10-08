@@ -28,7 +28,6 @@ impl MatchBuild {
             teams: &packages.manifest().teams,
             players,
             units,
-            walkers: packages.walkers(),
         };
         Mode::install(world, schedule, registry, setup, books);
     }

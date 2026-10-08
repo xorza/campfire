@@ -116,11 +116,11 @@ impl Mode {
         schedule: &mut Schedule,
         registry: &mut StateRegistry,
         setup: ModeSetup<'_>,
-        books: ModeBooks,
+        mut books: ModeBooks,
     ) {
         let view = world.non_send::<View>().clone();
         let rate = *world.resource::<TickRate>();
-        let walkers = setup.walkers.clone();
+        let walkers = mem::take(&mut books.walkers);
         // A window past what ticks can count covers the whole match.
         let assist_window = setup.data.combat.assist_window_ms.map(|ms| rate.window(ms));
         let resource_count = books.resources.len();

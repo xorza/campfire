@@ -5,13 +5,12 @@ use std::path::Path;
 
 use campfire_capabilities::{
     ActionData, BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag,
-    MapData, ModeData, PackageContent, Param, ScriptBook, StatGraph, StatId, UnitTypeFile, Walker,
+    MapData, ModeData, PackageContent, Param, ScriptBook, StatGraph, StatId, UnitTypeFile,
 };
 use campfire_common::Fingerprint;
 use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{Capability, TickRate};
 
-use crate::avatar_unit::AvatarUnit;
 use crate::dependent::Dependent;
 use crate::dependent::DependentKind;
 use crate::error::limit::Limit;
@@ -265,15 +264,6 @@ impl ModePackages {
             .map(|dependent| dependent.package.header.name.as_str())
     }
 
-    fn avatars(&self) -> impl Iterator<Item = &AvatarUnit> {
-        self.dependencies
-            .iter()
-            .filter_map(|dependent| match &dependent.kind {
-                DependentKind::Avatar(avatar) => Some(&**avatar),
-                DependentKind::Loadout => None,
-            })
-    }
-
     pub const fn map(&self) -> &MapData {
         &self.map
     }
@@ -320,29 +310,6 @@ impl ModePackages {
     ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
         let slots = types.into_iter().map(|unit_type| &unit_type.slots);
         self.data.slots.slotted_ranks(slots)
-    }
-
-    /// Each kind of unit that walks, of its packages' unit types and its avatars that declare a
-    /// move speed, by its layer and its body's radius, 0 for one with no body; in order, each
-    /// once.
-    /// The pathing grid has a clearance for each.
-    pub fn walkers(&self) -> Vec<Walker> {
-        let navigation = &self.data.navigation;
-        // A box never walks, which the load checked of each type that declares a move speed.
-        let walker = |unit_type: &UnitTypeFile| {
-            let form = navigation.form(unit_type.collision.as_ref());
-            unit_type.walks().then(|| Walker::of_form(form)).flatten()
-        };
-        let avatars = self.avatars().map(|avatar| &avatar.unit);
-        let mut walkers: Vec<Walker> = self
-            .packages()
-            .flat_map(|view| view.content.units.values())
-            .chain(avatars)
-            .filter_map(walker)
-            .collect();
-        walkers.sort_unstable();
-        walkers.dedup();
-        walkers
     }
 
     /// Every tag its packages name but the engine's, each once, sorted: the tags of its unit

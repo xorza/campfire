@@ -1,6 +1,8 @@
 //! What a match is built from: each package's content, as the load reads it, and the books a
 //! match reads, built from it with no world.
 
+use std::mem;
+
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 
@@ -104,9 +106,9 @@ impl Books {
         BookBuilder::new(input).build()
     }
 
-    /// Checks that the mode's map can be walked by the kinds of `walkers`, as
+    /// Checks that the mode's map can be walked by the kinds of its unit types that walk, as
     /// `ModeMap::check_walkable` says, among its placed units of the types that do not walk.
-    pub fn check_walkable(&self, walkers: &[Walker]) -> Result<(), MapProblem> {
+    pub fn check_walkable(&self) -> Result<(), MapProblem> {
         let kits = &self.parts.units.unit_types;
         let body_of = |unit_type| {
             let walks = self.parts.walkers.get(unit_type).is_some();
@@ -122,6 +124,7 @@ impl Books {
             DeclaredName::new(name.expect("a type of the books"))
                 .expect("a type's name is declared")
         };
+        let walkers = &self.mode.walkers;
         self.mode.map.check_walkable(walkers, body_of, name_of)
     }
 
@@ -173,11 +176,12 @@ impl Books {
 
     /// Puts the books in `world`, a client's, whose capabilities are installed with no scripts,
     /// and the part of the mode no script runs, as a match's mode install puts them: the books
-    /// of its own rules, and its map's ground, its pathing grid for the kinds of `walkers`. The
+    /// of its own rules, and its map's ground, its pathing grid for the kinds of its walkers. The
     /// client then predicts its units by the rules the server runs: it starts their actions, and
     /// runs none of their effects.
-    pub fn install_prediction(self, world: &mut World, walkers: Vec<Walker>) {
-        let ModeInputs { books, .. } = self.install(world);
+    pub fn install_prediction(self, world: &mut World) {
+        let ModeInputs { mut books, .. } = self.install(world);
+        let walkers = mem::take(&mut books.walkers);
         let ModeMap { ground, .. } = books.install(world);
         ground.install(world, walkers);
         world.insert_resource(Predicting);

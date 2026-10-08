@@ -9,11 +9,13 @@ use crate::items::shop::Shop;
 use crate::mode::mode_data::ModeData;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::UnitTypeSetup;
+use crate::navigation::walker::Walker;
 use crate::stats::Stats;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
 use crate::units::body::BodyForm;
+use crate::units::by_type::ByType;
 use crate::units::layer::Layer;
 use crate::units::script_view::View;
 use crate::units::tag_book::TagBook;
@@ -37,14 +39,17 @@ pub struct ModeBooks {
     pub(crate) map: ModeMap,
     /// Its shop, when it has one.
     pub(crate) shop: Option<Shop>,
+    /// Each kind of unit that walks, by its layer and its body's radius, in order, each once: the
+    /// clearances of the map's pathing grid.
+    pub(crate) walkers: Vec<Walker>,
 }
 
 impl ModeBooks {
     /// Puts the books in `world`, a match whose capabilities are installed: the stat and pool
     /// books, the tags' properties, what combat reads, the slot kinds, and the names its scripts
-    /// read. `Mode::install`
-    /// calls it, and installs the map it gives back; a test arena calls it alone, for a match
-    /// whose mode runs no script and has no map.
+    /// read. `Mode::install` calls it, and installs the map it gives back for the kinds of
+    /// `walkers`, which it takes first; a test arena calls it alone, for a match whose mode runs
+    /// no script and has no map.
     pub fn install(self, world: &mut World) -> ModeMap {
         let ModeBooks {
             stats,
@@ -57,6 +62,7 @@ impl ModeBooks {
             resources,
             map,
             shop,
+            walkers: _,
         } = self;
         world
             .non_send::<View>()
@@ -78,9 +84,9 @@ impl ModeBooks {
     }
 
     /// The books of `data`, which the package load checked, for `unit_types`, the mode's unit types
-    /// that stand, with the stat book `stats`, the resolved `map` and its `shop`. Each unit type is
-    /// tagged with the name of the layer it moves on, among `types`, when the mode names its
-    /// layers.
+    /// that stand, with the stat book `stats`, the resolved `map` and its `shop`, and the kinds of
+    /// `walkers`, the walker of each type that walks. Each unit type is tagged with the name of
+    /// the layer it moves on, among `types`, when the mode names its layers.
     pub(crate) fn build(
         data: &ModeData,
         unit_types: &[UnitTypeSetup],
@@ -88,6 +94,7 @@ impl ModeBooks {
         stats: StatBook,
         map: ModeMap,
         shop: Option<Shop>,
+        walkers: &ByType<Walker>,
     ) -> ModeBooks {
         let life = data.combat.life_pool(&data.pools).map(LifePool);
         let layers = &data.navigation.layers;
@@ -111,6 +118,12 @@ impl ModeBooks {
             resources: data.resources.as_slice().into(),
             map,
             shop,
+            walkers: {
+                let mut kinds: Vec<Walker> = walkers.values().copied().collect();
+                kinds.sort_unstable();
+                kinds.dedup();
+                kinds
+            },
         }
     }
 }

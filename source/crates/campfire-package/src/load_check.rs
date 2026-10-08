@@ -148,7 +148,7 @@ impl<'a> LoadCheck<'a> {
         let input = packages.book_input(check.rate, &stat_order);
         let books = Books::build(&input).map_err(|error| check.book_error(error))?;
         books
-            .check_walkable(&packages.walkers())
+            .check_walkable()
             .map_err(|problem| fail(LoadProblem::Map(problem)))?;
         Ok(stat_order)
     }

@@ -10,7 +10,6 @@ Fix the root cause of a group, not its items one by one. Most groups give the st
 
 A fixed set (hooks, fields, tag properties, API members) has one declaration, and a second list repeats it. Adding a member means editing every list. Target: one table per set, and the other lists are derived from it or checked against it.
 
-- [ ] `books/book_builder.rs:589-593` and `campfire-package/src/mode_packages.rs:329` (`walkers()`), used as `ModeSetup::walkers` (`mode/mode_setup.rs:29`, `mode/mod.rs:123`): the walker kinds are derived twice from `UnitTypeFile::walks()` and `Walker::of_form`. Target: one derivation, and the grid's list comes from the books.
 - [ ] `mode/mode_books.rs:92` and `books/book_builder.rs:140` compute the life pool twice. `mode/mode_book.rs:130` and `books/book_builder.rs:153` compute `loadout_ranks()` twice. Target: the builder derives each once and carries it.
 
 ## 9. Hot paths pay for the rare case on every event

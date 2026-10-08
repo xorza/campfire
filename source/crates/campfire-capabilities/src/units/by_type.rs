@@ -14,6 +14,11 @@ impl<T: Send + Sync + 'static> ByType<T> {
         self.entries.get(unit_type.index())?.as_ref()
     }
 
+    /// The values of the types that have one, by type.
+    pub(crate) fn values(&self) -> impl Iterator<Item = &T> {
+        self.entries.iter().flatten()
+    }
+
     /// Gives `unit_type` its `value`, which it has none of yet.
     pub(crate) fn set(&mut self, unit_type: UnitType, value: T) {
         let index = unit_type.index();
@@ -44,5 +49,6 @@ mod tests {
         table.set(UnitType::new(0), 'a');
         let read = [0, 1, 2, 3].map(|index| table.get(UnitType::new(index)).copied());
         assert_eq!(read, [Some('a'), None, Some('c'), None]);
+        assert_eq!(table.values().collect::<Vec<_>>(), [&'a', &'c']);
     }
 }

@@ -674,7 +674,6 @@ fn setup(
             avatars: ["hero-x", "hero-y"].into_iter().collect(),
             loadout: spell,
         },
-        walkers: vec![Walker::of_form(grunt().body).unwrap()],
     }
 }
 
@@ -773,6 +772,13 @@ impl Game {
         let blessing = Stats::modifier(world, 0, "blessing").unwrap();
         let mut setup = setup(&files, script, types, spell, strike, blessing);
         adjust(&mut setup);
+        // The grunt and both heroes walk with the grunt's body: one kind.
+        let mut walkers = ByType::default();
+        for setup in &setup.units.unit_types {
+            if setup.kit.step.is_some() {
+                walkers.set(setup.unit_type, Walker::of_form(setup.kit.body).unwrap());
+            }
+        }
         let books = {
             let view = world.non_send::<View>();
             let stats = StatBook::new(&files.data.stats, [], Num::int(10));
@@ -789,8 +795,10 @@ impl Game {
                 stats,
                 map,
                 None,
+                &walkers,
             )
         };
+        assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
         sim.install(|world, schedule, registry| {
             Mode::install(world, schedule, registry, setup, books);
         });

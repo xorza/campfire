@@ -208,6 +208,7 @@ impl<'a> BookBuilder<'a> {
             stats,
             map,
             shop,
+            &parts.walkers,
         );
         Ok(Books { parts, mode })
     }

@@ -102,7 +102,6 @@ pub use crate::navigation::path_walker::PathWalker;
 pub use crate::navigation::paths::Paths;
 pub use crate::navigation::progress::Progress;
 pub use crate::navigation::route::Route;
-pub use crate::navigation::walker::Walker;
 pub use crate::orders::Orders;
 pub use crate::orders::error::AiError;
 pub use crate::orders::learning::Learning;

@@ -6,14 +6,14 @@ use crate::units::layer::Layer;
 /// A kind of unit that walks, as routes see it: the layer it moves on and its body's radius, 0
 /// for one with no body. The pathing grid keeps the cells each kind may stand in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Walker {
-    pub layer: Layer,
-    pub radius: Num,
+pub(crate) struct Walker {
+    pub(crate) layer: Layer,
+    pub(crate) radius: Num,
 }
 
 impl Walker {
     /// The walker of a unit with `body`, a circle or none; `None` for a box, which never walks.
-    pub const fn of(body: Option<&Body>) -> Option<Walker> {
+    pub(crate) const fn of(body: Option<&Body>) -> Option<Walker> {
         let radius = match body {
             Some(body) => match body.radius() {
                 Some(radius) => radius,
@@ -29,12 +29,12 @@ impl Walker {
 
     /// The walker of a unit that walks, with `body`: a circle or none, as a box never walks,
     /// which `MoveStep`'s check holds of a snapshot too.
-    pub fn walking(body: Option<&Body>) -> Walker {
+    pub(crate) fn walking(body: Option<&Body>) -> Walker {
         Walker::of(body).expect("a unit that walks has a circle for a body, or none")
     }
 
     /// The walker of a unit type of `form`, a circle or none; `None` for a box.
-    pub fn of_form(form: Option<BodyForm>) -> Option<Walker> {
+    pub(crate) fn of_form(form: Option<BodyForm>) -> Option<Walker> {
         let Some(form) = form else {
             return Some(Walker {
                 layer: Layer::FIRST,

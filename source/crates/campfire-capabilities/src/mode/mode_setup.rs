@@ -5,7 +5,6 @@ use crate::mode::mode_data::ModeData;
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
-use crate::navigation::walker::Walker;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_type::UnitType;
@@ -25,9 +24,6 @@ pub struct ModeSetup<'a> {
     /// The players of the session.
     pub players: u32,
     pub units: ModeUnits,
-    /// Each kind of unit that walks, by its layer and its body's radius: the clearances of the
-    /// map's pathing grid.
-    pub walkers: Vec<Walker>,
 }
 
 /// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or an
