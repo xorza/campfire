@@ -16,7 +16,6 @@ use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::error::CallError;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::units::forced_move::DashDelivery;
@@ -168,42 +167,27 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 start: by.start,
                 ..CallStart::cast(by.action, by.rank, by.source, package)
             };
-            let begun = ctx.frame().begin(batch.world(), start);
-            if let Err(error) = begun {
-                batch.record(Some(by.source), hook, error);
-                continue;
-            }
-            let queued = EffectLists::queue(
-                batch.world(),
-                of,
-                hook,
-                &mut ctx.frame(),
-                ctx.view(),
-                reach.unit().map_or(ActionTarget::None, ActionTarget::Unit),
-            );
-            if let Err(error) = queued {
-                batch.record(Some(by.source), hook, error);
-                continue;
-            }
-            let Some(script) = script else {
-                ctx.apply(batch.world(), now);
-                continue;
-            };
-            let pool = owner.map_or(Pool::Think, Pool::Player);
-            let hit = Dynamic::from(HitHandle::new(hit, view.clone()));
-            let called = match reach {
-                Reached::Hit(_) => {
-                    batch.call(pool, script, hook, (ctx.clone(), caster, target, hit))
+            let pool = Pool::of(owner);
+            batch.hook_call(&ctx, now, start, hook, Some(by.source), |batch| {
+                EffectLists::queue(
+                    batch.world(),
+                    of,
+                    hook,
+                    &mut ctx.frame(),
+                    ctx.view(),
+                    reach.unit().map_or(ActionTarget::None, ActionTarget::Unit),
+                )?;
+                let Some(script) = script else {
+                    return Ok(());
+                };
+                let hit = Dynamic::from(HitHandle::new(hit, view.clone()));
+                match reach {
+                    Reached::Hit(_) => {
+                        batch.call_hook(pool, script, hook, (ctx.clone(), caster, target, hit))
+                    }
+                    Reached::End => batch.call_hook(pool, script, hook, (ctx.clone(), caster, hit)),
                 }
-                Reached::End => batch.call(pool, script, hook, (ctx.clone(), caster, hit)),
-            };
-            match called {
-                Ok(_) => ctx.apply(batch.world(), now),
-                Err(error) => {
-                    let error = CallError::from_script(error);
-                    batch.record(Some(by.source), hook, error);
-                }
-            }
+            });
         }
     });
 }

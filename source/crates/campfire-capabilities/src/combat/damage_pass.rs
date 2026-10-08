@@ -183,18 +183,12 @@ impl DamagePass {
             hit: damage.hit,
             ..CallStart::cast(weapon, rank, source, package)
         };
-        let queued = {
-            let mut frame = ctx.frame();
-            frame.begin(world, start).and_then(|()| {
-                let target = ActionTarget::Unit(damage.target);
-                let lists = ListsOf::Action(weapon);
-                EffectLists::queue(world, lists, Hook::OnHit, &mut frame, ctx.view(), target)
-            })
-        };
-        match queued {
-            Ok(()) => ctx.apply(batch.world(), now),
-            Err(error) => batch.record(Some(source), Hook::OnHit, error),
-        }
+        batch.hook_call(ctx, now, start, Hook::OnHit, Some(source), |batch| {
+            let target = ActionTarget::Unit(damage.target);
+            let lists = ListsOf::Action(weapon);
+            let frame = &mut ctx.frame();
+            EffectLists::queue(batch.world(), lists, Hook::OnHit, frame, ctx.view(), target)
+        });
     }
 
     /// Runs the events of `damage`, which `landed`, its amount after `calc_damage`: an attack's

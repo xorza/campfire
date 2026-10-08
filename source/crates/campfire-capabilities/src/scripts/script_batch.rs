@@ -1,8 +1,11 @@
 use bevy_ecs::world::World;
+use campfire_common::Tick;
 use campfire_script::rhai::{Dynamic, FuncArgs};
 use campfire_script::{Budget, ScriptError, ScriptHost, ScriptId};
 use campfire_sim::StableId;
 
+use crate::scripts::call_start::CallStart;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
@@ -49,6 +52,39 @@ impl ScriptBatch<'_> {
         let budgets = self.world.resource_mut::<ScriptBudgets>().into_inner();
         self.host
             .call(budgets.get_mut(pool), script, hook.name(), args)
+    }
+
+    /// Calls `hook` of `script` with `args`, from the budget of `pool`, for its effects alone.
+    pub(crate) fn call_hook(
+        &mut self,
+        pool: Pool,
+        script: ScriptId,
+        hook: Hook,
+        args: impl FuncArgs,
+    ) -> Result<(), CallError> {
+        self.call(pool, script, hook, args)
+            .map(drop)
+            .map_err(CallError::from_script)
+    }
+
+    /// Runs one call of `hook` in `ctx`'s frame: begins `start`, then runs `body`, which queues
+    /// what the call does and calls its script; applies the frame in tick `now` when both
+    /// succeed, and otherwise records the failure, for `unit` if any, and applies nothing.
+    pub(crate) fn hook_call(
+        &mut self,
+        ctx: &Ctx,
+        now: Tick,
+        start: CallStart,
+        hook: Hook,
+        unit: Option<StableId>,
+        body: impl FnOnce(&mut ScriptBatch<'_>) -> Result<(), CallError>,
+    ) {
+        // The frame's borrow ends before `body`, which borrows it again.
+        let begun = ctx.frame().begin(self.world, start);
+        match begun.and_then(|()| body(self)) {
+            Ok(()) => ctx.apply(self.world, now),
+            Err(error) => self.record(unit, hook, error),
+        }
     }
 
     /// Calls `hook` of `script` with `args` from no pool: only the limit per call bounds it.

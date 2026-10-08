@@ -11,7 +11,6 @@ use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
@@ -198,40 +197,32 @@ impl ModifierHooks {
             rank,
             ..CallStart::hook(heard.id, package, depth)
         };
-        let begun = self.ctx.frame().begin(world, start);
-        if let Err(error) = begun {
-            batch.record(Some(carrier), hook, error);
-            return;
-        }
-        let handle = {
-            let clocks = world
-                .get::<ModifierClocks>(entity)
-                .expect("a heard carrier");
-            let mut frame = self.ctx.frame();
-            let call = StatsCall::of_mut(&mut frame);
-            let of = HandleOf {
-                carrier,
-                id: heard.id,
-                source: heard.source,
-                stacks: instance.stacks,
+        let now = world.resource::<SimTick>().start();
+        let ctx = &self.ctx;
+        batch.hook_call(ctx, now, start, hook, Some(carrier), |batch| {
+            let handle = {
+                let clocks = batch
+                    .world()
+                    .get::<ModifierClocks>(entity)
+                    .expect("a heard carrier");
+                let mut frame = ctx.frame();
+                let call = StatsCall::of_mut(&mut frame);
+                let of = HandleOf {
+                    carrier,
+                    id: heard.id,
+                    source: heard.source,
+                    stacks: instance.stacks,
+                };
+                let handle =
+                    StatsColumn::held_handle(ctx.view(), call.spare(), of, clocks.state(at));
+                call.handles.push(handle.clone());
+                handle
             };
-            let handle =
-                StatsColumn::held_handle(self.ctx.view(), call.spare(), of, clocks.state(at));
-            call.handles.push(handle.clone());
-            handle
-        };
-        let ctx = self.ctx.clone();
-        let called = match arg {
-            Some(arg) => batch.call(pool, script, hook, (ctx, handle, arg)),
-            None => batch.call(pool, script, hook, (ctx, handle)),
-        };
-        match called {
-            Ok(_) => {
-                let now = batch.world().resource::<SimTick>().start();
-                self.ctx.apply(batch.world(), now);
+            match arg {
+                Some(arg) => batch.call_hook(pool, script, hook, (ctx.clone(), handle, arg)),
+                None => batch.call_hook(pool, script, hook, (ctx.clone(), handle)),
             }
-            Err(error) => batch.record(Some(carrier), hook, CallError::from_script(error)),
-        }
+        });
     }
 
     /// The pool a hook of a modifier from `source` draws from: its player's; the `think` pool when
@@ -241,8 +232,7 @@ impl ModifierHooks {
             return Pool::Mode;
         };
         let entity = world.resource::<EntityIndex>().get(source);
-        entity
-            .and_then(|entity| world.get::<Owner>(entity))
-            .map_or(Pool::Think, |owner| Pool::Player(owner.slot()))
+        let owner = entity.and_then(|entity| world.get::<Owner>(entity));
+        Pool::of(owner.map(|owner| owner.slot()))
     }
 }

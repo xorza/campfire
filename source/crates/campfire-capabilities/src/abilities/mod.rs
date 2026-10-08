@@ -242,22 +242,14 @@ fn channel_call(
         start: Some(start),
         ..CallStart::cast(id, rank, caster, package)
     };
-    let begun = ctx.frame().begin(world, start);
-    let outcome = begun.and_then(|()| {
-        let pool = owner.map_or(Pool::Think, Pool::Player);
-        let called = match hook {
-            Hook::OnInterrupt => {
-                let target = Abilities::target(ctx.view(), aim.target);
-                batch.call(pool, script, hook, (ctx.clone(), handle, target))
-            }
-            _ => batch.call(pool, script, hook, (ctx.clone(), handle)),
-        };
-        called.map(drop).map_err(CallError::from_script)
+    let pool = Pool::of(owner);
+    batch.hook_call(ctx, now, start, hook, Some(caster), |batch| match hook {
+        Hook::OnInterrupt => {
+            let target = Abilities::target(ctx.view(), aim.target);
+            batch.call_hook(pool, script, hook, (ctx.clone(), handle, target))
+        }
+        _ => batch.call_hook(pool, script, hook, (ctx.clone(), handle)),
     });
-    match outcome {
-        Ok(()) => ctx.apply(batch.world(), now),
-        Err(error) => batch.record(Some(caster), hook, error),
-    }
 }
 
 /// Runs each channel of a unit a client predicts as the server does, with no call: a cut one's
@@ -716,7 +708,7 @@ fn prepare(
         resources.pay(owner.slot(), resource_cost);
     }
     drop(frame);
-    let pool = owner.map_or(Pool::Think, |owner| Pool::Player(owner.slot()));
+    let pool = Pool::of(owner.map(|owner| owner.slot()));
     Ok(Some(Prepared {
         caster,
         pool,
@@ -748,10 +740,7 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
     let target = mem::take(&mut prepared.target);
     let caster = prepared.caster.clone();
     let args = (ctx.clone(), caster, target);
-    batch
-        .call(prepared.pool, script, Hook::OnResolve, args)
-        .map(drop)
-        .map_err(CallError::from_script)
+    batch.call_hook(prepared.pool, script, Hook::OnResolve, args)
 }
 
 #[cfg(test)]
