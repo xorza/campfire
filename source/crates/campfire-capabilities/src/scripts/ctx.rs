@@ -57,7 +57,7 @@ impl Ctx {
     /// The frame to change, as `frame`; a pure hook's call fails.
     pub(crate) fn write(&self) -> Checked<RefMut<'_, Frame>> {
         let frame = self.frame();
-        if frame.pure {
+        if frame.pure() {
             return Err(ApiError::PureCall.fail().into());
         }
         Ok(frame)
