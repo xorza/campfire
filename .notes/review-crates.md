@@ -15,7 +15,3 @@ Five root causes hold most items. Each group's first paragraph gives the design 
 ## The JSON log file writes on the thread that logs [low]
 
 - [ ] source/crates/campfire-log/src/logging.rs:62 — the file layer writes through an unbuffered `Mutex<File>`, with one `write(2)` per event on the thread that logs, the server tick included. The design lets this file stay outside the workers (a Decide item). Target: a writer that store's `Worker` owns, fed by a bounded queue. `tracing-appender` would also do it, but it is a new dependency to propose. Blocked: see `review-crates_QUESTIONS.md`, "The JSON log file's writer: a worker of `store`, which the design does not let `log` use".
-
-## Design and code disagree [low]
-
-- [ ] source/crates/campfire-runner/src/session/error.rs:24,34 — `02-engine-core.md:103` says `StartError` has no data case. But it has `MatchStart(CallError)`, an `on_match_start` failure that the load cannot refuse, and `Packages(StoreError)`. Correct one of the two, and state which.
