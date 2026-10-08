@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 use campfire_math::Num;
 
-use crate::values::grid::Grid;
-use crate::values::polygon::error::PolygonError;
+use crate::geometry::grid::Grid;
+use crate::geometry::polygon::error::PolygonError;
 
 pub(crate) mod error;
 

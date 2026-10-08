@@ -153,8 +153,9 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 
 /// The layer of each module of the crate, lowest first: a module imports from its own layer
 /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-const LAYERS: [(&str, u8); 20] = [
+const LAYERS: [(&str, u8); 21] = [
     ("values", 0),
+    ("geometry", 0),
     ("units", 1),
     ("scripts", 1),
     ("players", 1),

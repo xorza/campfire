@@ -3,11 +3,11 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::bounds::Bounds;
 use crate::navigation::body_index::IndexedBody;
 use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
-use crate::values::body_box::BodyBox;
-use crate::values::bounds::Bounds;
 
 /// The map's walls, as a placement tests a box against them: package data, not state. A restore
 /// takes them from the map, as a new match does.

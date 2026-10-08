@@ -12,6 +12,8 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
 use crate::actions::range::Range;
+use crate::geometry::metric::Metric;
+use crate::geometry::shape::Shape;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::player_resources::PlayerResources;
@@ -38,9 +40,7 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
-use crate::values::metric::Metric;
 use crate::values::rank::Rank;
-use crate::values::shape::Shape;
 
 /// The systems of construction: a build order checked as it applies, builds that start in order
 /// of their builders' stable ids, and sites that grow and complete.

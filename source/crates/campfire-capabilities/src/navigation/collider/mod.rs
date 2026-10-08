@@ -2,10 +2,10 @@ use bevy_ecs::entity::Entity;
 use campfire_math::{FloorRoot, Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::shape::Shape;
 use crate::navigation::broadphase::Contact;
 use crate::units::layer::Layer;
-use crate::values::body_box::BodyBox;
-use crate::values::shape::Shape;
 
 /// A living unit's body as collision sees it: where it stands, its shape, its layer, whether it
 /// may be pushed, whether it walks now, to a destination, and whether it gathers, as a worker in

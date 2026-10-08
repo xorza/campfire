@@ -2,8 +2,8 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
 
 use super::*;
+use crate::geometry::shape::Shape;
 use crate::units::layer::Layer;
-use crate::values::shape::Shape;
 
 fn at(x: i64, z: i64) -> Position {
     let num = |value: i64| Num::from_int(value).unwrap();

@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 
-use crate::values::grid::Grid;
+use crate::geometry::grid::Grid;
 use crate::vision::brush_map::BrushMap;
 
 /// The map's grid that sight reveals, its brush, and how many teams the match holds: package

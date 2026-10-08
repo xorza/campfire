@@ -6,6 +6,12 @@ use campfire_sim::Position;
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
 
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::metric::Metric;
+use crate::geometry::polygon::Polygon;
+use crate::geometry::region::Region;
+use crate::geometry::shape::Shape;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{MapData, MapPoint};
 use crate::mode::mode_data::ModeParam;
@@ -29,14 +35,8 @@ use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
-use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
-use crate::values::grid::Grid;
-use crate::values::metric::Metric;
 use crate::values::name_list::NameList;
-use crate::values::polygon::Polygon;
-use crate::values::region::Region;
-use crate::values::shape::Shape;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder

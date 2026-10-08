@@ -6,9 +6,9 @@ use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::shape::Shape;
 use crate::units::layer::Layer;
-use crate::values::body_box::BodyBox;
-use crate::values::shape::Shape;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
 /// that does not walk on a planar map may have. Living bodies of one layer do not overlap, and
@@ -198,9 +198,9 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::Position;
 
+    use crate::geometry::metric::Metric;
+    use crate::geometry::shape::Shape;
     use crate::units::body::Body;
-    use crate::values::metric::Metric;
-    use crate::values::shape::Shape;
 
     /// Whether `range` from the edge of `from_body` at `from` reaches the edge of `to_body` at
     /// `to`, on a planar map, by the reach rule; a unit with no body is a point.

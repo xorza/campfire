@@ -5,9 +5,9 @@ use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::values::fraction::Fraction;
-use crate::values::polygon::Polygon;
-use crate::values::squared_distance::SquaredDistance;
+use crate::geometry::fraction::Fraction;
+use crate::geometry::polygon::Polygon;
+use crate::geometry::squared_distance::SquaredDistance;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;

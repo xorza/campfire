@@ -7,14 +7,14 @@ use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
+use crate::geometry::fraction::Fraction;
+use crate::geometry::shape::Shape;
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::struck_units::{Struck, StruckUnits};
 use crate::units::body_grid::BodyGrid;
 use crate::units::team::Team;
-use crate::values::fraction::Fraction;
 use crate::values::hit::Hit;
-use crate::values::shape::Shape;
 
 /// The flights of a tick: where their hits and ends go, the units each line struck while it
 /// flies, the bodies a line may meet, indexed as the stage began, and a scratch list

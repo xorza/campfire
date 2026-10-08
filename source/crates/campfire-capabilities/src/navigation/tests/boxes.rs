@@ -1,5 +1,5 @@
 use super::*;
-use crate::values::body_box::BodyBox;
+use crate::geometry::body_box::BodyBox;
 
 const HALF: Num = Num::HALF;
 const QUARTER: Num = Num::QUARTER;

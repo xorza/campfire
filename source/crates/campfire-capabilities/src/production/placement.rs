@@ -4,6 +4,9 @@ use bevy_ecs::query::{Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_sim::Position;
 
+use crate::geometry::bounds::Bounds;
+use crate::geometry::metric::Metric;
+use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::walls::Walls;
 use crate::production::build_specs::{BuildSpec, PlacementCheck};
@@ -14,9 +17,6 @@ use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::attitude::Attitude;
-use crate::values::bounds::Bounds;
-use crate::values::metric::Metric;
-use crate::values::shape::Shape;
 use crate::vision::seen_by::SeenBy;
 
 /// What a placement tests a building's box against: the bounds, the walls, the static bodies,

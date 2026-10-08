@@ -9,6 +9,8 @@ use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StateRegistry, TickRate};
 
+use crate::geometry::bounds::Bounds;
+use crate::geometry::metric::Metric;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
@@ -31,8 +33,6 @@ use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 use crate::units::units_call::UnitsCall;
 use crate::units::units_column::UnitsColumn;
-use crate::values::bounds::Bounds;
-use crate::values::metric::Metric;
 
 pub(crate) mod action_id;
 pub(crate) mod bits256;

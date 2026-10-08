@@ -8,6 +8,9 @@ use campfire_sim::{IdAllocator, Position};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::kernel_scene::{Density, KernelScene};
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::broadphase::internals::{scene, statics};
@@ -20,9 +23,6 @@ use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
-use crate::values::kernel_scene::{Density, KernelScene};
 
 /// The radii of the 3v3's units that walk, in centimeters: its creeps, its camps and its heroes.
 const WALKER_RADII: [i64; 5] = [35, 40, 50, 55, 70];

@@ -5,9 +5,9 @@ use campfire_math::{Num, U256, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
-use crate::values::body_box::BodyBox;
-use crate::values::fraction::Fraction;
-use crate::values::shape::Shape;
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::fraction::Fraction;
+use crate::geometry::shape::Shape;
 
 /// How a map measures ranges, reach and sight: on the ground plane, as MOBAs and RTS games do, or
 /// in 3D, as shooters and flight do. Package data, not state.

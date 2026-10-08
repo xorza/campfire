@@ -21,6 +21,7 @@ use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::{Deliveries, DeliverySet};
+use crate::geometry::bounds::Bounds;
 use crate::stats::StatsSet;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::units::body_grid::BodyGrid;
@@ -28,12 +29,11 @@ use crate::units::by_type::ByType;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
-use crate::values::bounds::Bounds;
 
 use crate::actions::delivery::Delivery;
 use crate::deliveries::deliverers::Deliverers;
+use crate::geometry::shape::Shape;
 use crate::values::hit::Hit;
-use crate::values::shape::Shape;
 
 pub(crate) mod area;
 pub(crate) mod area_data;

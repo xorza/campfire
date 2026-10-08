@@ -4,6 +4,8 @@ use campfire_sim::{Capability, IdAllocator, StableId};
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::bounds::Bounds;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError};
@@ -13,8 +15,6 @@ use crate::stats::pools::Pools;
 use crate::units::tag_properties::TagProperties;
 use crate::units::unit::Unit;
 use crate::values::attitude::Attitude;
-use crate::values::body_box::BodyBox;
-use crate::values::bounds::Bounds;
 
 fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()

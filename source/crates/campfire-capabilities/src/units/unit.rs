@@ -1,6 +1,7 @@
 use campfire_script::rhai::{Dynamic, INT};
 use campfire_sim::StableId;
 
+use crate::geometry::shape::Shape;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
@@ -9,7 +10,6 @@ use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
 use crate::units::unit_state_access::UnitStateAccess;
-use crate::values::shape::Shape;
 
 /// A unit as a script holds it, `Unit` in scripts: its values as the view read them.
 #[derive(Debug, Clone)]

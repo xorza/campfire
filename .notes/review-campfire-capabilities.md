@@ -6,13 +6,6 @@ Paths are relative to `source/crates/campfire-capabilities/src/` unless they nam
 
 Fix the root cause of a group, not its items one by one. Most groups give the structural target first, and their items are the places that target removes.
 
-## 6. Capability boundaries are not where the code is
-
-`capability_set/mod.rs:96-135` declares the dependency of each capability. The code names other capabilities' types directly, outside those rows, and some core types hold state that belongs to a capability above them. Target: the dependency rows are true. A capability reaches another only through a registered seam (as `EffectQueues` does for listed effects). Each component sits in the module whose registry name it carries.
-
-- [ ] `units/units_api.rs:1-142` (`UnitsApi`): registers only the `Pos` and `Vector` members, the position and vector API, which has no units. Target: a name and module for what it registers.
-- [ ] `values/mod.rs:1-2`: the module doc says data-file value types, but the module also holds runtime geometry (`body_box`, `grid`, `polygon`, `shape`, `metric`, `fraction`, `squared_distance`), runtime indexes (`row_directory`, `name_list`, `name_table`) and runtime records (`hit`, `action_start`, `region`, `bounds`). Target: split by role (data values, geometry, runtime records), so the doc is true.
-
 ## 7. A resource's presence does not match its install
 
 Some resources are always installed, but each read treats them as optional and returns silently when they are missing. This hides a missing install. Other resources are optional, but each read applies its own fallback. Target: a capability's resources are required (`Res<T>`, `resource::<T>()`) after the capability installs. `Option` stays only for what a mode can lack, and the install decides it once.

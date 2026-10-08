@@ -1,5 +1,5 @@
 use super::*;
-use crate::values::bounds::Bounds;
+use crate::geometry::bounds::Bounds;
 
 fn points(points: &[[i64; 2]]) -> Vec<[Num; 2]> {
     points.iter().map(|point| point.map(Num::int)).collect()

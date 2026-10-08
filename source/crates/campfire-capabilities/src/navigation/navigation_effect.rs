@@ -6,6 +6,7 @@ use campfire_sim::{EntityIndex, Position, StableId};
 
 use crate::actions::capability_does::CapabilityDoes;
 use crate::actions::effect_data::EffectTo;
+use crate::geometry::bounds::Bounds;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::navigation_column::NavigationColumn;
@@ -22,7 +23,6 @@ use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove};
 use crate::units::script_view::View;
-use crate::values::bounds::Bounds;
 
 /// A forced move a call queued, of a living unit that walks: a dash or a knock back, which starts
 /// in place of any under way, or a teleport.

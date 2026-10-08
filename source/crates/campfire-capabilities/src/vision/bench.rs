@@ -4,11 +4,11 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use criterion::{Criterion, Throughput};
 
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::kernel_scene::{Density, KernelScene};
 use crate::units::relations::Relations;
 use crate::units::team::Team;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
-use crate::values::kernel_scene::{Density, KernelScene};
 use crate::vision::brush_map::BrushMap;
 use crate::vision::fog::Fog;
 use crate::vision::vision_grid::VisionGrid;

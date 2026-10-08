@@ -3,6 +3,8 @@ use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 
+use crate::geometry::metric::Metric;
+use crate::geometry::shape::Shape;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -16,8 +18,6 @@ use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::attitude::Attitude;
-use crate::values::metric::Metric;
-use crate::values::shape::Shape;
 
 /// The units an attack may target: living units with the life pool whose tags let them be
 /// targets, those a client holds and does not predict among them, where the server last had

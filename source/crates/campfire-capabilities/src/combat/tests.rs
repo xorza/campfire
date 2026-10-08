@@ -18,6 +18,7 @@ use crate::combat::combat_rules::{CombatRules, Leech};
 use crate::combat::internals::Armed;
 use crate::combat::pass_queue::PassEntry;
 use crate::combat::recent_attack::RecentAttack;
+use crate::geometry::metric::Metric;
 use crate::players::resource_id::ResourceId;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
@@ -39,7 +40,6 @@ use crate::values::attitude::Attitude;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
-use crate::values::metric::Metric;
 use crate::values::relation::Relation;
 use crate::values::stat::Stat;
 fn at(x: i64, y: i64, z: i64) -> Position {

@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_sim::Position;
 
-use crate::values::bounds::Bounds;
+use crate::geometry::bounds::Bounds;
 
 /// The smallest rectangle of the ground plane, its sides along x and z, that holds a group's
 /// positions, each corner `[x, z]`.

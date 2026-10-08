@@ -8,6 +8,7 @@ use campfire_sim::{EntityIndex, Position, StableId};
 use crate::actions::action_slots::ActionSlots;
 
 use crate::actions::action_target::ActionTarget;
+use crate::geometry::bounds::Bounds;
 use crate::navigation::destination::Destination;
 use crate::navigation::party::Party;
 use crate::navigation::path_walker::PathWalker;
@@ -19,7 +20,6 @@ use crate::production::builder::{BuildOrder, Builder};
 use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
-use crate::values::bounds::Bounds;
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
 /// bot's input, or an order an AI call queued for the unit that thinks.

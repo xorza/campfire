@@ -1,10 +1,10 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
+use crate::geometry::region::Region;
 use crate::items::item_id::ItemId;
 use crate::players::resource_id::ResourceId;
 use crate::units::team::Team;
-use crate::values::region::Region;
 use crate::values::share::Share;
 
 /// The mode's shop as a match reads it: the item types it sells, the player resource it takes,

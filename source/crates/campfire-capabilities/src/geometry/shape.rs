@@ -4,8 +4,8 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::{Deserialize, Serialize};
 
-use crate::values::body_box::BodyBox;
-use crate::values::metric::{Approach, Metric};
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::metric::{Approach, Metric};
 
 /// A body's shape on the ground plane around its unit's position: a circle of a radius, 0 for
 /// a point or a unit with no body, or a box.

@@ -59,6 +59,7 @@ use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::units::dead::Dead;
 
+use crate::geometry::bounds::Bounds;
 use crate::stats::StatsSet;
 use crate::stats::level::Level;
 use crate::stats::pools::Pools;
@@ -68,7 +69,6 @@ use crate::units::owner::Owner;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
-use crate::values::bounds::Bounds;
 
 pub(crate) mod ai;
 pub(crate) mod ai_data;

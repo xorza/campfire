@@ -14,6 +14,9 @@ use campfire_math::Num;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, TickRate};
 
+use crate::geometry::bounds::Bounds;
+use crate::geometry::metric::Metric;
+use crate::geometry::shape::Shape;
 use crate::players::resource_id::ResourceId;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
@@ -46,12 +49,9 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::units::view_column::{ViewColumn, ViewColumns};
 use crate::values::attitude::Attitude;
-use crate::values::bounds::Bounds;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
-use crate::values::metric::Metric;
 use crate::values::name_list::NameList;
-use crate::values::shape::Shape;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
 /// phase of the tick began. The units are read again before each phase that runs

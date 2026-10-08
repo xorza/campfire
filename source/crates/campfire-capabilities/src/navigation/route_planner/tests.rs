@@ -8,12 +8,12 @@ use campfire_common::SegmentSeed;
 use campfire_math::{RngSource, RngStream};
 
 use super::*;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::shape::Shape;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::units::layer::Layer;
-use crate::values::bounds::Bounds;
-use crate::values::shape::Shape;
 
 /// The point `(x, z)` in quarters of a meter.
 fn at(x: i64, z: i64) -> Position {

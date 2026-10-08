@@ -73,8 +73,8 @@ impl KernelScene {
 mod walls {
     use campfire_math::Num;
 
-    use crate::values::kernel_scene::KernelScene;
-    use crate::values::polygon::Polygon;
+    use crate::geometry::kernel_scene::KernelScene;
+    use crate::geometry::polygon::Polygon;
 
     impl KernelScene {
         /// The walls that split a scene of `span` meters' half side into two lanes and a jungle,
@@ -103,11 +103,11 @@ mod tests {
     use campfire_sim::Position;
 
     use super::*;
+    use crate::geometry::bounds::Bounds;
+    use crate::geometry::grid::Grid;
     use crate::navigation::terrain::Terrain;
     use crate::navigation::wall::Wall;
     use crate::units::layer::Layer;
-    use crate::values::bounds::Bounds;
-    use crate::values::grid::Grid;
 
     #[test]
     fn the_walls_split_a_scene_into_two_lanes_and_a_jungle() {

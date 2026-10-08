@@ -1,11 +1,11 @@
 use campfire_common::PlayerSlot;
 use campfire_sim::{Position, StableId};
 
+use crate::geometry::shape::Shape;
 use crate::units::engine_tag::EngineTag;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
-use crate::values::shape::Shape;
 
 /// A unit as the view read it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

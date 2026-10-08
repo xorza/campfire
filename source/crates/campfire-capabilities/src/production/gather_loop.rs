@@ -15,6 +15,7 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::range::Range;
+use crate::geometry::metric::Metric;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::player_resources::PlayerResources;
@@ -35,7 +36,6 @@ use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
-use crate::values::metric::Metric;
 
 /// The systems of the gather loop: an order checked as it applies, the loop's steps, the nodes
 /// that ran out, and the `gathering` tag.

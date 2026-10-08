@@ -4,7 +4,7 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use criterion::{Criterion, Throughput};
 
-use crate::values::body_box::BodyBox;
+use crate::geometry::body_box::BodyBox;
 
 /// The inputs of each case, each iteration's.
 const COUNT: usize = 4096;

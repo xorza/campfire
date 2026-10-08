@@ -15,6 +15,7 @@ use crate::actions::purse::Purse;
 use crate::actions::range::Range;
 use crate::actions::rank_values::RankValues;
 use crate::actions::targets::Targets;
+use crate::geometry::shape::Shape;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
@@ -23,7 +24,6 @@ use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::values::attitude::Attitude;
 use crate::values::rank::Rank;
-use crate::values::shape::Shape;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the actions, as the

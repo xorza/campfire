@@ -15,6 +15,7 @@ use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, InProgress, OrderPhase, SlotAim};
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
+use crate::geometry::bounds::Bounds;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::walker::Walker;
@@ -51,7 +52,6 @@ use crate::units::spawner::{SpawnAt, Spawner};
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
-use crate::values::bounds::Bounds;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;

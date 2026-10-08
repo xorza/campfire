@@ -2,11 +2,11 @@ use campfire_math::Vec3;
 use campfire_sim::{IdAllocator, Position};
 
 use super::*;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::polygon::Polygon;
+use crate::geometry::shape::Shape;
 use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
-use crate::values::bounds::Bounds;
-use crate::values::polygon::Polygon;
-use crate::values::shape::Shape;
 /// A walker of `radius` on the first layer.
 fn ground(radius: Num) -> Walker {
     Walker {

@@ -4,18 +4,18 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::metric::Metric;
+use crate::geometry::polygon::Polygon;
+use crate::geometry::region::Region;
 use crate::mode::error::ModeError;
 use crate::mode::mode_data::ModeParam;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
-use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
-use crate::values::grid::Grid;
-use crate::values::metric::Metric;
-use crate::values::polygon::Polygon;
-use crate::values::region::Region;
 use crate::values::scalar::Scalar;
 
 /// The mode's `map/map.toml`: its metric, its bounds, its grids, its paths, the units placed on it
@@ -248,12 +248,12 @@ impl RegionData {
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
+    use crate::geometry::bounds::Bounds;
     use crate::mode::map_data::{MapData, MapPoint, MarkerData, PlacedUnitData};
-    use crate::values::bounds::Bounds;
     use campfire_math::Num;
 
+    use crate::geometry::metric::Metric;
     use crate::values::declared_name::DeclaredName;
-    use crate::values::metric::Metric;
     use crate::values::scalar::Scalar;
 
     fn name(text: &str) -> DeclaredName {
@@ -315,7 +315,7 @@ pub(crate) mod internals {
 mod tests {
 
     use super::*;
-    use crate::values::polygon::error::PolygonError;
+    use crate::geometry::polygon::error::PolygonError;
 
     #[test]
     fn a_point_beyond_the_world_bound_has_no_position() {

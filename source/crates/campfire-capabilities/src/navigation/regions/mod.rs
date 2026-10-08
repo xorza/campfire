@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use campfire_sim::Position;
 
-use crate::values::grid::Grid;
+use crate::geometry::grid::Grid;
 
 /// The cells of one layer of the pathing grid a walker can go between, as 0 A.D.'s hierarchical
 /// pathfinder keeps them: the grid in chunks of `CHUNK` × `CHUNK` cells, each chunk's open cells

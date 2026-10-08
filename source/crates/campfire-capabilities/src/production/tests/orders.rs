@@ -1,14 +1,14 @@
 use campfire_sim::{EntityIndex, TickInput, TickInputs};
 
 use super::*;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
 use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::orders::order::{Action, Order};
 use crate::production::rally_target::RallyTarget;
 use crate::units::body::{Body, BodyForm};
 use crate::units::layer::Layer;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
 
 impl Shop {
     /// Runs a tick in which player `slot` orders `action` to `unit`.

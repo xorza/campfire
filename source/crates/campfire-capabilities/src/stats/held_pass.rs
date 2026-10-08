@@ -3,6 +3,8 @@ use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::{Position, SimTick, StableId, TickRate};
 
+use crate::geometry::metric::Metric;
+use crate::geometry::shape::Shape;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
@@ -25,9 +27,7 @@ use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::attitude::Attitude;
-use crate::values::metric::Metric;
 use crate::values::rank::Rank;
-use crate::values::shape::Shape;
 
 /// The living units whose held modifiers `HeldPass::run` writes.
 type HeldUnits<'w, 's> = Query<

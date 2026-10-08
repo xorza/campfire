@@ -205,10 +205,10 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
+    use crate::geometry::bounds::Bounds;
+    use crate::geometry::grid::Grid;
+    use crate::geometry::shape::Shape;
     use crate::navigation::terrain::Terrain;
-    use crate::values::bounds::Bounds;
-    use crate::values::grid::Grid;
-    use crate::values::shape::Shape;
 
     /// The point `(x, z)` in eighths of a meter.
     fn at(x: i64, z: i64) -> Position {

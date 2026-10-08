@@ -26,6 +26,7 @@ mod books;
 mod capability_set;
 mod combat;
 mod deliveries;
+mod geometry;
 mod items;
 mod mode;
 mod navigation;
@@ -68,6 +69,11 @@ pub use crate::combat::deaths::{DeathView, Deaths, Fallen};
 pub use crate::combat::on_death::OnDeath;
 pub use crate::combat::recent_attackers::RecentAttackers;
 pub use crate::combat::respawn::Respawn;
+pub use crate::geometry::bounds::Bounds;
+pub use crate::geometry::grid::Grid;
+pub use crate::geometry::metric::Metric;
+pub use crate::geometry::polygon::Polygon;
+pub use crate::geometry::polygon::error::PolygonError;
 pub use crate::items::Items;
 pub use crate::items::inventory::{Inventory, ItemStack};
 pub use crate::items::inventory_data::InventoryData;
@@ -167,18 +173,13 @@ pub use crate::units::track_id::TrackId;
 pub use crate::units::unit_type::UnitType;
 pub use crate::units::unit_type_data::UnitTypeData;
 pub use crate::values::attitude::Attitude;
-pub use crate::values::bounds::Bounds;
 pub use crate::values::declared_name::DeclaredName;
 pub use crate::values::engine_enum::EngineEnum;
 pub use crate::values::error::TimeTooLarge;
 pub use crate::values::filter_data::FilterData;
-pub use crate::values::grid::Grid;
-pub use crate::values::metric::Metric;
 pub use crate::values::number::Number;
 pub use crate::values::package_path::PackagePath;
 pub use crate::values::param::{Param, Scaling};
-pub use crate::values::polygon::Polygon;
-pub use crate::values::polygon::error::PolygonError;
 pub use crate::values::rank::Rank;
 pub use crate::values::ranked::Ranked;
 pub use crate::values::scalar::Scalar;
@@ -191,13 +192,13 @@ pub use crate::vision::seen_by::SeenBy;
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::combat::internals::{Arms, queue_damage};
+    pub use crate::geometry::kernel_scene::{Density, KernelScene};
     pub use crate::mode::internals::spawn_typed;
     pub use crate::scripts::script_batch::internals::read_view;
     pub use crate::stats::internals::{carried, give_modifier};
     pub use crate::stats::pools::internals::spent;
     pub use crate::units::body::internals::{reaches, reaches_bound, sinks_into};
     pub use crate::units::relations::internals::set_relation;
-    pub use crate::values::kernel_scene::{Density, KernelScene};
     pub use crate::vision::seen_by::internals::seen_by_all;
 }
 
@@ -205,7 +206,7 @@ pub mod internals {
 pub mod bench {
     use criterion::Criterion;
 
-    use crate::values::body_box;
+    use crate::geometry::body_box;
     use crate::{navigation, production, vision};
 
     /// Runs each bench of the crate whose id criterion's filter takes.

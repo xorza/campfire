@@ -1,5 +1,5 @@
-use crate::values::grid::Grid;
-use crate::values::polygon::Polygon;
+use crate::geometry::grid::Grid;
+use crate::geometry::polygon::Polygon;
 
 /// The map's brush on the vision grid: each cell's brush, the first the map lists whose area holds
 /// the cell's center, and each brush's cells, one bit a cell. Derived from the map once, as brush

@@ -4,6 +4,8 @@ use campfire_sim::{EntityIndex, TickInput, TickInputs};
 
 use super::*;
 use crate::actions::gather_spec::GatherSpec;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
 use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::orders::order::{Action, Order};
@@ -19,8 +21,6 @@ use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::move_step::MoveStep;
 use crate::units::unit_tags::UnitTags;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
 use crate::values::relation::Relation;
 
 /// The point at `x` and `z` half meters.

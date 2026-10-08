@@ -1,12 +1,12 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
+use crate::geometry::grid::Grid;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::Clearance;
 use crate::navigation::regions::Candidate;
 use crate::navigation::route_planner::open_cells::OpenCells;
 use crate::navigation::segment::Segment;
-use crate::values::grid::Grid;
 
 pub(crate) mod open_cells;
 

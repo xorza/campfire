@@ -1,6 +1,6 @@
+use crate::geometry::grid::Grid;
 use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
-use crate::values::grid::Grid;
 
 /// The cells of the pathing grid the map's walls block, layer by layer, one bit a cell: derived
 /// from the map once, as the walls never change.

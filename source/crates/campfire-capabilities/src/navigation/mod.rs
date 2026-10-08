@@ -15,6 +15,9 @@ use campfire_sim::{
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::deliveries::Deliveries;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::shape::Shape;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
@@ -49,9 +52,6 @@ use crate::units::move_step::MoveStep;
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
 use crate::units::unit_tags::UnitTags;
-use crate::values::bounds::Bounds;
-use crate::values::grid::Grid;
-use crate::values::shape::Shape;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;

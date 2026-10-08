@@ -3,6 +3,8 @@ use campfire_common::Tick;
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
+use crate::geometry::polygon::Polygon;
+use crate::geometry::polygon::error::PolygonError;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{
     MapData, MapNavigationData, MapPoint, MarkerData, PathData, PlacedUnitData, WallData,
@@ -18,8 +20,6 @@ use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::units::unit_type::UnitType;
 use crate::values::declared_name::DeclaredName;
-use crate::values::polygon::Polygon;
-use crate::values::polygon::error::PolygonError;
 use crate::values::scalar::Scalar;
 
 const ONE: i64 = 1 << 24;

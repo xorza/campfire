@@ -1,5 +1,5 @@
 use super::*;
-use crate::values::metric::Approach;
+use crate::geometry::metric::Approach;
 
 impl BodyBox {
     /// Whether `at` lies inside the box at `centre` or on its edge.

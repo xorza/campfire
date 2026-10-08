@@ -6,7 +6,7 @@ use campfire_common::SegmentSeed;
 use campfire_math::{RngSource, RngStream};
 
 use super::*;
-use crate::values::bounds::Bounds;
+use crate::geometry::bounds::Bounds;
 
 /// A grid of 1 m cells from the origin, `columns` by `rows`.
 fn grid(columns: i64, rows: i64) -> Grid {

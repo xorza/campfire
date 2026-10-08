@@ -3,12 +3,12 @@ use campfire_script::rhai::{Dynamic, INT, NativeCallContext};
 use campfire_script::{NumError, Raised};
 use campfire_sim::Position;
 
+use crate::geometry::shape::Shape;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::values::shape::Shape;
 
 /// The script API of positions and vectors: `Pos` with `distance_to`, `within` and
 /// `direction_to`, and `Vector` with `rotated_deg`.

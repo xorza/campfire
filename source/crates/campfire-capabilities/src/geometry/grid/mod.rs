@@ -3,8 +3,8 @@ use std::ops::Range;
 use campfire_math::{FloorRoot, I64x4, Num, Vec3};
 use campfire_sim::Position;
 
-use crate::values::body_box::BodyBox;
-use crate::values::bounds::Bounds;
+use crate::geometry::body_box::BodyBox;
+use crate::geometry::bounds::Bounds;
 
 /// A map's ground grid: square cells of `cell` meters over its bounds, whole cells from their min
 /// until they cover their max. Cells are numbered along x, then along z.

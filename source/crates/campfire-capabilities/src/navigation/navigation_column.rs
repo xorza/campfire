@@ -4,6 +4,7 @@ use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{Position, StableId};
 
+use crate::geometry::shape::Shape;
 use crate::navigation::body_index::IndexedBody;
 use crate::navigation::walls::Walls;
 use crate::units::body::Body;
@@ -13,7 +14,6 @@ use crate::units::path_id::PathId;
 use crate::units::script_view::View;
 use crate::units::unit::Unit;
 use crate::units::view_column::ViewColumn;
-use crate::values::shape::Shape;
 
 /// What navigation adds to the script view, a row each: the path each unit walks or stands on,
 /// whether it walks, as a unit with a step does, and the layer it moves on; and the map's walls,

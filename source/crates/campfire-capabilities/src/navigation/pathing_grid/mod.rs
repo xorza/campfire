@@ -5,13 +5,13 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 
+use crate::geometry::grid::Grid;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::regions::Regions;
 use crate::navigation::segment::Segment;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::units::body::Body;
-use crate::values::grid::Grid;
 
 /// The map's pathing grid: its bounds in square cells, and for each kind of walker the mode has,
 /// its clearance: the cells it cannot stand in, those the walls of its layer block and those whose
