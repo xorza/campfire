@@ -1,16 +1,34 @@
 use std::ops::Range;
 
+use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::INT;
 
+use crate::production::gatherer::Gatherer;
+use crate::production::site::Site;
 use crate::production::supply::PlayerSupply;
 use crate::production::supply_costs::{SupplyCosts, UnitSupply};
 use crate::production::supply_rules::SupplyRules;
+use crate::production::train_queue::TrainQueue;
+use crate::units::dead::Dead;
 use crate::units::kept_rows::KeptRows;
+use crate::units::owner::Owner;
+use crate::units::row_fill::RowFill;
 use crate::units::unit::Unit;
+use crate::units::unit_type::UnitType;
 use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
+
+/// The parts of a unit production adds to its row of the script view.
+pub(super) type RowParts = (
+    Option<&'static Owner>,
+    Option<&'static UnitType>,
+    Has<Dead>,
+    Option<&'static TrainQueue>,
+    Has<Site>,
+    Option<&'static Gatherer>,
+);
 
 /// What production adds to the script view: what each unit counts for of its player's supply, a
 /// row each, and the mode's supply rules and costs, by which scripts read each player's supply as
@@ -103,5 +121,21 @@ impl ProductionColumn {
             })
         })
         .flatten()
+    }
+
+    /// Fills a row of the script view with what the unit counts for of its player's supply, and
+    /// what it carries.
+    pub(super) fn fill_row(
+        (owner, unit_type, dead, queue, site, gatherer): ROQueryItem<'_, '_, RowParts>,
+        fill: &mut RowFill<'_, ProductionColumn>,
+    ) {
+        let counted = unit_type
+            .map(|&unit_type| fill.column.costs().unit(unit_type, dead, !site, queue))
+            .unwrap_or_default();
+        let load = gatherer
+            .and_then(|gatherer| gatherer.load())
+            .map_or(0, |load| load.amount);
+        fill.column
+            .push(owner.map(|owner| owner.slot()), counted, load);
     }
 }
