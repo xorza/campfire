@@ -116,11 +116,7 @@ impl<'de> Deserialize<'de> for Bounds {
             max: [Scalar; 2],
         }
         let fields = Fields::deserialize(deserializer)?;
-        let num = |scalar: Scalar| {
-            scalar
-                .to_num()
-                .ok_or_else(|| D::Error::custom("a bounds value beyond a Num"))
-        };
+        let num = |scalar: Scalar| scalar.checked::<D::Error>("bounds: ");
         let min = [num(fields.min[0])?, num(fields.min[1])?];
         let max = [num(fields.max[0])?, num(fields.max[1])?];
         Bounds::new(min, max).ok_or_else(|| {

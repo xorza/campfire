@@ -61,7 +61,7 @@ impl Scalar {
     }
 
     /// The value as a `Num`; past what one holds, an error of the read, after `at`.
-    fn checked<E: Error>(self, at: &str) -> Result<Num, E> {
+    pub(crate) fn checked<E: Error>(self, at: &str) -> Result<Num, E> {
         self.to_num()
             .ok_or_else(|| E::custom(format!("{at}{self:?} is past what a number holds")))
     }

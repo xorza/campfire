@@ -14,12 +14,6 @@ Target: a type's own invariants (sorted, bounded, in range) are kept by its `Des
 
 - [ ] **(bug)** `stats/meter.rs:9-12,41-43,90-98,101-123`: the field doc says that `carry` is "0 while full or empty", but `fill` and `take` reach full and empty without a reset. Only `regen`, `add` and `set_max` reset it. The decode accepts any `carry`, and `Pools::check` (`stats/pools.rs:116-124`) returns `true`. A forged `carry >= hz` adds more than `per_second` over `hz` ticks. Target: one private step after each write resets `carry` at either end, so the invariant holds. Then `Pools::check` rejects `carry >= hz` (it has the `TickRate`) and a nonzero `carry` at either end. The reset must come first: a check alone would reject snapshots that the live code makes today.
 
-## 4. Data is checked, then read back with `expect`
-
-The load checks a fact and keeps the unchecked shape, so later code asserts what the check proved. The shape does not show the invariant, and a second caller can skip the check. Target: the check returns the narrower type (parse, don't validate), and later code matches on it.
-
-- [ ] `values/bounds.rs:106-122`, `values/speed.rs:27-37`, `units/collision_data.rs:33-47`: three hand-written "Scalar to `Num`, error on overflow" conversions with different messages, beside the shared `Scalar::num` and `checked` (`values/scalar.rs:30,57`). Target: the shared conversion.
-
 ## 5. Sim state is marked changed when it did not change
 
 `campfire-sim` writes a resource or component into a delta snapshot when its `last_changed` is newer than the last copy (`campfire-sim/src/state_registry/mod.rs:612-614,676-678`). Each `DerefMut` on a `Mut` marks a change, so a write of the same value, or a `&mut` access that writes nothing, makes the delta larger. `stats/carried_mut.rs` already solves this: it reports `Touched` and marks only what changed. `slot_events` guards too (`mode/mod.rs:379`).
