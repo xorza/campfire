@@ -17,7 +17,7 @@ use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::{Number, ParamRef};
-use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 
 use super::*;
 use crate::values::rank::Rank;
@@ -65,8 +65,8 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
     let [projectile, area] = [EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag);
     let parse = |text| Filter::parse(text, &types).unwrap();
     // A relation alone is the filter of its name.
-    assert_eq!(Filter::of_relation(Relation::Enemies), parse("enemies"));
-    assert_eq!(Filter::of_relation(Relation::All), parse("all"));
+    assert_eq!(Filter::of_relations(RelationSet::Enemies), parse("enemies"));
+    assert_eq!(Filter::of_relations(RelationSet::All), parse("all"));
     let units = [
         TagSet::default(),
         TagSet::of([projectile]),
@@ -78,7 +78,7 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
         ("enemies:projectile", [false, true, false]),
         ("enemies:!area", [true, false, false]),
     ] {
-        let selects = units.map(|tags| parse(filter).selects(Attitude::Hostile, tags));
+        let selects = units.map(|tags| parse(filter).selects(Relation::Hostile, tags));
         assert_eq!(selects, selected, "{filter}");
     }
 }

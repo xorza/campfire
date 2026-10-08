@@ -9,8 +9,8 @@ use crate::scripts::hook_set::HookSet;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
-use crate::values::attitude::Attitude;
 use crate::values::rank::Rank;
+use crate::values::relation::Relation;
 
 /// An action as a match runs it.
 #[derive(Debug, Clone)]
@@ -101,16 +101,16 @@ impl Action {
     }
 
     /// Whether a slot at `rank` whose action has the weapon filter `weapon` arms its unit
-    /// against a unit of `tags` it regards with `attitude`, or with `None`, against any: the one
+    /// against a unit of `tags` it regards with `relation`, or with `None`, against any: the one
     /// rule of `ActionBook::weapon_for` and of the script view.
     pub(crate) fn arms(
         rank: Option<Rank>,
         weapon: Option<Filter>,
-        target: Option<(Attitude, TagSet)>,
+        target: Option<(Relation, TagSet)>,
     ) -> bool {
         rank.is_some()
             && weapon.is_some_and(|filter| {
-                target.is_none_or(|(attitude, tags)| filter.selects(attitude, tags))
+                target.is_none_or(|(relation, tags)| filter.selects(relation, tags))
             })
     }
 }

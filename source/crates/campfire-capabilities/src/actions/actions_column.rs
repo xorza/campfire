@@ -247,8 +247,8 @@ impl ActionsColumn {
 
     /// Whether a learned weapon of `unit`, in row `row`, selects `target`, as `unit` regards it.
     pub(crate) fn armed_against(view: &View, row: usize, unit: &UnitRow, target: &UnitRow) -> bool {
-        let attitude = view.attitude(unit.team, target.team);
-        let target = Some((attitude, target.tags.tags));
+        let relation = view.relation(unit.team, target.team);
+        let target = Some((relation, target.tags.tags));
         ActionsColumn::read(view, |column| {
             column
                 .run(row)

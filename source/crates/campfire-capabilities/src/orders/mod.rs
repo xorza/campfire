@@ -307,7 +307,7 @@ fn check_player_orders(
                 Action::Attack { target } => {
                     let selected = team.and_then(|&team| {
                         let unit = targets.enemy(team, target)?;
-                        Some((targets.attitude(team, unit.team), unit.tags))
+                        Some((targets.relation(team, unit.team), unit.tags))
                     });
                     let armed = slots.is_some_and(|slots| {
                         selected.is_some() && book.weapon_for(slots, selected).is_some()
@@ -777,7 +777,7 @@ fn chase(
             continue;
         }
         let aimed = targets.enemy(team, target).and_then(|unit| {
-            let selected = (targets.attitude(team, unit.team), unit.tags);
+            let selected = (targets.relation(team, unit.team), unit.tags);
             let slot = book.weapon_for(&slots, Some(selected))?;
             Some((unit, book.range(&slots, slot)))
         });

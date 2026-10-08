@@ -418,10 +418,10 @@ fn start_casts(
             continue;
         }
         let purse = Purse::of(pools, resources.as_deref(), owner);
-        let attitude = |other| targets.attitude(team, other);
+        let relation = |other| targets.relation(team, other);
         let shape = Body::shape_of(body);
         let checked = book
-            .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
+            .check(now, &slots, purse, aim, relation, |id| targets.living(id))
             .map(|mut checked| {
                 checked.clamp(position, shape, &targets);
                 checked
@@ -562,9 +562,9 @@ fn predict_casts(
         }
         let purse = Purse::of(pools, resources.as_deref(), owner);
         let living = |id| targets.living(id);
-        let attitude = |other| targets.attitude(team, other);
+        let relation = |other| targets.relation(team, other);
         let resolved = book
-            .check(now, &slots, purse, casting, attitude, living)
+            .check(now, &slots, purse, casting, relation, living)
             .map(|checked| {
                 checked.resolved(ActionCall {
                     aim: casting,
@@ -674,8 +674,8 @@ fn prepare(
         owner,
     );
     let living = |id| view.living(id);
-    let attitude = |other| view.attitude(team, other);
-    let Some(checked) = book.check(now, slots, purse, casting, attitude, living) else {
+    let relation = |other| view.relation(team, other);
+    let Some(checked) = book.check(now, slots, purse, casting, relation, living) else {
         return Ok(None);
     };
     let target = Abilities::target(view, casting.target);

@@ -188,11 +188,11 @@ impl GatherView<'_, '_> {
     fn node(&self, node: StableId, gather: Gather, team: Team) -> Option<FoundNode> {
         let (entity, _, &at, body, &unit_type, held, &node_team, tags) =
             self.nodes.get(self.index.get(node)?).ok()?;
-        let attitude = self.relations.between(team, node_team);
+        let relation = self.relations.between(team, node_team);
         let tags = tags.map(|tags| tags.tags).unwrap_or_default();
         let ours = held.amount() > 0
             && self.nodes_book.resource(unit_type) == Some(gather.spec.resource)
-            && gather.filter.selects(attitude, tags);
+            && gather.filter.selects(relation, tags);
         ours.then_some(FoundNode {
             entity,
             place: Place {

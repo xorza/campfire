@@ -4,14 +4,14 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::values::declared_name::DeclaredName;
-use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 
-/// A filter in data, such as an area's `affects`: a relation, then tags after colons, each one
-/// the unit must have, or with `!` one it must not, which the load checks against the mode's
-/// tags.
+/// A filter in data, such as an area's `affects`: a set of relations, then tags after colons,
+/// each one the unit must have, or with `!` one it must not, which the load checks against the
+/// mode's tags.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilterData {
-    pub relation: Relation,
+    pub relations: RelationSet,
     pub tags: Vec<FilterTag>,
 }
 
@@ -22,11 +22,11 @@ pub struct FilterTag {
     pub negated: bool,
 }
 
-/// A filter as data and scripts write it: a relation, then tags after colons, such as
+/// A filter as data and scripts write it: a set of relations, then tags after colons, such as
 /// `enemies:avatar:!stunned`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FilterSyntax<'a> {
-    pub(crate) relation: Relation,
+    pub(crate) relations: RelationSet,
     tags: &'a str,
 }
 
@@ -38,7 +38,7 @@ pub(crate) struct TagTerm<'a> {
 }
 
 impl FilterData {
-    /// `text` as a filter; `None` unless its relation is one of the relations and each of its
+    /// `text` as a filter; `None` unless its set of relations is one of the sets and each of its
     /// tags is a name.
     pub fn parse(text: &str) -> Option<FilterData> {
         let syntax = FilterSyntax::parse(text)?;
@@ -49,7 +49,7 @@ impl FilterData {
             })
         });
         Some(FilterData {
-            relation: syntax.relation,
+            relations: syntax.relations,
             tags: tags.collect::<Option<_>>()?,
         })
     }
@@ -65,7 +65,7 @@ impl<'de> Deserialize<'de> for FilterData {
 /// As data writes it.
 impl fmt::Display for FilterData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.relation.name())?;
+        f.write_str(self.relations.name())?;
         for tag in &self.tags {
             let sign = if tag.negated { "!" } else { "" };
             write!(f, ":{sign}{}", tag.name)?;
@@ -75,15 +75,15 @@ impl fmt::Display for FilterData {
 }
 
 impl<'a> FilterSyntax<'a> {
-    /// `text` as a filter; `None` unless its relation is one of the relations and no tag of it
+    /// `text` as a filter; `None` unless its set of relations is one of the sets and no tag of it
     /// is empty.
     pub(crate) fn parse(text: &'a str) -> Option<FilterSyntax<'a>> {
-        let (relation, tags, tagged) = match text.split_once(':') {
-            Some((relation, tags)) => (relation, tags, true),
+        let (relations, tags, tagged) = match text.split_once(':') {
+            Some((relations, tags)) => (relations, tags, true),
             None => (text, "", false),
         };
         let syntax = FilterSyntax {
-            relation: Relation::named(relation)?,
+            relations: RelationSet::named(relations)?,
             tags,
         };
         let complete =
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn a_filter_reads_its_relation_and_its_signed_tags() {
         let data = FilterData::parse("enemies:avatar:!stunned").unwrap();
-        assert_eq!(data.relation, Relation::Enemies);
+        assert_eq!(data.relations, RelationSet::Enemies);
         let tags: Vec<_> = data
             .tags
             .iter()

@@ -26,8 +26,8 @@ use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
-use crate::values::attitude::Attitude;
 use crate::values::rank::Rank;
+use crate::values::relation::Relation;
 
 /// The living units whose held modifiers `HeldPass::run` writes.
 type HeldUnits<'w, 's> = Query<
@@ -113,9 +113,9 @@ impl HeldPass {
                     let (&target, _, &other, tags, ..) =
                         units.get(body.key).expect("an indexed unit");
                     let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
-                    let attitude = relations.between(team, other);
+                    let relation = relations.between(team, other);
                     let reaches = metric.reaches(at, Shape::POINT, radius, body.at, body.shape);
-                    if reaches && filter.selects(attitude, tags) {
+                    if reaches && filter.selects(relation, tags) {
                         held.push(Held {
                             target,
                             modifier,
@@ -178,7 +178,7 @@ impl HeldPass {
             let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
             for modifier in players.of(owner.slot()) {
                 let affects = book.get(modifier).spec.affects;
-                if affects.is_none_or(|filter| filter.selects(Attitude::Friendly, tags)) {
+                if affects.is_none_or(|filter| filter.selects(Relation::Friendly, tags)) {
                     held.push(Held {
                         target,
                         modifier,

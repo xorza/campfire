@@ -117,7 +117,7 @@ fn probe(ctx, unit) {
     assert_eq!(members[0].clone().into_string().unwrap(), "hostile");
     let compared = members[1..].iter().map(|member| member.as_bool().unwrap());
     assert_eq!(compared.collect::<Vec<_>>(), [true, true, false]);
-    // A text that names no attitude fails `named`, and a team's attitude to itself, or to a
+    // A text that names no relation fails `named`, and a team's relation to itself, or to a
     // team the mode lacks, fails the call.
     for (call, refused) in [
         (

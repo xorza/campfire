@@ -16,7 +16,7 @@ use crate::units::move_step::MoveStep;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
-use crate::values::attitude::Attitude;
+use crate::values::relation::Relation;
 use crate::vision::seen_by::SeenBy;
 
 /// What a placement tests a building's box against: the bounds, the walls, the static bodies,
@@ -76,7 +76,7 @@ impl Placement<'_, '_> {
                     Shape::Circle(radius) => boxed.nearest(at, pos, radius) == Ordering::Less,
                     Shape::Box(other) => boxed.overlaps(at, &other, pos),
                 };
-                let friendly = self.relations.between(team, other_team) == Attitude::Friendly;
+                let friendly = self.relations.between(team, other_team) == Relation::Friendly;
                 let sees = seen.is_none_or(|seen| seen.get().contains(team));
                 inside && !friendly && sees
             });
@@ -97,9 +97,9 @@ impl Placement<'_, '_> {
         self.units
             .iter()
             .any(|(&pos, other, &other_team, tags, ..)| {
-                let attitude = self.relations.between(team, other_team);
+                let relation = self.relations.between(team, other_team);
                 let tags = tags.map(|tags| tags.tags).unwrap_or_default();
-                rule.filter.selects(attitude, tags)
+                rule.filter.selects(relation, tags)
                     && self.metric.reaches(
                         at,
                         body.shape(),

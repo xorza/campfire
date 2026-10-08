@@ -1,52 +1,51 @@
-use crate::values::attitude::Attitude;
+use serde::{Deserialize, Serialize};
 
-/// Which units a filter selects, by how a unit's team regards theirs: its enemies, which it may
-/// attack, hostile and neutral; only the hostile; only the neutral; its allies, the friendly,
-/// which include itself; or all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::values::engine_enum::EngineEnum;
+use crate::values::script_enum::ScriptEnum;
+
+/// How one team regards another, as the mode's `[[relations]]` declare it and
+/// `ctx.set_relation` changes it: Unreal's team attitudes. A neutral unit may be attacked, but
+/// does not seek a fight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Relation {
-    Enemies,
-    Hostiles,
-    Neutrals,
-    Allies,
-    All,
+    Hostile,
+    Neutral,
+    Friendly,
 }
 
 impl Relation {
-    const ALL: [Relation; 5] = [
-        Relation::Enemies,
-        Relation::Hostiles,
-        Relation::Neutrals,
-        Relation::Allies,
-        Relation::All,
+    /// Whether a unit may attack a unit of a team it regards so: a hostile or a neutral one.
+    pub const fn may_attack(self) -> bool {
+        matches!(self, Relation::Hostile | Relation::Neutral)
+    }
+}
+
+/// `Relation::Hostile` and the others in scripts.
+impl ScriptEnum for Relation {
+    const ENUM: EngineEnum = EngineEnum::Relation;
+    const MEMBERS: &'static [(&'static str, Relation)] = &[
+        ("Hostile", Relation::Hostile),
+        ("Neutral", Relation::Neutral),
+        ("Friendly", Relation::Friendly),
     ];
 
-    /// A filter's relation by its name.
-    pub fn named(name: &str) -> Option<Relation> {
-        Relation::ALL
-            .into_iter()
-            .find(|relation| relation.name() == name)
-    }
-
-    /// The relation as filters write it.
-    pub const fn name(self) -> &'static str {
+    fn data_name(self) -> &'static str {
         match self {
-            Relation::Enemies => "enemies",
-            Relation::Hostiles => "hostiles",
-            Relation::Neutrals => "neutrals",
-            Relation::Allies => "allies",
-            Relation::All => "all",
+            Relation::Hostile => "hostile",
+            Relation::Neutral => "neutral",
+            Relation::Friendly => "friendly",
         }
     }
+}
 
-    /// Whether it selects a unit of a team regarded with `attitude`.
-    pub const fn selects(self, attitude: Attitude) -> bool {
-        match self {
-            Relation::Enemies => attitude.may_attack(),
-            Relation::Hostiles => matches!(attitude, Attitude::Hostile),
-            Relation::Neutrals => matches!(attitude, Attitude::Neutral),
-            Relation::Allies => matches!(attitude, Attitude::Friendly),
-            Relation::All => true,
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::values::script_enum::internals::named_as_data;
+
+    #[test]
+    fn each_relation_is_named_in_scripts_as_data_names_it() {
+        named_as_data::<Relation>();
     }
 }

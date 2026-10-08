@@ -78,8 +78,8 @@ impl OrdersApi {
         let view = ctx.view();
         unit.read(|ordered| {
             target.read(|aimed| {
-                let attitude = view.attitude(ordered.team, aimed.team);
-                if !aimed.alive || !attitude.may_attack() {
+                let relation = view.relation(ordered.team, aimed.team);
+                if !aimed.alive || !relation.may_attack() {
                     return Err(ApiError::NotAnEnemy.fail());
                 }
                 if !ActionsColumn::armed_against(view, unit.row_index(), ordered, aimed) {

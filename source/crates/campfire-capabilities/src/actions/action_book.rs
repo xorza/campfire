@@ -23,8 +23,8 @@ use crate::units::action_id::ActionId;
 use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
-use crate::values::attitude::Attitude;
 use crate::values::rank::Rank;
+use crate::values::relation::Relation;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the actions, as the
@@ -114,7 +114,7 @@ impl ActionBook {
     /// The action `aim` names of a unit with `slots`, when it may go on: its slot holds a learned
     /// action that is ready and, with charges, holds one, `purse` affords its cost in each pool
     /// and player resource, and its target is a living unit the action's filter selects, or the
-    /// action takes none, which drops any target the order named. `attitude` tells how the unit
+    /// action takes none, which drops any target the order named. `relation` tells how the unit
     /// regards a team, and `living` finds a living unit.
     pub(crate) fn check(
         &self,
@@ -122,7 +122,7 @@ impl ActionBook {
         slots: &ActionSlots,
         purse: Purse<'_>,
         aim: SlotAim,
-        attitude: impl Fn(Team) -> Attitude,
+        relation: impl Fn(Team) -> Relation,
         living: impl Fn(StableId) -> Option<LivingUnit>,
     ) -> Option<Checked<'_>> {
         let slot = slots.slot(aim.slot)?;
@@ -142,7 +142,7 @@ impl ActionBook {
             }
             (Aim::Unit(filter), ActionTarget::Unit(target))
                 if living(target)
-                    .is_some_and(|unit| filter.selects(attitude(unit.team), unit.tags)) =>
+                    .is_some_and(|unit| filter.selects(relation(unit.team), unit.tags)) =>
             {
                 ActionTarget::Unit(target)
             }
@@ -158,11 +158,11 @@ impl ActionBook {
     }
 
     /// The slot of the first learned weapon of `slots` whose filter selects a unit of `tags` its
-    /// unit regards with `attitude`, ready or not; or with `None`, the first learned weapon at all.
+    /// unit regards with `relation`, ready or not; or with `None`, the first learned weapon at all.
     pub(crate) fn weapon_for(
         &self,
         slots: &ActionSlots,
-        target: Option<(Attitude, TagSet)>,
+        target: Option<(Relation, TagSet)>,
     ) -> Option<u8> {
         let at = slots.iter().position(|slot| {
             slot.action.is_some_and(|action| {

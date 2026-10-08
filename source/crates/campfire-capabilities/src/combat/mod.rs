@@ -296,7 +296,7 @@ fn start_attacks(
                 if blocked {
                     continue;
                 }
-                let selects = (targets.attitude(team, unit.team), unit.tags);
+                let selects = (targets.relation(team, unit.team), unit.tags);
                 let Some(slot) = book.weapon_for(&slots, Some(selects)) else {
                     continue;
                 };
@@ -305,10 +305,10 @@ fn start_attacks(
                     target: ActionTarget::Unit(target),
                 };
                 let purse = Purse::of(pools, resources.as_deref(), owner);
-                let attitude = |other| targets.attitude(team, other);
+                let relation = |other| targets.relation(team, other);
                 let shape = Body::shape_of(body);
                 let started = book
-                    .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
+                    .check(now, &slots, purse, aim, relation, |id| targets.living(id))
                     .filter(|checked| checked.in_range(position, shape, &targets))
                     .map(|checked| now.after(checked.values.windup));
                 if let Some(resolves_at) = started {
@@ -717,7 +717,7 @@ pub(crate) mod internals {
     use crate::stats::unit_stats::UnitStats;
     use crate::units::filter::Filter;
     use crate::units::unit_type::UnitType;
-    use crate::values::relation::Relation;
+    use crate::values::relation_set::RelationSet;
 
     /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
     /// pass, as an effect of no action deals it: for a test that deals what no input can.
@@ -802,7 +802,7 @@ pub(crate) mod internals {
             let weapon = TestWeapon {
                 projectile: self.projectile,
                 ..TestWeapon::new(
-                    Filter::of_relation(Relation::Enemies),
+                    Filter::of_relations(RelationSet::Enemies),
                     Range::Meters(self.range),
                     self.windup,
                 )

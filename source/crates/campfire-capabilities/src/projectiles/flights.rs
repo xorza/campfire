@@ -177,7 +177,7 @@ impl Flights<'_> {
                     return;
                 }
                 let unit = Targets::unit_of(body);
-                let selects = hits.selects(targets.attitude(team, unit.team), unit.tags);
+                let selects = hits.selects(targets.relation(team, unit.team), unit.tags);
                 if !selects || struck.contains(Struck { by, unit: unit.id }) {
                     return;
                 }

@@ -37,10 +37,10 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::units::view_column::{ViewColumn, ViewColumns};
 use crate::units::view_names::ViewNames;
-use crate::values::attitude::Attitude;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::name_list::NameList;
+use crate::values::relation::Relation;
 
 /// What scripts see, as the host and every handle share it: the match's names, its units, those
 /// with a team, as the running phase of the tick began, and the targets' bodies the queries that
@@ -179,7 +179,7 @@ impl View {
     }
 
     /// How `of` regards `other`, as the units were read.
-    pub(crate) fn attitude(&self, of: Team, other: Team) -> Attitude {
+    pub(crate) fn relation(&self, of: Team, other: Team) -> Relation {
         self.rows().relations().between(of, other)
     }
 

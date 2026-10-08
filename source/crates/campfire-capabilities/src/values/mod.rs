@@ -2,7 +2,6 @@
 //! files write, the names and ids they resolve to, and the small records a call carries.
 
 pub(crate) mod action_start;
-pub(crate) mod attitude;
 pub(crate) mod damage_kind;
 pub(crate) mod declared_name;
 pub(crate) mod engine_enum;
@@ -17,6 +16,7 @@ pub(crate) mod param;
 pub(crate) mod rank;
 pub(crate) mod ranked;
 pub(crate) mod relation;
+pub(crate) mod relation_set;
 pub(crate) mod row_directory;
 pub(crate) mod scalar;
 pub(crate) mod script_enum;

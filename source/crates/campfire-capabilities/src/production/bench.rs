@@ -31,7 +31,7 @@ use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;
-use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 
 /// Workers in each of the two fields.
 const WORKERS: i64 = 100;
@@ -69,7 +69,7 @@ pub(crate) fn gather(c: &mut Criterion) {
         take: NonZeroU32::new(5).unwrap(),
         bounce: Num::int(4),
     };
-    let all = Filter::of_relation(Relation::All);
+    let all = Filter::of_relations(RelationSet::All);
     let action = internals::gather(&mut world, spec, all, Num::int(16), Ticks::new(3));
 
     let player = Owner::new(PlayerSlot::new(0));

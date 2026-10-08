@@ -51,7 +51,7 @@ use crate::units::script_view::View;
 use crate::units::spawner::{SpawnAt, Spawner};
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
-use crate::values::attitude::Attitude;
+use crate::values::relation::Relation;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -416,7 +416,7 @@ fn start_trains(
         slots.stop();
         let purse = Purse::of(pools.as_deref(), resources.as_deref(), held_by);
         let owner = held_by.map(|owner| owner.slot());
-        let no_target = |_| Attitude::Friendly;
+        let no_target = |_| Relation::Friendly;
         let Some(checked) = book.check(now, &slots, purse, ordered, no_target, |_| None) else {
             continue;
         };

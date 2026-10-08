@@ -21,8 +21,8 @@ use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
 use crate::units::spawner::SpawnAt;
 use crate::units::team::Team;
-use crate::values::attitude::Attitude;
 use crate::values::rank::Rank;
+use crate::values::relation::Relation;
 use campfire_sim::{EntityIndex, SimTick};
 
 /// A change to the match that a mode call queued.
@@ -64,7 +64,7 @@ pub(crate) enum ModeEffect {
     SetRelation {
         a: Team,
         b: Team,
-        attitude: Attitude,
+        relation: Relation,
     },
     /// A save, at the end of the tick.
     Save,
@@ -128,10 +128,10 @@ impl Effect for ModeEffect {
                 let slots = world.get_mut::<ActionSlots>(entity);
                 slots.expect("a unit with ability slots").learn(slot);
             }
-            ModeEffect::SetRelation { a, b, attitude } => {
+            ModeEffect::SetRelation { a, b, relation } => {
                 world
                     .resource_mut::<Relations>()
-                    .set_attitude(a, b, attitude);
+                    .set_keeping_vision(a, b, relation);
             }
             // A call's `now` is the end of its tick.
             ModeEffect::Save => world.insert_resource(SaveAsked::new(now)),

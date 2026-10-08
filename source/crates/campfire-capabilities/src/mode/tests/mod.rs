@@ -105,7 +105,6 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::values::attitude::Attitude;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::engine_enum::EngineEnum;
@@ -114,6 +113,7 @@ use crate::values::number::{Number, ParamRef};
 use crate::values::package_path::PackagePath;
 use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
+use crate::values::relation::Relation;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 use crate::vision::vision_grid::VisionGrid;
@@ -582,7 +582,7 @@ fn mode_files() -> ModeFiles {
                 .into(),
             relations: vec![RelationData {
                 teams: ["a", "neutral"].map(|name| DeclaredName::new(name).unwrap()),
-                relation: Attitude::Neutral,
+                relation: Relation::Neutral,
                 vision: true,
             }],
             tags: BTreeMap::new(),

@@ -17,7 +17,7 @@ use crate::units::relations::Relations;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
-use crate::values::attitude::Attitude;
+use crate::values::relation::Relation;
 
 /// The units an attack may target: living units with the life pool whose tags let them be
 /// targets, those a client holds and does not predict among them, where the server last had
@@ -67,7 +67,7 @@ impl Targets<'_, '_> {
     /// `target`, when it is a living unit `team` may attack.
     pub(crate) fn enemy(&self, team: Team, target: StableId) -> Option<LivingUnit> {
         self.living(target)
-            .filter(|unit| self.attitude(team, unit.team).may_attack())
+            .filter(|unit| self.relation(team, unit.team).may_attack())
     }
 
     pub(crate) fn metric(&self) -> Metric {
@@ -75,7 +75,7 @@ impl Targets<'_, '_> {
     }
 
     /// How `of` regards `other`.
-    pub(crate) fn attitude(&self, of: Team, other: Team) -> Attitude {
+    pub(crate) fn relation(&self, of: Team, other: Team) -> Relation {
         self.relations.between(of, other)
     }
 

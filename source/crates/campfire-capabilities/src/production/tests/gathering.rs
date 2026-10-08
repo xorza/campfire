@@ -21,7 +21,7 @@ use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::move_step::MoveStep;
 use crate::units::unit_tags::UnitTags;
-use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 
 /// The point at `x` and `z` half meters.
 fn half(x: i64, z: i64) -> Position {
@@ -64,7 +64,7 @@ impl Mine {
             take: NonZeroU32::new(5).unwrap(),
             bounce: Num::int(4),
         };
-        let all = Filter::of_relation(Relation::All);
+        let all = Filter::of_relations(RelationSet::All);
         let gather = internals::gather(world, spec, all, Num::ONE, Ticks::new(3));
         Mine {
             shop,

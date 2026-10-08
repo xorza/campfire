@@ -27,7 +27,7 @@ use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
-use crate::values::attitude::Attitude;
+use crate::values::relation::Relation;
 
 use crate::actions::delivery::Delivery;
 use crate::deliveries::deliverers::Deliverers;
@@ -158,8 +158,8 @@ fn trigger(
             reached.clear();
             grid.visit_near(pos, spec.radius, |body| {
                 let unit = Targets::unit_of(body);
-                let attitude = targets.attitude(team, unit.team);
-                if spec.affects.selects(attitude, unit.tags)
+                let relation = targets.relation(team, unit.team);
+                if spec.affects.selects(relation, unit.tags)
                     && targets.reaches(pos, Shape::POINT, spec.radius, &unit)
                 {
                     reached.push(unit.id);
@@ -240,10 +240,10 @@ fn hold_inside(
                 return;
             }
             let by = area.by();
-            let modifier = match targets.attitude(team, unit.team) {
+            let modifier = match targets.relation(team, unit.team) {
                 _ if unit.id == by.source => spec.inside.caster,
-                Attitude::Friendly => spec.inside.allies,
-                Attitude::Hostile | Attitude::Neutral => spec.inside.enemies,
+                Relation::Friendly => spec.inside.allies,
+                Relation::Hostile | Relation::Neutral => spec.inside.enemies,
             };
             if let Some(modifier) = modifier {
                 held.0.push(Held {

@@ -100,9 +100,9 @@ impl TargetIndex {
         let metric = rows.metric();
         bodies.visit_near(from, reach, |body| {
             let row = &rows.units()[body.key];
-            let attitude = rows.relations().between(team, row.team);
+            let relation = rows.relations().between(team, row.team);
             if metric.reaches(from, shape, radius, body.at, body.shape)
-                && filter.selects(attitude, row.tags.tags)
+                && filter.selects(relation, row.tags.tags)
                 && seen(rows.columns(), body.key)
             {
                 visit(body);

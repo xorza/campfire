@@ -22,7 +22,7 @@ use crate::units::layer::Layer;
 use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::team_set::TeamSet;
-use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 use crate::values::share::Share;
 use crate::vision::seen_by::SeenBy;
 
@@ -436,7 +436,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         .unwrap(),
     };
     let rule = |relation| PlacementCheck {
-        filter: Filter::of_relation(relation),
+        filter: Filter::of_relations(relation),
         distance: Num::int(2),
     };
     let cases: [(&str, Rules<'_>, Option<fn(&mut Yard)>, i64); 6] = [
@@ -470,7 +470,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         (
             "near no enemy",
             Rules {
-                near: vec![rule(Relation::Enemies)],
+                near: vec![rule(RelationSet::Enemies)],
                 ..Rules::of(Style::Alone)
             },
             None,
@@ -479,7 +479,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         (
             "away from no ally",
             Rules {
-                away: vec![rule(Relation::Allies)],
+                away: vec![rule(RelationSet::Allies)],
                 ..Rules::of(Style::Alone)
             },
             None,
@@ -506,7 +506,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
     yard.build_at(builder, 0, 0);
     assert_eq!((yard.depots().len(), yard.gold()), (1, 85));
     let mut yard = Yard::new(Rules {
-        near: vec![rule(Relation::Enemies)],
+        near: vec![rule(RelationSet::Enemies)],
         ..Rules::of(Style::Alone)
     });
     yard.shop

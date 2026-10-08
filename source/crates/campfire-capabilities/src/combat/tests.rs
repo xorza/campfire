@@ -36,11 +36,11 @@ use crate::units::filter::Filter;
 use crate::units::relations::Relations;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::values::attitude::Attitude;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::relation::Relation;
+use crate::values::relation_set::RelationSet;
 use crate::values::stat::Stat;
 fn at(x: i64, y: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
@@ -385,7 +385,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             amount: 2,
         }),
         ..TestWeapon::new(
-            Filter::of_relation(Relation::Enemies),
+            Filter::of_relations(RelationSet::Enemies),
             Range::Meters(Num::int(2)),
             Ticks::new(2),
         )
@@ -538,8 +538,8 @@ fn targets_are_living_enemies() {
     // By the relations: team 2, friendly to team 0, may not attack its units; team 3, neutral,
     // may; team 200, past the 64 teams of before and hostile as every pair not set is, may.
     let mut relations = fight.sim.world.resource_mut::<Relations>();
-    relations.set(Team::new(2), Team::new(0), Attitude::Friendly, true);
-    relations.set(Team::new(3), Team::new(0), Attitude::Neutral, true);
+    relations.set(Team::new(2), Team::new(0), Relation::Friendly, true);
+    relations.set(Team::new(3), Team::new(0), Relation::Neutral, true);
     let related = [2, 3, 200].map(|team| enemy_at(&mut fight, Team::new(team), far));
     assert_eq!(related, [None, Some(at(6, 0, 0)), Some(at(6, 0, 0))]);
     let entity = fight.sim.entity(high);

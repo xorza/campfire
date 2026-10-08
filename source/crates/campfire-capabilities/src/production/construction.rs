@@ -39,8 +39,8 @@ use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
-use crate::values::attitude::Attitude;
 use crate::values::rank::Rank;
+use crate::values::relation::Relation;
 
 /// The systems of construction: a build order checked as it applies, builds that start in order
 /// of their builders' stable ids, and sites that grow and complete.
@@ -215,7 +215,7 @@ impl BuildView<'_, '_> {
             slot: order.slot,
             target: ActionTarget::Point(placed.at),
         };
-        let no_target = |_| Attitude::Friendly;
+        let no_target = |_| Relation::Friendly;
         let checked = self
             .book
             .check(self.tick.start(), slots, purse, aim, no_target, |_| None)?;

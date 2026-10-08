@@ -34,9 +34,9 @@ use crate::units::spawner::SpawnAt;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
-use crate::values::attitude::Attitude;
 use crate::values::engine_enum::EngineEnum;
 use crate::values::rank::Rank;
+use crate::values::relation::Relation;
 
 /// The script API of the mode, which every match has: the teams, the map, the avatars and the
 /// mode's state, which every role reads, and what only the mode's calls do: the players'
@@ -50,7 +50,7 @@ pub(crate) struct StateAccess(Ctx);
 
 impl ModeApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.engine_enum::<Attitude>().engine_enum::<PathEnd>();
+        api.engine_enum::<Relation>().engine_enum::<PathEnd>();
         ModeApi::register_map(api);
         ModeApi::register_reads(api);
         ModeApi::register_choices(api);
@@ -397,7 +397,7 @@ impl ModeApi {
             .name(0, NameKind::Team)
             .name(1, NameKind::Team)
             .takes(2, EngineEnum::Relation),
-            |ctx: &mut Ctx, a: &str, b: &str, relation: Attitude| {
+            |ctx: &mut Ctx, a: &str, b: &str, relation: Relation| {
                 ModeApi::set_relation(ctx, a, b, relation)
             },
         )
@@ -763,13 +763,13 @@ impl ModeApi {
     }
 
     /// Queues a change of how teams `a` and `b`, two of the mode's, regard each other.
-    fn set_relation(ctx: &Ctx, a: &str, b: &str, attitude: Attitude) -> Checked<()> {
+    fn set_relation(ctx: &Ctx, a: &str, b: &str, relation: Relation) -> Checked<()> {
         let book = ModeBook::of_or_fail(ctx)?;
         let (a, b) = (ModeApi::team(book, a)?, ModeApi::team(book, b)?);
         if a == b {
             return Err(ApiError::SelfRelation.fail().into());
         }
-        ctx.queue(ModeEffect::SetRelation { a, b, attitude })
+        ctx.queue(ModeEffect::SetRelation { a, b, relation })
     }
 
     fn add_resource(ctx: &Ctx, player: INT, name: &str, amount: INT) -> Checked<()> {

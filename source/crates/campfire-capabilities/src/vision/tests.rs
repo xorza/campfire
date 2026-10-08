@@ -14,7 +14,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pools::Pools;
 use crate::units::tag_properties::TagProperties;
 use crate::units::unit::Unit;
-use crate::values::attitude::Attitude;
+use crate::values::relation::Relation;
 
 fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
@@ -181,7 +181,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // A new unit is seen by its whole group before its first Vision stage, as that stage gives
     // it: teams 1 and 2 become friends that share vision.
     let relations = &mut scene.sim.world.resource_mut::<Relations>();
-    relations.set(Team::new(1), Team::new(2), Attitude::Friendly, true);
+    relations.set(Team::new(1), Team::new(2), Relation::Friendly, true);
     let new = scene.spawn(2, 9, 9, None);
     assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
     scene.sim.step();
@@ -209,8 +209,8 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
     let [zero, forty, sixty_three, one] = units;
     // 0 and 40 friends that share vision, 0 and 63 friends with vision off.
     let mut relations = scene.sim.world.resource_mut::<Relations>();
-    relations.set(Team::new(0), Team::new(40), Attitude::Friendly, true);
-    relations.set(Team::new(63), Team::new(0), Attitude::Friendly, false);
+    relations.set(Team::new(0), Team::new(40), Relation::Friendly, true);
+    relations.set(Team::new(63), Team::new(0), Relation::Friendly, false);
     let teams = |list: &[u8]| {
         list.iter()
             .fold(TeamSet::NONE, |set, &team| set.with(Team::new(team)))
@@ -224,7 +224,7 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
 
     // With vision off between 0 and 40, as between 0 and 63, each team sees alone.
     let mut relations = scene.sim.world.resource_mut::<Relations>();
-    relations.set(Team::new(0), Team::new(40), Attitude::Friendly, false);
+    relations.set(Team::new(0), Team::new(40), Relation::Friendly, false);
     scene.sim.step();
     assert_eq!(scene.seen_by(zero), teams(&[0]));
     assert_eq!(scene.seen_by(forty), teams(&[40]));

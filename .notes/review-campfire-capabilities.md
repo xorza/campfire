@@ -14,7 +14,6 @@ The same steps to begin a frame, call a hook within the budget, apply on success
 
 ## 12. One concept has several types or names
 
-- [ ] `values/relation.rs:5-12`, `values/attitude.rs:5-15`, `values/engine_enum.rs:5-10`, `values/stat.rs:11-16,42-47`: the script enum `Relation` (`EngineEnum::Relation`, doc `Relation::Hostile`) is the Rust type `Attitude`, and the Rust type `Relation` is the filter selector (enemies, hostiles, neutrals, allies, all). Target: one name per concept in Rust and in scripts.
 - [ ] `actions/action_book.rs` (`Checked<'a>`, the action-check result), `scripts/error.rs` (`Checked<T>`, the script result) and `production/gather_loop.rs` (`Checked`): three types with the same name. `actions_column.rs`, `abilities_api.rs` and `areas_api.rs` import the script one beside the action one. Target: rename the two that are not the script result (for example `CheckedAction`).
 - [ ] `actions/range.rs` (`Range`) against `std::ops::Range`: `actions_column.rs` imports both and writes `range::Range`. Target: rename (for example `Reach`).
 - [ ] `actions/actions_effect.rs` (`ActionsEffect`): only a listed `spawn`. Its siblings are named for what they do. Target: `SpawnEffect`.

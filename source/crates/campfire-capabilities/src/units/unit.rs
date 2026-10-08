@@ -154,8 +154,8 @@ impl Unit {
             ),
             |unit: Unit, other: Unit| {
                 let teams = [&unit, &other].map(|unit| unit.read(|row| row.team));
-                let attitude = unit.view.attitude(teams[0], teams[1]);
-                attitude.may_attack()
+                let relation = unit.view.relation(teams[0], teams[1]);
+                relation.may_attack()
             },
         )
         .bind(

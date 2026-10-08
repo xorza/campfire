@@ -21,9 +21,9 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let own_type = *world.get::<UnitType>(grunt).unwrap();
     assert!(own_type.check(world, grunt) && !UnitType::new(u16::MAX).check(world, grunt));
     let mut relations = Relations::default();
-    relations.set(Team::new(0), Team::new(2), Attitude::Friendly, true);
+    relations.set(Team::new(0), Team::new(2), Relation::Friendly, true);
     assert!(relations.check(world));
-    relations.set(Team::new(0), Team::new(3), Attitude::Friendly, true);
+    relations.set(Team::new(0), Team::new(3), Relation::Friendly, true);
     assert!(!relations.check(world));
     let ended = |team| MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(team)));
     assert!(ended(1).check(world) && !ended(3).check(world));
