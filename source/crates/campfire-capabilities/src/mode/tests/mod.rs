@@ -132,7 +132,7 @@ use crate::vision::vision_grid::VisionGrid;
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
 
 /// A mode that records what its hooks see in its state, and acts on its players' inputs.
-/// The reference MOBA's damage kinds, and the stats its `calc_damage` reads.
+/// The MOBA test content's damage kinds, and the stats its `calc_damage` reads.
 const DAMAGE_KINDS: [&str; 3] = ["physical", "magic", "true"];
 /// The pools the scripts name, the life pool first, as it is until a mode binds one. The mode's
 /// data declares none, so no stat sets their maxima.
@@ -233,7 +233,7 @@ fn on_mode_input(ctx, player, name, value) {
 }
 "#;
 
-/// The reference 3v3's `on_unit_died`, `hero_died` and `share_xp` as they were when these tests
+/// The MOBA 3v3's `on_unit_died`, `hero_died` and `share_xp` as they were when these tests
 /// were written.
 const DEATHS_3V3: &str = r#"
 fn on_unit_died(ctx, unit, killer, assisters) {
@@ -911,7 +911,7 @@ fn state(phase: &str, seen: i64, count: i64, inputs: i64) -> [StateValue; 4] {
     [StateValue::Text(phase.to_owned()), seen, count, inputs]
 }
 
-/// The reference 3v3's `source_stat` and `calc_damage` as they were when these tests were written:
+/// The MOBA 3v3's `source_stat` and `calc_damage` as they were when these tests were written:
 /// the engine's tests keep their own copy, so a balance change to the 3v3 changes none of them.
 const CALC_DAMAGE_3V3: &str = r#"
 // A source that is gone, as from a projectile that outlived it, has no bonus and no penetration.

@@ -1,6 +1,6 @@
 # Campfire — Script API
 
-Derived from the packages the engine plays: the MOBA test content in `source/packages/moba/`, six heroes, the player spells and the 3v3 mode; the test packages; and the rules packages of the imported games ([Games](04-capabilities/games.md)). Every name is used there; a name none of them needs is not here. The [reference](08-script-api-reference.md), which the registry writes, lists every name with its roles, capability and whether the release runs it.
+Derived from the packages the engine plays: the MOBA test content in `source/packages/test/moba/`, six heroes, the player spells and the 3v3 mode; the test packages; and the rules packages of the imported games ([Games](04-capabilities/games.md)). Every name is used there; a name none of them needs is not here. The [reference](08-script-api-reference.md), which the registry writes, lists every name with its roles, capability and whether the release runs it.
 
 Each call, handle field and hook belongs to the core or to one capability ([Capabilities](04-capabilities/00-overview.md)); a package gets those of the capabilities it declares, and the load checks refuse the rest. The reference names each one's capability.
 

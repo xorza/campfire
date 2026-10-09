@@ -1,7 +1,7 @@
 //! The first half of the Stage 2 gate, without the network: a match of the test lane mode run from
 //! its session log and the replay of that log in a bare `World` agree on the state hash after
 //! every tick, and so does the replay of the log's file with the packages a verifier holds. So
-//! does the reference 3v3's, whose players learn ranks.
+//! does the MOBA 3v3's, whose players learn ranks.
 
 use std::num::NonZeroU32;
 use std::ops::Range;
@@ -22,7 +22,7 @@ use campfire_protocol::{
     ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
     SlotPlan, SnapshotFingerprint, Taken,
 };
-use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, MatchUnits, Reference3v3};
+use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_runner::{
     InputRules, ResultMismatch, Runner, ServerInputRefused, SlotRuleError, StartError, TermsError,
 };
@@ -464,16 +464,16 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
 fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
     // The scripted 3v3 to tick 1900, Rime's learn, the last of its learn orders, checkpointed
     // before tick 40, and again without the checkpoint.
-    let reference = Reference3v3::load();
+    let moba = Moba3v3::load();
     let mut snapshot = Vec::new();
     let play = |checkpoint: bool, snapshot: &mut Vec<u8>| {
-        let mut fixed = reference.start();
+        let mut fixed = moba.start();
         let mut trail = HashTrail::default();
         for tick in 0..=1900 {
             if checkpoint && tick == 40 {
                 fixed.checkpoint(snapshot);
             }
-            reference.play_tick(&mut fixed, tick);
+            moba.play_tick(&mut fixed, tick);
             trail.record(fixed.runner().world());
         }
         fixed.end();
@@ -637,7 +637,7 @@ fn the_binary_logs_the_last_state_hash() {
             .output()
             .unwrap()
     };
-    // Every package, the reference ones and the test ones: what the verifier holds.
+    // Every package of the workspace: what the verifier holds.
     let packages = PackageDir::workspace("");
     let packages = packages.to_str().unwrap();
     let hash = trail.totals().last().unwrap();

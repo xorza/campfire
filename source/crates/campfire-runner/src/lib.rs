@@ -28,14 +28,14 @@ pub use crate::slot_rules::error::SlotRuleError;
 pub mod bench {
     use criterion::Criterion;
 
-    use crate::harness::reference_3v3;
+    use crate::harness::moba_3v3;
     use crate::{match_build, runner};
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         runner::bench::server(c);
         match_build::bench::build(c);
-        reference_3v3::bench::script_view(c);
+        moba_3v3::bench::script_view(c);
     }
 }
 
@@ -48,7 +48,7 @@ pub mod internals {
     pub use crate::harness::golden::Golden;
     pub use crate::harness::hash_trail::{Difference, HashTrail};
     pub use crate::harness::match_units::MatchUnits;
+    pub use crate::harness::moba_3v3::Moba3v3;
     pub use crate::harness::proving_match::ProvingMatch;
-    pub use crate::harness::reference_3v3::Reference3v3;
     pub use crate::harness::restore_target::RestoreTarget;
 }

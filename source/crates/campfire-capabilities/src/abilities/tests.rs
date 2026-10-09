@@ -116,8 +116,8 @@ use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 use crate::{combat, stats};
 
-/// Lash Out as the reference Husk had it when these tests were written: the engine's tests keep
-/// their own copy, so a balance change to the reference hero changes none of them.
+/// Lash Out as the MOBA's Husk had it when these tests were written: the engine's tests keep
+/// their own copy, so a balance change to the MOBA's hero changes none of them.
 const LASH_OUT: &str = r#"
 fn on_resolve(ctx, caster, target) {
     for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {
@@ -332,7 +332,7 @@ impl Match {
     /// gold, as a mode would keep it.
     fn with(limits: ScriptLimits, declared: &[Capability]) -> Match {
         let mut sim = TestMatch::server(declared, ScriptBudgets::new(limits, 2));
-        // The damage kinds a mode would declare: the reference MOBA's.
+        // The damage kinds a mode would declare: the MOBA test content's.
         Units::name_kinds(
             &sim.world,
             &["physical", "magic", "true"],

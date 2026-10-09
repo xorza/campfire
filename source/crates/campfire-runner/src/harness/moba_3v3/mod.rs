@@ -17,10 +17,10 @@ use crate::input_rules::InputRules;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 
-/// The reference 3v3 as its packages hold it, at its slowest rate, which plays a match in the
+/// The MOBA 3v3 as its packages hold it, at its slowest rate, which plays a match in the
 /// fewest ticks, with six players of fixed keys.
 #[derive(Debug)]
-pub struct Reference3v3 {
+pub struct Moba3v3 {
     session: FixedSession,
     script: Vec<Scripted<ReferencePlan>>,
 }
@@ -94,7 +94,7 @@ const FARM: u64 = 3200;
 const FARM_EVERY: usize = 40;
 const LEARN: u64 = 3220;
 const LEARN_EVERY: usize = 200;
-/// The tick the heroes walk home in, to shop in `Reference3v3::SHOP`.
+/// The tick the heroes walk home in, to shop in `Moba3v3::SHOP`.
 const RECALL: u64 = 13_400;
 
 /// The orders of the 3v3's scripted players after the pick, to the farm. Players 0 to 2 hold
@@ -171,7 +171,7 @@ const fn cast(slot: u8, aim: Aim) -> ReferencePlan {
     ReferencePlan::Cast { slot, aim }
 }
 
-impl Reference3v3 {
+impl Moba3v3 {
     pub const PLAYERS: u32 = 6;
     /// The tick the heroes shop in; the tick the showcase's first cast is sent in, each later
     /// one `CAST_EVERY` ticks after the one before; and how many casts it sends.
@@ -193,14 +193,14 @@ impl Reference3v3 {
                     .map(|(slot, post)| Scripted::new(stamp, slot, farm_at(post))),
             );
         }
-        for stamp in (LEARN..Reference3v3::SHOWCASE).step_by(LEARN_EVERY) {
-            for slot in 0..Reference3v3::PLAYERS {
+        for stamp in (LEARN..Moba3v3::SHOWCASE).step_by(LEARN_EVERY) {
+            for slot in 0..Moba3v3::PLAYERS {
                 let ultimate = ReferencePlan::Learn { slot: ULTIMATE };
                 script.push(Scripted::new(stamp, slot, ultimate));
                 script.push(Scripted::new(stamp, slot, ReferencePlan::LearnBasic));
             }
         }
-        for slot in 0..Reference3v3::PLAYERS {
+        for slot in 0..Moba3v3::PLAYERS {
             let z = if slot < 3 { -60 } else { 60 };
             script.push(Scripted::new(RECALL, slot, ReferencePlan::Move { x: 0, z }));
         }
@@ -221,29 +221,29 @@ impl Reference3v3 {
         for (slot, name) in buys {
             let item = item(name);
             script.push(Scripted::new(
-                Reference3v3::SHOP,
+                Moba3v3::SHOP,
                 slot,
                 ReferencePlan::Buy { item },
             ));
         }
         script.push(Scripted::new(
-            Reference3v3::SHOP,
+            Moba3v3::SHOP,
             5,
             ReferencePlan::Swap { from: 0, to: 1 },
         ));
         script.push(Scripted::new(
-            Reference3v3::SHOP + 1,
+            Moba3v3::SHOP + 1,
             5,
             ReferencePlan::Sell { slot: 1 },
         ));
         for (slot, post) in (0..).zip(ARENA) {
-            script.push(Scripted::new(Reference3v3::SHOP + 2, slot, walk_to(post)));
+            script.push(Scripted::new(Moba3v3::SHOP + 2, slot, walk_to(post)));
         }
-        let showcase = Reference3v3::showcase(item);
-        assert_eq!(showcase.len() as u64, Reference3v3::CASTS);
+        let showcase = Moba3v3::showcase(item);
+        assert_eq!(showcase.len() as u64, Moba3v3::CASTS);
         for (at, (slot, plan)) in (0..).zip(showcase) {
             script.push(Scripted::new(
-                Reference3v3::SHOWCASE + Reference3v3::CAST_EVERY * at,
+                Moba3v3::SHOWCASE + Moba3v3::CAST_EVERY * at,
                 slot,
                 plan,
             ));
@@ -304,18 +304,19 @@ impl Reference3v3 {
         ]
     }
 
-    pub fn load() -> Reference3v3 {
-        let players = usize::try_from(Reference3v3::PLAYERS).expect("6 fits usize");
-        Reference3v3::planned(vec![SlotPlan::Player; players])
+    pub fn load() -> Moba3v3 {
+        let players = usize::try_from(Moba3v3::PLAYERS).expect("6 fits usize");
+        Moba3v3::planned(vec![SlotPlan::Player; players])
     }
 
-    /// The reference 3v3 with its slots opened as `plan` says.
-    pub fn planned(plan: Vec<SlotPlan>) -> Reference3v3 {
-        let packages = ModePackages::from_dir(&PackageDir::workspace("moba/modes/3v3")).unwrap();
+    /// The MOBA 3v3 with its slots opened as `plan` says.
+    pub fn planned(plan: Vec<SlotPlan>) -> Moba3v3 {
+        let packages =
+            ModePackages::from_dir(&PackageDir::workspace("test/moba/modes/3v3")).unwrap();
         let items = &packages.packages().next().expect("a mode").content.items;
         let item = |name: &str| ItemId::named(items, name).expect("an item of the 3v3");
-        let script = Reference3v3::script(&item);
-        Reference3v3 {
+        let script = Moba3v3::script(&item);
+        Moba3v3 {
             session: FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan),
             script,
         }

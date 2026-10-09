@@ -9,22 +9,22 @@ use campfire_capabilities::internals::{Density, KernelScene, read_view, spawn_ty
 use campfire_sim::Position;
 use criterion::{Criterion, Throughput};
 
-use crate::harness::reference_3v3::Reference3v3;
+use crate::harness::moba_3v3::Moba3v3;
 
 /// The creep types of the 3v3's waves, which the scene's units take in turn.
 const CREEPS: [&str; 2] = ["melee_creep", "caster_creep"];
 /// A later read of a tick finds one unit in this many changed.
 const REREAD_CHANGED: usize = 100;
 
-/// The script view's read, as each batch of script calls reads it: the reference 3v3 at its
+/// The script view's read, as each batch of script calls reads it: the MOBA 3v3 at its
 /// start with `KernelScene::UNITS` of its creeps more, on both teams at the crowded scene's
 /// points, which lie within its map, each read giving every unit a row with the column of each
 /// capability the 3v3 declares, filled again where the unit's parts changed. `read` follows a
 /// move of every unit, as a tick's first batch finds them; `reread` a move of one in
 /// `REREAD_CHANGED`, as a later batch of the same tick does.
 pub(crate) fn script_view(c: &mut Criterion) {
-    let reference = Reference3v3::load();
-    let mut fixed = reference.start();
+    let moba = Moba3v3::load();
+    let mut fixed = moba.start();
     let world = fixed.runner_mut().world_mut();
     let mut scene = KernelScene::new(13);
     for unit in 0..KernelScene::UNITS {

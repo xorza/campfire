@@ -143,7 +143,7 @@ struct Taken<'a, T> {
 
 impl StateRegistry {
     /// The most bytes a snapshot's file may hold to be read whole: a match's whole state, a few
-    /// mebibytes for the reference modes' units, so a gibibyte is far past one and refuses a file
+    /// mebibytes for the test modes' units, so a gibibyte is far past one and refuses a file
     /// of another kind before a restore or a verifier holds it in memory.
     pub const MAX_SNAPSHOT_LEN: usize = 1 << 30;
 

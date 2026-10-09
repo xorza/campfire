@@ -64,7 +64,7 @@ const STREAM_CHUNK: usize = 64 * 1024;
 
 impl FileLimits {
     /// A package's: 16 384 files, a file a load reads up to 4 MiB, and 16 MiB of them in all.
-    /// The reference packages hold about 100 files, the largest under 10 KiB.
+    /// The MOBA packages hold about 100 files, the largest under 10 KiB.
     pub(crate) const PACKAGE: FileLimits = FileLimits {
         files: 16_384,
         file_bytes: 4 << 20,

@@ -1,4 +1,4 @@
-//! Each flaw a package can have fails the load of the reference packages with its own problem.
+//! Each flaw a package can have fails the load of the MOBA packages with its own problem.
 
 use std::fmt::Write;
 use std::num::NonZeroU32;

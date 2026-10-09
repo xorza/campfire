@@ -10,7 +10,7 @@ use crate::harness::in_process_match::{InProcessMatch, StepCost};
 /// avatar walks, rolling back only on a misprediction (none happen), `walk`, and on every
 /// confirmed update, `walk_rollback`, whose difference is the cost of the rollbacks, each 4
 /// ticks deep, as far as the client runs ahead; either client's worst frame in the lane 1v1,
-/// `worst_1v1`; and in the reference 3v3 from its first wave, its hero walking at its base,
+/// `worst_1v1`; and in the MOBA 3v3 from its first wave, its hero walking at its base,
 /// rolling back as a client does, only on a misprediction, `walk_3v3`, on every confirmed
 /// update, `walk_rollback_3v3`, and never, `walk_no_rollback_3v3`, the last two's difference the
 /// cost of the rollbacks. A delayed link would make the rollbacks deeper, but it would measure

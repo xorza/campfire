@@ -186,7 +186,7 @@ An imported game is a game players already know, rebuilt on Campfire's sim, so c
 
 **Design rule:** a rules package is an ordinary package. If a game needs something scripts cannot do, and no backend should, the scripting API is incomplete.
 
-**The MOBA** in `source/packages/moba/` is test content: the tests and benches play it, and no player does ([MOBA test content](07-moba.md)).
+**The MOBA** in `source/packages/test/moba/` is test content: the tests and benches play it, and no player does ([MOBA test content](07-moba.md)).
 
 ## Milestones
 

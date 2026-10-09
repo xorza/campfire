@@ -150,13 +150,13 @@ pub(crate) mod internals {
 
     use crate::package_dir::PackageDir;
 
-    /// The most bytes a test reads of a workspace package's file: far past any the test and
-    /// reference packages hold.
+    /// The most bytes a test reads of a workspace package's file: far past any the test
+    /// packages hold.
     const TREE_FILE_LEN: usize = 64 << 20;
 
     impl PackageDir {
         /// `path` within the workspace's `packages` directory, where the tests and the checks
-        /// find the test and reference packages.
+        /// find the test packages.
         pub fn workspace(path: &str) -> PathBuf {
             Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages")).join(path)
         }

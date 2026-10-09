@@ -1,4 +1,4 @@
-//! The reference heroes' abilities as their packages hold them: every ability's data reads into
+//! The MOBA heroes' abilities as their packages hold them: every ability's data reads into
 //! the typed schema, and Husk's Lash Out and Grasping Wraps, Kensho's Twin Cut, Veil's Dusk Mark,
 //! Smoke Ring and Night Step, Rime's Fan of Frost and Snow Owl, Cinder's Eruption and Chain Fire,
 //! and the Farsight spell,
@@ -29,7 +29,7 @@ const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 const HEROES: [&str; 6] = ["cinder", "gale", "husk", "kensho", "rime", "veil"];
 
 fn hero(name: &str) -> PackageFiles {
-    let dir = PackageDir::new(PackageDir::workspace(&format!("moba/heroes/{name}")));
+    let dir = PackageDir::new(PackageDir::workspace(&format!("test/moba/heroes/{name}")));
     dir.read().unwrap()
 }
 
@@ -46,7 +46,7 @@ fn arena() -> Arena {
 
 /// The same at `rate`.
 fn arena_at(rate: TickRate) -> Arena {
-    Arena::new(&PackageDir::workspace("moba/modes/3v3"), rate, 1)
+    Arena::new(&PackageDir::workspace("test/moba/modes/3v3"), rate, 1)
 }
 
 /// A unit of 500 health on `team` at `x` meters along x that stays when it dies, with `parts`, and
@@ -155,7 +155,7 @@ fn milli(x: i64, z: i64) -> Position {
 }
 
 #[test]
-fn every_reference_ability_reads_into_the_schema() {
+fn every_moba_ability_reads_into_the_schema() {
     let mut read = 0;
     for name in HEROES {
         let data = abilities(name);

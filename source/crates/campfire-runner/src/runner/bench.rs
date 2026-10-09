@@ -7,7 +7,7 @@ use campfire_sim::{SimSet, StateDelta};
 use criterion::{Criterion, Throughput};
 
 use crate::harness::fixed_match::FixedMatch;
-use crate::harness::reference_3v3::Reference3v3;
+use crate::harness::moba_3v3::Moba3v3;
 use crate::runner::Runner;
 use crate::session::Session;
 
@@ -15,34 +15,34 @@ use crate::session::Session;
 /// tick 2399, which fight their lanes' towers.
 const TICKS: u64 = 6000;
 
-/// The server's tick of the reference 3v3, whole and by stage, from one load of its packages.
+/// The server's tick of the MOBA 3v3, whole and by stage, from one load of its packages.
 pub(crate) fn server(c: &mut Criterion) {
-    let reference: LazyCell<Reference3v3> = LazyCell::new(Reference3v3::load);
-    server_tick(c, &reference);
-    server_stage(c, &reference);
+    let moba: LazyCell<Moba3v3> = LazyCell::new(Moba3v3::load);
+    server_tick(c, &moba);
+    server_stage(c, &moba);
 }
 
-/// A tick of the reference 3v3 as its packages hold it: its first tick, `first_3v3`, which
+/// A tick of the MOBA 3v3 as its packages hold it: its first tick, `first_3v3`, which
 /// builds the sim schedule and labels the pathing grid around the map's static bodies; the worst
 /// of the other ticks of a match of `TICKS` ticks, with no checkpoint and with the main thread's
 /// part of a delta every tick, the copy of the state that changed, as a server sends one whenever
 /// its checkpoint thread is free; and
 /// the mean tick of such a match, `mean_3v3`, a whole match each iteration, its throughput the
 /// ticks. A rollback re-simulates whole ticks, so it costs its depth times these.
-fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
+fn server_tick(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
     let mut group = c.benchmark_group("server_tick");
     group.sample_size(10);
     group.bench_function("first_3v3", |b| {
         b.iter_custom(|matches| {
             (0..matches)
-                .map(|_| timed_tick(reference.start().runner_mut()))
+                .map(|_| timed_tick(moba.start().runner_mut()))
                 .sum()
         });
     });
     group.bench_function("worst_3v3", |b| {
         b.iter_custom(|matches| {
             (0..matches)
-                .map(|_| MatchCost::of_match(&mut reference.start(), timed_tick).worst)
+                .map(|_| MatchCost::of_match(&mut moba.start(), timed_tick).worst)
                 .sum()
         });
     });
@@ -51,7 +51,7 @@ fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
         b.iter_custom(|matches| {
             let mut worst_sum = Duration::ZERO;
             for _ in 0..matches {
-                let mut fixed = reference.start();
+                let mut fixed = moba.start();
                 Session::track(fixed.runner_mut().world_mut(), &mut delta);
                 let cost = MatchCost::of_match(&mut fixed, |runner| {
                     let start = Instant::now();
@@ -70,27 +70,26 @@ fn server_tick(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
     group.bench_function("mean_3v3", |b| {
         b.iter_custom(|matches| {
             (0..matches)
-                .map(|_| MatchCost::of_match(&mut reference.start(), timed_tick).total)
+                .map(|_| MatchCost::of_match(&mut moba.start(), timed_tick).total)
                 .sum()
         });
     });
     group.finish();
 }
 
-/// Each stage of a tick of the reference 3v3, as `StageClock`'s probes time it in the match: its
+/// Each stage of a tick of the MOBA 3v3, as `StageClock`'s probes time it in the match: its
 /// worst in a match of `TICKS` ticks, `worst_3v3_<stage>`, and its mean tick in such a match,
 /// `mean_3v3_<stage>`, a whole match each iteration, its throughput the ticks. The stages'
 /// means add up to `server_tick/mean_3v3` less the parts of a tick that run outside them: the
 /// session log's, the tick's start and end, and `SimEdge::Start`.
-fn server_stage(c: &mut Criterion, reference: &LazyCell<Reference3v3>) {
+fn server_stage(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
     let id = |statistic: &str, stage: SimSet| {
         format!("{statistic}_3v3_{}", format!("{stage:?}").to_lowercase())
     };
     let mut group = c.benchmark_group("server_stage");
     group.sample_size(10);
-    let stage_match = |stage: SimSet| {
-        MatchCost::of_match(&mut clocked(reference), |runner| stage_tick(runner, stage))
-    };
+    let stage_match =
+        |stage: SimSet| MatchCost::of_match(&mut clocked(moba), |runner| stage_tick(runner, stage));
     for stage in SimSet::ALL {
         group.bench_function(id("worst", stage), |b| {
             b.iter_custom(|matches| {
@@ -149,9 +148,9 @@ impl MatchCost {
     }
 }
 
-/// A new match of `reference`, with `StageClock`'s probes in its schedule.
-fn clocked(reference: &Reference3v3) -> FixedMatch {
-    let mut fixed = reference.start();
+/// A new match of `moba`, with `StageClock`'s probes in its schedule.
+fn clocked(moba: &Moba3v3) -> FixedMatch {
+    let mut fixed = moba.start();
     StageClock::install(fixed.runner_mut().world_mut());
     fixed
 }

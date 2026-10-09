@@ -123,7 +123,7 @@ pub enum End {
 }
 
 impl MatchSetup {
-    /// The most players a setup holds: the reference 3v3's six.
+    /// The most players a setup holds: the MOBA 3v3's six.
     pub const MAX_PLAYERS: usize = 6;
 
     /// One player through a perfect link, whose client rolls back only on a misprediction, with
@@ -918,10 +918,10 @@ pub(crate) mod bench {
         RollbackMode::Always,
         RollbackMode::Disabled,
     ];
-    /// The reference 3v3's first wave at its 30 Hz: 60 s of pick, then 60 s.
+    /// The MOBA 3v3's first wave at its 30 Hz: 60 s of pick, then 60 s.
     const FIRST_WAVE_3V3: u64 = 3600;
-    /// The pick of each slot of the reference 3v3, the players' then the bots': a hero each,
-    /// none twice, in tick 1, and the two spells in tick 2, as `Reference3v3`'s slots pick.
+    /// The pick of each slot of the MOBA 3v3, the players' then the bots': a hero each,
+    /// none twice, in tick 1, and the two spells in tick 2, as `Moba3v3`'s slots pick.
     static PICKS_3V3: [&str; 6] = [
         "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-cinder\"\n\
          [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
@@ -972,7 +972,7 @@ pub(crate) mod bench {
             local
         }
 
-        /// The reference 3v3 at its default rate, a server frame a tick, with a player in each
+        /// The MOBA 3v3 at its default rate, a server frame a tick, with a player in each
         /// of the first slots, whose clients roll back as `ROLLBACKS_3V3` says, and the
         /// server's bots in the others, every slot picking as `PICKS_3V3` says; played to its
         /// first wave, each client holding its hero, for `walk_steps`.
@@ -982,8 +982,8 @@ pub(crate) mod bench {
             setup.players = players;
             setup.rollbacks[..players].copy_from_slice(&ROLLBACKS_3V3);
             setup.bots = &PICKS_3V3[players..];
-            let packages = ModePackages::from_dir(&PackageDir::workspace("moba/modes/3v3"))
-                .expect("the reference 3v3 loads");
+            let packages = ModePackages::from_dir(&PackageDir::workspace("test/moba/modes/3v3"))
+                .expect("the MOBA 3v3 loads");
             let mut local = InProcessMatch::of_mode(setup, packages);
             local.open_match();
             for (client, pick) in PICKS_3V3[..players].iter().enumerate() {

@@ -13,7 +13,7 @@ use crate::vision::brush_map::BrushMap;
 use crate::vision::fog::Fog;
 use crate::vision::vision_grid::VisionGrid;
 
-/// Each unit's sight in meters: the reference units see 8 to 11 m.
+/// Each unit's sight in meters: the MOBA's units see 8 to 11 m.
 const SIGHT: i64 = 10;
 
 /// The Vision stage's grid fog for `KernelScene::UNITS` units of two teams, as `vision::see`

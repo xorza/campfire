@@ -9,7 +9,7 @@ use campfire_common::{StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
-use campfire_runner::internals::{FixedMatch, FixedSession, ProvingMatch, Reference3v3};
+use campfire_runner::internals::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
 use campfire_runner::{ResumeError, Runner};
 use campfire_sim::SnapshotError;
 use campfire_sim::{EntityIndex, StableId};
@@ -139,12 +139,12 @@ fn the_lane_match_resumes_from_each_checkpoint_to_the_same_hashes() {
 
 #[test]
 fn the_3v3_match_resumes_from_each_checkpoint_to_the_same_hashes() {
-    let reference = Reference3v3::load();
+    let moba = Moba3v3::load();
     let at = [1000, 2000, 3000];
-    let run = Checkpointed::run(reference.start(), at, 4000, |fixed, tick| {
-        reference.play_tick(fixed, tick);
+    let run = Checkpointed::run(moba.start(), at, 4000, |fixed, tick| {
+        moba.play_tick(fixed, tick);
     });
-    run.check(reference.packages(), at);
+    run.check(moba.packages(), at);
 }
 
 #[test]

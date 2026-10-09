@@ -8,17 +8,17 @@ use campfire_script::ScriptHost;
 use campfire_sim::{SimUpdate, StateRegistry, TickRate};
 use criterion::Criterion;
 
-use crate::harness::reference_3v3::Reference3v3;
+use crate::harness::moba_3v3::Moba3v3;
 use crate::match_build::MatchBuild;
 
-/// The build of a match of the reference 3v3, as a server builds one per session and a verifier
+/// The build of a match of the MOBA 3v3, as a server builds one per session and a verifier
 /// one per checkpoint: `build_3v3`, the whole build into a world `SimUpdate::prepare` set up;
 /// `parse_3v3`, the compile of every script of its packages into a host with the script API
 /// bound, the part of a build that a cache of parsed scripts would save; and `bind_3v3`, the
 /// bind of the script API into a new host, the part that shared API modules would save.
 pub(crate) fn build(c: &mut Criterion) {
-    let reference = Reference3v3::load();
-    let packages = reference.packages();
+    let moba = Moba3v3::load();
+    let packages = moba.packages();
     let per_call = packages.manifest().script_limits.per_call;
     let rate = TickRate::new(packages.manifest().tick_hz.default());
     let mut group = c.benchmark_group("match_build");
@@ -37,7 +37,7 @@ pub(crate) fn build(c: &mut Criterion) {
                     &mut world,
                     &mut schedule,
                     &mut registry,
-                    Reference3v3::PLAYERS,
+                    Moba3v3::PLAYERS,
                 );
                 spent += start.elapsed();
                 black_box((world, schedule, registry));

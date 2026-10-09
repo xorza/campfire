@@ -1,4 +1,4 @@
-//! The reference packages, read from disk once, and in memory with edits made.
+//! The MOBA packages, read from disk once, and in memory with edits made.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -8,22 +8,22 @@ use campfire_package::{ModePackages, PackageDir};
 use toml::{Table, Value};
 
 pub(crate) fn moba() -> PathBuf {
-    PackageDir::workspace("moba")
+    PackageDir::workspace("test/moba")
 }
 
-/// Every file of the reference packages, by its path from their root, read from disk once.
+/// Every file of the MOBA packages, by its path from their root, read from disk once.
 pub(crate) fn moba_files() -> &'static BTreeMap<PathBuf, Vec<u8>> {
     static FILES: OnceLock<BTreeMap<PathBuf, Vec<u8>>> = OnceLock::new();
-    FILES.get_or_init(|| PackageDir::workspace_tree("moba"))
+    FILES.get_or_init(|| PackageDir::workspace_tree("test/moba"))
 }
 
-/// The reference packages in memory with `edits` made, each to a file by its path from their
+/// The MOBA packages in memory with `edits` made, each to a file by its path from their
 /// root: their 3v3.
 pub(crate) fn edited<'a>(edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>) -> PackageDir {
     edited_at("modes/3v3", edits)
 }
 
-/// The reference packages in memory with `edits` made, each to a file by its path from their
+/// The MOBA packages in memory with `edits` made, each to a file by its path from their
 /// root: the package at `root`.
 pub(crate) fn edited_at<'a>(
     root: &str,

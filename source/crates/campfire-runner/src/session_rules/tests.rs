@@ -9,7 +9,7 @@ type Change = fn(&mut SessionTerms);
 #[test]
 fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     // The 3v3 runs from 20 to 60 Hz.
-    let dir = PackageDir::workspace("moba/modes/3v3");
+    let dir = PackageDir::workspace("test/moba/modes/3v3");
     let packages = ModePackages::from_dir(&dir).unwrap();
     let rules = SessionRules::of(&packages);
     let key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();

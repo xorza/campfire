@@ -71,8 +71,8 @@ use crate::vision::seen_by::SeenBy;
 use crate::vision::vision_grid::VisionGrid;
 
 const ONE: i64 = 1 << 24;
-/// The reference 3v3's creep and tower AI as they were when these tests were written: the
-/// engine's tests keep their own copies, so a change to the reference mode changes none of them.
+/// The MOBA 3v3's creep and tower AI as they were when these tests were written: the
+/// engine's tests keep their own copies, so a change to the MOBA's mode changes none of them.
 const CREEP_AI: &str = r#"
 fn on_think(ctx, unit) {
     let target = defend_hero(ctx, unit);

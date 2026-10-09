@@ -11,10 +11,10 @@ use campfire_capabilities::{
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use campfire_runner::internals::{MatchUnits, Reference3v3};
+use campfire_runner::internals::{MatchUnits, Moba3v3};
 use campfire_sim::{EntityIndex, Position, TickRate};
 
-use crate::reference::gold;
+use crate::moba::gold;
 
 /// Each player's hero's package and its abilities, slot by slot: Cinder, Gale and Husk north;
 /// Kensho, Rime and Veil south.
@@ -68,10 +68,10 @@ pub(crate) struct Showcase {
 
 impl Showcase {
     /// The first tick it reads.
-    const FIRST: u64 = Reference3v3::SHOP - 1;
+    const FIRST: u64 = Moba3v3::SHOP - 1;
 
-    /// Reads tick `tick` of the 3v3 of `reference`, which `world` just ran.
-    pub(crate) fn read(&mut self, world: &World, reference: &Reference3v3, tick: u64) {
+    /// Reads tick `tick` of the 3v3 of `moba`, which `world` just ran.
+    pub(crate) fn read(&mut self, world: &World, moba: &Moba3v3, tick: u64) {
         if tick < Showcase::FIRST {
             return;
         }
@@ -90,7 +90,7 @@ impl Showcase {
                     .into_iter()
                     .map(|(id, _)| id)
                     .collect(),
-                gold: gold(world, reference, slot),
+                gold: gold(world, moba, slot),
             }
         });
         self.ticks.push(heroes);
@@ -105,20 +105,20 @@ impl Showcase {
 
 /// The tick the showcase's `index`th cast is sent in.
 const fn stamp(index: u64) -> u64 {
-    Reference3v3::SHOWCASE + Reference3v3::CAST_EVERY * index
+    Moba3v3::SHOWCASE + Moba3v3::CAST_EVERY * index
 }
 
 /// The item `name` of the 3v3.
-fn item(reference: &Reference3v3, name: &str) -> ItemId {
-    let mode = reference.packages().packages().next().unwrap();
+fn item(moba: &Moba3v3, name: &str) -> ItemId {
+    let mode = moba.packages().packages().next().unwrap();
     ItemId::named(&mode.content.items, name).unwrap()
 }
 
 /// The farm: every hero reaches level 6 and learns every ability, its ultimate among them, with
 /// a point each, so its points left are its level less its ranks.
 pub(crate) fn assert_farm(showcase: &Showcase) {
-    for player in 0..Reference3v3::PLAYERS {
-        let hero = showcase.at(Reference3v3::SHOWCASE - 1, player);
+    for player in 0..Moba3v3::PLAYERS {
+        let hero = showcase.at(Moba3v3::SHOWCASE - 1, player);
         let ranks: Vec<u8> = hero.slots[..4]
             .iter()
             .map(|slot| Rank::count(slot.rank))
@@ -136,15 +136,15 @@ pub(crate) fn assert_farm(showcase: &Showcase) {
 /// The shop, in the tick after an income: each hero pays each item's cost, or a built item's
 /// cost less its components', and Veil sells her long sword back for 70% of its cost in the
 /// next tick; each item lands in the first empty slot, a built one in its first component's.
-pub(crate) fn assert_shop(reference: &Reference3v3, showcase: &Showcase) {
-    let shop = Reference3v3::SHOP;
+pub(crate) fn assert_shop(moba: &Moba3v3, showcase: &Showcase) {
+    let shop = Moba3v3::SHOP;
     let paid =
         |player, tick: u64| showcase.at(tick - 1, player).gold - showcase.at(tick, player).gold;
     // Husk: a cloth armor, 300, a ruby crystal, 400, then the stoneplate they build, 1000 less
     // 700. Kensho: a cloth armor, then the quicksilver it builds, 900 less 300. Gale: two wards
     // of 75. Rime: a health potion, 50. Cinder: a mana potion, 50, and an elixir, 250. Veil: a
     // long sword, 350, and a health potion, 50.
-    let costs: Vec<i64> = (0..Reference3v3::PLAYERS)
+    let costs: Vec<i64> = (0..Moba3v3::PLAYERS)
         .map(|player| paid(player, shop))
         .collect();
     assert_eq!(costs, [300, 150, 1000, 900, 50, 400]);
@@ -158,7 +158,7 @@ pub(crate) fn assert_shop(reference: &Reference3v3, showcase: &Showcase) {
             .map(|slot| slot.map(|carried| carried.item))
             .collect()
     };
-    let one = |name| Some(item(reference, name));
+    let one = |name| Some(item(moba, name));
     let empty = |taken: Vec<Option<ItemId>>| {
         let mut slots = taken;
         slots.resize(6, None);
@@ -173,13 +173,13 @@ pub(crate) fn assert_shop(reference: &Reference3v3, showcase: &Showcase) {
         // The long sword went to slot 0 and the potion to slot 1; the swap put the potion first.
         empty(vec![one("health_potion")]),
     ];
-    let seen: Vec<_> = (0..Reference3v3::PLAYERS).map(carried).collect();
+    let seen: Vec<_> = (0..Moba3v3::PLAYERS).map(carried).collect();
     assert_eq!(seen, expected);
 }
 
 /// The data of player `player`'s action in slot `slot`: an ability of its hero's package, or the
 /// active of the item it carries there, of the mode's.
-fn action(reference: &Reference3v3, player: u32, slot: u8) -> &ActionData {
+fn action(moba: &Moba3v3, player: u32, slot: u8) -> &ActionData {
     let (package, name) = match (player, slot) {
         (2, INVENTORY) => ("moba-3v3", "harden"),
         (3, INVENTORY) => ("moba-3v3", "cleanse"),
@@ -188,7 +188,7 @@ fn action(reference: &Reference3v3, player: u32, slot: u8) -> &ActionData {
             (package, abilities[usize::from(slot)])
         }
     };
-    let view = reference
+    let view = moba
         .packages()
         .packages()
         .find(|view| view.package.header.name == package);
@@ -208,7 +208,7 @@ fn int(ranked: &Ranked<Number>, rank: Option<Rank>) -> i64 {
 /// What player `player`'s toggles that pay each second paid of the pool `name` in tick `at`:
 /// each one's cost at its rank, when it was due in that tick.
 fn toggles_paid(
-    reference: &Reference3v3,
+    moba: &Moba3v3,
     showcase: &Showcase,
     player: u32,
     at: u64,
@@ -219,7 +219,7 @@ fn toggles_paid(
         .zip(slots)
         .filter(|(_, slot)| slot.toggle == Some(Tick::new(at)));
     due.filter_map(|(index, slot)| {
-        let Some(Toggle::CostPerSecond(costs)) = &action(reference, player, index).toggle else {
+        let Some(Toggle::CostPerSecond(costs)) = &action(moba, player, index).toggle else {
             return None;
         };
         Some(Num::int(int(costs.get(name)?, slot.rank)))
@@ -241,8 +241,8 @@ impl Showcase {
     /// and the slots.
     fn starts(&self, end: u64) -> Vec<Start> {
         let mut starts = Vec::new();
-        for tick in Reference3v3::SHOWCASE..end {
-            for player in 0..Reference3v3::PLAYERS {
+        for tick in Moba3v3::SHOWCASE..end {
+            for player in 0..Moba3v3::PLAYERS {
                 let before = &self.at(tick - 1, player).slots;
                 let after = &self.at(tick, player).slots;
                 for (slot, (was, is)) in (0..).zip(before.iter().zip(after)) {
@@ -271,7 +271,7 @@ impl Showcase {
 /// its cooldown, spends a charge or turns its toggle on as its data says. The consumables are
 /// used up, the potions and the elixir give their modifiers, the wards stand where Gale placed
 /// them, and the toggles turn off when their heroes cast them again.
-pub(crate) fn assert_casts(reference: &Reference3v3, showcase: &Showcase, world: &World, end: u64) {
+pub(crate) fn assert_casts(moba: &Moba3v3, showcase: &Showcase, world: &World, end: u64) {
     // Each start, by the index of its cast in the showcase, its player, its slot, and whether its
     // hero walks into range first: the item actives in slot 7, and the abilities in slots 0 to 3.
     // Cyclone, Gale's first, charges as its first cast starts and starts its cooldown as the
@@ -321,7 +321,7 @@ pub(crate) fn assert_casts(reference: &Reference3v3, showcase: &Showcase, world:
     let ticks = |ms: i64| rate.ticks(u64::try_from(ms).unwrap()).unwrap().get();
     for (start, &(index, .., walks)) in starts.iter().zip(&expected) {
         let Start { tick, player, slot } = *start;
-        let data = action(reference, player, slot);
+        let data = action(moba, player, slot);
         let is = &showcase.at(tick, player).slots[usize::from(slot)];
         let rank = is.rank;
         let windup = data
@@ -358,11 +358,11 @@ pub(crate) fn assert_casts(reference: &Reference3v3, showcase: &Showcase, world:
         // payments of each second: a tick adds the bits of its second's regeneration divided by
         // the ticks a second, and carries the remainder to the next, so it adds as much as the
         // tick before, or a bit more or less.
-        let pools = reference.packages().data();
+        let pools = moba.packages().data();
         for (name, cost) in &data.cost {
             let pool = PoolId::named(&pools.pools, name.as_str()).unwrap();
             let left = |at| showcase.at(at, player).pools.current(pool).unwrap();
-            let paid = |at| toggles_paid(reference, showcase, player, at, name);
+            let paid = |at| toggles_paid(moba, showcase, player, at, name);
             let regen = left(tick - 1) - left(tick - 2) + paid(tick - 1);
             let spent = left(tick - 1) + regen - left(tick) - paid(tick);
             let off = spent - Num::int(int(cost, rank));
@@ -375,14 +375,14 @@ pub(crate) fn assert_casts(reference: &Reference3v3, showcase: &Showcase, world:
     assert!(toggle(stamp(28) - 1, 2, 1).is_some() && toggle(stamp(28), 2, 1).is_none());
     assert!(toggle(stamp(29) - 1, 4, 0).is_some() && toggle(stamp(29), 4, 0).is_none());
 
-    assert_consumables(reference, showcase, world);
+    assert_consumables(moba, showcase, world);
 }
 
 /// The consumables: casts 1 to 3 and 6 drink a potion or the elixir, each the only one its hero
 /// carries in its slot, which empties as it starts, and give its modifier; casts 4 and 5 place
 /// Gale's wards 3 m and a little more from her, which spend her two slots: the sight ward lives
 /// 90 s, 1800 ticks, and the vision ward with no end.
-fn assert_consumables(reference: &Reference3v3, showcase: &Showcase, world: &World) {
+fn assert_consumables(moba: &Moba3v3, showcase: &Showcase, world: &World) {
     let modifier = |name| Stats::modifier(world, 0, name).unwrap();
     let drinks = [
         (1, 4, 0, "health_potion"),
@@ -397,7 +397,7 @@ fn assert_consumables(reference: &Reference3v3, showcase: &Showcase, world: &Wor
         let before = showcase.at(tick - 1, player);
         let after = showcase.at(tick, player);
         let carried = before.carried[inventory].unwrap();
-        assert_eq!(carried.item, item(reference, name), "cast {index}");
+        assert_eq!(carried.item, item(moba, name), "cast {index}");
         assert_eq!(after.carried[inventory], None, "cast {index}");
         if !name.ends_with("ward") {
             let id = modifier(name);

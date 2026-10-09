@@ -12,7 +12,7 @@ fn language(text: &str) -> Language {
     Language::parse(text).unwrap()
 }
 
-/// The German locale package of the reference packages, with `edits` made.
+/// The German locale package of the MOBA packages, with `edits` made.
 fn german<'a>(
     edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>,
 ) -> Result<LocalePackage, LoadError> {

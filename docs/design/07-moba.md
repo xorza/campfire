@@ -1,6 +1,6 @@
 # Campfire — MOBA test content
 
-The 3v3 MOBA of `source/packages/moba/`: test content, which the tests and benches play and no player does ([Imported games](01-campfire-design.md#imported-games)). Names are working names; numbers are the tests'.
+The 3v3 MOBA of `source/packages/test/moba/`: test content, which the tests and benches play and no player does ([Imported games](01-campfire-design.md#imported-games)). Names are working names; numbers are the tests'.
 
 ## Heroes
 

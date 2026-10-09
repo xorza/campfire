@@ -20,7 +20,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
     - `11-rts-foundations.md` — box bodies, package unit types, group orders, production's first cut
     - `12-zero-hour.md` — the first imported game: importer, rules package, parity oracle, presentation
   - `issues/` — the issue log: one file for each system, with its open problems ([Issue log](#issue-log))
-- `source/` — engine and game code; `source/packages/moba/` holds the MOBA test content (heroes, spells, modes); `source/packages/<game>/` holds an imported game's rules package; `source/packages/test/` holds small packages the tests play
+- `source/` — engine and game code; `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
 
 `ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice. Both list open items only.
 

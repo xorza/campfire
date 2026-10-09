@@ -15,7 +15,7 @@ use crate::input_rules::InputRules;
 /// The proving mode of `packages/test`: a small match that uses every capability the release
 /// runs, played by two scripted players, the second of whom joins slot 1, open at the start,
 /// before tick `JOIN`, and leaves it, reserved, before tick `LEAVE`. It is owned by the tests, so
-/// no balance change of the reference content moves it.
+/// no balance change of the MOBA test content moves it.
 #[derive(Debug)]
 pub struct ProvingMatch {
     session: FixedSession,

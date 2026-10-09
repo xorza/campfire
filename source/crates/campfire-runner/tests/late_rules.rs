@@ -1,4 +1,4 @@
-//! The reference 3v3's late rules, which no short match reaches at level 1: an inhibitor's fall
+//! The MOBA 3v3's late rules, which no short match reaches at level 1: an inhibitor's fall
 //! and its respawn, the super creep of the next wave on its lane, the warden's blessing and its
 //! respawn, and the core's fall, which ends the match. A hero deals each fatal blow through the
 //! runner's world, as no input can at level 1, so the test pins rules, not a log: it has no
@@ -9,17 +9,17 @@ use campfire_capabilities::internals::{self, queue_damage};
 use campfire_capabilities::{MatchEnd, MatchResult, Stats, Team};
 use campfire_common::Tick;
 use campfire_math::Num;
-use campfire_runner::internals::{MatchUnits, Reference3v3};
+use campfire_runner::internals::{MatchUnits, Moba3v3};
 
-use crate::reference::{dead, gold, life, respawn_at, run_to, units_at};
+use crate::moba::{dead, gold, life, respawn_at, run_to, units_at};
 
 #[test]
 fn the_3v3s_late_rules_follow_each_fall() {
     // At 20 ticks a second the pick ends in tick 1199, which spawns the heroes and the camps and
     // sets the first wave for tick 2399 and the income for tick 1299 and every 100 ticks after.
     // Players 0 to 2 are north, 3 to 5 south; Kensho is player 3's hero, Husk player 2's.
-    let reference = Reference3v3::load();
-    let mut fixed = reference.start();
+    let moba = Moba3v3::load();
+    let mut fixed = moba.start();
     run_to(&mut fixed, 1200);
     let world = fixed.runner().world();
     let units = MatchUnits::of_world(world);
@@ -45,7 +45,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
         respawn_at(world, north_west_inhibitor),
         Some(Tick::new(6001))
     );
-    assert_eq!(gold(world, &reference, 3), 50);
+    assert_eq!(gold(world, &moba, 3), 50);
 
     // Husk fells the warden in tick 1201: its 150 gold to player 2; each north hero takes the
     // blessing, no south hero does; it comes back 360 s, 7200 ticks, after the end of that
@@ -61,9 +61,9 @@ fn the_3v3s_late_rules_follow_each_fall() {
     let world = fixed.runner().world();
     assert!(dead(world, warden));
     assert_eq!(respawn_at(world, warden), Some(Tick::new(8402)));
-    assert_eq!(gold(world, &reference, 2), 150);
+    assert_eq!(gold(world, &moba, 2), 150);
     let blessing = Stats::modifier(world, 0, "warden_blessing").unwrap();
-    let blessed: Vec<bool> = (0..Reference3v3::PLAYERS)
+    let blessed: Vec<bool> = (0..Moba3v3::PLAYERS)
         .map(|slot| {
             internals::carried(world, MatchUnits::of_world(world).hero(slot))
                 .contains(&(blessing, None))
@@ -81,11 +81,11 @@ fn the_3v3s_late_rules_follow_each_fall() {
     let supers: Vec<_> = groups
         .iter()
         .flatten()
-        .filter(|&&unit| life(world, &reference, unit) == Num::int(1500))
+        .filter(|&&unit| life(world, &moba, unit) == Num::int(1500))
         .collect();
     assert_eq!(supers, [&groups[0][6]]);
     assert_eq!(
-        (gold(world, &reference, 2), gold(world, &reference, 3)),
+        (gold(world, &moba, 2), gold(world, &moba, 3)),
         (96 + 150, 96 + 50)
     );
 

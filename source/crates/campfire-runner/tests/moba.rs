@@ -1,4 +1,4 @@
-//! What the reference 3v3's tests read of a running match beside `MatchUnits`: its units by
+//! What the MOBA 3v3's tests read of a running match beside `MatchUnits`: its units by
 //! place, the players' gold and experience, and who is dead and when they come back.
 
 use bevy_ecs::world::World;
@@ -7,7 +7,7 @@ use campfire_capabilities::{
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
-use campfire_runner::internals::{FixedMatch, Reference3v3};
+use campfire_runner::internals::{FixedMatch, Moba3v3};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 
 /// Runs `fixed` until tick `end` starts, checking that no script call fails.
@@ -34,8 +34,8 @@ pub(crate) fn units_at(world: &World, x: i64, z: i64) -> Vec<StableId> {
         .collect()
 }
 
-pub(crate) fn gold(world: &World, reference: &Reference3v3, slot: u32) -> i64 {
-    let gold = ResourceId::named(&reference.packages().data().resources, "gold").unwrap();
+pub(crate) fn gold(world: &World, moba: &Moba3v3, slot: u32) -> i64 {
+    let gold = ResourceId::named(&moba.packages().data().resources, "gold").unwrap();
     world
         .resource::<PlayerResources>()
         .amount(PlayerSlot::new(slot), gold)
@@ -52,15 +52,15 @@ pub(crate) fn dead(world: &World, unit: StableId) -> bool {
 }
 
 /// The life `unit` has, of the mode's pool `health`.
-pub(crate) fn life(world: &World, reference: &Reference3v3, unit: StableId) -> Num {
-    let health = PoolId::named(&reference.packages().data().pools, "health").unwrap();
+pub(crate) fn life(world: &World, moba: &Moba3v3, unit: StableId) -> Num {
+    let health = PoolId::named(&moba.packages().data().pools, "health").unwrap();
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
     world.get::<Pools>(entity).unwrap().current(health).unwrap()
 }
 
 /// The experience `unit` has on the mode's `level` track.
-pub(crate) fn level_xp(world: &World, reference: &Reference3v3, unit: StableId) -> Num {
-    let tracks = &reference.packages().data().tracks;
+pub(crate) fn level_xp(world: &World, moba: &Moba3v3, unit: StableId) -> Num {
+    let tracks = &moba.packages().data().tracks;
     let at = tracks
         .keys()
         .position(|name| name.as_str() == "level")
