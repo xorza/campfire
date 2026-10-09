@@ -3,3 +3,18 @@
 # speed, not results.
 [target.'cfg(target_arch = "x86_64")']
 rustflags = ["-C", "target-cpu=x86-64-v3"]
+
+# Every bench run selects the same crates, the ones with a `[[bench]]`, so a case measures the same
+# code whichever cases run: `--workspace` would unify the client's Bevy features into the shared
+# crates, and one `-p` would give its dependencies fewer.
+[alias]
+benches = [
+    "bench", "--features", "bench",
+    "-p", "campfire-math",
+    "-p", "campfire-protocol",
+    "-p", "campfire-script",
+    "-p", "campfire-sim",
+    "-p", "campfire-capabilities",
+    "-p", "campfire-runner",
+    "-p", "campfire-net",
+]
