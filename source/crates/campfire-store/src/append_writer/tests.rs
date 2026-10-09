@@ -169,10 +169,16 @@ fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
     // made.
     assert!(matches!(
         AppendWriter::reopen("journal", &dir.path().join("none"), 0),
-        Err(AppendOpenError::Open(_))
+        Err(PathError {
+            error: AppendOpenError::Open(_),
+            ..
+        })
     ));
     assert!(matches!(
         AppendWriter::create("journal", &dir.path().join("none").join("journal"), b""),
-        Err(AppendOpenError::Create(DurableError::Create(_)))
+        Err(PathError {
+            error: AppendOpenError::Create(DurableError::Create(_)),
+            ..
+        })
     ));
 }

@@ -1,6 +1,6 @@
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{Nsec, RandomKey};
-use campfire_store::{DurableCreateError, SecretFile, SecretReadError};
+use campfire_store::{DurableCreateError, PathError, ReadError, SecretFile};
 
 use crate::sim_server::key_file::error::KeyFileError;
 
@@ -25,12 +25,21 @@ impl KeyFile {
         entropy: fn(&mut [u8; 32]),
     ) -> Result<Keypair, KeyFileError> {
         match KeyFile::read(file) {
-            Err(KeyFileError::Read(SecretReadError::Missing)) => {
+            Err(KeyFileError::Read(PathError {
+                error: ReadError::Missing,
+                ..
+            })) => {
                 let key = RandomKey::generate(entropy);
                 match file.create(Nsec::encode(&key).as_bytes()) {
                     Ok(()) => Ok(key),
-                    Err(DurableCreateError::Exists) => KeyFile::read(file),
-                    Err(DurableCreateError::Write(error)) => Err(KeyFileError::Write(error)),
+                    Err(PathError {
+                        error: DurableCreateError::Exists,
+                        ..
+                    }) => KeyFile::read(file),
+                    Err(PathError {
+                        path,
+                        error: DurableCreateError::Write(error),
+                    }) => Err(KeyFileError::Write(PathError { path, error })),
                 }
             }
             read => read,

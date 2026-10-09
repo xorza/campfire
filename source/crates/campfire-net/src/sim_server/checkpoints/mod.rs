@@ -8,7 +8,7 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{CheckpointBegun, CheckpointError, Outcome};
 use campfire_runner::{CheckpointBeginError, Session};
 use campfire_sim::StateDelta;
-use campfire_store::DurableError;
+use campfire_store::{DurableError, PathError};
 use lightyear::prelude::MessageReceiver;
 
 use crate::events::checkpoint_taken::CheckpointTaken;
@@ -130,7 +130,7 @@ impl Checkpoints {
 
     /// Waits for every delta on the thread and queued for it, and logs the record of each
     /// checkpoint among them; an error when a snapshot was not written.
-    pub(crate) fn settle(world: &mut World) -> Result<(), DurableError> {
+    pub(crate) fn settle(world: &mut World) -> Result<(), PathError<DurableError>> {
         loop {
             let returned = world.resource_mut::<Checkpoints>().thread.wait();
             if returned.is_none() {
@@ -203,7 +203,7 @@ impl Checkpoints {
         world: &mut World,
         snapshots: &SnapshotDir,
         signer: &ServerSigner,
-    ) -> Result<(), DurableError> {
+    ) -> Result<(), PathError<DurableError>> {
         let session = world.resource::<Session>();
         let next = session.log().next_tick();
         if session
@@ -235,7 +235,10 @@ impl Checkpoints {
 
     /// Logs the record `returned` brings, when it brings one; an error when its snapshot was
     /// not written.
-    fn record(world: &mut World, returned: Option<Returned>) -> Result<(), DurableError> {
+    fn record(
+        world: &mut World,
+        returned: Option<Returned>,
+    ) -> Result<(), PathError<DurableError>> {
         match returned {
             None | Some(Returned::Applied) => Ok(()),
             Some(Returned::Taken(signed)) => {

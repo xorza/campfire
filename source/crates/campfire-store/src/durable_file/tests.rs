@@ -32,12 +32,16 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
     // A path with no file name, and a directory that is not there.
     assert!(matches!(
         DurableFile::write(Path::new("/"), b""),
-        Err(DurableError::NoName)
+        Err(PathError {
+            error: DurableError::NoName,
+            ..
+        })
     ));
+    // The error names the path it concerns.
     let lost = dir.path().join("missing").join("state");
     assert!(matches!(
         DurableFile::write(&lost, b""),
-        Err(DurableError::Create(_))
+        Err(PathError { path, error: DurableError::Create(_) }) if path == lost
     ));
 }
 
@@ -54,14 +58,20 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
     // A file in its place is no directory.
     assert!(matches!(
         DurableFile::create_dir(&path.join("kept")),
-        Err(DurableError::Create(_))
+        Err(PathError {
+            error: DurableError::Create(_),
+            ..
+        })
     ));
     // Removed, it goes with all it holds; a directory that is not there is not removed.
     DurableFile::remove_dir(&path).unwrap();
     assert!(!path.exists());
     assert!(matches!(
         DurableFile::remove_dir(&path),
-        Err(DurableError::Remove(_))
+        Err(PathError {
+            error: DurableError::Remove(_),
+            ..
+        })
     ));
 }
 
@@ -72,7 +82,10 @@ fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
     DurableFile::create(&path, b"first").unwrap();
     assert!(matches!(
         DurableFile::create(&path, b"second"),
-        Err(DurableCreateError::Exists)
+        Err(PathError {
+            error: DurableCreateError::Exists,
+            ..
+        })
     ));
     assert_eq!(fs::read(&path).unwrap(), b"first");
     assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
@@ -97,11 +110,13 @@ fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
         .map(|(bytes, _)| *bytes)
         .collect();
     assert_eq!(made.len(), 1, "{results:?}");
-    assert!(
-        results
-            .iter()
-            .any(|(_, result)| matches!(result, Err(DurableCreateError::Exists)))
-    );
+    assert!(results.iter().any(|(_, result)| matches!(
+        result,
+        Err(PathError {
+            error: DurableCreateError::Exists,
+            ..
+        })
+    )));
     assert_eq!(fs::read(&raced).unwrap(), made[0]);
     let mut names: Vec<_> = fs::read_dir(dir.path())
         .unwrap()

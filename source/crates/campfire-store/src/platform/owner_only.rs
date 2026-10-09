@@ -69,22 +69,6 @@ impl fmt::Display for Exposure {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use std::path::Path;
-
-    use crate::platform::os::Os;
-    use crate::platform::owner_only::OwnerOnly;
-
-    impl OwnerOnly {
-        /// Lets other users read the file at `path`: a test's secret file that is not its
-        /// owner's only.
-        pub(crate) fn expose(path: &Path) {
-            Os::expose(path).unwrap();
-        }
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod test_access {
     use std::io;
     use std::path::Path;
 
@@ -92,6 +76,12 @@ pub(crate) mod test_access {
     use crate::platform::owner_only::{Exposure, OwnerOnly};
 
     impl OwnerOnly {
+        /// Lets other users read the file at `path`: a test's secret file that is not its
+        /// owner's only.
+        pub(crate) fn expose(path: &Path) {
+            Os::expose(path).unwrap();
+        }
+
         /// Who else may open the file or directory at `path`; none when only its owner may.
         pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<Exposure>> {
             Ok(Os::exposure_at(path)?.map(Exposure))

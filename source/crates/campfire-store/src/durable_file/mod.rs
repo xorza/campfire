@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::{process, thread};
 
 use crate::durable_file::error::{DurableCreateError, DurableError};
+use crate::path_error::PathError;
 use crate::platform::durable_name::DurableName;
 use crate::platform::owner_only::OwnerOnly;
 
@@ -26,7 +27,12 @@ struct Written<'a> {
 
 impl DurableFile {
     /// Replaces the file at `path`, or makes it, with `bytes`.
-    pub fn write(path: &Path, bytes: &[u8]) -> Result<(), DurableError> {
+    pub fn write(path: &Path, bytes: &[u8]) -> Result<(), PathError<DurableError>> {
+        DurableFile::write_case(path, bytes).map_err(PathError::at(path))
+    }
+
+    /// `write`, whose error its caller names the path of.
+    pub(crate) fn write_case(path: &Path, bytes: &[u8]) -> Result<(), DurableError> {
         let Written {
             directory,
             temporary,
@@ -39,7 +45,11 @@ impl DurableFile {
     /// that does as it is: of two writers that make one file at once, one makes it, and the
     /// other gets `Exists`. Each writer's temporary file holds its process's and its thread's
     /// numbers in its name, so no writer removes or names another's.
-    pub fn create(path: &Path, bytes: &[u8]) -> Result<(), DurableCreateError> {
+    pub fn create(path: &Path, bytes: &[u8]) -> Result<(), PathError<DurableCreateError>> {
+        DurableFile::create_case(path, bytes).map_err(PathError::at(path))
+    }
+
+    fn create_case(path: &Path, bytes: &[u8]) -> Result<(), DurableCreateError> {
         // `ThreadId` gives its number, unique while the process runs, only through `Debug`.
         let thread = format!("{:?}", thread::current().id());
         let thread: String = thread.chars().filter(char::is_ascii_digit).collect();
@@ -89,7 +99,11 @@ impl DurableFile {
 
     /// Makes the directory `path` when it is missing, its owner's only, and syncs its parent, so
     /// its name survives a crash.
-    pub fn create_dir(path: &Path) -> Result<(), DurableError> {
+    pub fn create_dir(path: &Path) -> Result<(), PathError<DurableError>> {
+        DurableFile::create_dir_case(path).map_err(PathError::at(path))
+    }
+
+    fn create_dir_case(path: &Path) -> Result<(), DurableError> {
         let parent = path.parent().ok_or(DurableError::NoName)?;
         match OwnerOnly::create_dir(path) {
             Ok(()) => {}
@@ -101,7 +115,11 @@ impl DurableFile {
 
     /// Removes the directory `path` and all it holds, and syncs its parent, so it does not come
     /// back after a crash.
-    pub fn remove_dir(path: &Path) -> Result<(), DurableError> {
+    pub fn remove_dir(path: &Path) -> Result<(), PathError<DurableError>> {
+        DurableFile::remove_dir_case(path).map_err(PathError::at(path))
+    }
+
+    fn remove_dir_case(path: &Path) -> Result<(), DurableError> {
         let parent = path.parent().ok_or(DurableError::NoName)?;
         fs::remove_dir_all(path).map_err(DurableError::Remove)?;
         DurableName::sync_dir(parent).map_err(DurableError::SyncDirectory)

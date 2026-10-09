@@ -382,12 +382,15 @@ pub(crate) mod internals {
     use std::path::Path;
     use std::ptr;
 
-    use windows::Win32::Security::Authorization::{SE_FILE_OBJECT, SetNamedSecurityInfoW};
-    use windows::Win32::Security::{
-        DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, PROTECTED_DACL_SECURITY_INFORMATION,
-        PSECURITY_DESCRIPTOR,
+    use windows::Win32::Foundation::HLOCAL;
+    use windows::Win32::Security::Authorization::{
+        GetNamedSecurityInfoW, SE_FILE_OBJECT, SetNamedSecurityInfoW,
     };
-    use windows::core::BOOL;
+    use windows::Win32::Security::{
+        DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, OWNER_SECURITY_INFORMATION,
+        PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+    };
+    use windows::core::{BOOL, Owned};
 
     use crate::platform::os::{Os, descriptor, io_error, user_sid, wide};
 
@@ -428,25 +431,7 @@ pub(crate) mod internals {
         pub(crate) fn link_file(target: &Path, link: &Path) -> io::Result<()> {
             symlink_file(target, link)
         }
-    }
-}
 
-#[cfg(test)]
-pub(crate) mod test_access {
-    use std::io;
-    use std::path::Path;
-    use std::ptr;
-
-    use windows::Win32::Foundation::HLOCAL;
-    use windows::Win32::Security::Authorization::{GetNamedSecurityInfoW, SE_FILE_OBJECT};
-    use windows::Win32::Security::{
-        DACL_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
-    };
-    use windows::core::Owned;
-
-    use crate::platform::os::{Os, io_error, wide};
-
-    impl Os {
         pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<String>> {
             let path = wide(path)?;
             let mut owner = PSID::default();

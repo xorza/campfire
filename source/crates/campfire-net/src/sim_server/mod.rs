@@ -29,7 +29,7 @@ use campfire_protocol::{
 };
 use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StableId, TickRate};
-use campfire_store::DurableError;
+use campfire_store::{DurableError, PathError};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
@@ -388,7 +388,7 @@ impl SimServer {
     /// seed; and from then on runs no tick and logs nothing, as each such system checks that the
     /// session runs. The server then publishes the log. An error when the checkpoint's snapshot
     /// was not written, as the log can then not be published: the session ends with no result.
-    pub fn end_session(world: &mut World, outcome: Outcome) -> Result<(), DurableError> {
+    pub fn end_session(world: &mut World, outcome: Outcome) -> Result<(), PathError<DurableError>> {
         if world.contains_resource::<Checkpoints>() {
             Checkpoints::settle(world)?;
             world.remove_resource::<Checkpoints>();
@@ -410,7 +410,7 @@ impl SimServer {
     /// says, which the journal logs. The match then runs no tick and logs nothing: its server
     /// starts again on its data, which restores the match from the save, once `reload_wanted`
     /// says so. An error when the checkpoint's snapshot was not written.
-    pub fn load(world: &mut World, segment: u32) -> Result<(), DurableError> {
+    pub fn load(world: &mut World, segment: u32) -> Result<(), PathError<DurableError>> {
         Checkpoints::settle(world)?;
         world
             .resource_mut::<Session>()

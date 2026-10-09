@@ -1,5 +1,5 @@
 use campfire_net::{AbortError, LobbyError, WaitingError};
-use campfire_store::{AppendOpenError, DurableError};
+use campfire_store::{AppendOpenError, DurableError, PathError};
 use thiserror::Error;
 
 /// Why a server did not start a session from its data directory.
@@ -14,7 +14,7 @@ pub(crate) enum OpeningError {
     Lobby(#[source] LobbyError),
     /// The new session's directory or private record was not made.
     #[error("could not make the session")]
-    NewSession(#[source] DurableError),
+    NewSession(#[source] PathError<DurableError>),
     #[error("the journal")]
-    NewJournal(#[source] AppendOpenError),
+    NewJournal(#[source] PathError<AppendOpenError>),
 }

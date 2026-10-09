@@ -2,6 +2,7 @@ use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
 
 use crate::data_dir::error::DataDirError;
+use crate::path_error::PathError;
 use crate::platform::owner_only::OwnerOnly;
 
 pub(crate) mod error;
@@ -21,7 +22,11 @@ pub struct DataDir {
 
 impl DataDir {
     /// The data directory at `path`, made when missing, and locked.
-    pub fn open(path: &Path) -> Result<DataDir, DataDirError> {
+    pub fn open(path: &Path) -> Result<DataDir, PathError<DataDirError>> {
+        DataDir::open_case(path).map_err(PathError::at(path))
+    }
+
+    fn open_case(path: &Path) -> Result<DataDir, DataDirError> {
         OwnerOnly::create_dir_all(path).map_err(DataDirError::Create)?;
         if let Some(exposure) = OwnerOnly::dir_exposure(path).map_err(DataDirError::Inspect)? {
             return Err(DataDirError::Exposed(exposure));

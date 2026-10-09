@@ -4,6 +4,7 @@ use std::mem;
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
+use crate::path_error::PathError;
 use crate::stream_writer::stream_sender::StreamSender;
 use crate::worker::Worker;
 
@@ -49,8 +50,13 @@ struct Pending {
 impl StreamWriter {
     /// A new file at `path`, in place of one there, written on the worker `name`, with a buffer
     /// of `bound` bytes.
-    pub fn create(name: &str, path: &Path, bound: usize) -> io::Result<StreamWriter> {
-        File::create(path).map(|file| StreamWriter::start(name, file, bound))
+    pub fn create(
+        name: &str,
+        path: &Path,
+        bound: usize,
+    ) -> Result<StreamWriter, PathError<io::Error>> {
+        let file = File::create(path).map_err(PathError::at(path))?;
+        Ok(StreamWriter::start(name, file, bound))
     }
 
     /// A writer that writes to `file` on the worker `name`, with a buffer of `bound` bytes.

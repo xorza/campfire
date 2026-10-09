@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use campfire_store::{DataDir, DataDirError};
+use campfire_store::{DataDir, DataDirError, PathError};
 
 use crate::sim_client::client_layout::ClientLayout;
 
@@ -15,7 +15,7 @@ pub struct ClientDir {
 
 impl ClientDir {
     /// The data directory at `path`, made when missing, and locked.
-    pub fn open(path: &Path) -> Result<ClientDir, DataDirError> {
+    pub fn open(path: &Path) -> Result<ClientDir, PathError<DataDirError>> {
         let data = DataDir::open(path)?;
         Ok(ClientDir {
             layout: ClientLayout::at(data.path().to_owned()),

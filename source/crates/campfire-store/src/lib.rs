@@ -10,10 +10,16 @@
 
 mod append_writer;
 mod data_dir;
+mod dir_entries;
 mod durable_file;
 mod exchange;
+mod input_file;
 mod latest_writer;
+mod output_file;
+mod path_error;
 mod platform;
+#[cfg(any(test, feature = "internals"))]
+mod scratch;
 mod secret_file;
 mod stream_writer;
 mod worker;
@@ -25,15 +31,21 @@ pub use crate::append_writer::error::{AppendError, AppendOpenError};
 pub use crate::append_writer::slow_sync::SlowSync;
 pub use crate::data_dir::DataDir;
 pub use crate::data_dir::error::DataDirError;
+pub use crate::dir_entries::{DirEntries, DirEntry, EntryKind};
 pub use crate::durable_file::DurableFile;
 pub use crate::durable_file::error::{DurableCreateError, DurableError};
 pub use crate::exchange::Exchange;
+pub use crate::input_file::error::ReadError;
+pub use crate::input_file::{InputFile, Stamped};
 pub use crate::latest_writer::LatestWriter;
+pub use crate::output_file::OutputFile;
+pub use crate::path_error::PathError;
 #[cfg(any(test, feature = "internals"))]
 pub use crate::platform::file_link::FileLink;
 pub use crate::platform::owner_only::Exposure;
+#[cfg(any(test, feature = "internals"))]
+pub use crate::scratch::Scratch;
 pub use crate::secret_file::SecretFile;
-pub use crate::secret_file::error::SecretReadError;
 pub use crate::stream_writer::StreamWriter;
 pub use crate::stream_writer::stream_sender::StreamSender;
 pub use crate::worker::Worker;

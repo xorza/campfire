@@ -23,6 +23,12 @@ fn each_path_is_as_stage_6_names_it_and_one_server_holds_the_directory() {
         layout.published_log(id),
         path.join("logs").join(format!("{hex}.campfire-log"))
     );
-    assert!(matches!(ServerDir::open(&path), Err(DataDirError::Locked)));
+    assert!(matches!(
+        ServerDir::open(&path),
+        Err(PathError {
+            error: DataDirError::Locked,
+            ..
+        })
+    ));
     drop(data);
 }

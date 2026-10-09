@@ -1,4 +1,4 @@
-use campfire_store::{AppendOpenError, DataDirError, DurableError};
+use campfire_store::{AppendOpenError, DataDirError, DurableError, PathError};
 use thiserror::Error;
 
 use crate::sim_server::key_file::error::KeyFileError;
@@ -9,7 +9,7 @@ use crate::sim_server::session_dir::error::{AbortError, WaitingError};
 #[derive(Debug, Error)]
 pub enum LocalServerError {
     #[error(transparent)]
-    Data(DataDirError),
+    Data(PathError<DataDirError>),
     /// The server's key file does not read, or a new key is not written.
     #[error("server.nsec")]
     Key(#[source] KeyFileError),
@@ -23,7 +23,7 @@ pub enum LocalServerError {
     #[error(transparent)]
     Lobby(LobbyError),
     #[error("could not make the session's directory")]
-    NewSession(#[source] DurableError),
+    NewSession(#[source] PathError<DurableError>),
     #[error("the journal")]
-    NewJournal(#[source] AppendOpenError),
+    NewJournal(#[source] PathError<AppendOpenError>),
 }

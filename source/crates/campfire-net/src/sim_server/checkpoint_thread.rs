@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use bevy_ecs::world::World;
 use campfire_protocol::{Checkpoint, CheckpointBegun, SessionId, Signature};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
-use campfire_store::{DurableError, Exchange};
+use campfire_store::{DurableError, Exchange, PathError};
 
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
@@ -42,7 +42,7 @@ pub(crate) enum Returned {
     /// The checkpoint begun there: its record, signed, its snapshot written.
     Taken(SignedCheckpoint),
     /// The checkpoint begun there, whose snapshot was not written.
-    Failed(DurableError),
+    Failed(PathError<DurableError>),
 }
 
 /// A checkpoint's record and the server key's signature over it, its snapshot written.
@@ -160,7 +160,10 @@ impl CheckpointCopy {
     }
 
     /// The record of `begun`, of the copy as it stands, signed once its snapshot is written.
-    fn take(&mut self, begun: CheckpointBegun) -> Result<SignedCheckpoint, DurableError> {
+    fn take(
+        &mut self,
+        begun: CheckpointBegun,
+    ) -> Result<SignedCheckpoint, PathError<DurableError>> {
         let state_hash = self.registry.snapshot(&self.world, &mut self.snapshot);
         let fingerprint = self.snapshots.write(&self.snapshot)?;
         let record = Checkpoint {

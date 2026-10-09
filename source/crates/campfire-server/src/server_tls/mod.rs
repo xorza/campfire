@@ -1,5 +1,5 @@
 use campfire_protocol::CertificateHash;
-use campfire_store::{SecretFile, SecretReadError};
+use campfire_store::{PathError, ReadError, SecretFile};
 use wtransport::Identity;
 use wtransport::tls::{Certificate, CertificateChain, PrivateKey};
 use zeroize::Zeroizing;
@@ -48,7 +48,10 @@ impl ServerTls {
                     return Ok(kept);
                 }
             }
-            Err(SecretReadError::Missing) => {}
+            Err(PathError {
+                error: ReadError::Missing,
+                ..
+            }) => {}
             Err(error) => return Err(TlsError::Read(error)),
         }
         let made = ServerTls {
@@ -164,14 +167,20 @@ mod tests {
         fs::write(&path, vec![0; MAX_LEN + 1]).unwrap();
         assert!(matches!(
             ServerTls::open(&file, NOW, false),
-            Err(TlsError::Read(SecretReadError::TooLarge { max: MAX_LEN }))
+            Err(TlsError::Read(PathError {
+                error: ReadError::TooLarge { max: MAX_LEN },
+                ..
+            }))
         ));
         fs::write(&path, &whole).unwrap();
         assert_eq!(open(NOW, true).certificate(), renewed.certificate());
         file.expose();
         assert!(matches!(
             ServerTls::open(&file, NOW, false),
-            Err(TlsError::Read(SecretReadError::Exposed(_)))
+            Err(TlsError::Read(PathError {
+                error: ReadError::Exposed(_),
+                ..
+            }))
         ));
         assert_eq!(fs::read(&path).unwrap(), whole);
     }

@@ -9,7 +9,7 @@ use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
 use campfire_runner::Session;
-use campfire_store::{AppendOpenError, DurableError, DurableFile};
+use campfire_store::{AppendOpenError, DurableError, DurableFile, PathError};
 
 use crate::events::session_aborted::SessionAborted;
 use crate::sim_server::checkpoints::Checkpoints;
@@ -54,7 +54,10 @@ pub struct RestoredSession {
 impl SessionDir {
     /// Makes the directory of the session whose terms `private` holds, under `data`, and writes
     /// `private` into it.
-    pub fn create(data: &ServerDir, private: &SessionPrivate) -> Result<SessionDir, DurableError> {
+    pub fn create(
+        data: &ServerDir,
+        private: &SessionPrivate,
+    ) -> Result<SessionDir, PathError<DurableError>> {
         DurableFile::create_dir(&data.layout().sessions_dir())?;
         let path = data.layout().session_dir(private.terms.session_id());
         DurableFile::create_dir(&path)?;
@@ -66,7 +69,7 @@ impl SessionDir {
     }
 
     /// The session's files: its new journal, and where its snapshots go.
-    pub fn start(&self) -> Result<SessionFiles, AppendOpenError> {
+    pub fn start(&self) -> Result<SessionFiles, PathError<AppendOpenError>> {
         Ok(SessionFiles {
             journal: SessionJournal::create(&self.journal())?,
             snapshots: self.snapshots(),
@@ -189,12 +192,12 @@ impl SessionDir {
     }
 
     /// Removes the directory of a session whose match never started, which logged nothing.
-    pub fn remove(self) -> Result<(), DurableError> {
+    pub fn remove(self) -> Result<(), PathError<DurableError>> {
         DurableFile::remove_dir(&self.path)
     }
 
     /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
-    pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, DurableError> {
+    pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, PathError<DurableError>> {
         DurableFile::create_dir(&data.layout().logs_dir())?;
         let file = data.layout().published_log(log.session_id());
         let mut bytes = Vec::new();

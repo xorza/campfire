@@ -10,6 +10,7 @@ use crate::append_writer::append_watch::AppendWatch;
 use crate::append_writer::error::{AppendError, AppendOpenError};
 use crate::append_writer::slow_sync::SlowSync;
 use crate::durable_file::DurableFile;
+use crate::path_error::PathError;
 use crate::worker::Worker;
 
 pub(crate) mod append_file;
@@ -63,29 +64,43 @@ impl AppendWriter {
 
     /// A new file at `path`, holding `head` alone, written durably as a whole file, and open to
     /// append on the worker `name`.
-    pub fn create(name: &str, path: &Path, head: &[u8]) -> Result<AppendWriter, AppendOpenError> {
-        DurableFile::write(path, head).map_err(AppendOpenError::Create)?;
-        let file = OpenOptions::new()
-            .append(true)
-            .open(path)
-            .map_err(AppendOpenError::Open)?;
+    pub fn create(
+        name: &str,
+        path: &Path,
+        head: &[u8],
+    ) -> Result<AppendWriter, PathError<AppendOpenError>> {
+        let open = || {
+            DurableFile::write_case(path, head).map_err(AppendOpenError::Create)?;
+            OpenOptions::new()
+                .append(true)
+                .open(path)
+                .map_err(AppendOpenError::Open)
+        };
+        let file = open().map_err(PathError::at(path))?;
         Ok(AppendWriter::start(name, file))
     }
 
     /// The file at `path`, cut to its first `whole` bytes, those a read found whole, so a torn
     /// tail is gone before the next record, and open to append on the worker `name`.
-    pub fn reopen(name: &str, path: &Path, whole: u64) -> Result<AppendWriter, AppendOpenError> {
-        let file = OpenOptions::new()
-            .write(true)
-            .open(path)
-            .map_err(AppendOpenError::Open)?;
-        file.set_len(whole).map_err(AppendOpenError::Cut)?;
-        file.sync_all().map_err(AppendOpenError::Cut)?;
-        drop(file);
-        let file = OpenOptions::new()
-            .append(true)
-            .open(path)
-            .map_err(AppendOpenError::Open)?;
+    pub fn reopen(
+        name: &str,
+        path: &Path,
+        whole: u64,
+    ) -> Result<AppendWriter, PathError<AppendOpenError>> {
+        let open = || {
+            let file = OpenOptions::new()
+                .write(true)
+                .open(path)
+                .map_err(AppendOpenError::Open)?;
+            file.set_len(whole).map_err(AppendOpenError::Cut)?;
+            file.sync_all().map_err(AppendOpenError::Cut)?;
+            drop(file);
+            OpenOptions::new()
+                .append(true)
+                .open(path)
+                .map_err(AppendOpenError::Open)
+        };
+        let file = open().map_err(PathError::at(path))?;
         Ok(AppendWriter::start(name, file))
     }
 

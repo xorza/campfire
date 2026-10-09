@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_protocol::SignedReceipt;
-use campfire_store::{DurableError, DurableFile, LatestWriter};
+use campfire_store::{DurableError, DurableFile, LatestWriter, PathError};
 
 use crate::sim_client::client_dir::ClientDir;
 
@@ -11,7 +11,7 @@ use crate::sim_client::client_dir::ClientDir;
 /// not yet written, and takes back each failure to log. Dropping the writer writes the receipt
 /// it holds, then ends the worker.
 #[derive(Resource, Debug)]
-pub(crate) struct ReceiptWriter(LatestWriter<SignedReceipt, DurableError>);
+pub(crate) struct ReceiptWriter(LatestWriter<SignedReceipt, PathError<DurableError>>);
 
 impl ReceiptWriter {
     /// A writer into the data directory `data`, which it holds locked while it runs.
@@ -34,7 +34,7 @@ impl ReceiptWriter {
     }
 
     /// The writes that failed since the last call.
-    pub(crate) fn failures(&self) -> Vec<DurableError> {
+    pub(crate) fn failures(&self) -> Vec<PathError<DurableError>> {
         self.0.take_failures()
     }
 }

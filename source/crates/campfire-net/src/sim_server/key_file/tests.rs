@@ -27,13 +27,19 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
     assert!(matches!(KeyFile::read(&bad), Err(KeyFileError::NotNsec(_))));
     assert!(matches!(
         KeyFile::read(&SecretFile::at(dir.join("none.nsec"))),
-        Err(KeyFileError::Read(SecretReadError::Missing))
+        Err(KeyFileError::Read(PathError {
+            error: ReadError::Missing,
+            ..
+        }))
     ));
     let long = SecretFile::at(dir.join("long.nsec"));
     long.create(&[b' '; Nsec::MAX_FILE_LEN + 1]).unwrap();
     assert!(matches!(
         KeyFile::read(&long),
-        Err(KeyFileError::Read(SecretReadError::TooLarge { .. }))
+        Err(KeyFileError::Read(PathError {
+            error: ReadError::TooLarge { .. },
+            ..
+        }))
     ));
     // Others may read it: refused before its key is read, so text that is no key is refused as
     // exposed too, and a file of such a key is no missing one, which a new key would replace.
@@ -41,12 +47,18 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
         file.expose();
         assert!(matches!(
             KeyFile::read(file),
-            Err(KeyFileError::Read(SecretReadError::Exposed(_)))
+            Err(KeyFileError::Read(PathError {
+                error: ReadError::Exposed(_),
+                ..
+            }))
         ));
     }
     assert!(matches!(
         KeyFile::read_or_create(&file, |bytes| bytes.fill(9)),
-        Err(KeyFileError::Read(SecretReadError::Exposed(_)))
+        Err(KeyFileError::Read(PathError {
+            error: ReadError::Exposed(_),
+            ..
+        }))
     ));
 }
 

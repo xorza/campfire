@@ -104,18 +104,7 @@ pub(crate) mod internals {
         pub(crate) fn link_file(target: &Path, link: &Path) -> io::Result<()> {
             symlink(target, link)
         }
-    }
-}
 
-#[cfg(test)]
-pub(crate) mod test_access {
-    use std::fs;
-    use std::io;
-    use std::path::Path;
-
-    use crate::platform::os::Os;
-
-    impl Os {
         pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<String>> {
             Ok(Os::exposure_of(&fs::metadata(path)?))
         }

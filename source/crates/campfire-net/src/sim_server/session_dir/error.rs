@@ -3,7 +3,7 @@ use std::io;
 
 use campfire_protocol::{JournalReplayError, NotJournal, SessionPrivateError};
 use campfire_runner::StartError;
-use campfire_store::{AppendOpenError, DurableError};
+use campfire_store::{AppendOpenError, DurableError, PathError};
 use thiserror::Error;
 
 /// Why a server's data directory does not say which session to restore.
@@ -32,7 +32,7 @@ pub enum RestoreError {
     #[error("the journal file")]
     NotJournal(#[source] NotJournal),
     #[error("the journal")]
-    Journal(#[source] AppendOpenError),
+    Journal(#[source] PathError<AppendOpenError>),
     #[error(transparent)]
     Replay(JournalReplayError),
 }
@@ -45,9 +45,9 @@ pub enum AbortError {
     Start(#[source] StartError),
     /// A checkpoint taken again did not write its snapshot.
     #[error("could not write a snapshot")]
-    Snapshot(#[source] DurableError),
+    Snapshot(#[source] PathError<DurableError>),
     #[error("could not publish the log")]
-    Publish(#[source] DurableError),
+    Publish(#[source] PathError<DurableError>),
 }
 
 /// Why the session a stop left under a data directory does not read back.
@@ -59,5 +59,5 @@ pub enum WaitingError {
     Restore(#[source] RestoreError),
     /// The directory of a session whose match never started did not go.
     #[error("could not remove a session that never started")]
-    Remove(#[source] DurableError),
+    Remove(#[source] PathError<DurableError>),
 }

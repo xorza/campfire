@@ -2,7 +2,7 @@ use std::io;
 
 use campfire_protocol::{ConnectError, DelegationError};
 use campfire_runner::{ResumeError, ServerInputRefused, StartError};
-use campfire_store::DurableError;
+use campfire_store::{DurableError, PathError};
 use thiserror::Error;
 
 /// Why the server refused a player's join.
@@ -40,5 +40,5 @@ pub enum RestoreMatchError {
     Resume(#[source] ResumeError),
     /// A checkpoint taken again did not write its snapshot.
     #[error("a checkpoint's snapshot was not written")]
-    WriteSnapshot(#[source] DurableError),
+    WriteSnapshot(#[source] PathError<DurableError>),
 }
