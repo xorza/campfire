@@ -72,6 +72,27 @@ pub enum ContentError {
         path: PackagePath,
         other: PackagePath,
     },
+    /// A file's size or SHA-256 differs from its row of the package's index.
+    #[error("{path} differs from the package's index")]
+    Changed { path: PackagePath },
+    /// The package's index does not start with the tag of this version of its format.
+    #[error("the package's index is no index of this version")]
+    IndexTag,
+    /// The package's index is no postcard list of rows.
+    #[error("the package's index does not decode")]
+    IndexDecode(#[source] postcard::Error),
+    /// The package's index decodes, but not from the one encoding of its rows.
+    #[error("the package's index is not in its one encoding")]
+    IndexNotCanonical,
+    /// A row of the package's index names no package path.
+    #[error("the package's index lists {0:?}, no path a package can name")]
+    IndexPath(String),
+    /// A row of the package's index is not past the one before it in the order of paths' bytes.
+    #[error("the package's index lists {0} out of order")]
+    IndexOrder(PackagePath),
+    /// The package's index lists itself, which no list can hold the hash of.
+    #[error("the package's index lists itself")]
+    IndexListsItself,
 }
 
 /// Why a store does not give the packages that session terms name.

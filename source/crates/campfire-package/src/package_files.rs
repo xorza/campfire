@@ -5,32 +5,36 @@ use campfire_common::Fingerprint;
 use serde::de::DeserializeOwned;
 
 use crate::error::ContentError;
+use crate::file_index::FileIndex;
+use crate::package_dir::PackageDir;
 
-/// A package's files a load reads, read once into memory, each file's bytes by its path in the
-/// package, and the fingerprint over every file of the package. A load parses only these bytes,
-/// so what it parses is what the fingerprint names.
+/// A package as a load reads it: its index, and the files a load reads, read once into memory
+/// and checked against their rows, each file's bytes by its path in the package. A load parses
+/// only these bytes, so what it parses is what the fingerprint names; any other file it reads on
+/// demand, checked the same way.
 #[derive(Debug, Clone)]
 pub struct PackageFiles {
     /// In the order of their paths.
     files: BTreeMap<PackagePath, Vec<u8>>,
-    fingerprint: Fingerprint,
+    index: FileIndex,
+    dir: PackageDir,
 }
 
 impl PackageFiles {
-    /// The package of `files`, the ones a load reads, whose files' list hashes to
-    /// `fingerprint`; see `PackageWalk::finish`.
+    /// The package in `dir` of `index`, and `files`, the ones a load reads.
     pub(crate) const fn new(
         files: BTreeMap<PackagePath, Vec<u8>>,
-        fingerprint: Fingerprint,
+        index: FileIndex,
+        dir: PackageDir,
     ) -> PackageFiles {
-        PackageFiles { files, fingerprint }
+        PackageFiles { files, index, dir }
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
-        self.fingerprint
+        self.index.fingerprint()
     }
 
-    /// The files under the directory `dir`, in the order of their paths.
+    /// The files under the directory `dir` that a load reads, in the order of their paths.
     pub(crate) fn files_under<'a>(&'a self, dir: &'a str) -> impl Iterator<Item = &'a PackagePath> {
         self.files.keys().filter(move |path| path.is_under(dir))
     }
@@ -43,7 +47,7 @@ impl PackageFiles {
         })
     }
 
-    /// The text of the file at `path`, such as a script's source.
+    /// The text of the file at `path` that a load reads, such as a script's source.
     pub fn read_text(&self, path: &PackagePath) -> Result<&str, ContentError> {
         let bytes = self
             .files
@@ -53,5 +57,15 @@ impl PackageFiles {
             path: path.clone(),
             error,
         })
+    }
+
+    /// The bytes of any file of the package, as an asset is read when it is drawn: read now, and
+    /// checked against its row. A path the index does not list is missing.
+    pub fn read_file(&self, path: &PackagePath) -> Result<Vec<u8>, ContentError> {
+        let row = self
+            .index
+            .row(path)
+            .ok_or_else(|| ContentError::Missing { path: path.clone() })?;
+        self.dir.read_row(path, row)
     }
 }

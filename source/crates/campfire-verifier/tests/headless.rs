@@ -759,7 +759,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         1,
     );
     files.insert(script, text.into_bytes());
-    let dir = PackageDir::in_memory(Arc::new(files), "modes/lane");
+    let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
     let thrown = FixedSession::new(
         ModePackages::from_package_dir(&dir).unwrap(),
         NonZeroU32::new(30).unwrap(),

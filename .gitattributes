@@ -1,3 +1,6 @@
 # Package files are hashed byte for byte, so their fingerprints, and every session that names
 # them, must see the same bytes on every OS: text stays LF on checkout everywhere.
 * text=auto eol=lf
+# A package index is binary: no line ending of it may change, or its hash, the package's
+# fingerprint, would.
+package.index binary

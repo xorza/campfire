@@ -1,4 +1,5 @@
-//! The MOBA packages, read from disk once, and in memory with edits made.
+//! The MOBA packages, read from disk once, and in memory with edits made and their indexes
+//! written again.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -64,7 +65,7 @@ pub(crate) fn edited_at<'a>(
         };
         files.insert(path, text.into_bytes());
     }
-    PackageDir::in_memory(Arc::new(files), root)
+    PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), root)
 }
 
 fn index(key: &str) -> usize {
@@ -139,7 +140,7 @@ fn an_edit_by_path_changes_nothing_but_its_value() {
             *bytes = at_path(&text, "", Missing::Fail, |_, _| {}).into_bytes();
         }
     }
-    let written = PackageDir::in_memory(Arc::new(files), "modes/3v3");
+    let written = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/3v3");
     let [read, written] = [edited([]), written].map(|dir| {
         let packages = ModePackages::from_package_dir(&dir).unwrap();
         let views: Vec<_> = packages

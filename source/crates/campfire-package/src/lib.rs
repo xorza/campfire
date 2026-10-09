@@ -6,6 +6,7 @@
 mod avatar_unit;
 mod dependent;
 mod error;
+mod file_index;
 mod files;
 mod language;
 mod load_check;
@@ -39,6 +40,7 @@ pub use crate::error::locale_problem::LocaleProblem;
 pub use crate::error::place::Place;
 pub use crate::error::script_problem::ScriptProblem;
 pub use crate::error::{ContentError, LoadError, PackageRef, StoreError};
+pub use crate::file_index::FileIndex;
 pub use crate::files::avatar_data::AvatarData;
 pub use crate::files::package_name::PackageName;
 pub use crate::files::tick_range::TickRange;

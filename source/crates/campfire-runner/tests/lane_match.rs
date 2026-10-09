@@ -147,7 +147,7 @@ fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
         "heroes/walker/locale/de.ftl".into(),
         b"hero-name = Wanderer\n".to_vec(),
     );
-    let reworded = PackageDir::in_memory(Arc::new(files), "modes/lane");
+    let reworded = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
     let [plain, reworded] =
         [plain, reworded].map(|dir| ModePackages::from_package_dir(&dir).unwrap());
     let walker = |packages: &ModePackages| {
@@ -173,7 +173,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
         1,
     );
     files.insert(script, text.into_bytes());
-    let dir = PackageDir::in_memory(Arc::new(files), "modes/lane");
+    let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
     let session = FixedSession::new(
         ModePackages::from_package_dir(&dir).unwrap(),
         NonZeroU32::new(30).unwrap(),

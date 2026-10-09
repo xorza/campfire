@@ -416,7 +416,7 @@ impl InProcessMatch {
             writeln!(text, "autosave_ms = {every}").expect("a String takes any text");
         }
         files.insert(data, text.into_bytes());
-        let dir = PackageDir::in_memory(Arc::new(files), "modes/lane");
+        let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
         ModePackages::from_package_dir(&dir).expect("the test mode loads")
     }
 
