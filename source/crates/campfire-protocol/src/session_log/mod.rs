@@ -52,7 +52,7 @@ pub(crate) mod spill;
 pub(crate) mod stamp_count;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
-const LOG_TAG: &[u8] = b"campfire/session-log/v2";
+const LOG_TAG: &[u8] = b"campfire/session-log/v3";
 /// The log's positions are `u32`: input indices, payload offsets and the count of entries each
 /// tick ends at.
 const POSITION_BOUND: usize = u32::MAX as usize;

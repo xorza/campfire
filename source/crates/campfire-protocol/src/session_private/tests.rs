@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, Ticks};
+use campfire_common::{Fingerprint, MapName, Ticks};
 
 use super::*;
 use crate::harness::test_key::TestKey;
@@ -22,6 +22,7 @@ fn a_private_record_round_trips_and_other_bytes_are_refused() {
             seed_commitment: seed_chain.commitment(),
             release: "0.1.0".to_owned(),
             mode: Fingerprint::new([1; 32]),
+            map: MapName::new("lane").unwrap(),
             dependencies: vec![Fingerprint::new([2; 32])],
             slots: vec![SlotPlan::Player, SlotPlan::Open],
         },

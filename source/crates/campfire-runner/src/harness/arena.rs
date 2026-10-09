@@ -7,7 +7,7 @@ use campfire_capabilities::{
 };
 use campfire_common::{PlayerSlot, SegmentSeed};
 use campfire_log::internals::LogCheck;
-use campfire_package::ModePackages;
+use campfire_package::{ModePackages, PackageDir};
 use campfire_sim::{SimUpdate, StateRegistry, TickInput, TickInputs, TickRate};
 
 use crate::match_build::MatchBuild;
@@ -26,10 +26,12 @@ pub struct Arena {
 }
 
 impl Arena {
-    /// The arena of the mode at `dir` at `rate`, for `players` players.
+    /// The arena of the mode at `dir`, on its only map, at `rate`, for `players` players.
     pub fn new(dir: &Path, rate: TickRate, players: u32) -> Arena {
         let log = LogCheck::start();
-        let packages = ModePackages::from_dir(dir).unwrap();
+        let mode = PackageDir::new(dir);
+        let map = ModePackages::choose_map(&mode, None).unwrap();
+        let packages = ModePackages::from_package_dir(&mode, &map).unwrap();
         let mut world = World::new();
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
         let mut schedule = SimUpdate::schedule();

@@ -11,4 +11,3 @@ Design: [Modules](../design/02-engine-core.md#modules), `package`. Rules: [Issue
 
 ## Ready
 
-- **Plan: Z3.** A package holds one map, `map/map.toml`, where design 03 holds any number under `map/<name>/`.

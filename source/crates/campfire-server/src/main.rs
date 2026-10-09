@@ -35,7 +35,7 @@ use campfire_net::{
     JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, ServerBots, ServerDir,
     ServerExit, ServerSetup, SessionTimes, SimServer,
 };
-use campfire_package::ModePackages;
+use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::Keypair;
 use campfire_sim::TickRate;
@@ -83,6 +83,7 @@ fn main() -> ExitCode {
         data,
         times,
         mode,
+        map,
         address,
         ..
     } = args;
@@ -100,7 +101,10 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
-    let packages = match ModePackages::from_dir(&mode) {
+    let mode_dir = PackageDir::new(&mode);
+    let packages = ModePackages::choose_map(&mode_dir, map)
+        .and_then(|map| ModePackages::from_package_dir(&mode_dir, &map));
+    let packages = match packages {
         Ok(packages) => packages,
         Err(error) => {
             error!(mode = %mode.display(), error = %ErrorReport::of(&error), "the mode does not load");

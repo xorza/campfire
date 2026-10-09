@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::Fingerprint;
+use campfire_common::{Fingerprint, MapName};
 use campfire_package::{ModePackages, RELEASE, TickRange};
 use campfire_protocol::secp256k1::XOnlyPublicKey;
 use campfire_protocol::{SeedCommitment, SessionTerms, SlotPlan};
@@ -11,12 +11,13 @@ use crate::session_rules::error::TermsError;
 pub(crate) mod error;
 
 /// What a mode's packages fix of every session that plays them on this engine release: the mode
-/// and its dependencies by their fingerprints, and the tick rates the mode runs at. A server
-/// builds its terms by them, and the server, the client and the verifier check terms against
-/// them, so the three agree on what a session of the packages is.
+/// and its dependencies by their fingerprints, the map it loaded, and the tick rates the mode runs
+/// at. A server builds its terms by them, and the server, the client and the verifier check terms
+/// against them, so the three agree on what a session of the packages is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRules {
     mode: Fingerprint,
+    map: MapName,
     dependencies: Box<[Fingerprint]>,
     tick_hz: TickRange,
     /// The player slots the mode's teams have.
@@ -27,6 +28,7 @@ impl SessionRules {
     pub fn of(packages: &ModePackages) -> SessionRules {
         SessionRules {
             mode: packages.fingerprint(),
+            map: packages.map_name().clone(),
             dependencies: packages.dependency_fingerprints().collect(),
             tick_hz: packages.manifest().tick_hz,
             slots: packages.manifest().slots(),
@@ -55,6 +57,7 @@ impl SessionRules {
             seed_commitment,
             release: RELEASE.to_owned(),
             mode: self.mode,
+            map: self.map.clone(),
             dependencies: self.dependencies.to_vec(),
             slots,
         };
@@ -62,13 +65,16 @@ impl SessionRules {
         Ok(terms)
     }
 
-    /// Whether `terms` name a session by these rules: of this release, of the mode and the
-    /// dependencies, in their order, at a rate the mode runs at, and of a slot at least and no
+    /// Whether `terms` name a session by these rules: of this release, of the mode, its map and
+    /// the dependencies, in their order, at a rate the mode runs at, and of a slot at least and no
     /// more than the mode's teams have.
     pub fn check(&self, terms: &SessionTerms) -> Result<(), TermsError> {
         SessionRules::check_release(terms)?;
         if terms.mode != self.mode {
             return Err(TermsError::OtherMode);
+        }
+        if terms.map != self.map {
+            return Err(TermsError::OtherMap);
         }
         if *terms.dependencies != *self.dependencies {
             return Err(TermsError::OtherDependencies);

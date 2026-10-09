@@ -12,6 +12,9 @@ pub enum TermsError {
     /// The packages are another mode than the one the terms name.
     #[error("the mode is not the one the session names")]
     OtherMode,
+    /// The packages loaded another map than the one the terms name.
+    #[error("the map is not the one the session names")]
+    OtherMap,
     /// The packages' dependencies are others than the ones the terms name.
     #[error("the dependencies are not the ones the session names")]
     OtherDependencies,

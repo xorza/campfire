@@ -22,7 +22,7 @@ pub struct PackageDir {
 }
 
 /// The directories whose files a load reads, beside the manifest.
-const READ_DIRS: [&str; 4] = ["data", "map", SCRIPTS, LOCALE];
+const READ_DIRS: [&str; 3] = ["data", SCRIPTS, LOCALE];
 
 /// Where a package's files are.
 #[derive(Debug, Clone)]
@@ -79,10 +79,10 @@ impl PackageDir {
     }
 
     /// The package's index, and the files a load reads, the manifest's and those under `data/`,
-    /// `map/`, `scripts/` and `locale/`, each read once into memory and checked against its row.
-    /// No other file is read, nor any file the index does not list.
+    /// `scripts/` and `locale/`, each read once into memory and checked against its row. Any
+    /// other file, as a session's map, reads on demand; no file the index does not list reads.
     pub fn read(&self) -> Result<PackageFiles, ContentError> {
-        let index = FileIndex::decode(&self.read_index()?)?;
+        let index = self.index()?;
         let mut files = BTreeMap::new();
         for (path, row) in index.rows() {
             if PackageDir::reads(path) {
@@ -127,6 +127,12 @@ impl PackageDir {
         Ok(bytes)
     }
 
+    /// The package's index alone, as a caller reads it to learn what the package holds, such as
+    /// its maps, before it loads any file.
+    pub(crate) fn index(&self) -> Result<FileIndex, ContentError> {
+        FileIndex::decode(&self.read_index()?)
+    }
+
     /// The bytes of the package's index, whose own size is its bound.
     fn read_index(&self) -> Result<Vec<u8>, ContentError> {
         self.read_bytes(&PackageDir::engine_path(FileIndex::PATH), None)
@@ -160,7 +166,7 @@ impl PackageDir {
     }
 
     /// Whether a load reads the file at `path`: the manifest, and the files of its data, its
-    /// map, its scripts and its locales.
+    /// scripts and its locales.
     fn reads(path: &PackagePath) -> bool {
         path.as_str() == PackageDir::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
     }

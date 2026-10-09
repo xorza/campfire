@@ -1,5 +1,5 @@
 use campfire_capabilities::{Action, ActionTarget, Order, Team, TrainQueue};
-use campfire_common::PlayerSlot;
+use campfire_common::{MapName, PlayerSlot};
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir};
@@ -103,8 +103,11 @@ impl ProvingMatch {
     pub const LEAVE: u64 = 400;
 
     pub fn load() -> ProvingMatch {
-        let packages =
-            ModePackages::from_dir(&PackageDir::workspace("test/modes/proving")).unwrap();
+        let packages = ModePackages::from_dir(
+            &PackageDir::workspace("test/modes/proving"),
+            &MapName::new("proving").unwrap(),
+        )
+        .unwrap();
         let plan = vec![SlotPlan::Player, SlotPlan::Open];
         ProvingMatch {
             session: FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan),

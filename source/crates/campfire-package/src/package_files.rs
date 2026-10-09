@@ -53,6 +53,27 @@ impl PackageFiles {
             .files
             .get(path)
             .ok_or_else(|| ContentError::Missing { path: path.clone() })?;
+        PackageFiles::text(path, bytes)
+    }
+
+    /// The TOML data file at `path`, which a load does not keep, read now and checked against its
+    /// row, as a session's map is.
+    pub(crate) fn read_file_data<T: DeserializeOwned>(
+        &self,
+        path: &PackagePath,
+    ) -> Result<T, ContentError> {
+        let bytes = self.read_file(path)?;
+        toml::from_str(PackageFiles::text(path, &bytes)?).map_err(|error| ContentError::Data {
+            path: path.clone(),
+            error,
+        })
+    }
+
+    pub(crate) const fn index(&self) -> &FileIndex {
+        &self.index
+    }
+
+    fn text<'a>(path: &PackagePath, bytes: &'a [u8]) -> Result<&'a str, ContentError> {
         str::from_utf8(bytes).map_err(|error| ContentError::NotText {
             path: path.clone(),
             error,

@@ -48,6 +48,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         "30",
     ]);
     assert_eq!((remote.key, remote.mode), (Some("k".into()), "mode".into()));
+    assert_eq!(remote.map, None);
     assert!(matches!(
         remote.server,
         Server::Remote { address, tick_hz, .. }
@@ -64,8 +65,11 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         "d",
         "--server-bot",
         "2=b.toml",
+        "--map",
+        "lane",
     ]);
     assert_eq!(local.data, Some("d".into()));
+    assert_eq!(local.map, MapName::new("lane"));
     let Server::Local { bots } = local.server else {
         panic!("a local server");
     };
@@ -94,6 +98,10 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
             ErrorKind::MissingRequiredArgument,
         ),
         (&["--fast", "mode"], ErrorKind::UnknownArgument),
+        (
+            &["--local", "--data", "d", "--map", "3v3", "mode"],
+            ErrorKind::ValueValidation,
+        ),
         (&["--key"], ErrorKind::InvalidValue),
         (
             &["--key", "a", "--key", "b", "mode"],

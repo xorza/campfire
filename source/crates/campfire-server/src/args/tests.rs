@@ -27,6 +27,8 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
         "0.0.0.0:4433",
         "--restore-window",
         "9",
+        "--map",
+        "lane",
     ])
     .unwrap();
     assert_eq!(args.data, PathBuf::from("d"));
@@ -42,11 +44,12 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     assert_eq!(bots, [(PlayerSlot::new(1), PathBuf::from("bot.toml"))]);
     assert_eq!(args.takeover, Some(PathBuf::from("takeover.toml")));
     assert_eq!(args.mode, PathBuf::from("mode"));
+    assert_eq!(args.map, MapName::new("lane"));
     assert_eq!(args.address, SocketAddr::from(([0, 0, 0, 0], 4433)));
     // The defaults, with no flag but `--data`.
     let plain = read(&["--data", "d", "mode", "0.0.0.0:4433"]).unwrap();
     assert_eq!(plain.times, SessionTimes::DEFAULT);
-    assert!(plain.bots.is_empty() && plain.takeover.is_none());
+    assert!(plain.bots.is_empty() && plain.takeover.is_none() && plain.map.is_none());
 
     let refused = |args: &[&str]| read(args).unwrap_err();
     for (args, kind) in [
@@ -63,6 +66,10 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
             ErrorKind::MissingRequiredArgument,
         ),
         (&["--data"], ErrorKind::InvalidValue),
+        (
+            &["--data", "d", "--map", "Lane", "mode", "0.0.0.0:4433"],
+            ErrorKind::ValueValidation,
+        ),
         (&["--data", "d", "mode"], ErrorKind::MissingRequiredArgument),
         (
             &["--data", "d", "mode", "0.0.0.0:4433", "x"],

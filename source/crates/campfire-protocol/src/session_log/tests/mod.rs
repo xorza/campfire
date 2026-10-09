@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{Fingerprint, SegmentSeed, StateHash, Ticks};
+use campfire_common::{Fingerprint, MapName, SegmentSeed, StateHash, Ticks};
 use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
@@ -71,6 +71,7 @@ fn terms() -> SessionTerms {
         seed_commitment: SEED_CHAIN.commitment(),
         release: RELEASE.to_owned(),
         mode: MODE,
+        map: MapName::new("lane").unwrap(),
         dependencies: DEPENDENCIES.to_vec(),
         slots: vec![SlotPlan::Player; 2],
     }
@@ -625,7 +626,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
 
     // The session id hashes the terms, so a change to any of them leaves every delegation
     // naming another session.
-    let changes: [fn(&mut SessionTerms); 12] = [
+    let changes: [fn(&mut SessionTerms); 13] = [
         |terms| terms.server_key = x_only(42),
         |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
         |terms| terms.max_input_delay = Ticks::new(terms.max_input_delay.get() + 1),
@@ -635,6 +636,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
         |terms| terms.release.push('1'),
         |terms| terms.mode = Fingerprint::new([50; 32]),
+        |terms| terms.map = MapName::new("lanes").unwrap(),
         |terms| terms.dependencies[1] = Fingerprint::new([54; 32]),
         |terms| terms.dependencies.swap(0, 1),
         |terms| terms.slots[1] = SlotPlan::Bot,
@@ -657,7 +659,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     // The id, as design 05 spells it.
     let mut spelled = Hasher::new();
     spelled
-        .update(b"campfire/session-id/v1")
+        .update(b"campfire/session-id/v2")
         .update(&server_key().serialize())
         .update(&300_u32.to_le_bytes())
         .update(&2_u64.to_le_bytes())
@@ -668,6 +670,9 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         .update(&5_u64.to_le_bytes())
         .update(b"0.1.0")
         .update(&[51; 32])
+        // The map's name, after its length.
+        .update(&4_u64.to_le_bytes())
+        .update(b"lane")
         .update(&2_u64.to_le_bytes())
         .update(&[52; 32])
         .update(&[53; 32])
@@ -761,7 +766,7 @@ fn frame(
     tail: &[Sent<'_>],
     revealed: Option<ServerSeed>,
 ) -> Vec<u8> {
-    let mut bytes = b"campfire/session-log/v2".to_vec();
+    let mut bytes = b"campfire/session-log/v3".to_vec();
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
@@ -772,6 +777,7 @@ fn frame(
     put(&mut bytes, &terms.seed_commitment);
     put(&mut bytes, terms.release.as_str());
     put(&mut bytes, &terms.mode);
+    put(&mut bytes, &terms.map);
     put(&mut bytes, &terms.dependencies);
     put(&mut bytes, &terms.slots);
     put(&mut bytes, &u32::try_from(header.slots.len()).unwrap());
@@ -889,18 +895,20 @@ fn a_log_file_has_its_layout() {
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
-        &b"campfire/session-log/v2"[..],
+        &b"campfire/session-log/v3"[..],
         // The terms, and no session id: it is their hash.
         &server_key().serialize(),
         // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
         // payload length 4, inputs per tick 2.
         &[0xAC, 0x02, 2, 2, 4, 2],
         SEED_CHAIN.commitment().as_bytes(),
-        // The release as a length and UTF-8, the mode's fingerprint, and the count and
-        // fingerprints of its 2 dependencies.
+        // The release as a length and UTF-8, the mode's fingerprint, the map's name as a length
+        // and UTF-8, and the count and fingerprints of its 2 dependencies.
         &[5],
         b"0.1.0",
         &[51; 32],
+        &[4],
+        b"lane",
         &[2],
         &[52; 32],
         &[53; 32],
@@ -930,7 +938,7 @@ fn a_log_file_has_its_layout() {
     assert_eq!(encoded(&log), expected);
 
     // A rate of 0 ticks a second does not decode.
-    let tick_at = b"campfire/session-log/v2".len() + 32;
+    let tick_at = b"campfire/session-log/v3".len() + 32;
     let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
     assert!(matches!(
         SessionLog::decode(&zero_rate),
@@ -989,7 +997,7 @@ fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
         SessionLog::decode(&bytes).map(|log| log.next_tick()),
         Ok(Tick::new(1))
     );
-    let tag = b"campfire/session-log/v2".len();
+    let tag = b"campfire/session-log/v3".len();
     for at in 0..bytes.len() {
         let expected = if at < tag {
             LogError::NotLog

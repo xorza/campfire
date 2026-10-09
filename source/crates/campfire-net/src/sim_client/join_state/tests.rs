@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::num::NonZeroU32;
 
-use campfire_common::Fingerprint;
+use campfire_common::{Fingerprint, MapName};
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
@@ -30,7 +30,7 @@ type Change = fn(&mut SessionTerms);
 /// The rules of the lane mode, which runs at 30 Hz only.
 fn lane_rules() -> SessionRules {
     let dir = PackageDir::workspace("test/modes/lane");
-    SessionRules::of(&ModePackages::from_dir(&dir).unwrap())
+    SessionRules::of(&ModePackages::from_dir(&dir, &MapName::new("lane").unwrap()).unwrap())
 }
 
 /// The x-only key of `TestKey::of(secret)`.

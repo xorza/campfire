@@ -124,7 +124,7 @@ Each is pure Rust, with no float math in what it writes, so one version and one 
 ## What the engine lacks
 
 - **`store`** reads a file whole or as a stream from its start, `InputFile::stream`; an archive of 333 MiB needs reads at an offset.
-- **`package`**'s map is `map/map.toml` (`MapData`, `campfire-capabilities/src/mode/map_data.rs`): bounds, grids, walls, paths, placed units and markers, with no heightmap and no model of a unit type.
+- **`package`**'s map is `map/<name>/map.toml` (`MapData`, `campfire-capabilities/src/mode/map_data.rs`): bounds, grids, walls, paths, placed units and markers, with no heightmap and no model of a unit type.
 - **`client`** draws a plane and capsules (`campfire-client/src/view/mod.rs`), and builds Bevy with no glTF, PNG or KTX2 support. Design 02 says the client loads no asset from a file, so a model's bytes reach Bevy through `store`, not Bevy's asset server.
 
 ## Open

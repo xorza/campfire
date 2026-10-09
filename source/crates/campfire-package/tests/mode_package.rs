@@ -6,10 +6,11 @@ use std::path::Path;
 
 use campfire_capabilities::{
     ActionDataField, ActionField, ActionKind, AiError, CapabilitySet, DeclaredName, EffectData,
-    EffectTo, Effecting, EngineEnum, EngineTag, HealFields, Hook, LaunchFields, MapProblem,
+    EffectTo, Effecting, EngineEnum, EngineTag, HealFields, Hook, LaunchFields, MapProblem, Metric,
     ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields, Scalar,
     Status, SyncTo, TimeTooLarge, UnitKitError,
 };
+use campfire_common::MapName;
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
     EffectProblem, GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages,
@@ -19,7 +20,7 @@ use campfire_script::ScriptError;
 use campfire_script::rhai::ParseErrorType;
 use campfire_sim::{Capability, TickRate};
 
-use crate::moba::{Edit, edited, moba, moba_files};
+use crate::moba::{Edit, edited, load, moba, moba_files, two_lanes};
 
 /// A flaw, the package it is in, and the problem it fails the load with.
 #[derive(Debug)]
@@ -49,7 +50,7 @@ const fn flaw(
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const UNITS: &str = "modes/3v3/data/units.toml";
-const MAP: &str = "modes/3v3/map/map.toml";
+const MAP: &str = "modes/3v3/map/two_lanes/map.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
 const HUSK_MANIFEST: &str = "heroes/husk/manifest.toml";
 const HUSK_TEXT: &str = "heroes/husk/locale/en.ftl";
@@ -124,7 +125,7 @@ fn read_fails(problem: &LoadProblem, file: &str, message: &str) -> bool {
 fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     // 5 m/s, slower than the 3v3's cap of 6: a homing projectile might never catch a hero.
     let edit = Edit::Set("units.caster_creep_bolt.projectile.speed", r#""5.0""#);
-    let error = ModePackages::from_package_dir(&edited([(UNITS, edit)])).unwrap_err();
+    let error = load(&edited([(UNITS, edit)])).unwrap_err();
     assert_eq!(
         error.package,
         PackageRef::Name(PackageName::new(MODE).unwrap())
@@ -133,14 +134,14 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     assert!(at_caster(&error.problem), "{error:?}");
     // Along a line, the same speed loads: it chases no one.
     let edit = Edit::Set("units.grasping_wraps.projectile.speed", r#""5""#);
-    assert!(ModePackages::from_package_dir(&edited([(HUSK, edit)])).is_ok());
+    assert!(load(&edited([(HUSK, edit)])).is_ok());
 }
 
 #[test]
 fn a_mode_state_field_is_sent_to_no_client_unless_it_says() {
     // The 3v3's `phase` is sent to all; without `sync`, or with `sync = "none"`, to none.
     let phase = |edit: Edit<'_>| {
-        let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
+        let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
         packages.data().state["phase"].sync
     };
     let pick = r#"phase = { type = "string", default = "pick", sync = "all" }"#;
@@ -159,7 +160,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         r#"{ modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },
     { heal = { amount = 1 }, to = "source" },"#,
     );
-    let packages = ModePackages::from_package_dir(&edited([(RIME, to_source)])).unwrap();
+    let packages = load(&edited([(RIME, to_source)])).unwrap();
     let rime = packages
         .dependencies()
         .iter()
@@ -177,7 +178,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
     );
     // A purge names a tag the match declares, which Rime's slow grants.
     let purge = Edit::Replace(SLOWS, r#"{ purge = { tag = "slowed" } },"#);
-    let packages = ModePackages::from_package_dir(&edited([(RIME, purge)])).unwrap();
+    let packages = load(&edited([(RIME, purge)])).unwrap();
     let rime = packages
         .dependencies()
         .iter()
@@ -195,7 +196,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
     );
     // `to` names the source alone.
     let to_target = Edit::Replace(SLOWS, r#"{ heal = { amount = 1 }, to = "target" },"#);
-    let error = ModePackages::from_package_dir(&edited([(RIME, to_target)])).unwrap_err();
+    let error = load(&edited([(RIME, to_target)])).unwrap_err();
     assert!(
         read_fails(&error.problem, "data/avatar.toml", "unknown variant"),
         "{error:?}"
@@ -218,12 +219,12 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
     // A weapon's `on_hit` follows its attack, which reaches its target at once with no delivery.
     let on_hit = biting("on_hit");
     let edit = Edit::Replace(MELEE_END, &on_hit);
-    let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
+    let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
     let weapon = &packages.content().actions["melee_creep_attack"];
     assert_eq!((weapon.on_hit.len(), weapon.params.len()), (1, 1));
     let on_end = biting("on_end");
     let edit = Edit::Replace(MELEE_END, &on_end);
-    let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
+    let error = load(&edited([(MODE_DATA, edit)])).unwrap_err();
     let refused = |problem: &LoadProblem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::OnEnd } if action == "melee_creep_attack");
     assert!(refused(&error.problem), "{error:?}");
     // Cinder's bolt launches an eruption, an area type of her own package, where it hits.
@@ -231,7 +232,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
         "actions.attack.on_hit",
         r#"[{ launch = { area = "eruption" } }]"#,
     );
-    let packages = ModePackages::from_package_dir(&edited([(CINDER, edit)])).unwrap();
+    let packages = load(&edited([(CINDER, edit)])).unwrap();
     let cinder = packages
         .dependencies()
         .iter()
@@ -251,7 +252,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
 
 /// The 3v3 as its packages hold it.
 fn three_v_three() -> ModePackages {
-    ModePackages::from_dir(&moba().join(MODE_DIR)).unwrap()
+    ModePackages::from_dir(&moba().join(MODE_DIR), &two_lanes()).unwrap()
 }
 
 #[test]
@@ -283,7 +284,7 @@ fn a_mode_type_may_share_its_name_with_a_dependencys_delivery_type() {
             "[units.grasping_wraps]\nprojectile = { speed = \"20\" }\n\n[units.tower_bolt]\n",
         ),
     )];
-    let packages = ModePackages::from_package_dir(&edited(edits)).unwrap();
+    let packages = load(&edited(edits)).unwrap();
     assert!(packages.content().units.contains_key("grasping_wraps"));
 }
 
@@ -296,7 +297,7 @@ fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
     ctx.spawn_unit("hero-husk", "camps", unit.pos);
 "#;
     let edit = Edit::Replace("    share_xp(ctx, unit);\n", spawns);
-    assert!(ModePackages::from_package_dir(&edited([(MODE_SCRIPT, edit)])).is_ok());
+    assert!(load(&edited([(MODE_SCRIPT, edit)])).is_ok());
 }
 
 #[test]
@@ -305,7 +306,7 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 7, so 224
     // layers, each a tag, fill the 256 a match holds, and 225 are past it.
     let tags = |packages: &ModePackages| packages.tag_names().len();
-    let packages = ModePackages::from_package_dir(&edited([])).unwrap();
+    let packages = load(&edited([])).unwrap();
     assert_eq!(tags(&packages), 25);
     // Each once, in order, as a match declares them: `ward` after `slowed`.
     assert!(packages.tag_names().is_sorted_by(|a, b| a < b));
@@ -318,14 +319,14 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     assert!(at("slowed").unwrap() < at("ward").unwrap());
     let [(path, layers)] = <[_; 1]>::try_from(layers(224)).unwrap();
     let edit = Edit::Set(&path, &layers);
-    let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
+    let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
     assert_eq!(tags(&packages), 249);
     // The mode's `[tags]` may give an engine tag properties, and that names no tag of its own.
     let edit = Edit::Replace(
         "[tags.stunned]",
         "[tags.projectile]\nhidden = true\n\n[tags.stunned]",
     );
-    let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
+    let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
     assert_eq!(tags(&packages), 25);
 }
 
@@ -376,7 +377,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
             let edits = sets
                 .iter()
                 .map(|(path, value)| (MODE_DATA, Edit::Set(path, value)));
-            ModePackages::from_package_dir(&edited(edits))
+            load(&edited(edits))
         };
         assert!(load(case.allowed).is_ok(), "{case:?}");
         let error = load(case.allowed + 1).unwrap_err();
@@ -1367,7 +1368,13 @@ static FLAWS: [Flaw; 270] = [
         MAP,
         Edit::Set("bounds", "{ min = [1, 0], max = [0, 1] }"),
         MODE,
-        |problem| read_fails(problem, "map/map.toml", "bounds need min below max"),
+        |problem| {
+            read_fails(
+                problem,
+                "map/two_lanes/map.toml",
+                "bounds need min below max",
+            )
+        },
     ),
     flaw(MAP, Edit::Set("units.0.pos", "[0, -69]"), MODE, |problem| {
         matches!(problem, LoadProblem::Mode(ModeError::OutOfBounds))
@@ -2081,7 +2088,13 @@ static FLAWS: [Flaw; 270] = [
         MAP,
         Edit::Replace(r#"path = "west""#, r#"path = "west lane""#),
         MODE,
-        |problem| read_fails(problem, "map/map.toml", r#""west lane" is not a name"#),
+        |problem| {
+            read_fails(
+                problem,
+                "map/two_lanes/map.toml",
+                r#""west lane" is not a name"#,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -2801,7 +2814,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         let edits = [(flaw.file, flaw.edit)]
             .into_iter()
             .chain(flaw.also.iter().copied());
-        let Err(error) = ModePackages::from_package_dir(&edited(edits)) else {
+        let Err(error) = load(&edited(edits)) else {
             panic!("{flaw:?} loads");
         };
         let LoadError { package, problem } = &error;
@@ -2819,7 +2832,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         "m.stacks += 1;",
         r#"if m.carrier.has_modifier("slow") { m.stacks += 1; }"#,
     );
-    assert!(ModePackages::from_package_dir(&edited([(STILLNESS, asks)])).is_ok());
+    assert!(load(&edited([(STILLNESS, asks)])).is_ok());
 
     // The three kinds and 253 more are 256, all a byte tells apart; one more fails.
     let kinds = |count: usize| {
@@ -2834,7 +2847,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
             1,
         );
         let text: &'static str = Box::leak(text.into_boxed_str());
-        ModePackages::from_package_dir(&edited([(MODE_DATA, Edit::Create(text))]))
+        load(&edited([(MODE_DATA, Edit::Create(text))]))
     };
     assert!(kinds(253).is_ok());
     let error = kinds(254).unwrap_err();
@@ -2861,7 +2874,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
     );
 
     // A hero is no mode.
-    let husk = ModePackages::from_dir(&moba().join("heroes/husk")).unwrap_err();
+    let husk = ModePackages::from_dir(&moba().join("heroes/husk"), &two_lanes()).unwrap_err();
     assert!(matches!(*husk.problem, LoadProblem::WrongKind), "{husk}");
 }
 
@@ -2933,8 +2946,52 @@ fn a_build_and_a_gather_with_their_nodes_and_drop_offs_load() {
             ),
         ),
     ];
-    let loaded = ModePackages::from_package_dir(&edited(edits));
+    let loaded = load(&edited(edits));
     assert!(loaded.is_ok(), "{:?}", loaded.err());
+}
+
+#[test]
+fn a_mode_loads_the_map_its_session_names() {
+    // The 3v3 with a second map, its own raised to the spatial metric: each name loads its map,
+    // and a third is no map of the mode.
+    let map = String::from_utf8(moba_files()[Path::new(MAP)].clone()).unwrap();
+    let raised: &'static str = Box::leak(raised(&map).into_boxed_str());
+    let second = MapName::new("second").unwrap();
+    let two = edited([("modes/3v3/map/second/map.toml", Edit::Create(raised))]);
+    let planar = load(&two).unwrap();
+    assert_eq!(planar.map_name(), &two_lanes());
+    assert_eq!(planar.map().metric, Metric::Planar);
+    let spatial = ModePackages::from_package_dir(&two, &second).unwrap();
+    assert_eq!(spatial.map_name(), &second);
+    assert_eq!(spatial.map().metric, Metric::Spatial);
+    let third = MapName::new("third").unwrap();
+    let error = ModePackages::from_package_dir(&two, &third).unwrap_err();
+    assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));
+
+    // With no map named, the only map; of two, neither, and the error names both in order.
+    assert_eq!(
+        ModePackages::choose_map(&edited([]), None).unwrap(),
+        two_lanes()
+    );
+    assert_eq!(
+        ModePackages::choose_map(&two, Some(third.clone())).unwrap(),
+        third
+    );
+    let error = ModePackages::choose_map(&two, None).unwrap_err();
+    assert!(
+        matches!(&*error.problem, LoadProblem::MapNeeded(maps) if *maps == [second, two_lanes()]),
+        "{error:?}"
+    );
+    assert_eq!(
+        error.problem.to_string(),
+        "name one of the mode's maps: second, two_lanes"
+    );
+    // A directory under `map/` whose name no map can have fails the load.
+    let upper = edited([("modes/3v3/map/Upper/map.toml", Edit::Create(raised))]);
+    assert!(matches!(
+        &*load(&upper).unwrap_err().problem,
+        LoadProblem::MapDirName(name) if name == "Upper"
+    ));
 }
 
 #[test]
@@ -2945,16 +3002,16 @@ fn a_box_lies_only_on_a_planar_map() {
         r#"collision = { radius = "0.9" }"#,
         r#"collision = { box = ["1.8", "1.8"] }"#,
     );
-    assert!(ModePackages::from_package_dir(&edited([(UNITS, tower)])).is_ok());
+    assert!(load(&edited([(UNITS, tower)])).is_ok());
     let map = String::from_utf8(moba_files()[Path::new(MAP)].clone()).unwrap();
     let raised: &'static str = Box::leak(raised(&map).into_boxed_str());
     let spatial = [(MAP, Edit::Create(raised)), (UNITS, tower)];
-    let error = ModePackages::from_package_dir(&edited(spatial)).unwrap_err();
+    let error = load(&edited(spatial)).unwrap_err();
     assert!(
         matches!(&*error.problem, LoadProblem::BoxBody { at: Place::UnitType(name), problem: BoxProblem::Spatial } if name == "tower"),
         "{error:?}"
     );
     // The raised map alone loads: the points it raised are its only change.
-    let alone = ModePackages::from_package_dir(&edited([(MAP, Edit::Create(raised))]));
+    let alone = load(&edited([(MAP, Edit::Create(raised))]));
     assert!(alone.is_ok(), "{:?}", alone.err());
 }

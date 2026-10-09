@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{Fingerprint, Ticks};
+use campfire_common::{Fingerprint, MapName, Ticks};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,7 @@ use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
-const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v1";
+const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v2";
 
 /// The most bytes postcard writes for a `u64`, and for a `u32` or a length.
 const VARINT_64: u64 = 10;
@@ -50,6 +50,8 @@ pub struct SessionTerms {
     pub release: String,
     /// The fingerprint of the mode package.
     pub mode: Fingerprint,
+    /// The mode's map the session plays.
+    pub map: MapName,
     /// The fingerprints of the mode's dependencies, in the order of their names in its manifest.
     pub dependencies: Vec<Fingerprint>,
     /// How the server opens each slot the session plays, by slot.
@@ -59,8 +61,8 @@ pub struct SessionTerms {
 impl SessionTerms {
     /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max
     /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
-    /// ‖ mode fingerprint ‖ u64 dependency count ‖ dependency fingerprints ‖ u64 slot count ‖ u8
-    /// per slot, its plan's code)`, integers little-endian.
+    /// ‖ mode fingerprint ‖ u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency
+    /// fingerprints ‖ u64 slot count ‖ u8 per slot, its plan's code)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
         let mut hasher = Hasher::new();
         hasher
@@ -75,6 +77,8 @@ impl SessionTerms {
             .update(&len(self.release.len()).to_le_bytes())
             .update(self.release.as_bytes())
             .update(self.mode.as_bytes())
+            .update(&len(self.map.as_str().len()).to_le_bytes())
+            .update(self.map.as_str().as_bytes())
             .update(&len(self.dependencies.len()).to_le_bytes());
         for dependency in &self.dependencies {
             hasher.update(dependency.as_bytes());
@@ -115,7 +119,7 @@ impl SessionTerms {
             .checked_add(2 * HASH + SIGNATURE + SLACK)?;
         let terms = len(self.dependencies.len())
             .checked_mul(HASH)?
-            .checked_add(len(self.release.len()) + SLACK)?;
+            .checked_add(len(self.release.len()) + len(self.map.as_str().len()) + SLACK)?;
         let header = slots.checked_mul(delegation + SLACK)?.checked_add(terms)?;
         Some(packet.max(server).max(checkpoint).max(header))
     }

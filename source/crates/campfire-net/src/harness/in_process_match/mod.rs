@@ -15,7 +15,7 @@ use campfire_capabilities::{
     Action, Body, CapabilitySet, Leaver, MoveStep, Order, Owner, PlayersData, SaveBy, SavesData,
     Team,
 };
-use campfire_common::PlayerSlot;
+use campfire_common::{MapName, PlayerSlot};
 use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
@@ -417,7 +417,8 @@ impl InProcessMatch {
         }
         files.insert(data, text.into_bytes());
         let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
-        ModePackages::from_package_dir(&dir).expect("the test mode loads")
+        ModePackages::from_package_dir(&dir, &MapName::new("lane").expect("a map's name"))
+            .expect("the test mode loads")
     }
 
     /// What the server opens or restores its session with: its key, the certificate hash both
@@ -890,6 +891,7 @@ pub(crate) mod bench {
     use std::time::Duration;
 
     use campfire_capabilities::Action;
+    use campfire_common::MapName;
     use campfire_math::{Num, Vec3};
     use campfire_package::{ModePackages, PackageDir};
     use campfire_sim::{EntityIndex, Position};
@@ -982,8 +984,11 @@ pub(crate) mod bench {
             setup.players = players;
             setup.rollbacks[..players].copy_from_slice(&ROLLBACKS_3V3);
             setup.bots = &PICKS_3V3[players..];
-            let packages = ModePackages::from_dir(&PackageDir::workspace("test/moba/modes/3v3"))
-                .expect("the MOBA 3v3 loads");
+            let packages = ModePackages::from_dir(
+                &PackageDir::workspace("test/moba/modes/3v3"),
+                &MapName::new("two_lanes").expect("a map's name"),
+            )
+            .expect("the MOBA 3v3 loads");
             let mut local = InProcessMatch::of_mode(setup, packages);
             local.open_match();
             for (client, pick) in PICKS_3V3[..players].iter().enumerate() {

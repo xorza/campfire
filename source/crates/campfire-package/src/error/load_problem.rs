@@ -3,6 +3,7 @@ use campfire_capabilities::{
     MapProblem, ModeError, ModifierProblem, NameKind, PackagePath, ParamProblem, Stat,
     TimeTooLarge, UnitKitError,
 };
+use campfire_common::MapName;
 use campfire_sim::Capability;
 use thiserror::Error;
 
@@ -31,6 +32,17 @@ pub enum LoadProblem {
     /// depends on.
     #[error("not a package of the kind its place needs")]
     WrongKind,
+    /// The mode holds no map of the name the session gives.
+    #[error("the mode has no map {0}")]
+    NoMap(MapName),
+    /// A directory under `map/` holds a map whose name no session can give.
+    #[error(
+        "map/{0}/ is no map's name: a lowercase letter, then lowercase letters, digits and underscores"
+    )]
+    MapDirName(String),
+    /// No map was named, and the mode has none, or more than one, to choose from.
+    #[error("name one of the mode's maps: {}", names(.0))]
+    MapNeeded(Vec<MapName>),
     /// The dependency's package has another name than the mode gives it.
     #[error("the package is named {0:?}")]
     OtherName(PackageName),
@@ -261,4 +273,15 @@ fn param_of(param: &DeclaredName, way: Option<&Way>) -> String {
         Some(way) => format!("param {param}, by {way}"),
         None => format!("its own param {param}"),
     }
+}
+
+/// `maps` as text, comma-separated, or `none`.
+fn names(maps: &[MapName]) -> String {
+    if maps.is_empty() {
+        return "none".to_owned();
+    }
+    maps.iter()
+        .map(MapName::as_str)
+        .collect::<Vec<_>>()
+        .join(", ")
 }

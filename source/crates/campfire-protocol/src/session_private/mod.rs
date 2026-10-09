@@ -7,7 +7,7 @@ use crate::session_terms::SessionTerms;
 pub(crate) mod error;
 
 /// Starts every private record and states its version, so other bytes are refused at once.
-const PRIVATE_TAG: &[u8] = b"campfire/session-private/v1";
+const PRIVATE_TAG: &[u8] = b"campfire/session-private/v2";
 
 /// What a server keeps of a session that no one else sees, written once before its first offer:
 /// the seed chain, whose root reveals every segment's seed, and the session's terms, so a

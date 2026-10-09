@@ -2,12 +2,13 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use campfire_common::MapName;
 use campfire_net::{OrderScript, OrderScriptReadError, ServerBots, SessionTimes, SlotBotFile};
 use clap::Parser;
 
 /// What the command line names: the data directory, how long after its journal's last write a
-/// session a stop ended restores, the server's bots, the mode to open, and the address to listen
-/// on.
+/// session a stop ended restores, the server's bots, the mode to open and its map, and the address
+/// to listen on.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) data: PathBuf,
@@ -15,6 +16,7 @@ pub(crate) struct Args {
     pub(crate) bots: Vec<SlotBotFile>,
     pub(crate) takeover: Option<PathBuf>,
     pub(crate) mode: PathBuf,
+    pub(crate) map: Option<MapName>,
     pub(crate) address: SocketAddr,
 }
 
@@ -38,6 +40,9 @@ pub(crate) struct CommandLine {
     /// The orders of the slots that become bots after a leaver, counted from that tick
     #[arg(long, value_name = "ORDERS FILE")]
     takeover: Option<PathBuf>,
+    /// The mode's map the session plays; the mode's only map when it has one
+    #[arg(long, value_name = "NAME")]
+    map: Option<MapName>,
     /// The mode's package directory
     mode: PathBuf,
     /// The address to listen on, as 0.0.0.0:4433
@@ -56,6 +61,7 @@ impl Args {
             bots: line.server_bots,
             takeover: line.takeover,
             mode: line.mode,
+            map: line.map,
             address: line.address,
         }
     }

@@ -19,8 +19,8 @@ use crate::units::layer::Layer;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
-/// The mode's `map/map.toml`: its metric, its bounds, its grids, its paths, the units placed on it
-/// from the start, and its markers.
+/// One of the mode's maps, `map/<name>/map.toml`: its metric, its bounds, its grids, its paths,
+/// the units placed on it from the start, and its markers.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapData {

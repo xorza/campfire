@@ -10,16 +10,16 @@ use campfire_package::{
 };
 use campfire_sim::Capability;
 
-use crate::moba::{Edit, edited};
+use crate::moba::{Edit, edited, load};
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
-const MAP: &str = "modes/3v3/map/map.toml";
+const MAP: &str = "modes/3v3/map/two_lanes/map.toml";
 
 /// The 3v3 with `more` edits.
 fn with_items(more: &[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError> {
-    ModePackages::from_package_dir(&edited(more.iter().copied()))
+    load(&edited(more.iter().copied()))
 }
 
 fn name(text: &str) -> DeclaredName {

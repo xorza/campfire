@@ -8,7 +8,7 @@ use campfire_capabilities::{
     Action, ActionSlots, Deaths, Experience, Hook, Level, Order, PathWalker, Points, Rank,
     ScriptFailures, Team, TrackId,
 };
-use campfire_common::{StateHash, Tick};
+use campfire_common::{MapName, StateHash, Tick};
 use campfire_math::Num;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_runner::ScriptCallFailed;
@@ -52,7 +52,11 @@ const MEET: u64 = 140;
 
 #[test]
 fn the_lane_match_plays_to_its_golden_record() {
-    let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap();
+    let packages = ModePackages::from_dir(
+        &PackageDir::workspace("test/modes/lane"),
+        &MapName::new("lane").unwrap(),
+    )
+    .unwrap();
     let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
     let mut golden = Golden::new(session.packages(), session.slots());
     let mut fixed = session.start();
@@ -148,8 +152,8 @@ fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
         b"hero-name = Wanderer\n".to_vec(),
     );
     let reworded = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
-    let [plain, reworded] =
-        [plain, reworded].map(|dir| ModePackages::from_package_dir(&dir).unwrap());
+    let [plain, reworded] = [plain, reworded]
+        .map(|dir| ModePackages::from_package_dir(&dir, &MapName::new("lane").unwrap()).unwrap());
     let walker = |packages: &ModePackages| {
         let walker = packages
             .packages()
@@ -175,7 +179,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
     files.insert(script, text.into_bytes());
     let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
     let session = FixedSession::new(
-        ModePackages::from_package_dir(&dir).unwrap(),
+        ModePackages::from_package_dir(&dir, &MapName::new("lane").unwrap()).unwrap(),
         NonZeroU32::new(30).unwrap(),
         2,
     );

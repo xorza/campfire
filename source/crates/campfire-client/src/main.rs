@@ -34,7 +34,7 @@ use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
     ClientDir, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
 };
-use campfire_package::ModePackages;
+use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::RandomKey;
 use campfire_protocol::secp256k1::Keypair;
 use campfire_runner::SessionRules;
@@ -176,7 +176,10 @@ fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>
 /// The packages of the mode the arguments name, which must run at the listing's rate; the exit
 /// code when they do not load, or run at another rate.
 fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
-    let packages = ModePackages::from_dir(&args.mode).map_err(|error| {
+    let mode = PackageDir::new(&args.mode);
+    let packages = ModePackages::choose_map(&mode, args.map.clone())
+        .and_then(|map| ModePackages::from_package_dir(&mode, &map))
+        .map_err(|error| {
         error!(mode = %args.mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
         ExitCode::from(ExitStatus::Failure)
     })?;

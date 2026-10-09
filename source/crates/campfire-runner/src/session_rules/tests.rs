@@ -10,7 +10,7 @@ type Change = fn(&mut SessionTerms);
 fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     // The 3v3 runs from 20 to 60 Hz.
     let dir = PackageDir::workspace("test/moba/modes/3v3");
-    let packages = ModePackages::from_dir(&dir).unwrap();
+    let packages = ModePackages::from_dir(&dir, &MapName::new("two_lanes").unwrap()).unwrap();
     let rules = SessionRules::of(&packages);
     let key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();
     let commitment = SeedChain::new([7; 32], NonZeroU32::MIN).commitment();
@@ -46,6 +46,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             seed_commitment: commitment,
             release: RELEASE.to_owned(),
             mode: packages.fingerprint(),
+            map: MapName::new("two_lanes").unwrap(),
             dependencies,
             slots: plan.clone(),
         }
@@ -54,7 +55,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
 
     // The 3v3's teams have 6 slots: a session plays 1 to 6 of them.
     let slots = |slots: u64| TermsError::Slots { slots, most: 6 };
-    let changes: [(Change, TermsError); 6] = [
+    let changes: [(Change, TermsError); 7] = [
         (|terms| terms.slots.clear(), slots(0)),
         (|terms| terms.slots = vec![SlotPlan::Open; 7], slots(7)),
         (
@@ -64,6 +65,10 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         (
             |terms| terms.mode = Fingerprint::new([0; 32]),
             TermsError::OtherMode,
+        ),
+        (
+            |terms| terms.map = MapName::new("other").unwrap(),
+            TermsError::OtherMap,
         ),
         (
             |terms| terms.dependencies.swap(0, 1),

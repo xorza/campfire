@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::bytes32::Bytes32;
 
-/// A package's identity: the SHA-256 of its postcard-encoded file list, one `(path, size,
-/// SHA-256)` row per file, sorted by path bytes. Any change to any file, or to the list, gives
-/// another fingerprint.
+/// A package's identity: the SHA-256 of its index, `package.index`, which lists one `(path,
+/// size, SHA-256)` row per file, sorted by path bytes, after its format's tag. Any change to any
+/// file, or to the list, gives another fingerprint.
 #[derive(
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]

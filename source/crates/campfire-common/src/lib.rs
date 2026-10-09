@@ -1,6 +1,6 @@
 //! The vocabulary that crates which do not depend on each other share: the player slot, ticks,
-//! segment seeds, secret bytes and 32-byte values of the session log and the sim, and a
-//! package's fingerprint.
+//! segment seeds, secret bytes and 32-byte values of the session log and the sim, a package's
+//! fingerprint, and a map's name.
 //!
 //! A type enters only when two crates that do not depend on each other both name it, and only
 //! as a plain value: construction, parsing, display and serde, no other logic. The crate
@@ -11,6 +11,7 @@
 mod bytes32;
 mod exit_status;
 mod fingerprint;
+mod map_name;
 mod player_slot;
 mod secret;
 mod segment_seed;
@@ -21,6 +22,8 @@ pub use crate::bytes32::Bytes32;
 pub use crate::bytes32::error::NotHex;
 pub use crate::exit_status::ExitStatus;
 pub use crate::fingerprint::Fingerprint;
+pub use crate::map_name::MapName;
+pub use crate::map_name::error::NotMapName;
 pub use crate::player_slot::PlayerSlot;
 pub use crate::secret::Secret;
 pub use crate::segment_seed::SegmentSeed;

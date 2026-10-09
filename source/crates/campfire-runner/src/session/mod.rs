@@ -203,7 +203,7 @@ impl Session {
         terms: &SessionTerms,
     ) -> Result<ModePackages, StartError> {
         SessionRules::check_release(terms).map_err(StartError::Terms)?;
-        ModePackages::from_store(store, terms.mode, &terms.dependencies)
+        ModePackages::from_store(store, terms.mode, &terms.map, &terms.dependencies)
             .map_err(StartError::Packages)
     }
 

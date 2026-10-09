@@ -1,4 +1,5 @@
 use bevy_ecs::system::RunSystemOnce;
+use campfire_common::MapName;
 use campfire_package::PackageDir;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::Secp256k1;
@@ -19,7 +20,11 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
     let script = OrderScript::parse("end = 1").unwrap();
     LobbySetup {
         packages: Arc::new(
-            ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap(),
+            ModePackages::from_dir(
+                &PackageDir::workspace("test/modes/lane"),
+                &MapName::new("lane").unwrap(),
+            )
+            .unwrap(),
         ),
         seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
         tick_hz: NonZeroU32::new(30).unwrap(),

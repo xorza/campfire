@@ -2,7 +2,7 @@ use campfire_capabilities::{
     Action, ActionSlots, Combat, Dead, InputValue, Inventory, ItemId, ModeInput, Order, PathWalker,
     Pools, Team,
 };
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{MapName, PlayerSlot, Tick};
 use campfire_math::Num;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
@@ -311,8 +311,11 @@ impl Moba3v3 {
 
     /// The MOBA 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: Vec<SlotPlan>) -> Moba3v3 {
-        let packages =
-            ModePackages::from_dir(&PackageDir::workspace("test/moba/modes/3v3")).unwrap();
+        let packages = ModePackages::from_dir(
+            &PackageDir::workspace("test/moba/modes/3v3"),
+            &MapName::new("two_lanes").unwrap(),
+        )
+        .unwrap();
         let items = &packages.packages().next().expect("a mode").content.items;
         let item = |name: &str| ItemId::named(items, name).expect("an item of the 3v3");
         let script = Moba3v3::script(&item);

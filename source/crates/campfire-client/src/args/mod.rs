@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
-use campfire_common::PlayerSlot;
+use campfire_common::{MapName, PlayerSlot};
 use campfire_net::SlotBotFile;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
@@ -13,13 +13,15 @@ use crate::args::error::ServerBotError;
 mod error;
 
 /// What the command line names: the orders file a bot plays, the player's key file, the data
-/// directory, the mode to play, and the server: as its listing gives it, or a local one.
+/// directory, the mode to play and its map, and the server: as its listing gives it, or a local
+/// one.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) bot: Option<PathBuf>,
     pub(crate) key: Option<PathBuf>,
     pub(crate) data: Option<PathBuf>,
     pub(crate) mode: PathBuf,
+    pub(crate) map: Option<MapName>,
     pub(crate) server: Server,
 }
 
@@ -65,6 +67,10 @@ pub(crate) struct CommandLine {
         value_parser = CommandLine::server_bot
     )]
     server_bots: Vec<SlotBotFile>,
+    /// The mode's map the session plays, as the listing names it; the mode's only map when it has
+    /// one
+    #[arg(long, value_name = "NAME")]
+    map: Option<MapName>,
     /// The mode's package directory
     mode: PathBuf,
     #[command(flatten)]
@@ -105,6 +111,7 @@ impl Args {
             key: line.key,
             data: line.data,
             mode: line.mode,
+            map: line.map,
             server,
         }
     }

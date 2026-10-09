@@ -5,7 +5,7 @@
 use std::num::NonZeroU32;
 
 use campfire_capabilities::{Dead, Deaths};
-use campfire_common::{StateHash, Tick};
+use campfire_common::{MapName, StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
@@ -128,7 +128,11 @@ fn the_proving_match_resumes_from_each_checkpoint_to_the_same_hashes() {
 
 #[test]
 fn the_lane_match_resumes_from_each_checkpoint_to_the_same_hashes() {
-    let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap();
+    let packages = ModePackages::from_dir(
+        &PackageDir::workspace("test/modes/lane"),
+        &MapName::new("lane").unwrap(),
+    )
+    .unwrap();
     let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
     let at = [100, 300, 600];
     let run = Checkpointed::run(session.start(), at, 900, |fixed, _| {

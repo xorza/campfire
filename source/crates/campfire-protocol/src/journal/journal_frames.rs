@@ -22,7 +22,7 @@ pub struct JournalFrames<'a> {
 
 impl<'a> JournalFrames<'a> {
     /// Starts every journal and states its version, so other bytes are refused at once.
-    pub const TAG: &'static [u8] = b"campfire/journal/v1";
+    pub const TAG: &'static [u8] = b"campfire/journal/v2";
 
     /// The frames of `bytes`; an error when they do not start with the journal's tag.
     pub fn new(bytes: &'a [u8]) -> Result<JournalFrames<'a>, NotJournal> {

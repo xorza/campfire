@@ -2,11 +2,11 @@
 //! package, else the package's own.
 
 use campfire_package::{
-    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, MessageId, ModePackages,
-    PackageName, PackageRef, Texts,
+    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, MessageId, PackageName,
+    PackageRef, Texts,
 };
 
-use crate::moba::{Edit, edited, edited_at};
+use crate::moba::{Edit, edited, edited_at, load};
 
 fn language(text: &str) -> Language {
     Language::parse(text).unwrap()
@@ -21,7 +21,7 @@ fn german<'a>(
 
 #[test]
 fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
-    let packages = ModePackages::from_package_dir(&edited([])).unwrap();
+    let packages = load(&edited([])).unwrap();
     let name = MessageId::new("hero-name").unwrap();
     let texts = Texts::new(&packages, &[german([]).unwrap()]).unwrap();
     let text = |package, language_text| texts.text(package, &name, &language(language_text));
@@ -48,7 +48,7 @@ fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
         "heroes/husk/locale/de.ftl",
         Edit::Create("hero-name = Hüllenwesen\n"),
     );
-    let packages = ModePackages::from_package_dir(&edited([own])).unwrap();
+    let packages = load(&edited([own])).unwrap();
     let texts = Texts::new(&packages, &[german([]).unwrap()]).unwrap();
     assert_eq!(
         texts.text("hero-husk", &name, &language("de")).as_deref(),
@@ -95,7 +95,7 @@ fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on()
         "locales/de/locale/hero-husk/de.ftl",
         Edit::Replace("hero-name", "hero-nme"),
     );
-    let packages = ModePackages::from_package_dir(&edited([])).unwrap();
+    let packages = load(&edited([])).unwrap();
     let error = Texts::new(&packages, &[german([stray]).unwrap()]).unwrap_err();
     assert_eq!(
         error.package,

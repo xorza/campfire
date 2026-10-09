@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
+use campfire_common::MapName;
 use campfire_net::{
     JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace, PendingSaves,
     SaveCommand, ServerDir, SessionDir, SimClient,
@@ -26,8 +27,13 @@ const DEADLINE: Duration = Duration::from_secs(10);
 #[test]
 fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let data = Scratch::new();
-    let packages =
-        Arc::new(ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap());
+    let packages = Arc::new(
+        ModePackages::from_dir(
+            &PackageDir::workspace("test/modes/lane"),
+            &MapName::new("lane").unwrap(),
+        )
+        .unwrap(),
+    );
     let pace = Arc::new(Pace::default());
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),

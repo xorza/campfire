@@ -5,9 +5,10 @@ use std::path::Path;
 
 use campfire_capabilities::{
     ActionData, BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag,
-    MapData, ModeData, PackageContent, Param, ScriptBook, StatGraph, StatId, UnitTypeFile,
+    MapData, ModeData, PackageContent, PackagePath, Param, ScriptBook, StatGraph, StatId,
+    UnitTypeFile,
 };
-use campfire_common::Fingerprint;
+use campfire_common::{Fingerprint, MapName};
 use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{Capability, TickRate};
 
@@ -16,6 +17,7 @@ use crate::dependent::DependentKind;
 use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::{LoadError, PackageRef, StoreError};
+use crate::file_index::FileIndex;
 use crate::files::manifest::Manifest;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
@@ -33,7 +35,6 @@ use crate::package_view::ViewKind;
 
 const MODE_DATA: &str = "data/mode.toml";
 const UNITS_DATA: &str = "data/units.toml";
-const MAP_DATA: &str = "map/map.toml";
 
 /// A mode and the packages it depends on, read and checked: what a match of the mode loads.
 #[derive(Debug)]
@@ -41,6 +42,8 @@ pub struct ModePackages {
     pub(crate) mode: Package,
     pub(crate) manifest: ModeManifest,
     pub(crate) data: ModeData,
+    /// The name of the map it loaded, which its session plays.
+    map_name: MapName,
     pub(crate) map: MapData,
     /// The mode's actions, modifiers, unit types and item types.
     pub(crate) content: PackageContent,
@@ -56,15 +59,32 @@ pub struct ModePackages {
 }
 
 impl ModePackages {
-    /// The mode on disk in `dir`, and its dependencies at the paths its manifest gives, as a
-    /// workspace holds them.
-    pub fn from_dir(dir: &Path) -> Result<ModePackages, LoadError> {
-        ModePackages::from_package_dir(&PackageDir::new(dir))
+    /// The mode on disk in `dir` with its map `map`, and its dependencies at the paths its
+    /// manifest gives, as a workspace holds them.
+    pub fn from_dir(dir: &Path, map: &MapName) -> Result<ModePackages, LoadError> {
+        ModePackages::from_package_dir(&PackageDir::new(dir), map)
     }
 
-    /// The mode in `mode`, and its dependencies at the paths its manifest gives from it, each
-    /// read once.
-    pub fn from_package_dir(mode: &PackageDir) -> Result<ModePackages, LoadError> {
+    /// The map of the mode in `mode` that a session plays: `map` when it names one, else the
+    /// mode's only map; an error when it names none and the mode has no map, or several.
+    pub fn choose_map(mode: &PackageDir, map: Option<MapName>) -> Result<MapName, LoadError> {
+        if let Some(map) = map {
+            return Ok(map);
+        }
+        let fail = |problem| LoadError::new(PackageRef::Dir(mode.root().to_owned()), problem);
+        let index = mode.index().map_err(LoadProblem::Content).map_err(fail)?;
+        let mut maps = maps_of(&index).map_err(fail)?;
+        match maps.pop() {
+            Some(only) if maps.is_empty() => Ok(only),
+            other => Err(fail(LoadProblem::MapNeeded(
+                maps.into_iter().chain(other).collect(),
+            ))),
+        }
+    }
+
+    /// The mode in `mode` with its map `map`, and its dependencies at the paths its manifest
+    /// gives from it, each read once.
+    pub fn from_package_dir(mode: &PackageDir, map: &MapName) -> Result<ModePackages, LoadError> {
         let read = |dir: &PackageDir, package: PackageRef| {
             dir.read()
                 .map_err(|error| LoadError::new(package, LoadProblem::Content(error)))
@@ -84,14 +104,16 @@ impl ModePackages {
             .iter()
             .map(|(name, files)| (name.clone(), files))
             .collect();
-        ModePackages::assemble(&files, manifest, &dependencies)
+        ModePackages::assemble(&files, manifest, map, &dependencies)
     }
 
     /// The mode of the fingerprint `mode`, and each dependency its manifest names by the
-    /// fingerprint of the same place in `dependencies`, from `store`, as a verifier holds them.
+    /// fingerprint of the same place in `dependencies`, from `store`, with its map `map`, as a
+    /// verifier holds them.
     pub fn from_store(
         store: &PackageStore,
         mode: Fingerprint,
+        map: &MapName,
         dependencies: &[Fingerprint],
     ) -> Result<ModePackages, StoreError> {
         let files = store.get(mode).ok_or(StoreError::UnknownMode)?;
@@ -111,7 +133,7 @@ impl ModePackages {
                 Ok((name.clone(), files))
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
-        ModePackages::assemble(files, manifest, &dependencies).map_err(StoreError::Load)
+        ModePackages::assemble(files, manifest, map, &dependencies).map_err(StoreError::Load)
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
@@ -264,6 +286,11 @@ impl ModePackages {
             .map(|dependent| dependent.package.header.name.as_str())
     }
 
+    /// The name of the map it loaded.
+    pub const fn map_name(&self) -> &MapName {
+        &self.map_name
+    }
+
     pub const fn map(&self) -> &MapData {
         &self.map
     }
@@ -366,6 +393,7 @@ impl ModePackages {
     fn assemble(
         files: &PackageFiles,
         manifest: ModeManifest,
+        map_name: &MapName,
         dependencies: &[(PackageName, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
         let mut parser = ScriptHost::new(manifest.script_limits.per_call);
@@ -384,8 +412,13 @@ impl ModePackages {
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         content.units = units.units;
+        if !maps_of(files.index()).map_err(fail)?.contains(map_name) {
+            return Err(fail(LoadProblem::NoMap(map_name.clone())));
+        }
+        let map_data = PackagePath::parse(&format!("map/{map_name}/map.toml"))
+            .expect("a map's name is a package path's name");
         let map = files
-            .read_data(&PackageDir::engine_path(MAP_DATA))
+            .read_file_data(&map_data)
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let mode = Package::read(files, &manifest.header, &parser, &api)?;
@@ -400,6 +433,7 @@ impl ModePackages {
             mode,
             manifest,
             data,
+            map_name: map_name.clone(),
             map,
             content,
             tag_names,
@@ -410,6 +444,22 @@ impl ModePackages {
         packages.stat_order = LoadCheck::run(&packages, &api)?;
         Ok(packages)
     }
+}
+
+/// The names of the maps of the mode whose index is `index`: each directory `map/<name>/` that
+/// holds a `map.toml`, in order; one whose name no map can have is refused.
+fn maps_of(index: &FileIndex) -> Result<Vec<MapName>, LoadProblem> {
+    index
+        .rows()
+        .filter_map(|(path, _)| {
+            let name = path
+                .as_str()
+                .strip_prefix("map/")?
+                .strip_suffix("/map.toml")?;
+            (!name.contains('/')).then_some(name)
+        })
+        .map(|name| MapName::new(name).ok_or_else(|| LoadProblem::MapDirName(name.to_owned())))
+        .collect()
 }
 
 /// The mode manifest of `files`, the package `package`.

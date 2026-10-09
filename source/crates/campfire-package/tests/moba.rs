@@ -5,8 +5,19 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use campfire_package::{ModePackages, PackageDir};
+use campfire_common::MapName;
+use campfire_package::{LoadError, ModePackages, PackageDir};
 use toml::{Table, Value};
+
+/// The map of the MOBA's 3v3.
+pub(crate) fn two_lanes() -> MapName {
+    MapName::new("two_lanes").unwrap()
+}
+
+/// The MOBA's 3v3 in `dir` on its map.
+pub(crate) fn load(dir: &PackageDir) -> Result<ModePackages, LoadError> {
+    ModePackages::from_package_dir(dir, &two_lanes())
+}
 
 pub(crate) fn moba() -> PathBuf {
     PackageDir::workspace("test/moba")
@@ -142,7 +153,7 @@ fn an_edit_by_path_changes_nothing_but_its_value() {
     }
     let written = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/3v3");
     let [read, written] = [edited([]), written].map(|dir| {
-        let packages = ModePackages::from_package_dir(&dir).unwrap();
+        let packages = load(&dir).unwrap();
         let views: Vec<_> = packages
             .packages()
             .map(|view| format!("{:?}", view.content))

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use campfire_capabilities::{
     Action, ActionSlots, Destination, Order, PoolId, Pools, Projectile, Rank,
 };
-use campfire_common::{Fingerprint, PlayerSlot, StateHash, Tick, Ticks};
+use campfire_common::{Fingerprint, MapName, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_log::internals::LogCheck;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_math::{Num, Vec3};
@@ -78,7 +78,11 @@ const ORDERS: [Sent; 3] = [
 ];
 
 fn packages() -> ModePackages {
-    ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap()
+    ModePackages::from_dir(
+        &PackageDir::workspace("test/modes/lane"),
+        &MapName::new("lane").unwrap(),
+    )
+    .unwrap()
 }
 
 fn store() -> PackageStore {
@@ -761,7 +765,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     files.insert(script, text.into_bytes());
     let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
     let thrown = FixedSession::new(
-        ModePackages::from_package_dir(&dir).unwrap(),
+        ModePackages::from_package_dir(&dir, &MapName::new("lane").unwrap()).unwrap(),
         NonZeroU32::new(30).unwrap(),
         1,
     );

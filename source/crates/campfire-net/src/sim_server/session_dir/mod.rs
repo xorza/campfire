@@ -263,7 +263,7 @@ impl RestoredSession {
 mod tests {
     use std::num::NonZeroU32;
 
-    use campfire_common::{Fingerprint, Ticks};
+    use campfire_common::{Fingerprint, MapName, Ticks};
     use campfire_protocol::internals::TestKey;
     use campfire_protocol::{SeedChain, SessionTerms, SlotPlan};
     use campfire_store::Scratch;
@@ -289,6 +289,7 @@ mod tests {
                 seed_commitment: seed_chain.commitment(),
                 release: RELEASE.to_owned(),
                 mode: Fingerprint::new([1; 32]),
+                map: MapName::new("lane").unwrap(),
                 dependencies: Vec::new(),
                 slots: vec![SlotPlan::Open],
             },
