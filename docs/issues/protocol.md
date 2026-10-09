@@ -7,3 +7,5 @@ Design: [Modules](../design/02-engine-core.md#modules), `protocol`. Rules: [Issu
 ## Research
 
 ## Ready
+
+- **Plan: Z3.** The session's terms, its id and the log's header name no map, where design 05 names the map the session plays.

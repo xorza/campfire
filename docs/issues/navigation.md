@@ -11,4 +11,4 @@ Design: [Navigation](../design/04-capabilities/navigation.md). Rules: [Issue log
 
 ## Ready
 
-
+- **Stage 8.** The widest body is 64 m, `Shape::MAX_BOUND`, and the collision and box math is sized for it, where design 04 gives 2,048 m ([Zero Hour](../design/12-zero-hour.md#decisions), D11).

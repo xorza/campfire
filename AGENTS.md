@@ -19,8 +19,10 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
     - `10-sessions.md` — Stage 6 proposal: journal, crash restore, slots, reconnect, server bots, receipts, checkpoints, saves, local server
     - `11-rts-foundations.md` — box bodies, package unit types, group orders, production's first cut
     - `12-zero-hour.md` — the first imported game: importer, rules package, parity oracle, presentation
+  - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import
   - `issues/` — the issue log: one file for each system, with its open problems ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
+- `../GeneralsX/` — beside this repository, not in it: a checkout of [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS. It is the reference for Zero Hour's formats and rules, and the base of the parity oracle. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions), D2).
 
 `ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice. Both list open items only.
 

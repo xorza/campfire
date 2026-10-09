@@ -17,7 +17,7 @@ Only the server and verifier run the full sim during a session; clients would ne
 
 ## Game package
 
-A game mode is one content package.
+A game mode is one content package, which holds any number of maps; a session's terms name the one it plays ([Keys](05-protocol-spec.md#keys)).
 
 ```
 my-mode/
@@ -26,12 +26,13 @@ my-mode/
                       dependencies (by name: a path in the workspace, a fingerprint in a built package),
                       teams and slots, tick-rate range, collision, pathfinding, movement and visibility backends,
                       move speed cap, script pools
-  map/                map data: bounds, terrain or grid or geometry, paths, placed units, markers
+  package.index       every other file's path, size and SHA-256: the package's identity ([Packages](05-protocol-spec.md#packages))
+  map/<name>/         one map: bounds, terrain or grid or geometry, paths, placed units, markers
   data/               unit types, actions, modifiers: one section per capability
   scripts/            game scripts (.rhai): mode rules, AI, capability hooks
-  client/             presentation scripts (.rhai)
+  client/             presentation scripts (.rhai), and each map's terrain, client/maps/<name>/terrain.bin
   locale/             human text by message id, one Fluent file a language (en.ftl, de.ftl)
-  assets/             models (.glb), textures (PNG, KTX2 + zstd), sounds (Ogg Vorbis), icons (PNG)
+  assets/             models (.glb), textures (PNG; KTX2, with or without zstd), sounds (Ogg Vorbis), icons (PNG)
 ```
 
 **Package paths.** A file's path in a package is its names joined by `/`, and names only a file that every OS holds as the same file's, as `cargo package` refuses a character Windows refuses in a file name: printable ASCII alone, as a file system may fold the case of other letters or normalize them, as macOS's does `é`; no name Windows reserves, as `con` or `aux.rhai`; no character it refuses, `\`, `:`, `*`, `?`, `"`, `<`, `>` or `|`; no name that ends in a dot or a space; and no two paths of one package, or directories on their way, that differ only in case, which a file system that ignores case, Windows' and macOS's by default, holds as one. The store finds a package by its manifest's exact name, `manifest.toml`.

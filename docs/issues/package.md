@@ -10,3 +10,5 @@ Design: [Modules](../design/02-engine-core.md#modules), `package`. Rules: [Issue
 
 ## Ready
 
+- **Plan: Z2.** A load walks every file of a package, reads every file under `data/`, `map/`, `scripts/` and `locale/`, and hashes every other file to rebuild the file list, where design 05 reads the package's `package.index` and only the files the session needs, each checked against its row.
+- **Plan: Z3.** A package holds one map, `map/map.toml`, where design 03 holds any number under `map/<name>/`.

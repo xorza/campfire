@@ -8,7 +8,7 @@ How units move: on layers, by routes round what blocks them, along waypoint path
 
 - **Mode:** `[navigation] layers = ["ground", "air"]`, the first the default; a mode that names none has one layer, with no name.
 - **Map:** `[navigation]` with `cell`, in meters, positive: whole cells over the bounds, at most 2²² cells, the cells routes are planned on; and `[[navigation.walls]]`, each a `layer`, the mode's first when it names none, and a simple polygon of `points`, `[x, z]` each, at least three, its edges crossing none of its others: a wall, a cliff or the jungle's trees, on that layer only, so a layer such as `air` has none. `[[paths]]`, each a `name` and `points`.
-- **Unit type:** `collision = { radius, layer }`: a body, a circle of its radius on the ground plane, up to 64 m, on its layer, the mode's first when it names none; or `collision = { box = [w, h], layer }`, a box of that size, for a type that does not walk on a planar map ([Bodies](00-overview.md#space-and-map)). A type without it collides with nothing, and moves on the first layer. A unit that can walk has the `move_speed` stat.
+- **Unit type:** `collision = { radius, layer }`: a body, a circle of its radius on the ground plane, up to 2,048 m, on its layer, the mode's first when it names none; or `collision = { box = [w, h], layer }`, a box of that size, for a type that does not walk on a planar map ([Bodies](00-overview.md#space-and-map)). A type without it collides with nothing, and moves on the first layer. A unit that can walk has the `move_speed` stat.
 
 ## Rules
 
