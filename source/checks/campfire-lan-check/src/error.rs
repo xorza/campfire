@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 use campfire_net::OrderScriptError;
 use campfire_protocol::LogError;
-use campfire_store::DataDirError;
 use thiserror::Error;
 
 use crate::process::Process;
@@ -58,13 +57,6 @@ pub(crate) enum CheckError {
         line: usize,
         #[source]
         error: serde_json::Error,
-    },
-    /// A host's data directory does not open.
-    #[error("{} does not open", .path.display())]
-    Data {
-        path: PathBuf,
-        #[source]
-        error: DataDirError,
     },
     #[error("a bot's script")]
     Script(#[source] OrderScriptError),

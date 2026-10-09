@@ -1,3 +1,5 @@
+use std::sync::Barrier;
+
 use tempfile::TempDir;
 
 use super::*;
@@ -61,4 +63,50 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
         DurableFile::remove_dir(&path),
         Err(DurableError::Remove(_))
     ));
+}
+
+#[test]
+fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("server.nsec");
+    DurableFile::create(&path, b"first").unwrap();
+    assert!(matches!(
+        DurableFile::create(&path, b"second"),
+        Err(DurableCreateError::Exists)
+    ));
+    assert_eq!(fs::read(&path).unwrap(), b"first");
+    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
+
+    // Two threads make one file at once: one makes it, the other finds it made, and the file
+    // holds the maker's bytes, with no temporary file left.
+    let raced = dir.path().join("raced.nsec");
+    let barrier = Barrier::new(2);
+    let results = thread::scope(|scope| {
+        let threads = [b"one", b"two"].map(|bytes| {
+            let (raced, barrier) = (&raced, &barrier);
+            scope.spawn(move || {
+                barrier.wait();
+                (bytes, DurableFile::create(raced, bytes))
+            })
+        });
+        threads.map(|thread| thread.join().unwrap())
+    });
+    let made: Vec<_> = results
+        .iter()
+        .filter(|(_, result)| result.is_ok())
+        .map(|(bytes, _)| *bytes)
+        .collect();
+    assert_eq!(made.len(), 1, "{results:?}");
+    assert!(
+        results
+            .iter()
+            .any(|(_, result)| matches!(result, Err(DurableCreateError::Exists)))
+    );
+    assert_eq!(fs::read(&raced).unwrap(), made[0]);
+    let mut names: Vec<_> = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["raced.nsec", "server.nsec"]);
 }

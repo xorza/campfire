@@ -54,6 +54,11 @@ impl OwnerOnly {
     pub(crate) fn exposure(file: &File) -> io::Result<Option<Exposure>> {
         Ok(Os::exposure(file)?.map(Exposure))
     }
+
+    /// Who else may open the directory at `path`; none when only its owner may.
+    pub(crate) fn dir_exposure(path: &Path) -> io::Result<Option<Exposure>> {
+        OwnerOnly::exposure(&Os::open_dir(path)?)
+    }
 }
 
 impl fmt::Display for Exposure {

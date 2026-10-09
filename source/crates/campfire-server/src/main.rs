@@ -93,11 +93,10 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
-    let key = match KeyFile::read_or_create(&data.key_file(), Os::fill) {
+    let key = match KeyFile::read_or_create(&data.layout().key_file(), Os::fill) {
         Ok(key) => key,
         Err(error) => {
-            let file = data.key_file();
-            error!(key = %file.display(), error = %ErrorReport::of(&error), "the server's key does not open");
+            error!(key = %data.layout().key_file(), error = %ErrorReport::of(&error), "the server's key does not open");
             return ExitCode::from(ExitStatus::Failure);
         }
     };
@@ -155,14 +154,14 @@ impl Started {
         bots: ServerBots,
     ) -> Result<Started, ExitCode> {
         let no_session = |error: OpeningError| {
-            error!(data = %data.path().display(), error = %ErrorReport::of(&error), "no session starts");
+            error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
             ExitCode::from(ExitStatus::Failure)
         };
         let found = Opening::find(data, &packages, times.restore_window, key, Os::fill)
             .map_err(no_session)?;
-        let tls = ServerTls::open(&data.tls_file(), Os::unix_now(), found.is_some()).map_err(
+        let tls = ServerTls::open(&data.layout().tls_file(), Os::unix_now(), found.is_some()).map_err(
             |error| {
-                error!(data = %data.path().display(), error = %ErrorReport::of(&error), "the TLS identity does not open");
+                error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "the TLS identity does not open");
                 ExitCode::from(ExitStatus::Failure)
             },
         )?;

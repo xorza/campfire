@@ -19,14 +19,15 @@ use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog};
 use lightyear::prelude::Connect;
-use tempfile::TempDir;
+
+use crate::scratch::Scratch;
 
 /// How long the client gets to join and play.
 const DEADLINE: Duration = Duration::from_secs(10);
 
 #[test]
 fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let packages =
         Arc::new(ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap());
     let pace = Arc::new(Pace::default());

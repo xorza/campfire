@@ -17,7 +17,8 @@ use campfire_net::{
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Runner, Session};
-use tempfile::TempDir;
+
+use crate::scratch::Scratch;
 
 /// The chain of the scenario's sessions, of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
@@ -26,7 +27,7 @@ const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap(
 /// 180 steps with both records logged; with the state hash after each tick the server ran. The
 /// second checkpoint's delta holds the changes from tick 130 on: the server sent those before
 /// it, 100 ticks after the first.
-fn checkpointed(data: &TempDir) -> (InProcessMatch, Vec<StateHash>) {
+fn checkpointed(data: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
     let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
     local.keep_data(data.path().to_owned());
     local.start_match();
@@ -56,7 +57,7 @@ fn log(local: &InProcessMatch) -> &SessionLog {
 }
 
 /// The directory the session's snapshots go to.
-fn snapshots(data: &TempDir, local: &InProcessMatch) -> PathBuf {
+fn snapshots(data: &Scratch, local: &InProcessMatch) -> PathBuf {
     let id = log(local).session_id();
     data.path()
         .join("sessions")
@@ -94,7 +95,7 @@ fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
 
 #[test]
 fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_snapshots() {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let (mut local, before) = checkpointed(&data);
     let cut = local.next_tick(End::Server);
     local.restart_server();
@@ -112,7 +113,7 @@ fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_sn
 
 #[test]
 fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let (mut local, before) = checkpointed(&data);
     let second = log(&local).checkpoint_at(Tick::new(160)).unwrap().clone();
     let snapshots = snapshots(&data, &local);
@@ -169,7 +170,7 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
 #[test]
 fn a_checkpoint_past_the_seed_chain_ends_the_session_aborted() {
     // A chain of one segment: the checkpoint before tick 30 would start a second.
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
@@ -198,7 +199,7 @@ fn a_checkpoint_past_the_seed_chain_ends_the_session_aborted() {
 fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     // A file holds the place of the session's snapshots' directory, so the snapshot of the
     // checkpoint before tick 30 is not written, on every OS.
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
     local.keep_data(data.path().to_owned());
     local.start_match();

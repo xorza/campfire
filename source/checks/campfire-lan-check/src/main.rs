@@ -28,7 +28,7 @@ use std::time::SystemTime;
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    ClientDir, LinkLost, Listening, OrderScript, ServerDir, SessionWritten, TicksCaughtUp,
+    ClientLayout, LinkLost, Listening, OrderScript, ServerLayout, SessionWritten, TicksCaughtUp,
 };
 use campfire_protocol::SessionLog;
 use campfire_verifier::Verified;
@@ -204,7 +204,7 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<LoggedInput>,
     let Some(written) = server.first::<SessionWritten>()? else {
         return Ok(Vec::new());
     };
-    let path = host_data(dir, SessionKind::Lan)?.published_log(written.session);
+    let path = host_layout(dir, SessionKind::Lan).published_log(written.session);
     let bytes = fs::read(&path).map_err(|error| CheckError::File { path, error })?;
     let published = SessionLog::decode(&bytes).map_err(CheckError::SessionLog)?;
     let ticks = published.next_tick();
@@ -221,23 +221,16 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<LoggedInput>,
     Ok(inputs)
 }
 
-/// The data directory in `dir` of the host of `session`, which ended: the server's, or the local
-/// server's under the client's.
-fn host_data(dir: &Path, session: SessionKind) -> Result<ServerDir, CheckError> {
-    let refused = |path: &Path, error| CheckError::Data {
-        path: path.to_owned(),
-        error,
-    };
-    let path = match session {
-        SessionKind::Lan => dir.join(SERVER_DATA),
+/// The layout of the data directory in `dir` of the host of `session`, which ended: the
+/// server's, or the local server's under the client's. Read by its layout alone, with no lock
+/// and no access check: a run another platform played comes as an artifact that keeps neither.
+fn host_layout(dir: &Path, session: SessionKind) -> ServerLayout {
+    match session {
+        SessionKind::Lan => ServerLayout::at(dir.join(SERVER_DATA)),
         SessionKind::Local => {
-            let client = dir.join(LOCAL_DATA);
-            ClientDir::open(&client)
-                .map_err(|error| refused(&client, error))?
-                .local_server_dir()
+            ServerLayout::at(ClientLayout::at(dir.join(LOCAL_DATA)).local_server_dir())
         }
-    };
-    ServerDir::open(&path).map_err(|error| refused(&path, error))
+    }
 }
 
 /// Verifies the session logs of the matches played in `dir` with `verifier`, or the one cargo
@@ -276,7 +269,7 @@ fn verify(
         Some(written) => {
             // The log in the run's directory: `written.file` is a path on the machine that played
             // the run, in that system's syntax, which another may not read.
-            let file = host_data(dir, session)?.published_log(written.session);
+            let file = host_layout(dir, session).published_log(written.session);
             let path = replayer.log_path(dir);
             let status = Command::new(executable)
                 .arg(Path::new(PACKAGES_DIR).join(PACKAGES))

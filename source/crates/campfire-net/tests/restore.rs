@@ -10,11 +10,12 @@ use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Runner, Session};
-use tempfile::TempDir;
+
+use crate::scratch::Scratch;
 
 /// The scenario's match, its server's data in `data`, after 90 steps; with the state hash after
 /// each tick the server ran.
-fn played(data: &TempDir) -> (InProcessMatch, Vec<StateHash>) {
+fn played(data: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
@@ -36,7 +37,7 @@ fn played(data: &TempDir) -> (InProcessMatch, Vec<StateHash>) {
 
 #[test]
 fn a_restarted_server_replays_its_log_and_plays_on() {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let (mut local, before) = played(&data);
     let cut = local.next_tick(End::Server);
     assert_eq!(before.len(), usize::try_from(cut).unwrap());
@@ -57,7 +58,7 @@ fn a_restarted_server_replays_its_log_and_plays_on() {
 
 #[test]
 fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused() {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let (mut local, before) = played(&data);
     let cut = local.next_tick(End::Server);
     let id = local

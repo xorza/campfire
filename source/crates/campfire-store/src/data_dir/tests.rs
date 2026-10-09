@@ -33,4 +33,14 @@ fn a_data_directory_is_made_its_owners_only_and_holds_one_holder() {
     let file = scratch.path().join("file");
     fs::write(&file, b"").unwrap();
     assert!(matches!(DataDir::open(&file), Err(DataDirError::Create(_))));
+    // A directory others may open is refused, with who they are, before its lock is made.
+    let exposed = scratch.path().join("exposed");
+    fs::create_dir(&exposed).unwrap();
+    OwnerOnly::expose(&exposed);
+    let exposure = OwnerOnly::exposure_at(&exposed).unwrap().unwrap();
+    assert!(matches!(
+        DataDir::open(&exposed),
+        Err(DataDirError::Exposed(refused)) if refused == exposure
+    ));
+    assert_eq!(fs::read_dir(&exposed).unwrap().count(), 0);
 }

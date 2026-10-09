@@ -39,6 +39,7 @@ use campfire_protocol::RandomKey;
 use campfire_protocol::secp256k1::Keypair;
 use campfire_runner::SessionRules;
 use campfire_sim::TickRate;
+use campfire_store::SecretFile;
 use lightyear::prelude::Connect;
 use tracing::error;
 
@@ -196,8 +197,9 @@ fn main_key(args: &Args) -> Result<Keypair, ExitCode> {
     let Some(path) = &args.key else {
         return Ok(RandomKey::generate(Os::fill));
     };
-    KeyFile::read_or_create(path, Os::fill).map_err(|error| {
-        error!(key = %path.display(), error = %ErrorReport::of(&error), "the key file does not read");
+    let file = SecretFile::at(path.clone());
+    KeyFile::read_or_create(&file, Os::fill).map_err(|error| {
+        error!(key = %file, error = %ErrorReport::of(&error), "the key file does not read");
         ExitCode::from(ExitStatus::Failure)
     })
 }

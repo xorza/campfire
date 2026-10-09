@@ -74,6 +74,7 @@ pub use crate::process_exit::ProcessExit;
 pub use crate::save_command::SaveCommand;
 pub use crate::session_times::SessionTimes;
 pub use crate::sim_client::client_dir::ClientDir;
+pub use crate::sim_client::client_layout::ClientLayout;
 pub use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
 pub use crate::sim_client::join_state::{JoinState, Loss};
 pub use crate::sim_client::server_pin::ServerPin;
@@ -90,6 +91,7 @@ pub use crate::sim_server::player_link::PlayerLink;
 pub use crate::sim_server::server_bots::{ServerBots, SlotBot};
 pub use crate::sim_server::server_dir::ServerDir;
 pub use crate::sim_server::server_exit::ServerExit;
+pub use crate::sim_server::server_layout::ServerLayout;
 pub use crate::sim_server::server_setup::ServerSetup;
 pub use crate::sim_server::session_dir::error::{
     AbortError, FindError, RestoreError, WaitingError,

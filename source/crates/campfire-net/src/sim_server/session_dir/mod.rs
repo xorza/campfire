@@ -55,8 +55,8 @@ impl SessionDir {
     /// Makes the directory of the session whose terms `private` holds, under `data`, and writes
     /// `private` into it.
     pub fn create(data: &ServerDir, private: &SessionPrivate) -> Result<SessionDir, DurableError> {
-        DurableFile::create_dir(&data.sessions_dir())?;
-        let path = data.session_dir(private.terms.session_id());
+        DurableFile::create_dir(&data.layout().sessions_dir())?;
+        let path = data.layout().session_dir(private.terms.session_id());
         DurableFile::create_dir(&path)?;
         let dir = SessionDir { path };
         let mut bytes = Vec::new();
@@ -89,7 +89,7 @@ impl SessionDir {
     /// every session's is. An error when there are several, and for an entry named by no
     /// session id.
     pub fn find(data: &ServerDir) -> Result<Option<SessionDir>, FindError> {
-        let entries = match fs::read_dir(data.sessions_dir()) {
+        let entries = match fs::read_dir(data.layout().sessions_dir()) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(FindError::Read(error)),
@@ -108,6 +108,7 @@ impl SessionDir {
                 .and_then(|name| name.parse().ok())
                 .ok_or(FindError::Stray(name))?;
             let done = data
+                .layout()
                 .published_log(session)
                 .try_exists()
                 .map_err(FindError::Read)?;
@@ -118,7 +119,7 @@ impl SessionDir {
                 return Err(FindError::Several);
             }
             found = Some(SessionDir {
-                path: data.session_dir(session),
+                path: data.layout().session_dir(session),
             });
         }
         Ok(found)
@@ -194,8 +195,8 @@ impl SessionDir {
 
     /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
     pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, DurableError> {
-        DurableFile::create_dir(&data.logs_dir())?;
-        let file = data.published_log(log.session_id());
+        DurableFile::create_dir(&data.layout().logs_dir())?;
+        let file = data.layout().published_log(log.session_id());
         let mut bytes = Vec::new();
         log.encode(&mut bytes);
         DurableFile::write(&file, &bytes)?;

@@ -113,7 +113,10 @@ impl Connection {
                 error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
                 ExitCode::from(ExitStatus::Failure)
             })?;
-        let data = data.expect("--local has --data").local_server_dir();
+        let data = data
+            .expect("--local has --data")
+            .layout()
+            .local_server_dir();
         LocalServer::start(LocalServerSetup {
             packages: Arc::clone(packages),
             data,

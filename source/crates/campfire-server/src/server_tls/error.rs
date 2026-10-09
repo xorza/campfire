@@ -1,6 +1,4 @@
-use std::io;
-
-use campfire_store::DurableError;
+use campfire_store::{DurableError, SecretReadError};
 use thiserror::Error;
 use wtransport::tls::error::InvalidCertificate;
 
@@ -8,7 +6,7 @@ use wtransport::tls::error::InvalidCertificate;
 #[derive(Debug, Error)]
 pub(crate) enum TlsError {
     #[error("could not read the TLS identity")]
-    Read(#[source] io::Error),
+    Read(#[source] SecretReadError),
     /// The file ends inside a field, or holds no key.
     #[error("the TLS identity's file is cut short")]
     Truncated,

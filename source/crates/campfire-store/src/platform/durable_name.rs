@@ -15,6 +15,15 @@ impl DurableName {
         Os::rename(from, to)
     }
 
+    /// Gives the file at `from` the name `to` in the same directory only when no file holds it,
+    /// an `AlreadyExists` error otherwise, which leaves both files as they were; `from` names no
+    /// file once it succeeds. Of two such calls for one name, one gives it. On another error the
+    /// name may be given. The name is durable once [`DurableName::sync_dir`] synced the
+    /// directory.
+    pub(crate) fn create(from: &Path, to: &Path) -> io::Result<()> {
+        Os::create_name(from, to)
+    }
+
     /// Syncs `directory`, so the names in it survive a crash; the working directory for an
     /// empty path, as a file's parent is when its path has one name.
     pub(crate) fn sync_dir(directory: &Path) -> io::Result<()> {

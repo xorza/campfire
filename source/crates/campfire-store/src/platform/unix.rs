@@ -71,6 +71,17 @@ impl Os {
         fs::rename(from, to)
     }
 
+    /// `link` fails with `EEXIST` when a file holds `to`, as POSIX makes it; the temporary name
+    /// goes once the new one holds the file.
+    pub(crate) fn create_name(from: &Path, to: &Path) -> io::Result<()> {
+        fs::hard_link(from, to)?;
+        fs::remove_file(from)
+    }
+
+    pub(crate) fn open_dir(path: &Path) -> io::Result<File> {
+        File::open(path)
+    }
+
     pub(crate) fn sync_dir(directory: &Path) -> io::Result<()> {
         File::open(directory)?.sync_all()
     }

@@ -26,7 +26,7 @@ pub use crate::append_writer::slow_sync::SlowSync;
 pub use crate::data_dir::DataDir;
 pub use crate::data_dir::error::DataDirError;
 pub use crate::durable_file::DurableFile;
-pub use crate::durable_file::error::DurableError;
+pub use crate::durable_file::error::{DurableCreateError, DurableError};
 pub use crate::exchange::Exchange;
 pub use crate::latest_writer::LatestWriter;
 #[cfg(any(test, feature = "internals"))]

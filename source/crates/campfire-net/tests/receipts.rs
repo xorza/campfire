@@ -17,11 +17,12 @@ use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Controller, ServerInput, SignedReceipt};
 use campfire_runner::Session;
-use tempfile::TempDir;
+
+use crate::scratch::Scratch;
 
 #[test]
 fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
@@ -110,7 +111,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
 fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     // A file holds the place of client 0's receipts' directory, so its receipts are not written,
     // on every OS; client 1's are.
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
@@ -144,7 +145,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
     // journal syncs; then, in one step, it leaves and the server gives receipts. The receipt of
     // the move crosses the leave on the way: the client keeps it, as the newest, and refuses
     // none, until the server ends the link, after which it takes no receipt.
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::DELAYED,
         InProcessMatch::SEED_CHAIN,

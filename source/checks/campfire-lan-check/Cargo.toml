@@ -10,7 +10,6 @@ campfire-log = { workspace = true, features = ["start"] }
 campfire-net.workspace = true
 campfire-protocol.workspace = true
 campfire-sim.workspace = true
-campfire-store.workspace = true
 campfire-verifier.workspace = true
 
 clap.workspace = true

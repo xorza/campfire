@@ -60,6 +60,7 @@ use crate::superseded::Superseded;
 pub(crate) mod bench;
 pub(crate) mod chain_history;
 pub(crate) mod client_dir;
+pub(crate) mod client_layout;
 pub(crate) mod join_state;
 pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;

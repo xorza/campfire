@@ -91,6 +91,7 @@ pub(crate) mod seats;
 pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_exit;
+pub(crate) mod server_layout;
 pub(crate) mod server_setup;
 pub(crate) mod server_signer;
 pub(crate) mod session_dir;

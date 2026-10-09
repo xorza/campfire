@@ -132,8 +132,8 @@ impl LocalServer {
             entropy,
         } = setup;
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
-        let key =
-            KeyFile::read_or_create(&dir.key_file(), entropy).map_err(LocalServerError::Key)?;
+        let key = KeyFile::read_or_create(&dir.layout().key_file(), entropy)
+            .map_err(LocalServerError::Key)?;
         LocalServer::end_earlier(&dir, &packages, key, entropy)?;
         let server = ServerSetup {
             key,

@@ -20,9 +20,22 @@ pub enum DurableError {
     Sync(#[source] io::Error),
     #[error("could not rename the temporary file")]
     Rename(#[source] io::Error),
+    /// The temporary file of a create that found its name taken was not removed.
+    #[error("could not remove the temporary file")]
+    RemoveTemporary(#[source] io::Error),
     /// A directory was not removed.
     #[error("could not remove the directory")]
     Remove(#[source] io::Error),
     #[error("could not sync the directory")]
     SyncDirectory(#[source] io::Error),
+}
+
+/// Why a durable file was not made.
+#[derive(Debug, Error)]
+pub enum DurableCreateError {
+    /// A file already holds its name, and is left as it is.
+    #[error("a file already holds the name")]
+    Exists,
+    #[error("could not make the file")]
+    Write(#[from] DurableError),
 }

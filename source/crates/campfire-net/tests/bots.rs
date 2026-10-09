@@ -12,7 +12,8 @@ use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_protocol::{AfterLeave, Controller, ServerInput, SessionLog};
 use campfire_runner::{Runner, Session};
-use tempfile::TempDir;
+
+use crate::scratch::Scratch;
 
 /// Where the server's hero of `slot` walks to.
 fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {
@@ -160,7 +161,7 @@ struct Burst {
 /// The match of the bot of `BURST` up to tick `end`, its server stopped and restored from its
 /// journal after tick 10 when `stop`.
 fn burst(stop: bool, end: u64) -> Burst {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let mut setup = MatchSetup::SOLO;
     setup.bots = &[BURST];
     let mut local = InProcessMatch::new(setup);

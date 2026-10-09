@@ -2032,6 +2032,7 @@ dependencies = [
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",
+ "campfire-store",
  "clap",
  "lightyear",
  "thiserror 2.0.21",
@@ -2056,7 +2057,6 @@ dependencies = [
  "campfire-net",
  "campfire-protocol",
  "campfire-sim",
- "campfire-store",
  "campfire-verifier",
  "clap",
  "derive_more",
@@ -2159,6 +2159,7 @@ dependencies = [
  "serde",
  "sha2 0.11.0",
  "thiserror 2.0.21",
+ "zeroize",
 ]
 
 [[package]]
@@ -2215,6 +2216,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "wtransport",
+ "zeroize",
 ]
 
 [[package]]
@@ -2240,6 +2242,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "windows",
+ "zeroize",
 ]
 
 [[package]]

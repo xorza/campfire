@@ -19,14 +19,15 @@ use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
 use campfire_runner::{InputRules, Runner, Session};
 use campfire_sim::TickRate;
 use lightyear::core::tick::TickDuration;
-use tempfile::TempDir;
+
+use crate::scratch::Scratch;
 
 /// A chain of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
 
 /// The scenario's match, its mode's `[saves] by` `save_by`, its server keeping its data in
 /// `data`, after 30 steps.
-fn playing(data: &TempDir, save_by: SaveBy) -> InProcessMatch {
+fn playing(data: &Scratch, save_by: SaveBy) -> InProcessMatch {
     let saves = SavesData {
         by: save_by,
         autosave_ms: None,
@@ -40,7 +41,7 @@ fn playing(data: &TempDir, save_by: SaveBy) -> InProcessMatch {
 
 /// The scenario's match, its mode's `[saves]` `saves`, its server keeping its data in `data`, as
 /// it starts.
-fn started(data: &TempDir, saves: SavesData) -> InProcessMatch {
+fn started(data: &Scratch, saves: SavesData) -> InProcessMatch {
     let setup = MatchSetup {
         saves,
         ..MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN)
@@ -70,7 +71,7 @@ fn playing_on(local: &InProcessMatch) -> bool {
 
 #[test]
 fn a_players_save_is_refused_when_the_mode_alone_saves() {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let mut local = playing(&data, SaveBy::Mode);
     command(&mut local, SaveCommand::Save);
     for _ in 0..10 {
@@ -87,7 +88,7 @@ fn a_players_save_is_refused_when_the_mode_alone_saves() {
 
 #[test]
 fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let mut local = playing(&data, SaveBy::Player);
 
     // The save: a checkpoint at the boundary after the tick that runs next, segment 1.
@@ -166,7 +167,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
 #[test]
 fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary() {
     // An autosave every second, every 30 ticks of the lane mode.
-    let data = TempDir::new().unwrap();
+    let data = Scratch::new();
     let saves = SavesData {
         by: SaveBy::Player,
         autosave_ms: NonZeroU32::new(1000),

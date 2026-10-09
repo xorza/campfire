@@ -24,8 +24,10 @@ lightyear.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 wtransport.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
+campfire-store = { workspace = true, features = ["internals"] }
 tempfile.workspace = true
 
 [lints]

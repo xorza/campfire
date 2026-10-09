@@ -3,9 +3,10 @@
     reason = "the Win32 calls of the platform layer, the one module of the workspace that makes them"
 )]
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::os::windows::ffi::OsStrExt;
+use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
 use std::path::{self, Path};
 use std::ptr;
@@ -190,6 +191,23 @@ impl Os {
             )
         }
         .map_err(io_error)
+    }
+
+    /// `MoveFileExW` with no `MOVEFILE_REPLACE_EXISTING` fails with `ERROR_ALREADY_EXISTS` when a
+    /// file holds `to`.
+    pub(crate) fn create_name(from: &Path, to: &Path) -> io::Result<()> {
+        let (from, to) = (wide(from)?, wide(to)?);
+        // SAFETY: two paths, which live through the call.
+        unsafe { MoveFileExW(&from, &to, MOVEFILE_WRITE_THROUGH) }.map_err(io_error)
+    }
+
+    /// A directory opens only with `FILE_FLAG_BACKUP_SEMANTICS`; reading gives `READ_CONTROL`,
+    /// which its security descriptor needs.
+    pub(crate) fn open_dir(path: &Path) -> io::Result<File> {
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
+            .open(path)
     }
 
     pub(crate) fn sync_dir(directory: &Path) -> io::Result<()> {

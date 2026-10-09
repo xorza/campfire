@@ -1,11 +1,8 @@
-use std::fs;
-use std::io::ErrorKind;
-use std::path::Path;
-
 use campfire_protocol::CertificateHash;
-use campfire_store::DurableFile;
+use campfire_store::{SecretFile, SecretReadError};
 use wtransport::Identity;
 use wtransport::tls::{Certificate, CertificateChain, PrivateKey};
+use zeroize::Zeroizing;
 
 use crate::server_tls::error::TlsError;
 
@@ -19,12 +16,15 @@ const LIFETIME: u64 = 14 * 86_400;
 const RENEW_WITHIN: u64 = 2 * 86_400;
 const EXPIRES_BYTES: usize = size_of::<u64>();
 const LEN_BYTES: usize = size_of::<u32>();
+/// The most bytes the file may hold: far past a self-signed certificate and its key, the 2.5 KB
+/// of an RSA 4096 one among them, so a file of another kind is refused before it is read whole.
+const MAX_LEN: usize = 16 * 1024;
 
 /// The server's TLS identity, which its data directory keeps in `tls`, so a restored server
 /// presents the certificate its clients pinned: a self-signed certificate for `localhost`, its
-/// key, and when it expires, in Unix seconds. The file is written whole and atomically: `u64`
-/// expiry, `u32` certificate length, the certificate's DER, then the key's PKCS#8 DER, all
-/// little-endian.
+/// key, and when it expires, in Unix seconds. The file is a secret file, written whole and
+/// atomically: `u64` expiry, `u32` certificate length, the certificate's DER, then the key's
+/// PKCS#8 DER, all little-endian; its bytes, here, are zeroed when dropped.
 #[derive(Debug)]
 pub(crate) struct ServerTls {
     identity: Identity,
@@ -32,25 +32,30 @@ pub(crate) struct ServerTls {
 }
 
 impl ServerTls {
-    /// The identity the file at `path` keeps, at Unix second `now`; a new one, written, when it
-    /// keeps none, or when its certificate expires within `RENEW_WITHIN` and no session
-    /// restores, as `restoring` says. An error when the file does not read or is not written.
-    pub(crate) fn open(path: &Path, now: u64, restoring: bool) -> Result<ServerTls, TlsError> {
-        match fs::read(path) {
+    /// The identity `file` keeps, at Unix second `now`; a new one, written, when it keeps none,
+    /// or when its certificate expires within `RENEW_WITHIN` and no session restores, as
+    /// `restoring` says. The data directory's lock is held, so the file is replaced, never
+    /// raced. An error when the file does not read or is not written.
+    pub(crate) fn open(
+        file: &SecretFile,
+        now: u64,
+        restoring: bool,
+    ) -> Result<ServerTls, TlsError> {
+        match file.read(MAX_LEN) {
             Ok(bytes) => {
-                let kept = ServerTls::decode(bytes)?;
+                let kept = ServerTls::decode(&bytes)?;
                 if restoring || kept.expires.saturating_sub(now) > RENEW_WITHIN {
                     return Ok(kept);
                 }
             }
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(SecretReadError::Missing) => {}
             Err(error) => return Err(TlsError::Read(error)),
         }
         let made = ServerTls {
             identity: Identity::self_signed(["localhost"]).expect("a fixed name is a valid SAN"),
             expires: now + LIFETIME,
         };
-        DurableFile::write(path, &made.encode()).map_err(TlsError::Write)?;
+        file.replace(&made.encode()).map_err(TlsError::Write)?;
         Ok(made)
     }
 
@@ -64,12 +69,14 @@ impl ServerTls {
         self.identity
     }
 
-    fn encode(&self) -> Vec<u8> {
+    /// The file's bytes, in a buffer sized whole, so no growth leaves a copy of the key behind.
+    fn encode(&self) -> Zeroizing<Vec<u8>> {
         let certificate = self.identity.certificate_chain().as_slice()[0].der();
         let key = self.identity.private_key().secret_der();
         let len = u32::try_from(certificate.len()).expect("a certificate fits u32 bytes");
-        let mut bytes =
-            Vec::with_capacity(EXPIRES_BYTES + LEN_BYTES + certificate.len() + key.len());
+        let mut bytes = Zeroizing::new(Vec::with_capacity(
+            EXPIRES_BYTES + LEN_BYTES + certificate.len() + key.len(),
+        ));
         bytes.extend_from_slice(&self.expires.to_le_bytes());
         bytes.extend_from_slice(&len.to_le_bytes());
         bytes.extend_from_slice(certificate);
@@ -77,7 +84,7 @@ impl ServerTls {
         bytes
     }
 
-    fn decode(bytes: Vec<u8>) -> Result<ServerTls, TlsError> {
+    fn decode(bytes: &[u8]) -> Result<ServerTls, TlsError> {
         let (expires, rest) = bytes
             .split_first_chunk::<EXPIRES_BYTES>()
             .ok_or(TlsError::Truncated)?;
@@ -105,6 +112,8 @@ impl ServerTls {
 )]
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use tempfile::TempDir;
 
     use super::*;
@@ -116,7 +125,8 @@ mod tests {
         let scratch = TempDir::new().unwrap();
         let data = scratch.path();
         let path = data.join("tls");
-        let open = |now, restoring| ServerTls::open(&path, now, restoring).unwrap();
+        let file = SecretFile::at(path.clone());
+        let open = |now, restoring| ServerTls::open(&file, now, restoring).unwrap();
 
         // A first start makes the certificate, 14 days long; a second start a day later keeps it.
         let first = open(NOW, false);
@@ -138,7 +148,7 @@ mod tests {
         for cut in [0, EXPIRES_BYTES + 2, EXPIRES_BYTES + LEN_BYTES + 10] {
             fs::write(&path, &whole[..cut]).unwrap();
             assert!(matches!(
-                ServerTls::open(&path, NOW, true),
+                ServerTls::open(&file, NOW, true),
                 Err(TlsError::Truncated)
             ));
         }
@@ -146,8 +156,23 @@ mod tests {
         flawed[EXPIRES_BYTES + LEN_BYTES] ^= 0xFF;
         fs::write(&path, &flawed).unwrap();
         assert!(matches!(
-            ServerTls::open(&path, NOW, true),
+            ServerTls::open(&file, NOW, true),
             Err(TlsError::Certificate(_))
         ));
+        // One longer than a TLS file may be, and one others may read, are refused; the identity
+        // they would hold is not made again over them.
+        fs::write(&path, vec![0; MAX_LEN + 1]).unwrap();
+        assert!(matches!(
+            ServerTls::open(&file, NOW, false),
+            Err(TlsError::Read(SecretReadError::TooLarge { max: MAX_LEN }))
+        ));
+        fs::write(&path, &whole).unwrap();
+        assert_eq!(open(NOW, true).certificate(), renewed.certificate());
+        file.expose();
+        assert!(matches!(
+            ServerTls::open(&file, NOW, false),
+            Err(TlsError::Read(SecretReadError::Exposed(_)))
+        ));
+        assert_eq!(fs::read(&path).unwrap(), whole);
     }
 }

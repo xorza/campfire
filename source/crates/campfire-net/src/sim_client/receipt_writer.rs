@@ -20,8 +20,8 @@ impl ReceiptWriter {
         ReceiptWriter(LatestWriter::start(
             "receipts",
             move |receipt: &SignedReceipt| {
-                DurableFile::create_dir(&data.receipts_dir())?;
-                let file = data.receipt_file(receipt.receipt.session_id);
+                DurableFile::create_dir(&data.layout().receipts_dir())?;
+                let file = data.layout().receipt_file(receipt.receipt.session_id);
                 receipt.encode(&mut bytes);
                 DurableFile::write(&file, &bytes)
             },
