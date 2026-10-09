@@ -26,6 +26,7 @@ mod package_walk;
 mod package_writer;
 mod script_facts;
 mod texts;
+mod zero_hour;
 
 pub use crate::error::box_problem::BoxProblem;
 pub use crate::error::build_problem::BuildProblem;
@@ -56,6 +57,10 @@ pub use crate::package_files::PackageFiles;
 pub use crate::package_store::{PackageStore, StoreFailure};
 pub use crate::package_writer::PackageWriter;
 pub use crate::texts::Texts;
+pub use crate::zero_hour::error::TerrainError;
+pub use crate::zero_hour::terrain::{
+    BlendShape, BlendTile, CliffUv, Terrain, TerrainCell, TerrainParts, TextureClass,
+};
 
 /// The tag of this engine release: what a session's terms name, so a replay runs the code that
 /// recorded it.

@@ -64,7 +64,9 @@ Geometry is `BOX` on 710 objects, `CYLINDER` on 394, `SPHERE` on 73, and none on
 
 ## Maps
 
-- **Packing.** `EAR\0`, the `u32` little-endian unpacked size, then EA's RefPack (`Core/Libraries/Source/Compression/EAC/refdecode.cpp`).
+- **Which maps.** The game lists each `.map` under `Maps\` in a folder of its own name, `Maps\<name>\<name>.map` (`MapCache::loadMapsFromDisk`, `Core/GameEngine/Source/GameClient/MapUtil.cpp`); all 150 are.
+- **Packing** (`Core/Libraries/Source/Compression/CompressionManager.cpp`). A four-byte tag, the `u32` little-endian unpacked size, then the stream: `EAR\0` EA's RefPack (`Core/Libraries/Source/Compression/EAC/refdecode.cpp`) on 145 maps, `ZL5\0` a zlib stream on 1, and no tag on 4, which are `CkMp` as they are. The game also reads `ZL1` to `ZL9`, `NOX`, `EAB` and `EAH`, which no shipped map uses.
+- **Versions.** `HeightMapData` 4 and `ObjectsList` 3, of `Object` chunks 3, on every map; `BlendTileData` 6 on 3 maps, 7 on 31 and 8 on 116. Version 6 stores no cliff bits, which the game makes from the heights: a cell is a cliff when its corners span more than 9.8 units. Version 7 stored rows of `(width + 1) / 8` bytes of them, short by a byte for most widths.
 - **Chunks** (`GeneralsMD/Code/GameEngine/Source/Common/System/DataChunk.cpp`). `CkMp`, a table of chunk names, each a length byte, the name and a `u32` id; then chunks, each a `u32` id, a `u16` version and an `i32` size, little-endian. A dictionary is a `u16` count of entries, each a key id and type in one `i32`, then a bool, `i32`, `f32`, string or wide string.
 - **Top chunks.** `HeightMapData`, `BlendTileData`, `WorldInfo`, `SidesList`, `ObjectsList`, `PolygonTriggers`, `GlobalLighting`, `WaypointsList`.
 - **Heightmap** (`WorldHeightMap::ParseHeightMapData`). Width, height, border, the playable boundaries, then one byte of height per cell. A cell is `MAP_XY_FACTOR` = 10 units wide, and a height step `MAP_HEIGHT_SCALE` = 0.625 units (`Core/GameEngine/Include/Common/MapObject.h`); both are exact in binary.
@@ -77,6 +79,13 @@ Geometry is `BOX` on 710 objects, `CYLINDER` on 394, `SPHERE` on 73, and none on
 | China, final mission | 370 × 570 | 70 | 2,683, 180 | 3.6 MiB packed |
 
 - **All maps.** Unpacked, 2.2 MiB at the median, 6.4 MiB at most (`md_gla05`), 342 MiB for all 150. `BlendTileData` is most of each.
+- **Their objects.** 281,480: 82,397 ends of roads and bridges, 25,463 waypoints, and 173,620 others.
+  - **Waypoints.** Ids 1 to 909, none twice on a map; every name ASCII, none a number; one name on several waypoints of a map on 66 maps.
+  - **Heights.** None past the range the game drops at −1,000 and 1,593.75. 6,261 of the others stand off the ground, from −89 to 1,350, −4 at the median, most of them props sunk into it.
+  - **Angles.** 562 lie past (−π, π], up to 4.73, which the game's `normalizeAngle` brings back by a turn.
+  - **Places.** 232, all on campaign maps, lie past their heightmap's extent.
+  - **Names.** 1,439 templates, of which none differ only in case; one non-ASCII name, on a road's end.
+- **Their terrain.** Each blended tile sets exactly one of its four directions; its inverted byte holds 0 to 3, the inverted and the flipped bit. No map has an edge class. 13 maps hold no cliff UVs, and 0, which names none, in every cell.
 
 ## Terrain
 
@@ -123,8 +132,7 @@ Each is pure Rust, with no float math in what it writes, so one version and one 
 
 ## What the engine lacks
 
-- **`store`** reads a file whole or as a stream from its start, `InputFile::stream`; an archive of 333 MiB needs reads at an offset.
-- **`package`**'s map is `map/<name>/map.toml` (`MapData`, `campfire-capabilities/src/mode/map_data.rs`): bounds, grids, walls, paths, placed units and markers, with no heightmap and no model of a unit type.
+- **`package`** has no model of a unit type.
 - **`client`** draws a plane and capsules (`campfire-client/src/view/mod.rs`), and builds Bevy with no glTF, PNG or KTX2 support. Design 02 says the client loads no asset from a file, so a model's bytes reach Bevy through `store`, not Bevy's asset server.
 
 ## Open

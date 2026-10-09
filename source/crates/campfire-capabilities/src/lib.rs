@@ -103,6 +103,7 @@ pub use crate::items::shop_data::ShopData;
 pub use crate::mode::Mode;
 pub use crate::mode::choice_data::{ChoiceData, Offers};
 pub use crate::mode::error::{ModeError, UnitKitError};
+pub use crate::mode::height_grid::HeightGrid;
 pub use crate::mode::map_data::{
     BrushData, GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData, WallData,
 };

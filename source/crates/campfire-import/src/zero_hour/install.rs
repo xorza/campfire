@@ -39,6 +39,13 @@ struct Located {
     size: u64,
 }
 
+/// A map the game lists: its path, as `maps\<folder>\<folder>.map`, and its folder's name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InstallMap {
+    pub(crate) path: String,
+    pub(crate) folder: String,
+}
+
 /// One archive of the install and the SHA-256 of its bytes, as a version check compares them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HashedArchive {
@@ -94,7 +101,6 @@ impl Install {
 
     /// The bytes of the file at `path`, as the game names it, in the first archive that holds
     /// it.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the import of maps reads it"))]
     pub(crate) fn read(&mut self, path: &str) -> Result<Vec<u8>, ImportError> {
         let located = *self
             .files
@@ -105,6 +111,21 @@ impl Install {
             .file
             .read_at(located.offset, len)
             .map_err(ImportError::Read)
+    }
+
+    /// The maps the game lists, as `MapCache::loadMapsFromDisk` finds them: each `.map` under
+    /// `Maps\` in a folder of its own name, in the order of their keys; one elsewhere is none.
+    pub(crate) fn maps(&self) -> Vec<InstallMap> {
+        self.files
+            .keys()
+            .filter_map(|key| {
+                let folder = key.strip_prefix("maps\\")?.split_once('\\')?.0;
+                (*key == format!("maps\\{folder}\\{folder}.map")).then(|| InstallMap {
+                    path: key.clone(),
+                    folder: folder.to_owned(),
+                })
+            })
+            .collect()
     }
 
     /// Each archive's path and SHA-256, in the load order, each hashed through the handle that
@@ -158,14 +179,30 @@ pub(crate) mod internals {
     use campfire_store::Scratch;
 
     use crate::zero_hour::big_archive::internals::big;
+    use crate::zero_hour::map_file::internals::map;
+    use crate::zero_hour::ref_pack::internals::literal;
 
-    /// An install whose archives each hold `shared.ini`: `A.big`, `b.big`, `c.BIG`, base
-    /// Generals' `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file
-    /// that is no archive.
+    /// The fixture map's file, packed by `RefPack` as the game ships most maps.
+    pub(crate) fn packed_map() -> Vec<u8> {
+        let plain = map(8);
+        let len = u32::try_from(plain.len()).unwrap().to_le_bytes();
+        [&b"EAR\0"[..], &len, &literal(&plain)].concat()
+    }
+
+    /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture
+    /// map in its folder and a map outside one, `b.big`, `c.BIG`, base Generals'
+    /// `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that is no
+    /// archive.
     pub(crate) fn fixture(scratch: &Scratch) {
+        let packed = packed_map();
         scratch.write(
             "zh/A.big",
-            big(&[("Data\\a.ini", b"A1"), ("shared.ini", b"from A")]),
+            big(&[
+                ("Data\\a.ini", b"A1"),
+                ("shared.ini", b"from A"),
+                ("Maps\\Fixture Map\\Fixture Map.map", &packed),
+                ("Maps\\Stray\\Other.map", b"no map the game lists"),
+            ]),
         );
         scratch.write(
             "zh/b.big",
@@ -209,6 +246,14 @@ mod tests {
         assert_eq!(install.read("b\\B.INI").unwrap(), b"b");
         assert_eq!(install.read("c.ini").unwrap(), b"c");
         assert_eq!(install.read("base.ini").unwrap(), b"base only");
+        // The map in its own folder, by its key; not the one in another's.
+        assert_eq!(
+            install.maps(),
+            [InstallMap {
+                path: "maps\\fixture map\\fixture map.map".to_owned(),
+                folder: "fixture map".to_owned(),
+            }]
+        );
         assert!(matches!(
             install.read("missing.ini"),
             Err(ImportError::ZeroHour(ZeroHourError::NotInArchives(path))) if path == "missing.ini"

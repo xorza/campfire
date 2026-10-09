@@ -11,10 +11,6 @@ pub(crate) struct RefPack;
 impl RefPack {
     /// The bytes `stream` decodes to, refused when it ends inside a command, copies from before
     /// its start, or writes other than its header's length.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the import of maps decodes them")
-    )]
     pub(crate) fn decode(stream: &[u8]) -> Result<Vec<u8>, RefPackError> {
         let mut reader = Reader { stream, at: 0 };
         let flags = u16::from_be_bytes([reader.byte()?, reader.byte()?]);
@@ -108,6 +104,25 @@ impl<'a> Reader<'a> {
             .ok_or(RefPackError::Short)?;
         self.at += count;
         Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    /// `bytes` as a `RefPack` stream of literal runs alone: its header of 3 length bytes, runs
+    /// of up to 112 bytes in fours, and the end with the last 0 to 3.
+    pub(crate) fn literal(bytes: &[u8]) -> Vec<u8> {
+        let len = u32::try_from(bytes.len()).unwrap().to_be_bytes();
+        assert_eq!(len[0], 0, "a length of 3 bytes");
+        let mut stream = [&[0x10, 0xFB][..], &len[1..]].concat();
+        let (runs, rest) = bytes.split_at(bytes.len() / 4 * 4);
+        for run in runs.chunks(112) {
+            stream.push(0xE0 | u8::try_from((run.len() - 4) / 4).unwrap());
+            stream.extend(run);
+        }
+        stream.push(0xFC | u8::try_from(rest.len()).unwrap());
+        stream.extend(rest);
+        stream
     }
 }
 

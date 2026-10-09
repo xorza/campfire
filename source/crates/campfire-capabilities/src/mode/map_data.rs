@@ -85,8 +85,8 @@ pub struct PathData {
 }
 
 /// A unit that stands on the map from the start, of a team; turned by `angle` degrees if it has
-/// a box body; on a path if it guards one, and walking it from the end `from` names if it walks
-/// one.
+/// a box body; `height` meters above the ground beneath `pos`; on a path if it guards one, and
+/// walking it from the end `from` names if it walks one.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlacedUnitData {
@@ -95,6 +95,8 @@ pub struct PlacedUnitData {
     pub pos: MapPoint,
     #[serde(default, deserialize_with = "Scalar::num")]
     pub angle: Num,
+    #[serde(default, deserialize_with = "Scalar::num")]
+    pub height: Num,
     pub path: Option<DeclaredName>,
     pub from: Option<PathEnd>,
 }
@@ -241,6 +243,7 @@ pub(crate) mod internals {
                 team: name(team),
                 pos,
                 angle: Num::ZERO,
+                height: Num::ZERO,
                 path: None,
                 from: None,
             }
@@ -326,5 +329,41 @@ mod tests {
         assert_eq!(triangle.len(), 1);
         // A map with no vision grid has no brush.
         assert_eq!(MapData::planar(bounds).brush(), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn a_placed_unit_stands_its_height_above_the_ground_or_on_it() {
+        let map: MapData = toml::from_str(
+            r#"
+            bounds = { min = [0, 0], max = [4, 4] }
+            [[units]]
+            unit_type = "rock"
+            team = "neutral"
+            pos = [1, 2]
+            angle = "22.5"
+            height = "-4.5"
+            [[units]]
+            unit_type = "rock"
+            team = "neutral"
+            pos = [3, 2]
+            "#,
+        )
+        .unwrap();
+        let rock = |pos, angle, height| PlacedUnitData {
+            angle,
+            height,
+            ..PlacedUnitData::new("rock", "neutral", pos)
+        };
+        assert_eq!(
+            map.units,
+            [
+                rock(
+                    MapPoint::ground(1, 2),
+                    Num::int(45) / Num::int(2),
+                    Num::int(-9) / Num::int(2)
+                ),
+                rock(MapPoint::ground(3, 2), Num::ZERO, Num::ZERO),
+            ]
+        );
     }
 }

@@ -58,6 +58,7 @@ pub(crate) mod choices;
 pub(crate) mod error;
 pub(crate) mod game_map;
 pub(crate) mod group_unit;
+pub(crate) mod height_grid;
 pub(crate) mod loadout_setup;
 pub(crate) mod map_data;
 pub(crate) mod map_ground;

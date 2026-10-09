@@ -7,5 +7,7 @@ mod zero_hour;
 
 pub use crate::error::ImportError;
 pub use crate::zero_hour::ZeroHour;
-pub use crate::zero_hour::error::{ArchiveError, RefPackError, VersionDifference, ZeroHourError};
+pub use crate::zero_hour::error::{
+    ArchiveError, Chunk, MapError, Packing, RefPackError, VersionDifference, ZeroHourError,
+};
 pub use crate::zero_hour::game_version::{ArchiveHash, GameVersion};
