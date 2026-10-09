@@ -110,7 +110,7 @@ The log records which controller each slot has at every tick, a player, a bot, o
 
 | Input | Fields | Effect |
 | --- | --- | --- |
-| `Bot` | `u32` slot, payload bytes | Commands of the slot's bot, applied in that tick as a player's are, in slot order; a payload within the max length, at most the max inputs per tick in a tick |
+| `Bot` | `u32` slot, payload bytes | Commands of the slot's bot, applied as a player's are, in slot order: in that tick, or, past its max inputs per tick, in the first later tick the slot's inputs leave room in, within the max input lead; a payload within the max length |
 | `Join` | `u32` slot, delegation JSON | The slot's controller becomes the delegation's player, whose chain starts from its id |
 | `Renew` | `u32` slot, delegation JSON | The slot's player, the same main key, signs with the new session key from then on |
 | `Leave` | `u32` slot, reason (0 asked, 1 grace), what the slot becomes (0 reserved, 1 a bot, 2 open) | The slot's player leaves it |

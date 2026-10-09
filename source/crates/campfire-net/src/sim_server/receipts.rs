@@ -90,3 +90,17 @@ impl Receipts {
         }
     }
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::time::Duration;
+
+    use crate::sim_server::receipts::Receipts;
+
+    impl Receipts {
+        /// Makes the next round go out in the server's next update, as if its second passed.
+        pub(crate) const fn due_now(&mut self) {
+            self.next = Duration::ZERO;
+        }
+    }
+}

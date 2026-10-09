@@ -47,6 +47,7 @@ use crate::sim_client::{PendingOrders, SimClient};
 use crate::sim_server::SimServer;
 use crate::sim_server::lobby::{Lobby, LobbySetup};
 use crate::sim_server::player_link::PlayerLink;
+use crate::sim_server::receipts::Receipts;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
@@ -766,6 +767,11 @@ impl InProcessMatch {
 
     pub fn client_mut(&mut self, client: usize) -> &mut App {
         &mut self.clients[client]
+    }
+
+    /// Makes the server give its receipts in its next update, as if their second passed.
+    pub fn give_receipts(&mut self) {
+        self.server.world_mut().resource_mut::<Receipts>().due_now();
     }
 
     /// The server's link to `client`.

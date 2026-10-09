@@ -55,7 +55,10 @@ enum Step {
     /// Its link failed: it tries the link again until the server's grace period and restore
     /// window passed.
     Rejoining(Rejoining),
-    /// The player asked to leave.
+    /// The player asked to leave while they played, and their link is still open: a receipt of
+    /// the inputs they sent may still come.
+    Leaving(Leaving),
+    /// The player left, and their link closed, or they left before they played.
     Left,
     /// It stopped, for `Loss`.
     Lost(Loss),
@@ -127,6 +130,15 @@ pub(crate) struct Playing {
     pub(crate) chain: InputChain,
     pub(crate) clock: MatchClock,
     team: Team,
+    history: ChainHistory,
+}
+
+/// A player who left while they played: what they hold as a member, their slot and their chain's
+/// history, which a receipt the server sent before it took the leave is checked against.
+#[derive(Debug)]
+struct Leaving {
+    member: Member,
+    slot: PlayerSlot,
     history: ChainHistory,
 }
 
@@ -242,7 +254,7 @@ impl JoinState {
 
     /// Whether the player left.
     pub const fn left(&self) -> bool {
-        matches!(self.step, Step::Left)
+        matches!(self.step, Step::Leaving(_) | Step::Left)
     }
 
     /// Whether the client tries its link again.
@@ -389,7 +401,8 @@ impl JoinState {
     }
 
     /// Notes that the client's link failed at `now`, by its real clock: a client that knows the
-    /// server's times tries again, its chain's history kept; one that does not stops.
+    /// server's times tries again, its chain's history kept; one that does not stops; one that
+    /// left takes no receipt from then on.
     pub(crate) fn lose(&mut self, now: Duration, random: [u8; 32]) -> LinkLoss {
         let (member, history) = match mem::replace(&mut self.step, Step::Left) {
             Step::Playing(playing) => (playing.member, Some(playing.history)),
@@ -398,6 +411,7 @@ impl JoinState {
                 self.step = Step::Lost(Loss::LinkFailed);
                 return LinkLoss::Stopped(Loss::LinkFailed);
             }
+            Step::Leaving(_) => return LinkLoss::Nothing,
             other => {
                 self.step = other;
                 return LinkLoss::Nothing;
@@ -434,25 +448,31 @@ impl JoinState {
         Retry::Connect
     }
 
-    /// Takes `receipt`, when the server key signed it over this player's chain as it stood at
-    /// its seq, under their delegation or the one it renewed, no earlier seq than the one the
-    /// client keeps, as a restored server gives the same head again: the client keeps it, and
-    /// forgets its chain's history before it.
+    /// Takes `receipt`, while the player plays, or left and their link is still open, when the
+    /// server key signed it over this player's chain as it stood at its seq, under their
+    /// delegation or the one it renewed, no earlier seq than the one the client keeps, as a
+    /// restored server gives the same head again: the client keeps it, and forgets its chain's
+    /// history before it.
     pub(crate) fn take_receipt(
         &mut self,
         receipt: &SignedReceipt,
         secp: &Secp256k1<VerifyOnly>,
     ) -> Result<(), ReceiptRefusal> {
-        let Step::Playing(playing) = &mut self.step else {
-            return Err(ReceiptRefusal::NotPlaying);
+        let (member, slot, history) = match &mut self.step {
+            Step::Playing(playing) => (
+                &mut playing.member,
+                playing.chain.slot(),
+                &mut playing.history,
+            ),
+            Step::Leaving(leaving) => (&mut leaving.member, leaving.slot, &mut leaving.history),
+            _ => return Err(ReceiptRefusal::NotPlaying),
         };
         let signed = receipt.receipt;
         if !signed.signed_by(secp, &self.player.server.key, &receipt.signature) {
             return Err(ReceiptRefusal::BadSignature);
         }
-        let member = &mut playing.member;
         if signed.session_id != member.session.id
-            || signed.slot != playing.chain.slot()
+            || signed.slot != slot
             || (signed.delegation != *member.delegation.id()
                 && Some(signed.delegation) != member.renewed)
         {
@@ -465,10 +485,10 @@ impl JoinState {
             return Err(ReceiptRefusal::Older);
         }
         let next_seq = signed.seq.checked_add(1).ok_or(ReceiptRefusal::OtherHead)?;
-        if playing.history.head_at(next_seq) != Some(signed.head) {
+        if history.head_at(next_seq) != Some(signed.head) {
             return Err(ReceiptRefusal::OtherHead);
         }
-        playing.history.forget_before(next_seq);
+        history.forget_before(next_seq);
         member.receipt = Some(*receipt);
         Ok(())
     }
@@ -478,6 +498,7 @@ impl JoinState {
         let member = match &self.step {
             Step::Answered(Answered { member, .. })
             | Step::Playing(Playing { member, .. })
+            | Step::Leaving(Leaving { member, .. })
             | Step::Rejoining(Rejoining { member, .. }) => member,
             Step::Waiting | Step::Refused(_) | Step::Left | Step::Lost(_) => return None,
         };
@@ -489,9 +510,22 @@ impl JoinState {
         self.step = Step::Lost(Loss::Superseded);
     }
 
-    /// The player leaves: the client tries no link again.
+    /// The player leaves: the client tries no link again, and, when they played, takes the
+    /// receipts that come until the link closes.
     pub(crate) fn leave(&mut self) {
-        self.step = Step::Left;
+        self.step = match mem::replace(&mut self.step, Step::Left) {
+            Step::Playing(Playing {
+                member,
+                chain,
+                history,
+                ..
+            }) => Step::Leaving(Leaving {
+                member,
+                slot: chain.slot(),
+                history,
+            }),
+            _ => Step::Left,
+        };
     }
 
     /// The wait before try `tries`, after the first, drawn at random below its bound, which

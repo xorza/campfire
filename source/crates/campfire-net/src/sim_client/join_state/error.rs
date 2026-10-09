@@ -19,8 +19,8 @@ pub enum TermsMismatch {
 /// Why a client refused a receipt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum ReceiptRefusal {
-    /// The client plays no match.
-    #[error("the client plays no match")]
+    /// The client plays no match, nor left one whose link is still open.
+    #[error("the client plays no match, nor left one whose link is still open")]
     NotPlaying,
     /// The server key did not sign it.
     #[error("the server key did not sign it")]

@@ -28,8 +28,7 @@ use std::time::SystemTime;
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    ClientDir, InputLogged, LinkLost, Listening, OrderScript, ServerDir, SessionWritten,
-    TicksCaughtUp,
+    ClientDir, LinkLost, Listening, OrderScript, ServerDir, SessionWritten, TicksCaughtUp,
 };
 use campfire_protocol::SessionLog;
 use campfire_verifier::Verified;
@@ -44,7 +43,7 @@ use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
 use crate::run_dir::RunDir;
 use crate::session_kind::SessionKind;
-use crate::verdict::{BotEvents, Verdict};
+use crate::verdict::{BotEvents, LoggedInput, Verdict};
 
 mod binaries;
 mod error;
@@ -201,7 +200,7 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
 
 /// The inputs of the session log that the server whose log is `server` published in `dir`, each
 /// with the tick it took effect in; none when it published none.
-fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<InputLogged>, CheckError> {
+fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<LoggedInput>, CheckError> {
     let Some(written) = server.first::<SessionWritten>()? else {
         return Ok(Vec::new());
     };
@@ -213,7 +212,7 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<InputLogged>,
     let mut inputs = Vec::new();
     while log.next_tick() < ticks {
         let tick = log.next_tick();
-        inputs.extend(log.seal_tick().map(|input| InputLogged {
+        inputs.extend(log.seal_tick().map(|input| LoggedInput {
             slot: input.slot,
             stamp: input.stamp,
             tick,

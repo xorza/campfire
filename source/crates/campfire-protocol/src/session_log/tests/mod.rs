@@ -1243,17 +1243,18 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
     }
     assert_eq!(seal(&mut log), [(0, b"p".to_vec()), (1, b"x".to_vec())]);
 
-    // Each change the structure refuses; then the bot's two commands fill tick 1, and a third
-    // passes the max of 2.
+    // Each change the structure refuses; then the bot's two commands fill tick 1, four more
+    // spill, two to tick 2 and two to tick 3, as far as the max lead of 2 past tick 1 reaches,
+    // and a seventh is refused.
     for (input, error) in refused_by_structure() {
         assert_eq!(serve(&mut log, input.clone()), Err(error), "{input:?}");
     }
-    for payload in [b"y", b"z"] {
+    for payload in [b"y", b"z", b"1", b"2", b"3", b"4"] {
         serve(&mut log, bot(1, payload)).unwrap();
     }
     assert_eq!(
-        serve(&mut log, bot(1, b"")),
-        Err(ServerInputError::TooManyInputs)
+        serve(&mut log, bot(1, b"5")),
+        Err(ServerInputError::AheadOfTime)
     );
     // A signature at another place is refused: the next server input of tick 1 is the third.
     let input = ServerInput::Connected { slot: slot(0) };
@@ -1286,6 +1287,12 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
         seal(&mut log),
         [(0, b"q".to_vec()), (1, b"y".to_vec()), (1, b"z".to_vec())]
     );
+    // The spilled commands apply in ticks 2 and 3, after player 0's s in slot order.
+    assert_eq!(
+        seal(&mut log),
+        [(0, b"s".to_vec()), (1, b"1".to_vec()), (1, b"2".to_vec())]
+    );
+    assert_eq!(seal(&mut log), [(1, b"3".to_vec()), (1, b"4".to_vec())]);
 }
 
 /// `mixed_log` through ticks 0 and 1 of the test before: player 0's p and q, the bot's x, y and

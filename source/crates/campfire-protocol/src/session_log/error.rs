@@ -54,9 +54,10 @@ pub enum ServerInputError {
     /// A bot's payload is longer than the header's max payload length.
     #[error("bot payload above the max length")]
     PayloadTooLarge,
-    /// A bot's inputs pass the header's max inputs per tick in one tick.
-    #[error("bot inputs above the max inputs per tick")]
-    TooManyInputs,
+    /// A bot's inputs fill every tick up to the max input lead past the next with the header's
+    /// max inputs per tick.
+    #[error("bot inputs fill the ticks up to the max input lead")]
+    AheadOfTime,
     /// Bot commands for a slot no bot plays.
     #[error("bot commands for a slot no bot plays")]
     NotBot,

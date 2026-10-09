@@ -32,6 +32,11 @@ pub(crate) const RESTARTED: usize = 1;
 /// The check stops the server once it logged an input of this stamp or a later one, which the
 /// second orders of the scripts are, and starts it again on its data directory.
 const SERVER_STOP: Tick = Tick::new(50);
+/// What each process's JSON file holds beyond its own file filter: the start of every frame of
+/// the server and of each client, which their filters leave out, so a failed order shows when
+/// each end ran each frame between its send, its receipt and its tick.
+const LOG_EXTRA: &str =
+    "campfire_net::events::server_frame=trace,campfire_net::events::client_frame=trace";
 
 /// A match of the real server and one bot per script, each a process on `127.0.0.1`, each
 /// logging JSON to a file in the run's directory; beside them, an impostor bot that pins the
@@ -265,7 +270,8 @@ impl LanMatch<'_> {
     }
 
     /// Starts `command` as `process`, in the run's directory, logging JSON to its file and text to
-    /// a file beside it.
+    /// a file beside it. Its file filter is the binary's own, whatever the check's environment
+    /// says, as the verdict reads its events at Debug.
     fn start(&self, process: Process, command: &mut Command) -> Result<Child, CheckError> {
         let text = self.dir.join(format!("{}.log", process.file_stem()));
         #[expect(
@@ -276,6 +282,8 @@ impl LanMatch<'_> {
         command
             .current_dir(self.dir)
             .env("CAMPFIRE_LOG", process.log_path(self.dir))
+            .env_remove("CAMPFIRE_LOG_FILTER")
+            .env("CAMPFIRE_LOG_FILTER_EXTRA", LOG_EXTRA)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(text)

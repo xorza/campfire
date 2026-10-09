@@ -9,27 +9,27 @@ pub(crate) struct Spill {
 }
 
 impl Spill {
-    /// The tick an input that may apply from tick `earliest` on applies in: the first, from
-    /// there and from the last, that fewer than `max` of the slot's inputs fill.
-    pub(super) const fn take(&mut self, earliest: Tick, max: u32) -> Tick {
+    /// The tick the next input that may apply from tick `earliest` on would apply in: the
+    /// first, from there and from the last, that fewer than `max` of the slot's inputs fill.
+    pub(super) const fn place(self, earliest: Tick, max: u32) -> Tick {
         if self.count == 0 || earliest.get() > self.tick.get() {
-            self.tick = earliest;
-            self.count = 1;
+            earliest
         } else if self.count < max {
-            self.count += 1;
+            self.tick
         } else {
-            self.tick = self.tick.after(Ticks::ONE);
-            self.count = 1;
+            self.tick.after(Ticks::ONE)
         }
-        self.tick
     }
 
-    /// How many of the slot's inputs apply in `tick` so far.
-    pub(super) const fn at(self, tick: Tick) -> u32 {
-        if self.tick.get() == tick.get() {
-            self.count
+    /// Schedules an input that may apply from tick `earliest` on, at its `place`.
+    pub(super) const fn take(&mut self, earliest: Tick, max: u32) -> Tick {
+        let tick = self.place(earliest, max);
+        self.count = if self.count != 0 && tick.get() == self.tick.get() {
+            self.count + 1
         } else {
-            0
-        }
+            1
+        };
+        self.tick = tick;
+        tick
     }
 }

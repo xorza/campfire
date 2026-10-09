@@ -11,7 +11,8 @@
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by
 //! default). With `CAMPFIRE_LOG` set to a path, they also go there as JSON lines, filtered by
-//! `CAMPFIRE_LOG_FILTER` (Campfire's `debug` by default).
+//! `CAMPFIRE_LOG_FILTER` (Campfire's `debug` by default) with the directives of
+//! `CAMPFIRE_LOG_FILTER_EXTRA` added.
 
 #![allow(
     clippy::needless_pass_by_value,

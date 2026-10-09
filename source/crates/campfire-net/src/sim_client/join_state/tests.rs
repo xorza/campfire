@@ -551,3 +551,35 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
     };
     assert_eq!(state.start(start), Started::Rewritten);
 }
+
+#[test]
+fn a_client_that_left_takes_a_receipt_until_its_link_closes() {
+    // The player leaves after inputs a, b and c; the receipt of c, seq 2, which the server sent
+    // before it took the leave, comes after it: the client keeps it, as the newest. Once the
+    // link closes, it takes none.
+    let verifier = Secp256k1::verification_only();
+    let (mut state, _, heads, _, receipt) = receipted();
+    state.take_receipt(&signed(receipt), &verifier).unwrap();
+    state.leave();
+    assert!(state.left());
+    let last = Receipt {
+        seq: 2,
+        head: heads[3],
+        ..receipt
+    };
+    assert_eq!(state.take_receipt(&signed(last), &verifier), Ok(()));
+    assert_eq!(state.receipt(), Some(&signed(last)));
+    assert_eq!(state.lose(Duration::ZERO, [0; 32]), LinkLoss::Nothing);
+    assert!(state.left());
+    assert_eq!(
+        state.take_receipt(&signed(last), &verifier),
+        Err(ReceiptRefusal::NotPlaying)
+    );
+    // A client that leaves before it plays holds no chain to take one of.
+    let mut early = waiting(TICK_HZ);
+    early.leave();
+    assert_eq!(
+        early.take_receipt(&signed(last), &verifier),
+        Err(ReceiptRefusal::NotPlaying)
+    );
+}

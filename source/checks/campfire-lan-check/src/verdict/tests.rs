@@ -9,12 +9,29 @@ use serde_json::json;
 
 use super::*;
 
-fn logged(slot: u32, stamp: u64, tick: u64) -> InputLogged {
-    InputLogged {
+fn logged(slot: u32, stamp: u64, tick: u64) -> LoggedInput {
+    LoggedInput {
         slot: PlayerSlot::new(slot),
         stamp: Tick::new(stamp),
         tick: Tick::new(tick),
     }
+}
+
+/// The messages of `sent`, by stamp, of the bot of `slot`, its first input at seq 0.
+fn orders_sent(slot: Option<u32>, sent: &[(u64, usize)]) -> Vec<OrdersSent> {
+    let mut seq = 0;
+    sent.iter()
+        .map(|&(stamp, orders)| {
+            let message = OrdersSent {
+                slot: PlayerSlot::new(slot.unwrap_or(0)),
+                seq,
+                stamp: Tick::new(stamp),
+                orders,
+            };
+            seq += u64::try_from(orders).unwrap();
+            message
+        })
+        .collect()
 }
 
 /// The process of bot `index`, of a script of 2 orders, which started in `slot` and sent and kept
@@ -26,20 +43,8 @@ fn bot(index: usize, slot: Option<u32>, sent: &[(u64, usize)]) -> BotEvents {
             slot: PlayerSlot::new(slot),
             start_tick: 5,
         }),
-        sent: sent
-            .iter()
-            .map(|&(stamp, orders)| OrdersSent {
-                stamp: Tick::new(stamp),
-                orders,
-            })
-            .collect(),
-        kept: sent
-            .iter()
-            .map(|&(stamp, orders)| OrdersSent {
-                stamp: Tick::new(stamp),
-                orders,
-            })
-            .collect(),
+        sent: orders_sent(slot, sent),
+        kept: orders_sent(slot, sent),
         scripted: 2,
         whole: true,
     }

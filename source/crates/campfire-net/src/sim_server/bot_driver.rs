@@ -1,6 +1,3 @@
-use std::mem;
-use std::ops::Range;
-
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{HeldPlayerUnits, Order};
@@ -11,31 +8,25 @@ use campfire_runner::{ServerInputRefused, Session};
 
 use crate::bot_script::BotScript;
 use crate::events::avatar_missing::AvatarMissing;
-use crate::events::bot_payload_dropped::BotPayloadDropped;
+use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
 use crate::order_script::OrderScript;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_signer::ServerSigner;
 
 /// Plays the server's bots: before each tick, for each slot a bot plays, the orders and mode
 /// inputs its script has for that tick, each a payload as a client writes it, which the server
-/// signs and logs as a `Bot` input. A tick takes at most the session's max inputs a slot; the
-/// rest wait for the next. A slot that becomes a bot's after its player left plays the takeover
-/// script from the tick its leave applies in, as the log holds it, so a restore plays on where
-/// the run before it stopped; one a player took is played no more, and a bot of the plan with no
-/// script idles.
+/// signs and logs as a `Bot` input at once; the log schedules each as a player's, so one past
+/// the tick's max inputs waits in the log, and the journal and every checkpoint hold it. A slot
+/// that becomes a bot's after its player left plays the takeover script from the tick its leave
+/// applies in, as the log holds it, so a restore plays on where the run before it stopped; one a
+/// player took is played no more, and a bot of the plan with no script idles.
 #[derive(Resource, Debug)]
 pub(crate) struct BotDriver {
     bots: Vec<DrivenBot>,
     takeover: Option<OrderScript>,
-    /// The payloads written and not logged yet, end to end, and each one's place, in order.
-    payloads: Vec<u8>,
-    waiting: Vec<Waiting>,
-    /// The body of the order being written, kept so no order allocates.
+    /// The payload being logged, and the body of the order in it, kept so no input allocates.
+    payload: Vec<u8>,
     body: Vec<u8>,
-    /// The slots whose tick takes no more inputs, and the payloads that wait for the next tick,
-    /// kept so no tick allocates.
-    full: Vec<PlayerSlot>,
-    kept: Vec<Waiting>,
     /// Who each slot commands, kept so no tick builds its query again.
     players: HeldPlayerUnits,
 }
@@ -48,13 +39,6 @@ struct DrivenBot {
     since: Tick,
 }
 
-/// A payload waiting for its slot's next tick.
-#[derive(Debug, Clone)]
-struct Waiting {
-    slot: PlayerSlot,
-    payload: Range<usize>,
-}
-
 impl BotDriver {
     /// The driver of `bots` in the match of `world`, from tick `next` on: what their scripts had
     /// for earlier ticks was logged already, by the run a restore follows.
@@ -64,11 +48,8 @@ impl BotDriver {
         BotDriver {
             bots,
             takeover,
-            payloads: Vec::new(),
-            waiting: Vec::new(),
+            payload: Vec::new(),
             body: Vec::new(),
-            full: Vec::new(),
-            kept: Vec::new(),
             players: HeldPlayerUnits::new(world),
         }
     }
@@ -89,9 +70,8 @@ impl BotDriver {
         world.resource_scope(|world, mut driver: Mut<'_, BotDriver>| {
             let tick = world.resource::<Session>().log().next_tick();
             driver.follow_controllers(world.resource::<Session>(), tick);
-            driver.write_due(world, tick);
             world.resource_scope(|world, mut session: Mut<'_, Session>| {
-                driver.serve(world.resource::<ServerSigner>(), &mut session);
+                driver.log_due(world, &mut session, tick);
             });
         });
     }
@@ -102,7 +82,6 @@ impl BotDriver {
         let log = session.log();
         let bot = |slot| log.controller(slot) == Some(Controller::Bot);
         self.bots.retain(|driven| bot(driven.slot));
-        self.waiting.retain(|waiting| bot(waiting.slot));
         let Some(takeover) = &self.takeover else {
             return;
         };
@@ -120,26 +99,28 @@ impl BotDriver {
         }
     }
 
-    /// Writes the payloads of what each bot's script has due by `tick`: its mode inputs, then
-    /// its orders, for the slot's avatar.
-    fn write_due(&mut self, world: &World, tick: Tick) {
-        for driven in &mut self.bots {
+    /// Logs what each bot's script has due by `tick` into `session`: its mode inputs, then its
+    /// orders, for the slot's avatar.
+    fn log_due(&mut self, world: &World, session: &mut Session, tick: Tick) {
+        let signer = world.resource::<ServerSigner>();
+        let BotDriver {
+            bots,
+            payload,
+            body,
+            players,
+            ..
+        } = self;
+        for driven in bots {
             let since = tick
                 .since(driven.since)
                 .expect("a bot plays from its start on");
             let script_tick = Tick::new(since.get());
             for input in driven.script.due_inputs(script_tick) {
-                let start = self.payloads.len();
-                input.write_payload(&mut self.payloads);
-                self.waiting.push(Waiting {
-                    slot: driven.slot,
-                    payload: start..self.payloads.len(),
-                });
+                payload.clear();
+                input.write_payload(payload);
+                BotDriver::log(signer, session, driven.slot, payload);
             }
-            let avatar = self
-                .players
-                .avatar(world, driven.slot)
-                .map(|avatar| avatar.id);
+            let avatar = players.avatar(world, driven.slot).map(|avatar| avatar.id);
             for scripted in driven.script.due_orders(script_tick) {
                 let Some(unit) = avatar else {
                     AvatarMissing {
@@ -149,57 +130,28 @@ impl BotDriver {
                     .log();
                     continue;
                 };
-                let order = Order::one(unit, scripted.action);
-                let start = self.payloads.len();
-                order.write_payload(&mut self.body, &mut self.payloads);
-                self.waiting.push(Waiting {
-                    slot: driven.slot,
-                    payload: start..self.payloads.len(),
-                });
+                payload.clear();
+                Order::one(unit, scripted.action).write_payload(body, payload);
+                BotDriver::log(signer, session, driven.slot, payload);
             }
         }
     }
 
-    /// Logs the waiting payloads in order, each slot's until the tick takes no more of them; a
-    /// payload past the session's max length is dropped.
-    fn serve(&mut self, signer: &ServerSigner, session: &mut Session) {
-        let (full, kept) = (&mut self.full, &mut self.kept);
-        full.clear();
-        kept.clear();
-        for waiting in self.waiting.drain(..) {
-            if full.contains(&waiting.slot) {
-                kept.push(waiting);
-                continue;
-            }
-            let input = ServerInput::Bot {
-                slot: waiting.slot,
-                payload: &self.payloads[waiting.payload.clone()],
-            };
-            match signer.serve(session, input) {
-                Ok(()) => {}
-                Err(ServerInputRefused::Log(ServerInputError::TooManyInputs)) => {
-                    full.push(waiting.slot);
-                    kept.push(waiting);
-                }
-                Err(ServerInputRefused::Log(ServerInputError::PayloadTooLarge)) => {
-                    BotPayloadDropped {
-                        slot: waiting.slot,
-                        len: waiting.payload.len(),
-                    }
-                    .log();
-                }
-                Err(error) => panic!("the server's bot input holds: {}", ErrorReport::of(&error)),
-            }
+    /// Logs `payload` as an input of the bot of `slot`; one past the session's max length, or
+    /// past the ticks up to its max input lead, which the slot's inputs fill, is dropped.
+    fn log(signer: &ServerSigner, session: &mut Session, slot: PlayerSlot, payload: &[u8]) {
+        let cause = match signer.serve(session, ServerInput::Bot { slot, payload }) {
+            Ok(()) => return,
+            Err(ServerInputRefused::Log(ServerInputError::PayloadTooLarge)) => DropCause::TooLarge,
+            Err(ServerInputRefused::Log(ServerInputError::AheadOfTime)) => DropCause::AheadOfTime,
+            Err(error) => panic!("the server's bot input holds: {}", ErrorReport::of(&error)),
+        };
+        BotPayloadDropped {
+            slot,
+            len: payload.len(),
+            cause,
         }
-        let mut at = 0;
-        for waiting in kept.iter_mut() {
-            let len = waiting.payload.len();
-            self.payloads.copy_within(waiting.payload.clone(), at);
-            waiting.payload = at..at + len;
-            at += len;
-        }
-        self.payloads.truncate(at);
-        mem::swap(&mut self.waiting, &mut self.kept);
+        .log();
     }
 }
 

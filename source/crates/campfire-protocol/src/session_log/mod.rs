@@ -643,7 +643,8 @@ impl SessionLog {
     /// What a server input would do to its slot's controller, logged now, as its structure
     /// allows, before its signature is checked: a join from what the slot is, a leave to what it
     /// becomes, or nothing; an error for an input the log refuses. A bot's commands need a slot a
-    /// bot plays, a payload within the max length and a place within the tick's max inputs; a
+    /// bot plays, a payload within the max length and a place, as a player's inputs spill past a
+    /// tick's max inputs, within the max input lead past the next tick; a
     /// join a slot no player controls, and of a reserved one its leaver; a renewal, a leave and a
     /// link's change a slot a player controls, a renewal by the same main key; a delegation
     /// this session's.
@@ -678,8 +679,13 @@ impl SessionLog {
                 if payload.len() > terms.max_payload_len as usize {
                     return Err(ServerInputError::PayloadTooLarge);
                 }
-                if state.spill.at(self.next_tick()) >= terms.max_inputs_per_tick {
-                    return Err(ServerInputError::TooManyInputs);
+                let next = self.next_tick();
+                let place = state.spill.place(next, terms.max_inputs_per_tick);
+                if place
+                    .since(next)
+                    .is_some_and(|lead| lead > terms.max_input_lead)
+                {
+                    return Err(ServerInputError::AheadOfTime);
                 }
                 if self.inputs.len() >= self.position_bound
                     || self.payloads.len() + payload.len() > self.position_bound
@@ -721,7 +727,8 @@ impl SessionLog {
 
     /// Logs a server input before the next tick, with the server key's `signature` over it at
     /// its place, the next server input logged there: what `change_of` allows, a bot's commands
-    /// applying in the next tick in slot order, among the players' inputs. A join or a leave of
+    /// applying in the next tick in slot order, among the players' inputs, or, past the tick's
+    /// max inputs, in the first later tick its slot's inputs leave room in. A join or a leave of
     /// a slot drops the inputs its player logged that were still to apply, and changes the
     /// controller from the next tick on. A refused input leaves the log unchanged.
     pub fn record_server(

@@ -59,9 +59,9 @@ fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
 
 #[test]
 fn a_bot_keeps_the_orders_it_sent_but_the_last_each_resume_discarded() {
-    let sent = |stamp: u64, orders: usize| {
+    let sent = |seq: u64, stamp: u64, orders: usize| {
         format!(
-            r#"{{"level":"DEBUG","target":"t","fields":{{"message":"{}","stamp":{stamp},"orders":{orders}}}}}"#,
+            r#"{{"level":"DEBUG","target":"t","fields":{{"message":"{}","slot":0,"seq":{seq},"stamp":{stamp},"orders":{orders}}}}}"#,
             OrdersSent::MESSAGE
         )
     };
@@ -71,15 +71,18 @@ fn a_bot_keeps_the_orders_it_sent_but_the_last_each_resume_discarded() {
             InputsDiscarded::MESSAGE
         )
     };
-    // 2 orders at 20 and 1 at 50, then a resume that drops 2 inputs: the order at 50 and the
-    // second at 20. Then 1 at 60, and a resume that drops 5, more than it holds: none stays.
-    let lines = [sent(20, 2), sent(50, 1), discarded(2), sent(60, 1)];
+    // 2 orders at 20, seqs 0 and 1, and 1 at 50, seq 2, then a resume that drops 2 inputs: the
+    // order at 50 and the second at 20. Then 1 at 60, seq 1 again, as the chain was cut back, and
+    // a resume that drops 5, more than it holds: none stays.
+    let lines = [sent(0, 20, 2), sent(2, 50, 1), discarded(2), sent(1, 60, 1)];
     let log = ProcessLog::parse(Process::Bot(0), &format!("{}\n", lines.join("\n"))).unwrap();
-    let kept = |stamp, orders| OrdersSent {
+    let kept = |seq, stamp, orders| OrdersSent {
+        slot: PlayerSlot::new(0),
+        seq,
         stamp: Tick::new(stamp),
         orders,
     };
-    assert_eq!(log.kept_orders().unwrap(), [kept(20, 1), kept(60, 1)]);
+    assert_eq!(log.kept_orders().unwrap(), [kept(0, 20, 1), kept(1, 60, 1)]);
     let all = [lines.join("\n"), discarded(5)].join("\n");
     let log = ProcessLog::parse(Process::Bot(0), &format!("{all}\n")).unwrap();
     assert_eq!(log.kept_orders().unwrap(), []);

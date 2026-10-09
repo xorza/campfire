@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bevy_app::{App, FixedUpdate, Plugin, Update};
+use bevy_app::{App, First, FixedUpdate, Plugin, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Add, Insert};
 use bevy_ecs::observer::On;
@@ -30,6 +30,7 @@ use lightyear::prelude::{
 use tracing::{debug, info};
 
 use crate::bot_script::BotScript;
+use crate::events::client_frame::ClientFrame;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::LinkLost;
@@ -221,6 +222,7 @@ impl Plugin for SimClient {
             )
                 .chain(),
         );
+        app.add_systems(First, log_frame);
         app.add_systems(
             FixedUpdate,
             (send_orders.run_if(not(is_in_rollback)), run_predicted_tick)
@@ -427,6 +429,13 @@ fn retry_link(
     }
 }
 
+/// Logs the start of each frame in which the client plays, with the sim tick it predicts next.
+fn log_frame(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_, '_>>) {
+    if let Some(tick) = state.sim_tick(timeline.as_ref()) {
+        ClientFrame { tick }.log();
+    }
+}
+
 /// The client runs a sim tick in this fixed tick; see `JoinState::sim_tick`. A match start's
 /// clock names the server's Lightyear tick, which a server started again counts from 0, while the
 /// client's timeline counts the old link's until its first sync on the new one shifts it.
@@ -561,6 +570,8 @@ fn send_orders(
         return;
     }
     OrdersSent {
+        slot: playing.chain.slot(),
+        seq: playing.chain.next_seq(),
         stamp,
         orders: payloads.len(),
     }

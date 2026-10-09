@@ -24,7 +24,9 @@ use campfire_capabilities::{
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms};
+use campfire_protocol::{
+    Applied, Controller, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms,
+};
 use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StableId, TickRate};
 use campfire_store::DurableError;
@@ -41,6 +43,7 @@ use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
 use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
+use crate::events::server_frame::ServerFrame;
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
 use crate::events::unit_died::UnitDied;
@@ -487,6 +490,7 @@ fn record_inputs(
     mut applied: Local<'_, Vec<Applied>>,
 ) {
     frame.0 = session.log().next_tick();
+    ServerFrame { tick: frame.0 }.log();
     for (entity, &held, mut receiver) in &mut links {
         let mut link = held;
         for message in receiver.receive() {
@@ -520,11 +524,17 @@ fn record_inputs(
                 });
                 continue;
             }
-            for (input, &outcome) in inputs.zip(applied.iter()) {
+            let Some(Controller::Player { chain, .. }) = session.log().controller(link.slot())
+            else {
+                unreachable!("a packet the log took is of a slot a player controls");
+            };
+            let first_seq = chain.next_seq() - u64::try_from(applied.len()).expect("a count fits");
+            for ((input, &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
                 let outcome = match outcome {
                     Applied::At(tick) => {
                         InputLogged {
                             slot: link.slot(),
+                            seq,
                             stamp: input.stamp,
                             tick,
                         }

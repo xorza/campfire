@@ -6,11 +6,16 @@
 use std::time::Duration;
 use std::{fs, thread};
 
+use campfire_capabilities::Action;
+use campfire_math::Num;
 use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
-use campfire_net::{JoinState, JournalWatch, PlayerLink, ReceiptUnsaved, ServerDir, SessionDir};
+use campfire_net::{
+    JoinState, JournalWatch, LeaveRequest, PlayerLink, ReceiptRefused, ReceiptUnsaved, ServerDir,
+    SessionDir,
+};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::Secp256k1;
-use campfire_protocol::{Controller, SignedReceipt};
+use campfire_protocol::{Controller, ServerInput, SignedReceipt};
 use campfire_runner::Session;
 use tempfile::TempDir;
 
@@ -131,4 +136,79 @@ fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     assert!(state.receipt().is_some());
     assert!(state.clock().is_some());
     assert!(place.is_file());
+}
+
+#[test]
+fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
+    // Through links of 3 steps each way and up to 2 more, player 0 orders a move, which the
+    // journal syncs; then, in one step, it leaves and the server gives receipts. The receipt of
+    // the move crosses the leave on the way: the client keeps it, as the newest, and refuses
+    // none, until the server ends the link, after which it takes no receipt.
+    let data = TempDir::new().unwrap();
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::DELAYED,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.keep_data(data.path().to_owned());
+    local.start_match();
+    let watch = local.server().world().resource::<JournalWatch>().0.clone();
+    let settle = |local: &mut InProcessMatch| {
+        for _ in 0..30 {
+            local.step();
+        }
+        while !watch.settled() {
+            thread::sleep(Duration::from_millis(1));
+        }
+    };
+    local.order(
+        0,
+        Action::Move {
+            x: Num::int(3),
+            z: Num::int(-2),
+        },
+    );
+    settle(&mut local);
+    let slot = local
+        .server()
+        .world()
+        .get::<PlayerLink>(local.link(0))
+        .unwrap()
+        .slot();
+    let session = local.server().world().resource::<Session>();
+    let Some(Controller::Player { chain, .. }) = session.log().controller(slot) else {
+        panic!("slot {} has no player", slot.get());
+    };
+    let last = chain.next_seq() - 1;
+    let receipt = |local: &InProcessMatch| {
+        let state = local.client(0).world().resource::<JoinState>();
+        state.receipt().map(|kept| kept.receipt.seq)
+    };
+    assert!(receipt(&local).is_none_or(|seq| seq < last));
+    let left = |local: &InProcessMatch| local.client(0).world().resource::<JoinState>().left();
+    local
+        .client_mut(0)
+        .world_mut()
+        .insert_resource(LeaveRequest);
+    local.give_receipts();
+    local.step();
+    assert!(left(&local));
+    assert!(receipt(&local).is_none_or(|seq| seq < last));
+    let took_leave = |local: &InProcessMatch| {
+        local
+            .server_inputs()
+            .iter()
+            .any(|input| matches!(input, ServerInput::Leave { slot: gone, .. } if *gone == slot))
+    };
+    let mut steps = 0;
+    while receipt(&local) != Some(last) || !took_leave(&local) {
+        assert!(steps < 30, "the receipt and the leave cross");
+        local.step();
+        steps += 1;
+    }
+    // The server ended its end of the link as it took the leave; the network ends the client's.
+    local.cut_link(0);
+    local.step();
+    assert!(left(&local));
+    assert_eq!(receipt(&local), None);
+    assert_eq!(local.log().take::<ReceiptRefused>(), []);
 }

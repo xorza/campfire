@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::LogLevel;
 use campfire_net::{
-    InputLogged, InputsDiscarded, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten,
-    TicksCaughtUp,
+    InputsDiscarded, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten, TicksCaughtUp,
 };
 use campfire_verifier::Verified;
 
@@ -20,6 +19,15 @@ use crate::session_kind::SessionKind;
 #[derive(Debug, Default)]
 pub(crate) struct Verdict {
     failures: Vec<Failure>,
+}
+
+/// An input a session's log took: its slot, its stamp, and the tick it took effect in, as the
+/// published log holds it, a server bot's among them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LoggedInput {
+    pub(crate) slot: PlayerSlot,
+    pub(crate) stamp: Tick,
+    pub(crate) tick: Tick,
 }
 
 /// What a bot process logged of its match, the bot's index, the number of orders its script
@@ -112,7 +120,7 @@ impl Verdict {
     /// that `caught_up` with a stall and that it waited for.
     pub(crate) fn orders(
         &mut self,
-        logged: &[InputLogged],
+        logged: &[LoggedInput],
         caught_up: &[TicksCaughtUp],
         bots: &[BotEvents],
     ) {
@@ -123,7 +131,7 @@ impl Verdict {
                 self.failures.push(Failure::NoSlot { bot });
                 continue;
             };
-            for &OrdersSent { stamp, orders } in &events.kept {
+            for &OrdersSent { stamp, orders, .. } in &events.kept {
                 *sent.entry((slot, stamp)).or_default() += orders;
             }
             let count: usize = events.sent.iter().map(|sent| sent.orders).sum();
@@ -136,7 +144,7 @@ impl Verdict {
             }
         }
         let mut by_stamp = BTreeMap::<(PlayerSlot, Tick), usize>::new();
-        for &InputLogged { slot, stamp, tick } in logged {
+        for &LoggedInput { slot, stamp, tick } in logged {
             *by_stamp.entry((slot, stamp)).or_default() += 1;
             let waited = caught_up.iter().any(|ticks| ticks.delayed(stamp, tick));
             if tick != stamp && !waited {

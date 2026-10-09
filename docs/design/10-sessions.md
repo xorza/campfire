@@ -30,7 +30,7 @@ A server input is logged before the tick it applies in, with one Schnorr signatu
 
 | Input | Fields | Effect |
 | --- | --- | --- |
-| `Bot` | slot, payload | Commands of the slot's bot, applied in that tick as a player's are, in slot order; a payload within the max length, at most the max inputs per tick in a tick |
+| `Bot` | slot, payload | Commands of the slot's bot, applied as a player's are, in slot order: in that tick, or, past its max inputs per tick, in the first later tick the slot's inputs leave room in, within the max input lead; a payload within the max length |
 | `Join` | slot, delegation JSON | The slot's controller becomes the delegation's player, whose chain starts from its id; `on_player_join` |
 | `Renew` | slot, delegation JSON | The slot's player, the same main key, signs with the new session key from now on |
 | `Leave` | slot, reason (`asked`, `grace`), what the slot becomes | The slot becomes what `leaver` says, which the runner checks; `on_player_leave` |
@@ -73,7 +73,7 @@ A delegation in a `Join` or a `Renew` must name the session, the server and a se
 ## Server bots
 
 - **Host.** The server takes the bot slots of its plan, `--server-bot <slot>=<orders file>` each, as the client's `--local` names its server's, and an order file for the slots that become bots after a leaver, `--takeover <orders file>`, whose ticks count from the tick the slot became a bot's; a bot slot with none idles. A restored server takes the same files, and its bots go on from the tick it runs on from.
-- **Driver.** Before each tick, for each bot slot, the driver gives the mode inputs, then the orders, its script has for that tick, an order for the slot's avatar, as payloads in the client's encoding; the server signs each as a `Bot` input and logs it before the tick runs. A tick takes at most the session's max inputs of a slot, and the rest wait for the next; an order for a slot with no avatar is dropped and logged. A slot a player takes is played no more. An order script gains `[[input]]` entries, `{ tick, name, value }`, for mode inputs such as a hero pick, which a client bot sends too.
+- **Driver.** Before each tick, for each bot slot, the driver gives the mode inputs, then the orders, its script has for that tick, an order for the slot's avatar, as payloads in the client's encoding; the server signs each as a `Bot` input and logs it before the tick runs. The server logs each at once, and the log schedules it as a player's input: past a tick's max inputs of a slot, it spills to the next ticks, so the journal and every checkpoint hold it, and a restore applies it as the run before would have. One past the max input lead, as one past the max length, is dropped and logged, and so is an order for a slot with no avatar. A slot a player takes is played no more. An order script gains `[[input]]` entries, `{ tick, name, value }`, for mode inputs such as a hero pick, which a client bot sends too.
 
 ## Receipts
 
