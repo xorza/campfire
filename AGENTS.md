@@ -21,20 +21,20 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
   - `issues/` — the issue log: one file for each system, with its open problems ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/<game>/` holds the reference content packages (heroes, spells, modes); `source/packages/test/` holds small packages the tests play
 
-`ROADMAP.md` holds the milestone stages; `PLAN.md` holds the next concrete steps. Both list open items only.
+`ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice. Both list open items only.
 
 When code and design disagree, fix one of them, and state which one.
 
 ## Workflow
 
-Work goes system by system, in four steps, each agreed before the next starts:
+Work goes in vertical slices. A slice ends with something new that the user plays or sees in the client: a hero that walks its lane, a tower that shoots, a match that ends with a winner. A slice crosses every system it needs, and takes each one only as deep as the slice needs. It takes its items from any stage of the roadmap. A slice goes in four steps, each agreed before the next starts:
 
-1. **Decide** what to work on: one system, or one section of `PLAN.md`. The system's file in the issue log lists the problems it already has.
+1. **Decide** the slice: what the player does or sees at its end, in one or two sentences. The issue log's files of the systems it touches list the problems they already have.
 2. **Investigate** the code it touches, and how established engines and games solve the problem and why.
-3. **Propose** a design, written into `docs/design/`, with an implementation plan in `PLAN.md`, for review.
-4. **Implement** the plan as reviewed, step by step, each step ending with the checks passing.
+3. **Propose** a design of what the slice adds, written into `docs/design/`, with an implementation plan in `PLAN.md`, for review. The plan names every system the slice changes.
+4. **Implement** the plan as reviewed, step by step, each step ending with the checks passing. The slice ends when the user plays it in the client, and a scripted match keeps it working.
 
-No small, unplanned changes to other systems along the way. A problem found outside the system goes to the issue log, and is planned with its own system later.
+No changes to systems outside the plan along the way. A problem found outside the slice, or depth that the slice does not need, goes to the issue log, and a later slice takes it.
 
 ## Issue log
 

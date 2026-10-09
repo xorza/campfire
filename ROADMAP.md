@@ -1,6 +1,6 @@
 # Roadmap
 
-The stages to 1.0, in order, open items only: remove an item when it is done, and a stage when it is empty. Each stage ends when its test passes. The next concrete steps of the current stage are in [PLAN.md](PLAN.md); a later stage's steps go there when it starts, after its design step. Milestones: [Campfire](docs/design/01-campfire-design.md#milestones).
+What 1.0 needs, by milestone and stage, open items only: remove an item when it is done, and a stage when it is empty. Work goes in playable slices ([Workflow](AGENTS.md#workflow)): a slice takes the items it needs from any stage, and the steps of the current slice are in [PLAN.md](PLAN.md). A stage ends when its test passes. Milestones: [Campfire](docs/design/01-campfire-design.md#milestones).
 
 ## Milestone 1 — Playable on LAN
 
@@ -10,7 +10,7 @@ The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashe
 
 - Summons: the `spawn` effect of an avatar's or a loadout's action, and unit types in packages other than the mode ([Effects](docs/design/04-capabilities/actions.md#effects)).
 - First cuts: `production` (build, gather; the train's cancel, refund, rally points, requirements and supply), region events, `quests` objectives, carry and campaigns, save converters.
-- The RTS skirmish and the RTS mission ([Genre proofs](docs/design/04-capabilities/genres.md#genre-proofs)).
+- The RTS skirmish and the RTS mission ([Genre proofs](docs/design/04-capabilities/genres.md#genre-proofs)); the skirmish's steps left are in [RTS skirmish](docs/design/11-rts-skirmish.md#steps-left).
 
 Done when both play to their goldens on every OS in CI.
 
