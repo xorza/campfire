@@ -21,7 +21,7 @@ Things a unit carries, equips or finds. One mechanism for MOBA items, shooter we
 - **Death:** a unit keeps what it carries.
 ### Planned
 
-Equipment slots, world items, loot, crafting, owners and trade come with the genres that need them: the shooter's and battle royale's stage 8, and the RPG's and MMO's stage 9.
+Equipment slots, world items, loot, crafting, owners and trade come with the imported games that need them.
 
 - **Crafting** is the `craft` action kind: a recipe (`[recipes.<id>]`) names the items and pools it takes, the station it needs, if any, as a filter on a unit near, and what it makes: an item, or modifiers added to an item it takes, as Skyrim's enchanting and smithing improve an item. An item's added modifiers are its state, so a save and a trade keep them.
 - **Owners.** An item's holder is the unit that carries it. In a world, an item of a tradable type also has an owner, a player's main key, which stays with it when it is stored, dropped or held by a follower; only its owner may sell it or trade it. A type's `tradable` is off unless the mode turns it on, and `bound` makes an item its first owner's for good.

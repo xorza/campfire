@@ -2,23 +2,23 @@
 
 ## Vision
 
-An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, with its server and client, plus a reference 3v3 MOBA. Content is expected to come from the community. Anyone can host a server, create content and set their own rules; the project runs nothing and ships defaults, not policy.
+An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, with its server and client, plus importers that bring existing games onto it: a player imports a game from their own copy and plays it on Campfire's sim and network. Generals: Zero Hour is the first. Content is expected to come from the community. Anyone can host a server, create content and set their own rules; the project runs nothing and ships defaults, not policy.
 
 Four pillars must all ship:
 
 1. **Engine:** genre-free, deterministic, scriptable.
 2. **Network:** one authoritative server per session, prediction, verifiable session logs.
 3. **Bitcoin and Nostr:** identity, discovery, reputation and optional Lightning payments.
-4. **Sample game:** the reference 3v3 MOBA, good enough to attract players and to fork.
+4. **Imported games:** Generals: Zero Hour first, so close to the original that no player notices a difference.
 
-Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Capabilities](04-capabilities/00-overview.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [Reference MOBA](07-reference-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md)
+Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Capabilities](04-capabilities/00-overview.md) · [Games](04-capabilities/games.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [MOBA test content](07-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md) · [Sessions](10-sessions.md) · [RTS foundations](11-rts-foundations.md) · [Zero Hour](12-zero-hour.md)
 
 ## Guiding principles
 
 - **Defaults, not enforcement.** Ownership checks, payments, character bans and rankings are options each host turns on.
-- **Human trust over surveillance.** Anti-cheat lives on the server only, and an open-source client cannot be trusted. So the game is built first for people who trust each other; a host who opens a server to strangers relies on server-side checks and reputation, and players there, above all in wagers, play at their own risk. The reference settings keep wagers and spectator bets off.
+- **Human trust over surveillance.** Anti-cheat lives on the server only, and an open-source client cannot be trusted. So the game is built first for people who trust each other; a host who opens a server to strangers relies on server-side checks and reputation, and players there, above all in wagers, play at their own risk. The default settings keep wagers and spectator bets off.
 - **Protocols over platforms.** Identity, server listings, reputation and the marketplace use Nostr and Lightning, so no one, including this project, is a chokepoint.
-- **Licensing.** Code: MIT/Apache-2.0. Reference art and audio: CC-BY 4.0. Community content picks its own license.
+- **Licensing.** Code: MIT/Apache-2.0, the importers and rules packages included. An imported game's content belongs to its publisher: it stays on the player's machine, and nobody distributes it. Community content picks its own license.
 
 ## Terms
 
@@ -40,7 +40,7 @@ Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md)
 
 ## System overview
 
-Three programs share one deterministic engine: the client, the game server, and a replay verifier anyone can run. Payments and ownership plug into the server as optional modules.
+Three programs share one deterministic engine: the client, the game server, and a replay verifier anyone can run on the packages a session names. Payments and ownership plug into the server as optional modules.
 
 A small launcher starts the right client: a server names only an engine release tag, and the launcher fetches that release only if enough of the release keys it trusts signed it (for example 2 of 3), and refuses revoked releases. The launcher itself is signed for each operating system.
 
@@ -63,23 +63,21 @@ flowchart LR
 
 ## Engine
 
-The engine knows nothing about any particular genre; the MOBA is just the first game built on it. It provides capabilities, one mechanism each (health and damage, units that take orders, a first-person character, fog of war, items), and a game declares the ones it needs: a MOBA, an FPS, or a mix that no genre names.
-
-**Target games.** The capabilities must be enough to rebuild, as community packages: Counter-Strike, Command & Conquer: Generals, StarCraft and its campaign, Warcraft III's campaign, League of Legends, PUBG, Diablo, Skyrim, and an MMO like Lineage or World of Warcraft. What each needs: [Genres](04-capabilities/genres.md).
+The engine knows nothing about any particular genre; Zero Hour is just the first game imported onto it. It provides capabilities, one mechanism each (health and damage, units that take orders, a first-person character, fog of war, items), and a game declares the ones it needs: a MOBA, an FPS, or a mix that no genre names.
 
 **Neutral core.** The core has no genre words and no genre lists: a mode declares its own damage kinds, stats, pools, tags, slot kinds, teams and relations ([Mode vocabulary](04-capabilities/00-overview.md#mode-vocabulary)). Every capability says its mechanism in one model of units, tags, stats, pools, modifiers, actions, effects, events, relations and space ([The model](04-capabilities/00-overview.md#the-model)), so a MOBA, a shooter, an RTS, an MMO and a battle royale are the same kind of package.
 
 - **Deterministic:** the same inputs give the same result on every machine.
 - **Configurable tick rate:** set by the host within the range the mode allows, up to 200 Hz or more on LAN, fixed for the whole session.
-- **Platforms:** desktop only (Windows, Linux, macOS). On x86-64 the CPU must have the x86-64-v3 level (AVX2 and FMA: Intel from 2013, AMD from 2015). The reference game is 3D with an isometric camera.
-- **Tools:** map and content editors, dedicated server and replay verifier.
+- **Platforms:** desktop only (Windows, Linux, macOS). On x86-64 the CPU must have the x86-64-v3 level (AVX2 and FMA: Intel from 2013, AMD from 2015). The client is 3D.
+- **Tools:** importers, map and content editors, dedicated server and replay verifier.
 
 ## Multiplayer model
 
 One server is the single authority for each match or world. Peer-to-peer was rejected because every player would hold the full game state, and fog of war could be read.
 
 - **Players see only what they should:** hidden information never reaches their machine.
-- **Every result is verifiable:** the server keeps a session log of every signed input. Anyone can replay it on the tagged engine release it names and confirm that the result follows from the logged inputs. The log does not prove the host was fair: the host signs bot and external inputs, picks the tick each player input lands on, can drop inputs, and sees all hidden state. See [what verification proves](05-protocol-spec.md#verification).
+- **Every result is verifiable:** the server keeps a session log of every signed input. Anyone who holds its packages can replay it on the tagged engine release it names and confirm that the result follows from the logged inputs; an imported game's package needs a copy of that game ([Verification](05-protocol-spec.md#verification)). The log does not prove the host was fair: the host signs bot and external inputs, picks the tick each player input lands on, can drop inputs, and sees all hidden state. See [what verification proves](05-protocol-spec.md#verification).
 
 **Anti-cheat** runs on the server only, never on players' machines: no kernel drivers, no scanning. Hosts get:
 
@@ -121,7 +119,7 @@ Characters, abilities, items, maps and whole game modes are content anyone can c
 
 Scripts are Rhai: sandboxed, deterministic and resource-limited. A game script gives the same result wherever the full sim runs: on the server, in the verifier, and in a client that plays back a published log.
 
-**Content packages** bundle logic, balance data, art and sound, signed by the author and identified by a unique fingerprint, so same-named content never conflicts. Hosts pin exact versions, so an author's update reaches players only when the host chooses.
+**Content packages** bundle logic, balance data, art and sound, announced under the author's key and identified by a unique fingerprint, so same-named content never conflicts; an imported package has no author and no announcement, only its fingerprint ([Imported games](#imported-games)). Hosts pin exact versions, so an author's update reaches players only when the host chooses.
 
 ## Decentralized server network
 
@@ -157,7 +155,7 @@ An optional module, off by default. Hosts turn on the models they want and set p
 
 **Player consent.** Every price is shown before joining; nothing else can be charged. Time-based and per-event payments draw on a spending budget the player's wallet grants and can cancel at any time.
 
-**Wager pools.** The host sets stake rules (equal or free) and payout split (even or by stake); the default is equal and even. A crashed match is restored and continues; it aborts only if its server is not back within the host's restore window, and an aborted match refunds everyone. Leavers lose their stake: a leaver sent a leave input or stayed disconnected longer than the host's grace period. The host decides whether bots may fill slots in wager matches; bot slots never stake, the listing shows the setting before anyone stakes, and the reference settings keep bots out of wagers.
+**Wager pools.** The host sets stake rules (equal or free) and payout split (even or by stake); the default is equal and even. A crashed match is restored and continues; it aborts only if its server is not back within the host's restore window, and an aborted match refunds everyone. Leavers lose their stake: a leaver sent a leave input or stayed disconnected longer than the host's grace period. The host decides whether bots may fill slots in wager matches; bot slots never stake, the listing shows the setting before anyone stakes, and the default settings keep bots out of wagers.
 
 **Spectator bets** are off by default. The host sets when betting closes and the spectator delay; players in the match cannot bet.
 
@@ -171,34 +169,30 @@ An optional module, off by default. Hosts turn on the models they want and set p
 
 Owning a character or skin means the right to pick it on servers that enforce ownership, not the files: every player needs the files to see opponents.
 
-- **Optional:** hosts decide; the reference settings enforce it for skins only.
+- **Optional:** hosts decide; the default settings enforce it for skins only.
 - **Nostr licenses:** after a Lightning payment, a license key the creator delegated to a storefront signs a license, so the creator need not be online. A license belongs to the buyer's main key; losing that key loses its licenses. Other methods are not planned.
 - **Marketplace:** creators list characters and skins on Nostr and sell them for sats; anyone can run a storefront.
 - **Balance:** hosts decide which sold characters are allowed in ranked or paid games.
 - **Creator revenue:** sales, plus a share of host fees for characters played that a host may choose to pay; the protocol cannot enforce it.
 
-## Sample game
+## Imported games
 
-The reference MOBA proves the engine and is the template people fork: small, readable and fun.
+An imported game is a game players already know, rebuilt on Campfire's sim, so close to the original that no player notices a difference. The engine grows for the games it imports, Generals: Zero Hour first, then Worms 4: Mayhem ([Games](04-capabilities/games.md), [Zero Hour](12-zero-hour.md)).
 
-**First playable version:**
+- **From the player's own copy.** The `import` app reads a game's install and writes one package from it, the same bytes on every machine, so its fingerprint names it in a session as any package's does. Nobody distributes an imported package: each player, each server and each verifier makes their own ([Packages](05-protocol-spec.md#packages)).
+- **Rules as content.** What a game shares with others is a capability; what only that game does is Rhai in its rules package, which holds no file of the game and ships with the importer. Only what Rhai cannot match, as a pathfinder or a game's movement, runs natively, behind one of the engine's backend interfaces ([Backends](02-engine-core.md#backends)).
+- **Parity, measured.** The original game, built from its released source, plays the game's own replays and writes each frame's state; Campfire plays the same replays, and a test compares the two.
+- **Written from the source.** The importers and rules packages are MIT/Apache-2.0, written from the original's released source, which is GPL; a release that ships them takes a legal check first.
 
-- 3v3 on a 2-lane map, 15–20 minute matches; 5v5 on 3 lanes later.
-- 6 original heroes covering the classic roles, each with 3 abilities and an ultimate; see [Reference MOBA](07-reference-moba.md).
-- Player spells, random crits, brush, wards and stealth.
-- About 20 items, one shop, gold and XP, last-hitting.
-- Towers, one inhibitor-like structure per lane, a base core, one neutral objective, creep waves.
-- Bots, so 2 humans can still play a full match.
+**Design rule:** a rules package is an ordinary package. If a game needs something scripts cannot do, and no backend should, the scripting API is incomplete.
 
-**Design rule:** every reference hero and item is an ordinary package. If one needs something scripts cannot do, the scripting API is incomplete.
-
-**Art:** stylized low-poly models, strong silhouettes and readable ability telegraphs.
+**The MOBA** in `source/packages/moba/` is test content: the tests and benches play it, and no player does ([MOBA test content](07-moba.md)).
 
 ## Milestones
 
 All four pillars ship in 1.0; they arrive in this order, in the stages of the [roadmap](../../ROADMAP.md).
 
-1. **Playable on LAN.** First the determinism core, and the prototype that proves the sim runs the same inside Lightyear and in a bare verifier. Then a MOBA vertical slice, the game model in code, the MOBA's mechanics and sessions that restore, then **genre proofs**: a tiny test mode for each target game, whose golden CI plays on every OS, so a MOBA-only choice fails early. Then the 3v3 MOBA with bots on LAN or a local server, verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
-2. **Open network.** Nostr listings, packages over Blossom, reputation, ban lists, and the launcher with signed releases.
-3. **Payments.** The optional `payments` module: entry fees first, then wager pools, then item sales, then the rest.
-4. **Full capabilities.** Each capability the genre proofs need at depth: `character`, `hitboxes` and level geometry for shooters and action RPGs; `quests`, the game clock, senses and overrides for RPGs; `production` for RTS; `physics` for vehicles; saves, carry and generated maps for singleplayer games and campaigns; `world` and deterministic multithreading for large worlds.
+1. **Zero Hour on LAN.** First the determinism core, the prototype that proves the sim runs the same inside Lightyear and in a bare verifier, the game model in code and sessions that restore, built and tested with the MOBA test content. Then the `import` app and the parity oracle, then a Zero Hour skirmish with its AI on LAN or a local server, with verified replays and crash restore, within the parity measure. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
+2. **Open network.** Nostr listings, packages over Blossom and the import recipes listings name, reputation, ban lists, and the launcher with signed releases.
+3. **Payments.** The optional `payments` module: entry fees first, then wager pools, then the rest. Item sales and item export wait for an imported game with a persistent world.
+4. **More imports.** Zero Hour's campaign, from its map scripts, and the next games on the import list, each with the capabilities it needs at depth: Worms 4: Mayhem's `physics`, destructible terrain and the `spatial` metric first.

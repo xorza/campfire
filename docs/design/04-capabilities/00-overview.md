@@ -1,6 +1,6 @@
 # Campfire — Capabilities
 
-The engine has no genres. It has **capabilities**: each is one mechanism, such as health and damage, units that take orders, a first-person character or grid fog of war. A game package declares the capabilities it uses, and its mode scripts and data make the genre. A MOBA, an RTS, an FPS, an MMO, a battle royale and a game that mixes them are the same kind of package: the reference MOBA is only the first.
+The engine has no genres. It has **capabilities**: each is one mechanism, such as health and damage, units that take orders, a first-person character or grid fog of war. A game package declares the capabilities it uses, and its mode scripts and data make the genre. A MOBA, an RTS, an FPS, an MMO, a battle royale and a game that mixes them are the same kind of package, as the MOBA test content and Zero Hour are.
 
 A capability is native code: components, systems that run in the tick, backends, a data schema for unit types, commands, and the script calls and hooks it adds. Capabilities follow the core's determinism rules and ship in engine releases; packages cannot add native code, because the verifier must run only code the release pins. A new combination of capabilities needs no release; a new mechanism does.
 
@@ -37,12 +37,12 @@ Every capability says its mechanism in the same few terms, so that capabilities 
 | `quests` | planned | Quests with stages and objectives, dialogue with topics and choices, campaign objectives | [Quests](quests.md) |
 | `interaction` | planned | The use action on objects: doors, containers, plant and defuse, capture points, dialogue, entering vehicles and buildings | [Interaction](interaction.md) |
 | `production` | built | The train, build and gather actions, construction on the grid, tech | [Production](production.md) |
-| `physics` | planned | Vehicles, rigid bodies, heightmap terrain | [Physics](physics.md) |
+| `physics` | planned | Vehicles and rigid bodies, colliding with the map's terrain | [Physics](physics.md) |
 | `world` | planned | Large worlds: regions that sleep, parallel regions, streaming | [World](world.md) |
 
 A capability is built when the release installs it, and planned when it does not yet; a built one's doc can still name parts that are planned, which the [script API reference](../08-script-api-reference.md) marks name by name. A test fails when this column and the release differ.
 
-Which capabilities make which genre: [Genres](genres.md).
+Which capabilities each imported game takes: [Games](games.md).
 
 ## Mode vocabulary
 
@@ -74,11 +74,11 @@ A pair not named is `hostile`, and a team is `friendly` to itself. `ctx.set_rela
 ## Space and map
 
 - **Metric.** A map's `metric` is `planar` or `spatial`. `planar` measures ranges, reach and sight on the ground plane, with the height from the map's terrain; MOBAs and RTS games use it. `spatial` measures in 3D; shooters and flight use it. Every distance of every capability uses the map's metric, but for the cells of the vision grid, which lie on the ground plane on either metric ([Vision](vision.md#grid-fog-of-war)).
-- **Bodies.** A unit's body is a circle of its radius on the ground plane, or a **box**: a parallelogram on the ground plane around its position, for a unit type that does not walk, on a `planar` map, as a building's footprint is ([RTS skirmish](../11-rts-skirmish.md#decisions), D1). Its type gives its size, `box = [w, h]` in meters, each at least 2⁻¹⁰ m, so its rounded half edges never lie flat, and its spawn gives an angle in degrees, a `Num` taken modulo 360: a placed unit's `angle`, a build order's, or 0. As it spawns, its two half edges are `(w/2, 0)` and `(0, h/2)` turned by the angle: a multiple of 90° turns them exactly, and any other angle by the sine and cosine math's `sin_cos` gives. Each component is the exact product of a half size and a sine or a cosine, rounded once to a `Num`, to nearest, ties to even, as a `Num` product rounds. The rounded half edges are the box, kept with the body as state: its corners are its position plus and minus each, exactly, and every test reads them as they are, so the one rounding is the shape's and no test rounds again, as 0 A.D. keeps a structure as its centre and two half-edge vectors. Half its diagonal, from its unrounded size, is at most 63 m, so its reach from its position, the longer of the rounded half edges' sum and difference, stays within the widest body's 64 m whatever the rounding, and every bound a circle keeps holds for a box.
+- **Bodies.** A unit's body is a circle of its radius on the ground plane, or a **box**: a parallelogram on the ground plane around its position, for a unit type that does not walk, on a `planar` map, as a building's footprint is ([RTS foundations](../11-rts-foundations.md#decisions), D1). Its type gives its size, `box = [w, h]` in meters, each at least 2⁻¹⁰ m, so its rounded half edges never lie flat, and its spawn gives an angle in degrees, a `Num` taken modulo 360: a placed unit's `angle`, a build order's, or 0. As it spawns, its two half edges are `(w/2, 0)` and `(0, h/2)` turned by the angle: a multiple of 90° turns them exactly, and any other angle by the sine and cosine math's `sin_cos` gives. Each component is the exact product of a half size and a sine or a cosine, rounded once to a `Num`, to nearest, ties to even, as a `Num` product rounds. The rounded half edges are the box, kept with the body as state: its corners are its position plus and minus each, exactly, and every test reads them as they are, so the one rounding is the shape's and no test rounds again, as 0 A.D. keeps a structure as its centre and two half-edge vectors. Half its diagonal, from its unrounded size, is at most 63 m, so its reach from its position, the longer of the rounded half edges' sum and difference, stays within the widest body's 64 m whatever the rounding, and every bound a circle keeps holds for a box.
 - **Reach.** One rule decides every reach: a range from the edge of one body reaches the edge of another, in the map's metric, exactly; a point is a body of radius 0. Between a circle and a box the gap is the distance from the circle's centre to the box's nearest point, less the radius, and 0 when the centre lies inside; between two boxes, the least distance between their points, 0 when they overlap. Each is decided squared, in wide integers, with no root: a point's distance to an edge as a path's approach to a point is, and an overlap by the signs of cross products. Where a path comes nearest a box along a stretch, as one through it does, its nearest point is the first of them along the path. A weapon's and an action's range, an area's and an aura's radius from their centre, a line projectile's half width and a homing projectile's body, and the script queries all follow it, so a script's area of a radius hits what an area of that radius hits. Dota 2 adds the target's bound radius to a ground-targeted area and to an aura, and League of Legends measures attacks and missiles from edge to edge of the units' gameplay radii.
 - **Layers.** The mode declares the layers bodies move on, such as `ground` and `air`; the first is the default, and a mode that names none has one, with no name. A unit moves on the layer of its type's `collision`, or on the first. Collision and pathing work within a layer: an RTS's air units pass over ground units and walls. A shooter has one layer. The engine tags each unit with the name of its layer, so the tag limit bounds the layers too.
 - **Bounds.** A closed rectangle of the ground plane that no unit is ever outside: move orders clamp to it, the core clamps every unit that moved after Move and Collide, and a spawn outside it fails. On a spatial map, a height has only the world's bound, 2²⁰ m.
-- **Map.** A map holds its bounds, its terrain, grid or level geometry, its paths, the units placed at its start, and **markers**: named points and regions, a region a box from `min` to `max`, each with tags, an optional team and params, which scripts read by tag (`ctx.map.markers("spawn")`). A MOBA's team spawns and camps, a shooter's bomb sites and buy zones, an RTS's start locations and resource fields, a battle royale's loot spots and an MMO's zones are markers.
+- **Map.** A map holds its bounds, its terrain, a heightmap the `planar` metric takes heights from, its grid or level geometry, its paths, the units placed at its start, and **markers**: named points and regions, a region a box from `min` to `max`, each with tags, an optional team and params, which scripts read by tag (`ctx.map.markers("spawn")`). A MOBA's team spawns and camps, a shooter's bomb sites and buy zones, an RTS's start locations and resource fields, a battle royale's loot spots and an MMO's zones are markers.
 - **Region events.** A region marker with `events = true` tells the mode when a unit enters or leaves it: `on_enter(ctx, marker, unit)` and `on_leave(ctx, marker, unit)`, in the Mode stage, by marker name, then by the unit's stable id. A campaign's triggers, an ambush, a capture zone and a cutscene's start are region events. Only the units that moved test against the event markers, through the same buckets collision uses.
 - **Generated maps.** A map may be built, wholly or in part, by the mode's `on_generate(ctx, region)` hook: at the session's start for the whole map, and again when a script asks for a region with `ctx.generate(region)`, as Diablo builds a dungeon level when a player first goes down to it. The hook writes only within its region: blocked cells, markers, paths and placed units; it draws from the secret stream, so the seed decides the map; and the map checks run on what it built, as on a map file. A generated map is state, so a save holds it.
 
@@ -154,7 +154,7 @@ The team and the owner come from the spawn, not the unit type. A section of a ca
 
 ## Tick rate
 
-The mode picks its tick rate within the range its manifest allows: an FPS wants 64 to 128 Hz, a MOBA 30, an MMO or a large RTS 10 to 20. Every capability works in ticks at any rate, and each states what its worst tick costs, so a mode can see what its combination costs before it ships.
+The mode picks its tick rate within the range its manifest allows: an FPS wants 64 to 128 Hz, a MOBA 30, Zero Hour 30 as its original runs, an MMO 10 to 20. Every capability works in ticks at any rate, and each states what its worst tick costs, so a mode can see what its combination costs before it ships.
 
 ## Capability docs
 
@@ -167,7 +167,7 @@ Each capability doc has the same sections, in this order, and leaves out one it 
 5. **Script API:** the calls, fields and hooks it adds.
 6. **Network:** what goes to which clients, and what a client predicts.
 7. **Cost:** the worst tick, in the units and players it counts.
-8. **Genres:** what each target game takes from it.
+8. **Genres:** how each genre uses it; the games the engine imports are in [Games](games.md).
 
 ## Scripted systems
 
@@ -190,4 +190,4 @@ interval_ms = 100
 
 ## Testing combinations
 
-Every pair of capabilities a mode may declare together meets in at least one test mode with a golden: the reference MOBA, the genre proofs, and as many small mixed modes as the pairs need, as all-pairs testing covers every two-way combination of options with few cases. A test lists the pairs the test modes declare and fails when a pair is missing, so a new capability brings its pairs with it. Interactions of three or more capabilities are tested where a mode needs them.
+Every pair of capabilities a mode may declare together meets in at least one test mode with a golden: the MOBA test content, the test packages, and as many small mixed modes as the pairs need, as all-pairs testing covers every two-way combination of options with few cases. A test lists the pairs the test modes declare and fails when a pair is missing, so a new capability brings its pairs with it. Interactions of three or more capabilities are tested where a mode needs them.

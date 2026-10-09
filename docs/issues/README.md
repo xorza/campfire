@@ -18,6 +18,7 @@ One file for each system, which lists its open problems. The rules are in [AGENT
 - [Log](log.md)
 - [Store](store.md)
 - [Client](client.md)
+- [Import](import.md)
 - [Launcher](launcher.md)
 - [Content](content.md)
 - [Editor](editor.md)
@@ -45,4 +46,5 @@ One file for each system, which lists its open problems. The rules are in [AGENT
 
 ## Content
 
-- [Reference MOBA](reference-moba.md)
+- [MOBA test content](moba.md)
+- [Zero Hour](zero-hour.md)

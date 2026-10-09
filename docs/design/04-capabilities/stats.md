@@ -95,7 +95,7 @@ A unit's tags are its type's tags, the tags the engine gives it by its sections 
 - **Filters** read tags with a sign: `enemies:avatar:!stunned` selects the avatars that may be attacked and are not stunned ([Filters](../08-script-api.md#filters)).
 - **Names.** A tag's name is a declared name: a lowercase letter, then lowercase letters, digits and underscores, so every tag can stand in a filter. The load refuses another name where data gives it.
 - **The engine's tags.** `avatar`, `projectile`, `area`, `constructing`, `node`, `drop_off` and `gathering` hold the first places among a match's tags, in that order, so the engine finds them without their names. Only the engine gives them: the load refuses a unit type or a modifier that carries one. A filter and the mode's `[tags]` may name them, and give them properties; `constructing`, which a site carries ([Construction](production.md#construction)), blocks the `attack`, `cast` and `use` groups of its own, so no action of a site starts.
-- A mode declares at most 256 tags together, its types', its modifiers' and the engine's three.
+- A mode declares at most 256 tags together, its types', its modifiers' and the engine's seven.
 
 ### Levels
 
@@ -122,4 +122,4 @@ A refresh of a unit walks its modifiers once: its cost grows with the modifiers 
 
 ## Genres
 
-Every target game uses stats, pools and modifiers: a MOBA's items and crowd control, a shooter's armor and flashbangs as tags, an RTS's upgrades as player modifiers and cloak and detection as tags, an MMO's buffs, rage and combo points, a battle royale's armor pool and the zone's damage through a modifier.
+Every genre uses stats, pools and modifiers: a MOBA's items and crowd control, a shooter's armor and flashbangs as tags, an RTS's upgrades as player modifiers and cloak and detection as tags, an MMO's buffs, rage and combo points, a battle royale's armor pool and the zone's damage through a modifier.

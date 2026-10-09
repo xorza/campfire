@@ -30,6 +30,7 @@ The protocol has its own version, separate from engine releases. Every session l
 - Each file is a separate blob, so an update downloads only changed files and packages share identical assets.
 - A package is its bytes: no tool may convert its line endings, so the repository keeps text LF on every OS.
 - A client fetches blobs from the Blossom servers in the package announcement. A game server also serves every package it pins, so a session never depends on a mirror.
+- An **imported package** has no announcement and no blob: nobody distributes it, and no server serves it. Each machine makes it with the `import` app from its own copy of the game, and the same install, game version and importer release give the same bytes on every OS, so its fingerprint is the same everywhere ([Zero Hour](12-zero-hour.md#decisions), D4). A listing names it by fingerprint, with its **import recipe**: the importer release, the game and its version.
 
 ## Keys
 
@@ -89,7 +90,7 @@ SessionLog
 
 **Checkpoints and results.** A checkpoint at the boundary before tick `t` ends the last segment, which holds at least one tick, and starts the next: from `t` on, the sim draws from that segment's seed. Its record is `{u32 segment, u64 tick, state hash, snapshot fingerprint, log carry}`, the server key's Schnorr signature over `"campfire/checkpoint/v1" ‖ session id ‖ postcard of the record`, where the snapshot fingerprint is the SHA-256 of the snapshot's bytes. The log carry is the log's own state at the boundary, so a segment verifies from its checkpoint alone: for each slot, its controller (a player, as the delegation JSON of their current key and their chain's slot, head and next seq; a bot; open; or reserved), the main key of the player who left it last as an option, the player's stamp counts (the last stamp as an option, the inputs of that stamp, the inputs in all) and their spill (the last tick their inputs fill, and how many fill it); then the inputs logged before the boundary and due from it on, each as the tick it applies in, `u32 slot`, stamp and payload, in the order they apply. A log refuses a record of another segment than the next, at another tick than the next, after a segment of no tick, or whose carry is not its own state there. The result is `{u64 tick, outcome, final state hash}`, the outcome `won` with the index of a team, `draw` or `aborted`, signed over `"campfire/result/v1" ‖ session id ‖ postcard of the result`; its tick is the tick after the last that ran. The server signs it when the session ends: `won` or `draw` as the mode ended the match, `aborted` when it did not.
 
-**Input sources**
+### Input sources
 
 | Source | Signed by | Payload |
 | --- | --- | --- |
@@ -104,7 +105,7 @@ SessionLog
 - Bot and external inputs are signed by the server key, one signature per input.
 - A payload is a postcard list of commands, each the owning capability's index in the engine's fixed list and the command's bytes in that capability's format. The log keeps any payload within the max payload length; the sim ignores a command of a capability the mode did not declare, and one that does not decode.
 
-**Server inputs**
+### Server inputs
 
 The log records which controller each slot has at every tick, a player, a bot, open, or reserved for a player who left, from the header's slot starts and the server inputs that change them, with no package. It refuses a player packet for a slot whose player is not the packet's, and a bot's input for a slot no bot plays. A server input is logged before the tick it applies in, with one Schnorr signature by the server key over `"campfire/server-input/v1" ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, little-endian, where `tick` is the next tick when it was logged, `index` counts the server inputs logged before that tick from 0, and `input` is its postcard encoding: its kind's index in the table, then its fields in order.
 
@@ -119,7 +120,7 @@ The log records which controller each slot has at every tick, a player, a bot, o
 
 A delegation in a `Join` or a `Renew` must name the session and the server, as the header's do; its seed contribution is ignored. A `Join` takes an open slot, a bot's, or a slot whose leaver it brings back; a `Renew` keeps the slot's main key; `Connected`, `Disconnected`, `Renew` and `Leave` need a player in the slot. A player's inputs logged before a `Join` or a `Leave` of their slot and due later never apply; a `Renew` keeps them. What a mode lets a `Join` take and a `Leave` leave, its `[players]` says, which the runner checks as it records, so a verifier checks it too ([Sessions](10-sessions.md#slots-and-controllers)).
 
-**Player inputs**
+### Player inputs
 
 - **Chain.** Each input of a player is linked to the one before it by a hash; the first links to the delegation's event id. Neither the link nor the seq is sent or logged: the client and the server each compute both from their own copy of the chain, and the signature over the head shows that the copies agree. A later signature therefore covers every earlier input, and a missing, reordered or altered input makes it fail. The hash is BLAKE3 of `"campfire/input-hash/v1" ‖ previous hash ‖ u32 slot ‖ u64 seq ‖ u64 stamp tick ‖ payload`, little-endian; seq counts a player's inputs from 0.
 - **Signature.** The client signs the chain head once per packet, over `"campfire/input/v1" ‖ session id ‖ u32 player slot ‖ u64 seq ‖ chain head hash`, little-endian, where seq is the packet's last input's. The log keeps a packet whole or refuses it whole, with its signature, so every logged input is signed.
@@ -131,7 +132,7 @@ A delegation in a `Join` or a `Renew` must name the session and the server, as t
 
 1. Check every delegation, every chain link and chain-head signature, every bot and external input signature, and every applied tick against the delay rule.
 2. Fetch the engine release named in the header, checked against engine release events from at least k keys of the pinned set, or build it from its tag.
-3. Fetch packages by fingerprint and check the fingerprints.
+3. Fetch packages by fingerprint, import each imported package from the verifier's own copy of its game, and check the fingerprints. So only a verifier who holds the game can verify a session that plays it.
 4. Check the seed reveal of the last segment against the commitment, which checks every earlier segment's seed. With the snapshots at hand, check each one's fingerprint, and that it restores to its checkpoint's state hash.
 5. Replay the inputs tick by tick from tick 0, each segment with its own seed.
 6. Compare the state hash at each checkpoint with its record's, and the final hash and the outcome with the result's: a `won` or a `draw` must be how the mode ended the match.
@@ -151,7 +152,7 @@ Where a NIP already says what an event says, campfire uses it, so other Nostr cl
 
 | Event | Signed by | Content | Kind |
 | --- | --- | --- | --- |
-| Server listing | Server key | Address, TLS certificate hash, tick rate, engine release tag, region, protocol version, modes (fingerprints), capabilities, rules summary, prices | Campfire, addressable: one per server |
+| Server listing | Server key | Address, TLS certificate hash, tick rate, engine release tag, region, protocol version, modes (fingerprints), the import recipe of each imported package, capabilities, rules summary, prices | Campfire, addressable: one per server |
 | Package announcement | Author key | Package id (author + name), version, fingerprint, license, download locations | Campfire, regular |
 | Session log published | Server key | Session id, log and snapshot fingerprints, download locations, result | Campfire, regular |
 | License | License key, with its delegation | Buyer main pubkey, package id, payment hash | Campfire, regular |

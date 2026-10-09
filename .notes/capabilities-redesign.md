@@ -18,7 +18,7 @@ The faults are at the edges, where a capability was built for its first genre:
 - **Reuse.** Most capabilities require `combat` for schedule anchors only. `orders` owns the commands of `items`, `production` and `progression`, so a mode with no `orders` cannot buy an item or learn a rank. The core lists production's engine tags. Three tables state the capability graph, and no test ties them together.
 - **Genericity.** Several genre rules are fixed in native code: one supply counter, one shop at markers, one point per level, an actor that is always a unit, a gather loop that only fills player resources, and a train that only spawns units.
 
-The proposal has 12 changes in three phases, and a 13th that adds the tests which keep the model generic. Phase 1 removes couplings with no change of behaviour. Phase 2 generalizes production. Phase 3 opens the closed sets. Phase 2 changes the model that the Stage 7 skirmish tests. So it should land before the skirmish's match and golden (R9 of design 11's [steps left](../docs/design/11-rts-skirmish.md#steps-left)), or the skirmish is built twice.
+The proposal has 12 changes in three phases, and a 13th that adds the tests which keep the model generic. Phase 1 removes couplings with no change of behaviour. Phase 2 generalizes production. Phase 3 opens the closed sets. Phase 2 changes the model that the Stage 7 skirmish tests. So it should land before the skirmish's match and golden (R9 of the skirmish plan), or the skirmish is built twice.
 
 ## Findings
 
@@ -227,7 +227,7 @@ These already pass the three questions.
 | Phase | Changes | Goldens | When |
 | --- | --- | --- | --- |
 | 1 | R1, R2, R3, R4 | None expected | Before Stage 8, which needs R3 for the CS buy menu |
-| 2 | R5, R6, R7, R8 | The skirmish is new, so nothing moves if Phase 2 lands first | Before R9 of design 11's steps left, the skirmish's match and golden |
+| 2 | R5, R6, R7, R8 | The skirmish is new, so nothing moves if Phase 2 lands first | Before R9 of the skirmish plan, the skirmish's match and golden |
 | 3 | R9, R10, R11, R12 | The 3v3 moves for R9 | With the genre proof that first needs each one |
 | Guards | R13 | The Hive golden is new | The genre-word test and the graph test at once; the Hive mode after Phase 3 |
 

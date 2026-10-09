@@ -14,7 +14,7 @@ A unit type's `vision = { sight_range }`, in meters, not negative. The map's `[g
 
 | Backend | Does |
 | --- | --- |
-| Grid fog of war | Each unit reveals the cells within its sight range, blocked by terrain; brush cells block sight from outside the brush; the one the release runs |
+| Grid fog of war | Each unit reveals the cells within its sight range; brush cells block sight from outside the brush; the one the release runs |
 | 3D occlusion | A unit is sent only when visible or about to become visible; footsteps and gunshots go only to players within hearing range. On large terrain, far-field occlusion uses terrain height and distance, and full tests run only up close |
 | Relevance | For large maps and many players: each client receives what a spatial grid finds near its view, weighed by distance, view direction and scope state; far units update less often, as Fortnite's replication graph does for 100 players |
 

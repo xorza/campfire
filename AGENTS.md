@@ -1,6 +1,6 @@
 # Campfire
 
-An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a reference 3v3 MOBA. The sim is deterministic and server-authoritative: every session log can be replayed and verified. Game content is Rhai scripts and data in signed packages. Identity, server discovery and the marketplace use Nostr. Lightning payments are an optional module.
+An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importers that bring existing games onto it from the player's own copy, Generals: Zero Hour first. The sim is deterministic and server-authoritative: every session log can be replayed and verified. Game content is Rhai scripts and data in signed packages. Identity, server discovery and the marketplace use Nostr. Lightning payments are an optional module.
 
 ## Layout
 
@@ -9,17 +9,18 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
     - `01-campfire-design.md` — vision, terms, principles, milestones
     - `02-engine-core.md` — modules, structural rules, storage, determinism rules, Bevy and Lightyear, testing and benches, libraries
     - `03-game-scripting.md` — packages, tick pipeline, script state, numbers, network sync
-    - `04-capabilities/` — the mechanisms the engine provides (combat, commands, character, navigation, vision, …), which a game combines, and the genres they make
+    - `04-capabilities/` — the mechanisms the engine provides (combat, commands, character, navigation, vision, …), which a game combines; `games.md` lists the imported games
     - `05-protocol-spec.md` — keys, connection, session log, verification, Nostr events, payments
     - `06-research-notes.md` — early decisions, risks and sources
-    - `07-reference-moba.md` — reference MOBA: heroes, player spells, rules
-    - `08-script-api.md` — script API by capability, derived from the reference packages
+    - `07-moba.md` — the MOBA test content: heroes, player spells, rules
+    - `08-script-api.md` — script API by capability, derived from the packages the engine plays
     - `08-script-api-reference.md` — every name of the script API, with its roles, capability and whether it runs; generated from the registry by a test, never edited by hand
     - `09-determinism-core.md` — Stage 1 proposal: numbers, vectors, randomness, stable ids, state hash
     - `10-sessions.md` — Stage 6 proposal: journal, crash restore, slots, reconnect, server bots, receipts, checkpoints, saves, local server
-  - `11-rts-skirmish.md` — Stage 7 proposal, first half: box bodies, package unit types, group orders, production's first cut, the skirmish mode
+    - `11-rts-foundations.md` — box bodies, package unit types, group orders, production's first cut
+    - `12-zero-hour.md` — the first imported game: importer, rules package, parity oracle, presentation
   - `issues/` — the issue log: one file for each system, with its open problems ([Issue log](#issue-log))
-- `source/` — engine and game code; `source/packages/<game>/` holds the reference content packages (heroes, spells, modes); `source/packages/test/` holds small packages the tests play
+- `source/` — engine and game code; `source/packages/moba/` holds the MOBA test content (heroes, spells, modes); `source/packages/<game>/` holds an imported game's rules package; `source/packages/test/` holds small packages the tests play
 
 `ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice. Both list open items only.
 
@@ -38,7 +39,7 @@ No changes to systems outside the plan along the way. A problem found outside th
 
 ## Issue log
 
-The issue log is `docs/issues/`, one file for each system: each engine module of [Modules](docs/design/02-engine-core.md#modules), the core and each capability of `docs/design/04-capabilities/`, and the reference MOBA. `docs/issues/README.md` lists the files. A new module or capability gets its file when the design adds it.
+The issue log is `docs/issues/`, one file for each system: each engine module of [Modules](docs/design/02-engine-core.md#modules), the core and each capability of `docs/design/04-capabilities/`, the MOBA test content, and each imported game. `docs/issues/README.md` lists the files. A new module or capability gets its file when the design adds it.
 
 - **Where.** A problem goes to the file of the system whose code or data its fix changes, not of the system where it shows. When that system is not known, it goes to the file of the system where it shows, under Research.
 - **Sections.** Each file has three sections, in this order, and an item sits in the section of its next step:
@@ -52,5 +53,6 @@ The issue log is `docs/issues/`, one file for each system: each engine module of
 
 - **No data in strings.** A value from a fixed set is an enum, a value with rules is a checked newtype, and an error is an enum of cases. Text from data files, scripts, JSON or the network becomes these types where it enters. Strings stay only for human text and for names the outside format defines.
 - **All file I/O goes through `store`**, as [Storage](docs/design/02-engine-core.md#storage) says: every read, listing, check and write of a file, in production code, tests and checks alike. Production code uses its types; a test uses its internals for every file it makes or reads. No `std::fs`, no `Path::exists` and its kin, no `tempfile`, and no `expect` or `allow` of `clippy::disallowed_methods` or `clippy::disallowed_types` outside `store`: when `store` lacks what a caller needs, `store` gains it. A read names its bound, and no code asks whether a path exists: it reads or lists, and takes `Missing`.
+- **Game-bound code lives in a module named after its game**, `zero_hour`, in the crate whose interface it serves, so no reader takes it for a general system; nothing but the place that installs it depends on it ([Modules](docs/design/02-engine-core.md#modules)).
 - **Benches run through `cargo benches`**, never `cargo bench` with `--workspace` or one `-p`, so every case builds from the same features ([One selection for every run](docs/design/02-engine-core.md#benches)): `--bench <crate>` takes one crate, `-- <filter>` a group. A crate that gains a `[[bench]]` joins the alias in `source/.cargo/config.toml`.
 - **Match tests** follow [One scripted match for each mode](docs/design/02-engine-core.md#testing-and-diagnostics): a new rule joins the mode's scripted match, not a new run. A mode's scripted match test is the one test exempt from the bound of 1 s for a test; every other test keeps it.

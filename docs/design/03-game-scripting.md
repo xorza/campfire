@@ -23,8 +23,8 @@ A game mode is one content package.
 my-mode/
   manifest.toml       id, version, kind (mode, avatar, loadout, campaign, locale), package API version,
                       capabilities used,
-                      dependencies (by fingerprint),
-                      teams and slots, tick-rate range, collision, pathfinding and visibility backends,
+                      dependencies (by name: a path in the workspace, a fingerprint in a built package),
+                      teams and slots, tick-rate range, collision, pathfinding, movement and visibility backends,
                       move speed cap, script pools
   map/                map data: bounds, terrain or grid or geometry, paths, placed units, markers
   data/               unit types, actions, modifiers: one section per capability
@@ -37,6 +37,8 @@ my-mode/
 **Package paths.** A file's path in a package is its names joined by `/`, and names only a file that every OS holds as the same file's, as `cargo package` refuses a character Windows refuses in a file name: printable ASCII alone, as a file system may fold the case of other letters or normalize them, as macOS's does `é`; no name Windows reserves, as `con` or `aux.rhai`; no character it refuses, `\`, `:`, `*`, `?`, `"`, `<`, `>` or `|`; no name that ends in a dot or a space; and no two paths of one package, or directories on their way, that differ only in case, which a file system that ignores case, Windows' and macOS's by default, holds as one. The store finds a package by its manifest's exact name, `manifest.toml`.
 
 A package's name, its manifest's `name`, is a lowercase letter, then lowercase letters, digits, hyphens and underscores, as `hero-husk`: one component of a locale file's path, and an avatar's unit type name. Content can come from other packages, referenced by fingerprint. A package may also **override** a record of a package it depends on, a unit type, an action, a modifier, a table or a quest, whole: the mode's load order, its `load_order`, decides, and the last loaded wins, as Bethesda's plugins do. The load lists every record more than one package overrides, so a player sees the conflicts, and a small patch package that loads last settles them.
+
+**Imported packages.** A package the `import` app writes from a game's install is an ordinary package, with the same layout, checks and fingerprint; it depends on its game's rules package, and nobody distributes it ([Zero Hour](12-zero-hour.md#decisions), D4).
 
 **Package API.** A package targets a version of the package API, `api = "major.minor"`: the script API and the schemas of the data files together. A release loads every package whose API has its major and a minor no higher than its own, as Factorio loads a mod made for "major.minor" across its patches; a name or field the API adds raises the minor, and one it removes or changes raises the major. The registry records the version each name came in, and the reference lists it. The release runs package API 1.0, which every name and field it has came in; a package of another major, or of a newer minor, fails its load with the version it names. A session log still names its exact engine release, so a replay runs the code that recorded it.
 
@@ -124,7 +126,7 @@ Scripts never deal with networking.
 
 Full API: [Script API](08-script-api.md).
 
-**Round-based mode, genre-neutral** (`scripts/mode.rhai`; `phase` and `round` are the state fields declared above). Genre examples are in [Genres](04-capabilities/genres.md).
+**Round-based mode, genre-neutral** (`scripts/mode.rhai`; `phase` and `round` are the state fields declared above). Genre examples are in [Games](04-capabilities/games.md).
 
 ```rhai
 fn on_match_start(ctx) {

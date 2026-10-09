@@ -6,7 +6,7 @@ Vehicles, rigid bodies and terrain: a collision backend that moves bodies by for
 
 ## Data
 
-A unit type's `physics` section: its shape, mass and, for a vehicle, its wheels and engine. The map's heightmap terrain.
+A unit type's `physics` section: its shape, mass and, for a vehicle, its wheels and engine. Bodies collide with the map's terrain ([Space and map](00-overview.md#space-and-map)).
 
 ## Rules
 

@@ -1,6 +1,6 @@
-# Campfire — Reference MOBA
+# Campfire — MOBA test content
 
-Draft. Names are working names. Numbers come later, with balance.
+The 3v3 MOBA of `source/packages/moba/`: test content, which the tests and benches play and no player does ([Imported games](01-campfire-design.md#imported-games)). Names are working names; numbers are the tests'.
 
 ## Heroes
 
@@ -82,4 +82,4 @@ Each player picks two: Blink (short teleport), Haste (move speed), Mend (heal se
 
 ## What the game needs from the engine
 
-It declares `combat`, `stats`, `abilities`, `projectiles`, `areas`, `orders`, `navigation`, `vision`, `progression` and `items` ([Genres](04-capabilities/genres.md#target-games)). In the engine's model ([The model](04-capabilities/00-overview.md#the-model)) it is two teams and a hostile team of camps, a planar map with one layer, the pools health, mana and energy, the slot kinds `basic`, `ultimate`, `spell` and `weapon`, the choices `hero` and `spells`, and the tags of crowd control, stealth and true sight that design 08 lists; crowd control is its own modifiers, applied with `ctx.add_modifier`. It needs from the engine: mana and energy; toggles with a cost per attack or per second; charges; on-hit effects and crits; marks that detonate; burns; stealth, true sight and area reveal; dashes, pulls, knock-ups and knockbacks; untargetable; channels; line, homing, bouncing and jumping attacks; delayed and persistent areas; global projectiles with effects by distance flown; auras; shields; cooldown changes on takedowns and hits; stun, slow, root, knock-up, knockback and slow immunity; charged casts with recast. The API that provides them: [Script API](08-script-api.md).
+It declares `combat`, `stats`, `abilities`, `projectiles`, `areas`, `orders`, `navigation`, `vision`, `progression` and `items` ([Games](04-capabilities/games.md)). In the engine's model ([The model](04-capabilities/00-overview.md#the-model)) it is two teams and a hostile team of camps, a planar map with one layer, the pools health, mana and energy, the slot kinds `basic`, `ultimate`, `spell` and `weapon`, the choices `hero` and `spells`, and the tags of crowd control, stealth and true sight that design 08 lists; crowd control is its own modifiers, applied with `ctx.add_modifier`. It needs from the engine: mana and energy; toggles with a cost per attack or per second; charges; on-hit effects and crits; marks that detonate; burns; stealth, true sight and area reveal; dashes, pulls, knock-ups and knockbacks; untargetable; channels; line, homing, bouncing and jumping attacks; delayed and persistent areas; global projectiles with effects by distance flown; auras; shields; cooldown changes on takedowns and hits; stun, slow, root, knock-up, knockback and slow immunity; charged casts with recast. The API that provides them: [Script API](08-script-api.md).
