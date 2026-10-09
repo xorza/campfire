@@ -6,9 +6,9 @@ Design: [Modules](../design/02-engine-core.md#modules), `sim`. Rules: [Issue log
 
 ## Research
 
-- Nothing calls `World::clear_trackers`, so Bevy's removed-component messages are never updated: each component a unit loses, and each component of each entity despawned, stays in them for the whole match, and a persistent world grows them without bound.
+- **Plan: F14.** Nothing calls `World::clear_trackers`, so Bevy's removed-component messages are never updated: each component a unit loses, and each component of each entity despawned, stays in them for the whole match, and a persistent world grows them without bound.
 
 ## Ready
 
-- A snapshot carries no data version: the [engine core](../design/02-engine-core.md) says a release raises one whenever the snapshot's format changes, but no code writes or checks it, so a snapshot of an older layout of a component, a `Route` or a `PathWalker`, fails to decode with no word of its version, or decodes into other fields.
+- **Plan: F15.** A snapshot carries no data version: the [engine core](../design/02-engine-core.md) says a release raises one whenever the snapshot's format changes, but no code writes or checks it, so a snapshot of an older layout of a component, a `Route` or a `PathWalker`, fails to decode with no word of its version, or decodes into other fields.
 
