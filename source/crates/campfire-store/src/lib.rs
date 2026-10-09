@@ -41,7 +41,7 @@ pub use crate::durable_file::DurableFile;
 pub use crate::durable_file::error::{DurableCreateError, DurableError};
 pub use crate::exchange::Exchange;
 pub use crate::input_file::error::ReadError;
-pub use crate::input_file::{InputFile, InputStream, Stamped};
+pub use crate::input_file::{InputFile, InputRanges, InputStream, Stamped};
 pub use crate::latest_writer::LatestWriter;
 pub use crate::output_file::OutputFile;
 pub use crate::path_error::PathError;

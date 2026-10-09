@@ -59,6 +59,37 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
         ReadError::NotFile
     ));
 
+    // Ranges of "12345" from one handle: from the start, from the middle, to the end, and none
+    // at the end; a range past the 5 bytes it opened with is short, and names the path, as one
+    // whose end passes what a u64 holds is.
+    let mut ranges = InputFile::ranges(&five).unwrap();
+    assert_eq!(ranges.len(), 5);
+    assert_eq!(ranges.read_at(0, 2).unwrap(), b"12");
+    assert_eq!(ranges.read_at(1, 3).unwrap(), b"234");
+    assert_eq!(ranges.read_at(2, 3).unwrap(), b"345");
+    assert_eq!(ranges.read_at(5, 0).unwrap(), b"");
+    let short = ranges.read_at(4, 2).unwrap_err();
+    assert!(matches!(
+        short.error,
+        ReadError::Short { offset: 4, len: 2 }
+    ));
+    assert_eq!(short.path, five);
+    assert!(matches!(
+        ranges.read_at(u64::MAX, 1).unwrap_err().error,
+        ReadError::Short {
+            offset: u64::MAX,
+            len: 1
+        }
+    ));
+    assert!(matches!(
+        InputFile::ranges(&scratch.path("dir")).unwrap_err().error,
+        ReadError::NotFile
+    ));
+    assert!(matches!(
+        InputFile::ranges(&none).unwrap_err().error,
+        ReadError::Missing
+    ));
+
     // The time of change is its handle's, no later than now.
     let stamped = InputFile::read_stamped(&five, 5).unwrap();
     assert_eq!(stamped.bytes, b"12345");
@@ -82,4 +113,26 @@ fn a_file_that_grows_past_its_bound_as_it_is_read_is_refused() {
         opened.read(4),
         Err(ReadError::TooLarge { max: 4 })
     ));
+}
+
+#[test]
+fn a_range_the_file_no_longer_holds_as_it_is_read_is_short() {
+    // The handle opened 6 bytes; the file then holds 3, so the 4 bytes from byte 1 end after 2,
+    // and the 3 from byte 0 are still whole.
+    let scratch = Scratch::new();
+    scratch.write("shrinking", b"abcdef");
+    let mut ranges = InputFile::ranges(&scratch.path("shrinking")).unwrap();
+    OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(scratch.path("shrinking"))
+        .unwrap()
+        .write_all(b"abc")
+        .unwrap();
+    assert_eq!(ranges.len(), 6);
+    assert!(matches!(
+        ranges.read_at(1, 4).unwrap_err().error,
+        ReadError::Short { offset: 1, len: 4 }
+    ));
+    assert_eq!(ranges.read_at(0, 3).unwrap(), b"abc");
 }

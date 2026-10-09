@@ -7,7 +7,7 @@ use crate::platform::owner_only::Exposure;
 
 /// Why a file or a directory did not read. One error serves every read, so a caller matches one
 /// type: `NotText` comes from `InputFile::read_text` alone, `NotDir` from `DirEntries::read`
-/// alone, and `Exposed` from `SecretFile::read` alone.
+/// alone, `Short` from `InputRanges::read_at` alone, and `Exposed` from `SecretFile::read` alone.
 #[derive(Debug, Error)]
 pub enum ReadError {
     /// No file or directory holds its name.
@@ -23,6 +23,9 @@ pub enum ReadError {
     /// It holds more bytes than its reader takes.
     #[error("it holds more than {max} bytes")]
     TooLarge { max: usize },
+    /// It ends before the range its reader takes.
+    #[error("it ends before the {len} bytes from byte {offset}")]
+    Short { offset: u64, len: usize },
     /// Its bytes are not UTF-8.
     #[error("it is not UTF-8 text")]
     NotText(#[source] Utf8Error),

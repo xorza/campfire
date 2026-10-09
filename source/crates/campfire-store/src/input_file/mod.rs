@@ -1,6 +1,6 @@
 use std::fs::{self, File, Metadata};
-use std::io::{self, Read};
-use std::path::Path;
+use std::io::{self, Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::input_file::error::ReadError;
@@ -8,10 +8,11 @@ use crate::path_error::PathError;
 
 pub(crate) mod error;
 
-/// A file read whole, never past a bound its caller names, which the owner of its format derives
-/// from that format's own limits. A read reserves the length its open handle's metadata gives,
-/// once, and reads at most one byte past the bound, so a file that grows as it is read is
-/// refused, not read without end.
+/// A file read never past a bound its caller names: whole, within a bound the owner of its format
+/// derives from that format's own limits; in a stream, which its reader bounds; or by ranges, each
+/// within its own. A whole read reserves the length its open handle's metadata gives, once, and
+/// reads at most one byte past the bound, so a file that grows as it is read is refused, not read
+/// without end.
 #[derive(Debug)]
 pub struct InputFile;
 
@@ -19,6 +20,16 @@ pub struct InputFile;
 /// as its handle's metadata gave it as it opened, and its bytes, as `Read` gives them.
 #[derive(Debug)]
 pub struct InputStream {
+    len: u64,
+    file: File,
+}
+
+/// A regular file open to read ranges of, as an archive's entries are read: its length, as its
+/// handle's metadata gave it as it opened, and the bytes of each range, all from the one file it
+/// opened, so a file swapped in between two reads mixes nothing.
+#[derive(Debug)]
+pub struct InputRanges {
+    path: PathBuf,
     len: u64,
     file: File,
 }
@@ -86,6 +97,16 @@ impl InputFile {
         })
     }
 
+    /// The regular file at `path`, open to read ranges of; each read is bounded by its range.
+    pub fn ranges(path: &Path) -> Result<InputRanges, PathError<ReadError>> {
+        let Opened { file, metadata } = InputFile::open(path).map_err(PathError::at(path))?;
+        Ok(InputRanges {
+            path: path.to_owned(),
+            len: metadata.len(),
+            file,
+        })
+    }
+
     /// The regular file at `path`, open, with its metadata. The path's kind is checked before
     /// it opens, as PostgreSQL checks a key file's: an open of a pipe waits for a writer, and
     /// Windows opens no directory as a file. The handle's own kind is checked again after, so a
@@ -118,6 +139,42 @@ impl InputStream {
 
     pub const fn is_empty(&self) -> bool {
         self.len == 0
+    }
+}
+
+impl InputRanges {
+    /// Its length as it opened.
+    pub const fn len(&self) -> u64 {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The `len` bytes from `offset`. A range past the length it opened with is `Short` before
+    /// it reads, and so is one the file no longer holds as it reads, as when it shrank.
+    pub fn read_at(&mut self, offset: u64, len: usize) -> Result<Vec<u8>, PathError<ReadError>> {
+        let short = || ReadError::Short { offset, len };
+        let wanted = u64::try_from(len).expect("a length fits u64");
+        let read = || {
+            if offset.checked_add(wanted).is_none_or(|end| end > self.len) {
+                return Err(short());
+            }
+            (&self.file)
+                .seek(SeekFrom::Start(offset))
+                .map_err(ReadError::Read)?;
+            let mut bytes = Vec::with_capacity(len);
+            (&self.file)
+                .take(wanted)
+                .read_to_end(&mut bytes)
+                .map_err(ReadError::Read)?;
+            if bytes.len() < len {
+                return Err(short());
+            }
+            Ok(bytes)
+        };
+        read().map_err(PathError::at(&self.path))
     }
 }
 
