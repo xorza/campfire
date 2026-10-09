@@ -48,6 +48,17 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
     ));
     assert_eq!(InputFile::read(&binary, 64).unwrap(), [0xff, 0xfe]);
 
+    // A stream gives the length it opened with and the bytes; it refuses as a read does.
+    let mut stream = InputFile::stream(&five).unwrap();
+    assert_eq!(stream.len(), 5);
+    let mut streamed = Vec::new();
+    stream.read_to_end(&mut streamed).unwrap();
+    assert_eq!(streamed, b"12345");
+    assert!(matches!(
+        InputFile::stream(&scratch.path("dir")).unwrap_err().error,
+        ReadError::NotFile
+    ));
+
     // The time of change is its handle's, no later than now.
     let stamped = InputFile::read_stamped(&five, 5).unwrap();
     assert_eq!(stamped.bytes, b"12345");

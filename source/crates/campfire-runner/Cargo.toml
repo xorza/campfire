@@ -12,6 +12,7 @@ internals = [
     "campfire-package/internals",
     "campfire-protocol/internals",
     "campfire-sim/internals",
+    "dep:campfire-store",
 ]
 bench = ["internals", "dep:criterion", "dep:campfire-script"]
 
@@ -25,6 +26,8 @@ campfire-protocol.workspace = true
 # The match build bench times a script host's compile and bind, as a match's are.
 campfire-script = { workspace = true, optional = true }
 campfire-sim.workspace = true
+# The golden files of `internals`, which a test reads and `CAMPFIRE_BLESS` writes.
+campfire-store = { workspace = true, optional = true }
 
 bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }

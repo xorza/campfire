@@ -1,6 +1,7 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use campfire_store::DurableFile;
 
 use crate::error::CheckError;
 
@@ -14,18 +15,10 @@ pub(crate) struct RunDir {
 impl RunDir {
     /// Creates the directory of a run that started at `start` below `root`, and `root` if it
     /// does not exist; an error if the directory exists.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the LAN check writes its run directory, which a run of it reads and keeps"
-    )]
     pub(crate) fn create(root: &Path, start: SystemTime) -> Result<RunDir, CheckError> {
         let path = root.join(RunDir::name(start));
-        let file = |at: &Path| {
-            let path = at.to_owned();
-            move |error| CheckError::File { path, error }
-        };
-        fs::create_dir_all(root).map_err(file(root))?;
-        fs::create_dir(&path).map_err(file(&path))?;
+        DurableFile::create_dir_all(root).map_err(CheckError::Write)?;
+        DurableFile::create_new_dir(&path).map_err(CheckError::RunDir)?;
         Ok(RunDir { path })
     }
 
@@ -70,15 +63,11 @@ impl RunDir {
     }
 }
 
-#[expect(
-    clippy::disallowed_methods,
-    reason = "a test makes and removes the files of its fixtures"
-)]
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use tempfile::TempDir;
+    use campfire_store::{DurableCreateError, PathError, Scratch};
 
     use super::*;
 
@@ -102,16 +91,22 @@ mod tests {
         );
 
         // Below a directory that goes when the test ends, passed or failed.
-        let scratch = TempDir::new().unwrap();
-        let root = scratch.path().join("runs");
+        let scratch = Scratch::new();
+        let root = scratch.path("runs");
         let first = RunDir::create(&root, at(1_000)).unwrap();
-        fs::write(first.path().join("server.jsonl"), "kept").unwrap();
+        let kept = Path::new("runs")
+            .join(RunDir::name(at(1_000)))
+            .join("server.jsonl");
+        scratch.write(&kept, "kept");
         let second = RunDir::create(&root, at(2_000)).unwrap();
         assert_ne!(first.path(), second.path());
-        assert_eq!(
-            fs::read_to_string(first.path().join("server.jsonl")).unwrap(),
-            "kept"
-        );
-        assert!(RunDir::create(&root, at(1_000)).is_err());
+        assert_eq!(scratch.read_text(&kept), "kept");
+        assert!(matches!(
+            RunDir::create(&root, at(1_000)),
+            Err(CheckError::RunDir(PathError {
+                error: DurableCreateError::Exists,
+                ..
+            }))
+        ));
     }
 }

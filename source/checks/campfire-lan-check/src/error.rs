@@ -1,8 +1,9 @@
 use std::io;
-use std::path::PathBuf;
+use std::str::Utf8Error;
 
 use campfire_net::OrderScriptError;
 use campfire_protocol::LogError;
+use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
 use crate::process::Process;
@@ -28,13 +29,16 @@ pub(crate) enum CheckError {
     /// Cargo built no executable of this target.
     #[error("cargo built no executable of {0}")]
     NoExecutable(TargetName),
-    /// A file of the run could not be read or written.
-    #[error("{} could not be read or written", .path.display())]
-    File {
-        path: PathBuf,
-        #[source]
-        error: io::Error,
-    },
+    #[error("a file of the run does not read")]
+    Read(#[source] PathError<ReadError>),
+    #[error("a file of the run is not written")]
+    Write(#[source] PathError<DurableError>),
+    /// The run's directory is not made, or another run's holds its name.
+    #[error("the run's directory is not made")]
+    RunDir(#[source] PathError<DurableCreateError>),
+    /// The file a process writes its text log to is not made.
+    #[error("a process's text log is not made")]
+    TextLog(#[source] PathError<io::Error>),
     /// No UDP port on `127.0.0.1` was free for the server to listen on.
     #[error("no free port on the loopback address")]
     Port(#[source] io::Error),
@@ -49,6 +53,13 @@ pub(crate) enum CheckError {
         process: Process,
         #[source]
         error: io::Error,
+    },
+    /// A process's log, its whole lines, is not UTF-8.
+    #[error("the log of {process} is not UTF-8")]
+    NotText {
+        process: Process,
+        #[source]
+        error: Utf8Error,
     },
     /// A line of a process's log is not an event the check can read.
     #[error("line {line} of the log of {process}")]

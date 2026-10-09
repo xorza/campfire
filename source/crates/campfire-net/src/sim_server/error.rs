@@ -1,8 +1,6 @@
-use std::io;
-
 use campfire_protocol::{ConnectError, DelegationError};
 use campfire_runner::{ResumeError, ServerInputRefused, StartError};
-use campfire_store::{DurableError, PathError};
+use campfire_store::{DurableError, PathError, ReadError};
 use thiserror::Error;
 
 /// Why the server refused a player's join.
@@ -34,7 +32,7 @@ pub enum RestoreMatchError {
     Start(#[source] StartError),
     /// The latest checkpoint's snapshot does not read.
     #[error("the latest checkpoint's snapshot does not read")]
-    ReadSnapshot(#[source] io::Error),
+    ReadSnapshot(#[source] PathError<ReadError>),
     /// The latest checkpoint's snapshot does not resume the match.
     #[error("the match does not resume")]
     Resume(#[source] ResumeError),

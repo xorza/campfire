@@ -3,7 +3,6 @@
 //! 0 and plays, saves and loads the save, the server starting again and the client taking its new
 //! link; once the server drops, the session ends and its log is published.
 
-use std::fs;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -18,9 +17,8 @@ use campfire_net::{
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog};
+use campfire_store::Scratch;
 use lightyear::prelude::Connect;
-
-use crate::scratch::Scratch;
 
 /// How long the client gets to join and play.
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -33,7 +31,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let pace = Arc::new(Pace::default());
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),
-        data: data.path().to_owned(),
+        data: data.path("data"),
         bots: Vec::new(),
         pace,
         clock: || 1_700_000_000,
@@ -102,11 +100,11 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     // Dropped, the server ends the session, aborted as the mode did not end the match, and
     // publishes its log.
     drop(server);
-    let stopped = ServerDir::open(data.path()).unwrap();
+    let stopped = ServerDir::open(&data.path("data")).unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());
-    let logs: Vec<_> = fs::read_dir(data.path().join("logs")).unwrap().collect();
+    let logs = data.names("data/logs");
     assert_eq!(logs.len(), 1);
-    let log = SessionLog::decode(&fs::read(logs[0].as_ref().unwrap().path()).unwrap()).unwrap();
+    let log = SessionLog::decode(&data.read(format!("data/logs/{}", logs[0]))).unwrap();
     assert_eq!(
         log.result().map(|result| result.outcome),
         Some(Outcome::Aborted)

@@ -4,7 +4,6 @@
 //! on from it, and the published log's segments verify. A save due as the server stopped begins
 //! as its restore reaches the boundary.
 
-use std::fs;
 use std::num::NonZeroU32;
 
 use bevy_time::{Time, Virtual};
@@ -18,9 +17,8 @@ use campfire_net::{
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
 use campfire_runner::{InputRules, Runner, Session};
 use campfire_sim::TickRate;
+use campfire_store::{InputFile, Scratch};
 use lightyear::core::tick::TickDuration;
-
-use crate::scratch::Scratch;
 
 /// A chain of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
@@ -47,7 +45,7 @@ fn started(data: &Scratch, saves: SavesData) -> InProcessMatch {
         ..MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN)
     };
     let mut local = InProcessMatch::new(setup);
-    local.keep_data(data.path().to_owned());
+    local.keep_data(data.path("data"));
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     local
@@ -150,7 +148,8 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     SimServer::end_session(local.server_mut().world_mut(), Outcome::Aborted).unwrap();
     let file =
         SessionDir::publish(local.server().world().resource::<ServerDir>(), log(&local)).unwrap();
-    let published = SessionLog::decode(&fs::read(file).unwrap()).unwrap();
+    let published =
+        SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&save]);
     let ticks = published.next_tick();
     let seeds = published.revealed_seeds().unwrap();
@@ -184,9 +183,9 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
 
     // A stop after tick 29, before the save began: the journal ends before its begin, and its
     // snapshot is gone.
-    let session = data.path().join("sessions").join(id.to_string());
+    let session = data.path("data").join("sessions").join(id.to_string());
     let journal = session.join("journal");
-    let bytes = fs::read(&journal).unwrap();
+    let bytes = data.read(&journal);
     let mut frames = JournalFrames::new(&bytes).unwrap();
     let begun = loop {
         let start = frames.whole();
@@ -195,9 +194,9 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
             break start;
         }
     };
-    fs::write(&journal, &bytes[..begun]).unwrap();
+    data.write(&journal, &bytes[..begun]);
     let snapshot = session.join("snapshots").join(save.snapshot.to_string());
-    fs::remove_file(&snapshot).unwrap();
+    data.remove(&snapshot);
 
     // The restore replays to tick 30 and begins the save there: the same record, its snapshot
     // written again.
@@ -205,5 +204,5 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
     assert_eq!(local.next_tick(End::Server), 30);
     SimServer::settle_checkpoint(local.server_mut().world_mut());
     assert_eq!(log(&local).checkpoint_at(save.tick), Some(&save));
-    assert!(snapshot.exists());
+    assert!(data.exists(&snapshot));
 }

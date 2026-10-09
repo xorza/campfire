@@ -1,16 +1,15 @@
 use std::ffi::OsString;
-use std::io;
 
 use campfire_protocol::{JournalReplayError, NotJournal, SessionPrivateError};
 use campfire_runner::StartError;
-use campfire_store::{AppendOpenError, DurableError, PathError};
+use campfire_store::{AppendOpenError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
 /// Why a server's data directory does not say which session to restore.
 #[derive(Debug, Error)]
 pub enum FindError {
     #[error("could not read the sessions")]
-    Read(#[source] io::Error),
+    Read(#[source] PathError<ReadError>),
     /// More than one session has no published log: a server runs one session at a time.
     #[error("more than one session has no published log")]
     Several,
@@ -23,7 +22,7 @@ pub enum FindError {
 #[derive(Debug, Error)]
 pub enum RestoreError {
     #[error("could not read the session")]
-    Read(#[source] io::Error),
+    Read(#[source] PathError<ReadError>),
     #[error("the private record")]
     Private(#[source] SessionPrivateError),
     /// The session runs on another engine release than this one, which restores it.

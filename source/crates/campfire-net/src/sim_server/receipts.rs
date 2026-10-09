@@ -102,5 +102,11 @@ pub(crate) mod internals {
         pub(crate) const fn due_now(&mut self) {
             self.next = Duration::ZERO;
         }
+
+        /// Holds the next round until `due_now`, so a test, not the real clock, says when it
+        /// goes out.
+        pub(crate) const fn hold(&mut self) {
+            self.next = Duration::MAX;
+        }
     }
 }

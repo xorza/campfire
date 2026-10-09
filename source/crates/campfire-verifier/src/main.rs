@@ -5,7 +5,6 @@
 
 use std::env;
 use std::error::Error;
-use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -13,6 +12,8 @@ use campfire_common::{ExitStatus, StateHash};
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
+use campfire_sim::StateRegistry;
+use campfire_store::InputFile;
 use campfire_verifier::{Replay, Verified};
 use tracing::{error, warn};
 
@@ -57,10 +58,12 @@ fn verify(
     for failure in store.failures() {
         warn!(dir = %failure.dir.display(), error = %ErrorReport::of(&failure.error), "a package does not read");
     }
-    let mut replay = Replay::new(SessionLog::decode(&fs::read(path)?)?, &store)?;
+    let log = InputFile::read(path, SessionLog::MAX_FILE_LEN)?;
+    let mut replay = Replay::new(SessionLog::decode(&log)?, &store)?;
     if let Some(dir) = snapshots {
         for record in replay.runner().log().checkpoints() {
-            let snapshot = fs::read(dir.join(record.snapshot.to_string()))?;
+            let file = dir.join(record.snapshot.to_string());
+            let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN)?;
             replay.check_snapshot(record, &snapshot)?;
         }
     }

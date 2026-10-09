@@ -1,12 +1,12 @@
 use campfire_protocol::SessionId;
-use tempfile::TempDir;
+use campfire_store::Scratch;
 
 use super::*;
 
 #[test]
 fn each_path_is_as_stage_6_names_it_and_a_second_client_is_refused() {
-    let scratch = TempDir::new().unwrap();
-    let path = scratch.path().join("data");
+    let scratch = Scratch::new();
+    let path = scratch.path("data");
     let data = ClientDir::open(&path).unwrap();
     let id = SessionId::new([0xa7; 32]);
     let layout = data.layout();

@@ -1,25 +1,18 @@
 use campfire_common::Fingerprint;
-use campfire_store::FileLink;
+use campfire_store::Scratch;
 use sha2::{Digest, Sha256};
-use tempfile::TempDir;
 
 use super::*;
 use crate::package_store::PackageStore;
 
-fn write(dir: &Path, path: &str, text: &str) {
-    let path = dir.join(path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, text).unwrap();
-}
-
 #[test]
 fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
     // Under a directory that goes when the test ends, passed or failed.
-    let scratch = TempDir::new().unwrap();
-    let root = scratch.path().to_owned();
-    let package = root.join("one");
-    write(&package, "manifest.toml", "m");
-    write(&package, "data/a.toml", "ab");
+    let scratch = Scratch::new();
+    let root = scratch.root();
+    let package = scratch.path("one");
+    scratch.write("one/manifest.toml", "m");
+    scratch.write("one/data/a.toml", "ab");
     // Rows sorted by path bytes: "data/a.toml" before "manifest.toml". Postcard writes the
     // count 2, then each row as its path's length and bytes, its size as a varint, and the 32
     // bytes of its SHA-256.
@@ -62,7 +55,7 @@ fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
     ));
     // What was read stays as it was read: a later change on disk reaches neither its text nor
     // its fingerprint.
-    write(&package, "data/b/c.toml", "");
+    scratch.write("one/data/b/c.toml", "");
     let files: Vec<_> = dir
         .read()
         .unwrap()
@@ -72,26 +65,26 @@ fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
     assert_eq!(files, ["data/a.toml", "data/b/c.toml"]);
     assert_eq!(read.files_under("data").count(), 1);
     assert_eq!(read.files_under("scripts").count(), 0);
-    fs::remove_dir_all(package.join("data/b")).unwrap();
+    scratch.remove("one/data/b");
 
     // Any change to a file's bytes, or its path, gives another fingerprint.
-    write(&package, "data/a.toml", "ac");
+    scratch.write("one/data/a.toml", "ac");
     let changed = dir.read().unwrap().fingerprint();
     assert_ne!(changed, expected);
     let data = PackagePath::parse("data/a.toml").unwrap();
     assert_eq!(read.read_text(&data).unwrap(), "ab");
-    fs::rename(package.join("data"), package.join("date")).unwrap();
+    scratch.rename("one/data", "one/date");
     assert_ne!(dir.read().unwrap().fingerprint(), changed);
 
     // A store finds each package under a root by fingerprint, and searches no deeper than a
     // manifest. A package that does not read is the store's failure, and costs no other.
-    write(&root, "nested/two/manifest.toml", "n");
-    write(&root, "one/inner/manifest.toml", "i");
-    write(&root, "bad/manifest.toml", "b");
-    FileLink::make(&root.join("bad/manifest.toml"), &root.join("bad/link"));
+    scratch.write("nested/two/manifest.toml", "n");
+    scratch.write("one/inner/manifest.toml", "i");
+    scratch.write("bad/manifest.toml", "b");
+    scratch.link("bad/manifest.toml", "bad/link");
     // A manifest is found by its exact name, as a file system that ignores case would not.
-    write(&root, "upper/Manifest.toml", "u");
-    let store = PackageStore::scan(&root).unwrap();
+    scratch.write("upper/Manifest.toml", "u");
+    let store = PackageStore::scan(root).unwrap();
     let upper = PackageDir::new(root.join("upper")).read().unwrap();
     assert!(store.get(upper.fingerprint()).is_none());
     let one = dir.read().unwrap().fingerprint();
@@ -120,23 +113,23 @@ fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
 
 #[test]
 fn a_package_refuses_what_an_os_would_hold_another_way() {
-    let scratch = TempDir::new().unwrap();
-    let package = scratch.path().join("one");
-    write(&package, "manifest.toml", "m");
+    let scratch = Scratch::new();
+    let package = scratch.path("one");
+    scratch.write("one/manifest.toml", "m");
     let dir = PackageDir::new(&package);
     // A link is no file of a package, and a name no package path spells, one past ASCII, is no
     // file of one. Of two flaws, the one refused is the first by name, `a€` before `link`,
     // whatever order the OS lists them in.
-    FileLink::make(&package.join("manifest.toml"), &package.join("link"));
+    scratch.link("one/manifest.toml", "one/link");
     assert!(
         matches!(dir.read(), Err(ContentError::NotAFile(path)) if path == package.join("link"))
     );
     let euro = package.join("a\u{20ac}.toml");
-    write(&package, "a\u{20ac}.toml", "");
+    scratch.write("one/a\u{20ac}.toml", "");
     assert!(matches!(dir.read(), Err(ContentError::NotPath(path)) if path == euro));
-    fs::remove_file(package.join("link")).unwrap();
+    scratch.remove("one/link");
     assert!(matches!(dir.read(), Err(ContentError::NotPath(path)) if path == euro));
-    fs::remove_file(&euro).unwrap();
+    scratch.remove("one/a\u{20ac}.toml");
     assert!(dir.read().is_ok());
 
     // Two paths, or the directories on their way, that differ only in case are one file where
@@ -248,13 +241,11 @@ fn a_package_keeps_what_a_load_reads_streams_the_rest_and_holds_its_limits() {
         Err(ContentError::Missing { .. })
     ));
     // The same files on disk stream from the file, and fingerprint the same.
-    let scratch = TempDir::new().unwrap();
+    let scratch = Scratch::new();
     for (path, bytes) in tree.iter() {
-        let path = scratch.path().join(path);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, bytes).unwrap();
+        scratch.write(path, bytes);
     }
-    let disk = PackageDir::new(scratch.path().join("one")).read().unwrap();
+    let disk = PackageDir::new(scratch.path("one")).read().unwrap();
     assert_eq!(disk.fingerprint(), expected);
 
     // Three files, a read file of at most 2 bytes, 3 bytes read in all: the package fits, the

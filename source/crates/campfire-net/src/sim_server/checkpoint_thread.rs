@@ -185,6 +185,7 @@ mod tests {
     use campfire_protocol::LogCarry;
     use campfire_protocol::internals::TestKey;
     use campfire_sim::{IdAllocator, Position};
+    use campfire_store::Scratch;
 
     use super::*;
 
@@ -199,10 +200,10 @@ mod tests {
         world.init_resource::<IdAllocator>();
         let mut base = StateDelta::default();
         registry.track(&mut world, &mut base);
-        let dir = tempfile::tempdir().unwrap();
+        let scratch = Scratch::new();
         let signer = ServerSigner::new(TestKey::server(), |bytes| bytes.fill(1));
         let session_id = SessionId::new([2; 32]);
-        let snapshots = SnapshotDir(dir.path().join("snapshots"));
+        let snapshots = SnapshotDir(scratch.path("snapshots"));
         let mut thread =
             CheckpointThread::start(registry.clone(), base, session_id, snapshots, signer);
         for x in 1..=2 {

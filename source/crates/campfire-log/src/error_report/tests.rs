@@ -1,6 +1,7 @@
-use std::fs;
 use std::io;
 use std::path::Path;
+
+use campfire_store::{SourceFile, SourceFiles};
 
 use super::*;
 
@@ -147,30 +148,14 @@ fn writes_its_source(lines: &[&str]) -> bool {
     })
 }
 
-/// Visits each source file under `dir` with its production code: the code before the file's
-/// first test gate, in every file but `tests.rs`, `bench.rs` and those of a `tests` directory.
-fn production(dir: &Path, visit: &mut impl FnMut(&Path, &str)) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            if !path.ends_with("tests") {
-                production(&path, visit);
-            }
-            continue;
-        }
-        let source = path.extension().is_some_and(|extension| extension == "rs");
-        let name = path.file_name().unwrap().to_str().unwrap();
-        if !source || name == "tests.rs" || name == "bench.rs" {
-            continue;
-        }
-        let text = fs::read_to_string(&path).unwrap();
-        let code = ["#[cfg(test)]", "#[cfg(any(test"]
-            .iter()
-            .filter_map(|gate| text.find(gate))
-            .min()
-            .map_or(text.as_str(), |gate| &text[..gate]);
-        visit(&path, code);
+/// The production code of `file`, under `crates/` or `checks/`: none for one outside a member's
+/// `src`.
+fn production(file: &SourceFile) -> Option<&str> {
+    let mut names = file.path.split('/');
+    if names.nth(1) != Some("src") {
+        return None;
     }
+    file.production()
 }
 
 #[test]
@@ -179,14 +164,14 @@ fn every_error_the_workspace_writes_goes_through_its_report() {
     let mut found = Vec::new();
     let mut files = 0;
     for group in ["crates", "checks"] {
-        for member in fs::read_dir(workspace.join(group)).unwrap() {
-            let src = member.unwrap().path().join("src");
-            production(&src, &mut |path, code| {
-                files += 1;
-                for line in unreported(code) {
-                    found.push(format!("{}: {line}", path.display()));
-                }
-            });
+        for file in SourceFiles::under(&workspace.join(group)) {
+            let Some(code) = production(&file) else {
+                continue;
+            };
+            files += 1;
+            for line in unreported(code) {
+                found.push(format!("{group}/{}: {line}", file.path));
+            }
         }
     }
     assert_eq!(found, Vec::<String>::new());

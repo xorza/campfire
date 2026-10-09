@@ -1,4 +1,3 @@
-use std::fs;
 use std::time::Duration;
 
 use bevy_app::{
@@ -28,8 +27,8 @@ use campfire_protocol::{
     Applied, Controller, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms,
 };
 use campfire_runner::{Session, StartError};
-use campfire_sim::{SimTick, StableId, TickRate};
-use campfire_store::{DurableError, PathError};
+use campfire_sim::{SimTick, StableId, StateRegistry, TickRate};
+use campfire_store::{DurableError, InputFile, PathError};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
@@ -327,8 +326,11 @@ impl SimServer {
             .last()
             .map(|record| (record.segment, record.snapshot));
         if let Some((segment, fingerprint)) = latest {
-            let snapshot =
-                fs::read(snapshots.file(fingerprint)).map_err(RestoreMatchError::ReadSnapshot)?;
+            let snapshot = InputFile::read(
+                &snapshots.file(fingerprint),
+                StateRegistry::MAX_SNAPSHOT_LEN,
+            )
+            .map_err(RestoreMatchError::ReadSnapshot)?;
             Session::resume(world, log.rewound(), seeds, packages, segment, &snapshot)
                 .map_err(RestoreMatchError::Resume)?;
         } else {

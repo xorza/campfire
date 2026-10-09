@@ -14,6 +14,7 @@ campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
+campfire-store.workspace = true
 
 derive_more.workspace = true
 fluent-bundle.workspace = true
@@ -29,7 +30,6 @@ unic-langid.workspace = true
 [dev-dependencies]
 campfire-package = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
-tempfile.workspace = true
 
 [lints]
 workspace = true

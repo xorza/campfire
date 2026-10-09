@@ -45,7 +45,6 @@ campfire-protocol = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
-tempfile.workspace = true
 
 [[test]]
 name = "tests"

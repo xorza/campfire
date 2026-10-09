@@ -15,9 +15,8 @@ use campfire_net::{
 use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
+use campfire_store::Scratch;
 use lightyear::prelude::Unlinked;
-
-use crate::scratch::Scratch;
 
 /// Steps a client and the server may take to link, offer, join and play again.
 const REJOIN_STEPS: usize = 300;
@@ -320,7 +319,7 @@ fn every_client_rejoins_a_restored_server() {
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(data.path().to_owned());
+    local.keep_data(data.path("data"));
     local.start_match();
     for _ in 0..30 {
         local.step();

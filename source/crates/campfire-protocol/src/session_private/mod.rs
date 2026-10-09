@@ -19,6 +19,11 @@ pub struct SessionPrivate {
 }
 
 impl SessionPrivate {
+    /// The most bytes a private record's file may hold: its seed chain's few dozen and its terms, a few
+    /// hundred for a mode of a handful of dependencies, so a mebibyte holds one of thousands of
+    /// dependencies and refuses a file of another kind before it is read whole.
+    pub const MAX_FILE_LEN: usize = 1 << 20;
+
     /// The file's bytes: the tag, then the record in postcard.
     pub fn encode(&self, out: &mut Vec<u8>) {
         out.clear();

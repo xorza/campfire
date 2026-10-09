@@ -1,6 +1,4 @@
-use std::fs;
-
-use tempfile::TempDir;
+use campfire_store::Scratch;
 
 use super::*;
 
@@ -25,24 +23,20 @@ fn a_bot_is_read_from_its_slot_and_its_file() {
     ));
 
     // A file that is there gives the bot; one that is not, or holds no script, gives its step.
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("bot.toml");
-    fs::write(&path, "end = 1").unwrap();
+    let scratch = Scratch::new();
+    scratch.write("bot.toml", "end = 1");
     let file = SlotBotFile {
         slot: PlayerSlot::new(2),
-        path,
+        path: scratch.path("bot.toml"),
     };
     let read = file.read().unwrap();
     assert_eq!(read.slot, PlayerSlot::new(2));
     let missing = SlotBotFile {
         slot: PlayerSlot::new(2),
-        path: dir.path().join("none.toml"),
+        path: scratch.path("none.toml"),
     };
-    assert!(matches!(
-        missing.read(),
-        Err(OrderScriptReadError::Read { .. })
-    ));
-    fs::write(&file.path, "end = \"soon\"").unwrap();
+    assert!(matches!(missing.read(), Err(OrderScriptReadError::Read(_))));
+    scratch.write("bot.toml", "end = \"soon\"");
     assert!(matches!(
         file.read(),
         Err(OrderScriptReadError::Script { .. })

@@ -113,6 +113,37 @@ impl DurableFile {
         DurableName::sync_dir(parent).map_err(DurableError::SyncDirectory)
     }
 
+    /// Makes the directory `path` and each one above it that is missing, each its owner's only
+    /// and synced into its parent; one already there stays as it is.
+    pub fn create_dir_all(path: &Path) -> Result<(), PathError<DurableError>> {
+        let missing: Vec<&Path> = path
+            .ancestors()
+            .take_while(|dir| !dir.as_os_str().is_empty() && !dir.is_dir())
+            .collect();
+        for dir in missing.into_iter().rev() {
+            DurableFile::create_dir(dir)?;
+        }
+        Ok(())
+    }
+
+    /// Makes the directory `path`, its owner's only and synced into its parent, only when
+    /// nothing holds its name: `Exists` otherwise, as a run's directory is its own.
+    pub fn create_new_dir(path: &Path) -> Result<(), PathError<DurableCreateError>> {
+        let create = || {
+            let parent = path.parent().ok_or(DurableError::NoName)?;
+            match OwnerOnly::create_dir(path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    return Err(DurableCreateError::Exists);
+                }
+                Err(error) => return Err(DurableError::Create(error).into()),
+            }
+            DurableName::sync_dir(parent).map_err(DurableError::SyncDirectory)?;
+            Ok(())
+        };
+        create().map_err(PathError::at(path))
+    }
+
     /// Removes the directory `path` and all it holds, and syncs its parent, so it does not come
     /// back after a crash.
     pub fn remove_dir(path: &Path) -> Result<(), PathError<DurableError>> {

@@ -12,8 +12,7 @@ use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_protocol::{AfterLeave, Controller, ServerInput, SessionLog};
 use campfire_runner::{Runner, Session};
-
-use crate::scratch::Scratch;
+use campfire_store::Scratch;
 
 /// Where the server's hero of `slot` walks to.
 fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {
@@ -165,7 +164,7 @@ fn burst(stop: bool, end: u64) -> Burst {
     let mut setup = MatchSetup::SOLO;
     setup.bots = &[BURST];
     let mut local = InProcessMatch::new(setup);
-    local.keep_data(data.path().to_owned());
+    local.keep_data(data.path("data"));
     local.start_match();
     let bot = PlayerSlot::new(1);
     let (mut walks, mut restarted) = (Vec::new(), false);

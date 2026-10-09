@@ -1,6 +1,6 @@
+use std::env;
 use std::fmt::{self, Write as _};
 use std::path::PathBuf;
-use std::{env, fs};
 
 use campfire_capabilities::{
     Dead, Deaths, Owner, PlayerResources, Pools, ResourceId, ScriptFailures, Team,
@@ -9,6 +9,7 @@ use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
+use campfire_store::{DurableFile, InputFile};
 
 use crate::runner::Runner;
 
@@ -126,6 +127,10 @@ impl Golden {
         StateRegistry::digest(bytes)
     }
 
+    /// The most bytes a golden file may hold to be read whole: a line of about 40 bytes for each
+    /// tick, so a mebibyte holds a match of 25 000 ticks, past any the tests play.
+    const MAX_LEN: usize = 1 << 20;
+
     /// Compares the record with the golden file `name` of the runner's tests, or writes the file
     /// with `CAMPFIRE_BLESS=1`. A difference names the first tick each column differs in.
     pub fn check(&self, name: &str) {
@@ -137,18 +142,13 @@ impl Golden {
             writeln!(lines, "{tick} {state} {behaviour}").expect("text writes into a string");
         }
         if env::var_os("CAMPFIRE_BLESS").is_some() {
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "a test's golden file, which only `CAMPFIRE_BLESS` writes again"
-            )]
-            fs::write(&path, &lines)
-                .unwrap_or_else(|error| panic!("{}: {}", path.display(), ErrorReport::of(&error)));
+            DurableFile::write(&path, lines.as_bytes())
+                .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)));
             return;
         }
-        let pinned = fs::read_to_string(&path).unwrap_or_else(|error| {
+        let pinned = InputFile::read_text(&path, Golden::MAX_LEN).unwrap_or_else(|error| {
             panic!(
-                "{}: {}; run with CAMPFIRE_BLESS=1 to write it",
-                path.display(),
+                "{}; run with CAMPFIRE_BLESS=1 to write it",
                 ErrorReport::of(&error)
             )
         });

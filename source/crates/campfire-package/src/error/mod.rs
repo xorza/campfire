@@ -4,6 +4,7 @@ use std::str::Utf8Error;
 
 use campfire_capabilities::PackagePath;
 use campfire_common::Fingerprint;
+use campfire_store::{PathError, ReadError};
 use derive_more::Display;
 use thiserror::Error;
 use toml::de::Error as TomlError;
@@ -52,13 +53,9 @@ pub enum ContentError {
         #[source]
         error: TomlError,
     },
-    /// A directory of packages, or of a package's files, does not read.
-    #[error("{} does not list", .dir.display())]
-    Scan {
-        dir: PathBuf,
-        #[source]
-        error: io::Error,
-    },
+    /// A directory of packages, a package's directory, or one of its files does not read.
+    #[error("a package's files do not read")]
+    Read(#[source] PathError<ReadError>),
     /// An entry of a package is neither a file nor a directory, such as a link.
     #[error("{}: neither a file nor a directory", .0.display())]
     NotAFile(PathBuf),

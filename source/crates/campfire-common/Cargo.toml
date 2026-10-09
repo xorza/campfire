@@ -9,6 +9,7 @@ derive_more.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
+campfire-store = { workspace = true, features = ["internals"] }
 postcard.workspace = true
 
 [lints]

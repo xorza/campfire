@@ -5,7 +5,8 @@
 
 #![expect(
     clippy::disallowed_methods,
-    reason = "the one crate that writes files and starts threads, which clippy.toml denies the others"
+    clippy::disallowed_types,
+    reason = "the one crate that touches files and starts threads, which clippy.toml denies the others"
 )]
 
 mod append_writer;
@@ -19,8 +20,12 @@ mod output_file;
 mod path_error;
 mod platform;
 #[cfg(any(test, feature = "internals"))]
+mod race;
+#[cfg(any(test, feature = "internals"))]
 mod scratch;
 mod secret_file;
+#[cfg(any(test, feature = "internals"))]
+mod source_files;
 mod stream_writer;
 mod worker;
 
@@ -36,7 +41,7 @@ pub use crate::durable_file::DurableFile;
 pub use crate::durable_file::error::{DurableCreateError, DurableError};
 pub use crate::exchange::Exchange;
 pub use crate::input_file::error::ReadError;
-pub use crate::input_file::{InputFile, Stamped};
+pub use crate::input_file::{InputFile, InputStream, Stamped};
 pub use crate::latest_writer::LatestWriter;
 pub use crate::output_file::OutputFile;
 pub use crate::path_error::PathError;
@@ -44,8 +49,12 @@ pub use crate::path_error::PathError;
 pub use crate::platform::file_link::FileLink;
 pub use crate::platform::owner_only::Exposure;
 #[cfg(any(test, feature = "internals"))]
+pub use crate::race::Race;
+#[cfg(any(test, feature = "internals"))]
 pub use crate::scratch::Scratch;
 pub use crate::secret_file::SecretFile;
+#[cfg(any(test, feature = "internals"))]
+pub use crate::source_files::{SourceFile, SourceFiles};
 pub use crate::stream_writer::StreamWriter;
 pub use crate::stream_writer::stream_sender::StreamSender;
 pub use crate::worker::Worker;

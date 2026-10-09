@@ -20,5 +20,8 @@ serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+[dev-dependencies]
+campfire-store = { workspace = true, features = ["internals"] }
+
 [lints]
 workspace = true

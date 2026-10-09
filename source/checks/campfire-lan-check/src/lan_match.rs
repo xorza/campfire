@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::mem;
 use std::net::{SocketAddr, UdpSocket};
 use std::path::{Path, PathBuf};
@@ -8,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use campfire_common::{Bytes32, Tick};
 use campfire_net::{InputLogged, Listening, MatchStarted};
+use campfire_store::OutputFile;
 
 use crate::binaries::Binaries;
 use crate::error::CheckError;
@@ -274,11 +274,7 @@ impl LanMatch<'_> {
     /// says, as the verdict reads its events at Debug.
     fn start(&self, process: Process, command: &mut Command) -> Result<Child, CheckError> {
         let text = self.dir.join(format!("{}.log", process.file_stem()));
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "the LAN check writes its run directory, which a run of it reads and keeps"
-        )]
-        let text = File::create(&text).map_err(|error| CheckError::File { path: text, error })?;
+        let text = OutputFile::stdio(&text).map_err(CheckError::TextLog)?;
         command
             .current_dir(self.dir)
             .env("CAMPFIRE_LOG", process.log_path(self.dir))

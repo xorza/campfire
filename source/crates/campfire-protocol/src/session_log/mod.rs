@@ -314,6 +314,11 @@ impl Control {
 }
 
 impl SessionLog {
+    /// The most bytes a log's file, or its journal, may hold to be read whole: as many as the
+    /// log's positions reach, `POSITION_BOUND`, which bounds its payload bytes alone, so a file
+    /// past it holds more than any log the format keeps, of a match that would run for months.
+    pub const MAX_FILE_LEN: usize = POSITION_BOUND;
+
     /// A log with nothing recorded; an error when the header starts another count of slots than
     /// the terms plan, or a slot otherwise than its plan, when a player's delegation names
     /// another server or session than `header`, whose terms the session id hashes, when there

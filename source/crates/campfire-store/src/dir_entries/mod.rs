@@ -63,7 +63,7 @@ impl DirEntries {
 }
 
 impl EntryKind {
-    fn of(kind: FileType) -> EntryKind {
+    pub(crate) fn of(kind: FileType) -> EntryKind {
         if kind.is_symlink() {
             EntryKind::Link
         } else if kind.is_dir() {

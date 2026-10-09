@@ -1,12 +1,14 @@
 use std::any::TypeId;
 use std::cell::RefCell;
+use std::env;
 use std::error::Error;
 use std::fmt;
 use std::num::NonZeroU64;
 use std::panic::{self, AssertUnwindSafe};
-use std::{env, fs};
+use std::path::Path;
 
 use campfire_sim::Capability;
+use campfire_store::{DurableFile, InputFile};
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 
 use super::*;
@@ -253,6 +255,9 @@ impl<'de> Deserializer<'de> for FieldNames<'_> {
     }
 }
 
+/// The most bytes a test reads of the reference: far past the few hundred kilobytes it holds.
+const REFERENCE_LEN: usize = 16 << 20;
+
 /// The reference beside design 08.
 const REFERENCE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -264,9 +269,9 @@ fn the_reference_is_what_the_registry_writes() {
     let mut api = CapabilitySet::script_api();
     let written = api.reference();
     if env::var_os("CAMPFIRE_BLESS").is_some() {
-        fs::write(REFERENCE, &written).unwrap();
+        DurableFile::write(Path::new(REFERENCE), written.as_bytes()).unwrap();
     }
-    let held = fs::read_to_string(REFERENCE).unwrap();
+    let held = InputFile::read_text(Path::new(REFERENCE), REFERENCE_LEN).unwrap();
     assert!(
         held == written,
         "the reference differs from the registry: run this test with CAMPFIRE_BLESS=1"

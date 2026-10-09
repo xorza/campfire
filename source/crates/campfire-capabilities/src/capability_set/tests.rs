@@ -1,5 +1,6 @@
-use std::fs;
 use std::path::Path;
+
+use campfire_store::{InputFile, SourceFiles};
 
 use super::*;
 use crate::actions::action_book::ActionBook;
@@ -107,6 +108,9 @@ fn the_table_holds_every_capability_once_after_what_it_builds_on() {
 }
 
 /// The capability table of design 04, beside this crate.
+/// The most bytes a test reads of a design document: far past any the design holds.
+const DOC_LEN: usize = 1 << 20;
+
 const OVERVIEW: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../docs/design/04-capabilities/00-overview.md"
@@ -116,7 +120,7 @@ const OVERVIEW: &str = concat!(
 fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_installs() {
     // Each row of the table names its capabilities in its first column and its status in the
     // second. Every capability but `mode`, which every match has, is in it once.
-    let overview = fs::read_to_string(OVERVIEW).unwrap();
+    let overview = InputFile::read_text(Path::new(OVERVIEW), DOC_LEN).unwrap();
     let table = overview
         .lines()
         .skip_while(|line| !line.starts_with("| Capability | Status |"))
@@ -177,29 +181,12 @@ const LAYERS: [(&str, u8); 21] = [
     ("books", 8),
 ];
 
-/// Visits each source file under `dir` with its production code: the code before the file's
-/// first test gate, in every file but `tests.rs`, `bench.rs` and those of a `tests` directory.
-fn production(dir: &Path, visit: &mut impl FnMut(&Path, &str)) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            if !path.ends_with("tests") {
-                production(&path, visit);
-            }
-            continue;
+/// Visits each source file under `dir` with its production code, by its path from `dir`.
+fn production(dir: &Path, visit: &mut impl FnMut(&str, &str)) {
+    for file in SourceFiles::under(dir) {
+        if let Some(code) = file.production() {
+            visit(&file.path, code);
         }
-        let source = path.extension().is_some_and(|extension| extension == "rs");
-        let name = path.file_name().unwrap().to_str().unwrap();
-        if !source || name == "tests.rs" || name == "bench.rs" {
-            continue;
-        }
-        let text = fs::read_to_string(&path).unwrap();
-        let code = ["#[cfg(test)]", "#[cfg(any(test"]
-            .iter()
-            .filter_map(|gate| text.find(gate))
-            .min()
-            .map_or(text.as_str(), |gate| &text[..gate]);
-        visit(&path, code);
     }
 }
 
@@ -412,16 +399,11 @@ fn each_role_of_a_module_takes_the_modules_name() {
     let mut misnamed = Vec::new();
     let mut held = [0; ROLES.len()];
     production(src, &mut |path, code| {
-        let parts: Vec<&str> = path
-            .strip_prefix(src)
-            .unwrap()
-            .iter()
-            .map(|part| part.to_str().unwrap())
-            .collect();
-        let [module, .., _] = parts[..] else {
+        let parts: Vec<&str> = path.split('/').collect();
+        let [module, .., last] = parts[..] else {
             return;
         };
-        let file = match path.file_stem().unwrap().to_str().unwrap() {
+        let file = match last.strip_suffix(".rs").expect("a source ends in .rs") {
             "mod" => parts[parts.len() - 2],
             stem => stem,
         };
@@ -511,9 +493,7 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
     let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
     let mut found = Vec::new();
     production(src, &mut |path, code| {
-        let parts = path.strip_prefix(src).unwrap().iter();
-        let parts: Vec<&str> = parts.map(|part| part.to_str().unwrap()).collect();
-        let file = parts.join("/");
+        let file = path.to_owned();
         for line in code.lines() {
             if line.trim_start().starts_with("//") {
                 continue;

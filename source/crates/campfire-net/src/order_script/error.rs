@@ -1,6 +1,6 @@
-use std::io;
 use std::path::PathBuf;
 
+use campfire_store::{PathError, ReadError};
 use thiserror::Error;
 use toml::de::Error as TomlError;
 
@@ -26,12 +26,8 @@ pub enum OrderScriptError {
 /// Why an order script's file does not give a script.
 #[derive(Debug, Error)]
 pub enum OrderScriptReadError {
-    #[error("{} does not read", .path.display())]
-    Read {
-        path: PathBuf,
-        #[source]
-        error: io::Error,
-    },
+    #[error("the order script does not read")]
+    Read(#[source] PathError<ReadError>),
     #[error("{} holds no order script", .path.display())]
     Script {
         path: PathBuf,

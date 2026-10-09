@@ -1,9 +1,9 @@
-use std::fs;
-use std::io::ErrorKind;
 use std::path::Path;
+use std::str;
 
 use campfire_log::{LogEvent, LogLine};
 use campfire_net::{InputsDiscarded, OrdersSent};
+use campfire_store::InputFile;
 
 use crate::error::CheckError;
 use crate::process::Process;
@@ -16,6 +16,11 @@ pub(crate) struct ProcessLog {
 }
 
 impl ProcessLog {
+    /// The most bytes a process's log may hold to be read whole: a line for each frame at Trace
+    /// and for each order, a few mebibytes for a match of the check, so a gibibyte is far past
+    /// one.
+    const MAX_LEN: usize = 1 << 30;
+
     pub(crate) const fn empty(process: Process) -> ProcessLog {
         ProcessLog {
             process,
@@ -25,20 +30,20 @@ impl ProcessLog {
 
     /// The log `process` wrote to `path`; empty when it wrote none.
     pub(crate) fn read(process: Process, path: &Path) -> Result<ProcessLog, CheckError> {
-        match fs::read_to_string(path) {
-            Ok(text) => ProcessLog::parse(process, &text),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(ProcessLog::empty(process)),
-            Err(error) => Err(CheckError::File {
-                path: path.to_owned(),
-                error,
-            }),
+        match InputFile::read_if_present(path, ProcessLog::MAX_LEN).map_err(CheckError::Read)? {
+            Some(bytes) => ProcessLog::parse(process, &bytes),
+            None => Ok(ProcessLog::empty(process)),
         }
     }
 
-    /// The log in `text`, one event a line. A last line with no line end is one a process did not
+    /// The log in `bytes`, one event a line. A last line with no line end is one a process did not
     /// finish writing before it was stopped, and is left out.
-    pub(crate) fn parse(process: Process, text: &str) -> Result<ProcessLog, CheckError> {
-        let whole = text.rfind('\n').map_or("", |end| &text[..end]);
+    pub(crate) fn parse(process: Process, bytes: &[u8]) -> Result<ProcessLog, CheckError> {
+        // Cut before the text is read, so a character the process had not finished writing
+        // goes with its line.
+        let end = bytes.iter().rposition(|&byte| byte == b'\n').unwrap_or(0);
+        let whole = str::from_utf8(&bytes[..end])
+            .map_err(|error| CheckError::NotText { process, error })?;
         let lines = whole
             .lines()
             .enumerate()

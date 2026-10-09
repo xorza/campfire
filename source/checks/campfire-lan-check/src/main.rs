@@ -20,7 +20,6 @@
 //! `--verifier <verifier>`, it runs that verifier and needs no cargo.
 
 use std::env;
-use std::fs;
 use std::path::{self, Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::SystemTime;
@@ -31,6 +30,7 @@ use campfire_net::{
     ClientLayout, LinkLost, Listening, OrderScript, ServerLayout, SessionWritten, TicksCaughtUp,
 };
 use campfire_protocol::SessionLog;
+use campfire_store::{DurableFile, InputFile};
 use campfire_verifier::Verified;
 use tracing::{error, info};
 
@@ -144,14 +144,7 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
                 .len(),
         );
         let path = dir.join(format!("{}.toml", Process::Bot(index).file_stem()));
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "the LAN check writes its run directory, which a run of it reads and keeps"
-        )]
-        fs::write(&path, text).map_err(|error| CheckError::File {
-            path: path.clone(),
-            error,
-        })?;
+        DurableFile::write(&path, text.as_bytes()).map_err(CheckError::Write)?;
         scripts.push(path);
     }
 
@@ -205,7 +198,7 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<LoggedInput>,
         return Ok(Vec::new());
     };
     let path = host_layout(dir, SessionKind::Lan).published_log(written.session);
-    let bytes = fs::read(&path).map_err(|error| CheckError::File { path, error })?;
+    let bytes = InputFile::read(&path, SessionLog::MAX_FILE_LEN).map_err(CheckError::Read)?;
     let published = SessionLog::decode(&bytes).map_err(CheckError::SessionLog)?;
     let ticks = published.next_tick();
     let mut log = published.rewound();

@@ -1,9 +1,9 @@
-use std::fs;
 use std::path::Path;
 
 use campfire_capabilities::{Action, ActionTarget, InputValue, ModeInput, Scalar};
 use campfire_common::Tick;
 use campfire_sim::StableId;
+use campfire_store::InputFile;
 use serde::Deserialize;
 
 use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
@@ -66,13 +66,16 @@ impl ScriptedInput {
 }
 
 impl OrderScript {
+    /// The most bytes an order script's file may hold: a TOML line or two for each order, a few
+    /// kilobytes for a match's script, so a mebibyte holds thousands of orders and refuses a file
+    /// of another kind before it is read whole.
+    pub const MAX_FILE_LEN: usize = 1 << 20;
+
     /// The script in the file at `path`; an error for a file that does not read, and for text
     /// `parse` refuses.
     pub fn read(path: &Path) -> Result<OrderScript, OrderScriptReadError> {
-        let text = fs::read_to_string(path).map_err(|error| OrderScriptReadError::Read {
-            path: path.to_owned(),
-            error,
-        })?;
+        let text = InputFile::read_text(path, OrderScript::MAX_FILE_LEN)
+            .map_err(OrderScriptReadError::Read)?;
         OrderScript::parse(&text).map_err(|error| OrderScriptReadError::Script {
             path: path.to_owned(),
             error,

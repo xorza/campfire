@@ -1,5 +1,5 @@
-use std::fs;
-use std::io;
+use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -9,7 +9,10 @@ use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
 use campfire_runner::Session;
-use campfire_store::{AppendOpenError, DurableError, DurableFile, PathError};
+use campfire_store::{
+    AppendOpenError, DirEntries, DurableError, DurableFile, InputFile, PathError, ReadError,
+    Stamped,
+};
 
 use crate::events::session_aborted::SessionAborted;
 use crate::sim_server::checkpoints::Checkpoints;
@@ -90,39 +93,40 @@ impl SessionDir {
 
     /// The directory of the one session under `data` whose log is not published; none when
     /// every session's is. An error when there are several, and for an entry named by no
-    /// session id.
+    /// session id. The sessions and the published logs are each listed once, so every answer
+    /// comes from one moment, and in the order of their names, so a directory with several
+    /// flaws gives the same error on every OS.
     pub fn find(data: &ServerDir) -> Result<Option<SessionDir>, FindError> {
-        let entries = match fs::read_dir(data.layout().sessions_dir()) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(FindError::Read(error)),
+        let layout = data.layout();
+        let listed = |path: &Path| match DirEntries::read(path) {
+            Ok(entries) => Ok(entries),
+            Err(PathError {
+                error: ReadError::Missing,
+                ..
+            }) => Ok(Vec::new()),
+            Err(error) => Err(FindError::Read(error)),
         };
-        // In the order of their names, so a directory with several flaws gives the same error on
-        // every OS.
-        let mut names = entries
-            .map(|entry| entry.map(|entry| entry.file_name()))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(FindError::Read)?;
-        names.sort_unstable();
+        let published: BTreeSet<OsString> = listed(&layout.logs_dir())?
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect();
         let mut found = None;
-        for name in names {
-            let session: SessionId = name
+        for entry in listed(&layout.sessions_dir())? {
+            let session: SessionId = entry
+                .name
                 .to_str()
                 .and_then(|name| name.parse().ok())
-                .ok_or(FindError::Stray(name))?;
-            let done = data
-                .layout()
-                .published_log(session)
-                .try_exists()
-                .map_err(FindError::Read)?;
-            if done {
+                .ok_or(FindError::Stray(entry.name))?;
+            let log = layout.published_log(session);
+            let log = log.file_name().expect("a published log names a file");
+            if published.contains(log) {
                 continue;
             }
             if found.is_some() {
                 return Err(FindError::Several);
             }
             found = Some(SessionDir {
-                path: data.layout().session_dir(session),
+                path: layout.session_dir(session),
             });
         }
         Ok(found)
@@ -149,7 +153,9 @@ impl SessionDir {
     /// private record or no journal. An error for a record that does not read, a session of
     /// another release, and a journal whose records do not rebuild a log.
     pub fn restore(&self) -> Result<Option<RestoredSession>, RestoreError> {
-        let Some(private) = SessionDir::read(&self.private())? else {
+        let private = InputFile::read_if_present(&self.private(), SessionPrivate::MAX_FILE_LEN)
+            .map_err(RestoreError::Read)?;
+        let Some(private) = private else {
             return Ok(None);
         };
         let private = SessionPrivate::decode(&private).map_err(RestoreError::Private)?;
@@ -157,12 +163,15 @@ impl SessionDir {
             return Err(RestoreError::OtherRelease(private.terms.release));
         }
         let path = self.journal();
-        let Some(bytes) = SessionDir::read(&path)? else {
-            return Ok(None);
-        };
-        let modified = fs::metadata(&path)
-            .and_then(|metadata| metadata.modified())
-            .map_err(RestoreError::Read)?;
+        let Stamped { bytes, modified } =
+            match InputFile::read_stamped(&path, SessionLog::MAX_FILE_LEN) {
+                Ok(stamped) => stamped,
+                Err(PathError {
+                    error: ReadError::Missing,
+                    ..
+                }) => return Ok(None),
+                Err(error) => return Err(RestoreError::Read(error)),
+            };
         let mut frames = JournalFrames::new(&bytes).map_err(RestoreError::NotJournal)?;
         let records: Vec<&[u8]> = frames.by_ref().collect();
         if records.is_empty() {
@@ -180,15 +189,6 @@ impl SessionDir {
             },
             modified,
         }))
-    }
-
-    /// The bytes of the file at `path`; none when there is no file.
-    fn read(path: &Path) -> Result<Option<Vec<u8>>, RestoreError> {
-        match fs::read(path) {
-            Ok(bytes) => Ok(Some(bytes)),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(RestoreError::Read(error)),
-        }
     }
 
     /// Removes the directory of a session whose match never started, which logged nothing.
@@ -266,14 +266,14 @@ mod tests {
     use campfire_common::{Fingerprint, Ticks};
     use campfire_protocol::internals::TestKey;
     use campfire_protocol::{SeedChain, SessionTerms, SlotPlan};
-    use tempfile::TempDir;
+    use campfire_store::Scratch;
 
     use super::*;
 
     #[test]
     fn a_session_stopped_at_any_step_before_its_first_record_goes() {
-        let scratch = TempDir::new().unwrap();
-        let root = scratch.path().join("data");
+        let scratch = Scratch::new();
+        let root = scratch.path("data");
         let data = ServerDir::open(&root).unwrap();
         let key = TestKey::of(8);
         let seed_chain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -293,12 +293,11 @@ mod tests {
                 slots: vec![SlotPlan::Open],
             },
         };
-        let path = root
-            .join("sessions")
-            .join(private.terms.session_id().to_string());
+        let session = Path::new("data/sessions").join(private.terms.session_id().to_string());
+        let path = scratch.path(&session);
         let gone = |data: &ServerDir| {
             assert!(SessionDir::waiting(data).unwrap().is_none());
-            !path.exists()
+            !scratch.exists(&session)
         };
         // Stopped with its directory made, before its private record.
         DurableFile::create_dir(&root.join("sessions")).unwrap();

@@ -75,8 +75,8 @@ impl Logging {
             .with(terminal)
             .with(file)
             .init();
-        if let (Some(path), Some(error)) = (path, failed) {
-            error!(path = %path.display(), error = %ErrorReport::of(&error), "CAMPFIRE_LOG names a file that cannot be created");
+        if let Some(error) = failed {
+            error!(error = %ErrorReport::of(&error), "CAMPFIRE_LOG names a file that cannot be created");
         }
         for (variable, refused) in refusals {
             if let Some(refused) = refused {

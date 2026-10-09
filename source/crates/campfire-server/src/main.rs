@@ -89,7 +89,7 @@ fn main() -> ExitCode {
     let data = match ServerDir::open(&data) {
         Ok(data) => data,
         Err(error) => {
-            error!(data = %data.display(), error = %ErrorReport::of(&error), "the data directory does not open");
+            error!(error = %ErrorReport::of(&error), "the data directory does not open");
             return ExitCode::from(ExitStatus::Failure);
         }
     };

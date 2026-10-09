@@ -2,16 +2,13 @@
 //! window it replays its log and plays on; past it, it ends the session aborted and publishes
 //! its log; and it refuses a session of another release, naming it.
 
-use std::fs;
-
 use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Runner, Session};
-
-use crate::scratch::Scratch;
+use campfire_store::Scratch;
 
 /// The scenario's match, its server's data in `data`, after 90 steps; with the state hash after
 /// each tick the server ran.
@@ -20,7 +17,7 @@ fn played(data: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(data.path().to_owned());
+    local.keep_data(data.path("data"));
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     for _ in 0..90 {
@@ -71,18 +68,17 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
 
     // The private record, at the path Stage 6 names, names another release: the restore refuses
     // it, naming the release.
-    let stopped = ServerDir::open(data.path()).unwrap();
+    let stopped = ServerDir::open(&data.path("data")).unwrap();
     let path = data
-        .path()
-        .join("sessions")
+        .path("data/sessions")
         .join(id.to_string())
         .join("private");
-    let ours = fs::read(&path).unwrap();
+    let ours = data.read(&path);
     let mut private = SessionPrivate::decode(&ours).unwrap();
     private.terms.release = "0.0.9".to_owned();
     let mut bytes = Vec::new();
     private.encode(&mut bytes);
-    fs::write(&path, bytes).unwrap();
+    data.write(&path, bytes);
     let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let refused = dir.restore().err();
     assert!(
@@ -92,14 +88,14 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
 
     // Its own release: past the window, the session ends aborted before the tick it stopped
     // at, in the state the server left, and its log, published, replays to every hash.
-    fs::write(&path, ours).unwrap();
+    data.write(&path, ours);
     let session = dir.restore().unwrap().unwrap();
     let key = TestKey::server();
     let file = session
         .abort(&stopped, local.packages(), key, |aux| aux.fill(6))
         .unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());
-    let log = SessionLog::decode(&fs::read(&file).unwrap()).unwrap();
+    let log = SessionLog::decode(&data.read(&file)).unwrap();
     let result = *log.result().unwrap();
     assert_eq!(
         (result.tick, result.outcome, result.state_hash),

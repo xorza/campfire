@@ -249,7 +249,7 @@ fn the_impostor_and_each_process_fail_by_their_own_flaws() {
         "",
     ]
     .join("\n");
-    let log = ProcessLog::parse(Process::Server, &text).unwrap();
+    let log = ProcessLog::parse(Process::Server, text.as_bytes()).unwrap();
     let mut verdict = Verdict::default();
     verdict.process(Process::Server, ProcessOutcome::Overran, &log);
     assert_eq!(

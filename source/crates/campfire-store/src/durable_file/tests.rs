@@ -1,8 +1,7 @@
-use std::sync::Barrier;
-
 use tempfile::TempDir;
 
 use super::*;
+use crate::race::Race;
 
 #[test]
 fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
@@ -63,6 +62,20 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
             ..
         })
     ));
+    // Each missing directory above one is made, its owner's only; one already there stays. A new
+    // directory is made once.
+    let deep = dir.path().join("a").join("b");
+    DurableFile::create_dir_all(&deep).unwrap();
+    DurableFile::create_dir_all(&deep).unwrap();
+    assert_eq!(OwnerOnly::exposure_at(&dir.path().join("a")).unwrap(), None);
+    DurableFile::create_new_dir(&deep.join("run")).unwrap();
+    assert!(matches!(
+        DurableFile::create_new_dir(&deep.join("run")),
+        Err(PathError {
+            error: DurableCreateError::Exists,
+            ..
+        })
+    ));
     // Removed, it goes with all it holds; a directory that is not there is not removed.
     DurableFile::remove_dir(&path).unwrap();
     assert!(!path.exists());
@@ -93,16 +106,9 @@ fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
     // Two threads make one file at once: one makes it, the other finds it made, and the file
     // holds the maker's bytes, with no temporary file left.
     let raced = dir.path().join("raced.nsec");
-    let barrier = Barrier::new(2);
-    let results = thread::scope(|scope| {
-        let threads = [b"one", b"two"].map(|bytes| {
-            let (raced, barrier) = (&raced, &barrier);
-            scope.spawn(move || {
-                barrier.wait();
-                (bytes, DurableFile::create(raced, bytes))
-            })
-        });
-        threads.map(|thread| thread.join().unwrap())
+    let results = Race::run(2, |index| {
+        let bytes = [&b"one"[..], b"two"][index];
+        (bytes, DurableFile::create(&raced, bytes))
     });
     let made: Vec<_> = results
         .iter()

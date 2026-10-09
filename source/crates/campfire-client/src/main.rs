@@ -101,7 +101,7 @@ fn main() -> ExitCode {
         Some(path) => match ClientDir::open(path) {
             Ok(data) => Some(Arc::new(data)),
             Err(error) => {
-                error!(data = %path.display(), error = %ErrorReport::of(&error), "the data directory does not open");
+                error!(error = %ErrorReport::of(&error), "the data directory does not open");
                 return ExitCode::from(ExitStatus::Failure);
             }
         },

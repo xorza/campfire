@@ -3,11 +3,9 @@
 //! every tick, and so does the replay of the log's file with the packages a verifier holds. So
 //! does the reference 3v3's, whose players learn ranks.
 
-use std::collections::BTreeMap;
-use std::fs;
 use std::num::NonZeroU32;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 
@@ -29,9 +27,8 @@ use campfire_runner::{
     InputRules, ResultMismatch, Runner, ServerInputRefused, SlotRuleError, StartError, TermsError,
 };
 use campfire_sim::{EntityIndex, Position, StableId};
-use campfire_store::AppendWriter;
+use campfire_store::{AppendWriter, Scratch};
 use campfire_verifier::{Replay, ReplayError, SnapshotCheckError, Verified};
-use tempfile::TempDir;
 
 /// The lane mode's life pool, `health`, the first of its pools by name.
 const LIFE: PoolId = PoolId::FIRST;
@@ -80,24 +77,6 @@ const ORDERS: [Sent; 3] = [
 
 fn packages() -> ModePackages {
     ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap()
-}
-
-/// Every file under `dir`, by its path from `dir`.
-fn files_under(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
-    let mut files = BTreeMap::new();
-    let mut dirs = vec![PathBuf::new()];
-    while let Some(at) = dirs.pop() {
-        for entry in fs::read_dir(dir.join(&at)).unwrap() {
-            let entry = entry.unwrap();
-            let path = at.join(entry.file_name());
-            if entry.file_type().unwrap().is_dir() {
-                dirs.push(path);
-            } else {
-                files.insert(path, fs::read(entry.path()).unwrap());
-            }
-        }
-    }
-    files
 }
 
 fn store() -> PackageStore {
@@ -222,8 +201,8 @@ impl RecordSink for FileJournal {
 fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
     // The orders' match, journaled from its start, checkpointed before tick 40 and ended before
     // tick 72; the journal on disk holds every record once the match drops.
-    let scratch = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
-    let path = scratch.path().join("journal");
+    let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
+    let path = scratch.path("journal");
     let mut fixed = session().start();
     fixed.runner_mut().keep_journal(Box::new(FileJournal(
         AppendWriter::create("journal", &path, JournalFrames::TAG).unwrap(),
@@ -236,7 +215,7 @@ fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
     fixed.end();
     let bytes = encoded(fixed.runner().log());
     drop(fixed);
-    let file = fs::read(&path).unwrap();
+    let file = scratch.read(&path);
     let mut rebuilt = SessionLog::from_journal(JournalFrames::new(&file).unwrap()).unwrap();
     rebuilt.reveal_seed(FixedSession::seed(1));
     assert_eq!(encoded(&rebuilt), bytes);
@@ -641,10 +620,10 @@ fn the_binary_logs_the_last_state_hash() {
     let Run { fixed, trail } = checkpointed(&mut snapshot, None, None);
     let runner = fixed.runner();
     // A directory of this run's own, which goes when the test ends, passed or failed.
-    let scratch = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
-    let dir = scratch.path().to_str().unwrap();
+    let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
+    let dir = scratch.root().to_str().unwrap();
     let path = format!("{dir}/headless.log");
-    fs::write(&path, encoded(runner.log())).unwrap();
+    scratch.write(&path, encoded(runner.log()));
     // Logged without color, as standard error is not a terminal here, at `info`, and to no file,
     // whatever the environment says.
     let verifier = |args: &[&str]| {
@@ -663,9 +642,9 @@ fn the_binary_logs_the_last_state_hash() {
     let success = format!("{} file={path} hash={hash}\n", Verified::MESSAGE);
     // With no snapshot, and with the checkpoint's snapshot named by its fingerprint.
     let snapshots = format!("{dir}/snapshots");
-    fs::create_dir(&snapshots).unwrap();
+    scratch.create_dir(&snapshots);
     let named = format!("{snapshots}/{}", SnapshotFingerprint::of(&snapshot));
-    fs::write(&named, &snapshot).unwrap();
+    scratch.write(&named, &snapshot);
     for args in [&[packages, &path][..], &[packages, &path, &snapshots]] {
         let output = verifier(args);
         assert!(output.status.success(), "{output:?}");
@@ -675,7 +654,7 @@ fn the_binary_logs_the_last_state_hash() {
     }
     // A snapshot of other bytes under the checkpoint's name.
     *snapshot.last_mut().unwrap() ^= 1;
-    fs::write(&named, &snapshot).unwrap();
+    scratch.write(&named, &snapshot);
     let output = verifier(&[packages, &path, &snapshots]);
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();
@@ -687,7 +666,7 @@ fn the_binary_logs_the_last_state_hash() {
 
     let corrupt = format!("{dir}/headless-truncated.log");
     let bytes = encoded(runner.log());
-    fs::write(&corrupt, &bytes[..bytes.len() - 1]).unwrap();
+    scratch.write(&corrupt, &bytes[..bytes.len() - 1]);
     let output = verifier(&[packages, &corrupt]);
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();
@@ -766,7 +745,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     );
 
     // A lane mode whose `on_match_start` throws: the session does not start.
-    let mut files = files_under(&PackageDir::workspace("test"));
+    let mut files = PackageDir::workspace_tree("test");
     let script = PathBuf::from("modes/lane/scripts/mode.rhai");
     let text = String::from_utf8(files[&script].clone()).unwrap();
     let start = "fn on_match_start(ctx) {\n";

@@ -7,8 +7,18 @@ use super::*;
 fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
     let started = r#"{"level":"INFO","target":"t","fields":{"message":"the match started","slot":1,"start_tick":5}}"#;
     let text = format!("{started}\n{}", &started[..20]);
-    let log = ProcessLog::parse(Process::Bot(0), &text).unwrap();
+    let log = ProcessLog::parse(Process::Bot(0), text.as_bytes()).unwrap();
     assert_eq!(log.lines().len(), 1);
+    // A last line cut inside a character, the first two of the three bytes of `€`, goes too,
+    // before the text is read.
+    let cut = [format!("{started}\n").as_bytes(), &[0xe2, 0x82]].concat();
+    assert_eq!(
+        ProcessLog::parse(Process::Bot(0), &cut)
+            .unwrap()
+            .lines()
+            .len(),
+        1
+    );
     assert_eq!(
         log.read_all::<MatchStarted>().unwrap(),
         [MatchStarted {
@@ -18,7 +28,8 @@ fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
     );
     // The event of the second line has a field that does not read.
     let flawed = started.replace(r#""slot":1"#, r#""slot":"one""#);
-    let log = ProcessLog::parse(Process::Bot(0), &format!("{started}\n{flawed}\n")).unwrap();
+    let log =
+        ProcessLog::parse(Process::Bot(0), format!("{started}\n{flawed}\n").as_bytes()).unwrap();
     // The first event reads, whatever follows it.
     assert_eq!(
         log.first::<MatchStarted>()
@@ -42,7 +53,7 @@ fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
     ));
     // A line that is not JSON fails the parse, by its number.
     assert!(matches!(
-        ProcessLog::parse(Process::Server, &format!("{started}\n{{\n")),
+        ProcessLog::parse(Process::Server, format!("{started}\n{{\n").as_bytes()),
         Err(CheckError::Event {
             process: Process::Server,
             line: 2,
@@ -50,7 +61,7 @@ fn a_log_drops_its_unfinished_last_line_and_names_a_line_it_cannot_read() {
         })
     ));
     assert!(
-        ProcessLog::parse(Process::Server, "")
+        ProcessLog::parse(Process::Server, b"")
             .unwrap()
             .lines()
             .is_empty()
@@ -75,7 +86,11 @@ fn a_bot_keeps_the_orders_it_sent_but_the_last_each_resume_discarded() {
     // order at 50 and the second at 20. Then 1 at 60, seq 1 again, as the chain was cut back, and
     // a resume that drops 5, more than it holds: none stays.
     let lines = [sent(0, 20, 2), sent(2, 50, 1), discarded(2), sent(1, 60, 1)];
-    let log = ProcessLog::parse(Process::Bot(0), &format!("{}\n", lines.join("\n"))).unwrap();
+    let log = ProcessLog::parse(
+        Process::Bot(0),
+        format!("{}\n", lines.join("\n")).as_bytes(),
+    )
+    .unwrap();
     let kept = |seq, stamp, orders| OrdersSent {
         slot: PlayerSlot::new(0),
         seq,
@@ -84,6 +99,6 @@ fn a_bot_keeps_the_orders_it_sent_but_the_last_each_resume_discarded() {
     };
     assert_eq!(log.kept_orders().unwrap(), [kept(0, 20, 1), kept(1, 60, 1)]);
     let all = [lines.join("\n"), discarded(5)].join("\n");
-    let log = ProcessLog::parse(Process::Bot(0), &format!("{all}\n")).unwrap();
+    let log = ProcessLog::parse(Process::Bot(0), format!("{all}\n").as_bytes()).unwrap();
     assert_eq!(log.kept_orders().unwrap(), []);
 }

@@ -1,7 +1,7 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use campfire_common::Fingerprint;
+use campfire_store::{DirEntries, EntryKind};
 
 use crate::error::ContentError;
 use crate::package_dir::PackageDir;
@@ -66,28 +66,19 @@ impl PackageStore {
         }
     }
 
+    /// Finds the packages under `dir`, in the order of their names, so the same tree gives the
+    /// same result on every OS.
     fn scan_dir(&mut self, dir: &Path) -> Result<(), ContentError> {
-        let io = |error| ContentError::Scan {
-            dir: dir.to_owned(),
-            error,
-        };
-        // In the order of their names, so the same tree gives the same result on every OS.
-        let mut entries = fs::read_dir(dir)
-            .map_err(io)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(io)?;
-        entries.sort_unstable_by_key(fs::DirEntry::file_name);
         let mut subdirs = Vec::new();
-        for entry in entries {
-            let kind = entry.file_type().map_err(io)?;
+        for entry in DirEntries::read(dir).map_err(ContentError::Read)? {
             // By its exact name, which a file system that ignores case would also find as
             // `Manifest.toml`.
-            if kind.is_file() && entry.file_name() == PackageDir::MANIFEST {
+            if entry.kind == EntryKind::File && entry.name == PackageDir::MANIFEST {
                 self.insert(dir);
                 return Ok(());
             }
-            if kind.is_dir() {
-                subdirs.push(entry.path());
+            if entry.kind == EntryKind::Dir {
+                subdirs.push(dir.join(&entry.name));
             }
         }
         for subdir in subdirs {

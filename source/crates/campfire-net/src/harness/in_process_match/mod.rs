@@ -774,6 +774,12 @@ impl InProcessMatch {
         self.server.world_mut().resource_mut::<Receipts>().due_now();
     }
 
+    /// Holds the server's next round of receipts until `give_receipts`, so a test that steps
+    /// slower than real time, as one does under a loaded host, meets none it did not ask for.
+    pub fn hold_receipts(&mut self) {
+        self.server.world_mut().resource_mut::<Receipts>().hold();
+    }
+
     /// The server's link to `client`.
     pub fn link(&self, client: usize) -> Entity {
         self.links[client]

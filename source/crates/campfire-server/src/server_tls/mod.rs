@@ -109,15 +109,9 @@ impl ServerTls {
     }
 }
 
-#[expect(
-    clippy::disallowed_methods,
-    reason = "a test makes and removes the files of its fixtures"
-)]
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
-    use tempfile::TempDir;
+    use campfire_store::Scratch;
 
     use super::*;
 
@@ -125,10 +119,8 @@ mod tests {
 
     #[test]
     fn two_starts_keep_one_certificate_until_it_nears_its_end() {
-        let scratch = TempDir::new().unwrap();
-        let data = scratch.path();
-        let path = data.join("tls");
-        let file = SecretFile::at(path.clone());
+        let scratch = Scratch::new();
+        let file = SecretFile::at(scratch.path("tls"));
         let open = |now, restoring| ServerTls::open(&file, now, restoring).unwrap();
 
         // A first start makes the certificate, 14 days long; a second start a day later keeps it.
@@ -147,9 +139,9 @@ mod tests {
         assert_eq!(open(renewal, false).certificate(), renewed.certificate());
 
         // A file cut short, or whose certificate does not parse, is refused.
-        let whole = fs::read(&path).unwrap();
+        let whole = scratch.read("tls");
         for cut in [0, EXPIRES_BYTES + 2, EXPIRES_BYTES + LEN_BYTES + 10] {
-            fs::write(&path, &whole[..cut]).unwrap();
+            scratch.write("tls", &whole[..cut]);
             assert!(matches!(
                 ServerTls::open(&file, NOW, true),
                 Err(TlsError::Truncated)
@@ -157,14 +149,14 @@ mod tests {
         }
         let mut flawed = whole.clone();
         flawed[EXPIRES_BYTES + LEN_BYTES] ^= 0xFF;
-        fs::write(&path, &flawed).unwrap();
+        scratch.write("tls", &flawed);
         assert!(matches!(
             ServerTls::open(&file, NOW, true),
             Err(TlsError::Certificate(_))
         ));
         // One longer than a TLS file may be, and one others may read, are refused; the identity
         // they would hold is not made again over them.
-        fs::write(&path, vec![0; MAX_LEN + 1]).unwrap();
+        scratch.write("tls", vec![0; MAX_LEN + 1]);
         assert!(matches!(
             ServerTls::open(&file, NOW, false),
             Err(TlsError::Read(PathError {
@@ -172,7 +164,7 @@ mod tests {
                 ..
             }))
         ));
-        fs::write(&path, &whole).unwrap();
+        scratch.write("tls", &whole);
         assert_eq!(open(NOW, true).certificate(), renewed.certificate());
         file.expose();
         assert!(matches!(
@@ -182,6 +174,6 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(fs::read(&path).unwrap(), whole);
+        assert_eq!(scratch.read("tls"), whole);
     }
 }

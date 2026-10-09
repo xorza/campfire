@@ -15,6 +15,14 @@ pub(crate) mod error;
 #[derive(Debug)]
 pub struct InputFile;
 
+/// A regular file open to read in pieces, as a walk hashes a file it does not keep: its length,
+/// as its handle's metadata gave it as it opened, and its bytes, as `Read` gives them.
+#[derive(Debug)]
+pub struct InputStream {
+    len: u64,
+    file: File,
+}
+
 /// A file's bytes and its time of change, both from one open handle.
 #[derive(Debug)]
 pub struct Stamped {
@@ -69,6 +77,15 @@ impl InputFile {
         read().map_err(PathError::at(path))
     }
 
+    /// The regular file at `path`, open to read in pieces; its reader bounds what it takes.
+    pub fn stream(path: &Path) -> Result<InputStream, PathError<ReadError>> {
+        let Opened { file, metadata } = InputFile::open(path).map_err(PathError::at(path))?;
+        Ok(InputStream {
+            len: metadata.len(),
+            file,
+        })
+    }
+
     /// The regular file at `path`, open, with its metadata. The path's kind is checked before
     /// it opens, as PostgreSQL checks a key file's: an open of a pipe waits for a writer, and
     /// Windows opens no directory as a file. The handle's own kind is checked again after, so a
@@ -90,6 +107,23 @@ impl InputFile {
             return Err(ReadError::NotFile);
         }
         Ok(Opened { file, metadata })
+    }
+}
+
+impl InputStream {
+    /// Its length as it opened.
+    pub const fn len(&self) -> u64 {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl Read for InputStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.file.read(buf)
     }
 }
 

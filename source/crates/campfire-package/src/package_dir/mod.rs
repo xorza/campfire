@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
-use std::fs::{self, File};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use campfire_capabilities::PackagePath;
+use campfire_store::{DirEntries, EntryKind, InputFile};
 
 use crate::error::ContentError;
 use crate::package_files::PackageFiles;
@@ -94,35 +94,19 @@ impl PackageDir {
         Ok(walk.finish())
     }
 
-    /// Takes every file under `dir` on disk into `walk`.
+    /// Takes every file under `dir` on disk into `walk`, in the order of their names, so the
+    /// first flaw of a tree is the same on every OS.
     fn read_disk(&self, dir: &Path, walk: &mut PackageWalk) -> Result<(), ContentError> {
-        let io = |error| ContentError::Scan {
-            dir: dir.to_owned(),
-            error,
-        };
-        // In the order of their names, so the first flaw of a tree is the same on every OS.
-        let mut entries = fs::read_dir(dir)
-            .map_err(io)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(io)?;
-        entries.sort_unstable_by_key(fs::DirEntry::file_name);
-        for entry in entries {
-            let path = entry.path();
-            let kind = entry.file_type().map_err(io)?;
-            if kind.is_dir() {
-                self.read_disk(&path, walk)?;
-                continue;
+        for entry in DirEntries::read(dir).map_err(ContentError::Read)? {
+            let path = dir.join(&entry.name);
+            match entry.kind {
+                EntryKind::Dir => self.read_disk(&path, walk)?,
+                EntryKind::File => {
+                    let file = InputFile::stream(&path).map_err(ContentError::Read)?;
+                    walk.add(self.package_path(&path)?, file.len(), file)?;
+                }
+                EntryKind::Link | EntryKind::Other => return Err(ContentError::NotAFile(path)),
             }
-            if !kind.is_file() {
-                return Err(ContentError::NotAFile(path));
-            }
-            let open = |error| ContentError::Scan {
-                dir: path.clone(),
-                error,
-            };
-            let file = File::open(&path).map_err(open)?;
-            let size = file.metadata().map_err(open)?.len();
-            walk.add(self.package_path(&path)?, size, file)?;
         }
         Ok(())
     }
@@ -160,10 +144,15 @@ fn normal(path: &Path) -> PathBuf {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
-    use std::fs;
     use std::path::{Path, PathBuf};
 
+    use campfire_store::{DirEntries, EntryKind, InputFile};
+
     use crate::package_dir::PackageDir;
+
+    /// The most bytes a test reads of a workspace package's file: far past any the test and
+    /// reference packages hold.
+    const TREE_FILE_LEN: usize = 64 << 20;
 
     impl PackageDir {
         /// `path` within the workspace's `packages` directory, where the tests and the checks
@@ -181,22 +170,17 @@ pub(crate) mod internals {
         }
 
         fn read_tree(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
-            for entry in fs::read_dir(dir).unwrap() {
-                let entry = entry.unwrap();
-                let path = at.join(entry.file_name());
-                if entry.file_type().unwrap().is_dir() {
-                    PackageDir::read_tree(&entry.path(), &path, files);
+            for entry in DirEntries::read(dir).unwrap() {
+                let (on_disk, path) = (dir.join(&entry.name), at.join(&entry.name));
+                if entry.kind == EntryKind::Dir {
+                    PackageDir::read_tree(&on_disk, &path, files);
                 } else {
-                    files.insert(path, fs::read(entry.path()).unwrap());
+                    files.insert(path, InputFile::read(&on_disk, TREE_FILE_LEN).unwrap());
                 }
             }
         }
     }
 }
 
-#[expect(
-    clippy::disallowed_methods,
-    reason = "a test makes and removes the files of its fixtures"
-)]
 #[cfg(test)]
 mod tests;
