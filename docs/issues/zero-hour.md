@@ -9,3 +9,5 @@ Design: [Zero Hour](../design/12-zero-hour.md), the rules package in `source/pac
 - The import makes a unit of every object a map places but a road's or bridge's end and a waypoint, whatever its template: the game spawns no object whose template no INI object names, adds props, optimized trees and, in multiplayer, fluff to the client alone, and spawns no shrub when trees are off (`GameLogic::startNewGame`).
 
 ## Ready
+
+- The import turns a waypoint's angle into degrees, though no marker keeps it, and so refuses a map whose waypoint has an angle that the game's `normalizeAngle` never ends on, as an infinite one; the game never normalizes a waypoint's angle (`MapImport::new`, `MapObject::placement`).

@@ -1,3 +1,4 @@
+use campfire_capabilities::BinaryFile;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -143,20 +144,12 @@ impl Terrain {
         Ok(Terrain(parts))
     }
 
-    /// The bytes of `terrain.bin`.
-    pub fn encode(&self) -> Vec<u8> {
-        postcard::to_stdvec(self).expect("a terrain encodes")
-    }
-
-    /// The terrain `bytes` hold; an error for bytes that hold no terrain `new` takes.
-    pub fn decode(bytes: &[u8]) -> Result<Terrain, postcard::Error> {
-        postcard::from_bytes(bytes)
-    }
-
     pub const fn parts(&self) -> &TerrainParts {
         &self.0
     }
 }
+
+impl BinaryFile for Terrain {}
 
 /// A package's file is untrusted, so a terrain `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Terrain {
@@ -167,6 +160,8 @@ impl<'de> Deserialize<'de> for Terrain {
 
 #[cfg(test)]
 mod tests {
+    use campfire_capabilities::DecodeError;
+
     use super::*;
 
     #[test]
@@ -205,7 +200,10 @@ mod tests {
             }],
         };
         let terrain = Terrain::new(parts.clone()).unwrap();
-        assert_eq!(Terrain::decode(&terrain.encode()).unwrap(), terrain);
+        let bytes = terrain.encode();
+        assert_eq!(Terrain::decode(&bytes).unwrap(), terrain);
+        let trailing = [&bytes[..], &[0]].concat();
+        assert_eq!(Terrain::decode(&trailing), Err(DecodeError::NotCanonical));
 
         // Tile 7 is source tile 1 of 2; tile 8 would be source tile 2. Each list holds one entry,
         // so index 1 is past it.
@@ -256,6 +254,9 @@ mod tests {
         let mut short = parts;
         short.tiles = 1;
         let encoded = postcard::to_stdvec(&short).unwrap();
-        assert!(Terrain::decode(&encoded).is_err());
+        assert!(matches!(
+            Terrain::decode(&encoded),
+            Err(DecodeError::Malformed(_))
+        ));
     }
 }

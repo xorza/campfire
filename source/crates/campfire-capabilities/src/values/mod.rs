@@ -2,6 +2,7 @@
 //! files write, the names and ids they resolve to, and the small records a call carries.
 
 pub(crate) mod action_start;
+pub(crate) mod binary_file;
 pub(crate) mod damage_kind;
 pub(crate) mod declared_name;
 pub(crate) mod engine_enum;

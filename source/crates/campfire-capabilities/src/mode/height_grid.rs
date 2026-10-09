@@ -1,7 +1,9 @@
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::values::binary_file::BinaryFile;
 
 /// A map's ground, `map/<name>/heights.bin` in postcard: samples `cell` meters apart, the one of
 /// `column` and `row` at `[x, z] = origin + [column, row] · cell`, row after row from the first,
@@ -47,23 +49,8 @@ impl HeightGrid {
         };
         let far = grid.checked_far_corner()?;
         let top = step.checked_mul_int(u8::MAX.into())?;
-        let within = |value: Num| {
-            value
-                .checked_neg()
-                .is_some_and(|neg| neg <= Position::BOUND)
-        };
-        let below = |value: Num| value <= Position::BOUND;
-        (origin.into_iter().all(within) && far.into_iter().all(below) && below(top)).then_some(grid)
-    }
-
-    /// The bytes of `heights.bin`.
-    pub fn encode(&self) -> Vec<u8> {
-        postcard::to_stdvec(self).expect("a height grid encodes")
-    }
-
-    /// The grid `bytes` hold; an error for bytes that hold no grid `new` takes.
-    pub fn decode(bytes: &[u8]) -> Result<HeightGrid, postcard::Error> {
-        postcard::from_bytes(bytes)
+        let within = |[x, z]: [Num; 2]| Position::new(Vec3::new(x, top, z)).is_some();
+        (within(origin) && within(far)).then_some(grid)
     }
 
     /// The ground position of the first sample.
@@ -111,6 +98,8 @@ impl HeightGrid {
     }
 }
 
+impl BinaryFile for HeightGrid {}
+
 /// A package's file is untrusted, so a grid `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for HeightGrid {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<HeightGrid, D::Error> {
@@ -142,6 +131,7 @@ impl<'de> Deserialize<'de> for HeightGrid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::values::error::DecodeError;
 
     #[test]
     fn a_grid_encodes_its_fields_and_decodes_only_as_new_takes_it() {
@@ -186,6 +176,17 @@ mod tests {
         let edge = HeightGrid::new([bound - Num::ONE, Num::ZERO], Num::ONE, half, 2, vec![0; 4]);
         assert_eq!(edge.unwrap().far_corner(), [bound, Num::ONE]);
         let ragged = [&bytes[..13], &[2, 3, 0, 1, 2]].concat();
-        assert!(HeightGrid::decode(&ragged).is_err());
+        assert!(matches!(
+            HeightGrid::decode(&ragged),
+            Err(DecodeError::Malformed(_))
+        ));
+        // The same grid with its column count over-long, 2 as 0x82 0x00, or a byte past its end.
+        let long = [&bytes[..13], &[0x82, 0x00], &bytes[14..]].concat();
+        let trailing = [&bytes[..], &[0]].concat();
+        assert_eq!(HeightGrid::decode(&long), Err(DecodeError::NotCanonical));
+        assert_eq!(
+            HeightGrid::decode(&trailing),
+            Err(DecodeError::NotCanonical)
+        );
     }
 }

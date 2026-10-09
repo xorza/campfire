@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use campfire_capabilities::HeightGrid;
+use campfire_capabilities::{BinaryFile, HeightGrid};
 use campfire_math::Num;
 use campfire_package::{Terrain, TerrainParts};
 use serde::Serialize;

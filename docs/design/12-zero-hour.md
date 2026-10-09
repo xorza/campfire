@@ -68,7 +68,7 @@ The presentation systems of [D6](#decisions), generic, which every imported game
 
 ## Open questions
 
-- **Sound.** Which WAV encodings the game holds, and an encoder of Ogg Vorbis that gives the same bytes on every OS. Models and textures need none: the importer writes the GLB and KTX2 containers itself, glTF's JSON through `serde_json`, and copies or computes their contents in integers.
+- **Sound.** Which WAV encodings the game holds, and an encoder of Ogg Vorbis that gives the same bytes on every OS. Models and textures need none: the importer writes the GLB and KTX2 containers itself, glTF's JSON through `common`'s `codec`, and copies or computes their contents in integers.
 - **The measure.** Its numbers, from the first measurements of the oracle against Campfire.
 - **The AI's play.** How the port's skirmish AI is compared with the original's, as the parity test leaves it out ([D9](#decisions)).
 - **The oracle's own determinism.** Whether GeneralsX plays a retail replay to the same end on Linux and on macOS, which the first slice checks.
