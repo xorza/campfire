@@ -8,7 +8,7 @@ flowchart TB
         client
         server
         verifier
-        import:::planned
+        import
         launcher:::planned
         editor:::planned
     end
@@ -69,7 +69,7 @@ Each layer uses the layers below it.
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | built | The Rhai host: compiles scripts, and runs each call under its limits; the script API itself is in `capabilities` ([Script API](08-script-api.md)) |
 | `capabilities` | built | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
-| `package` | built | Reads a mode's packages and every package it depends on, each file a session needs on demand and checked against its package's index, and runs the load checks of [Script API](08-script-api.md) |
+| `package` | built | Reads a mode's packages and every package it depends on, each file a session needs on demand and checked against its package's index, and runs the load checks of [Script API](08-script-api.md); writes a new package and its index, as an importer or a packer builds one |
 | `runner` | built | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs; owns `SessionRules`, which builds a session's terms from the packages and checks terms on the server, the client and the verifier |
 | `verifier` | built | CLI: replays a session log segment, checks the result |
 | `lan-check` | built | The real server and bot clients over WebTransport on `127.0.0.1`, on request ([Testing and diagnostics](#testing-and-diagnostics)) |
@@ -79,7 +79,7 @@ Each layer uses the layers below it.
 | `store` | built | Durable and secret files, data directories and their locks, and the worker threads that write them, each with its failure ([Storage](#storage)) |
 | `launcher` | planned | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | built | Bevy app: rendering, input, UI, audio, prediction; the presentation systems that draw a game from its data ([Zero Hour](12-zero-hour.md#the-client)) |
-| `import` | planned | App: reads a game's install through `store` and writes one reproducible package, a module for each game ([Zero Hour](12-zero-hour.md#the-importer)) |
+| `import` | built | App: reads a game's install through `store` and writes one reproducible package through `package`'s `PackageWriter`, a module for each game ([Zero Hour](12-zero-hour.md#the-importer)) |
 | `content` | planned | Package signatures, pinning, cache, Blossom fetch |
 | `editor` | planned | Map and content editors |
 | `identity` | planned | Nostr keys, session keys, listings, reputation |

@@ -4,7 +4,7 @@ use std::str::Utf8Error;
 
 use campfire_capabilities::PackagePath;
 use campfire_common::Fingerprint;
-use campfire_store::{PathError, ReadError};
+use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
 use derive_more::Display;
 use thiserror::Error;
 use toml::de::Error as TomlError;
@@ -93,6 +93,26 @@ pub enum ContentError {
     /// The package's index lists itself, which no list can hold the hash of.
     #[error("the package's index lists itself")]
     IndexListsItself,
+}
+
+/// Why a package does not write.
+#[derive(Debug, Error)]
+pub enum WriteError {
+    /// The package's directory does not make, as when one is there.
+    #[error("the package's directory does not make")]
+    CreateDir(#[source] PathError<DurableCreateError>),
+    /// A directory in the package does not make.
+    #[error("a directory of the package does not make")]
+    Directory(#[source] PathError<DurableError>),
+    /// A file of the package does not write, as one written twice.
+    #[error("a file of the package does not write")]
+    File(#[source] PathError<io::Error>),
+    /// The package's index does not write.
+    #[error("the package's index does not write")]
+    Index(#[source] PathError<DurableError>),
+    /// The files written make no package, as two paths that differ only in case.
+    #[error("the files written make no package")]
+    Package(#[source] ContentError),
 }
 
 /// Why a store does not give the packages that session terms name.

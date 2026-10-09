@@ -12,6 +12,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 campfire-capabilities = { path = "crates/campfire-capabilities" }
 campfire-common = { path = "crates/campfire-common" }
+campfire-import = { path = "crates/campfire-import" }
 campfire-log = { path = "crates/campfire-log" }
 campfire-math = { path = "crates/campfire-math" }
 campfire-net = { path = "crates/campfire-net" }

@@ -2051,6 +2051,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-import"
+version = "0.1.0"
+dependencies = [
+ "campfire-common",
+ "campfire-log",
+ "campfire-package",
+ "campfire-store",
+ "clap",
+ "derive_more",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "campfire-lan-check"
 version = "0.1.0"
 dependencies = [

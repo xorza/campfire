@@ -38,6 +38,14 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
         })
     );
     assert_eq!(index.row(&PackagePath::parse("data/b.toml").unwrap()), None);
+    // A row of a file of "abc": its 3 bytes, and SHA-256's own test vector.
+    let abc = FileRow::of(b"abc");
+    assert_eq!(abc.size, 3);
+    assert_eq!(
+        abc.sha256[..4],
+        [0xba, 0x78, 0x16, 0xbf],
+        "SHA-256(\"abc\") starts ba7816bf"
+    );
     // No rows is a package of no file.
     assert_eq!(FileIndex::decode(&tagged(&[0])).unwrap().rows().count(), 0);
     // No tag, or another version's: no index of this version.

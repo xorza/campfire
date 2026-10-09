@@ -23,6 +23,7 @@ mod package_store;
 mod package_text;
 mod package_view;
 mod package_walk;
+mod package_writer;
 mod script_facts;
 mod texts;
 
@@ -39,7 +40,7 @@ pub use crate::error::load_problem::LoadProblem;
 pub use crate::error::locale_problem::LocaleProblem;
 pub use crate::error::place::Place;
 pub use crate::error::script_problem::ScriptProblem;
-pub use crate::error::{ContentError, LoadError, PackageRef, StoreError};
+pub use crate::error::{ContentError, LoadError, PackageRef, StoreError, WriteError};
 pub use crate::file_index::FileIndex;
 pub use crate::files::avatar_data::AvatarData;
 pub use crate::files::package_name::PackageName;
@@ -53,6 +54,7 @@ pub use crate::package::Script;
 pub use crate::package_dir::PackageDir;
 pub use crate::package_files::PackageFiles;
 pub use crate::package_store::{PackageStore, StoreFailure};
+pub use crate::package_writer::PackageWriter;
 pub use crate::texts::Texts;
 
 /// The tag of this engine release: what a session's terms name, so a replay runs the code that

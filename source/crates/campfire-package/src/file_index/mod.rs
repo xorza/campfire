@@ -39,12 +39,22 @@ struct WireRow<'a> {
 /// The bytes an index starts with, which name its format and its version.
 const INDEX_TAG: &[u8] = b"campfire/package-index/v1";
 
+impl FileRow {
+    /// The row of a file of `bytes`.
+    pub(crate) fn of(bytes: &[u8]) -> FileRow {
+        FileRow {
+            size: u64::try_from(bytes.len()).expect("a file length fits u64"),
+            sha256: Sha256::digest(bytes).into(),
+        }
+    }
+}
+
 impl FileIndex {
     /// The index's own path in its package.
     pub const PATH: &str = "package.index";
 
     /// The index of `rows`, which hold no two paths that differ only in case and not the
-    /// index's own path.
+    /// index's own path, as a package's builder makes it.
     pub(crate) fn new(rows: BTreeMap<PackagePath, FileRow>) -> Result<FileIndex, ContentError> {
         FileIndex::check_spellings(rows.keys())?;
         if rows.keys().any(|path| path.as_str() == FileIndex::PATH) {
