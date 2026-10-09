@@ -58,7 +58,7 @@ The presentation systems of [D6](#decisions), generic, which every imported game
 ## Open questions
 
 - **Reproducible encoders.** Which encoders of glTF, KTX2 and Ogg Vorbis give the same bytes on every OS, and whether one written in Rust is needed.
-- **The packages of a game.** Whether one package holds the whole game with its maps, or each map is a mode package that depends on the game's; a package holds at most 16,384 files and 16 MiB of parsed files ([Packages](05-protocol-spec.md#packages)), which the game's models, textures and INI may pass.
+- **The packages of a game.** Whether one package holds the whole game with its maps, or each map is a mode package that depends on the game's.
 - **The measure.** Its numbers, from the first measurements of the oracle against Campfire.
 - **The scale.** How Zero Hour's units become meters: a power of two keeps every value exact in a `Num`, and the largest bodies must stay within the widest body Campfire allows, 64 m ([Space and map](04-capabilities/00-overview.md#space-and-map)).
 - **The AI's play.** How the port's skirmish AI is compared with the original's, as the parity test leaves it out ([D9](#decisions)).

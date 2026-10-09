@@ -72,15 +72,6 @@ pub enum ContentError {
         path: PackagePath,
         other: PackagePath,
     },
-    /// The package holds more files than a load takes.
-    #[error("more files than a package holds")]
-    TooManyFiles,
-    /// A file a load reads is larger than one it reads.
-    #[error("{0} is larger than a file a load reads")]
-    TooLarge(PackagePath),
-    /// The files a load reads are larger together than it reads of a package.
-    #[error("more to read than a package holds")]
-    TooMuchToRead,
 }
 
 /// Why a store does not give the packages that session terms name.

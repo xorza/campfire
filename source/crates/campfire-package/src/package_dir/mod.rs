@@ -7,7 +7,7 @@ use campfire_store::{DirEntries, EntryKind, InputFile};
 
 use crate::error::ContentError;
 use crate::package_files::PackageFiles;
-use crate::package_walk::{FileLimits, PackageWalk};
+use crate::package_walk::PackageWalk;
 
 /// Where a package's files are: on disk, as a workspace holds them before a package is built, or
 /// in memory, as a test builds them. Both read into the same `PackageFiles`.
@@ -72,16 +72,11 @@ impl PackageDir {
     }
 
     /// The files under the package's root that a load reads, read once into memory, and the
-    /// fingerprint of every file, within a package's limits. A link or any other entry that is
+    /// fingerprint of every file. A link or any other entry that is
     /// neither a file nor a directory fails, as does a path that is not UTF-8 or that a package
     /// path does not spell.
     pub fn read(&self) -> Result<PackageFiles, ContentError> {
-        self.read_within(FileLimits::PACKAGE)
-    }
-
-    /// See `read`, within `limits`.
-    fn read_within(&self, limits: FileLimits) -> Result<PackageFiles, ContentError> {
-        let mut walk = PackageWalk::new(limits);
+        let mut walk = PackageWalk::new();
         match &self.source {
             Source::Disk => self.read_disk(&self.root, &mut walk)?,
             Source::Memory(tree) => {

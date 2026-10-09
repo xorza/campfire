@@ -248,23 +248,6 @@ fn a_package_keeps_what_a_load_reads_streams_the_rest_and_holds_its_limits() {
     let disk = PackageDir::new(scratch.path("one")).read().unwrap();
     assert_eq!(disk.fingerprint(), expected);
 
-    // Three files, a read file of at most 2 bytes, 3 bytes read in all: the package fits, the
-    // asset streams past the per-file bound. One file fewer allowed, a byte less per file or in
-    // all, and it does not.
-    let within = |files, file_bytes, read_bytes| {
-        let limits = FileLimits {
-            files,
-            file_bytes,
-            read_bytes,
-        };
-        dir.read_within(limits).map(|files| files.fingerprint())
-    };
-    assert_eq!(within(3, 2, 3).unwrap(), expected);
-    assert!(matches!(within(2, 2, 3), Err(ContentError::TooManyFiles)));
-    let data = PackagePath::parse("data/a.toml").unwrap();
-    assert!(matches!(within(3, 1, 3), Err(ContentError::TooLarge(path)) if path == data));
-    assert!(matches!(within(3, 2, 2), Err(ContentError::TooMuchToRead)));
-
     // A file a load reads that is not UTF-8 reads, but not as text.
     let bad = BTreeMap::from([(PathBuf::from("two/data/bad.toml"), vec![0xFF, b'a'])]);
     let two = PackageDir::in_memory(Arc::new(bad), "two").read().unwrap();

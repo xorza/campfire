@@ -14,31 +14,18 @@ use crate::package_files::PackageFiles;
 use crate::package_text::LOCALE;
 
 /// One walk over a package's files: each file's row of the file list its fingerprint hashes, and
-/// the bytes of each file a load reads, within `limits`. A file no load reads, such as an
-/// asset, is hashed as it streams past, and not kept.
+/// the bytes of each file a load reads. A file no load reads, such as an asset, is hashed as it
+/// streams past, and not kept.
 #[derive(Debug)]
 pub(crate) struct PackageWalk {
-    limits: FileLimits,
     /// In the order of their paths, as the fingerprint lists them.
     rows: BTreeMap<PackagePath, FileSum>,
     read: BTreeMap<PackagePath, Vec<u8>>,
     /// The first spelling of each path and each directory on its way, by its ASCII lowercase,
     /// so two that differ only in case are found.
     spellings: BTreeMap<String, PackagePath>,
-    /// The bytes of the files read so far.
-    read_bytes: u64,
     /// The buffer a streamed file passes through, made at its first use.
     stream: Vec<u8>,
-}
-
-/// How much of a package a walk takes: files in all, the bytes of one file a load reads, and
-/// the bytes of all of them, so a package's files cost a bounded memory before a load refuses
-/// it. The files no load reads only stream.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FileLimits {
-    pub(crate) files: usize,
-    pub(crate) file_bytes: u64,
-    pub(crate) read_bytes: u64,
 }
 
 /// A file's size and SHA-256, as its row lists them.
@@ -62,24 +49,12 @@ const READ_DIRS: [&str; 4] = ["data", "map", SCRIPTS, LOCALE];
 /// The size of the buffer a streamed file passes through.
 const STREAM_CHUNK: usize = 64 * 1024;
 
-impl FileLimits {
-    /// A package's: 16 384 files, a file a load reads up to 4 MiB, and 16 MiB of them in all.
-    /// The MOBA packages hold about 100 files, the largest under 10 KiB.
-    pub(crate) const PACKAGE: FileLimits = FileLimits {
-        files: 16_384,
-        file_bytes: 4 << 20,
-        read_bytes: 16 << 20,
-    };
-}
-
 impl PackageWalk {
-    pub(crate) const fn new(limits: FileLimits) -> PackageWalk {
+    pub(crate) const fn new() -> PackageWalk {
         PackageWalk {
-            limits,
             rows: BTreeMap::new(),
             read: BTreeMap::new(),
             spellings: BTreeMap::new(),
-            read_bytes: 0,
             stream: Vec::new(),
         }
     }
@@ -90,30 +65,25 @@ impl PackageWalk {
         path.as_str() == PackageDir::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
     }
 
-    /// Takes the file at `path` whose bytes `file` gives, `size` long as its metadata says,
-    /// which may change as it reads: refuses one past the limits before it reads a byte of it.
+    /// Takes the file at `path` whose bytes `file` gives, `size` long as its metadata says: a
+    /// file a load reads is read no further than that, so a file that grows as it is read, or a
+    /// pipe, ends there, and the bytes it parses are the bytes its row hashes.
     pub(crate) fn add(
         &mut self,
         path: PackagePath,
         size: u64,
         file: impl Read,
     ) -> Result<(), ContentError> {
-        if self.rows.len() == self.limits.files {
-            return Err(ContentError::TooManyFiles);
-        }
         self.spell(&path)?;
         let sum = if PackageWalk::reads(&path) {
-            self.check_read(&path, size)?;
             let mut bytes = Vec::new();
-            file.take(self.limits.file_bytes + 1)
+            file.take(size)
                 .read_to_end(&mut bytes)
                 .map_err(|error| ContentError::Io {
                     path: path.clone(),
                     error,
                 })?;
             let size = u64::try_from(bytes.len()).expect("a file length fits u64");
-            self.check_read(&path, size)?;
-            self.read_bytes += size;
             let sum = FileSum {
                 size,
                 sha256: Sha256::digest(&bytes).into(),
@@ -147,17 +117,6 @@ impl PackageWalk {
                 }
                 Entry::Occupied(_) => {}
             }
-        }
-        Ok(())
-    }
-
-    /// Refuses a file a load reads at `path` of `size` bytes past the limits.
-    fn check_read(&self, path: &PackagePath, size: u64) -> Result<(), ContentError> {
-        if size > self.limits.file_bytes {
-            return Err(ContentError::TooLarge(path.clone()));
-        }
-        if self.read_bytes + size > self.limits.read_bytes {
-            return Err(ContentError::TooMuchToRead);
         }
         Ok(())
     }
@@ -203,5 +162,38 @@ impl PackageWalk {
         let list = postcard::to_allocvec(&rows).expect("a file list always encodes");
         let fingerprint = Fingerprint::new(Sha256::digest(list).into());
         PackageFiles::new(self.read, fingerprint)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_read_file_is_taken_to_its_size_and_none_is_too_large() {
+        // A file that grew past the 2 bytes its metadata gave as it opened: the walk keeps those 2
+        // and its row hashes them, as a walk of the 2 alone does.
+        let data = PackagePath::parse("data/a.toml").unwrap();
+        let mut grown = PackageWalk::new();
+        grown.add(data.clone(), 2, b"a=1".as_slice()).unwrap();
+        let mut exact = PackageWalk::new();
+        exact.add(data.clone(), 2, b"a=".as_slice()).unwrap();
+        let (grown, exact) = (grown.finish(), exact.finish());
+        assert_eq!(grown.read_text(&data).unwrap(), "a=");
+        assert_eq!(grown.fingerprint(), exact.fingerprint());
+
+        // Four files a load reads of 5 MiB each, 20 MiB in all: each reads whole, as a package has
+        // no limit of bytes.
+        let big = vec![b'#'; 5 << 20];
+        let mut walk = PackageWalk::new();
+        let paths = ["data/b.toml", "data/c.toml", "data/d.toml", "data/e.toml"]
+            .map(|path| PackagePath::parse(path).unwrap());
+        for path in &paths {
+            walk.add(path.clone(), 5 << 20, big.as_slice()).unwrap();
+        }
+        let files = walk.finish();
+        for path in &paths {
+            assert_eq!(files.read_text(path).unwrap().len(), 5 << 20);
+        }
     }
 }
