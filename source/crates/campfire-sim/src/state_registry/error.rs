@@ -6,6 +6,10 @@ pub enum SnapshotError {
     /// The format tag is missing.
     #[error("not a snapshot")]
     NotSnapshot,
+    /// The snapshot's data version, `found`, is not the one this release reads, `read`: its
+    /// format, a type's layout among it, is another release's.
+    #[error("snapshot of data version {found}, where this release reads {read}")]
+    OtherVersion { found: u32, read: u32 },
     /// The bytes end inside a field.
     #[error("snapshot ends inside a field")]
     Truncated,

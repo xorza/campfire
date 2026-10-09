@@ -236,7 +236,7 @@ impl RestoredSession {
             if world.resource::<Session>().log().next_tick() >= ticks {
                 break;
             }
-            Session::run_tick(&mut world);
+            Session::run_tick_alone(&mut world);
         }
         world.resource_scope(|world, mut session: Mut<'_, Session>| {
             if session.log().result().is_none() {

@@ -91,7 +91,7 @@ impl Runner {
     }
 
     pub fn run_tick(&mut self) {
-        Session::run_tick(&mut self.world);
+        Session::run_tick_alone(&mut self.world);
     }
 
     /// See `Session::keep_journal`.

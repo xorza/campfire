@@ -58,9 +58,11 @@ impl RestoreTarget {
         self.registry.snapshot(&self.world, out);
     }
 
-    /// Runs a tick of what it holds, with no inputs.
+    /// Runs a tick of what it holds, with no inputs; no `App` updates its world, so it clears
+    /// the world's change trackers after the tick, as `Session::run_tick_alone` does.
     pub fn run_tick(&mut self) {
         self.world.run_schedule(SimUpdate);
+        self.world.clear_trackers();
     }
 
     /// The state hash of what it holds.

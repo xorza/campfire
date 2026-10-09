@@ -348,7 +348,7 @@ impl SimServer {
             if world.resource::<Session>().log().next_tick() >= ticks {
                 break;
             }
-            Session::run_tick(world);
+            Session::run_tick_alone(world);
             if world.contains_resource::<TickHashes>() {
                 record_hash(world);
             }

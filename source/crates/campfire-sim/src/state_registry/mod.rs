@@ -42,6 +42,7 @@ const SNAPSHOT_TAG: &[u8] = b"campfire/snapshot/v1";
 /// The built-in type listing every live stable id, so an entity with no registered component
 /// still survives a snapshot.
 const ENTITIES: &str = "sim.entities";
+const VERSION_BYTES: usize = size_of::<u32>();
 const NAME_LEN_BYTES: usize = size_of::<u32>();
 const BODY_LEN_BYTES: usize = size_of::<u64>();
 
@@ -146,6 +147,12 @@ impl StateRegistry {
     /// of another kind before a restore or a verifier holds it in memory.
     pub const MAX_SNAPSHOT_LEN: usize = 1 << 30;
 
+    /// The data version of the snapshots this release writes and reads, raised whenever a
+    /// release changes their format, a type's layout included, as Minecraft's `DataVersion` is:
+    /// a snapshot of another is refused, naming both, and the converter from the version before,
+    /// which design 02's Saves plans, comes with the first release that raises it.
+    pub const DATA_VERSION: u32 = 1;
+
     /// A registry with the sim's own state: the entity list, the id allocator, the tick and
     /// positions.
     pub fn new() -> StateRegistry {
@@ -248,12 +255,14 @@ impl StateRegistry {
         self.combine(world, Some(per_type))
     }
 
-    /// Writes the snapshot of `world` into `out`, which is cleared first: the tag, then for each
-    /// type in name order a `u32` name length, the name, a `u64` body length and the body. Its
-    /// state hash, `hash`'s, from the bodies it wrote, so a checkpoint encodes its state once.
+    /// Writes the snapshot of `world` into `out`, which is cleared first: the tag, the `u32` data
+    /// version, then for each type in name order a `u32` name length, the name, a `u64` body
+    /// length and the body, all little-endian. Its state hash, `hash`'s, from the bodies it
+    /// wrote, so a checkpoint encodes its state once.
     pub fn snapshot(&self, world: &World, out: &mut Vec<u8>) -> StateHash {
         out.clear();
         out.extend_from_slice(SNAPSHOT_TAG);
+        out.extend_from_slice(&StateRegistry::DATA_VERSION.to_le_bytes());
         let mut total = Hasher::new();
         total.update(HASH_DOMAIN);
         for entry in &self.entries {
@@ -284,9 +293,19 @@ impl StateRegistry {
         );
         world.init_resource::<EntityIndex>();
 
-        let mut rest = snapshot
+        let rest = snapshot
             .strip_prefix(SNAPSHOT_TAG)
             .ok_or(SnapshotError::NotSnapshot)?;
+        let (version, mut rest) = rest
+            .split_first_chunk::<VERSION_BYTES>()
+            .ok_or(SnapshotError::Truncated)?;
+        let version = u32::from_le_bytes(*version);
+        if version != StateRegistry::DATA_VERSION {
+            return Err(SnapshotError::OtherVersion {
+                found: version,
+                read: StateRegistry::DATA_VERSION,
+            });
+        }
         let mut bodies = Vec::with_capacity(self.entries.len());
         for entry in &self.entries {
             // A snapshot that ends where the registry expects a type lacks that type.

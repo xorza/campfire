@@ -5,7 +5,10 @@
 
 mod events;
 mod replay;
+mod verification;
 
 pub use crate::events::verified::Verified;
 pub use crate::replay::Replay;
 pub use crate::replay::error::{ReplayError, SnapshotCheckError};
+pub use crate::verification::Verification;
+pub use crate::verification::error::VerifyError;

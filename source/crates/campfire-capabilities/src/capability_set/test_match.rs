@@ -217,8 +217,11 @@ impl TestMatch {
         self.world.resource::<SimTick>().start()
     }
 
+    /// Runs one tick; no `App` updates its world, so it clears the world's change trackers after
+    /// the tick, as the runner's `Session::run_tick_alone` does.
     pub(crate) fn step(&mut self) {
         self.world.run_schedule(SimUpdate);
+        self.world.clear_trackers();
     }
 
     /// Brings `copy`, a copy of the match's state, up to the match, and checks that every state

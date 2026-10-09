@@ -212,6 +212,8 @@ fn state_section(hasher: &mut Hasher) {
     let mut per_type = Vec::new();
     let state_hash = state.hash_by_type(&world, &mut per_type);
     hasher.update(state_hash.as_bytes());
+    // The snapshot's own bytes, so its format is pinned: a change of it moves this digest alone,
+    // and raises `StateRegistry::DATA_VERSION`.
     let mut snapshot = Vec::new();
     state.snapshot(&world, &mut snapshot);
     hasher.update(&snapshot);
@@ -318,7 +320,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "57c33ccef3deb9b9aeb4b036ca25708eb56bbfefffd53562f7e9bf0fd3bfdb80",
+            digest: "2c61cc846641f142f7249892b64fa21ecf33c8aa98f0ee650ee4e88738f3005d",
         },
         Section {
             name: "tick",

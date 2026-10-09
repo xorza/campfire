@@ -45,6 +45,25 @@ struct Seen {
     sage_attacked: Vec<(u64, bool, bool)>,
 }
 
+/// The removed-component messages of a world after a tick: those it holds, and those it was
+/// ever given, as their counts say.
+#[derive(Debug)]
+struct Removals {
+    held: usize,
+    written: usize,
+}
+
+impl Removals {
+    fn of(world: &World) -> Removals {
+        let (mut held, mut written) = (0, 0);
+        for (_, messages) in world.removed_components().iter() {
+            held += messages.len();
+            written += messages.oldest_message_count() + messages.len();
+        }
+        Removals { held, written }
+    }
+}
+
 /// The lancer's weapon's range, its `attack` action's in its package.
 const LANCER_RANGE: Num = Num::int(4);
 
@@ -170,8 +189,17 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     let mut seen = Seen::default();
     let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
     let mut copy = CopyCheck::new(fixed.runner_mut());
+    // The match's setup clears none, so the first tick's messages hold its removals too.
+    let start = Removals::of(fixed.runner().world());
+    let (mut written, mut removed) = (start.written - start.held, false);
     for tick in 0..ProvingMatch::TICKS {
         ProvingMatch::play_tick(&mut fixed, tick);
+        // The removed-component messages hold this tick's removals alone, as an `App`'s update
+        // keeps them: every one written before the tick is gone.
+        let removals = Removals::of(fixed.runner().world());
+        assert_eq!(removals.written - removals.held, written, "tick {tick}");
+        removed |= removals.held > 0;
+        written = removals.written;
         golden.record(fixed.runner());
         copy.check(fixed.runner_mut());
         let failures = fixed.runner().world().non_send::<ScriptFailures>();
@@ -186,6 +214,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         }
     }
     golden.check("proving");
+    assert!(removed, "no tick removed a component");
     let world = fixed.runner().world();
     // The mode's hooks saw player 1 join in tick 1 and leave in tick 400; its state fields, by
     // name, are `joined` and `left`.

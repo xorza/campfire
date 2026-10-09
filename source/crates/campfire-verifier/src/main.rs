@@ -4,18 +4,12 @@
 //! by default.
 
 use std::env;
-use std::error::Error;
-use std::path::Path;
 use std::process::ExitCode;
 
-use campfire_common::{ExitStatus, StateHash};
+use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, LogEvent, Logging};
-use campfire_package::PackageStore;
-use campfire_protocol::SessionLog;
-use campfire_sim::StateRegistry;
-use campfire_store::InputFile;
-use campfire_verifier::{Replay, Verified};
-use tracing::{error, warn};
+use campfire_verifier::{Verification, Verified};
+use tracing::error;
 
 use crate::args::Args;
 
@@ -31,7 +25,7 @@ fn main() -> ExitCode {
         Ok(args) => args,
         Err(status) => return ExitCode::from(status),
     };
-    match verify(&args.packages, &args.log, args.snapshots.as_deref()) {
+    match Verification::file(&args.packages, &args.log, args.snapshots.as_deref()) {
         Ok(hash) => {
             Verified {
                 file: args.log,
@@ -41,32 +35,8 @@ fn main() -> ExitCode {
             ExitCode::from(ExitStatus::Success)
         }
         Err(error) => {
-            error!(file = %args.log.display(), error = %ErrorReport::of(&*error), "the log does not verify");
+            error!(file = %args.log.display(), error = %ErrorReport::of(&error), "the log does not verify");
             ExitCode::from(ExitStatus::Failure)
         }
     }
-}
-
-/// The state hash after the last tick of the log file at `path`, replayed with the packages under
-/// `packages`, once each checkpoint's snapshot under `snapshots`, when given, checks.
-fn verify(
-    packages: &Path,
-    path: &Path,
-    snapshots: Option<&Path>,
-) -> Result<StateHash, Box<dyn Error>> {
-    let store = PackageStore::scan(packages)?;
-    for failure in store.failures() {
-        warn!(dir = %failure.dir.display(), error = %ErrorReport::of(&failure.error), "a package does not read");
-    }
-    let log = InputFile::read(path, SessionLog::MAX_FILE_LEN)?;
-    let mut replay = Replay::new(SessionLog::decode(&log)?, &store)?;
-    if let Some(dir) = snapshots {
-        for record in replay.runner().log().checkpoints() {
-            let file = dir.join(record.snapshot.to_string());
-            let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN)?;
-            replay.check_snapshot(record, &snapshot)?;
-        }
-    }
-    while replay.run_tick()? {}
-    Ok(replay.runner().state_hash())
 }

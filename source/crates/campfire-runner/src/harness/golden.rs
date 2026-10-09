@@ -163,8 +163,9 @@ impl Golden {
         };
         panic!(
             "golden {name} differs: {} ticks pinned, {} run; the state first differs at tick \
-             {:?}, the behaviour at tick {:?}. A change of layout alone moves only the state; \
-             CAMPFIRE_BLESS=1 writes the record again",
+             {:?}, the behaviour at tick {:?}. A change of layout alone moves only the state, and \
+             needs the snapshot's `StateRegistry::DATA_VERSION` raised; CAMPFIRE_BLESS=1 writes \
+             the record again",
             pinned.lines().count(),
             self.ticks.len(),
             first(1),

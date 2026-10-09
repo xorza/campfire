@@ -91,9 +91,11 @@ impl Arena {
         PoolId::named(&self.packages.data().pools, name).unwrap_or_else(|| panic!("no pool {name}"))
     }
 
-    /// Runs one tick, and keeps its script failures.
+    /// Runs one tick, and keeps its script failures; no `App` updates its world, so it clears
+    /// the world's change trackers after the tick, as `Session::run_tick_alone` does.
     pub fn step(&mut self) {
         self.world.run_schedule(SimUpdate);
+        self.world.clear_trackers();
         let mut failures = self.world.non_send_mut::<ScriptFailures>();
         self.failed.extend(failures.drain());
     }

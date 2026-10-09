@@ -258,6 +258,16 @@ impl Session {
         Ok(())
     }
 
+    /// Runs the next tick as `run_tick` does, in a world no `App` updates, a replay, a
+    /// verification or a restore before its server's first frame, then clears its change
+    /// trackers, as an `App`'s update does each frame: its removed-component messages keep the
+    /// tick's removals alone, so a long replay holds them in bounded memory. The sim reads none
+    /// of them, and tracks its own changes, so its state is the same either way.
+    pub fn run_tick_alone(world: &mut World) {
+        Session::run_tick(world);
+        world.clear_trackers();
+    }
+
     /// Seals the next tick in the log of the session in `world` and runs it with the inputs and
     /// the changes of a slot's controller applied in it, drawing from the seed of the segment
     /// that starts there when one does, and logs each script call of the tick that failed.

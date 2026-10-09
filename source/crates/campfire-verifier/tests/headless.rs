@@ -5,7 +5,7 @@
 
 use std::num::NonZeroU32;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
@@ -27,8 +27,10 @@ use campfire_runner::{
     InputRules, ResultMismatch, Runner, ServerInputRefused, SlotRuleError, StartError, TermsError,
 };
 use campfire_sim::{EntityIndex, Position, StableId};
-use campfire_store::{AppendWriter, Scratch};
-use campfire_verifier::{Replay, ReplayError, SnapshotCheckError, Verified};
+use campfire_store::{AppendWriter, PathError, ReadError, Scratch};
+use campfire_verifier::{
+    Replay, ReplayError, SnapshotCheckError, Verification, Verified, VerifyError,
+};
 
 /// The lane mode's life pool, `health`, the first of its pools by name.
 const LIFE: PoolId = PoolId::FIRST;
@@ -659,8 +661,8 @@ fn the_binary_logs_the_last_state_hash() {
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();
     let refused = format!(
-        "the log does not verify file={path} error=the snapshot is not the one its checkpoint \
-         names\n"
+        "the log does not verify file={path} error=a checkpoint's snapshot does not check: the \
+         snapshot is not the one its checkpoint names\n"
     );
     assert!(logged.ends_with(&refused), "{logged}");
 
@@ -670,8 +672,9 @@ fn the_binary_logs_the_last_state_hash() {
     let output = verifier(&[packages, &corrupt]);
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();
-    let refused =
-        format!("the log does not verify file={corrupt} error=session log ends inside a field\n");
+    let refused = format!(
+        "the log does not verify file={corrupt} error=the log does not decode: session log ends inside a field\n"
+    );
     assert!(logged.ends_with(&refused), "{logged}");
 
     assert_eq!(verifier(&[]).status.code(), Some(2));
@@ -770,4 +773,68 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         ErrorReport::of(&refused).to_string(),
         r#"the mode's start failed: script call raised "no start""#
     );
+}
+
+#[test]
+fn each_step_a_log_file_fails_at_is_its_own_case() {
+    let mut snapshot = Vec::new();
+    let Run { fixed, trail } = checkpointed(&mut snapshot, None, None);
+    let scratch = Scratch::new();
+    scratch.write("match.log", encoded(fixed.runner().log()));
+    let packages = PackageDir::workspace("");
+    let verify = |packages: &Path, log: &str, snapshots: Option<&str>| {
+        let snapshots = snapshots.map(|dir| scratch.path(dir));
+        Verification::file(packages, &scratch.path(log), snapshots.as_deref())
+    };
+    // A directory of packages that is not there; one that holds none of the log's mode.
+    let none = scratch.path("none");
+    assert!(matches!(
+        verify(&none, "match.log", None),
+        Err(VerifyError::Store(_))
+    ));
+    scratch.create_dir("empty");
+    assert!(matches!(
+        verify(&scratch.path("empty"), "match.log", None),
+        Err(VerifyError::Start(_))
+    ));
+    // A log that is not there, and bytes that are no log.
+    assert!(matches!(
+        verify(&packages, "none.log", None),
+        Err(VerifyError::ReadLog(PathError {
+            error: ReadError::Missing,
+            ..
+        }))
+    ));
+    scratch.write("bad.log", "no log");
+    assert!(matches!(
+        verify(&packages, "bad.log", None),
+        Err(VerifyError::Decode(_))
+    ));
+    // Its checkpoint's snapshot not there, then other bytes under its name.
+    scratch.create_dir("snapshots");
+    assert!(matches!(
+        verify(&packages, "match.log", Some("snapshots")),
+        Err(VerifyError::ReadSnapshot(PathError {
+            error: ReadError::Missing,
+            ..
+        }))
+    ));
+    let named = format!("snapshots/{}", SnapshotFingerprint::of(&snapshot));
+    scratch.write(&named, "other");
+    assert!(matches!(
+        verify(&packages, "match.log", Some("snapshots")),
+        Err(VerifyError::Snapshot(SnapshotCheckError::Fingerprint))
+    ));
+    // A checkpoint whose state its replay does not reach.
+    let forged = StateHash::new([7; 32]);
+    let Run { fixed: forged, .. } = checkpointed(&mut Vec::new(), Some(forged), None);
+    scratch.write("forged.log", encoded(forged.runner().log()));
+    assert!(matches!(
+        verify(&packages, "forged.log", None),
+        Err(VerifyError::Replay(ReplayError::Checkpoint { .. }))
+    ));
+    // With its own snapshot, the file verifies to the match's last state.
+    scratch.write(&named, &snapshot);
+    let hash = verify(&packages, "match.log", Some("snapshots")).unwrap();
+    assert_eq!(Some(&hash), trail.totals().last());
 }

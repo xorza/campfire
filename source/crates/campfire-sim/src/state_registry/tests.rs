@@ -131,6 +131,7 @@ fn restore(bytes: &[u8]) -> Result<World, SnapshotError> {
 /// A snapshot framed by hand from (name, body) pairs.
 fn frame(sections: &[(&str, Vec<u8>)]) -> Vec<u8> {
     let mut bytes = SNAPSHOT_TAG.to_vec();
+    bytes.extend_from_slice(&StateRegistry::DATA_VERSION.to_le_bytes());
     for (name, body) in sections {
         bytes.extend_from_slice(&u32::try_from(name.len()).unwrap().to_le_bytes());
         bytes.extend_from_slice(name.as_bytes());
@@ -237,6 +238,24 @@ fn snapshot_restores_the_same_state() {
         registry().snapshot(&original, &mut Vec::new()),
         registry().hash(&original)
     );
+    // The data version follows the tag, four bytes little-endian; one past this release's is
+    // another release's format, refused with both numbers before any type is read, and a
+    // snapshot that ends at its tag is cut short.
+    let version = SNAPSHOT_TAG.len()..SNAPSHOT_TAG.len() + 4;
+    assert_eq!(
+        bytes[version.clone()],
+        StateRegistry::DATA_VERSION.to_le_bytes()
+    );
+    let mut other = bytes.clone();
+    other[version].copy_from_slice(&(StateRegistry::DATA_VERSION + 1).to_le_bytes());
+    assert_eq!(
+        restore(&other).err(),
+        Some(SnapshotError::OtherVersion {
+            found: StateRegistry::DATA_VERSION + 1,
+            read: StateRegistry::DATA_VERSION,
+        })
+    );
+    assert_eq!(restore(SNAPSHOT_TAG).err(), Some(SnapshotError::Truncated));
     let mut restored = restore(&bytes).unwrap();
     assert_eq!(registry().hash(&restored), registry().hash(&original));
     assert_eq!(snapshot(&restored), bytes);
