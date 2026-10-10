@@ -286,21 +286,26 @@ fn placed(run: &Run, x: i64, z: i64) -> StableId {
     unit.expect("a placed unit").id
 }
 
-#[test]
-fn a_3v3_match_replays_to_the_same_hashes() {
-    let moba = Moba3v3::load();
-    let run = run(&moba);
-    run.golden.check("3v3");
-    let melee = assert_start(&moba, &run);
-    assert_skirmish(&run);
-    assert_camp(&run);
-    assert_gold(&run, melee);
-    assert_learning(&run);
-    showcase::assert_farm(&run.showcase);
-    showcase::assert_shop(&moba, &run.showcase);
-    let world = run.fixed.runner().world();
-    showcase::assert_casts(&moba, &run.showcase, world, TICKS);
-    assert_replays(&moba, run.fixed.runner(), &run.trail);
+/// The mode's scripted match, which `source/.config/nextest.toml` exempts from the bound of 1 s.
+mod scripted_match {
+    use super::*;
+
+    #[test]
+    fn a_3v3_match_replays_to_the_same_hashes() {
+        let moba = Moba3v3::load();
+        let run = run(&moba);
+        run.golden.check("3v3");
+        let melee = assert_start(&moba, &run);
+        assert_skirmish(&run);
+        assert_camp(&run);
+        assert_gold(&run, melee);
+        assert_learning(&run);
+        showcase::assert_farm(&run.showcase);
+        showcase::assert_shop(&moba, &run.showcase);
+        let world = run.fixed.runner().world();
+        showcase::assert_casts(&moba, &run.showcase, world, TICKS);
+        assert_replays(&moba, run.fixed.runner(), &run.trail);
+    }
 }
 
 /// The match's state at its end, its scripts, and its units at the pick's end and as the first

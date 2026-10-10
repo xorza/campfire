@@ -1,0 +1,21 @@
+[profile.default]
+# A test past 1 s breaks the bound of AGENTS.md, and SLOW names it; one that runs 30 s is stuck in a
+# loop or a wait, and nextest ends it, as libtest can end no test.
+slow-timeout = { period = "1s", terminate-after = 5 }
+
+# A mode's scripted match is the one test exempt from the bound of 1 s: it gathers every rule of
+# its mode into one run (design 02, One scripted match for each mode). Each sits in a module named
+# `scripted_match`, so its path shows the exemption, and a new mode's joins it with no change here.
+[[profile.default.overrides]]
+filter = 'test(/(^|::)scripted_match::/)'
+slow-timeout = { period = "15s", terminate-after = 4 }
+
+# A bench case runs once, in criterion's test mode, as it measures: a whole match for each `worst`
+# and `mean` case, its fixture made again in its own process. It keeps no bound of 1 s, and ends at
+# 60 s (design 02, Benches).
+[[profile.default.overrides]]
+filter = 'kind(bench)'
+slow-timeout = { period = "15s", terminate-after = 4 }
+
+[profile.ci]
+fail-fast = false
