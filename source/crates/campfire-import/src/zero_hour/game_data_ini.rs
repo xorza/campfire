@@ -1,4 +1,4 @@
-use campfire_package::{CameraFile, CameraHeight, GameData};
+use campfire_package::{CameraFile, CameraHeight, GameData, TerrainLighting};
 
 use crate::zero_hour::error::IniError;
 use crate::zero_hour::ini_text::{IniLine, IniText};
@@ -21,6 +21,9 @@ pub(crate) struct GameDataIni {
     default_scroll: f32,
     /// `KeyboardCameraRotateSpeed`: radians a frame of the game's 30.
     rotate_speed: f32,
+    /// `NumberGlobalLights`: the lights the terrain and the objects are drawn in, of the three
+    /// each map gives.
+    global_lights: usize,
 }
 
 /// The game's frames a second, which its camera's speeds count by.
@@ -53,6 +56,7 @@ impl Default for GameDataIni {
             vertical_scroll: 1.0,
             default_scroll: 0.5,
             rotate_speed: 0.1,
+            global_lights: 3,
         }
     }
 }
@@ -72,6 +76,14 @@ impl GameDataIni {
                     self.adjust_cliff_textures = GameDataIni::yes(&line)?;
                 }
                 (true, "use3wayterrainblends") => self.three_way_blends = GameDataIni::int(&line)?,
+                (true, "numbergloballights") => {
+                    // The game keeps three lights a map, and draws past none it keeps.
+                    let lights = GameDataIni::int(&line)?;
+                    self.global_lights = usize::try_from(lights)
+                        .ok()
+                        .filter(|&lights| lights <= TerrainLighting::MOST)
+                        .ok_or(IniError::Range { line: line.number })?;
+                }
                 (true, word) => {
                     let field = match word {
                         "camerapitch" => &mut self.camera_pitch,
@@ -101,6 +113,11 @@ impl GameDataIni {
             adjust_cliff_textures: self.adjust_cliff_textures,
             three_way_blends: self.three_way_blends != 0,
         }
+    }
+
+    /// How many of each map's lights the terrain and the objects are drawn in.
+    pub(crate) const fn global_lights(&self) -> usize {
+        self.global_lights
     }
 
     /// The player's camera, as the game's tactical view moves it at its start, its zoom at
@@ -242,6 +259,20 @@ mod tests {
             fails(b"GameData\n CameraPitch = steep\nEnd\n"),
             IniError::Real { line: 2, .. }
         ));
+        // Three lights by default; a file may draw fewer, and none past the three a map keeps.
+        assert_eq!(GameDataIni::default().global_lights(), 3);
+        let mut two = GameDataIni::default();
+        two.read(b"GameData\n NumberGlobalLights = 2\nEnd\n")
+            .unwrap();
+        assert_eq!(two.global_lights(), 2);
+        assert_eq!(
+            fails(b"GameData\n NumberGlobalLights = 4\nEnd\n"),
+            IniError::Range { line: 2 }
+        );
+        assert_eq!(
+            fails(b"GameData\n NumberGlobalLights = -1\nEnd\n"),
+            IniError::Range { line: 2 }
+        );
         assert_eq!(fails(b"MapName = A.map\n"), IniError::NotBlock { line: 1 });
         assert_eq!(fails(b"End\n"), IniError::StrayEnd { line: 1 });
         assert_eq!(

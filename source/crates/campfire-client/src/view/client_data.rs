@@ -6,7 +6,7 @@ use campfire_capabilities::{HeightGrid, PackagePath};
 use campfire_common::{Binary, Toml};
 use campfire_log::ErrorReport;
 use campfire_package::{
-    CameraFile, ClientUnits, ContentError, MaterialFile, ModePackages, PackageReader,
+    CameraFile, ClientUnits, ContentError, MapLights, MaterialFile, ModePackages, PackageReader,
 };
 use tracing::error;
 
@@ -15,7 +15,8 @@ use crate::view::ground_heights::GroundHeights;
 /// The client data of the mode's packages, which the view draws units by: each package's unit
 /// looks, `client/units.toml`, by its place, and every material file, `client/materials/<name>.toml`,
 /// by its package's place and its name; the map's heightmap and the ground's heights from it; and
-/// the mode's own package's camera, `client/camera.toml`. Each file is read once, as the view
+/// the mode's own package's camera, `client/camera.toml`, and the map's lights,
+/// `client/maps/<map>/lights.toml`. Each file is read once, as the view
 /// starts, and checked against its package's index; one that does not read is logged, and drawn
 /// as if it were not there.
 #[derive(Resource, Debug, Default)]
@@ -26,6 +27,8 @@ pub(crate) struct ClientData {
     pub(crate) heights: Option<GroundHeights>,
     /// The mode's own package's camera file.
     pub(crate) camera: Option<CameraFile>,
+    /// The map's lights, which its units are drawn in.
+    pub(crate) lights: Option<MapLights>,
 }
 
 const UNITS: &str = "client/units.toml";
@@ -53,6 +56,11 @@ impl ClientData {
         data.camera = ClientData::read_file(mode, &camera)
             .and_then(|bytes| ClientData::text(&camera, bytes))
             .and_then(|text| ClientData::logged(&camera, Toml::parse::<CameraFile>(&text)));
+        let lights = MapLights::path(packages.map_name().as_str());
+        let lights = PackagePath::parse(&lights).expect("a map's name is a package path's");
+        data.lights = ClientData::read_file(mode, &lights)
+            .and_then(|bytes| ClientData::text(&lights, bytes))
+            .and_then(|text| ClientData::logged(&lights, Toml::parse::<MapLights>(&text)));
         data
     }
 

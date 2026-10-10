@@ -216,6 +216,12 @@ pub enum MapError {
     /// A waypoint's name reads as a number, which a marker's param would take for one.
     #[error("waypoint name {0} reads as a number")]
     WaypointName(String),
+    /// Its time of day is none of the game's four.
+    #[error("its time of day {0} is none of the game's four")]
+    TimeOfDay(i32),
+    /// A number of its lighting is not finite, or a light it draws its objects in goes no way.
+    #[error("a number of its lighting is not finite, or an object light goes no way")]
+    Lighting,
     /// Two object templates give one unit type name.
     #[error("{first} and {second} give one unit type name")]
     UnitTypeClash { first: String, second: String },
@@ -239,6 +245,7 @@ pub enum Chunk {
     BlendTileData,
     ObjectsList,
     Object,
+    GlobalLighting,
 }
 
 impl Chunk {
@@ -249,6 +256,7 @@ impl Chunk {
             Chunk::BlendTileData => "BlendTileData",
             Chunk::ObjectsList => "ObjectsList",
             Chunk::Object => "Object",
+            Chunk::GlobalLighting => "GlobalLighting",
         }
     }
 }
@@ -288,6 +296,9 @@ pub enum IniError {
         #[source]
         error: ParseFloatError,
     },
+    /// A field's number is past what the game holds.
+    #[error("line {line}: a field's number is past what the game holds")]
+    Range { line: usize },
     /// A field of a whole number holds none.
     #[error("line {line}: a field holds no whole number")]
     Number {

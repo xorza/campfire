@@ -32,6 +32,7 @@ mod zero_hour;
 
 pub use crate::client_data::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_data::client_units::{ClientModel, ClientUnit, ClientUnits};
+pub use crate::client_data::map_lights::{MapLight, MapLights};
 pub use crate::client_data::material_file::{Blend, MaterialFile, MaterialTexture};
 pub use crate::error::box_problem::BoxProblem;
 pub use crate::error::build_problem::BuildProblem;
@@ -67,7 +68,8 @@ pub use crate::zero_hour::class_texture::ClassTexture;
 pub use crate::zero_hour::error::{ClassTextureError, TerrainError};
 pub use crate::zero_hour::game_data::GameData;
 pub use crate::zero_hour::terrain::{
-    BlendShape, BlendTile, CliffUv, Terrain, TerrainCell, TerrainParts, TextureClass,
+    BlendShape, BlendTile, CliffUv, Terrain, TerrainCell, TerrainLight, TerrainLighting,
+    TerrainParts, TextureClass,
 };
 pub use crate::zero_hour::terrain_atlas::TerrainAtlas;
 

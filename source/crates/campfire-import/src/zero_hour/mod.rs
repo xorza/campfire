@@ -6,8 +6,8 @@ use campfire_capabilities::PackagePath;
 use campfire_common::Toml;
 use campfire_common::{Fingerprint, MapName};
 use campfire_package::{
-    CameraFile, ClientModel, ClientUnit, ClientUnits, GameData, PackageWriter, TextureClass,
-    WriteError,
+    CameraFile, ClientModel, ClientUnit, ClientUnits, GameData, MapLights, PackageWriter,
+    TextureClass, WriteError,
 };
 use campfire_store::DurableFile;
 
@@ -150,7 +150,7 @@ impl<'a> ZeroHour<'a> {
                     for class in terrain.classes.iter_mut().chain(&mut terrain.edge_classes) {
                         class.texture = self.class_texture(class, &terrain_types);
                     }
-                    MapImport::new(&file, &mut unit_types)
+                    MapImport::new(&file, &mut unit_types, game_data.global_lights())
                 })
                 .map_err(|error| {
                     ImportError::ZeroHour(ZeroHourError::Map {
@@ -164,6 +164,7 @@ impl<'a> ZeroHour<'a> {
                 &format!("client/maps/{name}/terrain.bin"),
                 &imported.terrain,
             )?;
+            write(&MapLights::path(name.as_str()), imported.lights.as_bytes())?;
         }
         for InstallTexture { path, kind } in self.install.textures() {
             let bytes = self.install.read(&path)?;
@@ -406,14 +407,14 @@ mod tests {
         );
         assert_eq!(
             scratch.names("one/game/client/maps/fixture_map"),
-            ["terrain.bin"]
+            ["lights.toml", "terrain.bin"]
         );
         // The class whose type's texture the install holds names it; the other names none.
         let mut file = MapFile::read(&map(8)).unwrap();
         let sand = PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap();
         file.terrain.classes[0].texture = Some(sand);
         let mut types = UnitTypes::default();
-        let expected = MapImport::new(&file, &mut types).unwrap();
+        let expected = MapImport::new(&file, &mut types, 3).unwrap();
         assert_eq!(
             scratch.read_text("one/game/map/fixture_map/map.toml"),
             expected.map
@@ -425,6 +426,10 @@ mod tests {
         assert_eq!(
             scratch.read("one/game/client/maps/fixture_map/terrain.bin"),
             expected.terrain
+        );
+        assert_eq!(
+            scratch.read_text("one/game/client/maps/fixture_map/lights.toml"),
+            expected.lights
         );
         assert_eq!(scratch.read_text("one/game/data/units.toml"), types.toml());
         let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));

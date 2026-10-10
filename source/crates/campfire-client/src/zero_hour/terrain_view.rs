@@ -25,7 +25,8 @@ use crate::zero_hour::terrain_mesh::TerrainMeshes;
 
 /// Draws the terrain of a map imported from Zero Hour: reads its `client/maps/<map>/terrain.bin`,
 /// the package's `client/game_data.toml` and each texture class's texture as the client starts,
-/// and draws the ground of the map's heightmap with them, its tiles and its blends. A map with no
+/// and draws the ground of the map's heightmap with them, its tiles and its blends, in its own
+/// light. A map with no
 /// terrain file draws none; a file that does not read is logged, and none is drawn.
 #[derive(Debug)]
 pub(crate) struct TerrainView {
@@ -79,12 +80,13 @@ impl TerrainView {
         }
         let atlas = TerrainAtlas::new(parts, &files.textures);
         let cells = TerrainCells::new(parts, grid.samples(), &atlas, files.game);
-        let TerrainMeshes { ground, overlay } = TerrainMeshes::of(&cells, grid, &atlas);
+        let TerrainMeshes { ground, overlay } =
+            TerrainMeshes::of(&cells, grid, &atlas, files.terrain.lighting());
         let texture = images.add(TerrainView::atlas_image(atlas));
+        // Each vertex holds its light, as the game lights the terrain itself.
         let ground_material = StandardMaterial {
             base_color_texture: Some(texture),
-            perceptual_roughness: 1.0,
-            reflectance: 0.0,
+            unlit: true,
             ..StandardMaterial::default()
         };
         let overlay_material = StandardMaterial {

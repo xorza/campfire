@@ -17,6 +17,7 @@ use crate::view::ViewSystems;
 use crate::view::camera_rig::CameraRig;
 use crate::view::client_data::ClientData;
 use crate::view::float_num::FloatNum;
+use crate::view::scene_lights::EXPOSURE;
 
 /// The player's camera, as its package's camera file and the game's controls move it: the arrow
 /// keys and the window's edges scroll it, the wheel and the keypad's 8 and 2 zoom it, a drag of
@@ -61,7 +62,12 @@ impl PlayerCamera {
         let pivot = bounds.map_or(Vec2::ZERO, |[least, most]| (least + most) / 2.0);
         let rig = CameraRig::new(file, pivot, bounds);
         // No tonemapping: the default one needs lookup tables the client does not build with.
-        commands.spawn((Camera3d::default(), Tonemapping::None, rig.transform(0.0)));
+        commands.spawn((
+            Camera3d::default(),
+            Tonemapping::None,
+            EXPOSURE,
+            rig.transform(0.0),
+        ));
         commands.insert_resource(rig);
     }
 

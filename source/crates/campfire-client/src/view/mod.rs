@@ -39,6 +39,7 @@ use crate::view::footing::Footing;
 use crate::view::glide::{Glide, TickClock};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Look, Pose, Shape};
+use crate::view::scene_lights::{SceneLights, Sun};
 use crate::view::unit_looks::UnitLooks;
 
 pub(crate) mod camera_rig;
@@ -52,6 +53,7 @@ pub(crate) mod ground_heights;
 pub(crate) mod look;
 pub(crate) mod package_source;
 pub(crate) mod player_camera;
+pub(crate) mod scene_lights;
 pub(crate) mod unit_looks;
 pub(crate) mod unit_models;
 
@@ -193,17 +195,31 @@ impl Plugin for View {
 }
 
 impl View {
+    /// Sets the background, the map's lights or one plain sun, the view's own ground unless a
+    /// game's module draws one, and the palette.
     fn set_scene(
         drawn: Option<Res<'_, GroundDrawn>>,
+        data: Option<Res<'_, ClientData>>,
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut materials: ResMut<'_, Assets<StandardMaterial>>,
     ) {
         commands.insert_resource(ClearColor(Color::srgb(0.08, 0.09, 0.11)));
-        commands.spawn((
-            DirectionalLight::default(),
-            Transform::from_xyz(4.0, 10.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ));
+        match data.as_deref().and_then(|data| data.lights.as_ref()) {
+            Some(lights) => {
+                let SceneLights { ambient, suns } = SceneLights::of(lights);
+                commands.insert_resource(ambient);
+                for Sun { light, transform } in suns {
+                    commands.spawn((light, transform));
+                }
+            }
+            None => {
+                commands.spawn((
+                    DirectionalLight::default(),
+                    Transform::from_xyz(4.0, 10.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
+                ));
+            }
+        }
         if drawn.is_none() {
             commands.spawn((
                 Ground,

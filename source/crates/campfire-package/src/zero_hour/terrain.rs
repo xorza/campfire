@@ -6,10 +6,31 @@ use crate::zero_hour::error::TerrainError;
 
 /// Zero Hour's terrain of one map, `client/maps/<name>/terrain.bin`, through `Binary`: what each cell
 /// draws, and the tiles, blends and cliff UVs the cells name, as the map's `BlendTileData` holds
-/// them. Each index a cell names is checked to be in its list.
+/// them, each index a cell names checked to be in its list; and the lights it is drawn in.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct Terrain(TerrainParts);
+pub struct Terrain {
+    parts: TerrainParts,
+    lighting: TerrainLighting,
+}
+
+/// The light the terrain is drawn in, the game's for the map's time of day, as its renderer
+/// lights each vertex: the ambient color, and each light's diffuse color, added as it meets the
+/// vertex's normal, each channel of the sum clamped to 0 to 1 and multiplying the texture's.
+/// Colors are the game's numbers, 1 a texture's full color.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TerrainLighting {
+    pub ambient: [f32; 3],
+    /// At most `TerrainLighting::MOST`.
+    pub lights: Vec<TerrainLight>,
+}
+
+/// A directional light of the terrain: its diffuse color, and the way its light goes, on the
+/// engine's axes, as the game keeps it, of no length it checks.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct TerrainLight {
+    pub diffuse: [f32; 3],
+    pub direction: [f32; 3],
+}
 
 /// A terrain's fields, as `Terrain::new` checks them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -92,10 +113,25 @@ pub struct CliffUv {
     pub mutant: bool,
 }
 
+impl TerrainLighting {
+    /// The most lights the game draws the terrain in (`MAX_GLOBAL_LIGHTS`).
+    pub const MOST: usize = 3;
+}
+
 impl Terrain {
-    /// The terrain of `parts`; an error unless its cells fill whole rows, every index each
-    /// cell, blend and cliff names is in its list, and each class's tiles are within its count.
-    pub fn new(parts: TerrainParts) -> Result<Terrain, TerrainError> {
+    /// The terrain of `parts` in `lighting`; an error unless its cells fill whole rows, every
+    /// index each cell, blend and cliff names is in its list, each class's tiles are within its
+    /// count, and its lighting has at most three lights and finite numbers.
+    pub fn new(parts: TerrainParts, lighting: TerrainLighting) -> Result<Terrain, TerrainError> {
+        let numbers = lighting
+            .lights
+            .iter()
+            .flat_map(|light| light.diffuse.into_iter().chain(light.direction))
+            .chain(lighting.ambient);
+        if lighting.lights.len() > TerrainLighting::MOST || !numbers.into_iter().all(f32::is_finite)
+        {
+            return Err(TerrainError::Lighting);
+        }
         let columns = usize::try_from(parts.columns)
             .ok()
             .ok_or(TerrainError::Shape)?;
@@ -144,18 +180,28 @@ impl Terrain {
             parts.edge_tiles,
             TerrainError::EdgeClassTiles,
         )?;
-        Ok(Terrain(parts))
+        Ok(Terrain { parts, lighting })
     }
 
     pub const fn parts(&self) -> &TerrainParts {
-        &self.0
+        &self.parts
+    }
+
+    pub const fn lighting(&self) -> &TerrainLighting {
+        &self.lighting
     }
 }
 
 /// A package's file is untrusted, so a terrain `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Terrain {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Terrain, D::Error> {
-        Terrain::new(TerrainParts::deserialize(deserializer)?).map_err(D::Error::custom)
+        #[derive(Debug, Deserialize)]
+        struct Fields {
+            parts: TerrainParts,
+            lighting: TerrainLighting,
+        }
+        let Fields { parts, lighting } = Fields::deserialize(deserializer)?;
+        Terrain::new(parts, lighting).map_err(D::Error::custom)
     }
 }
 
@@ -165,8 +211,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn a_terrain_decodes_only_with_each_index_in_its_list() {
+    /// A terrain of 2 × 2 cells, each naming each list's one entry.
+    fn parts() -> TerrainParts {
         let cell = TerrainCell {
             tile: 7,
             blend: Some(0),
@@ -174,7 +220,7 @@ mod tests {
             cliff_uv: Some(0),
             cliff: true,
         };
-        let parts = TerrainParts {
+        TerrainParts {
             columns: 2,
             cells: vec![cell; 4],
             tiles: 2,
@@ -200,8 +246,47 @@ mod tests {
                 flip: false,
                 mutant: true,
             }],
+        }
+    }
+
+    /// An ambient color and one light.
+    fn lighting() -> TerrainLighting {
+        TerrainLighting {
+            ambient: [0.2, 0.2, 0.25],
+            lights: vec![TerrainLight {
+                diffuse: [0.8, 0.75, 0.7],
+                direction: [-0.5, -0.7, 0.5],
+            }],
+        }
+    }
+
+    #[test]
+    fn a_terrain_s_lighting_has_at_most_three_lights_of_finite_numbers() {
+        let (parts, lighting) = (parts(), lighting());
+        // At most three lights, each number finite.
+        let lit = |change: fn(&mut TerrainLighting)| {
+            let mut lighting = lighting.clone();
+            change(&mut lighting);
+            Terrain::new(parts.clone(), lighting).unwrap_err()
         };
-        let terrain = Terrain::new(parts.clone()).unwrap();
+        assert_eq!(
+            lit(|lighting| lighting.lights = vec![lighting.lights[0]; 4]),
+            TerrainError::Lighting
+        );
+        assert_eq!(
+            lit(|lighting| lighting.ambient[1] = f32::NAN),
+            TerrainError::Lighting
+        );
+        assert_eq!(
+            lit(|lighting| lighting.lights[0].direction[2] = f32::INFINITY),
+            TerrainError::Lighting
+        );
+    }
+
+    #[test]
+    fn a_terrain_decodes_only_with_each_index_in_its_list() {
+        let (parts, lighting) = (parts(), lighting());
+        let terrain = Terrain::new(parts.clone(), lighting.clone()).unwrap();
         let bytes = Binary::encode(&terrain);
         assert_eq!(Binary::decode::<Terrain>(&bytes).unwrap(), terrain);
         let trailing = [&bytes[..], &[0]].concat();
@@ -215,7 +300,7 @@ mod tests {
         let with = |change: fn(&mut TerrainParts)| {
             let mut parts = parts.clone();
             change(&mut parts);
-            Terrain::new(parts).unwrap_err()
+            Terrain::new(parts, lighting.clone()).unwrap_err()
         };
         assert_eq!(
             with(|parts| parts.cells.pop().map(drop).unwrap()),
@@ -258,7 +343,10 @@ mod tests {
         );
         let mut short = parts;
         short.tiles = 1;
-        let encoded = Binary::encode(&short);
+        let encoded = Binary::encode(&Terrain {
+            parts: short,
+            lighting,
+        });
         assert!(matches!(
             Binary::decode::<Terrain>(&encoded),
             Err(BinaryError::Malformed(_))

@@ -3,21 +3,22 @@ use std::collections::BTreeSet;
 use campfire_capabilities::HeightGrid;
 use campfire_common::{Binary, Toml};
 use campfire_math::Num;
-use campfire_package::{Terrain, TerrainParts};
+use campfire_package::{MapLight, MapLights, Terrain, TerrainLight, TerrainLighting, TerrainParts};
 use serde::Serialize;
 
 use crate::zero_hour::error::MapError;
-use crate::zero_hour::map_file::{MapFile, MapHeights};
+use crate::zero_hour::map_file::{GameLight, MapFile, MapHeights};
 use crate::zero_hour::map_object::Placement;
 use crate::zero_hour::unit_types::UnitTypes;
 
-/// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin` and
-/// `client/maps/<name>/terrain.bin`.
+/// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
+/// `client/maps/<name>/terrain.bin` and `client/maps/<name>/lights.toml`.
 #[derive(Debug)]
 pub(crate) struct MapImport {
     pub(crate) map: String,
     pub(crate) heights: Vec<u8>,
     pub(crate) terrain: Vec<u8>,
+    pub(crate) lights: String,
 }
 
 /// A cell of the heightmap, 10 units wide (`MAP_XY_FACTOR`).
@@ -68,15 +69,47 @@ struct MarkerParams {
 }
 
 impl MapImport {
-    /// The files of `file`: its heights on the engine's axes, its terrain in the same order, its
-    /// objects as units of the types `unit_types` names, its waypoints as markers, and bounds
-    /// that hold its heights and every point it places.
-    pub(crate) fn new(file: &MapFile, unit_types: &mut UnitTypes) -> Result<MapImport, MapError> {
+    /// The files of `file`: its heights on the engine's axes, its terrain in the same order, lit
+    /// by its first `lights` terrain lights, its objects as units of the types `unit_types`
+    /// names, its waypoints as markers, bounds that hold its heights and every point it places,
+    /// and its first `lights` object lights, as the game draws `NumberGlobalLights` of each. The
+    /// terrain's ambient color is its first light's, and the objects' theirs, as the game takes
+    /// them.
+    pub(crate) fn new(
+        file: &MapFile,
+        unit_types: &mut UnitTypes,
+        lights: usize,
+    ) -> Result<MapImport, MapError> {
         let heights = MapImport::heights(&file.heights)?;
-        let terrain = Terrain::new(TerrainParts {
-            cells: MapImport::flipped(&file.terrain.cells, file.heights.width),
-            ..file.terrain.clone()
-        })
+        let lighting = &file.lighting;
+        let terrain_lighting = TerrainLighting {
+            ambient: lighting.terrain[0].ambient,
+            lights: lighting.terrain[..lights]
+                .iter()
+                .map(|light| TerrainLight {
+                    diffuse: light.diffuse,
+                    direction: MapImport::axes(light),
+                })
+                .collect(),
+        };
+        let map_lights = MapLights::new(
+            lighting.objects[0].ambient,
+            lighting.objects[..lights]
+                .iter()
+                .map(|light| MapLight {
+                    color: light.diffuse,
+                    direction: MapImport::axes(light),
+                })
+                .collect(),
+        )
+        .ok_or(MapError::Lighting)?;
+        let terrain = Terrain::new(
+            TerrainParts {
+                cells: MapImport::flipped(&file.terrain.cells, file.heights.width),
+                ..file.terrain.clone()
+            },
+            terrain_lighting,
+        )
         .map_err(MapError::Terrain)?;
         let mut low = heights.origin();
         let mut high = heights.far_corner();
@@ -143,7 +176,15 @@ impl MapImport {
             map: Toml::write(&map).expect("a map encodes as TOML"),
             heights: Binary::encode(&heights),
             terrain: Binary::encode(&terrain),
+            lights: Toml::write(&map_lights).expect("lights encode as TOML"),
         })
+    }
+
+    /// The way `light` goes on the engine's axes: the game's `x`, `y` and `z` are its `x`, `−z`
+    /// and `y`.
+    fn axes(light: &GameLight) -> [f32; 3] {
+        let [x, y, z] = light.position;
+        [x, z, -y]
     }
 
     /// The heights on the engine's axes. The original's sample of column `i` and row `j` lies at
@@ -194,10 +235,57 @@ mod tests {
     use crate::zero_hour::map_file::internals::map;
 
     #[test]
+    fn a_map_s_lights_are_its_time_of_day_s_on_the_engine_s_axes() {
+        let file = MapFile::read(&map(8)).unwrap();
+        let mut types = UnitTypes::default();
+        let imported = MapImport::new(&file, &mut types, 3).unwrap();
+        let terrain = Binary::decode::<Terrain>(&imported.terrain).unwrap();
+        // The afternoon's lights: light `l` of time 2 has ambient [2, l, 0], diffuse [2, l, 1]
+        // and position [2, l, 2], which is the engine's [2, 2, −l]. The terrain's ambient is its
+        // light 0's, the objects' their light 3's.
+        let terrain_light = |at: f32| TerrainLight {
+            diffuse: [2.0, at, 1.0],
+            direction: [2.0, 2.0, -at],
+        };
+        assert_eq!(
+            *terrain.lighting(),
+            TerrainLighting {
+                ambient: [2.0, 0.0, 0.0],
+                lights: vec![terrain_light(0.0), terrain_light(1.0), terrain_light(2.0)],
+            }
+        );
+        let object_light = |at: f32| MapLight {
+            color: [2.0, at, 1.0],
+            direction: [2.0, 2.0, -at],
+        };
+        assert_eq!(
+            Toml::parse::<MapLights>(&imported.lights).unwrap(),
+            MapLights {
+                ambient: [2.0, 3.0, 0.0],
+                lights: vec![object_light(3.0), object_light(4.0), object_light(5.0)],
+            }
+        );
+        // Drawn in two lights, each keeps its first two.
+        let two = MapImport::new(&file, &mut types, 2).unwrap();
+        let terrain = Binary::decode::<Terrain>(&two.terrain).unwrap();
+        assert_eq!(terrain.lighting().lights.len(), 2);
+        assert_eq!(
+            Toml::parse::<MapLights>(&two.lights).unwrap().lights.len(),
+            2
+        );
+        // An object light it draws that goes no way is refused; one it does not draw is not.
+        let mut still = file;
+        still.lighting.objects[1].position = [0.0; 3];
+        let refused = MapImport::new(&still, &mut types, 3).map(drop);
+        assert_eq!(refused, Err(MapError::Lighting));
+        assert!(MapImport::new(&still, &mut types, 1).is_ok());
+    }
+
+    #[test]
     fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
         let file = MapFile::read(&map(8)).unwrap();
         let mut types = UnitTypes::default();
-        let imported = MapImport::new(&file, &mut types).unwrap();
+        let imported = MapImport::new(&file, &mut types, 3).unwrap();
 
         // 4 × 3 samples, a border of 1: x from −10 to 20, and z from −(3 − 1 − 1) · 10 = −10 to
         // 10, the file's last row first.
@@ -296,7 +384,7 @@ mod tests {
     #[test]
     fn a_map_whose_waypoints_or_objects_the_engine_cannot_hold_is_refused() {
         let mut file = MapFile::read(&map(8)).unwrap();
-        let import = |file: &MapFile| MapImport::new(file, &mut UnitTypes::default()).map(drop);
+        let import = |file: &MapFile| MapImport::new(file, &mut UnitTypes::default(), 3).map(drop);
         let waypoint = 2;
         let mut twice = file.clone();
         twice.objects.push(file.objects[waypoint].clone());

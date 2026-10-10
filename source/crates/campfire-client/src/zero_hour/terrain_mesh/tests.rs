@@ -1,6 +1,7 @@
 use campfire_math::Num;
 use campfire_package::{
-    BlendShape, BlendTile, ClassTexture, GameData, TerrainCell, TerrainParts, TextureClass,
+    BlendShape, BlendTile, ClassTexture, GameData, TerrainCell, TerrainLight, TerrainParts,
+    TextureClass,
 };
 
 use super::*;
@@ -68,7 +69,22 @@ fn fixture() -> (TerrainParts, HeightGrid, Vec<u8>) {
     (parts, grid, texture)
 }
 
+/// An ambient of 0.1, and one light straight down, its diffuse 0.5.
+fn lighting() -> TerrainLighting {
+    TerrainLighting {
+        ambient: [0.1; 3],
+        lights: vec![TerrainLight {
+            diffuse: [0.5; 3],
+            direction: [0.0, -1.0, 0.0],
+        }],
+    }
+}
+
 fn meshes(game: GameData) -> TerrainMeshes {
+    meshes_in(game, &lighting())
+}
+
+fn meshes_in(game: GameData, lighting: &TerrainLighting) -> TerrainMeshes {
     let (parts, grid, texture) = fixture();
     let textures = [Some(ClassTexture {
         width: 128,
@@ -77,7 +93,7 @@ fn meshes(game: GameData) -> TerrainMeshes {
     })];
     let atlas = TerrainAtlas::new(&parts, &textures);
     let cells = TerrainCells::new(&parts, grid.samples(), &atlas, game);
-    TerrainMeshes::of(&cells, &grid, &atlas)
+    TerrainMeshes::of(&cells, &grid, &atlas, lighting)
 }
 
 const THREE_WAY: GameData = GameData {
@@ -140,24 +156,41 @@ fn each_cell_lies_on_its_samples_and_splits_as_its_blend_says() {
 }
 
 #[test]
-fn a_sample_s_normal_crosses_its_slopes_across_its_neighbors() {
+fn a_vertex_s_light_crosses_its_slopes_across_its_neighbors() {
+    let linear = |code: f32| LinearRgba::from(Srgba::new(code, code, code, 1.0)).red;
+    let light = |color: [f32; 4]| [color[0], color[1], color[2]];
     let TerrainMeshes { ground, .. } = meshes(THREE_WAY);
     // Sample [1, 1], corner 2 of cell [0, 0]: 10 m rise east, from [0, 1] to [2, 1], and none
     // north, from [1, 0] to [1, 2]: (20, 0, 10) × (0, 20, 0) = (−200, 0, 400) on the game's
-    // axes, (−200, 400, 0) on the engine's, over √200000.
-    let [x, y, z] = ground.normals[2];
-    let length = 200_000_f32.sqrt();
-    assert_eq!([x, y, z], [-200.0 / length, 400.0 / length, 0.0]);
+    // axes, its up 400 / √200000 = 0.894427. The light straight down meets it by that: 0.1 +
+    // 0.5 · 0.894427 = 0.547214, an sRGB code.
+    let up = 400.0 / 200_000_f32.sqrt();
+    assert_eq!(light(ground.colors[2]), [linear(0.1 + 0.5 * up); 3]);
     // Sample [0, 0], corner 0 of cell [0, 0], at the map's corner: its neighbors west and south
-    // clamp to itself, still 20 m apart, so it falls 10 m east and 10 m north: (200, 400, −200)
-    // on the engine's axes, over √240000.
-    let length = 240_000_f32.sqrt();
-    assert_eq!(
-        ground.normals[0],
-        [200.0 / length, 400.0 / length, -200.0 / length]
-    );
-    // Sample [2, 2], corner 2 of cell [1, 1]: it falls 10 m north, from [2, 1] to [2, 3]; its
-    // normal leans north, the engine's −z.
-    let length = 200_000_f32.sqrt();
-    assert_eq!(ground.normals[22], [0.0, 400.0 / length, -200.0 / length]);
+    // clamp to itself, still 20 m apart, so it falls 10 m east and 10 m north: its normal
+    // (200, 400, −200) over √240000.
+    let up = 400.0 / 240_000_f32.sqrt();
+    assert_eq!(light(ground.colors[0]), [linear(0.1 + 0.5 * up); 3]);
+    // Sample [3, 0], corner 1 of cell [2, 0], the ninth corner, flat to its neighbors: 0.1 +
+    // 0.5 = 0.6.
+    assert_eq!(light(ground.colors[9]), [linear(0.6); 3]);
+    // A light that comes from below meets no vertex; one too bright clamps each channel at 1.
+    let below = TerrainLighting {
+        ambient: [0.1, 0.2, 0.3],
+        lights: vec![TerrainLight {
+            diffuse: [2.0; 3],
+            direction: [0.0, 1.0, 0.0],
+        }],
+    };
+    let TerrainMeshes { ground, .. } = meshes_in(THREE_WAY, &below);
+    assert_eq!(light(ground.colors[9]), [0.1, 0.2, 0.3].map(linear));
+    let bright = TerrainLighting {
+        ambient: [0.5; 3],
+        lights: vec![TerrainLight {
+            diffuse: [2.0, 0.25, 0.0],
+            direction: [0.0, -1.0, 0.0],
+        }],
+    };
+    let TerrainMeshes { ground, .. } = meshes_in(THREE_WAY, &bright);
+    assert_eq!(light(ground.colors[9]), [1.0, linear(0.75), linear(0.5)]);
 }

@@ -18,6 +18,34 @@ pub(crate) struct MapFile {
     /// Its cells in the file's order, one for each sample of the heights.
     pub(crate) terrain: TerrainParts,
     pub(crate) objects: Vec<MapObject>,
+    pub(crate) lighting: MapLighting,
+}
+
+/// A map's lights for its time of day (`GlobalLighting`): the terrain's and the objects', three
+/// each, on the game's axes, a light the file does not give as the game starts it, dark and
+/// straight down.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct MapLighting {
+    pub(crate) terrain: [GameLight; 3],
+    pub(crate) objects: [GameLight; 3],
+}
+
+/// One of the game's global lights: its ambient and diffuse colors, and the way its light goes,
+/// which the game calls its position.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct GameLight {
+    pub(crate) ambient: [f32; 3],
+    pub(crate) diffuse: [f32; 3],
+    pub(crate) position: [f32; 3],
+}
+
+impl GameLight {
+    /// The light the game starts each with.
+    const DARK: GameLight = GameLight {
+        ambient: [0.0; 3],
+        diffuse: [0.0; 3],
+        position: [0.0, 0.0, -1.0],
+    };
 }
 
 /// A map's heights: one byte for each sample, row after row in the file's order, each row
@@ -54,11 +82,12 @@ impl MapFile {
                 return Err(MapError::NameTwice(id));
             }
         }
-        let mut chunks: [Option<RawChunk<'_>>; 3] = [None, None, None];
+        let mut chunks: [Option<RawChunk<'_>>; 4] = [None, None, None, None];
         let kinds = [
             Chunk::HeightMapData,
             Chunk::BlendTileData,
             Chunk::ObjectsList,
+            Chunk::GlobalLighting,
         ];
         while !reader.is_empty() {
             let chunk = reader.chunk()?;
@@ -72,7 +101,7 @@ impl MapFile {
                 return Err(MapError::Twice(kinds[at]));
             }
         }
-        let [heights, terrain, objects] = chunks;
+        let [heights, terrain, objects, lighting] = chunks;
         let heights = MapFile::heights(heights.ok_or(MapError::Missing(Chunk::HeightMapData))?)?;
         let terrain = MapFile::terrain(
             terrain.ok_or(MapError::Missing(Chunk::BlendTileData))?,
@@ -82,10 +111,13 @@ impl MapFile {
             objects.ok_or(MapError::Missing(Chunk::ObjectsList))?,
             &names,
         )?;
+        let lighting =
+            MapFile::lighting(lighting.ok_or(MapError::Missing(Chunk::GlobalLighting))?)?;
         Ok(MapFile {
             heights,
             terrain,
             objects,
+            lighting,
         })
     }
 
@@ -308,6 +340,63 @@ impl MapFile {
         })
     }
 
+    /// `GlobalLighting` versions 1 to 3 (`WorldHeightMap::ParseLightingDataChunk`): the map's
+    /// time of day, then for each of the four, the first terrain light and the first object
+    /// light, from version 2 the two other object lights, from version 3 the two other terrain
+    /// lights; and the shadows' color, which the import does not keep. The lights of the map's
+    /// time of day.
+    fn lighting(chunk: RawChunk<'_>) -> Result<MapLighting, MapError> {
+        MapFile::version(&chunk, Chunk::GlobalLighting, 1..=3)?;
+        let version = chunk.version;
+        let mut body = chunk.body;
+        let time = body.i32()?;
+        let at = usize::try_from(time)
+            .ok()
+            .filter(|time| (1..=4).contains(time))
+            .ok_or(MapError::TimeOfDay(time))?
+            - 1;
+        let mut times = [MapLighting {
+            terrain: [GameLight::DARK; 3],
+            objects: [GameLight::DARK; 3],
+        }; 4];
+        for lighting in &mut times {
+            lighting.terrain[0] = MapFile::light(&mut body)?;
+            lighting.objects[0] = MapFile::light(&mut body)?;
+            if version >= 2 {
+                for light in &mut lighting.objects[1..] {
+                    *light = MapFile::light(&mut body)?;
+                }
+            }
+            if version >= 3 {
+                for light in &mut lighting.terrain[1..] {
+                    *light = MapFile::light(&mut body)?;
+                }
+            }
+        }
+        if !body.is_empty() {
+            body.u32()?;
+        }
+        MapFile::ended(&body, Chunk::GlobalLighting)?;
+        Ok(times[at])
+    }
+
+    /// A light: its ambient color, its diffuse color and its position, each three floats.
+    fn light(body: &mut ChunkReader<'_>) -> Result<GameLight, MapError> {
+        let mut values = [0.0; 9];
+        for value in &mut values {
+            *value = body.f32()?;
+        }
+        if !values.iter().all(|value| value.is_finite()) {
+            return Err(MapError::Lighting);
+        }
+        let three = |from: usize| [values[from], values[from + 1], values[from + 2]];
+        Ok(GameLight {
+            ambient: three(0),
+            diffuse: three(3),
+            position: three(6),
+        })
+    }
+
     /// `ObjectsList` version 3: its `Object` chunks of version 3, each kept as the game keeps
     /// it; a chunk of another name is skipped, as the game has no parser for it.
     fn objects(
@@ -391,6 +480,27 @@ pub(crate) mod internals {
     /// The heights of the fixture map, 4 × 3 samples in the file's order: the first cell spans
     /// 16 steps, the cells beside it 15, and the cell at column 2, row 1, 34.
     pub(crate) const HEIGHTS: [u8; 12] = [0, 1, 2, 3, 16, 5, 6, 7, 8, 20, 10, 40];
+
+    /// The fixture's `GlobalLighting` of version 3, its time of day afternoon, the second: for
+    /// each time `t` from 1, each light `l` of terrain from 0 and of objects from 3 gives the
+    /// floats `[t, l, 0, t, l, 1, t, l, 2]`, then the shadows' color.
+    pub(crate) fn lighting() -> Vec<u8> {
+        let mut bytes = 2_i32.to_le_bytes().to_vec();
+        let light = |time: u8, light: u8| {
+            [0_u8, 1, 2]
+                .into_iter()
+                .flat_map(|axis| [f32::from(time), f32::from(light), f32::from(axis)])
+                .flat_map(f32::to_le_bytes)
+                .collect::<Vec<u8>>()
+        };
+        for time in 1..=4 {
+            for at in [0, 3, 4, 5, 1, 2] {
+                bytes.extend(light(time, at));
+            }
+        }
+        bytes.extend(0x0080_8080_u32.to_le_bytes());
+        bytes
+    }
 
     /// A map of 4 × 3 samples with a border of 1, its terrain's `BlendTileData` of `version`,
     /// beside a chunk the import skips. Its objects: a tank, a rock 4.5 below the ground at an
@@ -487,6 +597,7 @@ pub(crate) mod internals {
             writer.chunk("BlendTileData", version, &terrain),
             writer.chunk("WorldInfo", 1, &[0, 0]),
             writer.chunk("ObjectsList", 3, &objects.concat()),
+            writer.chunk("GlobalLighting", 3, &lighting()),
         ];
         writer.file(&chunks)
     }
@@ -504,6 +615,48 @@ mod tests {
     use crate::zero_hour::map_file::internals::{HEIGHTS, map};
     use crate::zero_hour::map_object::Waypoint;
     use crate::zero_hour::ref_pack::internals::literal;
+
+    #[test]
+    fn lighting_of_an_older_version_keeps_the_game_s_dark_lights_and_needs_a_time_of_day() {
+        let read = |version: u16, bytes: &[u8]| {
+            MapFile::lighting(RawChunk {
+                id: 0,
+                version,
+                body: ChunkReader::new(bytes),
+            })
+        };
+        // Version 1: each time holds its first terrain and object light alone, 18 floats, float
+        // `at` of time `t` being `t + at / 32`, exact in an `f32`.
+        let mut one = 4_i32.to_le_bytes().to_vec();
+        for time in 1..=4_u8 {
+            one.extend(
+                (0..18_u8).flat_map(|at| (f32::from(time) + f32::from(at) / 32.0).to_le_bytes()),
+            );
+        }
+        let lighting = read(1, &one).unwrap();
+        // The night, the fourth: its first terrain light is floats 0 to 8, its first object light
+        // 9 to 17; the others as the game starts them.
+        assert_eq!(lighting.terrain[0].ambient, [4.0, 4.031_25, 4.0625]);
+        assert_eq!(lighting.objects[0].position, [4.468_75, 4.5, 4.531_25]);
+        assert_eq!(lighting.terrain[1..], [GameLight::DARK; 2]);
+        assert_eq!(lighting.objects[1..], [GameLight::DARK; 2]);
+        // A time of day of 0 or 5 is none of the four; a float not finite is refused.
+        for time in [0, 5] {
+            let mut other = one.clone();
+            other[..4].copy_from_slice(&i32::to_le_bytes(time));
+            assert_eq!(read(1, &other), Err(MapError::TimeOfDay(time)));
+        }
+        let mut nan = one.clone();
+        nan[4..8].copy_from_slice(&f32::NAN.to_le_bytes());
+        assert_eq!(read(1, &nan), Err(MapError::Lighting));
+        assert_eq!(
+            read(4, &one),
+            Err(MapError::Version {
+                chunk: Chunk::GlobalLighting,
+                version: 4
+            })
+        );
+    }
 
     #[test]
     fn a_map_reads_its_heights_terrain_and_kept_objects_packed_or_not() {
@@ -588,6 +741,23 @@ mod tests {
         );
         assert_eq!(read.objects[0].waypoint, None);
         assert!(read.objects[3].road_or_bridge());
+        // The lights of its time of day, the afternoon, the second: terrain lights 0 to 2 and
+        // object lights 3 to 5 of time 2.
+        let light = |at: u8| {
+            let [time, at] = [2.0, f32::from(at)];
+            GameLight {
+                ambient: [time, at, 0.0],
+                diffuse: [time, at, 1.0],
+                position: [time, at, 2.0],
+            }
+        };
+        assert_eq!(
+            read.lighting,
+            MapLighting {
+                terrain: [0, 1, 2].map(light),
+                objects: [3, 4, 5].map(light),
+            }
+        );
     }
 
     #[test]

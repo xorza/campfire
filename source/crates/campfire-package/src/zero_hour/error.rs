@@ -22,6 +22,9 @@ pub enum TerrainError {
     /// An edge class, by its index, reaches past its edge tiles.
     #[error("edge class {0} reaches past its edge tiles")]
     EdgeClassTiles(usize),
+    /// Its lighting has more than three lights, or a number that is not finite.
+    #[error("its lighting has more than three lights or a number not finite")]
+    Lighting,
     /// A blend names an edge class past its edge classes.
     #[error("edge class {0} is past its edge classes")]
     EdgeClass(u16),

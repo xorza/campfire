@@ -1,22 +1,23 @@
 use bevy::asset::RenderAssetUsages;
+use bevy::color::{LinearRgba, Srgba};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use campfire_capabilities::HeightGrid;
-use campfire_package::TerrainAtlas;
+use campfire_package::{TerrainAtlas, TerrainLighting};
 
 use crate::view::float_num::FloatNum;
 use crate::zero_hour::terrain_cells::{Layer, TerrainCells};
 
 /// One mesh of Zero Hour's terrain on the engine's axes, four vertices a cell, at its corners in
 /// the game's order, as the game's heightmap renderer builds its cells: a sample's position is
-/// its place on the map at its height, and its normal the game's, across its neighbors on each
-/// axis, the map's edge clamping them. Each cell's two triangles meet on the diagonal its layer
-/// says. Texture coordinates are shares of the atlas.
+/// its place on the map at its height, and its color the light the game's vertex lighting gives
+/// it, by its normal across its neighbors on each axis, the map's edge clamping them. Each cell's
+/// two triangles meet on the diagonal its layer says. Texture coordinates are shares of the
+/// atlas.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct TerrainMesh {
     pub(crate) positions: Vec<[f32; 3]>,
-    pub(crate) normals: Vec<[f32; 3]>,
     pub(crate) uvs: Vec<[f32; 2]>,
-    /// White, with each corner's alpha: an overlay's alone has them.
+    /// Each corner's light, linear, and its alpha: an overlay's alone is not opaque.
     pub(crate) colors: Vec<[f32; 4]>,
     pub(crate) indices: Vec<u32>,
 }
@@ -29,13 +30,15 @@ pub(crate) struct TerrainMeshes {
     pub(crate) overlay: TerrainMesh,
 }
 
-/// Where the cells' samples lie and how high, on the engine's axes, as floats.
+/// Where the cells' samples lie and how high, on the engine's axes, as floats, and the light
+/// they are drawn in.
 #[derive(Debug, Clone, Copy)]
-struct Placement {
+struct Placement<'a> {
     origin: [f32; 2],
     cell: f32,
     step: f32,
     rows: usize,
+    lighting: &'a TerrainLighting,
 }
 
 /// The game's distance between a sample's two neighbors on an axis: two cells, whatever the
@@ -43,7 +46,7 @@ struct Placement {
 const ACROSS: f32 = 20.0;
 
 impl TerrainMeshes {
-    /// The meshes of `cells` on the map `grid`, with `atlas`'s size.
+    /// The meshes of `cells` on the map `grid` in `lighting`, with `atlas`'s size.
     #[expect(
         clippy::cast_precision_loss,
         reason = "texels, cells and steps of height lie far below 2²⁴, exact in an f32"
@@ -52,6 +55,7 @@ impl TerrainMeshes {
         cells: &TerrainCells<'_>,
         grid: &HeightGrid,
         atlas: &TerrainAtlas,
+        lighting: &TerrainLighting,
     ) -> TerrainMeshes {
         let [x, z] = grid.origin();
         let placement = Placement {
@@ -59,6 +63,7 @@ impl TerrainMeshes {
             cell: grid.cell().float(),
             step: grid.step().float(),
             rows: grid.rows() as usize,
+            lighting,
         };
         let size = [TerrainAtlas::WIDTH as f32, atlas.height() as f32];
         let [columns, rows] = cells.drawn();
@@ -94,7 +99,6 @@ impl TerrainMesh {
             RenderAssetUsages::RENDER_WORLD,
         )
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.positions)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals)
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs)
         .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.colors)
         .with_inserted_indices(Indices::U32(self.indices))
@@ -105,7 +109,7 @@ impl TerrainMesh {
     fn cell(
         &mut self,
         cells: &TerrainCells<'_>,
-        placement: Placement,
+        placement: Placement<'_>,
         corners: [[usize; 2]; 4],
         layer: Layer,
         size: [f32; 2],
@@ -116,9 +120,10 @@ impl TerrainMesh {
             .zip(layer.uv.into_iter().zip(layer.alpha))
         {
             self.positions.push(placement.position(cells, corner));
-            self.normals.push(placement.normal(cells, corner));
             self.uvs.push([uv[0] / size[0], uv[1] / size[1]]);
-            self.colors.push([1.0, 1.0, 1.0, f32::from(alpha) / 255.0]);
+            let [red, green, blue] = placement.light(placement.normal(cells, corner));
+            self.colors
+                .push([red, green, blue, f32::from(alpha) / 255.0]);
         }
         // Counter-clockwise seen from above, on the diagonal from corner 0 to 2, or 1 to 3.
         let triangles = if layer.flip {
@@ -130,7 +135,7 @@ impl TerrainMesh {
     }
 }
 
-impl Placement {
+impl Placement<'_> {
     /// Where the game's sample `[x, y]` lies, on the engine's axes: the engine's rows run from the
     /// game's north.
     #[expect(
@@ -160,6 +165,25 @@ impl Placement {
         let normal = [-ACROSS * east, ACROSS * ACROSS, ACROSS * north];
         let length = normal.iter().map(|axis| axis * axis).sum::<f32>().sqrt();
         normal.map(|axis| axis / length)
+    }
+
+    /// The light the game gives a vertex of `normal`, linear: its ambient color, and each light's
+    /// diffuse color by how far its ray, against the way it goes, meets the normal, from 0 to 1,
+    /// each channel clamped to 0 to 1. The game multiplies a texture's sRGB codes by it, so it is
+    /// an sRGB code itself, which linear light multiplies as the codes do.
+    fn light(self, normal: [f32; 3]) -> [f32; 3] {
+        let mut light = self.lighting.ambient;
+        for each in &self.lighting.lights {
+            let ray = each.direction.map(|axis| -axis);
+            let meets = (0..3).map(|axis| ray[axis] * normal[axis]).sum::<f32>();
+            let meets = meets.clamp(0.0, 1.0);
+            for (channel, diffuse) in light.iter_mut().zip(each.diffuse) {
+                *channel += meets * diffuse;
+            }
+        }
+        let [red, green, blue] = light.map(|channel| channel.clamp(0.0, 1.0));
+        let linear = LinearRgba::from(Srgba::new(red, green, blue, 1.0));
+        [linear.red, linear.green, linear.blue]
     }
 }
 
