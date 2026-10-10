@@ -19,6 +19,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
         - `10-sessions.md` — Stage 6 proposal: journal, crash restore, slots, reconnect, server bots, receipts, checkpoints, saves, local server
         - `11-rts-foundations.md` — box bodies, package unit types, group orders, production's first cut
         - `12-zero-hour.md` — the first imported game: importer, rules package, parity oracle, presentation
+        - `13-bodies-uses-shop-gravity.md` — bodies up to 2,048 m and the spatial indexes' levels, the `use` action kind, the client's shop and item keys, projectiles that fall
     - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import
 - `.notes/ISSUES.md` — the issue log: every open problem, under the step it waits for ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
