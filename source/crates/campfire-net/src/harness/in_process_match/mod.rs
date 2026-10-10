@@ -31,6 +31,8 @@ use lightyear::prelude::{
     PredictionManager, PredictionMetrics, RollbackMode, SyncSystems, Unlink, UnlinkReason,
 };
 use lightyear::transport::plugin::TransportSystems;
+use lightyear::webtransport::client::WebTransportClientPlugin;
+use lightyear::webtransport::server::WebTransportServerPlugin;
 
 use crate::bot_script::BotScript;
 use crate::harness::in_process_match::delay_line::DelayLine;
@@ -329,6 +331,10 @@ impl InProcessMatch {
         let mut server = App::new();
         server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         server.add_plugins(SimServer { tick, capabilities });
+        assert!(
+            !server.is_plugin_added::<WebTransportServerPlugin>(),
+            "an in-process server links by channels: WebTransport's plugin leaves a tokio runtime for each app"
+        );
         server.insert_resource(LocalSession);
         server.add_plugins(LocalPace {
             pace: Arc::clone(pace),
@@ -901,6 +907,10 @@ impl ClientApp {
         let mut client = App::new();
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         client.add_plugins(sim_client);
+        assert!(
+            !client.is_plugin_added::<WebTransportClientPlugin>(),
+            "an in-process client links by channels: WebTransport's plugin leaves a tokio runtime for each app"
+        );
         client.add_plugins(LocalPace {
             pace: Arc::clone(pace),
             tick,

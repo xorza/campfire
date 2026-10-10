@@ -41,6 +41,7 @@ use campfire_protocol::secp256k1::Keypair;
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, Start, WebTransportServerIo};
 use lightyear::prelude::{Linked, LocalAddr};
+use lightyear::webtransport::server::WebTransportServerPlugin;
 use tracing::{error, info};
 
 use crate::args::Args;
@@ -238,7 +239,7 @@ fn server_app(
         StatesPlugin,
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    app.add_plugins(SimServer { tick, capabilities });
+    app.add_plugins((SimServer { tick, capabilities }, WebTransportServerPlugin));
     match opening {
         Opening::New(lobby) => app.insert_resource(*lobby),
         Opening::Restored(restore) => app.insert_resource(*restore),
