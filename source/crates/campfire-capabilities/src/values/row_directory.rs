@@ -23,6 +23,13 @@ struct LayerRows<L> {
     starts: Option<Range<u32>>,
 }
 
+/// One layer of a directory, found once for the searches of its rows.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LayerView<'a, L> {
+    rows: &'a LayerRows<L>,
+    starts: &'a [u32],
+}
+
 /// What a search finds of a layer's row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RowEntries {
@@ -93,21 +100,43 @@ impl<L: Copy + Eq> RowDirectory<L> {
         }
     }
 
-    /// The first and the last row of `layer`'s entries; `None` with none.
-    pub(crate) fn span(&self, layer: L) -> Option<(i64, i64)> {
-        let rows = self.layers.iter().find(|rows| rows.layer == layer)?;
-        Some((rows.first, rows.last))
+    /// The layers that hold entries, in the entries' order.
+    pub(crate) fn layers(&self) -> impl Iterator<Item = LayerView<'_, L>> {
+        self.layers.iter().map(|rows| LayerView {
+            rows,
+            starts: &self.starts,
+        })
+    }
+}
+
+impl<L: Copy> LayerView<'_, L> {
+    pub(crate) const fn layer(&self) -> L {
+        self.rows.layer
     }
 
-    /// The entries of `layer`'s row `row`; `None` when the layer has none there.
-    pub(crate) fn row(&self, layer: L, row: i64) -> Option<RowEntries> {
-        let rows = self.layers.iter().find(|rows| rows.layer == layer)?;
+    /// The run of the layer's entries.
+    pub(crate) const fn entries(&self) -> Range<usize> {
+        self.rows.entries.start as usize..self.rows.entries.end as usize
+    }
+
+    /// The first row of its entries.
+    pub(crate) const fn first(&self) -> i64 {
+        self.rows.first
+    }
+
+    /// The last row of its entries.
+    pub(crate) const fn last(&self) -> i64 {
+        self.rows.last
+    }
+
+    /// The entries of row `row`; `None` when the layer has none there.
+    pub(crate) fn row(&self, row: i64) -> Option<RowEntries> {
+        let rows = self.rows;
         if row < rows.first || row > rows.last {
             return None;
         }
         let Some(starts) = &rows.starts else {
-            let entries = rows.entries.start as usize..rows.entries.end as usize;
-            return Some(RowEntries::Layer(entries));
+            return Some(RowEntries::Layer(self.entries()));
         };
         let at = starts.start as usize + usize::try_from(row - rows.first).expect("a row within");
         let (start, end) = (self.starts[at] as usize, self.starts[at + 1] as usize);

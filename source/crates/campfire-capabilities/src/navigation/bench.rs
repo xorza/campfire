@@ -8,9 +8,11 @@ use campfire_sim::{IdAllocator, Position};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 
+use crate::geometry::body_box::BodyBox;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::kernel_scene::{Density, KernelScene};
+use crate::geometry::shape::Shape;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::broadphase::internals::{scene, statics};
@@ -31,18 +33,32 @@ const HERO_RADIUS: i64 = 50;
 /// The routes a run of the route planner's case plans, as four waves' creeps plan theirs.
 const ROUTES: usize = 100;
 
-/// The Collide stage's work for `KernelScene::UNITS` bodies, at each density, and in the crowded
-/// scene with its static bodies boxes: finding the contacts, then parting them, from the same
-/// scene every run.
+/// The Collide stage's work for `KernelScene::UNITS` bodies, at each density, in the crowded
+/// scene with its static bodies boxes, and in that scene with its first body a static box of
+/// 1,117 by 100 m, a Zero Hour bridge's size, 2 m past its north edge, which every walker's query
+/// of the static index meets and no walker, at most 1.19 m, touches: finding the contacts, then parting them,
+/// from the same scene every run.
 pub(crate) fn collision(c: &mut Criterion) {
     let mut group = c.benchmark_group("collision");
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
+    let crowded = Density::Crowded.span();
     let cases = Density::ALL
-        .map(|density| (density.name(), density.span(), false))
+        .map(|density| (density.name(), density.span(), false, false))
         .into_iter()
-        .chain([("boxes", Density::Crowded.span(), true)]);
-    for (name, span, boxes) in cases {
-        let bodies = scene(9, KernelScene::UNITS, span, 1, boxes);
+        .chain([
+            ("boxes", crowded, true, false),
+            ("bridge", crowded, true, true),
+        ]);
+    for (name, span, boxes, bridged) in cases {
+        let mut bodies = scene(9, KernelScene::UNITS, span, 1, boxes);
+        if bridged {
+            let sides = [Num::int(1117), Num::int(100)];
+            let edge = Num::int(i64::try_from(span).unwrap() + 52);
+            bodies[0].at = Vec3::new(Num::ZERO, Num::ZERO, -edge);
+            bodies[0].shape = Shape::Box(BodyBox::new(sides, Num::ZERO).unwrap());
+            bodies[0].movable = false;
+            bodies[0].walking = false;
+        }
         let index = statics(&bodies);
         let mut broadphase = Broadphase::default();
         let mut colliders = bodies.clone();

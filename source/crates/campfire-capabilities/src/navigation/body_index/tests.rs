@@ -29,33 +29,34 @@ fn near(index: &BodyIndex, x: i64, z: i64, reach: Num) -> Vec<StableId> {
 
 #[test]
 fn the_index_finds_each_body_near_once_and_follows_its_changes() {
-    // Buckets of 2 m, for walkers of 1 m.
+    // Buckets of 2 m at the base, for walkers of 1 m.
     let mut index = BodyIndex::new(Num::ONE);
     let mut ids = IdAllocator::default();
     let (wide, small, far) = (ids.allocate(), ids.allocate(), ids.allocate());
-    // A body of 5 m at the origin covers buckets −3 to 2 on both axes, 36 of them; one of
-    // 1 m at (3, 3) covers buckets 1 to 2, 4 of them; one at (40, 0), buckets 19 to 20 along x
-    // and −1 to 0 along z.
+    // A body of 5 m at the origin is 10 m across, which takes buckets of 16 m, level 3: it
+    // covers buckets −1 to 0 on both axes, 4 of them, where the base's would be 36. One of 1 m
+    // at (3, 3) fits the base, and covers buckets 1 to 2, 4 of them; one at (40, 0), buckets 19
+    // to 20 along x and −1 to 0 along z.
     let bodies = [
         body(wide, 0, 0, Num::int(5)),
         body(small, 3, 3, Num::ONE),
         body(far, 40, 0, Num::ONE),
     ];
     assert!(index.update(&bodies));
-    assert_eq!(index.entries.len(), 36 + 4 + 4);
+    assert_eq!(index.entries.len(), 4 + 4 + 4);
     assert_eq!(index.added(), bodies);
     assert!(!index.update(&bodies));
     assert_eq!(index.added(), []);
 
-    // Around (3, 3) by 1 m, buckets 1 to 2: the wide body and the small one share all four,
-    // and each is found once. Around (0, 0) by 1 m, buckets −1 to 0: only the wide body. The
-    // box of (40, 0) reaches no bucket between. Around (20, 0) by 20 m, rows −10 to 10, each
-    // is found in its first row there: the wide body in row −3, the far one in −1, the small
-    // one in 1.
-    assert_eq!(near(&index, 3, 3, Num::ONE), [wide, small]);
+    // Around (3, 3) by 1 m, base buckets 1 to 2 and level 3's bucket 0: the small body and the
+    // wide one, each found once, the base's first. Around (0, 0) by 1 m: only the wide body.
+    // The box of (20, 0) reaches no bucket of either. Around (20, 0) by 20 m, base rows −10 to
+    // 10, each is found in its first row there, level by level: the far one in −1, the small
+    // one in 1, then the wide one.
+    assert_eq!(near(&index, 3, 3, Num::ONE), [small, wide]);
     assert_eq!(near(&index, 0, 0, Num::ONE), [wide]);
     assert_eq!(near(&index, 20, 0, Num::ONE), []);
-    assert_eq!(near(&index, 20, 0, Num::int(20)), [wide, far, small]);
+    assert_eq!(near(&index, 20, 0, Num::int(20)), [far, small, wide]);
 
     // The wide body moves to (40, 20): it is taken away and put in again; the small body
     // goes, and a new one comes.
@@ -109,6 +110,27 @@ fn the_index_finds_each_body_near_once_and_follows_its_changes() {
     assert!(index.update(&[]));
     assert_eq!(index.entries, []);
     assert_eq!(index.removed(), moved);
+
+    // A 1,117 × 100 m box, a Zero Hour bridge, among walkers of 0.35 m: its half length of
+    // 558.5 m takes buckets of 0.7 · 2¹¹ = 1,433.6 m, level 11, and it covers 4 of them, −1 to 0
+    // on both axes, where buckets of 0.7 m would be 1,596 × 144, −798 to 797 by −72 to 71. A
+    // walker at its corner finds it.
+    let mut index = BodyIndex::new(Num::int(35) / 100);
+    let sides = [Num::int(1117), Num::int(100)];
+    let bridge = IndexedBody {
+        shape: Shape::Box(BodyBox::new(sides, Num::ZERO).unwrap()),
+        ..body(ids.allocate(), 0, 0, Num::ZERO)
+    };
+    assert!(index.update(&[bridge]));
+    assert_eq!(index.entries.len(), 4);
+    assert!(
+        index
+            .entries
+            .iter()
+            .all(|entry| entry.bucket.layer_row().0.level == 11)
+    );
+    assert_eq!(near(&index, 559, 50, Num::ONE), [bridge.id]);
+    assert_eq!(near(&index, 2000, 0, Num::ONE), []);
 }
 
 #[test]
@@ -116,29 +138,46 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
     // Bucket keys order as their layer, row and column do, both signs; a row past the keys'
     // range clamps to its end.
     let rows = BucketKey::ROWS;
-    let key = |layer: u8, row: i64, column: i64| BucketKey::new(Layer::new(layer), row, column);
+    let key = |layer: u8, level: u8, row: i64, column: i64| {
+        let at = LayerLevel {
+            layer: Layer::new(layer),
+            level,
+        };
+        BucketKey::new(at, row, column)
+    };
+    let top = BucketKey::LEVELS - 1;
     let ordered = [
-        key(0, -rows, 0),
-        key(0, -rows, 5),
-        key(0, -1, i64::MAX),
-        key(0, 0, i64::MIN),
-        key(0, 0, -1),
-        key(0, 0, 0),
-        key(0, 1, -5),
-        key(0, rows - 1, 0),
-        key(1, -rows, i64::MIN),
-        key(1, 0, 0),
+        key(0, 0, -rows, 0),
+        key(0, 0, -rows, 5),
+        key(0, 0, -1, i64::MAX),
+        key(0, 0, 0, i64::MIN),
+        key(0, 0, 0, -1),
+        key(0, 0, 0, 0),
+        key(0, 0, 1, -5),
+        key(0, 0, rows - 1, i64::MAX),
+        key(0, 1, -rows, i64::MIN),
+        key(0, top, rows - 1, i64::MAX),
+        key(1, 0, -rows, i64::MIN),
+        key(1, 0, 0, 0),
+        key(255, top, rows - 1, i64::MAX),
     ];
     assert!(ordered.is_sorted_by(|a, b| a < b));
-    assert_eq!(key(0, i64::MIN, 5), key(0, -rows, 5));
-    assert_eq!(key(0, i64::MAX, 0), key(0, rows - 1, 0));
+    assert_eq!(key(0, 0, i64::MIN, 5), key(0, 0, -rows, 5));
+    assert_eq!(key(0, 0, i64::MAX, 0), key(0, 0, rows - 1, 0));
+    for key in ordered {
+        assert_eq!(
+            BucketKey::new(key.layer_row().0, key.layer_row().1, 0).layer_row(),
+            key.layer_row()
+        );
+    }
 
     // A lattice searched around many points: each body whose buckets meet the search's on both
     // axes is met once, and no other; and a body blocks a segment exactly when one of them comes
     // within reach of it.
     let mut ids = IdAllocator::default();
     let (index, bodies) = lattice(&mut ids);
-    let bucket = index.bucket;
+    let levels: Vec<u8> = index.rows.layers().map(|rows| rows.layer().level).collect();
+    assert_eq!(levels, [0, 1, 2, 3]);
     for (x, z, reach) in [(0, 0, 1), (5, -7, 3), (-17, 11, 0), (13, 13, 6), (2, 19, 2)] {
         let reach = Num::int(reach);
         let mut met = near(&index, x, z, reach);
@@ -151,14 +190,12 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         let expected: Vec<StableId> = bodies
             .iter()
             .filter(|body| {
-                let at = body.at.get();
-                let rows = BodyIndex::buckets(bucket, Num::int(z), reach);
-                let columns = BodyIndex::buckets(bucket, Num::int(x), reach);
-                meets(BodyIndex::buckets(bucket, at.z, body.shape.bound()), rows)
-                    && meets(
-                        BodyIndex::buckets(bucket, at.x, body.shape.bound()),
-                        columns,
-                    )
+                let (at, bound) = (body.at.get(), body.shape.bound());
+                let cell = index.levels.cell(index.levels.level(bound));
+                let rows = Buckets::covering(cell, Num::int(z), reach);
+                let columns = Buckets::covering(cell, Num::int(x), reach);
+                meets(Buckets::covering(cell, at.z, bound), rows)
+                    && meets(Buckets::covering(cell, at.x, bound), columns)
             })
             .map(|body| body.id)
             .collect();
@@ -189,7 +226,8 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
     }
 }
 
-/// Buckets of 2 m, for walkers of 1 m, over a lattice of bodies of 0 to 5 m, 3 m apart.
+/// Buckets of 2 m at the base, for walkers of 1 m, over a lattice of bodies of 0 to 5 m, 3 m
+/// apart, so of levels 0 to 3.
 fn lattice(ids: &mut IdAllocator) -> (BodyIndex, Vec<IndexedBody>) {
     let mut index = BodyIndex::new(Num::ONE);
     let mut bodies = Vec::new();
@@ -273,7 +311,16 @@ fn a_layer_whose_rows_spread_wide_still_meets_exactly_its_bodies() {
     let bodies = [on(0, 0), on(1, 2), on(0, far), on(1, far - 2)];
     let mut index = BodyIndex::new(Num::ONE);
     assert!(index.update(&bodies));
-    assert_eq!(index.rows.span(Layer::FIRST), Some((-1, far / 2)));
+    let base = LayerLevel {
+        layer: Layer::FIRST,
+        level: 0,
+    };
+    let rows = index
+        .rows
+        .layers()
+        .find(|rows| rows.layer() == base)
+        .unwrap();
+    assert_eq!([rows.first(), rows.last()], [-1, far / 2]);
     for (layer, z, expected) in [
         (0, 0, vec![bodies[0].id]),
         (1, 0, vec![bodies[1].id]),

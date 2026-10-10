@@ -49,6 +49,33 @@ fn a_walker_routes_round_a_box_and_never_stands_inside_it() {
 }
 
 #[test]
+fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
+    // A box of 1,117 by 100 m at the origin, a Zero Hour bridge's size, across the way of a
+    // walker of 0.5 m from (540, −56) to (540, 56), a meter a tick, over meter cells from −600 to
+    // 600 along x and −80 to 80 along z. It goes round the box's end at x = 558.5, never inside
+    // it, and arrives.
+    let mut walk = Walk::new();
+    walk.load_pathing(Num::ONE, [-600, -80], [600, 80], vec![ground(HALF)]);
+    let bridge = boxed(1117, 100, 0);
+    walk.body_on(at(0, 0, 0), None, None, bridge);
+    let walker = walk.body(at(540, 0, -56), Some(at(540, 0, 56)), Some(Num::ONE), HALF);
+    let mut farthest = Num::ZERO;
+    for _ in 0..200 {
+        walk.sim.step();
+        let place = *walk.sim.get::<Position>(walker);
+        assert!(!sunk(place, HALF, at(0, 0, 0), &bridge), "{place:?}");
+        farthest = farthest.max(place.get().x);
+    }
+    assert_eq!(*walk.sim.get::<Position>(walker), at(540, 0, 56));
+    assert!(farthest > Num::int(559), "{farthest:?}");
+    // A walker of 1 m that stands half a meter into its long edge at z = 50, far from its ends:
+    // the Collide stage moves it out to touch, to z = 51.
+    let pushed = walk.body(quarters(-1600, 198), None, Some(QUARTER), Num::ONE);
+    walk.sim.step();
+    assert_eq!(*walk.sim.get::<Position>(pushed), at(-400, 0, 51));
+}
+
+#[test]
 fn collision_pushes_a_walker_out_of_a_box_to_touch_it() {
     // A box of 4 by 2 m at the origin, square to the axes, and a walker of 1 m that stands half a
     // meter into its edge at x = 2: the Collide stage moves it out to touch, to x = 3, exactly, and

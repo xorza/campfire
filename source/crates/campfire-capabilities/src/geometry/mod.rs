@@ -5,6 +5,7 @@
 pub(crate) mod approach;
 pub(crate) mod body_box;
 pub(crate) mod bounds;
+pub(crate) mod cell_levels;
 pub(crate) mod fraction;
 pub(crate) mod grid;
 pub(crate) mod halves;
