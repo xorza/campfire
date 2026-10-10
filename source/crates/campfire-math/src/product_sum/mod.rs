@@ -1,6 +1,9 @@
 use crate::num::Num;
 use crate::u256::U256;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// A sum of products of raw values, exact at any size: what its positive products add, and what
 /// its negative ones take away, each as a magnitude.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

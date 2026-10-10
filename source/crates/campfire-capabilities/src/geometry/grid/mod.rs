@@ -1,11 +1,11 @@
 use std::ops::{Range, RangeInclusive};
 
-use campfire_math::{FloorRoot, I64x4, Num, Vec3};
+use campfire_math::{Flat, FloorRoot, I64x4, Num, Vec3};
 use campfire_sim::Position;
 
 use crate::geometry::body_box::BodyBox;
 use crate::geometry::bounds::Bounds;
-use crate::geometry::halves::{Flat, Halves};
+use crate::geometry::halves::Halves;
 
 /// A map's ground grid: square cells of `cell` meters over its bounds, whole cells from their min
 /// until they cover their max. Cells are numbered along x, then along z.
@@ -205,8 +205,7 @@ impl Grid {
             let mut run: Option<(usize, usize)> = None;
             for column in columns.clone() {
                 let cell_at = index(row) * self.columns() + index(column);
-                let [x, z] = self.center_twice(cell_at);
-                if hit([x - centre[0], z - centre[1]]) {
+                if hit(self.center_twice(cell_at) - centre) {
                     run = Some(run.map_or((cell_at, cell_at), |(first, _)| (first, cell_at)));
                 } else if run.is_some() {
                     break;
@@ -345,10 +344,10 @@ impl Grid {
         let at = [cell % self.columns(), cell / self.columns()];
         let step = i128::from(self.cell.to_bits());
         let min = self.bounds.min();
-        [0, 1].map(|axis| {
+        Flat::from_array([0, 1].map(|axis| {
             let index = i128::try_from(at[axis]).expect("a cell of the grid");
             Halves::of(min[axis]) + step * (2 * index + 1)
-        })
+        }))
     }
 
     /// Whether `hit` is true of a cell of the grid whose closed square the segment from `from` to

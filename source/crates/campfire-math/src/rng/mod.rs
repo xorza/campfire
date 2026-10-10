@@ -9,6 +9,8 @@ pub(crate) mod bench;
 pub(crate) mod rng_opener;
 pub(crate) mod rng_source;
 pub(crate) mod rng_stream;
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod split_mix64;
 
 /// Starts every message, so no other use of a segment seed can produce the same output.
 const DOMAIN: &[u8] = b"campfire/rng/v1";

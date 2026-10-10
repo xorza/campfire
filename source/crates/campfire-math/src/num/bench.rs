@@ -3,28 +3,17 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
+use crate::rng::split_mix64::SplitMix64;
 
 /// The inputs of each primitive case, each iteration's.
 pub(crate) const COUNT: usize = 4096;
 
 /// Deterministic inputs spread over `[−span, span)` in raw bits.
 fn spread(seed: u64, span: i64) -> Vec<Num> {
-    let mut next = split_mix(seed);
+    let mut words = SplitMix64::new(seed);
     (0..COUNT)
-        .map(|_| Num::from_bits(next().cast_signed() % span))
+        .map(|_| Num::from_bits(words.next_u64().cast_signed() % span))
         .collect()
-}
-
-/// `SplitMix64`: fast, well-mixed deterministic words for bench inputs.
-pub(crate) fn split_mix(seed: u64) -> impl FnMut() -> u64 {
-    let mut state = seed;
-    move || {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
 }
 
 /// `Num`'s arithmetic and its functions, each over `COUNT` inputs: products and quotients of

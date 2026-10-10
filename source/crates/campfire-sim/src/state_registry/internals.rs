@@ -2,6 +2,7 @@ use std::fmt;
 
 use bevy_ecs::world::World;
 use campfire_common::Tick;
+use campfire_math::internals::SplitMix64;
 use serde::Deserialize;
 use serde::de::{
     self, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
@@ -23,26 +24,19 @@ const TRIES: usize = 16;
 /// option and of a bool even. The draws follow a seed, so a run repeats.
 #[derive(Debug)]
 pub struct Draws {
-    state: u64,
+    words: SplitMix64,
 }
 
 impl Draws {
     pub const fn new(seed: u64) -> Draws {
-        Draws { state: seed }
-    }
-
-    /// The next `SplitMix64` draw.
-    const fn next(&mut self) -> u64 {
-        self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut mixed = self.state;
-        mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        mixed = (mixed ^ (mixed >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        mixed ^ (mixed >> 31)
+        Draws {
+            words: SplitMix64::new(seed),
+        }
     }
 
     /// A draw below `count`.
     const fn below(&mut self, count: u64) -> u64 {
-        self.next() % count
+        self.words.next_u64() % count
     }
 
     /// A number of `bits` bits, at an edge most of the time.
@@ -62,7 +56,7 @@ impl Draws {
             5 => max,
             6 => max - 1,
             7 => self.below(100),
-            _ => self.next() & max,
+            _ => self.words.next_u64() & max,
         }
     }
 
@@ -333,7 +327,9 @@ impl<'de> Deserializer<'de> for &mut Draws {
 
     fn deserialize_byte_buf<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, DrawError> {
         let len = self.len();
-        let bytes = (0..len).map(|_| self.next().to_le_bytes()[0]).collect();
+        let bytes = (0..len)
+            .map(|_| self.words.next_u64().to_le_bytes()[0])
+            .collect();
         visitor.visit_byte_buf(bytes)
     }
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::rng::split_mix64::SplitMix64;
 
 #[test]
 fn products_and_sums_are_exact() {
@@ -148,17 +149,10 @@ fn by_bits(value: U256, divisor: u128) -> Division {
 fn a_long_division_is_the_division_a_bit_at_a_time() {
     // Drawn divisors and dividends of every length, so the shift that sets the divisor's top bit
     // and each digit's corrections run at every size; the high half below the divisor.
-    let mut state = 0x5EED_u64;
-    let mut draw = || {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    };
+    let mut words = SplitMix64::new(0x5EED);
     let mut wide = || {
-        let value = (u128::from(draw()) << 64) | u128::from(draw());
-        value >> (draw() % 128)
+        let value = (u128::from(words.next_u64()) << 64) | u128::from(words.next_u64());
+        value >> (words.next_u64() % 128)
     };
     for _ in 0..20_000 {
         let divisor = wide().max(1);

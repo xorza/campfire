@@ -4,19 +4,27 @@ use campfire_common::SegmentSeed;
 use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
-use crate::num::bench::{COUNT, split_mix};
+use crate::num::bench::COUNT;
 use crate::rng::rng_source::RngSource;
 use crate::rng::rng_stream::RngStream;
+use crate::rng::split_mix64::SplitMix64;
 
 /// The sim's random sequences, each operation `COUNT` times: opening an entity's stream, and
 /// drawing a word, a value below a bound within 1000, and a chance from an open one.
 pub(crate) fn rng(c: &mut Criterion) {
     let mut source = RngSource::new(SegmentSeed::new([7; 32]));
     source.begin_tick(1);
-    let mut next = split_mix(6);
-    let bounds: Vec<u64> = (0..COUNT).map(|_| 1 + next() % 1000).collect();
+    let mut words = SplitMix64::new(6);
+    let bounds: Vec<u64> = (0..COUNT).map(|_| 1 + words.next_u64() % 1000).collect();
     let chances: Vec<Num> = (0..COUNT)
-        .map(|_| Num::from_bits(next().cast_signed().rem_euclid(Num::ONE.to_bits())))
+        .map(|_| {
+            Num::from_bits(
+                words
+                    .next_u64()
+                    .cast_signed()
+                    .rem_euclid(Num::ONE.to_bits()),
+            )
+        })
         .collect();
     let mut entity = 0_u64;
     let mut rng = source.open(RngStream::new("bench"), u64::MAX);

@@ -3,13 +3,14 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
-use crate::num::bench::{COUNT, split_mix};
+use crate::num::bench::COUNT;
+use crate::rng::split_mix64::SplitMix64;
 use crate::vec3::Vec3;
 
 /// Deterministic points within ±1000 m.
 fn points(seed: u64) -> Vec<Vec3> {
-    let mut next = split_mix(seed);
-    let mut coordinate = move || Num::from_bits(next().cast_signed() % (1000 << 24));
+    let mut words = SplitMix64::new(seed);
+    let mut coordinate = move || Num::from_bits(words.next_u64().cast_signed() % (1000 << 24));
     (0..COUNT)
         .map(|_| Vec3::new(coordinate(), coordinate(), coordinate()))
         .collect()

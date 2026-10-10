@@ -1,19 +1,9 @@
+use campfire_math::internals::SplitMix64;
+
 use super::*;
 
 fn at(x: Num, z: Num) -> Position {
     Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
-}
-
-/// `SplitMix64` from `seed`: draws that every run repeats.
-fn split_mix(seed: u64) -> impl FnMut() -> u64 {
-    let mut state = seed;
-    move || {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
 }
 
 /// The cells `Grid::touches` visits from `from` to `to`, each column's rows found by dividing
@@ -169,7 +159,7 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
     // meters. Discs centered on and off the grid, on cell lines and between, of radii from 0 to
     // the gate's last, within and strictly closer; and the gate's edges.
     let bounds = Bounds::new([Num::int(-48), Num::int(-68)], [Num::int(48), Num::int(68)]).unwrap();
-    let mut next = split_mix(0x5EED);
+    let mut words = SplitMix64::new(0x5EED);
     for cell in [Num::ONE, Num::HALF] {
         let grid = Grid::new(cell, bounds).unwrap();
         let bits = cell.to_bits();
@@ -192,7 +182,7 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
         let span = 120 * Num::ONE.to_bits().cast_unsigned();
         for case in 0..4000_u64 {
             let mut point = || {
-                let along = (next() % span).cast_signed() - 60 * Num::ONE.to_bits();
+                let along = (words.next_u64() % span).cast_signed() - 60 * Num::ONE.to_bits();
                 // One case in three on a line between cells or through their centers.
                 if case % 3 == 0 {
                     along - along % (bits / 2)
@@ -202,9 +192,9 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
             };
             let pos = at(Num::from_bits(point()), Num::from_bits(point()));
             let radius = match case % 4 {
-                0 => widest - (next() % 4).cast_signed(),
-                1 => (next() % (4 * Num::ONE.to_bits().cast_unsigned())).cast_signed(),
-                _ => (next() % widest.cast_unsigned()).cast_signed(),
+                0 => widest - (words.next_u64() % 4).cast_signed(),
+                1 => (words.next_u64() % (4 * Num::ONE.to_bits().cast_unsigned())).cast_signed(),
+                _ => (words.next_u64() % widest.cast_unsigned()).cast_signed(),
             };
             for strict in [false, true] {
                 let rows = grid.disc_rows(pos, Num::from_bits(radius), strict);
@@ -252,7 +242,7 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
     // bounds, segments of every slope, on and off the lines between cells, and points, within
     // the grid and past each of its sides, visit the cells that dividing each column's span
     // gives, in its order.
-    let mut next = split_mix(0x70C4);
+    let mut words = SplitMix64::new(0x70C4);
     for cell in [
         Num::ONE,
         Num::HALF,
@@ -264,7 +254,7 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
         for case in 0..2000 {
             let mut along = |low: i64, high: i64| {
                 let span = (high - low).cast_unsigned() * Num::ONE.to_bits().cast_unsigned();
-                let offset = next() % (span + 1);
+                let offset = words.next_u64() % (span + 1);
                 // One point in four on a line between cells.
                 let offset = if case % 4 == 0 {
                     offset - offset % bits
@@ -334,9 +324,9 @@ fn a_box_marks_exactly_the_cells_it_comes_closer_to_and_those_it_covers() {
     let bounds = Bounds::new([Num::int(-6); 2], [Num::int(6); 2]).unwrap();
     let cell = Num::from_bits(3 * (1 << Num::FRAC_BITS) / 10);
     let grid = Grid::new(cell, bounds).unwrap();
-    let mut next = split_mix(0xB0E5);
+    let mut words = SplitMix64::new(0xB0E5);
     let mut draw =
-        |low: i64, span: i64| low + i64::try_from(next() % span.cast_unsigned()).unwrap();
+        |low: i64, span: i64| low + i64::try_from(words.next_u64() % span.cast_unsigned()).unwrap();
     let one = Num::ONE.to_bits();
     let (mut marked, mut covered) = (0, 0);
     for _ in 0..40 {
@@ -347,11 +337,7 @@ fn a_box_marks_exactly_the_cells_it_comes_closer_to_and_those_it_covers() {
             Num::from_bits(draw(-6 * one, 12 * one)),
         );
         let reach = Num::from_bits(draw(0, one));
-        let twice = |num: Num| 2 * i128::from(num.to_bits());
-        let off = |cell: usize| {
-            let [x, z] = grid.center_twice(cell);
-            [x - twice(centre.get().x), z - twice(centre.get().z)]
-        };
+        let off = |cell: usize| grid.center_twice(cell) - Halves::ground(centre);
         let closer = from_runs(&grid, |mark| {
             grid.box_spans_closer(centre, &body, reach, mark);
         });

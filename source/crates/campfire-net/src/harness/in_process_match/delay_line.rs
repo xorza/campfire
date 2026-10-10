@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::system::Query;
+use campfire_math::internals::SplitMix64;
 use lightyear::link::SendPayload;
 use lightyear::prelude::{Link, PingManager};
 
@@ -17,8 +18,8 @@ pub(crate) struct DelayLine {
     /// The model's worst round trip: each way's delay and jitter, in steps.
     round_trip: Duration,
     frame: u64,
-    /// The state of a `SplitMix64` draw, seeded by the model.
-    draw: u64,
+    /// The draws, seeded by the model and the stream.
+    words: SplitMix64,
     /// Packets not delivered yet, with the frame each is due in and the order it was sent in.
     held: Vec<Held>,
     sent: u64,
@@ -50,7 +51,7 @@ impl DelayLine {
                 .checked_mul(steps)
                 .expect("a round trip of a few steps"),
             frame: 0,
-            draw: model.seed ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            words: SplitMix64::new(model.seed ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15)),
             held: Vec::new(),
             sent: 0,
             lost: false,
@@ -109,25 +110,16 @@ impl DelayLine {
             loss_per_mille,
             ..
         } = self.model;
-        if self.next() % 1000 < u64::from(loss_per_mille) {
+        if self.words.next_u64() % 1000 < u64::from(loss_per_mille) {
             return;
         }
-        let steps = u64::from(delay) + self.next() % (u64::from(jitter) + 1);
+        let steps = u64::from(delay) + self.words.next_u64() % (u64::from(jitter) + 1);
         self.held.push(Held {
             due: self.frame + steps * u64::from(self.frames),
             order: self.sent,
             payload,
         });
         self.sent += 1;
-    }
-
-    /// The next `SplitMix64` draw.
-    const fn next(&mut self) -> u64 {
-        self.draw = self.draw.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut mixed = self.draw;
-        mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        mixed = (mixed ^ (mixed >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        mixed ^ (mixed >> 31)
     }
 }
 

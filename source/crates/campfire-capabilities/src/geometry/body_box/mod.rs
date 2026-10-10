@@ -1,13 +1,12 @@
 use std::cmp::Ordering;
 
-use campfire_math::{FloorRoot, Num, SinCos, U256, Vec3};
+use campfire_math::{Flat, FloorRoot, Num, SinCos, U256, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::geometry::approach::Approach;
 use crate::geometry::fraction::Fraction;
-use crate::geometry::halves::Flat;
 use crate::geometry::polygon::Polygon;
 use crate::geometry::shape::Shape;
 use crate::geometry::squared_distance::SquaredDistance;
@@ -117,15 +116,15 @@ impl BodyBox {
             return None;
         }
         let frame = Frame {
-            halves: half.map(bits),
+            halves: half.map(Flat::from_nums),
         };
         if frame.quarter_area() <= 0 {
             return None;
         }
         let [a, b] = frame.halves;
-        let farthest = dot(add(a, b), add(a, b)).max(dot(sub(a, b), sub(a, b)));
-        let root = farthest.unsigned_abs().floor_root();
-        let up = root + u128::from(root * root < farthest.unsigned_abs());
+        let farthest = (a + b).length_squared().max((a - b).length_squared());
+        let root = farthest.floor_root();
+        let up = root + u128::from(root * root < farthest);
         let bound = Num::from_bits(i64::try_from(up).ok()?);
         (bound <= Shape::MAX_BOUND).then_some(BodyBox { half, bound })
     }
@@ -178,9 +177,7 @@ impl BodyBox {
 
     /// The squared distance from `at` to the nearest point of the box at `centre`; 0 inside.
     pub(crate) fn distance(&self, centre: Position, at: Position) -> SquaredDistance {
-        self.frame()
-            .nearest_to(sub(flat(at), flat(centre)))
-            .distance
+        self.frame().nearest_to(flat(at) - flat(centre)).distance
     }
 
     /// How the distance from `at` to the box at `centre` lies against `reach`.
@@ -192,20 +189,20 @@ impl BodyBox {
     /// `at` itself inside.
     pub(crate) fn nearest_point(&self, centre: Position, at: Position) -> Position {
         let frame = self.frame();
-        let off = sub(flat(at), flat(centre));
+        let off = flat(at) - flat(centre);
         let corners = frame.corners();
         let point = match frame.nearest_to(off).feature {
             Feature::Inside => off,
             Feature::Corner(corner) => corners[corner],
             Feature::Edge(edge) => {
                 let start = corners[edge];
-                let along_edge = sub(corners[(edge + 1) % 4], start);
-                let along = dot(sub(off, start), along_edge);
-                let length = dot(along_edge, along_edge);
-                add(start, along_edge.map(|axis| divide(axis * along, length)))
+                let along_edge = corners[(edge + 1) % 4] - start;
+                let along = (off - start).dot(along_edge);
+                let length = along_edge.dot(along_edge);
+                start + along_edge.map(|axis| divide(axis * along, length))
             }
         };
-        let ground = add(point, flat(centre));
+        let ground = point + flat(centre);
         let place = |bits: i128| Num::from_bits(i64::try_from(bits).expect("within the bound"));
         let at = Vec3::new(place(ground[0]), at.get().y, place(ground[1]));
         Position::new(at).expect("a point of a box within the bound")
@@ -223,8 +220,8 @@ impl BodyBox {
         reach: Num,
     ) -> Approach {
         let frame = self.frame();
-        let start = sub(flat(from), flat(centre));
-        let path = sub(flat(to), flat(from));
+        let start = flat(from) - flat(centre);
+        let path = flat(to) - flat(from);
         let reach = SquaredDistance::of(reach);
         if let Some(share) = frame.entry(start, path) {
             return Approach {
@@ -238,15 +235,15 @@ impl BodyBox {
                 best = candidate;
             }
         };
-        take((frame.nearest_to(add(start, path)).distance, Fraction::ONE));
+        take((frame.nearest_to(start + path).distance, Fraction::ONE));
         // Apart from the box, a path comes nearest at one of its ends, or where a corner's
         // nearest point lies inside it.
-        let length = dot(path, path);
+        let length = path.dot(path);
         for corner in frame.corners() {
-            let off = sub(corner, start);
-            let along = dot(off, path);
+            let off = corner - start;
+            let along = off.dot(path);
             if 0 < along && along < length {
-                let across = cross(path, off).unsigned_abs();
+                let across = path.cross(off).unsigned_abs();
                 let square = U256::product(across, across);
                 let distance = SquaredDistance::new(square, length.unsigned_abs());
                 take((distance, Fraction::new(along, length)));
@@ -266,7 +263,7 @@ impl BodyBox {
     /// overlap.
     pub(crate) fn push_out(&self, centre: Position, at: Vec3, radius: Num) -> Option<Vec3> {
         let frame = self.frame();
-        let off = sub(flat_vec(at), flat(centre));
+        let off = Flat::ground(at) - flat(centre);
         let Nearest { distance, feature } = frame.nearest_to(off);
         let moved = match feature {
             Feature::Inside => frame.out_through(frame.nearest_edge_inside(off), off, radius),
@@ -275,14 +272,14 @@ impl BodyBox {
             Feature::Corner(corner) => {
                 // Off a corner the push runs along the way from it, and `off` lies the whole
                 // way's length beyond the corner, so `out` is the way's square.
-                let away = sub(off, frame.corners()[corner]);
-                touching(off, away, dot(away, away), radius)
+                let away = off - frame.corners()[corner];
+                touching(off, away, away.dot(away), radius)
             }
         };
         let place = |num: i128| {
             Num::from_bits(i64::try_from(num).expect("a push is shorter than a box and a body"))
         };
-        let ground = add(moved, flat(centre));
+        let ground = moved + flat(centre);
         Some(Vec3::new(place(ground[0]), at.y, place(ground[1])))
     }
 
@@ -294,7 +291,7 @@ impl BodyBox {
         other: &BodyBox,
         other_centre: Position,
     ) -> bool {
-        let apart = sub(flat(other_centre), flat(centre));
+        let apart = flat(other_centre) - flat(centre);
         self.frame().meets(apart, other.frame(), true)
     }
 
@@ -308,7 +305,7 @@ impl BodyBox {
         reach: Num,
     ) -> Ordering {
         let (ours, theirs) = (self.frame(), other.frame());
-        let apart = sub(flat(other_centre), flat(centre));
+        let apart = flat(other_centre) - flat(centre);
         let reach = SquaredDistance::of(reach);
         if ours.meets(apart, theirs, false) {
             return SquaredDistance::ZERO.cmp(&reach);
@@ -316,10 +313,10 @@ impl BodyBox {
         // Apart, two convex shapes come nearest at a corner of one.
         let from_ours = ours
             .corners()
-            .map(|corner| theirs.nearest_to(sub(corner, apart)).distance);
+            .map(|corner| theirs.nearest_to(corner - apart).distance);
         let from_theirs = theirs
             .corners()
-            .map(|corner| ours.nearest_to(add(corner, apart)).distance);
+            .map(|corner| ours.nearest_to(corner + apart).distance);
         let nearest = from_ours
             .into_iter()
             .chain(from_theirs)
@@ -336,8 +333,8 @@ impl BodyBox {
         let points = polygon.points();
         let crosses = (0..points.len()).any(|at| {
             let next = points[(at + 1) % points.len()];
-            let start = sub(bits(points[at]), flat(centre));
-            let path = sub(bits(next), bits(points[at]));
+            let start = Flat::from_nums(points[at]) - flat(centre);
+            let path = Flat::from_nums(next) - Flat::from_nums(points[at]);
             frame.passes_through(start, path)
         });
         let at = centre.get();
@@ -358,21 +355,21 @@ impl BodyBox {
     /// cells lie. Touching is not overlap.
     pub(crate) fn overlaps_square_twice(&self, off: Flat, half: i128) -> bool {
         let square = Frame {
-            halves: [[half, 0], [0, half]],
+            halves: [Flat::new(half, 0), Flat::new(0, half)],
         };
         self.frame_twice().meets(off, square, true)
     }
 
     fn frame(&self) -> Frame {
         Frame {
-            halves: self.half.map(bits),
+            halves: self.half.map(Flat::from_nums),
         }
     }
 
     /// The box at twice the scale, in halves of a bit.
     fn frame_twice(&self) -> Frame {
         Frame {
-            halves: self.half.map(|edge| bits(edge).map(|axis| 2 * axis)),
+            halves: self.half.map(|edge| Flat::from_nums(edge) * 2),
         }
     }
 }
@@ -396,20 +393,20 @@ impl Frame {
     /// The cross product of the half edges, positive: a quarter of the box's area.
     fn quarter_area(&self) -> i128 {
         let [a, b] = self.halves;
-        cross(a, b)
+        a.cross(b)
     }
 
     /// The corners from the position, counterclockwise.
     fn corners(&self) -> [Flat; 4] {
         let [a, b] = self.halves;
-        [sub([0, 0], add(a, b)), sub(a, b), add(a, b), sub(b, a)]
+        [-(a + b), a - b, a + b, b - a]
     }
 
     /// The two slab values of `off`, each `cross` of it with a half edge: it lies within the
     /// box when both are within `quarter_area` of 0.
     fn slabs(&self, off: Flat) -> [i128; 2] {
         let [a, b] = self.halves;
-        [cross(off, b), cross(a, off)]
+        [off.cross(b), a.cross(off)]
     }
 
     fn holds(&self, off: Flat) -> bool {
@@ -430,10 +427,10 @@ impl Frame {
         let mut best: Option<Nearest> = None;
         for edge in 0..4 {
             let (start, end) = (corners[edge], corners[(edge + 1) % 4]);
-            let along_edge = sub(end, start);
-            let off_start = sub(off, start);
-            let along = dot(off_start, along_edge);
-            let length = dot(along_edge, along_edge);
+            let along_edge = end - start;
+            let off_start = off - start;
+            let along = off_start.dot(along_edge);
+            let length = along_edge.dot(along_edge);
             let found = if along <= 0 {
                 Nearest {
                     distance: square(off_start),
@@ -441,11 +438,11 @@ impl Frame {
                 }
             } else if along >= length {
                 Nearest {
-                    distance: square(sub(off, end)),
+                    distance: square(off - end),
                     feature: Feature::Corner((edge + 1) % 4),
                 }
             } else {
-                let across = cross(along_edge, off_start).unsigned_abs();
+                let across = along_edge.cross(off_start).unsigned_abs();
                 let square = U256::product(across, across);
                 Nearest {
                     distance: SquaredDistance::new(square, length.unsigned_abs()),
@@ -464,11 +461,8 @@ impl Frame {
         let corners = self.corners();
         let depth = |edge: usize| {
             let normal = self.normal(edge);
-            let inward = dot(normal, sub(off, corners[edge])).unsigned_abs();
-            SquaredDistance::new(
-                U256::product(inward, inward),
-                dot(normal, normal).unsigned_abs(),
-            )
+            let inward = normal.dot(off - corners[edge]).unsigned_abs();
+            SquaredDistance::new(U256::product(inward, inward), normal.length_squared())
         };
         (0..4).min_by_key(|&edge| depth(edge)).expect("four edges")
     }
@@ -476,15 +470,15 @@ impl Frame {
     /// The outward normal of `edge`, as long as the edge.
     fn normal(&self, edge: usize) -> Flat {
         let corners = self.corners();
-        let along = sub(corners[(edge + 1) % 4], corners[edge]);
-        [along[1], -along[0]]
+        let along = corners[(edge + 1) % 4] - corners[edge];
+        Flat::new(along[1], -along[0])
     }
 
     /// Where `off` goes along `edge`'s outward normal to leave a body of `radius` touching the
     /// edge's line from outside.
     fn out_through(&self, edge: usize, off: Flat, radius: Num) -> Flat {
         let normal = self.normal(edge);
-        let out = dot(normal, sub(off, self.corners()[edge]));
+        let out = normal.dot(off - self.corners()[edge]);
         touching(off, normal, out, radius)
     }
 
@@ -492,7 +486,7 @@ impl Frame {
     /// or overlap: no axis of either separates them. `other`'s position lies `apart` from this
     /// one's.
     fn meets(&self, apart: Flat, other: Frame, open: bool) -> bool {
-        !self.separates(apart, other, open) && !other.separates(sub([0, 0], apart), *self, open)
+        !self.separates(apart, other, open) && !other.separates(-apart, *self, open)
     }
 
     /// Whether one of this box's slab axes separates it from `other`, whose position lies
@@ -586,37 +580,13 @@ fn span(value: i128, along: i128, bound: i128, open: bool) -> Span {
     }
 }
 
+/// Where `at` stands on the ground plane, in a `Num`'s bits.
 fn flat(at: Position) -> Flat {
-    flat_vec(at.get())
-}
-
-fn flat_vec(at: Vec3) -> Flat {
-    bits([at.x, at.z])
-}
-
-fn bits(at: [Num; 2]) -> Flat {
-    at.map(|num| i128::from(num.to_bits()))
-}
-
-fn add(a: Flat, b: Flat) -> Flat {
-    [a[0] + b[0], a[1] + b[1]]
-}
-
-fn sub(a: Flat, b: Flat) -> Flat {
-    [a[0] - b[0], a[1] - b[1]]
-}
-
-fn dot(a: Flat, b: Flat) -> i128 {
-    a[0] * b[0] + a[1] * b[1]
-}
-
-/// Positive when `b` turns counterclockwise from `a`.
-fn cross(a: Flat, b: Flat) -> i128 {
-    a[0] * b[1] - a[1] * b[0]
+    Flat::ground(at.get())
 }
 
 fn square(off: Flat) -> SquaredDistance {
-    SquaredDistance::whole(dot(off, off).unsigned_abs())
+    SquaredDistance::whole(off.length_squared())
 }
 
 /// `num / den` for a positive `den`, rounded to nearest, half away from zero.
@@ -632,7 +602,7 @@ fn divide(num: i128, den: i128) -> i128 {
 /// lies apart.
 fn touching(off: Flat, normal: Flat, out: i128, radius: Num) -> Flat {
     let radius = i128::from(radius.to_bits());
-    let square = dot(normal, normal);
+    let square = normal.dot(normal);
     debug_assert!(
         square > 0
             && (out <= 0
@@ -640,9 +610,9 @@ fn touching(off: Flat, normal: Flat, out: i128, radius: Num) -> Flat {
                     > U256::product(out.unsigned_abs(), out.unsigned_abs())),
         "a body that overlaps the box lies within its radius of the line"
     );
-    [0, 1].map(|axis| {
+    Flat::from_array([0, 1].map(|axis| {
         off[axis] + outward(normal[axis].abs(), out, square, radius) * normal[axis].signum()
-    })
+    }))
 }
 
 /// The first `k` `outward` tries: the quotient, rounded up, with `square`'s root rounded down to

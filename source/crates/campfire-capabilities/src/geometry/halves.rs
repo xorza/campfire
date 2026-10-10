@@ -1,12 +1,8 @@
-use campfire_math::Num;
+use campfire_math::{Flat, Num};
 use campfire_sim::Position;
 
-/// A point or a vector of the ground plane, `[x, z]`, in a `Num`'s bits or, at twice the scale,
-/// in halves of a bit, where a grid cell's center is whole: exact for sums and products of
-/// coordinates within twice the world's bound.
-pub(crate) type Flat = [i128; 2];
-
-/// Coordinates in halves of a bit.
+/// Coordinates in halves of a bit, the scale at which a grid cell's center is whole. Within
+/// twice the world's bound, their sums and products fit a `Flat`'s `i128`s.
 #[derive(Debug)]
 pub(crate) struct Halves;
 
@@ -19,6 +15,6 @@ impl Halves {
     /// Where `pos` stands on the ground plane, in halves of a bit.
     pub(crate) const fn ground(pos: Position) -> Flat {
         let at = pos.get();
-        [Halves::of(at.x), Halves::of(at.z)]
+        Flat::new(Halves::of(at.x), Halves::of(at.z))
     }
 }

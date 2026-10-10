@@ -3,7 +3,8 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 
 use crate::floor_root::FloorRoot;
-use crate::num::bench::{COUNT, split_mix};
+use crate::num::bench::COUNT;
+use crate::rng::split_mix64::SplitMix64;
 use crate::simd::u64x4::U64x4;
 
 /// `FloorRoot::floor_root` over `COUNT` values each, its throughput the roots: `floor` on values
@@ -50,12 +51,12 @@ pub(crate) fn root(c: &mut Criterion) {
 }
 
 /// `COUNT` values from `seed`, whose widths spread evenly from 1 to `widest` bits.
-fn values(seed: u64, widest: u32) -> Vec<u128> {
-    let mut next = split_mix(seed);
+pub(crate) fn values(seed: u64, widest: u32) -> Vec<u128> {
+    let mut words = SplitMix64::new(seed);
     (0..COUNT)
         .map(|at| {
             let width = u32::try_from(at).expect("a count below 2³²") % widest + 1;
-            let bits = (u128::from(next()) << 64) | u128::from(next());
+            let bits = (u128::from(words.next_u64()) << 64) | u128::from(words.next_u64());
             (bits >> (128 - width)) | 1 << (width - 1)
         })
         .collect()

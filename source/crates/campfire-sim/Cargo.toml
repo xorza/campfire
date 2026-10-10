@@ -6,7 +6,7 @@ license.workspace = true
 autotests = false
 
 [features]
-internals = []
+internals = ["campfire-math/internals"]
 bench = ["internals", "dep:criterion"]
 
 [dependencies]
@@ -22,6 +22,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }
+campfire-math = { workspace = true, features = ["internals"] }
 
 [[test]]
 name = "tests"

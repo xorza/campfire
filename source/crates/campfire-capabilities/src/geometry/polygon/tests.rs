@@ -10,8 +10,8 @@ fn polygon(of: &[[i64; 2]]) -> Polygon {
 }
 
 /// A point `[x, z]` in quarters of a meter, in halves of a bit.
-fn quarters([x, z]: [i64; 2]) -> [i128; 2] {
-    [x, z].map(|value| 2 * i128::from(Num::QUARTER.to_bits()) * i128::from(value))
+fn quarters([x, z]: [i64; 2]) -> Flat {
+    Flat::new(x.into(), z.into()) * (2 * i128::from(Num::QUARTER.to_bits()))
 }
 
 #[test]

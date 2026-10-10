@@ -65,7 +65,7 @@ Each layer uses the layers below it.
 | Module | Status | Does |
 | --- | --- | --- |
 | `common` | built | The vocabulary that crates which do not depend on each other share: the player slot, ticks, segment seed and 32-byte values written as hex, a package's fingerprint, and the binaries' exit statuses; and the one gateway of serialization, `codec` ([Serialization](#serialization)) |
-| `math` | built | Fixed-point numbers, 3D vectors, trig, exact integer roots, exact 256-bit products and their sums, counter-based RNG, SIMD lanes |
+| `math` | built | Fixed-point numbers, 3D vectors, exact vectors of the ground plane, trig, exact integer roots, exact 256-bit products and their sums, counter-based RNG, SIMD lanes |
 | `protocol` | built | The open protocol: signatures, session key delegations, the connection's handshake, input chains, the seed chain and the session log, with no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | built | The Rhai host: compiles scripts, and runs each call under its limits; the script API itself is in `capabilities` ([Script API](08-script-api.md)) |

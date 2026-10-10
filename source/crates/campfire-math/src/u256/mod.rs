@@ -1,5 +1,8 @@
 use std::cmp::Ordering;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// An unsigned integer of 256 bits, for exact comparisons of products that pass `u128`: the high
 /// half before the low, so the derived order compares numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -1,9 +1,9 @@
 use std::cmp::Ordering;
 
-use campfire_math::Num;
+use campfire_math::{Flat, Num};
 
 use crate::geometry::grid::Grid;
-use crate::geometry::halves::{Flat, Halves};
+use crate::geometry::halves::Halves;
 use crate::geometry::polygon::error::PolygonError;
 
 pub(crate) mod error;
@@ -48,9 +48,9 @@ impl Polygon {
                 return true;
             }
             if (a[1] > at[1]) != (b[1] > at[1]) {
-                let along = (at[0] - a[0]) * (b[1] - a[1]);
-                let across = (at[1] - a[1]) * (b[0] - a[0]);
-                if (b[1] > a[1] && along < across) || (b[1] < a[1] && along > across) {
+                // Negative when `at` lies left of the edge from `a` to `b`.
+                let side = (at - a).cross(b - a);
+                if (b[1] > a[1] && side < 0) || (b[1] < a[1] && side > 0) {
                     inside = !inside;
                 }
             }
@@ -60,7 +60,7 @@ impl Polygon {
 
     /// Whether `at`, `[x, z]`, lies inside the polygon or on its edge.
     pub(crate) fn holds_point(&self, at: [Num; 2]) -> bool {
-        self.holds(at.map(Halves::of))
+        self.holds(Flat::from_array(at.map(Halves::of)))
     }
 
     pub(crate) fn points(&self) -> &[[Num; 2]] {
@@ -95,7 +95,7 @@ impl Polygon {
     /// The edge from point `at` to the next, in halves of a bit.
     fn edge(&self, at: usize) -> [Flat; 2] {
         let next = (at + 1) % self.points.len();
-        [self.points[at], self.points[next]].map(|[x, z]| [Halves::of(x), Halves::of(z)])
+        [self.points[at], self.points[next]].map(|[x, z]| Flat::new(Halves::of(x), Halves::of(z)))
     }
 
     /// Whether edges `first` and `second`, `first` the lower, meet where a simple polygon's do
@@ -116,8 +116,7 @@ impl Polygon {
 
 /// The side of the line from `a` to `b` that `c` lies on: `Greater` to the left.
 fn orient(a: Flat, b: Flat, c: Flat) -> Ordering {
-    let cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-    cross.cmp(&0)
+    (b - a).cross(c - a).cmp(&0)
 }
 
 /// Whether `c` lies on the segment from `a` to `b`, its ends included.
@@ -129,8 +128,7 @@ fn on_segment(a: Flat, b: Flat, c: Flat) -> bool {
 /// Whether the edge from `a` to `b` and the one from `b` to `c` share more than `b`: one of no
 /// length, or one that turns straight back along the other.
 fn overlaps_on(a: Flat, b: Flat, c: Flat) -> bool {
-    let dot = (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]);
-    orient(a, b, c) == Ordering::Equal && dot <= 0
+    orient(a, b, c) == Ordering::Equal && (b - a).dot(c - b) <= 0
 }
 
 /// Whether two closed segments share a point: each one's ends lie on either side of the

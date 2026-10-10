@@ -1,11 +1,12 @@
 use campfire_common::Binary;
+use campfire_math::internals::SplitMix64;
 
 use super::*;
 
 impl BodyBox {
     /// Whether `at` lies inside the box at `centre` or on its edge.
     fn holds(&self, centre: Position, at: Position) -> bool {
-        self.frame().holds(sub(flat(at), flat(centre)))
+        self.frame().holds(flat(at) - flat(centre))
     }
 }
 
@@ -28,10 +29,11 @@ fn halves(body: &BodyBox) -> [[i64; 2]; 2] {
 /// The box's corners at `centre`, as a polygon.
 fn polygon(body: &BodyBox, centre: Position) -> Polygon {
     let at = flat(centre);
-    let points = body
-        .frame()
-        .corners()
-        .map(|corner| add(corner, at).map(|bits| Num::from_bits(i64::try_from(bits).unwrap())));
+    let points = body.frame().corners().map(|corner| {
+        (corner + at)
+            .to_array()
+            .map(|bits| Num::from_bits(i64::try_from(bits).unwrap()))
+    });
     Polygon::new(points.to_vec()).unwrap()
 }
 
@@ -43,30 +45,18 @@ fn flat_vec3(off: Flat) -> Vec3 {
 /// Where the path from `start` along `path` crosses the segment from `a` to `b`, as a share of
 /// the path, by the two lines' cross products; none for parallel lines or no crossing.
 fn crossing(start: Flat, path: Flat, a: Flat, b: Flat) -> Option<Fraction> {
-    let edge = sub(b, a);
-    let den = cross(path, edge);
+    let edge = b - a;
+    let den = path.cross(edge);
     if den == 0 {
         return None;
     }
-    let to_a = sub(a, start);
-    let (t, u) = (cross(to_a, edge), cross(to_a, path));
+    let to_a = a - start;
+    let (t, u) = (to_a.cross(edge), to_a.cross(path));
     let within = |num: i128| {
         let fraction = Fraction::new(num, den);
         Fraction::ZERO <= fraction && fraction <= Fraction::ONE
     };
     (within(t) && within(u)).then(|| Fraction::new(t, den))
-}
-
-/// `SplitMix64` from `seed`: draws that every run repeats.
-fn split_mix(seed: u64) -> impl FnMut() -> u64 {
-    let mut state = seed;
-    move || {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
 }
 
 #[test]
@@ -119,7 +109,7 @@ fn a_box_has_the_least_size_and_the_longest_diagonal() {
     let longest = made("4093.9", "1", "45");
     let [a, b] = longest.frame().halves;
     let reach = (2048 * i128::from(Num::ONE.to_bits())).pow(2);
-    assert!(dot(add(a, b), add(a, b)) <= reach && dot(sub(a, b), sub(a, b)) <= reach);
+    assert!((a + b).dot(a + b) <= reach && (a - b).dot(a - b) <= reach);
 }
 
 #[test]
@@ -235,7 +225,7 @@ fn the_nearest_point_lies_on_the_nearest_edge_or_corner() {
     assert_eq!(turned.nearest(centre, point, Num::EPSILON), Ordering::Less);
     // Each coordinate rounds by half a bit at most, so the way to the point is within a bit of
     // the exact distance d, and its square within 2d + 1 of d².
-    let way = dot(sub(flat(point), flat(probe)), sub(flat(point), flat(probe))).unsigned_abs();
+    let way = (flat(point) - flat(probe)).length_squared();
     let slack = 2 * (way.floor_root() + 1) + 1;
     let gap = turned.distance(centre, probe);
     assert!(SquaredDistance::whole(way - slack) < gap && gap < SquaredDistance::whole(way + slack));
@@ -247,18 +237,18 @@ fn twice_the_scale_sees_halves_of_a_bit() {
     let twice = |meters: i128, halves: i128| (meters << 25) + halves;
     // 1.5 m along x lies half a meter off the edge: not closer than half a meter, closer than a
     // bit more.
-    let off = [twice(1, 1 << 24), 0];
+    let off = Flat::new(twice(1, 1 << 24), 0);
     assert!(!body.closer_twice(off, Num::HALF));
     assert!(body.closer_twice(off, Num::HALF + Num::EPSILON));
     // Half a bit past the edge: closer than a bit, not than nothing.
-    let off = [twice(1, 1), 0];
+    let off = Flat::new(twice(1, 1), 0);
     assert!(body.closer_twice(off, Num::EPSILON));
     assert!(!body.closer_twice(off, Num::ZERO));
     // A square of 1 m centred 1.5 m along x touches the box's edge; half a bit nearer, it
     // overlaps.
     let half = 1 << 24;
-    assert!(!body.overlaps_square_twice([twice(1, 1 << 24), 0], half));
-    assert!(body.overlaps_square_twice([twice(1, (1 << 24) - 1), 0], half));
+    assert!(!body.overlaps_square_twice(Flat::new(twice(1, 1 << 24), 0), half));
+    assert!(body.overlaps_square_twice(Flat::new(twice(1, (1 << 24) - 1), 0), half));
 }
 
 #[test]
@@ -483,7 +473,7 @@ fn a_box_overlaps_a_polygon_its_inside_meets() {
 /// Draws for the random boxes: sizes, angles, offsets and reaches, every run the same, each
 /// length `scale` times its meters.
 struct Draws {
-    next: Box<dyn FnMut() -> u64>,
+    words: SplitMix64,
     scale: i64,
 }
 
@@ -497,7 +487,7 @@ impl Draws {
 
     fn bits(&mut self, low: i64, high: i64) -> i64 {
         let span = u64::try_from(high - low).unwrap();
-        low + i64::try_from((self.next)() % span).unwrap()
+        low + i64::try_from(self.words.next_u64() % span).unwrap()
     }
 
     fn size(&mut self) -> Num {
@@ -548,7 +538,7 @@ fn to_edges(body: &BodyBox, point: Flat) -> impl Iterator<Item = (Flat, Flat)> {
     let corners = body.frame().corners();
     (0..4).map(move |edge| {
         let start = corners[edge];
-        (sub(corners[(edge + 1) % 4], start), sub(point, start))
+        ((corners[(edge + 1) % 4] - start), (point - start))
     })
 }
 
@@ -565,7 +555,7 @@ fn check_point(body: &BodyBox, centre: Position, probe: Position, reach: Num) {
     let expected = if holds {
         Num::ZERO.cmp(&reach)
     } else {
-        by_approaches(to_edges(body, sub(flat(probe), flat(centre))), reach)
+        by_approaches(to_edges(body, flat(probe) - flat(centre)), reach)
     };
     assert_eq!(
         body.nearest(centre, probe, reach),
@@ -578,7 +568,7 @@ fn check_point(body: &BodyBox, centre: Position, probe: Position, reach: Num) {
 /// with the approaches of its ends to the edges and of the corners to it.
 fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, reach: Num) {
     let approach = body.approach(centre, from, to, reach);
-    let (start, path) = (sub(flat(from), flat(centre)), sub(flat(to), flat(from)));
+    let (start, path) = ((flat(from) - flat(centre)), (flat(to) - flat(from)));
     let corners = body.frame().corners();
     let enters = (0..4)
         .filter_map(|edge| crossing(start, path, corners[edge], corners[(edge + 1) % 4]))
@@ -593,8 +583,8 @@ fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, re
         assert_eq!(approach.nearest, Num::ZERO.cmp(&reach));
         return;
     }
-    let ends = to_edges(body, start).chain(to_edges(body, add(start, path)));
-    let tips = corners.into_iter().map(|corner| (path, sub(corner, start)));
+    let ends = to_edges(body, start).chain(to_edges(body, start + path));
+    let tips = corners.into_iter().map(|corner| (path, (corner - start)));
     let expected = by_approaches(ends.chain(tips), reach);
     assert_eq!(
         approach.nearest, expected,
@@ -638,17 +628,17 @@ fn check_pair(body: &BodyBox, centre: Position, other: &BodyBox, at: Position, r
     let expected = if overlaps {
         Num::ZERO.cmp(&reach)
     } else {
-        let apart = sub(flat(at), flat(centre));
+        let apart = flat(at) - flat(centre);
         let ours = body
             .frame()
             .corners()
             .into_iter()
-            .flat_map(|corner| to_edges(other, sub(corner, apart)));
+            .flat_map(|corner| to_edges(other, corner - apart));
         let theirs = other
             .frame()
             .corners()
             .into_iter()
-            .flat_map(|corner| to_edges(body, add(corner, apart)));
+            .flat_map(|corner| to_edges(body, corner + apart));
         by_approaches(ours.chain(theirs), reach)
     };
     assert_eq!(body.nearest_box(centre, other, at, reach), expected);
@@ -668,7 +658,7 @@ fn random_boxes_agree_with_their_polygons_and_edges() {
 
 fn random_boxes(scale: i64) {
     let mut draws = Draws {
-        next: Box::new(split_mix(0xB0C5)),
+        words: SplitMix64::new(0xB0C5),
         scale,
     };
     let origin = Position::new(Vec3::ZERO).unwrap();

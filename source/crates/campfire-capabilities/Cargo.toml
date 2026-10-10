@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-bench = ["dep:criterion", "internals"]
+bench = ["dep:criterion", "internals", "campfire-math/internals"]
 internals = []
 
 [dependencies]
@@ -22,6 +22,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }
+campfire-math = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-sim = { workspace = true, features = ["internals"] }
 toml.workspace = true

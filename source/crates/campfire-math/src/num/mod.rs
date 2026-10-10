@@ -245,7 +245,9 @@ const fn to_i64(value: i128) -> i64 {
     value as i64
 }
 
-/// `value / 2^shift`, rounded to nearest, ties to even.
+/// `value / 2^shift`, rounded to nearest, ties to even. This and `round_div` are free functions,
+/// where `U256` has methods of the same names: `i128` is a foreign type, a trait's methods
+/// cannot be `const`, and trig's tables call both at compile time.
 const fn round_shr(value: i128, shift: u32) -> i128 {
     debug_assert!(shift > 0);
     let floor = value >> shift;

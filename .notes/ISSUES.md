@@ -33,7 +33,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Actions.** **Plan: G1.** The projectile section's `gravity` is planned: no projectile falls, so no grenade arcs and no bullet drops.
 - **Client.** **Plan: S2.** The client has no shop and no item keys: a player cannot buy, sell or use an item, which design 04's items give as orders.
 - **Interaction.** **Plan: U1.** `interaction` is planned: no action of the `use` kind runs.
-- **Math.** The word generator of benches and tests, SplitMix64, is written eight times: in `math`'s and `capabilities`' benches and tests, `net`'s delay line, and `sim`'s state registry and golden test.
-- **Math.** The exact 2D vector of the ground plane, `Flat`, with its `add`, `sub`, `dot` and `cross`, is a type alias and free functions in `capabilities`' geometry, where `math` holds the vectors.
-- **Math.** `U256`, `ProductSum` and the SIMD lanes have no benches, though `U256`'s division runs on each collision of two circles.
-- **Math.** Rounded division and shift exist twice in `math`: for `i128` as the free functions `round_shr` and `round_div` in `num`, and for `U256` as methods of the same names.
