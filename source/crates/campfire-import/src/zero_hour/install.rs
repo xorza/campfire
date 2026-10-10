@@ -428,6 +428,8 @@ mod tests {
         assert_eq!(hashed, expected);
         // A second language folder with `Art` leaves the importer unable to tell which one the
         // game reads.
+        // Windows replaces no file a handle holds open, so the install closes before its archive is.
+        drop(install);
         scratch.write("zh/c.BIG", big(&[("Data\\German\\Art\\W3D\\x.w3d", b"x")]));
         assert!(matches!(
             Install::open(&scratch.path("zh")).unwrap().language(),

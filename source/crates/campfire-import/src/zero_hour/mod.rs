@@ -369,6 +369,8 @@ mod tests {
         );
 
         // A second folder whose name gives `fixture_map` is refused.
+        // Windows replaces no file a handle holds open, so each install closes before its archive is.
+        drop(game);
         scratch.write(
             "zh/c.BIG",
             big(&[
@@ -386,6 +388,7 @@ mod tests {
         ));
 
         // An archive of other bytes is no version the importer knows.
+        drop(clash);
         scratch.write("zh/c.BIG", b"BIGF");
         assert!(matches!(
             ZeroHour::open(&scratch.path("zh"), &known),
@@ -468,6 +471,9 @@ mod tests {
         );
 
         // Two objects whose names give one unit type, each with a model, are refused.
+        // Windows replaces no file a handle holds open, so each install closes before its archive is.
+        drop(game);
+        drop(install);
         let clash = "Object Rock!\nDraw = W3DPropDraw M\nModelName = Rock01\nEnd\nEnd\nObject Rock?\nDraw = W3DPropDraw M\nModelName = Rock01\nEnd\nEnd\n";
         scratch.write(
             "zh/c.BIG",
