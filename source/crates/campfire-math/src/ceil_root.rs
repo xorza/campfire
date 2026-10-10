@@ -11,7 +11,7 @@ impl CeilRoot for u128 {
     fn ceil_root(self) -> u128 {
         let root = self.floor_root();
         // The floor root is below 2⁶⁴, so its square fits. The step sits in an `if`: a select in
-        // its place made `collision/crowded` 4 % slower.
+        // its place made `integration/collision/crowded` 4 % slower.
         if root * root < self { root + 1 } else { root }
     }
 }

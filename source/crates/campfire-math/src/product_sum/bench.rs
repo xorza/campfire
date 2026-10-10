@@ -22,7 +22,7 @@ pub(crate) fn product_sum(c: &mut Criterion) {
         })
         .collect();
 
-    let mut group = c.benchmark_group("product_sum");
+    let mut group = c.benchmark_group("atomic/product_sum");
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("sum", |bench| {
         bench.iter(|| {

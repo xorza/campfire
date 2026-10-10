@@ -65,7 +65,7 @@ pub(crate) fn fog(c: &mut Criterion) {
         black_box(&seen);
     };
 
-    let mut group = c.benchmark_group("fog");
+    let mut group = c.benchmark_group("integration/fog");
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
     let mut turn = false;
     group.bench_function("sight", |bench| {

@@ -28,7 +28,7 @@ pub(crate) fn u256(c: &mut Criterion) {
     let (ours, our_dens) = (squares(10), divisors(11));
     let (theirs, their_dens) = (squares(12), divisors(13));
 
-    let mut group = c.benchmark_group("u256");
+    let mut group = c.benchmark_group("atomic/u256");
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("product", |bench| {
         bench.iter(|| {

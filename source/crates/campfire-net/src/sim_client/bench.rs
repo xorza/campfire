@@ -17,7 +17,7 @@ use crate::harness::in_process_match::{InProcessMatch, StepCost};
 /// the harness: Lightyear resends every unacked reliable message after its wall-clock round
 /// trip, which a step of the manual clock hardly takes.
 pub(crate) fn client_frame(c: &mut Criterion) {
-    let mut group = c.benchmark_group("client_frame");
+    let mut group = c.benchmark_group("integration/client_frame");
     for (name, mode) in [
         ("walk", RollbackMode::Check),
         ("walk_rollback", RollbackMode::Always),

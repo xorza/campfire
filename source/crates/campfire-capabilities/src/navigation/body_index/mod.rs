@@ -16,6 +16,9 @@ use crate::units::body::Body;
 use crate::units::layer::Layer;
 use crate::values::row_directory::{RowDirectory, RowEntries};
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// Bodies that stand, by layer and by the square buckets their bounding boxes cover, so a query
 /// sees only the bodies of its layer. As a resource it holds the
 /// static bodies, those of the living units that cannot walk: collision finds a walker's static

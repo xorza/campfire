@@ -8,7 +8,7 @@ use criterion::{Criterion, Throughput};
 use crate::geometry::body_box::BodyBox;
 
 /// The inputs of each case, each iteration's.
-const COUNT: usize = 4096;
+pub(crate) const COUNT: usize = 4096;
 
 /// `COUNT` boxes of sides from 1 to 9 m at any angle, each at a point within 20 m of the
 /// origin, with a point within 20 m of the origin beside each.
@@ -33,7 +33,7 @@ fn scene(seed: u64) -> Vec<(BodyBox, Position, Position)> {
 
 /// A box's primitives over `COUNT` inputs: a point's reach to a box, and two boxes' overlap.
 pub(crate) fn body_box(c: &mut Criterion) {
-    let mut group = c.benchmark_group("box");
+    let mut group = c.benchmark_group("atomic/body_box");
     group.throughput(Throughput::Elements(COUNT as u64));
     let points = scene(1);
     let reach = Num::int(3);

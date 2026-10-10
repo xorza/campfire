@@ -29,7 +29,7 @@ pub(crate) fn rng(c: &mut Criterion) {
     let mut entity = 0_u64;
     let mut rng = source.open(RngStream::new("bench"), u64::MAX);
 
-    let mut group = c.benchmark_group("rng");
+    let mut group = c.benchmark_group("atomic/rng");
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("open", |b| {
         b.iter(|| {

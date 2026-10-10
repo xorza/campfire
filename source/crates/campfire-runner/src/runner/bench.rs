@@ -2,24 +2,29 @@ use std::cell::LazyCell;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
+use bevy_ecs::world::World;
+use campfire_capabilities::Pools;
 use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, StateDelta};
 use criterion::{Criterion, Throughput};
 
 use crate::harness::fixed_match::FixedMatch;
-use crate::harness::moba_3v3::Moba3v3;
+use crate::harness::moba_3v3::{self, Moba3v3};
 use crate::runner::Runner;
 use crate::session::Session;
 
 /// The ticks of a measured 3v3 match: 5 minutes at 20 Hz, the pick, then a wave every 30 s from
 /// tick 2399, which fight their lanes' towers.
 const TICKS: u64 = 6000;
+/// The ticks of a battle case: 3 s at the 3v3's 20 Hz.
+const BATTLE_TICKS: u64 = 60;
 
 /// The server's tick of the MOBA 3v3, whole and by stage, from one load of its packages.
 pub(crate) fn server(c: &mut Criterion) {
     let moba: LazyCell<Moba3v3> = LazyCell::new(Moba3v3::load);
     server_tick(c, &moba);
     server_stage(c, &moba);
+    battle(c, &moba);
 }
 
 /// A tick of the MOBA 3v3 as its packages hold it: its first tick, `first_3v3`, which
@@ -30,7 +35,7 @@ pub(crate) fn server(c: &mut Criterion) {
 /// the mean tick of such a match, `mean_3v3`, a whole match each iteration, its throughput the
 /// ticks. A rollback re-simulates whole ticks, so it costs its depth times these.
 fn server_tick(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
-    let mut group = c.benchmark_group("server_tick");
+    let mut group = c.benchmark_group("integration/server_tick");
     group.sample_size(10);
     group.bench_function("first_3v3", |b| {
         b.iter_custom(|matches| {
@@ -80,13 +85,13 @@ fn server_tick(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
 /// Each stage of a tick of the MOBA 3v3, as `StageClock`'s probes time it in the match: its
 /// worst in a match of `TICKS` ticks, `worst_3v3_<stage>`, and its mean tick in such a match,
 /// `mean_3v3_<stage>`, a whole match each iteration, its throughput the ticks. The stages'
-/// means add up to `server_tick/mean_3v3` less the parts of a tick that run outside them: the
-/// session log's, the tick's start and end, and `SimEdge::Start`.
+/// means add up to `integration/server_tick/mean_3v3` less the parts of a tick that run outside
+/// them: the session log's, the tick's start and end, and `SimEdge::Start`.
 fn server_stage(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
     let id = |statistic: &str, stage: SimSet| {
         format!("{statistic}_3v3_{}", format!("{stage:?}").to_lowercase())
     };
-    let mut group = c.benchmark_group("server_stage");
+    let mut group = c.benchmark_group("integration/server_stage");
     group.sample_size(10);
     let stage_match =
         |stage: SimSet| MatchCost::of_match(&mut clocked(moba), |runner| stage_tick(runner, stage));
@@ -106,6 +111,46 @@ fn server_stage(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
         });
     }
     group.finish();
+}
+
+/// Each stage of a tick of a battle: the 3v3 at its start with `KernelScene::UNITS` of its creeps
+/// more, both teams mixed in the crowded scene's square, which fight from their spawn. Its case
+/// `crowded_<stage>` is the stage's mean tick over `BATTLE_TICKS` ticks of a new battle each
+/// iteration, its throughput the ticks: the creeps' targeting, strikes, bolts and damage at the
+/// scale of a large battle, where a 3v3 match's few creeps leave them small.
+fn battle(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
+    let mut group = c.benchmark_group("integration/battle");
+    group.sample_size(10);
+    group.throughput(Throughput::Elements(BATTLE_TICKS));
+    for stage in SimSet::ALL {
+        let id = format!("crowded_{}", format!("{stage:?}").to_lowercase());
+        group.bench_function(id, |b| {
+            b.iter_custom(|battles| {
+                (0..battles)
+                    .map(|_| {
+                        let mut fixed = clocked(moba);
+                        moba_3v3::bench::crowd(fixed.runner_mut().world_mut());
+                        let spent = (0..BATTLE_TICKS)
+                            .map(|_| stage_tick(fixed.runner_mut(), stage))
+                            .sum::<Duration>();
+                        assert!(hurt(fixed.runner_mut().world_mut()), "the creeps fight");
+                        spent
+                    })
+                    .sum()
+            });
+        });
+    }
+    group.finish();
+}
+
+/// Whether a unit of `world` holds a pool below its maximum, as one that took damage does.
+fn hurt(world: &mut World) -> bool {
+    let mut pools = world.query::<&Pools>();
+    pools.iter(world).any(|pools| {
+        pools
+            .ids()
+            .any(|pool| pools.current(pool) < pools.max(pool))
+    })
 }
 
 /// What a match of `TICKS` ticks cost, by the time `tick` gives for each of its ticks: in all,

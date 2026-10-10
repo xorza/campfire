@@ -24,7 +24,7 @@ pub(crate) fn root(c: &mut Criterion) {
         .map(|&lanes| U64x4::from_array(lanes))
         .collect();
 
-    let mut group = c.benchmark_group("root");
+    let mut group = c.benchmark_group("atomic/floor_root");
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("floor", |b| {
         b.iter(|| {

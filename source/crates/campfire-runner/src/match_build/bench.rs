@@ -1,3 +1,4 @@
+use std::cell::LazyCell;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
@@ -12,18 +13,19 @@ use crate::harness::moba_3v3::Moba3v3;
 use crate::match_build::MatchBuild;
 
 /// The build of a match of the MOBA 3v3, as a server builds one per session and a verifier
-/// one per checkpoint: `build_3v3`, the whole build into a world `SimUpdate::prepare` set up;
-/// `parse_3v3`, the compile of every script of its packages into a host with the script API
-/// bound, the part of a build that a cache of parsed scripts would save; and `bind_3v3`, the
-/// bind of the script API into a new host, the part that shared API modules would save.
+/// one per checkpoint: `match_build/3v3`, the whole build into a world `SimUpdate::prepare` set
+/// up; and two of its parts, `script_compile/3v3`, the compile of every script of its packages
+/// into a host with the script API bound, which a cache of parsed scripts would save, and
+/// `script_bind/3v3`, the bind of the script API into a new host, which shared API modules would
+/// save.
 pub(crate) fn build(c: &mut Criterion) {
-    let moba = Moba3v3::load();
-    let packages = moba.packages();
-    let per_call = packages.manifest().script_limits.per_call;
-    let rate = TickRate::new(packages.manifest().tick_hz.default());
-    let mut group = c.benchmark_group("match_build");
+    let moba = LazyCell::new(Moba3v3::load);
+    let per_call = || moba.packages().manifest().script_limits.per_call;
+    let mut group = c.benchmark_group("integration/match_build");
     group.sample_size(20);
-    group.bench_function("build_3v3", |b| {
+    group.bench_function("3v3", |b| {
+        let packages = moba.packages();
+        let rate = TickRate::new(packages.manifest().tick_hz.default());
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {
@@ -45,7 +47,11 @@ pub(crate) fn build(c: &mut Criterion) {
             spent
         });
     });
-    group.bench_function("parse_3v3", |b| {
+    group.finish();
+    let mut group = c.benchmark_group("integration/script_compile");
+    group.sample_size(20);
+    group.bench_function("3v3", |b| {
+        let (packages, per_call) = (moba.packages(), per_call());
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {
@@ -59,7 +65,11 @@ pub(crate) fn build(c: &mut Criterion) {
             spent
         });
     });
-    group.bench_function("bind_3v3", |b| {
+    group.finish();
+    let mut group = c.benchmark_group("integration/script_bind");
+    group.sample_size(20);
+    group.bench_function("3v3", |b| {
+        let per_call = per_call();
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {

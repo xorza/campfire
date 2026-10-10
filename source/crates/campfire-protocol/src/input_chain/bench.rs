@@ -21,7 +21,7 @@ pub(crate) fn chain_head(c: &mut Criterion) {
     chain.extend(Tick::new(40), b"an order");
     let signature = chain.sign(&secp, &keypair, session_id, &[0; 32]);
 
-    let mut group = c.benchmark_group("chain_head");
+    let mut group = c.benchmark_group("atomic/chain_head");
     group.bench_function("sign", |b| {
         b.iter(|| chain.sign(&secp, &keypair, black_box(session_id), &[0; 32]));
     });

@@ -77,7 +77,7 @@ A player's queues, supply, loads and resources go to that player and, as the mod
 
 ## Cost
 
-Each queue costs a counter a tick; each site a progress step and a count of its builders; each worker in the loop up to five steps of its state machine, of which a hold, the step of a worker that waits, gathers or walks on, reads nothing new, a pass over the nodes when its node is held or gone, and a pass over the workers when a node frees; each placement its box's tests against the walls, the static index and the bodies near it; supply and requirements a pass over the owned units in a tick that starts a train, and in each read of the script view in a mode with supply. The bench `production/gather`, 200 workers on 16 nodes and two drop-offs, 184 of them waiting, measures the loop: 28.6 µs a tick on one core, 0.09 % of a tick at 30 Hz, against 1.8 µs for the same schedule with no worker.
+Each queue costs a counter a tick; each site a progress step and a count of its builders; each worker in the loop up to five steps of its state machine, of which a hold, the step of a worker that waits, gathers or walks on, reads nothing new, a pass over the nodes when its node is held or gone, and a pass over the workers when a node frees; each placement its box's tests against the walls, the static index and the bodies near it; supply and requirements a pass over the owned units in a tick that starts a train, and in each read of the script view in a mode with supply. The bench `integration/gather/two_fields`, 200 workers on 16 nodes and two drop-offs, 184 of them waiting, measures the loop: 28.6 µs a tick on one core, 0.09 % of a tick at 30 Hz, against 1.8 µs for the same schedule with no worker.
 
 ## Genres
 

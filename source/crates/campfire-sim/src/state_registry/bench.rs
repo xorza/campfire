@@ -139,7 +139,7 @@ pub(crate) fn state_hash(c: &mut Criterion) {
     let registry = units_registry();
     let mut per_type = Vec::new();
 
-    let mut group = c.benchmark_group("state_hash");
+    let mut group = c.benchmark_group("integration/state_hash");
     group.throughput(Throughput::Elements(UNITS.unsigned_abs()));
     group.bench_function("all", |b| {
         b.iter(|| black_box(registry.hash(black_box(&world))));
@@ -156,7 +156,7 @@ pub(crate) fn snapshot(c: &mut Criterion) {
     let registry = units_registry();
     let mut out = Vec::new();
 
-    let mut group = c.benchmark_group("snapshot");
+    let mut group = c.benchmark_group("integration/snapshot");
     group.throughput(Throughput::Elements(UNITS.unsigned_abs()));
     group.bench_function("all", |b| {
         b.iter(|| {

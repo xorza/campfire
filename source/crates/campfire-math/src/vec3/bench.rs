@@ -24,7 +24,7 @@ pub(crate) fn vec3(c: &mut Criterion) {
     let radius = Num::from_int(800).unwrap();
     let turn = Num::from_int(1).unwrap().sin_cos();
 
-    let mut group = c.benchmark_group("vec3");
+    let mut group = c.benchmark_group("atomic/vec3");
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("dot", |bench| {
         bench.iter(|| {

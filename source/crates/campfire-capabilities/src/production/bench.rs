@@ -39,14 +39,26 @@ const WORKERS: i64 = 100;
 /// Nodes in each field.
 const NODES: i64 = 8;
 
-/// The gather loop of 200 workers on 16 nodes and two drop-offs, a tick of production's schedule
-/// as a match runs it, with no navigation. Each field is a drop-off of 16 by 2 m, a row of 8
-/// nodes of 2 by 1 m 1.5 m off its long side, and 100 workers of a half meter between them. A
-/// worker's gather reaches 16 m, every node and the drop-off of its field, so none walks, not
-/// even to a node it moves to. A trip takes 5 in 3 ticks; with 12.5 workers to a node, a node
-/// frees every 3 ticks to the first of its waiting workers, and the rest go on waiting. The
-/// nodes never run out: the bench measures the loop's steady state.
+/// The gather loop of 200 workers on 16 nodes and two drop-offs, `two_fields`, a tick of
+/// production's schedule as a match runs it, with no navigation. Each field is a drop-off of 16
+/// by 2 m, a row of 8 nodes of 2 by 1 m 1.5 m off its long side, and 100 workers of a half meter
+/// between them. A worker's gather reaches 16 m, every node and the drop-off of its field, so
+/// none walks, not even to a node it moves to. A trip takes 5 in 3 ticks; with 12.5 workers to a
+/// node, a node frees every 3 ticks to the first of its waiting workers, and the rest go on
+/// waiting. The nodes never run out: the bench measures the loop's steady state.
 pub(crate) fn gather(c: &mut Criterion) {
+    let mut fields = None;
+    let mut group = c.benchmark_group("integration/gather");
+    group.throughput(Throughput::Elements(2 * WORKERS.unsigned_abs()));
+    group.bench_function("two_fields", |bench| {
+        let world = fields.get_or_insert_with(two_fields);
+        bench.iter(|| world.run_schedule(SimUpdate));
+    });
+    group.finish();
+}
+
+/// The two fields of `gather`, past the 30 ticks that bring the loop to its steady state.
+fn two_fields() -> World {
     let mut world = World::new();
     let rate = TickRate::new(NonZeroU32::new(30).unwrap());
     SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
@@ -127,13 +139,7 @@ pub(crate) fn gather(c: &mut Criterion) {
         .resource::<PlayerResources>()
         .amount(PlayerSlot::new(0), gold);
     assert_eq!(gold_in, 2 * NODES * 9 * 5, "the scene runs the loop");
-
-    let mut group = c.benchmark_group("production");
-    group.throughput(Throughput::Elements(2 * WORKERS.unsigned_abs()));
-    group.bench_function("gather", |bench| {
-        bench.iter(|| world.run_schedule(SimUpdate));
-    });
-    group.finish();
+    world
 }
 
 /// A unit at `pos` with `parts`, of the next stable id.

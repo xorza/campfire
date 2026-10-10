@@ -5,6 +5,9 @@ use crate::geometry::cell_levels::CellLevels;
 use crate::geometry::shape::Shape;
 use crate::values::row_directory::{RowDirectory, RowEntries};
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// The bodies of a stage, as a sorted index of cells of the ground plane in levels by size: a
 /// body sits in the cell of its center at the least level whose cell is twice its bound, the
 /// radius of the least circle that holds it, and a query of a box visits, at each level that

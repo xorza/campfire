@@ -31,7 +31,7 @@ pub(crate) fn num(c: &mut Criterion) {
     let huge_angles = spread(4, 1 << 60);
     let near_axis = spread(5, one / 1000);
 
-    let mut group = c.benchmark_group("num");
+    let mut group = c.benchmark_group("atomic/num");
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("mul", |b| {
         b.iter(|| {

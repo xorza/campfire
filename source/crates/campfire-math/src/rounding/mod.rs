@@ -1,3 +1,6 @@
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// How an exact quotient that is not whole becomes a whole one: the caller names it, as Java's
 /// `RoundingMode` and IEEE 754's rounding attributes do, so no caller rounds on raw bits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

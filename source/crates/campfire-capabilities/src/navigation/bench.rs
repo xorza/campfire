@@ -39,7 +39,7 @@ const ROUTES: usize = 100;
 /// of the static index meets and no walker, at most 1.19 m, touches: finding the contacts, then parting them,
 /// from the same scene every run.
 pub(crate) fn collision(c: &mut Criterion) {
-    let mut group = c.benchmark_group("collision");
+    let mut group = c.benchmark_group("integration/collision");
     group.throughput(Throughput::Elements(KernelScene::UNITS as u64));
     let crowded = Density::Crowded.span();
     let cases = Density::ALL
@@ -97,7 +97,7 @@ pub(crate) fn pathing_grid(c: &mut Criterion) {
     index.update(&statics);
     grid.update(&index);
 
-    let mut group = c.benchmark_group("pathing_grid");
+    let mut group = c.benchmark_group("integration/pathing_grid");
     group.bench_function("one", |bench| {
         bench.iter_custom(|runs| {
             let mut spent = Duration::ZERO;
@@ -159,7 +159,7 @@ pub(crate) fn route_planner(c: &mut Criterion) {
         .map(|&[start, goal]| u64::from(planner.plan(walkable, start, goal, &mut waypoints).work))
         .sum();
 
-    let mut group = c.benchmark_group("route_planner");
+    let mut group = c.benchmark_group("integration/route_planner");
     group.throughput(Throughput::Elements(work));
     group.bench_function("walled", |bench| {
         bench.iter(|| {

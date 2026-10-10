@@ -8,6 +8,9 @@ use crate::geometry::approach::Approach;
 use crate::geometry::body_box::BodyBox;
 use crate::geometry::metric::Metric;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// A body's shape on the ground plane around its unit's position: a circle of a radius, 0 for
 /// a point or a unit with no body, or a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

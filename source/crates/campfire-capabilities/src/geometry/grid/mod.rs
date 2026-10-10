@@ -7,6 +7,9 @@ use crate::geometry::body_box::BodyBox;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::halves::Halves;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// A map's ground grid: square cells of `cell` meters over its bounds, whole cells from their min
 /// until they cover their max. Cells are numbered along x, then along z.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

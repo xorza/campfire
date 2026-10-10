@@ -25,7 +25,7 @@ pub(crate) fn script(c: &mut Criterion) {
     let mut budget = Budget::new(u64::MAX);
     let ctx: INT = 0;
 
-    let mut group = c.benchmark_group("script");
+    let mut group = c.benchmark_group("atomic/script");
     group.throughput(Throughput::Elements(CALLS as u64));
     for (case, hook) in [("call", "empty"), ("native", "native")] {
         group.bench_function(case, |b| {
