@@ -238,7 +238,7 @@ impl MapFile {
     }
 
     /// A texture class: its first tile, its count of tiles, its width in tiles, in a texture
-    /// class a field the game no longer reads, and its name.
+    /// class a field the game no longer reads, and its name; its texture is the import's to find.
     fn texture_class(body: &mut ChunkReader<'_>, legacy: bool) -> Result<TextureClass, MapError> {
         let first_tile = MapFile::u32(body)?;
         let tiles = MapFile::u32(body)?;
@@ -255,6 +255,7 @@ impl MapFile {
                 .ok()
                 .filter(|name| name.is_ascii())
                 .ok_or(MapError::NotAscii)?,
+            texture: None,
         })
     }
 

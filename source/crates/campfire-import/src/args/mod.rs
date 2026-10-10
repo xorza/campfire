@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 
-/// Imports a game's install into a package of its own, the same bytes on every machine.
+/// Imports a game's install into a package of its own, beside its game's rules package, the same
+/// bytes on every machine.
 #[derive(Debug, Parser)]
 #[command(version)]
 pub(crate) struct Args {
@@ -10,7 +11,8 @@ pub(crate) struct Args {
     pub(crate) game: Game,
     /// The install's directory, as the game runs from it
     pub(crate) install: PathBuf,
-    /// The package's directory, which the import makes, and refuses when it is there
+    /// The directory of the packages, which the import makes, and refuses when it is there: the
+    /// rules package and the install's, `game/`, the mode to play
     pub(crate) out: PathBuf,
 }
 

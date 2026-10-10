@@ -22,16 +22,18 @@ pub struct Dependent {
     pub kind: DependentKind,
 }
 
-/// The kind of a package the mode depends on: an avatar, with its one unit type, or a loadout.
+/// The kind of a package the mode depends on: an avatar, with its one unit type, a loadout, or a
+/// rules package, whose scripts alone it holds.
 #[derive(Debug)]
 pub enum DependentKind {
     Avatar(Box<AvatarUnit>),
     Loadout,
+    Rules,
 }
 
 impl Dependent {
-    /// The package of `files`, which the mode names `name`: an avatar or loadout package of that
-    /// name.
+    /// The package of `files`, which the mode names `name`: an avatar, loadout or rules package
+    /// of that name.
     pub(crate) fn read(
         name: &PackageName,
         files: &PackageFiles,
@@ -65,6 +67,7 @@ impl Dependent {
                 let content = content.map_err(LoadProblem::Content).map_err(fail)?;
                 (content, DependentKind::Loadout)
             }
+            Manifest::Rules(_) => (PackageContent::default(), DependentKind::Rules),
             Manifest::Mode(_) | Manifest::Locale(_) => return Err(fail(LoadProblem::WrongKind)),
         };
         let package = Package::read(files, header, parser, api)?;

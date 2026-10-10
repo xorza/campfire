@@ -30,6 +30,7 @@ mod script_facts;
 mod texts;
 mod zero_hour;
 
+pub use crate::client_data::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_data::client_units::{ClientModel, ClientUnit, ClientUnits};
 pub use crate::client_data::material_file::{Blend, MaterialFile, MaterialTexture};
 pub use crate::error::box_problem::BoxProblem;
@@ -62,10 +63,13 @@ pub use crate::package_reader::PackageReader;
 pub use crate::package_store::{PackageStore, StoreFailure};
 pub use crate::package_writer::PackageWriter;
 pub use crate::texts::Texts;
-pub use crate::zero_hour::error::TerrainError;
+pub use crate::zero_hour::class_texture::ClassTexture;
+pub use crate::zero_hour::error::{ClassTextureError, TerrainError};
+pub use crate::zero_hour::game_data::GameData;
 pub use crate::zero_hour::terrain::{
     BlendShape, BlendTile, CliffUv, Terrain, TerrainCell, TerrainParts, TextureClass,
 };
+pub use crate::zero_hour::terrain_atlas::TerrainAtlas;
 
 /// The tag of this engine release: what a session's terms name, so a replay runs the code that
 /// recorded it.

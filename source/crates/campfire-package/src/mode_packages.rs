@@ -21,6 +21,7 @@ use crate::file_index::FileIndex;
 use crate::files::manifest::Manifest;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
+use crate::files::mode_script::ModeScript;
 use crate::files::package_name::PackageName;
 use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
@@ -41,6 +42,8 @@ const UNITS_DATA: &str = "data/units.toml";
 pub struct ModePackages {
     pub(crate) mode: Package,
     pub(crate) manifest: ModeManifest,
+    /// The script it runs as its own.
+    pub(crate) script: ModeScript,
     pub(crate) data: ModeData,
     /// The name of the map it loaded, which its session plays.
     map_name: MapName,
@@ -180,6 +183,7 @@ impl ModePackages {
                 kind: match &dependent.kind {
                     DependentKind::Avatar(avatar) => ViewKind::Avatar(avatar),
                     DependentKind::Loadout => ViewKind::Loadout,
+                    DependentKind::Rules => ViewKind::Rules,
                 },
             });
         iter::once(mode).chain(dependents)
@@ -217,13 +221,30 @@ impl ModePackages {
         }
     }
 
-    /// The mode's script, by its place among the scripts a match compiles.
+    /// The mode's script, by its place among the scripts a match compiles: past every script of
+    /// the packages before the one that holds it.
     pub fn mode_script(&self) -> ScriptId {
-        let at = self
-            .mode
-            .script_index(&self.data.script)
-            .expect("the load checked the mode's script");
-        ScriptId::nth(at)
+        let mut before = 0;
+        for view in self.packages() {
+            if self.runs_script_of(view) {
+                let at = view
+                    .package
+                    .script_index(self.script.path())
+                    .expect("the load checked the mode's script");
+                return ScriptId::nth(before + at);
+            }
+            before += view.package.scripts.len();
+        }
+        panic!("the load checked the package of the mode's script")
+    }
+
+    /// Whether `view` is the package that holds the mode's script.
+    fn runs_script_of(&self, view: PackageView<'_>) -> bool {
+        match (self.script.package(), view.kind) {
+            (None, ViewKind::Mode) => true,
+            (Some(name), ViewKind::Rules) => view.package.header.name == *name,
+            _ => false,
+        }
     }
 
     /// What its books are built from at `rate`, its stats computed in `stat_order`.
@@ -239,6 +260,7 @@ impl ModePackages {
                 ViewKind::Mode => BookKind::Mode,
                 ViewKind::Avatar(avatar) => BookKind::Avatar(&avatar.unit),
                 ViewKind::Loadout => BookKind::Loadout,
+                ViewKind::Rules => BookKind::Rules,
             },
             scripts: view
                 .package
@@ -297,7 +319,7 @@ impl ModePackages {
 
     /// The ways each modifier of `view`, one of its packages, is applied.
     pub(crate) fn modifier_ways<'a>(&'a self, view: PackageView<'a>) -> ModifierWays<'a> {
-        let mode_script = matches!(view.kind, ViewKind::Mode).then_some(&self.data.script);
+        let mode_script = self.runs_script_of(view).then_some(self.script.path());
         ModifierWays::of(view, mode_script)
     }
 
@@ -365,7 +387,7 @@ impl ModePackages {
             .iter()
             .filter_map(|dependent| match &dependent.kind {
                 DependentKind::Avatar(avatar) => Some(&avatar.unit),
-                DependentKind::Loadout => None,
+                DependentKind::Loadout | DependentKind::Rules => None,
             });
         let types = contents
             .flat_map(|content| content.units.values())
@@ -403,7 +425,11 @@ impl ModePackages {
         if PackageIndex::dependency(dependencies.len()).is_none() {
             return Err(fail(LoadProblem::TooMany(Limit::Packages)));
         }
-        let ModeFile { data, mut content } = files
+        let ModeFile {
+            script,
+            data,
+            mut content,
+        } = files
             .read_data(&PackageDir::engine_path(MODE_DATA))
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
@@ -426,12 +452,22 @@ impl ModePackages {
             .iter()
             .map(|(name, files)| Dependent::read(name, files, &parser, &api))
             .collect::<Result<_, _>>()?;
+        if let Some(name) = script.package() {
+            let rules = dependencies.iter().any(|dependent| {
+                dependent.package.header.name == *name
+                    && matches!(dependent.kind, DependentKind::Rules)
+            });
+            if !rules {
+                return Err(fail(LoadProblem::ScriptPackage(name.clone())));
+            }
+        }
         let dependents = dependencies.iter().map(|dependent| &dependent.package);
         let scripts = ModePackages::read_hooks(iter::once(&mode).chain(dependents));
         let tag_names = ModePackages::collect_tag_names((&data, &content), &dependencies);
         let mut packages = ModePackages {
             mode,
             manifest,
+            script,
             data,
             map_name: map_name.clone(),
             map,

@@ -71,7 +71,7 @@ impl<'a> ModifierWays<'a> {
                 units.filter(|unit| !unit.delivers()).collect()
             }
             ViewKind::Avatar(avatar) => vec![&avatar.unit],
-            ViewKind::Loadout => Vec::new(),
+            ViewKind::Loadout | ViewKind::Rules => Vec::new(),
         };
         let ai = standing
             .iter()

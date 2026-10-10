@@ -342,9 +342,9 @@ fn every_workspace_package_holds_the_index_of_its_files() {
     }
     let mut found = Vec::new();
     packages(&PackageDir::workspace(""), &mut found);
-    // The four test heroes, the two test modes, and the MOBA's six heroes, its spells, its
-    // German text and its 3v3.
-    assert_eq!(found.len(), 15, "{found:?}");
+    // The four test heroes, the three test modes, the test rules, the MOBA's six heroes, its
+    // spells, its German text and its 3v3, and Zero Hour's rules.
+    assert_eq!(found.len(), 18, "{found:?}");
     let bless = env::var_os("CAMPFIRE_BLESS").is_some();
     for dir in found {
         let index = PackageDir::new(&dir).index_files().unwrap();

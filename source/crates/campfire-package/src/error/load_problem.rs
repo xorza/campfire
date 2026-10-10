@@ -32,6 +32,9 @@ pub enum LoadProblem {
     /// depends on.
     #[error("not a package of the kind its place needs")]
     WrongKind,
+    /// The mode's script names a package that is no rules package the mode depends on.
+    #[error("the mode's script names {0}, no rules package it depends on")]
+    ScriptPackage(PackageName),
     /// The mode holds no map of the name the session gives.
     #[error("the mode has no map {0}")]
     NoMap(MapName),

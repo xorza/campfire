@@ -184,6 +184,7 @@ impl<'a> BookBuilder<'a> {
                         self.books.units.loadout.push(id, ability);
                     }
                 }
+                BookKind::Rules => {}
             }
         }
         let mut parts = self.books;
@@ -291,7 +292,7 @@ impl<'a> BookBuilder<'a> {
                 .map(move |(name, file)| (TypeScope::of_package(index), name.as_str(), file));
             let avatar = match package.kind {
                 BookKind::Avatar(unit) => Some((TypeScope::Mode, package.name, unit)),
-                BookKind::Mode | BookKind::Loadout => None,
+                BookKind::Mode | BookKind::Loadout | BookKind::Rules => None,
             };
             declared.chain(avatar)
         });
@@ -312,7 +313,7 @@ impl<'a> BookBuilder<'a> {
         for (name, file) in &package.content.units {
             let scope = match package.kind {
                 BookKind::Mode if !file.delivers() => TypeScope::Mode,
-                BookKind::Mode | BookKind::Avatar(_) | BookKind::Loadout => {
+                BookKind::Mode | BookKind::Avatar(_) | BookKind::Loadout | BookKind::Rules => {
                     TypeScope::of_package(index)
                 }
             };

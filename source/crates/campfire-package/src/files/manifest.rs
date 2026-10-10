@@ -13,13 +13,17 @@ pub(crate) enum Manifest {
     Avatar(PackageHeader),
     Loadout(PackageHeader),
     Locale(LocaleManifest),
+    /// Scripts a mode that depends on it names as its own.
+    Rules(PackageHeader),
 }
 
 impl Manifest {
     pub(crate) const fn header(&self) -> &PackageHeader {
         match self {
             Manifest::Mode(mode) => &mode.header,
-            Manifest::Avatar(header) | Manifest::Loadout(header) => header,
+            Manifest::Avatar(header) | Manifest::Loadout(header) | Manifest::Rules(header) => {
+                header
+            }
             Manifest::Locale(locale) => &locale.header,
         }
     }

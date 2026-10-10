@@ -19,4 +19,5 @@ pub enum ViewKind<'a> {
     Mode,
     Avatar(&'a AvatarUnit),
     Loadout,
+    Rules,
 }

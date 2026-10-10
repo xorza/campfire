@@ -5,21 +5,27 @@ use bevy::ecs::resource::Resource;
 use campfire_capabilities::{HeightGrid, PackagePath};
 use campfire_common::{Binary, Toml};
 use campfire_log::ErrorReport;
-use campfire_package::{ClientUnits, ContentError, MaterialFile, ModePackages, PackageReader};
+use campfire_package::{
+    CameraFile, ClientUnits, ContentError, MaterialFile, ModePackages, PackageReader,
+};
 use tracing::error;
 
 use crate::view::ground_heights::GroundHeights;
 
 /// The client data of the mode's packages, which the view draws units by: each package's unit
 /// looks, `client/units.toml`, by its place, and every material file, `client/materials/<name>.toml`,
-/// by its package's place and its name; and the ground's heights, from the map's heightmap. Each
-/// file is read once, as the view starts, and checked against its package's index; one that does
-/// not read is logged, and drawn as if it were not there.
+/// by its package's place and its name; the map's heightmap and the ground's heights from it; and
+/// the mode's own package's camera, `client/camera.toml`. Each file is read once, as the view
+/// starts, and checked against its package's index; one that does not read is logged, and drawn
+/// as if it were not there.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct ClientData {
     pub(crate) units: Vec<ClientUnits>,
     pub(crate) materials: BTreeMap<(u16, String), MaterialFile>,
+    pub(crate) grid: Option<HeightGrid>,
     pub(crate) heights: Option<GroundHeights>,
+    /// The mode's own package's camera file.
+    pub(crate) camera: Option<CameraFile>,
 }
 
 const UNITS: &str = "client/units.toml";
@@ -40,9 +46,13 @@ impl ClientData {
             .files;
         let heights = format!("map/{}/heights.bin", packages.map_name());
         let heights = PackagePath::parse(&heights).expect("a map's name is a package path's");
-        data.heights = ClientData::read_file(mode, &heights)
-            .and_then(|bytes| ClientData::logged(&heights, Binary::decode::<HeightGrid>(&bytes)))
-            .and_then(|grid| GroundHeights::of(&grid));
+        data.grid = ClientData::read_file(mode, &heights)
+            .and_then(|bytes| ClientData::logged(&heights, Binary::decode::<HeightGrid>(&bytes)));
+        data.heights = data.grid.as_ref().and_then(GroundHeights::of);
+        let camera = PackagePath::parse(CameraFile::PATH).expect("a constant package path");
+        data.camera = ClientData::read_file(mode, &camera)
+            .and_then(|bytes| ClientData::text(&camera, bytes))
+            .and_then(|text| ClientData::logged(&camera, Toml::parse::<CameraFile>(&text)));
         data
     }
 

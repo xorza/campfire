@@ -21,16 +21,15 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::stat_rule::StatRule;
 use crate::units::tag_data::TagData;
 use crate::values::declared_name::DeclaredName;
-use crate::values::package_path::PackagePath;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 
-/// The mode's `data/mode.toml`, but its actions, modifiers and item types, which its package's
-/// content holds: its script, its player inputs, its state, its params and its shop.
+/// The mode's `data/mode.toml`, but its script, which its package's load resolves, and its
+/// actions, modifiers and item types, which its package's content holds: its player inputs, its
+/// state, its params and its shop.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
-    pub script: PackagePath,
     #[serde(default)]
     pub combat: CombatRules,
     #[serde(default)]

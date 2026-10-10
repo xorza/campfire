@@ -121,7 +121,6 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::engine_enum::EngineEnum;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
-use crate::values::package_path::PackagePath;
 use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
 use crate::values::relation::Relation;
@@ -546,7 +545,6 @@ fn mode_files() -> ModeFiles {
     let text = |text: &str| ListEntry::Text(text.to_owned());
     ModeFiles {
         data: ModeData {
-            script: PackagePath::parse("scripts/mode.rhai").unwrap(),
             combat: CombatRules {
                 damage_kinds: DAMAGE_KINDS
                     .map(|kind| DeclaredName::new(kind).unwrap())

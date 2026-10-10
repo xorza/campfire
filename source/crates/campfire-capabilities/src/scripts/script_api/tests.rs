@@ -296,10 +296,10 @@ fn the_reference_is_what_the_registry_writes() {
 #[test]
 fn the_data_fields_are_the_schemas() {
     let api = CapabilitySet::script_api();
-    // The mode's file holds its package's actions, modifiers and item types beside `ModeData`,
-    // which the package load reads apart.
+    // The mode's file holds its script and its package's actions, modifiers and item types
+    // beside `ModeData`, which the package load reads apart.
     let mut mode = serde_fields::<ModeData>();
-    mode.extend(["actions", "modifiers", "items"]);
+    mode.extend(["actions", "modifiers", "items", "script"]);
     mode.sort_unstable();
     let tables = [
         (DataTable::Mode, mode),

@@ -8,6 +8,7 @@ pub(crate) mod dependency;
 pub(crate) mod manifest;
 pub(crate) mod mode_file;
 pub(crate) mod mode_manifest;
+pub(crate) mod mode_script;
 pub(crate) mod package_header;
 pub(crate) mod package_name;
 pub(crate) mod tick_range;

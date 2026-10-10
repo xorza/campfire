@@ -182,17 +182,21 @@ impl Install {
         }
     }
 
-    /// The object INI files, in the order `ThingFactory` loads them: for each of
-    /// `Data\INI\Default\Object` and `Data\INI\Object`, the file of that name, then the files in
-    /// that folder, then those in its folders below.
-    pub(crate) fn object_inis(&self) -> Vec<ArchivePath> {
+    /// The INI files of `name`, in the order the game loads them, as `Object` or `Terrain`: for
+    /// each of `Data\INI\Default\<name>` and `Data\INI\<name>`, the file of that name, then the
+    /// files in that folder, then those in its folders below.
+    pub(crate) fn inis(&self, name: &str) -> Vec<ArchivePath> {
         let mut inis = Vec::new();
-        for base in ["data\\ini\\default\\object", "data\\ini\\object"] {
+        for base in [
+            format!("data\\ini\\default\\{name}"),
+            format!("data\\ini\\{name}"),
+        ] {
+            let base = ArchivePath::of(&base);
             let file = ArchivePath::of(&format!("{base}.ini"));
             if self.contains(&file) {
                 inis.push(file);
             }
-            let depth = base.matches('\\').count() + 1;
+            let depth = base.names().count();
             let folder = format!("{base}\\");
             let inside: Vec<&ArchivePath> = self
                 .files
@@ -299,6 +303,15 @@ pub(crate) mod internals {
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
     use crate::zero_hour::ref_pack::internals::literal;
 
+    /// The fixture's terrain types: the fixture map's `Sand`, whose texture the install holds,
+    /// and its `Grass`, whose texture it lacks.
+    const TERRAIN_TYPES: &[u8] =
+        b"Terrain Sand\n  Texture = TSand.tga\nEnd\nTerrain Grass\n  Texture = Gone.tga\nEnd\n";
+
+    /// The fixture's game data: cliffs stretched, third blends off.
+    const GAME_DATA: &[u8] =
+        b"GameData\n  AdjustCliffTextures = Yes\n  Use3WayTerrainBlends = 0\nEnd\n";
+
     /// The fixture map's file, packed by `RefPack` as the game ships most maps.
     pub(crate) fn packed_map() -> Vec<u8> {
         let plain = map(8);
@@ -307,10 +320,11 @@ pub(crate) mod internals {
     }
 
     /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture
-    /// map in its folder, a map outside one, the two textures, the object INI files, and the
-    /// models, `Rock01.w3d` in the language folder `English` and, unread, outside it; `b.big`,
-    /// `c.BIG`, base Generals' `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`,
-    /// beside a file that is no archive.
+    /// map in its folder, a map outside one, the two textures, a terrain texture, the terrain
+    /// types, the game data, the object INI files, and the models, `Rock01.w3d` in the language
+    /// folder `English` and, unread, outside it; `b.big`, `c.BIG`, base Generals'
+    /// `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that is no
+    /// archive.
     pub(crate) fn fixture(scratch: &Scratch) {
         let packed = packed_map();
         let [rock_texture, sign] = textures();
@@ -324,6 +338,9 @@ pub(crate) mod internals {
                 ("Maps\\Stray\\Other.map", b"no map the game lists"),
                 ("Art\\Textures\\Rock.dds", &rock_texture),
                 ("Art\\Textures\\Sign.tga", &sign),
+                ("Art\\Terrain\\TSand.tga", &sign),
+                ("Data\\INI\\Terrain.ini", TERRAIN_TYPES),
+                ("Data\\INI\\GameData.ini", GAME_DATA),
                 ("Data\\INI\\Object.ini", OBJECTS.as_bytes()),
                 ("Data\\INI\\Object\\Deep\\More.ini", b""),
                 ("Data\\INI\\Object\\Misc.ini", MORE_OBJECTS.as_bytes()),
@@ -394,6 +411,7 @@ mod tests {
         assert_eq!(
             install.textures(),
             [
+                texture("art\\terrain\\tsand.tga", TextureKind::Tga),
                 texture("art\\textures\\rock.dds", TextureKind::Dds),
                 texture("art\\textures\\sign.tga", TextureKind::Tga),
             ]
@@ -402,7 +420,7 @@ mod tests {
         // order: the default file, then the file, its folder's files, and its folders' below.
         assert_eq!(install.language().unwrap().as_deref(), Some("english"));
         assert_eq!(
-            install.object_inis(),
+            install.inis("Object"),
             [
                 "data\\ini\\default\\object.ini",
                 "data\\ini\\object.ini",

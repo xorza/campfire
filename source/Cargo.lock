@@ -2333,6 +2333,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-zero-hour-check"
+version = "0.1.0"
+dependencies = [
+ "campfire-capabilities",
+ "campfire-common",
+ "campfire-import",
+ "campfire-log",
+ "campfire-package",
+ "campfire-runner",
+ "campfire-store",
+ "clap",
+ "derive_more",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

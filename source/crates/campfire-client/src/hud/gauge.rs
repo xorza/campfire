@@ -1,6 +1,6 @@
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::math::{Quat, Vec3};
+use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use campfire_capabilities::{ChargeRule, PoolId, SlotCharges};
 use campfire_common::{Tick, Ticks};
@@ -167,10 +167,9 @@ impl Layout {
         ))
     }
 
-    /// The gauge's transform over a unit whose top is `top` over its drawing's root, facing the
-    /// camera with `facing`.
-    pub(crate) fn place(self, top: Vec3, facing: Quat) -> Transform {
-        Transform::from_translation(top + facing * self.center).with_rotation(facing)
+    /// The gauge's transform on its unit's stand, which faces the camera.
+    pub(crate) fn place(self) -> Transform {
+        Transform::from_translation(self.center)
     }
 }
 

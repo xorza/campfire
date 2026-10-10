@@ -1,0 +1,6 @@
+# A test rules package: a mode script that the ruled test mode names as its own.
+name = "test-rules"
+version = "0.1.0"
+api = "1.0"
+language = "en"
+kind = "rules"

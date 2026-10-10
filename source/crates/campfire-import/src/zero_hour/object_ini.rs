@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::zero_hour::error::IniError;
+use crate::zero_hour::ini_text::IniText;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default.
@@ -138,32 +139,16 @@ struct Reading {
 impl ObjectIni {
     /// Reads one INI file, adding its objects to those read before.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
-        // The game reads bytes; Latin-1 keeps each as one char.
-        let text: String = bytes.iter().map(|&byte| char::from(byte)).collect();
+        let text = IniText::of(bytes);
         let mut reading = Reading::default();
-        for (number, raw) in text.split('\n').enumerate() {
-            let line = number + 1;
-            let content: String = raw
-                .split(';')
-                .next()
-                .unwrap_or_default()
-                .chars()
-                .map(|c| if c < ' ' { ' ' } else { c })
-                .collect();
-            let tokens: Vec<&str> = content
-                .split([' ', '='])
-                .filter(|token| !token.is_empty())
-                .collect();
-            let Some(&first) = tokens.first() else {
-                continue;
-            };
-            let word = first.to_ascii_lowercase();
+        for line in text.lines() {
+            let word = line.word();
             if word == "end" {
-                if let Some(done) = reading.end(line)? {
+                if let Some(done) = reading.end(line.number)? {
                     self.objects.insert(done.name.to_ascii_lowercase(), done);
                 }
             } else {
-                reading.line(&word, &tokens, line)?;
+                reading.line(&word, &line.tokens, line.number)?;
             }
         }
         if reading.stack.is_empty() {
@@ -301,7 +286,7 @@ impl Reading {
                 let base = match word {
                     "object" => None,
                     "objectreskin" => Some(tokens.get(2).ok_or(IniError::NoName { line })?),
-                    _ => return Err(IniError::NotObject { line }),
+                    _ => return Err(IniError::NotBlock { line }),
                 };
                 let name = tokens.get(1).ok_or(IniError::NoName { line })?;
                 self.object = Some(IniObject {
@@ -560,10 +545,7 @@ mod tests {
             read("Object A\nEnd\nEnd\n"),
             Err(IniError::StrayEnd { line: 3 })
         );
-        assert_eq!(
-            read("Weapon A\nEnd\n"),
-            Err(IniError::NotObject { line: 1 })
-        );
+        assert_eq!(read("Weapon A\nEnd\n"), Err(IniError::NotBlock { line: 1 }));
         assert_eq!(read("Object\nEnd\n"), Err(IniError::NoName { line: 1 }));
         assert_eq!(
             read("ObjectReskin A\nEnd\n"),

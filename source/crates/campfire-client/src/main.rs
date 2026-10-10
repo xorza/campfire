@@ -54,7 +54,9 @@ use crate::local_keys::LocalKeys;
 use crate::orders::Orders;
 use crate::view::View;
 use crate::view::package_source::PackageSource;
+use crate::view::player_camera::PlayerCamera;
 use crate::view::unit_models::UnitModels;
+use crate::zero_hour::terrain_view::TerrainView;
 
 mod args;
 mod bot;
@@ -65,6 +67,7 @@ mod local_keys;
 mod orders;
 mod pointer;
 mod view;
+mod zero_hour;
 
 /// What the terminal shows when `RUST_LOG` does not say: the renderer's validation layers report
 /// through `wgpu_hal`, loudly, in debug builds.
@@ -183,7 +186,11 @@ fn add_ends(
             })
             .disable::<LogPlugin>(),
         View,
+        PlayerCamera,
         UnitModels {
+            packages: Arc::clone(packages),
+        },
+        TerrainView {
             packages: Arc::clone(packages),
         },
         Hud,

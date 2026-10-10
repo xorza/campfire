@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::{ParseFloatError, ParseIntError};
 use std::path::PathBuf;
 
 use campfire_package::TerrainError;
@@ -46,8 +47,11 @@ pub enum ZeroHourError {
         #[source]
         error: TextureError,
     },
-    /// An object INI file is none the game reads, by its path.
-    #[error("{path} is no object INI the game reads")]
+    /// The game data gives a camera no view takes: a height not above 0, or a value not finite.
+    #[error("the game data gives a camera no view takes")]
+    Camera,
+    /// An INI file is none the game reads, by its path.
+    #[error("{path} is no INI file the game reads")]
     Ini {
         path: String,
         #[source]
@@ -255,8 +259,8 @@ impl fmt::Display for Chunk {
     }
 }
 
-/// Why an object INI file is none the game reads, each with its line from 1.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+/// Why an INI file is none the game reads, each with its line from 1.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IniError {
     /// An `End` closes no block.
     #[error("line {line}: an End closes no block")]
@@ -264,12 +268,33 @@ pub enum IniError {
     /// The file ends inside a block.
     #[error("it ends inside a block")]
     Unclosed,
-    /// A line outside every block starts no `Object` or `ObjectReskin`.
-    #[error("line {line}: no Object or ObjectReskin starts here")]
-    NotObject { line: usize },
-    /// An `Object` or `ObjectReskin` lacks its name, or its base's.
-    #[error("line {line}: an object lacks a name")]
+    /// A line outside every block starts none of the file's blocks: `Object` or `ObjectReskin`
+    /// in an object file, `Terrain` in a terrain file, `GameData` in a game data file.
+    #[error("line {line}: no block of the file starts here")]
+    NotBlock { line: usize },
+    /// A block lacks its name, or an `ObjectReskin` its base's.
+    #[error("line {line}: a block lacks a name")]
     NoName { line: usize },
+    /// A field the importer reads has no value.
+    #[error("line {line}: a field has no value")]
+    NoValue { line: usize },
+    /// A field of yes or no holds neither.
+    #[error("line {line}: a field holds neither Yes nor No")]
+    Bool { line: usize },
+    /// A field of a real number holds none.
+    #[error("line {line}: a field holds no number")]
+    Real {
+        line: usize,
+        #[source]
+        error: ParseFloatError,
+    },
+    /// A field of a whole number holds none.
+    #[error("line {line}: a field holds no whole number")]
+    Number {
+        line: usize,
+        #[source]
+        error: ParseIntError,
+    },
     /// A model draw module's first state is neither `DefaultConditionState` nor `NONE`.
     #[error("line {line}: a draw module's first state is no default")]
     NoDefaultState { line: usize },

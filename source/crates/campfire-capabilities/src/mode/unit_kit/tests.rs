@@ -117,6 +117,24 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
     });
     let kit = self::kit(&still, None, [], 30).unwrap();
     assert_eq!((kit.on_death, kit.step, kit.pools), (None, None, None));
+    // Nor in a mode that declares no move speed among its stats, as a mode with no stats does.
+    let rules = BTreeMap::from([(health.clone(), StatRule::default())]);
+    let book = StatBook::new(&rules, [(TYPE, &still)], decimal("6.0"));
+    let sections = KitSections {
+        combat: None,
+        pools: [],
+        vision: None,
+        body: None,
+        tracks: TrackSet::default(),
+        production: None,
+        builds: false,
+        node: None,
+        gathers: false,
+        inventory: None,
+    };
+    let rate = TickRate::new(NonZeroU32::new(30).unwrap());
+    let kit = UnitKit::new(&book, TYPE, sections, Some(PoolId::FIRST), rate).unwrap();
+    assert_eq!(kit.step, None);
 
     // Two pools, each full at its maximum at level 1: health 280, and mana 100 + 20 × 0. A pool
     // the type does not list stays none.

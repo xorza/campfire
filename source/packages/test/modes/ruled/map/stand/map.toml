@@ -1,0 +1,8 @@
+[bounds]
+min = [-10, -10]
+max = [10, 10]
+
+[[units]]
+unit_type = "rock"
+team = "neutral"
+pos = [1, 2]

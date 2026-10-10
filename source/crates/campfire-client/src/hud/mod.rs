@@ -2,6 +2,7 @@ use std::f32::consts::FRAC_PI_2;
 
 use bevy::app::{App, Plugin, Startup, Update};
 use bevy::asset::{Assets, Handle};
+use bevy::camera::Camera3d;
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
@@ -13,7 +14,7 @@ use bevy::ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_exists;
-use bevy::ecs::system::{Commands, Local, Query, Res, ResMut};
+use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::ecs::world::World;
 use bevy::math::primitives::{Annulus, Plane3d};
 use bevy::math::{Quat, Vec3};
@@ -30,9 +31,9 @@ use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind};
 use crate::hud::ring::Ring;
+use crate::view::ViewSystems;
 use crate::view::drawing::Drawing;
 use crate::view::look::Shape;
-use crate::view::{CAMERA, ViewSystems};
 
 mod gauge;
 mod ring;
@@ -45,6 +46,10 @@ mod ring;
 /// It reads the sim's components and changes none.
 #[derive(Debug)]
 pub(crate) struct Hud;
+
+/// Over a unit's drawing's top, the stand its gauges stand on, which turns to face the camera.
+#[derive(Component, Debug)]
+struct GaugeStand;
 
 /// The mode's life pool, when it has one.
 #[derive(Resource, Debug, Clone, Copy)]
@@ -165,16 +170,18 @@ type Ungauged<'w, 's> = Query<
     (Without<Gauged>, Allow<Unpredicted>),
 >;
 
-/// On a unit: its gauges are made.
+/// On a unit: its gauges are made, on their stand, when it has any.
 #[derive(Component, Debug)]
-struct Gauged;
+struct Gauged {
+    stand: Option<Entity>,
+}
 
-/// What the gauges show of each unit, and its drawing.
+/// What the gauges show of each unit, and where they stand.
 type Shown<'w, 's> = Query<
     'w,
     's,
     (
-        &'static Drawing,
+        &'static Gauged,
         Has<Dead>,
         Option<&'static Pools>,
         Option<&'static ActionSlots>,
@@ -204,9 +211,16 @@ type Restated<'w, 's> = Query<
     ),
 >;
 
+/// The gauge stands, by the gauges they hold.
+type Stands<'w, 's> = Query<'w, 's, &'static Children, With<GaugeStand>>;
+
 /// The drawn units whose pools changed.
-type Hurt<'w, 's> =
-    Query<'w, 's, (&'static Pools, &'static Drawing), (Changed<Pools>, Allow<Unpredicted>)>;
+type Hurt<'w, 's> = Query<
+    'w,
+    's,
+    (&'static Pools, &'static Drawing, &'static Gauged),
+    (Changed<Pools>, Allow<Unpredicted>),
+>;
 
 /// The fill of each gauge: a drawn quad that no gauge holds.
 type Fills<'w, 's> = Query<'w, 's, &'static mut Transform, (With<Mesh3d>, Without<Gauge>)>;
@@ -229,6 +243,7 @@ impl Plugin for Hud {
             Update,
             (
                 Hud::add_gauges,
+                Hud::face_camera,
                 Hud::mark_hits.run_if(resource_exists::<Life>),
                 Hud::fill_gauges,
                 Hud::widen_rings,
@@ -304,11 +319,10 @@ impl Hud {
         };
         let avatar = players.avatar(slot).map(|avatar| avatar.entity);
         let life = life.map(|life| life.0);
-        let facing = Quat::from_rotation_arc(Vec3::Y, CAMERA.normalize());
         for (unit, drawing, team, pools, slots) in &drawn {
-            commands.entity(unit).insert(Gauged);
             // A projectile's drawing has no look, and no gauges.
             let Ok(shape) = shapes.get(drawing.root()) else {
+                commands.entity(unit).insert(Gauged { stand: None });
                 continue;
             };
             let mine = Some(unit) == avatar;
@@ -342,7 +356,20 @@ impl Hud {
                 }));
                 scratch.ability_rows(row);
             }
+            if scratch.kinds.is_empty() {
+                commands.entity(unit).insert(Gauged { stand: None });
+                continue;
+            }
             let top = Vec3::Y * (shape.height() + ABOVE);
+            let stand = commands
+                .spawn((
+                    GaugeStand,
+                    Transform::from_translation(top),
+                    Visibility::Inherited,
+                ))
+                .id();
+            commands.entity(drawing.root()).add_child(stand);
+            commands.entity(unit).insert(Gauged { stand: Some(stand) });
             for &kind in &scratch.kinds {
                 let layout = kind.layout();
                 let back = commands
@@ -360,30 +387,49 @@ impl Hud {
                     ))
                     .id();
                 let gauge = commands
-                    .spawn((
-                        Gauge { kind, fill },
-                        layout.place(top, facing),
-                        Visibility::Hidden,
-                    ))
+                    .spawn((Gauge { kind, fill }, layout.place(), Visibility::Hidden))
                     .add_children(&[back, fill])
                     .id();
-                commands.entity(drawing.root()).add_child(gauge);
+                commands.entity(stand).add_child(gauge);
+            }
+        }
+    }
+
+    /// Turns every gauge stand to face the camera: its up, the gauges' face, toward the camera's
+    /// back, its right along the camera's. A drawing's root never turns, so a stand's own turn is
+    /// its turn in the world.
+    fn face_camera(
+        camera: Single<'_, '_, &Transform, (With<Camera3d>, Without<GaugeStand>)>,
+        mut stands: Query<'_, '_, &mut Transform, With<GaugeStand>>,
+    ) {
+        let facing = camera.rotation * Quat::from_rotation_x(FRAC_PI_2);
+        for mut stand in &mut stands {
+            if stand.rotation != facing {
+                stand.rotation = facing;
             }
         }
     }
 
     /// Puts a ring on the ground where a unit's life dropped since its gauge last showed it.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a system takes each resource and query it reads"
+    )]
     fn mark_hits(
         time: Res<'_, Time>,
         palette: Res<'_, HudPalette>,
         life: Res<'_, Life>,
         units: Hurt<'_, '_>,
-        roots: Query<'_, '_, (&Transform, &Children)>,
+        roots: Query<'_, '_, &Transform, Without<GaugeStand>>,
+        stands: Stands<'_, '_>,
         mut gauges: Query<'_, '_, &mut Gauge>,
         mut commands: Commands<'_, '_>,
     ) {
-        for (pools, drawing) in &units {
-            let Ok((root, children)) = roots.get(drawing.root()) else {
+        for (pools, drawing, Gauged { stand }) in &units {
+            let (Some(stand), Ok(root)) = (*stand, roots.get(drawing.root())) else {
+                continue;
+            };
+            let Ok(children) = stands.get(stand) else {
                 continue;
             };
             let mut gauges = gauges.iter_many_mut(children);
@@ -428,7 +474,7 @@ impl Hud {
         restated: Restated<'_, '_>,
         mut revived: RemovedComponents<'_, '_, Dead>,
         units: Shown<'_, '_>,
-        roots: Query<'_, '_, &Children>,
+        stands: Stands<'_, '_>,
         (mut gauges, mut fills): (Query<'_, '_, (&mut Gauge, &mut Visibility)>, Fills<'_, '_>),
         mut touched: Local<'_, Vec<Entity>>,
     ) {
@@ -443,10 +489,10 @@ impl Hud {
         touched.dedup();
         let now = tick.map(|tick| tick.start());
         for &unit in &*touched {
-            let Ok((drawing, dead, pools, slots, points, level)) = units.get(unit) else {
+            let Ok((Gauged { stand }, dead, pools, slots, points, level)) = units.get(unit) else {
                 continue;
             };
-            let Ok(children) = roots.get(drawing.root()) else {
+            let Some(Ok(children)) = stand.map(|stand| stands.get(stand)) else {
                 continue;
             };
             let mut gauges = gauges.iter_many_mut(children);
@@ -650,6 +696,7 @@ mod tests {
         let shown = |shown| GaugeKind::Life {
             shown: Some(Num::int(shown)),
         };
+        let stand = app.world_mut().spawn((GaugeStand, ChildOf(root))).id();
         let gauge = app
             .world_mut()
             .spawn((
@@ -657,9 +704,12 @@ mod tests {
                     kind: shown(600),
                     fill: Entity::PLACEHOLDER,
                 },
-                ChildOf(root),
+                ChildOf(stand),
             ))
             .id();
+        app.world_mut()
+            .entity_mut(unit)
+            .insert(Gauged { stand: Some(stand) });
         let mut rings = app.world_mut().query::<(&Ring, &Transform)>();
         // Unchanged, its pools mark nothing; a drop to 450 marks one ring on the ground under it,
         // a rise to 500 none, and the gauge keeps what it showed last.

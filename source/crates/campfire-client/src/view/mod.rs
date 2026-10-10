@@ -2,10 +2,9 @@ use std::collections::BTreeMap;
 
 use bevy::app::{App, FixedPostUpdate, Plugin, Startup, Update};
 use bevy::asset::{Assets, Handle};
+use bevy::camera::ClearColor;
 use bevy::camera::visibility::Visibility;
-use bevy::camera::{Camera3d, ClearColor};
 use bevy::color::Color;
-use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
@@ -42,6 +41,7 @@ use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Look, Pose, Shape};
 use crate::view::unit_looks::UnitLooks;
 
+pub(crate) mod camera_rig;
 pub(crate) mod client_data;
 pub(crate) mod drawing;
 pub(crate) mod file_material;
@@ -51,6 +51,7 @@ pub(crate) mod glide;
 pub(crate) mod ground_heights;
 pub(crate) mod look;
 pub(crate) mod package_source;
+pub(crate) mod player_camera;
 pub(crate) mod unit_looks;
 pub(crate) mod unit_models;
 
@@ -64,9 +65,6 @@ pub(crate) struct View;
 /// The systems that place the drawings, which the HUD and the pointer read after.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ViewSystems;
-
-/// Where the camera stands, looking at the origin.
-pub(crate) const CAMERA: Vec3 = Vec3::new(0.0, 24.0, 18.0);
 
 /// The meshes and materials units are drawn with.
 #[derive(Resource, Debug)]
@@ -86,6 +84,10 @@ struct Palette {
 /// The ground the match is drawn on, which shows the match's result once it ends.
 #[derive(Component, Debug)]
 struct Ground;
+
+/// Present when a game's module draws the map's ground, so the view draws no plane of its own.
+#[derive(Resource, Debug)]
+pub(crate) struct GroundDrawn;
 
 /// How the match ended for the client's team.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,26 +194,23 @@ impl Plugin for View {
 
 impl View {
     fn set_scene(
+        drawn: Option<Res<'_, GroundDrawn>>,
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut materials: ResMut<'_, Assets<StandardMaterial>>,
     ) {
-        // No tonemapping: the default one needs lookup tables the client does not build with.
-        commands.spawn((
-            Camera3d::default(),
-            Tonemapping::None,
-            Transform::from_translation(CAMERA).looking_at(Vec3::ZERO, Vec3::Y),
-        ));
         commands.insert_resource(ClearColor(Color::srgb(0.08, 0.09, 0.11)));
         commands.spawn((
             DirectionalLight::default(),
             Transform::from_xyz(4.0, 10.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
         ));
-        commands.spawn((
-            Ground,
-            Mesh3d(meshes.add(Plane3d::default().mesh().size(44.0, 20.0))),
-            MeshMaterial3d(materials.add(Color::srgb(0.3, 0.33, 0.28))),
-        ));
+        if drawn.is_none() {
+            commands.spawn((
+                Ground,
+                Mesh3d(meshes.add(Plane3d::default().mesh().size(44.0, 20.0))),
+                MeshMaterial3d(materials.add(Color::srgb(0.3, 0.33, 0.28))),
+            ));
+        }
         let palette = Palette {
             projectile: meshes.add(Sphere::new(SHOT_RADIUS).mesh()),
             area: meshes.add(Cylinder::new(1.0, AREA_THICKNESS).mesh()),
@@ -518,11 +517,11 @@ impl View {
         }
     }
 
-    /// Shows the match's end for the client's team: the window's title names it, and the ground
-    /// turns gold for a victory, dark red for a defeat and gray for a draw.
+    /// Shows the match's end for the client's team: the window's title names it, and the view's
+    /// own ground turns gold for a victory, dark red for a defeat and gray for a draw.
     fn show_end(
         (end, state): (Res<'_, MatchEnd>, Res<'_, JoinState>),
-        ground: Single<'_, '_, &mut MeshMaterial3d<StandardMaterial>, With<Ground>>,
+        ground: Option<Single<'_, '_, &mut MeshMaterial3d<StandardMaterial>, With<Ground>>>,
         mut windows: Query<'_, '_, &mut Window>,
         mut materials: ResMut<'_, Assets<StandardMaterial>>,
     ) {
@@ -534,7 +533,9 @@ impl View {
                 ("Campfire: the match ended", Color::srgb(0.35, 0.35, 0.35))
             }
         };
-        ground.into_inner().0 = materials.add(color);
+        if let Some(ground) = ground {
+            ground.into_inner().0 = materials.add(color);
+        }
         for mut window in &mut windows {
             title.clone_into(&mut window.title);
         }

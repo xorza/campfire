@@ -44,10 +44,13 @@ pub struct BookPackage<'a> {
     pub scripts: Vec<&'a PackagePath>,
 }
 
-/// What a package is to its mode: the mode, an avatar and its one unit type, or a loadout.
+/// What a package is to its mode: the mode, an avatar and its one unit type, a loadout, or a rules
+/// package.
 #[derive(Debug, Clone, Copy)]
 pub enum BookKind<'a> {
     Mode,
     Avatar(&'a UnitTypeFile),
     Loadout,
+    /// A rules package, whose scripts a mode runs; its content is empty, as the load checks.
+    Rules,
 }

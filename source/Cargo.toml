@@ -46,6 +46,8 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "bevy_gltf",
     "ktx2",
     "png",
+    # A glTF's scene spawns by reflection, so every type it holds must be registered.
+    "reflect_auto_register",
 ] }
 bevy_app = "=0.19.1"
 # The version Lightyear builds, for the component-scope visibility filter that Lightyear uses but

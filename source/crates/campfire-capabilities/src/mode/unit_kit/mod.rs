@@ -113,7 +113,11 @@ impl UnitKit {
             (None, true) => return Err(UnitKitError::NoCombat),
             (None, false) => None,
         };
-        let step = given(&Stat::Engine(EngineStat::MoveSpeed)).map(|_| {
+        // A mode with no move speed among its stats moves no unit.
+        let moves = book
+            .named(&Stat::Engine(EngineStat::MoveSpeed))
+            .is_some_and(|id| book.gives(unit_type, id));
+        let step = moves.then(|| {
             let step = book
                 .step(&values, rate)
                 .expect("a type gives only a stat the mode declares");

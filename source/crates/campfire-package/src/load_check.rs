@@ -28,6 +28,7 @@ use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
+use crate::files::mode_script::ModeScript;
 use crate::mode_packages::ModePackages;
 use crate::modifier_ways::{ModifierWays, Way};
 use crate::package::Package;
@@ -263,7 +264,9 @@ impl<'a> LoadCheck<'a> {
         }
         let mut names = PackageNames::new(&packages.mode, &content.modifiers, &content.actions);
         let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
-        names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
+        if let ModeScript::Own(path) = &packages.script {
+            names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
+        }
         for unit_type in units.values() {
             if let Some(orders) = &unit_type.orders {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
@@ -297,10 +300,10 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// An avatar or loadout package the mode depends on: an avatar's unit type, with every
+    /// An avatar, loadout or rules package the mode depends on: an avatar's unit type, with every
     /// action of the package in its slots, and each action with the ranks of its kind; a
-    /// loadout's actions, each with the ranks of the slot kind its choice fills; and its delivery
-    /// types.
+    /// loadout's actions, each with the ranks of the slot kind its choice fills; its delivery
+    /// types; and its scripts, a rules package's the mode's when the mode names one of them.
     fn dependent(
         &self,
         view: PackageView<'a>,
@@ -356,6 +359,7 @@ impl<'a> LoadCheck<'a> {
                 }
                 None
             }
+            DependentKind::Rules => None,
         };
         for (id, unit_type) in &content.units {
             self.unit_type(unit_type, &Place::UnitType(id.clone()), actions, modifiers)?;
@@ -365,6 +369,14 @@ impl<'a> LoadCheck<'a> {
         let mut names = PackageNames::new(package, modifiers, actions);
         let data = &self.packages.data;
         let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
+        if let ModeScript::Rules {
+            package: name,
+            path,
+        } = &self.packages.script
+            && *name == package.header.name
+        {
+            names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
+        }
         for unit_type in content.units.values() {
             if let Some(orders) = &unit_type.orders {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
@@ -716,7 +728,7 @@ impl<'a> LoadCheck<'a> {
                 .flat_map(|modifier| modifier.state.keys());
             let avatar = match view.kind {
                 ViewKind::Avatar(avatar) => Some(&avatar.unit),
-                ViewKind::Mode | ViewKind::Loadout => None,
+                ViewKind::Mode | ViewKind::Loadout | ViewKind::Rules => None,
             };
             let units = content.units.values().chain(avatar);
             let units = units.flat_map(|unit| unit.core.state.keys());
@@ -1681,7 +1693,7 @@ impl<'a> LoadCheck<'a> {
                             Place::Avatar(dependent.package.header.name.clone()),
                             &avatar.unit,
                         )),
-                        DependentKind::Loadout => None,
+                        DependentKind::Loadout | DependentKind::Rules => None,
                     },
                 ));
         let typed: Vec<(Place, &UnitTypeFile)> = typed.collect();

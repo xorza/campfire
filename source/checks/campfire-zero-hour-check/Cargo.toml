@@ -1,0 +1,22 @@
+[package]
+name = "campfire-zero-hour-check"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+campfire-capabilities.workspace = true
+campfire-common.workspace = true
+campfire-import.workspace = true
+campfire-log = { workspace = true, features = ["start"] }
+campfire-package.workspace = true
+campfire-runner = { workspace = true, features = ["internals"] }
+campfire-store.workspace = true
+
+clap.workspace = true
+derive_more.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

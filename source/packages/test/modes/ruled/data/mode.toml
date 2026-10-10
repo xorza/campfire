@@ -1,0 +1,1 @@
+script = { package = "test-rules", path = "scripts/mode.rhai" }

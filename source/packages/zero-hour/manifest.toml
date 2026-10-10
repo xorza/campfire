@@ -1,0 +1,7 @@
+# Zero Hour's rules: the scripts of what only Zero Hour does, which its imported package runs. It
+# holds no file of the game.
+name = "zero-hour"
+version = "0.1.0"
+api = "1.0"
+language = "en"
+kind = "rules"

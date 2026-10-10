@@ -1,3 +1,4 @@
+use campfire_capabilities::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -51,6 +52,9 @@ pub struct TextureClass {
     pub width: u32,
     /// The class's name in `Terrain.ini`.
     pub name: String,
+    /// The package's texture that `Terrain.ini` gives the class; none when it names none, or one
+    /// the install lacks, which the game draws as no texture.
+    pub texture: Option<PackagePath>,
 }
 
 /// A tile blended over a cell's own: its tile, as a cell's, and the alpha pattern that fades it.
@@ -179,6 +183,7 @@ mod tests {
                 tiles: 2,
                 width: 1,
                 name: "Sand".to_owned(),
+                texture: Some(PackagePath::parse("client/textures/art/terrain/sand.ktx2").unwrap()),
             }],
             edge_tiles: 0,
             edge_classes: Vec::new(),

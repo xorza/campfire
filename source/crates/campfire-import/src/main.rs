@@ -1,6 +1,7 @@
 //! Imports a game's install into a package: `campfire-import <GAME> <INSTALL> <OUT>`. It reads
-//! the install as the game reads it, refuses a version it does not know, and writes the package
-//! into the new directory `OUT`, then logs its fingerprint. It logs as `campfire_log::Logging`
+//! the install as the game reads it, refuses a version it does not know, and writes into the new
+//! directory `OUT` the game's rules package and the install's package, `game/`, the mode a player
+//! plays, then logs their fingerprints. It logs as `campfire_log::Logging`
 //! says, `info` by default.
 
 use std::env;
@@ -37,6 +38,7 @@ fn main() -> ExitCode {
     match imported {
         Ok(Imported {
             fingerprint,
+            rules,
             skipped_models,
             missing_textures,
         }) => {
@@ -60,8 +62,9 @@ fn main() -> ExitCode {
                 );
             }
             info!(
-                package = %args.out.display(),
+                packages = %args.out.display(),
                 %fingerprint,
+                %rules,
                 skipped_models = skipped_models.len(),
                 missing_textures = missing_textures.len(),
                 "imported"
