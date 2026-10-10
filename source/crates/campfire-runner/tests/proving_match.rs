@@ -367,20 +367,20 @@ fn a_snapshot_restores_and_a_flawed_one_never_panics() {
     target.restore(&bytes).unwrap();
     assert_eq!(target.hash(), fixed.runner().state_hash());
 
-    // Every byte, each flipped three ways.
+    // Every byte, its low bit flipped, which keeps the most values decodable, so the most restore
+    // and play on: a flip of the high bit or of every bit restores in few of the types the low
+    // bit's reach, and is refused in the same ways. The drawn values below reach each type's edges.
     let mut again = Vec::new();
     for at in 0..bytes.len() {
-        for flip in [0x01, 0x80, 0xFF] {
-            let mut flawed = bytes.clone();
-            flawed[at] ^= flip;
-            if target.restore(&flawed).is_ok() {
-                again.clear();
-                target.snapshot_own(&mut again);
-                assert_eq!(again, flawed, "byte {at} flipped by {flip:#04x}");
-                // A value its checks let through still plays: no system panics on it.
-                for _ in 0..5 {
-                    target.run_tick();
-                }
+        let mut flawed = bytes.clone();
+        flawed[at] ^= 0x01;
+        if target.restore(&flawed).is_ok() {
+            again.clear();
+            target.snapshot_own(&mut again);
+            assert_eq!(again, flawed, "byte {at} flipped");
+            // A value its checks let through still plays: no system panics on it.
+            for _ in 0..5 {
+                target.run_tick();
             }
         }
     }

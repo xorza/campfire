@@ -1,6 +1,6 @@
 [profile.default]
 # SLOW names a test past 1 s, the bound of AGENTS.md; in a full run the tests share the cores, so
-# the bound holds for a test alone, `--test-threads 1`. One that runs 30 s is stuck in a loop or a
+# the bound holds for a test alone, `--test-threads 1`. One that runs 5 s is stuck in a loop or a
 # wait, and nextest ends it, as libtest can end no test.
 slow-timeout = { period = "1s", terminate-after = 5 }
 
@@ -18,5 +18,13 @@ slow-timeout = { period = "15s", terminate-after = 4 }
 filter = 'kind(bench)'
 slow-timeout = { period = "15s", terminate-after = 4 }
 
+# CI's runners run the suite 3.5 to 6 times slower than an M5, and share their cores: the 3v3's
+# resume, 0.79 s alone on an M5, took 4.5 s on Windows. So a test ends at 30 s there, and a scripted
+# match at 3 min; a bench case keeps its 60 s.
 [profile.ci]
 fail-fast = false
+slow-timeout = { period = "1s", terminate-after = 30 }
+
+[[profile.ci.overrides]]
+filter = 'test(/(^|::)scripted_match::/)'
+slow-timeout = { period = "15s", terminate-after = 12 }
