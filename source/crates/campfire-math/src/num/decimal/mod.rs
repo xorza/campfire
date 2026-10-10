@@ -134,3 +134,6 @@ const fn ascii_digit(value: u128) -> u8 {
     let digit = value as u8;
     b'0' + digit
 }
+
+#[cfg(test)]
+mod tests;

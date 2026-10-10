@@ -194,7 +194,7 @@ fn knock_back_end(at: Position, from: Position, distance: Num) -> Vec3 {
             .normalized()
             .unwrap_or(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO));
     let offset = away
-        .checked_scale(distance)
+        .checked_mul(distance)
         .expect("a distance within the bound scales a unit vector");
     at.get()
         .checked_add(offset)

@@ -141,7 +141,7 @@ impl Num {
 
     /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once to
     /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit.
-    pub const fn from_raw_products(sum: i128) -> Option<Num> {
+    pub(crate) const fn from_raw_products(sum: i128) -> Option<Num> {
         narrow(round_shr(sum, Self::FRAC_BITS))
     }
 
@@ -359,6 +359,18 @@ impl MulAssign for Num {
 
 impl DivAssign for Num {
     fn div_assign(&mut self, rhs: Num) {
+        *self = *self / rhs;
+    }
+}
+
+impl MulAssign<i64> for Num {
+    fn mul_assign(&mut self, rhs: i64) {
+        *self = *self * rhs;
+    }
+}
+
+impl DivAssign<i64> for Num {
+    fn div_assign(&mut self, rhs: i64) {
         *self = *self / rhs;
     }
 }

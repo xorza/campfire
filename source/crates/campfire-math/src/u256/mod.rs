@@ -23,6 +23,14 @@ const MASK: u128 = u64::MAX as u128;
 impl U256 {
     pub const ZERO: U256 = U256 { high: 0, low: 0 };
 
+    /// `value`, widened.
+    pub const fn from_u128(value: u128) -> U256 {
+        U256 {
+            high: 0,
+            low: value,
+        }
+    }
+
     /// The exact product `a × b`, from four products of 64-bit halves.
     pub const fn product(a: u128, b: u128) -> U256 {
         let (a_low, a_high) = (a & MASK, a >> HALF);

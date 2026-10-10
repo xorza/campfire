@@ -157,7 +157,7 @@ impl Flights<'_> {
             distance,
             direction: Some(direction),
         };
-        let offset = direction.checked_scale(step).expect("a step fits");
+        let offset = direction.checked_mul(step).expect("a step fits");
         let Some(to) = from.get().checked_add(offset).and_then(Position::new) else {
             self.end(projectile, line(from, flown));
             return true;
@@ -193,7 +193,7 @@ impl Flights<'_> {
             let travelled = share.of(step);
             let pos = from
                 .get()
-                .checked_add(direction.checked_scale(travelled).expect("within a step"))
+                .checked_add(direction.checked_mul(travelled).expect("within a step"))
                 .and_then(Position::new)
                 .expect("a point of a step within the bound");
             let hit = line(pos, flown + travelled);

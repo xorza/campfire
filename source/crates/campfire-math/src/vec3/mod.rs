@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +48,7 @@ impl Vec3 {
         )
     }
 
-    pub const fn checked_scale(self, factor: Num) -> Option<Vec3> {
+    pub const fn checked_mul(self, factor: Num) -> Option<Vec3> {
         Vec3::from_parts(
             self.x.checked_mul(factor),
             self.y.checked_mul(factor),
@@ -274,7 +274,7 @@ impl Mul<Num> for Vec3 {
     type Output = Vec3;
 
     fn mul(self, factor: Num) -> Vec3 {
-        self.checked_scale(factor).expect("Vec3 overflow in *")
+        self.checked_mul(factor).expect("Vec3 overflow in *")
     }
 }
 
@@ -296,6 +296,18 @@ impl AddAssign for Vec3 {
 impl SubAssign for Vec3 {
     fn sub_assign(&mut self, rhs: Vec3) {
         *self = *self - rhs;
+    }
+}
+
+impl MulAssign<Num> for Vec3 {
+    fn mul_assign(&mut self, factor: Num) {
+        *self = *self * factor;
+    }
+}
+
+impl DivAssign<Num> for Vec3 {
+    fn div_assign(&mut self, divisor: Num) {
+        *self = *self / divisor;
     }
 }
 

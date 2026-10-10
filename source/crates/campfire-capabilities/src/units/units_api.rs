@@ -98,16 +98,16 @@ impl UnitsApi {
             |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_sub(b)),
         )
         .bind(scaled, |vector: Vec3, factor: Num| {
-            UnitsApi::exact(vector.checked_scale(factor))
+            UnitsApi::exact(vector.checked_mul(factor))
         })
         .bind(scaled, |factor: Num, vector: Vec3| {
-            UnitsApi::exact(vector.checked_scale(factor))
+            UnitsApi::exact(vector.checked_mul(factor))
         })
         .bind(scaled, |vector: Vec3, factor: INT| {
-            UnitsApi::exact(vector.checked_scale(ApiError::num(factor)?))
+            UnitsApi::exact(vector.checked_mul(ApiError::num(factor)?))
         })
         .bind(scaled, |factor: INT, vector: Vec3| {
-            UnitsApi::exact(vector.checked_scale(ApiError::num(factor)?))
+            UnitsApi::exact(vector.checked_mul(ApiError::num(factor)?))
         });
     }
 

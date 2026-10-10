@@ -62,6 +62,16 @@ fn arithmetic() {
     assert_eq!(max.checked_add(raw(1, 0, 0)), None);
     assert_eq!(raw(0, 0, i64::MIN).checked_neg(), None);
     assert_eq!(v(1, 1, 1).checked_div(Num::ZERO), None);
+    // Each assigning operator gives what its operator does: (1, 2, 3) + (4, −5, 6) − (1, 1, 1)
+    // = (4, −4, 8), · 1.5 = (6, −6, 12), / 2 = (3, −3, 6).
+    let mut at = v(1, 2, 3);
+    at += v(4, -5, 6);
+    at -= v(1, 1, 1);
+    assert_eq!(at, v(4, -4, 8));
+    at *= n(ONE + HALF);
+    assert_eq!(at, v(6, -6, 12));
+    at /= n(2 * ONE);
+    assert_eq!(at, v(3, -3, 6));
 }
 
 #[test]

@@ -271,3 +271,6 @@ const fn halve(t: i128) -> i128 {
 const fn exact_mul(a: i128, b: i128) -> i128 {
     round_shr(a * b, WIDE_BITS)
 }
+
+#[cfg(test)]
+mod tests;

@@ -26,7 +26,7 @@ impl SquaredDistance {
     /// A whole square of bits, as a point's to a corner is.
     pub(crate) const fn whole(square: u128) -> SquaredDistance {
         SquaredDistance {
-            num: U256::product(square, 1),
+            num: U256::from_u128(square),
             den: 1,
         }
     }
@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn squared_distances_compare_by_value() {
-        let d = |num: u128, den: u128| SquaredDistance::new(U256::product(num, 1), den);
+        let d = |num: u128, den: u128| SquaredDistance::new(U256::from_u128(num), den);
         // 9/4 = 18/8; 2 < 9/4 < 3; a whole square and a reach's square are over 1.
         assert_eq!(d(9, 4), d(18, 8));
         assert!(SquaredDistance::whole(2) < d(9, 4) && d(9, 4) < SquaredDistance::whole(3));
@@ -88,21 +88,21 @@ mod tests {
         // it; two over the same large denominator compare by numerator alone.
         let wide = SquaredDistance::new(U256::product(1 << 92, 1 << 92), 1 << 92);
         assert_eq!(wide, SquaredDistance::whole(1 << 92));
-        let above = U256::product(1 << 92, 1 << 92).checked_add(U256::product(1, 1));
+        let above = U256::product(1 << 92, 1 << 92).checked_add(U256::from_u128(1));
         assert!(SquaredDistance::new(above.unwrap(), 1 << 92) > wide);
         // A path's distance over 2⁹² against an edge's over 2⁷³, whose cross products pass 256
         // bits: (2¹⁸⁴ + 2⁹¹) / 2⁹² and (2¹⁶⁵ + 2⁷²) / 2⁷³ are both 2⁹² + ½; one more in the first
         // numerator is past the second, both ways.
         let over = |high: u32, half: u32, extra: u128, den: u32| {
             let num = U256::product(1 << high, 1 << high)
-                .checked_add(U256::product(1 << half, 1))
-                .and_then(|num| num.checked_add(U256::product(extra, 1)));
+                .checked_add(U256::from_u128(1 << half))
+                .and_then(|num| num.checked_add(U256::from_u128(extra)));
             SquaredDistance::new(num.unwrap(), 1 << den)
         };
         let path = over(92, 91, 0, 92);
         let edge = SquaredDistance::new(
             U256::product(1 << 82, 1 << 83)
-                .checked_add(U256::product(1 << 72, 1))
+                .checked_add(U256::from_u128(1 << 72))
                 .unwrap(),
             1 << 73,
         );
@@ -114,7 +114,7 @@ mod tests {
         // A whole bit apart, past 256 bits too: 2¹⁸⁴ / 2⁹² against (2¹⁶⁵ + 2⁷³) / 2⁷³, 2⁹² + 1.
         let next = SquaredDistance::new(
             U256::product(1 << 82, 1 << 83)
-                .checked_add(U256::product(1 << 73, 1))
+                .checked_add(U256::from_u128(1 << 73))
                 .unwrap(),
             1 << 73,
         );
