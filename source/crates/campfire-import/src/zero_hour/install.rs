@@ -146,6 +146,64 @@ impl Install {
             .collect()
     }
 
+    /// Whether the archives hold a file at `path`.
+    pub(crate) fn contains(&self, path: &ArchivePath) -> bool {
+        self.files.contains_key(path)
+    }
+
+    /// The language folder the game reads first, `Data\<language>\`: the one whose `Art\` the
+    /// archives hold; `None` if none does, and an error if several do, as the importer cannot
+    /// tell which the player's game reads.
+    pub(crate) fn language(&self) -> Result<Option<String>, ZeroHourError> {
+        let mut languages: Vec<&str> = self
+            .files
+            .keys()
+            .filter_map(|path| match path.names().collect::<Vec<_>>()[..] {
+                ["data", language, "art", ..] => Some(language),
+                _ => None,
+            })
+            .collect();
+        languages.dedup();
+        match languages[..] {
+            [] => Ok(None),
+            [language] => Ok(Some(language.to_owned())),
+            _ => Err(ZeroHourError::Languages(
+                languages
+                    .iter()
+                    .map(|language| (*language).to_owned())
+                    .collect(),
+            )),
+        }
+    }
+
+    /// The object INI files, in the order `ThingFactory` loads them: for each of
+    /// `Data\INI\Default\Object` and `Data\INI\Object`, the file of that name, then the files in
+    /// that folder, then those in its folders below.
+    pub(crate) fn object_inis(&self) -> Vec<ArchivePath> {
+        let mut inis = Vec::new();
+        for base in ["data\\ini\\default\\object", "data\\ini\\object"] {
+            let file = ArchivePath::of(&format!("{base}.ini"));
+            if self.contains(&file) {
+                inis.push(file);
+            }
+            let depth = base.matches('\\').count() + 1;
+            let folder = format!("{base}\\");
+            let inside: Vec<&ArchivePath> = self
+                .files
+                .keys()
+                .filter(|path| {
+                    path.extension() == Some("ini") && path.as_str().starts_with(&folder)
+                })
+                .collect();
+            let (direct, deeper): (Vec<_>, Vec<_>) = inside
+                .into_iter()
+                .partition(|path| path.names().count() == depth + 1);
+            inis.extend(direct.into_iter().cloned());
+            inis.extend(deeper.into_iter().cloned());
+        }
+        inis
+    }
+
     /// The textures the install holds, each by its key once: every `.dds` and `.tga`, in the order
     /// of their keys.
     pub(crate) fn textures(&self) -> Vec<InstallTexture> {
@@ -216,6 +274,8 @@ pub(crate) mod internals {
     use crate::texture::tga_file::internals::tga;
     use crate::zero_hour::big_archive::internals::big;
     use crate::zero_hour::map_file::internals::map;
+    use crate::zero_hour::model_import::internals::{nothing_drawn, rock, tank};
+    use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
     use crate::zero_hour::ref_pack::internals::literal;
 
     /// The fixture map's file, packed by `RefPack` as the game ships most maps.
@@ -234,12 +294,14 @@ pub(crate) mod internals {
     }
 
     /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture
-    /// map in its folder, a map outside one and the two textures, `b.big`, `c.BIG`, base
-    /// Generals' `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that
-    /// is no archive.
+    /// map in its folder, a map outside one, the two textures, the object INI files, and the
+    /// models, `Rock01.w3d` in the language folder `English` and, unread, outside it; `b.big`,
+    /// `c.BIG`, base Generals' `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`,
+    /// beside a file that is no archive.
     pub(crate) fn fixture(scratch: &Scratch) {
         let packed = packed_map();
-        let [rock, sign] = textures();
+        let [rock_texture, sign] = textures();
+        let [prop, spray] = nothing_drawn();
         scratch.write(
             "zh/A.big",
             big(&[
@@ -247,8 +309,18 @@ pub(crate) mod internals {
                 ("shared.ini", b"from A"),
                 ("Maps\\Fixture Map\\Fixture Map.map", &packed),
                 ("Maps\\Stray\\Other.map", b"no map the game lists"),
-                ("Art\\Textures\\Rock.dds", &rock),
+                ("Art\\Textures\\Rock.dds", &rock_texture),
                 ("Art\\Textures\\Sign.tga", &sign),
+                ("Data\\INI\\Object.ini", OBJECTS.as_bytes()),
+                ("Data\\INI\\Object\\Deep\\More.ini", b""),
+                ("Data\\INI\\Object\\Misc.ini", MORE_OBJECTS.as_bytes()),
+                ("Data\\INI\\Object\\Notes.txt", b"no INI"),
+                ("Data\\INI\\Default\\Object.ini", DEFAULT_OBJECTS.as_bytes()),
+                ("Art\\W3D\\Tank.w3d", &tank()),
+                ("Data\\English\\Art\\W3D\\Rock01.w3d", &rock()),
+                ("Art\\W3D\\Rock01.w3d", b"unread"),
+                ("Art\\W3D\\Prop.w3d", &prop),
+                ("Art\\W3D\\Spray.w3d", &spray),
             ]),
         );
         scratch.write(
@@ -313,6 +385,19 @@ mod tests {
                 texture("art\\textures\\sign.tga", TextureKind::Tga),
             ]
         );
+        // The language folder whose `Art` the archives hold; the object INI files in the game's
+        // order: the default file, then the file, its folder's files, and its folders' below.
+        assert_eq!(install.language().unwrap().as_deref(), Some("english"));
+        assert_eq!(
+            install.object_inis(),
+            [
+                "data\\ini\\default\\object.ini",
+                "data\\ini\\object.ini",
+                "data\\ini\\object\\misc.ini",
+                "data\\ini\\object\\deep\\more.ini",
+            ]
+            .map(ArchivePath::of)
+        );
         // The map in its own folder, by its key; not the one in another's.
         assert_eq!(
             install.maps(),
@@ -341,6 +426,13 @@ mod tests {
         })
         .collect();
         assert_eq!(hashed, expected);
+        // A second language folder with `Art` leaves the importer unable to tell which one the
+        // game reads.
+        scratch.write("zh/c.BIG", big(&[("Data\\German\\Art\\W3D\\x.w3d", b"x")]));
+        assert!(matches!(
+            Install::open(&scratch.path("zh")).unwrap().language(),
+            Err(ZeroHourError::Languages(languages)) if languages == ["english", "german"]
+        ));
     }
 
     #[test]

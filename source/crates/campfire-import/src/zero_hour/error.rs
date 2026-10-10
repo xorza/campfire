@@ -42,6 +42,33 @@ pub enum ZeroHourError {
         #[source]
         error: TextureError,
     },
+    /// An object INI file is none the game reads, by its path.
+    #[error("{path} is no object INI the game reads")]
+    Ini {
+        path: String,
+        #[source]
+        error: IniError,
+    },
+    /// A W3D file of the install is none the importer reads, by its path.
+    #[error("{path} is no W3D file the importer reads")]
+    W3d {
+        path: String,
+        #[source]
+        error: W3dError,
+    },
+    /// A model the objects name does not convert, by its name.
+    #[error("model {model} does not convert")]
+    Model {
+        model: String,
+        #[source]
+        error: ModelError,
+    },
+    /// Several language folders hold art, and the importer cannot tell which the game reads.
+    #[error("several language folders hold art: {0:?}")]
+    Languages(Vec<String>),
+    /// Two objects' names give one unit type name.
+    #[error("{first} and {second} give one unit type name")]
+    UnitTypeClash { first: String, second: String },
     /// Two maps' folders give one map name.
     #[error("{first} and {second} give one map name")]
     MapNameClash { first: String, second: String },
@@ -222,4 +249,89 @@ impl fmt::Display for Chunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.name())
     }
+}
+
+/// Why an object INI file is none the game reads, each with its line from 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum IniError {
+    /// An `End` closes no block.
+    #[error("line {line}: an End closes no block")]
+    StrayEnd { line: usize },
+    /// The file ends inside a block.
+    #[error("it ends inside a block")]
+    Unclosed,
+    /// A line outside every block starts no `Object` or `ObjectReskin`.
+    #[error("line {line}: no Object or ObjectReskin starts here")]
+    NotObject { line: usize },
+    /// An `Object` or `ObjectReskin` lacks its name, or its base's.
+    #[error("line {line}: an object lacks a name")]
+    NoName { line: usize },
+    /// A model draw module's first state is neither `DefaultConditionState` nor `NONE`.
+    #[error("line {line}: a draw module's first state is no default")]
+    NoDefaultState { line: usize },
+    /// A `DefaultConditionState` follows another state.
+    #[error("line {line}: a DefaultConditionState is not the first state")]
+    LateDefaultState { line: usize },
+    /// A model draw module's default state names no `Model`.
+    #[error("line {line}: a default state names no model")]
+    NoModel { line: usize },
+    /// A weapon bone names no slot of `PRIMARY`, `SECONDARY` and `TERTIARY`, or no bone.
+    #[error("line {line}: a weapon bone names no slot and bone")]
+    WeaponSlot { line: usize },
+}
+
+/// Why a W3D file's bytes are no model the importer converts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum W3dError {
+    /// A chunk or a field runs past its end.
+    #[error("a chunk runs past its end")]
+    Short,
+    /// A name is not ASCII.
+    #[error("a name is not ASCII")]
+    NotAscii,
+    /// A chunk lacks a part it needs, as a mesh its header.
+    #[error("a chunk lacks a part")]
+    Missing,
+    /// An index passes its list, or a pivot's parent does not come before it.
+    #[error("an index passes its list")]
+    Index,
+    /// A mesh's lists are not its header's counts.
+    #[error("a mesh's lists are not its counts")]
+    Counts,
+    /// A float is infinite or not a number.
+    #[error("a float is not finite")]
+    NotFinite,
+    /// An HLOD has other than one level of detail.
+    #[error("an HLOD has {0} levels of detail")]
+    Levels(u32),
+    /// A mesh is of a geometry the importer does not draw, as a camera-aligned one.
+    #[error("a mesh is of geometry {0:#x}")]
+    Geometry(u32),
+}
+
+/// Why a model the objects name does not convert.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ModelError {
+    /// Its HLOD names a hierarchy no file holds.
+    #[error("its hierarchy {0} is in no file")]
+    NoHierarchy(String),
+    /// A sub-object or a skin's vertex names a pivot its hierarchy lacks.
+    #[error("a pivot its hierarchy lacks")]
+    Pivot,
+    /// A skin is drawn alone, with no hierarchy to place it.
+    #[error("a skin with no hierarchy")]
+    SkinAlone,
+    /// A mesh's vertex colors go to a light the glTF cannot color by them, as its vertex
+    /// materials give emissive light, or no diffuse light.
+    #[error("vertex colors of no diffuse light")]
+    VertexColors,
+    /// A mesh it draws has no triangle.
+    #[error("mesh {0} has no triangle")]
+    Empty(String),
+    /// Two nodes have one name, so a default look cannot hide one of them alone.
+    #[error("two nodes are named {0}")]
+    NodeName(String),
+    /// A shader blends by factors no shipped shader uses.
+    #[error("a shader blends by source {src} and destination {dest}")]
+    Shader { src: u8, dest: u8 },
 }

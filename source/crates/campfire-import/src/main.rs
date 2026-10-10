@@ -7,9 +7,9 @@ use std::env;
 use std::process::ExitCode;
 
 use campfire_common::ExitStatus;
-use campfire_import::{GameVersion, ZeroHour};
+use campfire_import::{GameVersion, Imported, SkipReason, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::args::{Args, Game};
 
@@ -35,8 +35,37 @@ fn main() -> ExitCode {
         }),
     };
     match imported {
-        Ok(fingerprint) => {
-            info!(package = %args.out.display(), %fingerprint, "imported");
+        Ok(Imported {
+            fingerprint,
+            skipped_models,
+            missing_textures,
+        }) => {
+            for skipped in &skipped_models {
+                let model = &skipped.name;
+                match skipped.reason {
+                    SkipReason::Missing => warn!(
+                        model,
+                        "an object names a model no file of the install holds"
+                    ),
+                    SkipReason::Emitter => warn!(
+                        model,
+                        "an object names a particle emitter, which the importer does not convert"
+                    ),
+                }
+            }
+            for texture in &missing_textures {
+                warn!(
+                    texture,
+                    "a model names a texture no archive holds, and draws untextured"
+                );
+            }
+            info!(
+                package = %args.out.display(),
+                %fingerprint,
+                skipped_models = skipped_models.len(),
+                missing_textures = missing_textures.len(),
+                "imported"
+            );
             ExitCode::from(ExitStatus::Success)
         }
         Err(error) => {

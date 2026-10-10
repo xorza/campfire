@@ -4,6 +4,7 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod avatar_unit;
+mod client_data;
 mod dependent;
 mod error;
 mod file_index;
@@ -28,6 +29,8 @@ mod script_facts;
 mod texts;
 mod zero_hour;
 
+pub use crate::client_data::client_units::{ClientModel, ClientUnit, ClientUnits};
+pub use crate::client_data::material_file::{Blend, MaterialFile, MaterialTexture};
 pub use crate::error::box_problem::BoxProblem;
 pub use crate::error::build_problem::BuildProblem;
 pub use crate::error::choice_problem::ChoiceProblem;

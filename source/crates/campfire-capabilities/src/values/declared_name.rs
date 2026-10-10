@@ -2,11 +2,12 @@ use std::borrow::Borrow;
 
 use derive_more::Display;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A name a mode declares in its data and scripts use, such as a damage kind, a stat or a
 /// resource: a lowercase letter, then lowercase letters, digits and underscores.
-#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
 pub struct DeclaredName(Box<str>);
 
 impl DeclaredName {

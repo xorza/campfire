@@ -1,13 +1,14 @@
 use derive_more::Display;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A path to a file inside a package: names joined by `/`, each one not empty, not `.` or `..`,
 /// so it cannot leave the package and has one spelling, and each one a file name every OS holds
 /// as the same file's (design 03, Package paths), so a package reads the same on every OS. Data
 /// names its scripts with one, so a path that leaves the package, or names a file two ways, is
 /// refused where the data is read.
-#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
 pub struct PackagePath(String);
 
 impl PackagePath {

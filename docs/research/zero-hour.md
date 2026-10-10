@@ -42,6 +42,8 @@ The Steam install keeps Zero Hour in its root and base Generals in `ZH_Generals/
 | `Behavior: AIUpdateInterface` | 353 | `Behavior: MissileAIUpdate` | 40 |
 | `Body: StructureBody` | 264 | `Behavior: JetAIUpdate` | 32 |
 
+- **Object files.** `ThingFactory` loads `Data\INI\Default\Object.ini` and its folder, then `Data\INI\Object.ini` and its folder. A comment starts at `;` alone; `//` is a token. `=` is a separator, not a requirement.
+- **Default models.** The objects' default states name 1,197 models: 1,181 convert, 2 draw nothing (`NULL` and `CINEExplBox`, a box alone), 13 name no file of the archives (the AI tiles among them), and one, `EXHydrant`, is a particle emitter. `NULL` names the render object `WW3DAssetManager::Find_Prototype` always has, which draws nothing.
 - **Times and speeds** (`Core/GameEngine/Source/Common/INI/INI.cpp`). The logic runs 30 frames a second (`WWSyncPerSecond`, `Core/Libraries/Source/WWVegas/WWLib/WWCommon.h`). A duration in milliseconds becomes whole frames as `ceilf(ms × LOGICFRAMES_PER_MSEC_REAL)`, in 32-bit floats, `parseDurationUnsignedInt`, or stays a fractional count of frames, `parseDurationReal`. Velocities, accelerations and angular velocities become per-frame floats. So the original's values are not the decimals the INI writes, but what those float steps make of them.
 
 ## Sizes and ranges
@@ -105,6 +107,15 @@ W3D is chunks (`Generals/Code/Libraries/Source/WWVegas/WW3D2/w3d_file.h`): a `u3
 
 - **Meshes.** 70,571, 18 vertices at the median and 1,645 at most. Each has vertex materials, shaders and texture stages in material passes; 423 have vertex colors, 171 are skinned, and 1,435 carry an axis-aligned box tree for picking.
 - **Textures they name.** 5,639, of which 55 are in no archive.
+- **Names.** A mesh's prototype is `Container.Mesh`, or `Mesh` alone when its container's name is empty (`MeshModelClass::read_chunks`); 338 of the models the objects name are such a mesh alone.
+- **HLOD sub-objects.** 70,124: 69,399 meshes and 680 collision boxes of their own file, and 45 names of no render object, which `HLodClass` skips. No HLOD has more than one level of detail, and none has an aggregate. No code of the game sets `BoxRenderObjClass::Set_Box_Display_Mask`, so boxes are never drawn.
+- **Lists of a pass.** A one-id list of vertex materials, shaders or textures is one for all (`read_vertex_material_ids`, `read_shader_ids`, `read_texture_ids`). A triangle's texture id `0xFFFFFFFF` leaves it untextured. A second chunk of a list in one pass or stage goes to the alternate material description, which a draw's default state does not show. Some texture stages hold texture ids and no coordinates.
+- **Vertex colors.** `MeshMatDescClass::Post_Load_Process` moves a pass's vertex colors to the light its vertex materials use: with diffuse light, and ambient or not, they are multiplied by the diffuse color and the opacity and become the diffuse and ambient color; with ambient alone, the ambient; with emissive alone, the diffuse, with lighting off. All 69 meshes of converted models with vertex colors use diffuse and ambient light.
+- **Materials.** Of the vertex materials of converted models, 336 have an ambient color other than their diffuse one. 275 meshes of converted models have a second material pass; none has no pass.
+- **Texture coordinates.** 35 meshes of converted models hold `NaN` coordinates at 83 vertices, all on textured triangles; the GPU interpolates `NaN` over each triangle that touches one, so what the game shows depends on the hardware.
+- **Missing textures.** A texture no archive holds draws as `MissingTexture`, a solid color of `0x7FFF00FF`. Converted models name one, `dirtground1.bmp`, in 22 meshes of one file.
+- **Normals.** 619 vertices in 74 meshes of converted models have a normal of zero; 291 of them lie on a triangle of area. The game lights a vertex per vertex, so such a vertex takes ambient and emissive light alone.
+- **Hide and show.** `doHideShowBoneSubObjs` walks each sub-object's bone up to the root: a change to a sub-object on the root spreads to every sub-object off the root.
 
 ## Textures
 
