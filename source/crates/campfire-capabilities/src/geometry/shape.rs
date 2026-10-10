@@ -19,10 +19,10 @@ pub(crate) enum Shape {
 impl Shape {
     pub(crate) const POINT: Shape = Shape::Circle(Num::ZERO);
 
-    /// The widest a body's bound may be, a circle's radius or the farthest corner of a box: wider
-    /// than any structure a map stands, and small enough that two bodies' bounds and a range add
-    /// up within a `Num`.
-    pub(crate) const MAX_BOUND: Num = Num::int(64);
+    /// The widest a body's bound may be, a circle's radius or the farthest corner of a box, 2³⁵
+    /// bits: the power of two past Zero Hour's widest object, and small enough that two bodies'
+    /// bounds and a range add up within a `Num`.
+    pub(crate) const MAX_BOUND: Num = Num::int(2048);
 
     /// The radius of the least circle round the position that holds it.
     pub(crate) const fn bound(&self) -> Num {

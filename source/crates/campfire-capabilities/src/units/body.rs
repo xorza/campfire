@@ -108,7 +108,7 @@ impl<'de> Deserialize<'de> for Body {
         let fields = Fields::deserialize(deserializer)?;
         let body = match fields.shape {
             Shape::Circle(radius) => Body::new(radius)
-                .ok_or_else(|| D::Error::custom("a body radius not positive or beyond 64 m"))?,
+                .ok_or_else(|| D::Error::custom("a body radius not positive or beyond 2,048 m"))?,
             Shape::Box(body) => Body::of_box(body),
         };
         Ok(body.on(fields.layer))
@@ -170,16 +170,16 @@ mod tests {
     use crate::units::body_form::BodyForm;
 
     #[test]
-    fn a_body_is_a_circle_up_to_64_m_or_a_box_on_a_layer() {
+    fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
         assert_eq!(
-            Body::new(Num::int(64)).and_then(Body::radius),
-            Some(Num::int(64))
+            Body::new(Num::int(2048)).and_then(Body::radius),
+            Some(Num::int(2048))
         );
         assert_eq!(
             Body::new(Num::EPSILON).and_then(Body::radius),
             Some(Num::EPSILON)
         );
-        for radius in [Num::ZERO, Num::int(-1), Num::int(64) + Num::EPSILON] {
+        for radius in [Num::ZERO, Num::int(-1), Num::int(2048) + Num::EPSILON] {
             assert_eq!(Body::new(radius), None, "{radius:?}");
             assert_eq!(BodyForm::circle(radius), None, "{radius:?}");
         }
@@ -215,6 +215,6 @@ mod tests {
         let decoded = Binary::decode::<Body>(&Binary::encode(&turned));
         assert_eq!(decoded.ok(), Some(turned));
         // A box of a size `BodyBox` refuses is no form.
-        assert_eq!(BodyForm::box_sized([Num::int(126), Num::int(1)]), None);
+        assert_eq!(BodyForm::box_sized([Num::int(4094), Num::int(1)]), None);
     }
 }

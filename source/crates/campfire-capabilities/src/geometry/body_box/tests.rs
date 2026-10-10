@@ -111,13 +111,14 @@ fn a_box_has_the_least_size_and_the_longest_diagonal() {
     assert!(BodyBox::new([below, Num::ONE], Num::ZERO).is_none());
     assert!(BodyBox::new([Num::ONE, Num::ZERO], Num::ZERO).is_none());
     assert!(BodyBox::new([-Num::ONE, Num::ONE], Num::ZERO).is_none());
-    // A diagonal of 126 m holds a 126 m side only with no other; one of 125.9 and 1 m is
-    // within it, 62.95² + 0.5² = 3 963.0525 ≤ 63², and at 45° its corners stay within 64 m.
-    assert!(BodyBox::new([num("126"), least], Num::ZERO).is_none());
-    assert!(BodyBox::new([num("126"), Num::ZERO], Num::ZERO).is_none());
-    let longest = made("125.9", "1", "45");
+    // A diagonal of 4,094 m holds a 4,094 m side only with no other; one of 4,093.9 and 1 m is
+    // within it, 2 046.95² + 0.5² = 4 189 998.55 ≤ 2 047², and at 45° its corners stay within
+    // 2,048 m.
+    assert!(BodyBox::new([num("4094"), least], Num::ZERO).is_none());
+    assert!(BodyBox::new([num("4094"), Num::ZERO], Num::ZERO).is_none());
+    let longest = made("4093.9", "1", "45");
     let [a, b] = longest.frame().halves;
-    let reach = (64 * i128::from(Num::ONE.to_bits())).pow(2);
+    let reach = (2048 * i128::from(Num::ONE.to_bits())).pow(2);
     assert!(dot(add(a, b), add(a, b)) <= reach && dot(sub(a, b), sub(a, b)) <= reach);
 }
 
@@ -135,14 +136,16 @@ fn a_box_has_a_bound_and_decodes_only_as_a_box() {
     // Quarters turn it whole, so its bound stays.
     assert_eq!(made("4", "2", "90").bound(), body.bound());
     // A snapshot's box decodes to the same box, its bound derived again; half edges that turn
-    // clockwise, lie flat, or reach past 64 m do not decode.
+    // clockwise, lie flat, or reach past 2,048 m do not decode: (1 600, 1 300) m reaches
+    // 2 061.55 m, past it, though each half edge is within it; (1 400, 1 400) m reaches
+    // 1 979.90 m.
     let decoded: BodyBox = Binary::decode(&Binary::encode(&body)).unwrap();
     assert_eq!(decoded, body);
     let encode = |half: [[&str; 2]; 2]| Binary::encode(&half.map(|edge| edge.map(num)));
     for half in [
         [["0", "1"], ["2", "0"]],
         [["2", "0"], ["4", "0"]],
-        [["50", "0"], ["0", "40"]],
+        [["1600", "0"], ["0", "1300"]],
     ] {
         assert!(
             Binary::decode::<BodyBox>(&encode(half)).is_err(),
@@ -153,6 +156,7 @@ fn a_box_has_a_bound_and_decodes_only_as_a_box() {
     let huge = Binary::encode(&[[Num::MAX, Num::ZERO], [Num::ZERO, Num::MAX]]);
     assert!(Binary::decode::<BodyBox>(&huge).is_err());
     assert!(Binary::decode::<BodyBox>(&encode([["2", "0"], ["0", "1"]])).is_ok());
+    assert!(Binary::decode::<BodyBox>(&encode([["1400", "0"], ["0", "1400"]])).is_ok());
 }
 
 #[test]
@@ -476,13 +480,20 @@ fn a_box_overlaps_a_polygon_its_inside_meets() {
     }
 }
 
-/// Draws for the random boxes: sizes, angles, offsets and reaches, every run the same.
+/// Draws for the random boxes: sizes, angles, offsets and reaches, every run the same, each
+/// length `scale` times its meters.
 struct Draws {
     next: Box<dyn FnMut() -> u64>,
+    scale: i64,
 }
 
 impl Draws {
     const ONE: i64 = Num::ONE.to_bits();
+
+    /// A meter, scaled.
+    const fn meter(&self) -> i64 {
+        Draws::ONE * self.scale
+    }
 
     fn bits(&mut self, low: i64, high: i64) -> i64 {
         let span = u64::try_from(high - low).unwrap();
@@ -490,7 +501,8 @@ impl Draws {
     }
 
     fn size(&mut self) -> Num {
-        Num::from_bits(self.bits(BodyBox::MIN_SIZE.to_bits(), 20 * Draws::ONE))
+        let high = 20 * self.meter();
+        Num::from_bits(self.bits(BodyBox::MIN_SIZE.to_bits(), high))
     }
 
     /// A whole number of quarters, or any angle.
@@ -509,14 +521,16 @@ impl Draws {
 
     /// A point within `span` meters of `from` along each axis.
     fn near(&mut self, from: Position, span: i64) -> Position {
-        let mut axis = || Num::from_bits(self.bits(-span * Draws::ONE, span * Draws::ONE));
+        let meter = self.meter();
+        let mut axis = || Num::from_bits(self.bits(-span * meter, span * meter));
         let offset = Vec3::new(axis(), Num::ZERO, axis());
         Position::new(from.get() + offset).unwrap()
     }
 
     /// A reach below `meters`.
     fn reach(&mut self, meters: i64) -> Num {
-        Num::from_bits(self.bits(0, meters * Draws::ONE))
+        let high = meters * self.meter();
+        Num::from_bits(self.bits(0, high))
     }
 }
 
@@ -646,8 +660,16 @@ fn check_pair(body: &BodyBox, centre: Position, other: &BodyBox, at: Position, r
 /// turned by whole quarters.
 #[test]
 fn random_boxes_agree_with_their_polygons_and_edges() {
+    // At meters, and at 100 times them: boxes up to 2,000 m a side, bodies up to 300 m.
+    for scale in [1, 100] {
+        random_boxes(scale);
+    }
+}
+
+fn random_boxes(scale: i64) {
     let mut draws = Draws {
         next: Box::new(split_mix(0xB0C5)),
+        scale,
     };
     let origin = Position::new(Vec3::ZERO).unwrap();
     let (mut overlapping, mut apart) = (0, 0);
@@ -665,7 +687,8 @@ fn random_boxes_agree_with_their_polygons_and_edges() {
             draws.reach(5),
         );
         check_path(&body, centre, from, to, reach);
-        let radius = Num::from_bits(draws.bits(BodyBox::MIN_SIZE.to_bits(), 3 * Draws::ONE));
+        let high = 3 * draws.meter();
+        let radius = Num::from_bits(draws.bits(BodyBox::MIN_SIZE.to_bits(), high));
         check_push(&body, centre, draws.near(centre, 12), radius);
         let other = draws.body(quarters);
         let (at, reach) = (draws.near(centre, 25), draws.reach(10));
@@ -677,4 +700,92 @@ fn random_boxes_agree_with_their_polygons_and_edges() {
     }
     // Both outcomes came up often enough to test each.
     assert!(overlapping > 50 && apart > 50, "{overlapping} {apart}");
+}
+
+/// Whether `k` moves a body of `radius` out along a normal of square `square` whose component
+/// is `along`, from `out` beyond its line: `k · square + along · out ≥ along · radius · √square`.
+fn moves_out(k: i128, along: i128, out: i128, square: i128, radius: i128) -> bool {
+    let side = k * square + along * out;
+    let product = (along * radius).unsigned_abs();
+    let bound = U256::product(product, product)
+        .checked_mul(square.unsigned_abs())
+        .unwrap();
+    side >= 0 && U256::product(side.unsigned_abs(), side.unsigned_abs()) >= bound
+}
+
+#[test]
+fn a_push_is_the_least_whole_move_and_its_first_try_one_below_it_at_most() {
+    // Every small case, against a scan from 0: the least `k` that moves the body out.
+    for square in 1..40_i128 {
+        for along in (0..=square).filter(|along| along * along <= square) {
+            for radius in 1..12_i128 {
+                for out in -60..60_i128 {
+                    if radius * radius * square <= out * out.abs() {
+                        continue;
+                    }
+                    // k · square ≥ along · (radius · square + |out|) passes, as square ≥ √square.
+                    let most = along * (radius * square + out.abs());
+                    let least = (0..=most)
+                        .find(|&k| moves_out(k, along, out, square, radius))
+                        .unwrap();
+                    let case = format!("{along} {out} {square} {radius}");
+                    assert_eq!(outward(along, out, square, radius), least, "{case}");
+                    let first = first_outward(along, out, square, radius);
+                    assert!(first == least || first + 1 == least, "{case}");
+                }
+            }
+        }
+    }
+    // At the bound: a body of 2,048 m, 2³⁵ bits, against an edge just short of 4,094 m, along an
+    // axis, `along` its length, and at 45°, `along` its length ÷ √2: from inside, an edge's length
+    // behind the line, `out` = −square; from the line; from near the body's reach, the length
+    // times 2³⁵ − 1 bits; and between. Then off a corner by the least way, 1 bit, its square 1, to
+    // 2³⁵ − 1 bits.
+    let radius = 1_i128 << 35;
+    let meter = i128::from(Num::ONE.to_bits());
+    let (axis, aslant) = (4093 * meter, 2894 * meter);
+    for (along, square) in [(axis, axis * axis), (aslant, 2 * aslant * aslant)] {
+        let length = square.cast_unsigned().floor_root().cast_signed();
+        for out in [
+            -square,
+            0,
+            length * (radius - 1),
+            length * (radius >> 1) + 12_345,
+        ] {
+            let k = outward(along, out, square, radius);
+            let case = format!("{along} {out}");
+            assert!(moves_out(k, along, out, square, radius), "{case}");
+            assert!(!moves_out(k - 1, along, out, square, radius), "{case}");
+            let first = first_outward(along, out, square, radius);
+            assert!(first == k || first + 1 == k, "{case}");
+        }
+    }
+    assert_eq!(outward(1, 1, 1, radius), radius - 1);
+}
+
+#[test]
+fn a_body_at_the_bound_is_pushed_out_of_the_longest_box() {
+    // The longest box, turned 45°, and a body of 2,048 m into it: each push ends touching or
+    // apart, under 2 bits past touching. The box's half edges are 2 046.95 m along (√½, √½) and
+    // 0.5 m along (−√½, √½), so its long edge's line lies 0.5 m from the centre, its short edge's
+    // 2 046.95 m, and a corner at (1 447.06, 1 447.77) m: 1 447.41 ∓ 0.35, 1 447.41 + 0.35.
+    let longest = made("4093.9", "1", "45");
+    let centre = at("0", "0");
+    let radius = Num::int(2048);
+    for probe in [
+        // 1 448·√2 = 2 047.78 m across the long edge's normal, 0.72 m into the body's reach.
+        at("-1448", "1448"),
+        // 1.5·√½ = 1.06 m across it, so 0.56 m past the line and 2 047.44 m in.
+        at("1000", "1001.5"),
+        // 2 895·√2 = 4 094.15 m along the axis, 2 047.20 m past the short edge, 0.80 m in.
+        at("2895", "2895"),
+        // 2 047.50 m straight up from the corner, between the long and short edges' normals.
+        at("1447.06", "3495.27"),
+    ] {
+        assert!(
+            longest.push_out(centre, probe.get(), radius).is_some(),
+            "{probe:?}"
+        );
+        check_push(&longest, centre, probe, radius);
+    }
 }

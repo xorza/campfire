@@ -80,7 +80,7 @@ impl Entry {
 
 impl BucketKey {
     /// The rows that fit, from −2⁵⁵ to 2⁵⁵ − 1. A body's rows lie within ±2⁴⁵, as positions lie
-    /// within ±2⁴⁴ bits, a radius within 64 m, and a bucket is at least 2 bits wide; a search's
+    /// within ±2⁴⁴ bits, a radius within 2,048 m, and a bucket is at least 2 bits wide; a search's
     /// rows past them clamp to the ends, whose buckets hold no body.
     const ROWS: i64 = 1 << 55;
 

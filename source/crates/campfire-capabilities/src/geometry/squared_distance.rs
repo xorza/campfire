@@ -43,19 +43,14 @@ impl SquaredDistance {
 }
 
 impl Ord for SquaredDistance {
-    /// By `num₁ × den₂` against `num₂ × den₁`. The distances a box makes keep each within 256
-    /// bits: a point's to an edge is at most 2¹⁵⁶ over 2⁶³, a point's to a path at most 2¹⁸⁴
-    /// over 2⁹², and two of the second kind compare only on one path, whose denominators match.
+    /// By `num₁ × den₂` against `num₂ × den₁`, exact in 384 bits, which a `U256` times a `u128`
+    /// never passes: a point's distance to a path, up to 2¹⁸⁴ over 2⁹², against one to a box's
+    /// edge passes 256.
     fn cmp(&self, other: &SquaredDistance) -> Ordering {
         if self.den == other.den {
             return self.num.cmp(&other.num);
         }
-        let ours = self.num.checked_mul(other.den);
-        let theirs = other.num.checked_mul(self.den);
-        let (Some(ours), Some(theirs)) = (ours, theirs) else {
-            panic!("a box's squared distances compare within 256 bits");
-        };
-        ours.cmp(&theirs)
+        self.num.cmp_products(other.den, other.num, self.den)
     }
 }
 
@@ -95,5 +90,35 @@ mod tests {
         assert_eq!(wide, SquaredDistance::whole(1 << 92));
         let above = U256::product(1 << 92, 1 << 92).checked_add(U256::product(1, 1));
         assert!(SquaredDistance::new(above.unwrap(), 1 << 92) > wide);
+        // A path's distance over 2⁹² against an edge's over 2⁷³, whose cross products pass 256
+        // bits: (2¹⁸⁴ + 2⁹¹) / 2⁹² and (2¹⁶⁵ + 2⁷²) / 2⁷³ are both 2⁹² + ½; one more in the first
+        // numerator is past the second, both ways.
+        let over = |high: u32, half: u32, extra: u128, den: u32| {
+            let num = U256::product(1 << high, 1 << high)
+                .checked_add(U256::product(1 << half, 1))
+                .and_then(|num| num.checked_add(U256::product(extra, 1)));
+            SquaredDistance::new(num.unwrap(), 1 << den)
+        };
+        let path = over(92, 91, 0, 92);
+        let edge = SquaredDistance::new(
+            U256::product(1 << 82, 1 << 83)
+                .checked_add(U256::product(1 << 72, 1))
+                .unwrap(),
+            1 << 73,
+        );
+        assert_eq!(path, edge);
+        assert_eq!(edge, path);
+        let past = over(92, 91, 1, 92);
+        assert_eq!(past.cmp(&edge), Ordering::Greater);
+        assert_eq!(edge.cmp(&past), Ordering::Less);
+        // A whole bit apart, past 256 bits too: 2¹⁸⁴ / 2⁹² against (2¹⁶⁵ + 2⁷³) / 2⁷³, 2⁹² + 1.
+        let next = SquaredDistance::new(
+            U256::product(1 << 82, 1 << 83)
+                .checked_add(U256::product(1 << 73, 1))
+                .unwrap(),
+            1 << 73,
+        );
+        assert_eq!(wide.cmp(&next), Ordering::Less);
+        assert_eq!(next.cmp(&wide), Ordering::Greater);
     }
 }

@@ -29,4 +29,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Actions.** **Plan: G1.** The projectile section's `gravity` is planned: no projectile falls, so no grenade arcs and no bullet drops.
 - **Client.** **Plan: S2.** The client has no shop and no item keys: a player cannot buy, sell or use an item, which design 04's items give as orders.
 - **Interaction.** **Plan: U1.** `interaction` is planned: no action of the `use` kind runs.
-- **Navigation.** **Plan: B1.** The widest body is 64 m, `Shape::MAX_BOUND`, and the collision and box math is sized for it, where design 04 gives 2,048 m ([Zero Hour](../docs/design/12-zero-hour.md#decisions), D11).

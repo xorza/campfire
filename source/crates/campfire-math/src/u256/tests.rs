@@ -126,6 +126,74 @@ fn products_and_sums_are_exact() {
     );
 }
 
+/// `value / divisor` and its rest a bit at a time, for a high half below the divisor: the rest
+/// below the divisor, doubled, plus a bit, stays below 2¹²⁹, so its top bit is carried apart.
+fn by_bits(value: U256, divisor: u128) -> Division {
+    let (mut rest, mut quotient) = (value.high, 0_u128);
+    for bit in (0..128).rev() {
+        let carry = rest >> 127;
+        rest = (rest << 1) | ((value.low >> bit) & 1);
+        quotient <<= 1;
+        if carry == 1 || rest >= divisor {
+            rest = rest.wrapping_sub(divisor);
+            quotient |= 1;
+        }
+    }
+    Division { quotient, rest }
+}
+
+#[test]
+fn a_long_division_is_the_division_a_bit_at_a_time() {
+    // Drawn divisors and dividends of every length, so the shift that sets the divisor's top bit
+    // and each digit's corrections run at every size; the high half below the divisor.
+    let mut state = 0x5EED_u64;
+    let mut draw = || {
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    };
+    let mut wide = || {
+        let value = (u128::from(draw()) << 64) | u128::from(draw());
+        value >> (draw() % 128)
+    };
+    for _ in 0..20_000 {
+        let divisor = wide().max(1);
+        let value = U256 {
+            high: wide() % divisor,
+            low: wide(),
+        };
+        let case = format!("{value:?} {divisor}");
+        assert_eq!(
+            value.long_division(divisor),
+            by_bits(value, divisor),
+            "{case}"
+        );
+    }
+}
+
+/// `value × by` by schoolbook multiplication of 32-bit limbs, the least significant first.
+fn limbs_times(value: U256, by: u128) -> [u64; 12] {
+    let limbs = |half: u128| [0, 1, 2, 3].map(|at| (half >> (32 * at)) & u128::from(u32::MAX));
+    let value: Vec<u128> = limbs(value.low)
+        .into_iter()
+        .chain(limbs(value.high))
+        .collect();
+    let by = limbs(by);
+    let mut out = [0_u64; 12];
+    for (i, &x) in value.iter().enumerate() {
+        let mut carry = 0_u128;
+        for (j, &y) in by.iter().enumerate() {
+            let sum = x * y + u128::from(out[i + j]) + carry;
+            out[i + j] = u64::try_from(sum & u128::from(u32::MAX)).unwrap();
+            carry = sum >> 32;
+        }
+        out[i + 4] = u64::try_from(carry).unwrap();
+    }
+    out
+}
+
 /// The product of `a` and `b` by schoolbook multiplication of 32-bit limbs.
 fn schoolbook(a: u128, b: u128) -> U256 {
     let limbs = |value: u128| {
@@ -174,15 +242,43 @@ fn products_match_schoolbook_and_shifts_match_divisions() {
             assert_eq!(product, schoolbook(a, b), "{a} {b}");
             // A low half alone times a u128 is the product of the two.
             assert_eq!(U256::product(a, 1).checked_mul(b), Some(product), "{a} {b}");
-            // A product that fits u128 divides natively as the long division does.
-            for &divisor in values.iter().filter(|&&d| 0 < d && d < 1 << 127) {
-                if product.high == 0 {
-                    let native = Division {
-                        quotient: product.low / divisor,
-                        rest: product.low % divisor,
-                    };
-                    assert_eq!(product.long_division(divisor), native, "{a} {b} {divisor}");
+            // Rounded up, a product's quotient is the one a bit at a time, or one more with a
+            // rest, while it fits u128, as it does exactly when the high half is below the
+            // divisor.
+            for &divisor in values.iter().filter(|&&d| d > 0) {
+                let up = (product.high < divisor)
+                    .then(|| by_bits(product, divisor))
+                    .and_then(|Division { quotient, rest }| {
+                        quotient.checked_add(u128::from(rest != 0))
+                    });
+                assert_eq!(product.div_ceil(divisor), up, "{a} {b} {divisor}");
+            }
+            // A product times a third value orders against another as their limbs do.
+            for &by in &values {
+                let ours = limbs_times(product, by);
+                for &(c, d) in &[(a, by), (b, a), (by, by)] {
+                    let other = U256::product(c, d);
+                    let theirs = limbs_times(other, b);
+                    let order = product.cmp_products(by, other, b);
+                    assert_eq!(
+                        order,
+                        ours.iter().rev().cmp(theirs.iter().rev()),
+                        "{a} {b} {by}"
+                    );
                 }
+            }
+            // The long division of the product's low half, led by its high half's rest, is the
+            // division a bit at a time.
+            for &divisor in values.iter().filter(|&&d| d > 0) {
+                let led = U256 {
+                    high: product.high % divisor,
+                    low: product.low,
+                };
+                assert_eq!(
+                    led.long_division(divisor),
+                    by_bits(led, divisor),
+                    "{a} {b} {divisor}"
+                );
             }
             // A shift by k is a division by 2^k, rounded the same way.
             for k in 1..=126 {
@@ -194,4 +290,55 @@ fn products_match_schoolbook_and_shifts_match_divisions() {
             }
         }
     }
+}
+
+#[test]
+fn a_division_and_a_product_order_by_hand_at_the_ends() {
+    // 2²⁵⁵ / 3: 2 to an odd power is 2 past a multiple of 3, so (2²⁵⁵ − 2) / 3 rest 2; its
+    // quotient passes u128, so rounded up it is none. 2²⁵⁵ / (2¹²⁸ − 1) is 2¹²⁷ + 2¹²⁷ / (2¹²⁸ − 1),
+    // 2¹²⁷ with a rest, so 2¹²⁷ + 1 up.
+    let top = U256 {
+        high: 1 << 127,
+        low: 0,
+    };
+    assert_eq!(top.div_ceil(3), None);
+    assert_eq!(top.div_ceil(u128::MAX), Some((1 << 127) + 1));
+    let led = U256 {
+        high: (1 << 127) % 3,
+        low: 0,
+    };
+    assert_eq!(led.long_division(3).rest, 2);
+    // 2¹²⁸ / 2 is 2¹²⁷ either way; (2¹²⁸ + 1) / 2 is 2¹²⁷ rest 1, so 2¹²⁷ + 1 up; 2²⁰⁰ / 2¹⁰⁰
+    // is 2¹⁰⁰; 2²⁰⁰ / 2¹⁰ passes u128.
+    let two_128 = U256::product(1 << 64, 1 << 64);
+    assert_eq!(two_128.div_ceil(2), Some(1 << 127));
+    let odd = two_128.checked_add(U256::product(1, 1)).unwrap();
+    assert_eq!(odd.div_ceil(2), Some((1 << 127) + 1));
+    let two_200 = U256::product(1 << 100, 1 << 100);
+    assert_eq!(two_200.div_ceil(1 << 100), Some(1 << 100));
+    assert_eq!(two_200.div_ceil(1 << 10), None);
+    // 1 / 1 is 1; 1 / 2 is 0 rest 1, so 1 up.
+    let one = U256::product(1, 1);
+    assert_eq!((one.div_ceil(1), one.div_ceil(2)), (Some(1), Some(1)));
+    // At 384 bits: (2²⁵⁶ − 1)(2¹²⁸ − 1) equals itself, and passes (2²⁵⁶ − 1)(2¹²⁸ − 2) by
+    // 2²⁵⁶ − 1; 2²⁵⁵ · 1 is 2¹²⁸ · 2¹²⁷, and below 2¹²⁸ · (2¹²⁷ + 1); and 0 · 0 is 0 · 1.
+    let full = U256 {
+        high: u128::MAX,
+        low: u128::MAX,
+    };
+    assert_eq!(
+        full.cmp_products(u128::MAX, full, u128::MAX),
+        Ordering::Equal
+    );
+    assert_eq!(
+        full.cmp_products(u128::MAX, full, u128::MAX - 1),
+        Ordering::Greater
+    );
+    assert_eq!(
+        full.cmp_products(u128::MAX - 1, full, u128::MAX),
+        Ordering::Less
+    );
+    assert_eq!(top.cmp_products(1, two_128, 1 << 127), Ordering::Equal);
+    assert_eq!(top.cmp_products(1, two_128, (1 << 127) + 1), Ordering::Less);
+    assert_eq!(U256::ZERO.cmp_products(0, U256::ZERO, 1), Ordering::Equal);
 }

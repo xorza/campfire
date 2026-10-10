@@ -31,12 +31,12 @@ impl<'de> Deserialize<'de> for CollisionData {
         let fields = Fields::deserialize(deserializer)?;
         let form = match (fields.radius, fields.size) {
             (Some(radius), None) => BodyForm::circle(radius.checked("collision radius: ")?)
-                .ok_or_else(|| D::Error::custom("a collision radius is positive, up to 64 m"))?,
+                .ok_or_else(|| D::Error::custom("a collision radius is positive, up to 2,048 m"))?,
             (None, Some([width, height])) => {
                 let side = |side: Scalar| side.checked::<D::Error>("collision box: ");
                 BodyForm::box_sized([side(width)?, side(height)?]).ok_or_else(|| {
                     D::Error::custom(
-                        "a collision box's sides are at least 2⁻¹⁰ m, its diagonal at most 126 m",
+                        "a collision box's sides are at least 2⁻¹⁰ m, its diagonal at most 4,094 m",
                     )
                 })?
             }

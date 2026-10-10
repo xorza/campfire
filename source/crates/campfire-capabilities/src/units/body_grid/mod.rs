@@ -78,7 +78,7 @@ impl<K: Copy> BodyGrid<K> {
         let side = self
             .widest
             .checked_mul_int(2)
-            .expect("a body's bound is within 64 m");
+            .expect("a body's bound is within 2,048 m");
         self.cell = side.max(Num::ONE).to_bits();
         let cell = self.cell;
         for body in &mut self.entries {

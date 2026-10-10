@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use campfire_math::{FloorRoot, Num, Vec3};
+use campfire_math::{FloorRoot, Num, U256, Vec3};
 use campfire_sim::{Position, StableId};
 
 use crate::geometry::body_box::BodyBox;
@@ -153,12 +153,15 @@ impl Collider {
     /// points the same way and is `reach` bits long, its magnitude rounded up to a whole bit, so
     /// the two bodies end touching or apart. That magnitude is `√x` for `x = along² · reach² ÷
     /// square`, and a whole `k` is at least `√x` exactly when `k² ≥ ⌈x⌉`. Both bodies' radii are
-    /// within `Shape::MAX_BOUND`, 2³⁰ bits, so `|along| < reach ≤ 2³¹` and the square of the
-    /// product fits `u128`.
+    /// within `Shape::MAX_BOUND`, 2³⁵ bits, so `|along| < reach ≤ 2³⁶`: the product's square,
+    /// below 2¹⁴⁴, is a `U256`, and `x`, at most `reach²` as `along² ≤ square`, fits `u128`, as
+    /// does `square`, below `reach²`, as the bodies overlap.
     fn reaching(along: i128, reach: i128, square: i128) -> i128 {
         debug_assert!(reach <= 2 * i128::from(Shape::MAX_BOUND.to_bits()));
         let product = (along * reach).unsigned_abs();
-        let least = (product * product).div_ceil(square.cast_unsigned());
+        let least = U256::product(product, product)
+            .div_ceil(square.cast_unsigned())
+            .expect("at most the reach's square");
         let root = least.floor_root();
         let up = if root * root < least { root + 1 } else { root };
         up.cast_signed() * along.signum()

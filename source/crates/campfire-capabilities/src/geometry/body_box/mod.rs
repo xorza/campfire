@@ -71,9 +71,9 @@ impl BodyBox {
     /// The least size: 2⁻¹⁰ m, about a millimeter, many bits above the rounding of a half
     /// edge, so the rounded box never lies flat at any angle.
     pub(crate) const MIN_SIZE: Num = Num::from_bits(1 << (Num::FRAC_BITS - 10));
-    /// The longest diagonal, unrounded: 126 m, so the corners stay within `Shape::MAX_BOUND` of the
-    /// position whatever the rounding.
-    pub(crate) const MAX_DIAGONAL: Num = Num::int(126);
+    /// The longest diagonal, unrounded: 4,094 m, so the corners stay within `Shape::MAX_BOUND` of
+    /// the position whatever the rounding.
+    pub(crate) const MAX_DIAGONAL: Num = Num::int(4094);
 
     /// The box of `size`, `[width, height]` in meters along `a` and `b`, turned by `angle`
     /// degrees counterclockwise: each component of a half edge is the exact product of half a
@@ -96,7 +96,7 @@ impl BodyBox {
         let SinCos { sin, cos } = BodyBox::turn(angle);
         let half = |size: Num, by: Num| {
             size.checked_mul_div_int(by, 2)
-                .expect("half a size within 126 m times at most 1 fits")
+                .expect("half a size within 4,094 m times at most 1 fits")
         };
         let made = BodyBox::of_halves([
             [half(width, cos), half(width, sin)],
@@ -377,7 +377,7 @@ impl BodyBox {
     }
 }
 
-/// A snapshot is untrusted, so half edges that lie flat, turn clockwise, or reach past 64 m fail
+/// A snapshot is untrusted, so half edges that lie flat, turn clockwise, or reach past 2,048 m fail
 /// to decode; the bound is derived again.
 impl<'de> Deserialize<'de> for BodyBox {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<BodyBox, D::Error> {
@@ -387,7 +387,7 @@ impl<'de> Deserialize<'de> for BodyBox {
         }
         let Fields { half } = Fields::deserialize(deserializer)?;
         BodyBox::of_halves(half).ok_or_else(|| {
-            D::Error::custom("a box's half edges turn counterclockwise, within 64 m")
+            D::Error::custom("a box's half edges turn counterclockwise, within 2,048 m")
         })
     }
 }
@@ -633,45 +633,69 @@ fn divide(num: i128, den: i128) -> i128 {
 fn touching(off: Flat, normal: Flat, out: i128, radius: Num) -> Flat {
     let radius = i128::from(radius.to_bits());
     let square = dot(normal, normal);
-    debug_assert!(square > 0 && radius * radius * square > out * out.abs());
+    debug_assert!(
+        square > 0
+            && (out <= 0
+                || U256::product(radius.unsigned_abs().pow(2), square.unsigned_abs())
+                    > U256::product(out.unsigned_abs(), out.unsigned_abs())),
+        "a body that overlaps the box lies within its radius of the line"
+    );
     [0, 1].map(|axis| {
         off[axis] + outward(normal[axis].abs(), out, square, radius) * normal[axis].signum()
     })
 }
 
+/// The first `k` `outward` tries: the quotient, rounded up, with `square`'s root rounded down to
+/// as many bits of fraction as 128 bits leave beside it.
+fn first_outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
+    let square = square.unsigned_abs();
+    let fine = (127 - (128 - square.leading_zeros())) / 2;
+    // √square · 2^fine rounded down, below 2⁶⁴, so a radius times it fits.
+    let length = (square << (2 * fine)).floor_root().cast_signed();
+    // Each term is below 2¹⁰⁰, whatever `square` is: `length` is about √square · 2^fine, and
+    // `out` within √square · 2³⁶.
+    let reach = radius * length - (out << fine);
+    if reach <= 0 {
+        return 0;
+    }
+    U256::product(along.unsigned_abs(), reach.unsigned_abs())
+        .div_ceil(square << fine)
+        .expect("a move within a box and a body fits")
+        .cast_signed()
+}
+
 /// The least whole `k` with `k · square ≥ along · (radius·√square − out)`: the move of `touching`
 /// along an axis on which `normal` has `along`, rounded up. `k` passes it exactly when
 /// `k · square + along · out` is at least `along · radius · √square`, which squares compare in
-/// `U256`, both sides being whole. A fine root, rounded down, gives a first `k` at most the
-/// least and fewer than 3 below it, which the test then raises.
+/// `U256`, both sides being whole. The first `k` tried is the quotient, rounded up, with a fine
+/// root of `square` in place of its root: the root rounds down, so the first `k` is at most the
+/// least, and short of it by `along · radius · 2⁻ᶠ ÷ square ≤ radius · 2⁻ᶠ ÷ √square` before the
+/// rounding up, where `f` is the root's bits of fraction, as many as 128 bits leave beside
+/// `square`, so `2ᶠ · √square ≥ 2⁶²·⁵`: below 2⁻²⁷ for a radius within `Shape::MAX_BOUND`, so the
+/// first `k` is the least or one below it.
 ///
-/// A box's corners and a body's radius lie within `Shape::MAX_BOUND`, 2³⁰ bits, of their
-/// centres, so `along ≤ √square ≤ 2³¹`, `|out| ≤ √square · 2³²`, and every product fits.
+/// A box's corners and a body's radius lie within `Shape::MAX_BOUND`, 2³⁵ bits, of their centres:
+/// `normal` is an edge, below its diagonal's 4,094 m, 2³⁶ bits, or the way off a corner, within
+/// the radius, so `along ≤ √square < 2³⁶`; `off` lies within the box, its diagonal from the
+/// edge's corner, or within the radius of the edge, so `|out| < √square · 2³⁶`; so
+/// `k < along · (radius + |out| ÷ √square) ÷ √square + 1 < 2³⁷`, `k · square` and `along · out`
+/// are below 2¹⁰⁹, and `(along · radius)² · square` below 2²¹⁴.
 fn outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
-    let length = fine_root(square.unsigned_abs());
-    let estimate = along * (radius * length - (out << FINE)) / (square << FINE);
     let bound = U256::product(
-        (along * radius).unsigned_abs().pow(2),
-        square.unsigned_abs(),
-    );
+        (along * radius).unsigned_abs(),
+        (along * radius).unsigned_abs(),
+    )
+    .checked_mul(square.unsigned_abs())
+    .expect("a bound within 2²¹⁴ fits 256 bits");
     let passes = |k: i128| {
         let side = k * square + along * out;
         side >= 0 && U256::product(side.unsigned_abs(), side.unsigned_abs()) >= bound
     };
-    let mut k = estimate.max(0);
+    let mut k = first_outward(along, out, square, radius);
     while !passes(k) {
         k += 1;
     }
     k
-}
-
-/// The bits below a bit that a fine root keeps.
-const FINE: u32 = 31;
-
-/// `√square × 2³¹`, rounded down, for a `square` below 2⁶⁶: a way within a box's reach.
-fn fine_root(square: u128) -> i128 {
-    debug_assert!(square < 1 << 66, "a way within 64 m and a box's edge");
-    (square << (2 * FINE)).floor_root().cast_signed()
 }
 
 #[cfg(test)]

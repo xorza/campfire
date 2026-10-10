@@ -137,15 +137,18 @@ fn overlapping_bodies_part_to_the_sum_of_their_radii() {
 #[test]
 fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
     // Offsets in bits from the first body to the second, with their radii in meters. The
-    // squared lengths 2, 74, 2⁴⁹ + 2²⁵ + 1 and 2⁶⁰ + 24 690·2³⁰ + 12 345² + 2⁵⁸ are not
-    // squares; 81 and 25·2⁴⁰ are. The last two pairs stand at `Shape::MAX_BOUND`.
-    let cases: [([i64; 2], [i64; 2]); 6] = [
+    // squared lengths 2, 74, 2⁴⁹ + 2²⁵ + 1 and 2⁷⁰ + 24 690·2³⁵ + 12 345² + 2⁶⁸ are not
+    // squares; 81, 25·2⁴⁰ and 1 are. The last four pairs stand at `Shape::MAX_BOUND`, 2,048 m,
+    // where the product of an offset and the reach squares past `u128`.
+    let cases: [([i64; 2], [i64; 2]); 8] = [
         ([1, 1], [1, 1]),
         ([0, -9], [1, 1]),
         ([3 << 20, -4 << 20], [1, 1]),
         ([-(1 << 24), (1 << 24) + 1], [1, 1]),
-        ([-7, 5], [1, 64]),
-        ([(1 << 30) + 12_345, -(1 << 29)], [64, 64]),
+        ([-7, 5], [1, 2048]),
+        ([(1 << 35) + 12_345, -(1 << 34)], [2048, 2048]),
+        ([1, 0], [2048, 2048]),
+        ([-1, 1], [2048, 2048]),
     ];
     for (offset, radii) in cases {
         let mut pair = row(&[
@@ -174,12 +177,16 @@ fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
             // `n` is the exact |along| · reach ÷ √square rounded up when
             // (n − 1)² · square < along² · reach² ≤ n² · square, or both are 0.
             let n = parted[axis].unsigned_abs();
-            let exact = (along[axis] * reach).unsigned_abs().pow(2);
+            let product = (along[axis] * reach).unsigned_abs();
+            let exact = U256::product(product, product);
             let square = square.cast_unsigned();
             let case = format!("{offset:?} with radii {radii:?}, axis {axis}");
             assert_eq!(parted[axis].signum(), along[axis].signum(), "{case}");
-            assert!(exact <= n.pow(2) * square, "{case}");
-            assert!(n == 0 || (n - 1).pow(2) * square < exact, "{case}");
+            assert!(exact <= U256::product(n.pow(2), square), "{case}");
+            assert!(
+                n == 0 || U256::product((n - 1).pow(2), square) < exact,
+                "{case}"
+            );
             // Both walk, so they share the change, the second taking the odd bit.
             let change = parted[axis] - along[axis];
             assert_eq!(moved[0][axis], -(change / 2), "{case}");
