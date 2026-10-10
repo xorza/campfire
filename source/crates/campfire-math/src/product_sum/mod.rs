@@ -1,4 +1,5 @@
 use crate::num::Num;
+use crate::rounding::Rounding;
 use crate::u256::U256;
 
 #[cfg(feature = "bench")]
@@ -34,7 +35,7 @@ impl ProductSum {
     /// range of numbers when past it.
     pub fn saturating_num(self) -> Num {
         if let Some(above) = self.positive.checked_sub(self.negative) {
-            let bits = above.round_shr(Num::FRAC_BITS);
+            let bits = above.shr_rounded(Num::FRAC_BITS, Rounding::NearestEven);
             let bits = bits.and_then(|bits| i64::try_from(bits).ok());
             return bits.map_or(Num::MAX, Num::from_bits);
         }
@@ -42,7 +43,7 @@ impl ProductSum {
             .negative
             .checked_sub(self.positive)
             .expect("one side is the larger");
-        let bits = below.round_shr(Num::FRAC_BITS);
+        let bits = below.shr_rounded(Num::FRAC_BITS, Rounding::NearestEven);
         let bits = bits.and_then(|bits| u64::try_from(bits).ok());
         let bits = bits.and_then(|bits| 0_i64.checked_sub_unsigned(bits));
         bits.map_or(Num::MIN, Num::from_bits)

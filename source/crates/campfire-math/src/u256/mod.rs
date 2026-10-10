@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+use crate::rounding::Rounding;
+
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 
@@ -51,50 +53,38 @@ impl U256 {
         }
     }
 
-    /// `self / 2^shift` for a shift from 1 to 127, rounded to nearest, ties to even; `None` when
-    /// it passes `u128`.
-    pub const fn round_shr(self, shift: u32) -> Option<u128> {
+    /// `self / 2^shift` for a shift from 1 to 127, rounded by `rounding`; `None` when it passes
+    /// `u128`.
+    pub const fn shr_rounded(self, shift: u32, rounding: Rounding) -> Option<u128> {
         debug_assert!(0 < shift && shift < 128);
-        let floor_high = self.high >> shift;
-        if floor_high != 0 {
+        if self.high >> shift != 0 {
             return None;
         }
         let floor = (self.high << (128 - shift)) | (self.low >> shift);
         let rest = self.low & ((1 << shift) - 1);
-        let half = 1 << (shift - 1);
-        if rest > half || (rest == half && floor & 1 == 1) {
-            floor.checked_add(1)
-        } else {
-            Some(floor)
-        }
+        U256::rounded(floor, rest, 1 << shift, rounding)
     }
 
-    /// `self / divisor` for a positive divisor below 2¹²⁷, rounded to nearest, ties to even;
-    /// `None` when it passes `u128`.
-    pub const fn round_div(self, divisor: u128) -> Option<u128> {
-        debug_assert!(0 < divisor && divisor < 1 << 127);
-        let Some(Division { quotient, rest }) = self.divide(divisor) else {
-            return None;
-        };
-        // The rest is below the divisor, so below 2¹²⁷, and doubling it never overflows.
-        let twice = rest << 1;
-        if twice > divisor || (twice == divisor && quotient & 1 == 1) {
-            quotient.checked_add(1)
-        } else {
-            Some(quotient)
-        }
-    }
-
-    /// `self / divisor` for a positive divisor, rounded up; `None` when it passes `u128`.
-    pub const fn div_ceil(self, divisor: u128) -> Option<u128> {
+    /// `self / divisor` for a positive divisor, rounded by `rounding`; `None` when it passes
+    /// `u128`.
+    pub const fn div_rounded(self, divisor: u128, rounding: Rounding) -> Option<u128> {
         debug_assert!(divisor > 0);
         let Some(Division { quotient, rest }) = self.divide(divisor) else {
             return None;
         };
-        if rest == 0 {
-            Some(quotient)
+        U256::rounded(quotient, rest, divisor, rounding)
+    }
+
+    /// `floor`, or one more where `rounding` takes a rest of `rest` over `divisor` up; `None`
+    /// past `u128`.
+    const fn rounded(floor: u128, rest: u128, divisor: u128, rounding: Rounding) -> Option<u128> {
+        // The rest against what the divisor leaves past it, as twice the rest could pass u128;
+        // the rest is below the divisor, so the difference cannot wrap.
+        let half = divisor.wrapping_sub(rest);
+        if rounding.rounds_up(rest, half, rest == 0, floor & 1 == 1) {
+            floor.checked_add(1)
         } else {
-            quotient.checked_add(1)
+            Some(floor)
         }
     }
 

@@ -1,6 +1,6 @@
 use std::ops::{Range, RangeInclusive};
 
-use campfire_math::{Flat, FloorRoot, I64x4, Num, Vec3};
+use campfire_math::{Flat, FloorRoot, I64x4, Num, Rounding, Vec3};
 use campfire_sim::Position;
 
 use crate::geometry::body_box::BodyBox;
@@ -156,7 +156,7 @@ impl Grid {
             let grow = Halves::of(extent[axis]) + Halves::of(reach);
             let from = centre[axis] - grow - Halves::of(min[axis]) - cell;
             let to = centre[axis] + grow - Halves::of(min[axis]) - cell;
-            let first = ceil_div(from, 2 * cell).max(0);
+            let first = Rounding::Ceiling.divide(from, 2 * cell).max(0);
             let end = to.div_euclid(2 * cell).min(last(axis));
             first..=end
         };
@@ -393,7 +393,7 @@ impl Grid {
         let cell = i128::from(self.cell.to_bits());
         let last = |axis: usize| i128::from(self.size[axis]) - 1;
         let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
-        let first_column = (ceil_div(a[0], cell) - 1).max(0);
+        let first_column = (Rounding::Ceiling.divide(a[0], cell) - 1).max(0);
         let last_column = b[0].div_euclid(cell).min(last(0));
         let index = |at: i128| usize::try_from(at).expect("a cell of the grid");
         let mut rows = |column: i128, low: Quotient, high: Quotient| {
@@ -486,11 +486,6 @@ impl Quotient {
             rest: rest - carry * by,
         }
     }
-}
-
-/// `value` over `by`, positive, rounded up.
-const fn ceil_div(value: i128, by: i128) -> i128 {
-    -(-value).div_euclid(by)
 }
 
 #[cfg(test)]

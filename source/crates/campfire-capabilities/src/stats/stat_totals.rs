@@ -1,4 +1,4 @@
-use campfire_math::{Num, U256};
+use campfire_math::{Num, Rounding, U256};
 
 use crate::stats::stat_op::StatOp;
 
@@ -42,7 +42,7 @@ impl StatTotals {
         let negative = (base < 0) != (gain < 0);
         let magnitude = u128::from(base.unsigned_abs()) * u128::from(gain.unsigned_abs());
         let product = U256::product(magnitude, kept.cast_unsigned())
-            .round_shr(2 * Num::FRAC_BITS)
+            .shr_rounded(2 * Num::FRAC_BITS, Rounding::NearestEven)
             .map_or(i128::MAX, |bits| i128::try_from(bits).unwrap_or(i128::MAX));
         saturate(if negative { -product } else { product })
     }

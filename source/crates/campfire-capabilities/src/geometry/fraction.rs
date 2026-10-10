@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_math::{Num, U256};
+use campfire_math::{Num, Rounding, U256};
 
 /// A rational number `num / den` with a positive denominator, compared exactly: a share of a
 /// straight path, where a box first comes nearest it.
@@ -37,7 +37,7 @@ impl Fraction {
             value.to_bits().unsigned_abs().into(),
             self.num.unsigned_abs(),
         )
-        .round_div(self.den.unsigned_abs())
+        .div_rounded(self.den.unsigned_abs(), Rounding::NearestEven)
         .expect("a share of a number fits it");
         Num::from_bits(i64::try_from(bits).expect("a share of a number fits it"))
     }

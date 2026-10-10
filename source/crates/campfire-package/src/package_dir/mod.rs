@@ -9,9 +9,12 @@ use sha2::{Digest, Sha256};
 use crate::error::ContentError;
 use crate::file_index::{FileIndex, FileRow};
 use crate::package::SCRIPTS;
+use crate::package_dir::listings::Listings;
 use crate::package_files::PackageFiles;
 use crate::package_text::LOCALE;
 use crate::package_walk::PackageWalk;
+
+mod listings;
 
 /// Where a package's files are: on disk, or in memory, as a test builds them. Both read through
 /// the package's index into the same `PackageFiles`.
@@ -81,8 +84,17 @@ impl PackageDir {
     /// The package's index, and the files a load reads, the manifest's and those under `data/`,
     /// `scripts/` and `locale/`, each read once into memory and checked against its row. Any
     /// other file, as a session's map, reads on demand; no file the index does not list reads.
+    /// The open checks that every file the index lists is on disk by its exact name, each
+    /// directory listed once, and fails on the first that is not: a file system that ignores
+    /// case, as macOS's and Windows' do by default, would open a name that differs only in case,
+    /// which Linux holds as missing, so one package would load on one OS and fail on another.
+    /// Nothing changes an open package, so a read after the open takes the path as it is.
     pub fn read(&self) -> Result<PackageFiles, ContentError> {
-        let index = self.index()?;
+        let mut listings = Listings::default();
+        let index = FileIndex::decode(&self.read_index(&mut listings)?)?;
+        for (path, _) in index.rows() {
+            self.check_name(path, &mut listings)?;
+        }
         let mut files = BTreeMap::new();
         for (path, row) in index.rows() {
             if PackageDir::reads(path) {
@@ -130,12 +142,31 @@ impl PackageDir {
     /// The package's index alone, as a caller reads it to learn what the package holds, such as
     /// its maps, before it loads any file.
     pub(crate) fn index(&self) -> Result<FileIndex, ContentError> {
-        FileIndex::decode(&self.read_index()?)
+        FileIndex::decode(&self.read_index(&mut Listings::default())?)
     }
 
     /// The bytes of the package's index, whose own size is its bound.
-    fn read_index(&self) -> Result<Vec<u8>, ContentError> {
-        self.read_bytes(&PackageDir::engine_path(FileIndex::PATH), None)
+    fn read_index(&self, listings: &mut Listings) -> Result<Vec<u8>, ContentError> {
+        let path = PackageDir::engine_path(FileIndex::PATH);
+        self.check_name(&path, listings)?;
+        self.read_bytes(&path, None)
+    }
+
+    /// Missing, unless the file at `path` is on disk by its exact name, by the names `listings`
+    /// holds of the directories on its way. A tree in memory keys its files by their exact
+    /// paths.
+    fn check_name(&self, path: &PackagePath, listings: &mut Listings) -> Result<(), ContentError> {
+        let held = match self.source {
+            Source::Disk => listings
+                .hold(&self.root, path)
+                .map_err(ContentError::Read)?,
+            Source::Memory(_) => true,
+        };
+        if held {
+            Ok(())
+        } else {
+            Err(ContentError::Missing { path: path.clone() })
+        }
     }
 
     /// The bytes of the file at `path`: `size` of them, a file of another size `Changed`, or as

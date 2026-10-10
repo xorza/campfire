@@ -1,4 +1,4 @@
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -20,14 +20,16 @@ impl Share {
 
     /// The share of `amount`, rounded down to a whole amount, exactly.
     pub fn of(self, amount: i64) -> i64 {
-        let share = i128::from(amount) * i128::from(self.0) / i128::from(Share::WHOLE);
+        let share = i128::from(amount) * i128::from(self.0);
+        let share = Rounding::Floor.divide(share, i128::from(Share::WHOLE));
         i64::try_from(share).expect("a share of at most 1 of an amount fits")
     }
 
     /// The share of `value`, rounded down to the least amount a `Num` holds, exactly.
     pub fn of_num(self, value: Num) -> Num {
-        let bits = i128::from(value.to_bits()) * i128::from(self.0) / i128::from(Share::WHOLE);
-        Num::from_bits(i64::try_from(bits).expect("a share of at most 1 of a value fits"))
+        value
+            .checked_mul_ratio(self.0.into(), Share::WHOLE.into(), Rounding::Floor)
+            .expect("a share of at most 1 of a value fits")
     }
 
     /// Whether it is no share at all.
@@ -93,8 +95,12 @@ mod tests {
         assert_eq!(share("0.999999999").unwrap().of(1_000_000_000), 999_999_999);
         assert_eq!(share("1.0").unwrap().of(7), 7);
         assert_eq!(share("0").unwrap().of(7), 0);
-        // Rounded down: 0.5 of 7 is 3.
-        assert_eq!(share("0.5").unwrap().of(7), 3);
+        // Rounded down, toward −∞: 0.5 of 7 is 3, of −7 is −4; of the least step of a number,
+        // ε, 0 and −ε.
+        let half = share("0.5").unwrap();
+        assert_eq!((half.of(7), half.of(-7)), (3, -4));
+        assert_eq!(half.of_num(Num::EPSILON), Num::ZERO);
+        assert_eq!(half.of_num(-Num::EPSILON), -Num::EPSILON);
         for refused in [
             "1.5",
             "2",

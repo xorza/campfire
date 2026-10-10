@@ -25,7 +25,9 @@ fn touched_by_division(grid: &Grid, from: Position, to: Position) -> Vec<usize> 
     let last = |axis: usize| i128::from(grid.size[axis]) - 1;
     let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
     let mut cells = Vec::new();
-    for column in (ceil_div(a[0], cell) - 1).max(0)..=b[0].div_euclid(cell).min(last(0)) {
+    for column in
+        (Rounding::Ceiling.divide(a[0], cell) - 1).max(0)..=b[0].div_euclid(cell).min(last(0))
+    {
         let (z_low, z_high, scale) = if dx == 0 {
             (a[1].min(b[1]), a[1].max(b[1]), cell)
         } else {
@@ -34,7 +36,9 @@ fn touched_by_division(grid: &Grid, from: Position, to: Position) -> Vec<usize> 
             let end = at(b[0].min((column + 1) * cell));
             (start.min(end), start.max(end), dx * cell)
         };
-        for row in (ceil_div(z_low, scale) - 1).max(0)..=z_high.div_euclid(scale).min(last(1)) {
+        for row in (Rounding::Ceiling.divide(z_low, scale) - 1).max(0)
+            ..=z_high.div_euclid(scale).min(last(1))
+        {
             let at = row * i128::from(grid.size[0]) + column;
             cells.push(usize::try_from(at).unwrap());
         }

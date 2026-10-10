@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::floor_root::FloorRoot;
 use crate::num::decimal::Decimal;
 use crate::num::error::ParseNumError;
+use crate::rounding::Rounding;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -142,23 +143,45 @@ impl Num {
     /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once to
     /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit.
     pub(crate) const fn from_raw_products(sum: i128) -> Option<Num> {
-        narrow(round_shr(sum, Self::FRAC_BITS))
+        narrow(Rounding::NearestEven.shift_right(sum, Self::FRAC_BITS))
     }
 
     /// The value whose bits are nearest to `numerator / denominator`, for a ratio of raw products;
     /// `None` when it does not fit.
     pub(crate) const fn from_raw_ratio(numerator: i128, denominator: i128) -> Option<Num> {
-        narrow(round_div(numerator, denominator))
+        narrow(Rounding::NearestEven.divide(numerator, denominator))
     }
 
     pub const fn checked_div(self, rhs: Num) -> Option<Num> {
+        self.checked_div_rounded(rhs, Rounding::NearestEven)
+    }
+
+    /// `self ÷ rhs`, rounded once by `rounding`; `None` for a divisor of 0 or a result that does
+    /// not fit.
+    pub const fn checked_div_rounded(self, rhs: Num, rounding: Rounding) -> Option<Num> {
         if rhs.0 == 0 {
             return None;
         }
-        narrow(round_div(
-            (self.0 as i128) << Self::FRAC_BITS,
-            rhs.0 as i128,
-        ))
+        narrow(rounding.divide((self.0 as i128) << Self::FRAC_BITS, rhs.0 as i128))
+    }
+
+    /// `self × by ÷ over`, from the exact product, rounded once by `rounding`; `None` for a
+    /// divisor of 0 or a result that does not fit.
+    pub const fn checked_mul_div(self, by: Num, over: Num, rounding: Rounding) -> Option<Num> {
+        if over.0 == 0 {
+            return None;
+        }
+        narrow(rounding.divide(self.0 as i128 * by.0 as i128, over.0 as i128))
+    }
+
+    /// `self × by ÷ over` for whole `by` and `over`, as a share of a value, from the exact
+    /// product, rounded once by `rounding`; `None` for a divisor of 0 or a result that does not
+    /// fit.
+    pub const fn checked_mul_ratio(self, by: i64, over: i64, rounding: Rounding) -> Option<Num> {
+        if over == 0 {
+            return None;
+        }
+        narrow(rounding.divide(self.0 as i128 * by as i128, over as i128))
     }
 
     /// Exact scaling by an integer.
@@ -175,7 +198,7 @@ impl Num {
         if divisor == 0 {
             return None;
         }
-        narrow(round_div(
+        narrow(Rounding::NearestEven.divide(
             self.0 as i128 * rhs.0 as i128,
             (divisor as i128) << Self::FRAC_BITS,
         ))
@@ -185,7 +208,7 @@ impl Num {
         if rhs == 0 {
             return None;
         }
-        narrow(round_div(self.0 as i128, rhs as i128))
+        narrow(Rounding::NearestEven.divide(self.0 as i128, rhs as i128))
     }
 
     /// `None` for a negative value.
@@ -243,44 +266,6 @@ const fn narrow(bits: i128) -> Option<Num> {
 const fn to_i64(value: i128) -> i64 {
     debug_assert!(value >= i64::MIN as i128 && value <= i64::MAX as i128);
     value as i64
-}
-
-/// `value / 2^shift`, rounded to nearest, ties to even. This and `round_div` are free functions,
-/// where `U256` has methods of the same names: `i128` is a foreign type, a trait's methods
-/// cannot be `const`, and trig's tables call both at compile time.
-const fn round_shr(value: i128, shift: u32) -> i128 {
-    debug_assert!(shift > 0);
-    let floor = value >> shift;
-    // Neither step can overflow: `rest` is in `[0, 2^shift)` and `floor` is at most `value / 2`.
-    let rest = value.wrapping_sub(floor << shift);
-    let half = 1 << (shift - 1);
-    if rest > half || (rest == half && floor & 1 == 1) {
-        floor.wrapping_add(1)
-    } else {
-        floor
-    }
-}
-
-/// `numerator / denominator`, rounded to nearest, ties to even. Callers keep the denominator
-/// non-zero and below 2¹²⁶, and the quotient below 2¹²⁶, so its sign fits.
-const fn round_div(numerator: i128, denominator: i128) -> i128 {
-    let n = numerator.unsigned_abs();
-    let d = denominator.unsigned_abs();
-    debug_assert!(d != 0 && d < 1 << 126);
-    let mut magnitude = n / d;
-    let rest = n % d;
-    // No step can overflow: `rest < d < 2¹²⁶` and the quotient is below 2¹²⁶.
-    let twice_rest = rest << 1;
-    if twice_rest > d || (twice_rest == d && magnitude & 1 == 1) {
-        magnitude = magnitude.wrapping_add(1);
-    }
-    debug_assert!(magnitude < 1 << 126, "round_div quotient of 2¹²⁶ or more");
-    let magnitude = magnitude.cast_signed();
-    if (numerator < 0) == (denominator < 0) {
-        magnitude
-    } else {
-        magnitude.wrapping_neg()
-    }
 }
 
 impl Add for Num {

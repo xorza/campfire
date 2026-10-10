@@ -1,5 +1,5 @@
 use campfire_common::Ticks;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 
 use crate::stats::stat_id::StatId;
 use crate::values::damage_kind::DamageKind;
@@ -19,9 +19,10 @@ impl Weapon {
     /// one bit of a second, and longer than `windup`.
     pub(crate) fn period(self, values: &[Num], hz: u32, windup: Ticks) -> Ticks {
         let rate = values.get(self.rate.index()).copied().unwrap_or(Num::ZERO);
-        let attacks = (i128::from(rate.to_bits()) << Num::FRAC_BITS).max(1 << Num::FRAC_BITS);
-        let period = (u128::from(hz) << (2 * Num::FRAC_BITS)).div_ceil(attacks.cast_unsigned());
-        let period = u64::try_from(period).unwrap_or(u64::MAX);
+        // A count of ticks, not a number: up to 2³² · 2²⁴ at the least rate, past a `Num`.
+        let rate = i128::from(rate.to_bits().max(1));
+        let ticks = Rounding::Ceiling.divide(i128::from(hz) << Num::FRAC_BITS, rate);
+        let period = u64::try_from(ticks).expect("2⁵⁶ ticks at most");
         Ticks::new(period.max(windup.get() + 1))
     }
 

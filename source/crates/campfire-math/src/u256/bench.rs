@@ -4,10 +4,11 @@ use criterion::{Criterion, Throughput};
 
 use crate::floor_root::bench::values;
 use crate::num::bench::COUNT;
+use crate::rounding::Rounding;
 use crate::u256::U256;
 
 /// `U256`'s operations over `COUNT` inputs each: `product` of two values of 1 to 128 bits;
-/// `div_ceil` and `round_div` as `Collider::reaching` and `Fraction::of` take them, the square of
+/// `div_rounded` up and to nearest, as `Collider::reaching` and `Fraction::of` take it, the square of
 /// a value of 1 to 72 bits over one of 17 to 72, so the quotient fits and both the native path
 /// and the long division count; and `cmp_products` of two such squares, each times the other's
 /// divisor, the second from other draws.
@@ -36,17 +37,17 @@ pub(crate) fn u256(c: &mut Criterion) {
             }
         });
     });
-    group.bench_function("div_ceil", |bench| {
+    group.bench_function("div_ceiling", |bench| {
         bench.iter(|| {
             for (&square, &divisor) in ours.iter().zip(&our_dens) {
-                black_box(black_box(square).div_ceil(divisor));
+                black_box(black_box(square).div_rounded(divisor, Rounding::Ceiling));
             }
         });
     });
-    group.bench_function("round_div", |bench| {
+    group.bench_function("div_nearest_even", |bench| {
         bench.iter(|| {
             for (&square, &divisor) in ours.iter().zip(&our_dens) {
-                black_box(black_box(square).round_div(divisor));
+                black_box(black_box(square).div_rounded(divisor, Rounding::NearestEven));
             }
         });
     });

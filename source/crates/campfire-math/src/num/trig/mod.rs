@@ -1,4 +1,5 @@
-use crate::num::{Num, SinCos, round_div, round_shr, to_i64};
+use crate::num::{Num, SinCos, to_i64};
+use crate::rounding::Rounding;
 
 /// Fractional bits of the internal fixed point. Every intermediate of the kernels is at most 1 in
 /// magnitude, so it fits `i64` and a product of two is a single 64×64 multiply.
@@ -11,14 +12,17 @@ const PI_BITS: u32 = 120;
 const PI_SCALED: u128 = machin_pi();
 /// Bound on the truncation error of `machin_pi`: under 1000 units of 2⁻¹²⁰ by its term count.
 const PI_ERROR: u128 = 1 << 12;
-const PI_WIDE: i128 = round_shr(PI_SCALED.cast_signed(), PI_BITS - WIDE_BITS);
-const HALF_PI_WIDE: i128 = round_shr(PI_SCALED.cast_signed(), PI_BITS - WIDE_BITS + 1);
+const PI_WIDE: i128 =
+    Rounding::NearestEven.shift_right(PI_SCALED.cast_signed(), PI_BITS - WIDE_BITS);
+const HALF_PI_WIDE: i128 =
+    Rounding::NearestEven.shift_right(PI_SCALED.cast_signed(), PI_BITS - WIDE_BITS + 1);
 /// 2/π · 2⁶², to find the quadrant with a multiply.
-const TWO_OVER_PI: i64 = to_i64(round_div(1 << 124, HALF_PI_WIDE));
+const TWO_OVER_PI: i64 = to_i64(Rounding::NearestEven.divide(1 << 124, HALF_PI_WIDE));
 /// Fractional bits of π/2 for reducing an angle: with 101, `n · π/2` stays exact to 2⁻⁶² for
 /// every quadrant count `n` of a `Num`, which is below 2³⁹.
 const REDUCE_BITS: u32 = 101;
-const HALF_PI_REDUCE: i128 = round_shr(PI_SCALED.cast_signed(), PI_BITS - REDUCE_BITS + 1);
+const HALF_PI_REDUCE: i128 =
+    Rounding::NearestEven.shift_right(PI_SCALED.cast_signed(), PI_BITS - REDUCE_BITS + 1);
 
 /// `sin_cos` looks up the nearest angle `k / 64`, which leaves a remainder of at most 1/128;
 /// entries up to 51/64 cover π/4 with margin.
@@ -163,7 +167,7 @@ const fn to_index(value: u64) -> usize {
 }
 
 const fn to_num(wide: i128) -> Num {
-    Num::from_wide_bits(round_shr(wide, WIDE_BITS - Num::FRAC_BITS))
+    Num::from_wide_bits(Rounding::NearestEven.shift_right(wide, WIDE_BITS - Num::FRAC_BITS))
 }
 
 /// sin or cos of `k / 64` at 2⁻⁶², by the exact series.
@@ -202,8 +206,8 @@ const fn atan_table(column: AtanColumn) -> [i64; ATAN_ENTRIES] {
             .cast_signed();
         table[k] = to_i64(match column {
             AtanColumn::Angle => atan_series(halve(halve(tangent))) << 2,
-            AtanColumn::Cos => round_div(1 << (2 * WIDE_BITS), root),
-            AtanColumn::Sin => round_div(tangent << WIDE_BITS, root),
+            AtanColumn::Cos => Rounding::NearestEven.divide(1 << (2 * WIDE_BITS), root),
+            AtanColumn::Sin => Rounding::NearestEven.divide(tangent << WIDE_BITS, root),
         });
         k += 1;
     }
@@ -264,12 +268,12 @@ const fn halve(t: i128) -> i128 {
     let root = ((WIDE_ONE as i128 + exact_mul(t, t)).cast_unsigned() << WIDE_BITS)
         .isqrt()
         .cast_signed();
-    round_div(t << WIDE_BITS, WIDE_ONE as i128 + root)
+    Rounding::NearestEven.divide(t << WIDE_BITS, WIDE_ONE as i128 + root)
 }
 
 /// A rounded product at 2⁻⁶², for building the tables.
 const fn exact_mul(a: i128, b: i128) -> i128 {
-    round_shr(a * b, WIDE_BITS)
+    Rounding::NearestEven.shift_right(a * b, WIDE_BITS)
 }
 
 #[cfg(test)]

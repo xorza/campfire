@@ -132,6 +132,35 @@ fn div_rounds_to_nearest_even() {
 }
 
 #[test]
+fn each_rounding_takes_its_own_way() {
+    // 7ε ÷ 2 = 3.5ε: to the even 4ε, down 3ε, up 4ε; −7ε ÷ 2: −4ε, −4ε, −3ε; 5ε ÷ 2 = 2.5ε: 2ε,
+    // 2ε, 3ε, so the three modes give three answers over the two.
+    let modes = [Rounding::NearestEven, Rounding::Floor, Rounding::Ceiling];
+    let halve = |bits: i64| modes.map(|mode| n(bits).checked_mul_ratio(1, 2, mode).unwrap());
+    assert_eq!(halve(7), [n(4), n(3), n(4)]);
+    assert_eq!(halve(-7), [n(-4), n(-4), n(-3)]);
+    assert_eq!(halve(5), [n(2), n(2), n(3)]);
+    // 1 ÷ 3 = 5 592 405.33ε: 5 592 405ε to nearest and down, 5 592 406ε up; and 1.5 · 1.5 ÷ 0.75
+    // = 3 whole every way.
+    let third = modes.map(|mode| Num::ONE.checked_div_rounded(n(3 * ONE), mode).unwrap());
+    assert_eq!(third, [n(5_592_405), n(5_592_405), n(5_592_406)]);
+    let (one_half, three_quarters) = (n(ONE + HALF), n(HALF + QUARTER));
+    let whole = modes.map(|mode| one_half.checked_mul_div(one_half, three_quarters, mode));
+    assert_eq!(whole, [Some(n(3 * ONE)); 3]);
+    // A divisor of 0, and a result past the range, give none.
+    assert_eq!(
+        Num::ONE.checked_div_rounded(Num::ZERO, Rounding::Floor),
+        None
+    );
+    assert_eq!(
+        Num::ONE.checked_mul_div(Num::ONE, Num::ZERO, Rounding::Floor),
+        None
+    );
+    assert_eq!(Num::ONE.checked_mul_ratio(1, 0, Rounding::Floor), None);
+    assert_eq!(Num::MAX.checked_mul_ratio(2, 1, Rounding::Floor), None);
+}
+
+#[test]
 fn int_operands() {
     // 1.5 · 3 = 4.5 exactly; ε/2 ties to 0, 3ε/2 and 5ε/2 tie to 2ε.
     assert_eq!(n(ONE + HALF) * 3, n(4 * ONE + HALF));
@@ -209,6 +238,23 @@ pub(super) const fn nearest_even(numerator: i128, denominator: i128) -> i128 {
     }
 }
 
+/// `numerator / denominator` rounded by `rounding`, by its floor and the neighbour above:
+/// the floor, the neighbour, or the nearer of the two with `nearest_even`.
+fn rounded_exactly(numerator: i128, denominator: i128, rounding: Rounding) -> i128 {
+    let (numerator, denominator) = if denominator < 0 {
+        (-numerator, -denominator)
+    } else {
+        (numerator, denominator)
+    };
+    let floor = numerator.div_euclid(denominator);
+    match rounding {
+        Rounding::NearestEven => nearest_even(numerator, denominator),
+        Rounding::Floor => floor,
+        Rounding::Ceiling if floor * denominator == numerator => floor,
+        Rounding::Ceiling => floor + 1,
+    }
+}
+
 /// The number of `bits` when they fit, the oracle the exact sums and products are read by.
 pub(super) fn exact(bits: i128) -> Option<Num> {
     i64::try_from(bits).ok().map(Num::from_bits)
@@ -270,6 +316,26 @@ proptest! {
             nearest_even(-i128::from(a), -i128::from(k))
         };
         prop_assert_eq!(n(a).checked_div_int(k), exact(expected));
+    }
+
+    #[test]
+    fn each_rounding_matches_exact(
+        a in bits(),
+        b in bits(),
+        c in bits(),
+        k in -1000_i64..1000,
+        m in -1000_i64..1000,
+    ) {
+        for rounding in [Rounding::NearestEven, Rounding::Floor, Rounding::Ceiling] {
+            let rounded = |n: i128, d: i128| exact(rounded_exactly(n, d, rounding));
+            let (wide_a, wide_b, wide_c) = (i128::from(a), i128::from(b), i128::from(c));
+            let quotient = (b != 0).then(|| rounded(wide_a << 24, wide_b)).flatten();
+            prop_assert_eq!(n(a).checked_div_rounded(n(b), rounding), quotient);
+            let scaled = (c != 0).then(|| rounded(wide_a * wide_b, wide_c)).flatten();
+            prop_assert_eq!(n(a).checked_mul_div(n(b), n(c), rounding), scaled);
+            let ratio = (m != 0).then(|| rounded(wide_a * i128::from(k), i128::from(m))).flatten();
+            prop_assert_eq!(n(a).checked_mul_ratio(k, m, rounding), ratio);
+        }
     }
 
     #[test]

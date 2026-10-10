@@ -19,7 +19,7 @@ fn a_period_is_the_tick_rate_over_the_rate_rounded_up_and_past_the_windup() {
     // 0.67 attacks a second is 11240734.72 / 2²⁴, to 11240735: 30 × 2²⁴ over it is 44.78,
     // up to 45 ticks; 20 × 2²⁴ over it, 29.85, up to 30. Three a second is 10 ticks at 30
     // exactly, but must outlast a windup of 10. No rate, or one not positive, counts as one
-    // bit: 30 × 2²⁴ ticks.
+    // bit: 30 × 2²⁴ ticks; at the highest tick rate, (2³² − 1) × 2²⁴, past what a `Num` holds.
     let slow = [decimal("0.67")];
     let three = [Num::from_int(3).unwrap()];
     let none = [Num::from_int(-2).unwrap()];
@@ -30,6 +30,7 @@ fn a_period_is_the_tick_rate_over_the_rate_rounded_up_and_past_the_windup() {
         (&three[..], 30, 10, 11),
         (&none[..], 30, 0, 30 << 24),
         (&[][..], 30, 0, 30 << 24),
+        (&none[..], u32::MAX, 0, u64::from(u32::MAX) << 24),
     ];
     for (values, hz, windup, period) in cases {
         let got = weapon().period(values, hz, Ticks::new(windup));

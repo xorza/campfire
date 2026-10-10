@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_sim::{SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -96,12 +96,12 @@ impl Site {
         let before = self.progress;
         self.progress = (before + rate).min(time);
         let share = |progress: Num| {
-            let bits = i128::from(self.gain.to_bits()) * i128::from(progress.to_bits())
-                / i128::from(time.to_bits());
-            i64::try_from(bits).expect("a share of the gain fits")
+            self.gain
+                .checked_mul_div(progress, time, Rounding::Floor)
+                .expect("a share of the gain fits")
         };
         Progressed {
-            life: Num::from_bits(share(self.progress) - share(before)),
+            life: share(self.progress) - share(before),
             complete: self.progress == time,
         }
     }

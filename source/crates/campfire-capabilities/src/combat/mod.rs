@@ -165,7 +165,7 @@ pub(crate) mod internals {
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_common::Ticks;
-    use campfire_math::Num;
+    use campfire_math::{Num, Rounding};
     use campfire_sim::TickRate;
 
     #[cfg(test)]
@@ -291,9 +291,10 @@ pub(crate) mod internals {
             let id = internals::weapon(world, weapon);
             // The rate whose attacks are `period` ticks apart, rounded up so the period
             // rounds back to `period`.
-            let bits = (u128::from(hz) << (2 * Num::FRAC_BITS))
-                .div_ceil(u128::from(self.period.get()) << Num::FRAC_BITS);
-            let rate = Num::from_bits(i64::try_from(bits).unwrap());
+            let period = Num::from_int(i64::try_from(self.period.get()).unwrap()).unwrap();
+            let rate = Num::int(i64::from(hz))
+                .checked_div_rounded(period, Rounding::Ceiling)
+                .unwrap();
             // One value for each stat of the match's book, as a refresh gives a unit, the rest 0.
             let count = world
                 .get_resource::<StatBook>()

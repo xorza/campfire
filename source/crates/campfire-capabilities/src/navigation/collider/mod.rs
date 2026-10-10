@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use campfire_math::{FloorRoot, Num, U256, Vec3};
+use campfire_math::{CeilRoot, Num, Rounding, U256, Vec3};
 use campfire_sim::{Position, StableId};
 
 use crate::geometry::body_box::BodyBox;
@@ -160,11 +160,9 @@ impl Collider {
         debug_assert!(reach <= 2 * i128::from(Shape::MAX_BOUND.to_bits()));
         let product = (along * reach).unsigned_abs();
         let least = U256::product(product, product)
-            .div_ceil(square.cast_unsigned())
+            .div_rounded(square.cast_unsigned(), Rounding::Ceiling)
             .expect("at most the reach's square");
-        let root = least.floor_root();
-        let up = if root * root < least { root + 1 } else { root };
-        up.cast_signed() * along.signum()
+        least.ceil_root().cast_signed() * along.signum()
     }
 
     /// `at` moved by `by` bits along x and z; its height stays.

@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_math::{Flat, FloorRoot, Num, SinCos, U256, Vec3};
+use campfire_math::{CeilRoot, Flat, FloorRoot, Num, Rounding, SinCos, U256, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -123,9 +123,7 @@ impl BodyBox {
         }
         let [a, b] = frame.halves;
         let farthest = (a + b).length_squared().max((a - b).length_squared());
-        let root = farthest.floor_root();
-        let up = root + u128::from(root * root < farthest);
-        let bound = Num::from_bits(i64::try_from(up).ok()?);
+        let bound = Num::from_bits(i64::try_from(farthest.ceil_root()).ok()?);
         (bound <= Shape::MAX_BOUND).then_some(BodyBox { half, bound })
     }
 
@@ -199,7 +197,7 @@ impl BodyBox {
                 let along_edge = corners[(edge + 1) % 4] - start;
                 let along = (off - start).dot(along_edge);
                 let length = along_edge.dot(along_edge);
-                start + along_edge.map(|axis| divide(axis * along, length))
+                start + along_edge.map(|axis| Rounding::NearestEven.divide(axis * along, length))
             }
         };
         let ground = point + flat(centre);
@@ -589,11 +587,6 @@ fn square(off: Flat) -> SquaredDistance {
     SquaredDistance::whole(off.length_squared())
 }
 
-/// `num / den` for a positive `den`, rounded to nearest, half away from zero.
-fn divide(num: i128, den: i128) -> i128 {
-    (num.abs() + den / 2) / den * num.signum()
-}
-
 /// `off` moved along `normal` until a body of `radius` there touches, from outside, the line
 /// across `normal` that `off` lies `out` ÷ √|normal|² beyond: the move along each axis is
 /// `normal · (radius·√|normal|² − out) ÷ |normal|²`, its magnitude rounded up to a whole bit. As
@@ -629,7 +622,7 @@ fn first_outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
         return 0;
     }
     U256::product(along.unsigned_abs(), reach.unsigned_abs())
-        .div_ceil(square << fine)
+        .div_rounded(square << fine, Rounding::Ceiling)
         .expect("a move within a box and a body fits")
         .cast_signed()
 }

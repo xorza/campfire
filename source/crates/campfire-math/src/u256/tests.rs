@@ -85,29 +85,62 @@ fn products_and_sums_are_exact() {
             }
     );
     assert!(U256::product(3, 5) < U256::product(4, 4));
+}
 
+#[test]
+fn a_rounded_shift_and_division_by_hand() {
     // Halving 5 gives 2.5, ties to the even 2; 7 gives 3.5, to 4; 2¹²⁹ + 2¹ shifted by 2
     // is 2¹²⁷ + 0.5, to the even 2¹²⁷; 2²⁰⁰ shifted by 64 passes u128.
-    assert_eq!(U256::from_u128(5).round_shr(1), Some(2));
-    assert_eq!(U256::from_u128(7).round_shr(1), Some(4));
+    assert_eq!(
+        U256::from_u128(5).shr_rounded(1, Rounding::NearestEven),
+        Some(2)
+    );
+    assert_eq!(
+        U256::from_u128(7).shr_rounded(1, Rounding::NearestEven),
+        Some(4)
+    );
     let wide = U256::product(1 << 127, 4).checked_add(U256::from_u128(2));
-    assert_eq!(wide.unwrap().round_shr(2), Some(1 << 127));
-    assert_eq!(U256::product(1 << 100, 1 << 100).round_shr(64), None);
-    assert_eq!(U256::from_u128(u128::MAX).round_shr(1), Some(1 << 127));
+    assert_eq!(
+        wide.unwrap().shr_rounded(2, Rounding::NearestEven),
+        Some(1 << 127)
+    );
+    assert_eq!(
+        U256::product(1 << 100, 1 << 100).shr_rounded(64, Rounding::NearestEven),
+        None
+    );
+    assert_eq!(
+        U256::from_u128(u128::MAX).shr_rounded(1, Rounding::NearestEven),
+        Some(1 << 127)
+    );
 
     // 7 ÷ 2 = 3.5 ties to 4, 5 ÷ 2 to 2, 10 ÷ 4 = 2.5 to 2, 11 ÷ 4 = 2.75 to 3; (2¹²⁸ + 6) ÷ 3
     // is 2¹²⁸ ÷ 3 rounded, 113427455640312821154458202477256070485.33 to ...485, plus 2;
     // 2¹²⁸ ÷ 1 passes u128.
-    assert_eq!(U256::from_u128(7).round_div(2), Some(4));
-    assert_eq!(U256::from_u128(5).round_div(2), Some(2));
-    assert_eq!(U256::from_u128(10).round_div(4), Some(2));
-    assert_eq!(U256::from_u128(11).round_div(4), Some(3));
+    assert_eq!(
+        U256::from_u128(7).div_rounded(2, Rounding::NearestEven),
+        Some(4)
+    );
+    assert_eq!(
+        U256::from_u128(5).div_rounded(2, Rounding::NearestEven),
+        Some(2)
+    );
+    assert_eq!(
+        U256::from_u128(10).div_rounded(4, Rounding::NearestEven),
+        Some(2)
+    );
+    assert_eq!(
+        U256::from_u128(11).div_rounded(4, Rounding::NearestEven),
+        Some(3)
+    );
     let past = U256::product(1 << 64, 1 << 64).checked_add(U256::from_u128(6));
     assert_eq!(
-        past.unwrap().round_div(3),
+        past.unwrap().div_rounded(3, Rounding::NearestEven),
         Some(113_427_455_640_312_821_154_458_202_477_256_070_485 + 2)
     );
-    assert_eq!(U256::product(1 << 64, 1 << 64).round_div(1), None);
+    assert_eq!(
+        U256::product(1 << 64, 1 << 64).div_rounded(1, Rounding::NearestEven),
+        None
+    );
 
     // 2¹²⁹ − 1 halved is 2¹²⁸ − 0.5: its floor is u128::MAX, odd, so the tie rounds up, past
     // u128, by the shift and by the division alike.
@@ -115,16 +148,23 @@ fn products_and_sums_are_exact() {
         high: 1,
         low: u128::MAX,
     };
-    assert_eq!((odd.round_shr(1), odd.round_div(2)), (None, None));
+    let halved = Rounding::NearestEven;
+    assert_eq!(
+        (odd.shr_rounded(1, halved), odd.div_rounded(2, halved)),
+        (None, None)
+    );
+    // Down, the same halving keeps its floor, u128::MAX; up it passes u128.
+    assert_eq!(odd.div_rounded(2, Rounding::Floor), Some(u128::MAX));
+    assert_eq!(odd.shr_rounded(1, Rounding::Ceiling), None);
     // The widest shift and the widest divisor: 2²⁵⁴ shifted by 127 is 2¹²⁷; (2¹²⁷ − 1)² over
     // 2¹²⁷ − 1 is 2¹²⁷ − 1.
     assert_eq!(
-        U256::product(1 << 127, 1 << 127).round_shr(127),
+        U256::product(1 << 127, 1 << 127).shr_rounded(127, Rounding::NearestEven),
         Some(1 << 127)
     );
     let widest = (1 << 127) - 1;
     assert_eq!(
-        U256::product(widest, widest).round_div(widest),
+        U256::product(widest, widest).div_rounded(widest, Rounding::NearestEven),
         Some(widest)
     );
 }
@@ -238,16 +278,29 @@ fn products_match_schoolbook_and_shifts_match_divisions() {
             assert_eq!(product, schoolbook(a, b), "{a} {b}");
             // A low half alone times a u128 is the product of the two.
             assert_eq!(U256::from_u128(a).checked_mul(b), Some(product), "{a} {b}");
-            // Rounded up, a product's quotient is the one a bit at a time, or one more with a
-            // rest, while it fits u128, as it does exactly when the high half is below the
-            // divisor.
+            // Rounded each way, a product's quotient is the one a bit at a time, or one more
+            // where its rest takes it up: down never, up with any rest, to nearest past half a
+            // divisor or at half from an odd floor, which twice the rest, in 256 bits, tells;
+            // while it fits u128, as it does exactly when the high half is below the divisor.
             for &divisor in values.iter().filter(|&&d| d > 0) {
-                let up = (product.high < divisor)
-                    .then(|| by_bits(product, divisor))
-                    .and_then(|Division { quotient, rest }| {
-                        quotient.checked_add(u128::from(rest != 0))
-                    });
-                assert_eq!(product.div_ceil(divisor), up, "{a} {b} {divisor}");
+                for rounding in [Rounding::Floor, Rounding::Ceiling, Rounding::NearestEven] {
+                    let expected = (product.high < divisor)
+                        .then(|| by_bits(product, divisor))
+                        .and_then(|Division { quotient, rest }| {
+                            let twice = U256::product(rest, 2).cmp(&U256::from_u128(divisor));
+                            let up = match rounding {
+                                Rounding::Floor => false,
+                                Rounding::Ceiling => rest != 0,
+                                Rounding::NearestEven => {
+                                    twice == Ordering::Greater
+                                        || (twice == Ordering::Equal && quotient % 2 == 1)
+                                }
+                            };
+                            quotient.checked_add(u128::from(up))
+                        });
+                    let case = format!("{a} {b} {divisor} {rounding:?}");
+                    assert_eq!(product.div_rounded(divisor, rounding), expected, "{case}");
+                }
             }
             // A product times a third value orders against another as their limbs do.
             for &by in &values {
@@ -277,12 +330,14 @@ fn products_match_schoolbook_and_shifts_match_divisions() {
                 );
             }
             // A shift by k is a division by 2^k, rounded the same way.
-            for k in 1..=126 {
-                assert_eq!(
-                    product.round_shr(k),
-                    product.round_div(1 << k),
-                    "{a} {b} {k}"
-                );
+            for k in 1..=127 {
+                for rounding in [Rounding::Floor, Rounding::Ceiling, Rounding::NearestEven] {
+                    assert_eq!(
+                        product.shr_rounded(k, rounding),
+                        product.div_rounded(1 << k, rounding),
+                        "{a} {b} {k} {rounding:?}"
+                    );
+                }
             }
         }
     }
@@ -297,8 +352,11 @@ fn a_division_and_a_product_order_by_hand_at_the_ends() {
         high: 1 << 127,
         low: 0,
     };
-    assert_eq!(top.div_ceil(3), None);
-    assert_eq!(top.div_ceil(u128::MAX), Some((1 << 127) + 1));
+    assert_eq!(top.div_rounded(3, Rounding::Ceiling), None);
+    assert_eq!(
+        top.div_rounded(u128::MAX, Rounding::Ceiling),
+        Some((1 << 127) + 1)
+    );
     let led = U256 {
         high: (1 << 127) % 3,
         low: 0,
@@ -307,15 +365,24 @@ fn a_division_and_a_product_order_by_hand_at_the_ends() {
     // 2¹²⁸ / 2 is 2¹²⁷ either way; (2¹²⁸ + 1) / 2 is 2¹²⁷ rest 1, so 2¹²⁷ + 1 up; 2²⁰⁰ / 2¹⁰⁰
     // is 2¹⁰⁰; 2²⁰⁰ / 2¹⁰ passes u128.
     let two_128 = U256::product(1 << 64, 1 << 64);
-    assert_eq!(two_128.div_ceil(2), Some(1 << 127));
+    assert_eq!(two_128.div_rounded(2, Rounding::Ceiling), Some(1 << 127));
     let odd = two_128.checked_add(U256::from_u128(1)).unwrap();
-    assert_eq!(odd.div_ceil(2), Some((1 << 127) + 1));
+    assert_eq!(odd.div_rounded(2, Rounding::Ceiling), Some((1 << 127) + 1));
     let two_200 = U256::product(1 << 100, 1 << 100);
-    assert_eq!(two_200.div_ceil(1 << 100), Some(1 << 100));
-    assert_eq!(two_200.div_ceil(1 << 10), None);
+    assert_eq!(
+        two_200.div_rounded(1 << 100, Rounding::Ceiling),
+        Some(1 << 100)
+    );
+    assert_eq!(two_200.div_rounded(1 << 10, Rounding::Ceiling), None);
     // 1 / 1 is 1; 1 / 2 is 0 rest 1, so 1 up.
     let one = U256::from_u128(1);
-    assert_eq!((one.div_ceil(1), one.div_ceil(2)), (Some(1), Some(1)));
+    assert_eq!(
+        (
+            one.div_rounded(1, Rounding::Ceiling),
+            one.div_rounded(2, Rounding::Ceiling)
+        ),
+        (Some(1), Some(1))
+    );
     // At 384 bits: (2²⁵⁶ − 1)(2¹²⁸ − 1) equals itself, and passes (2²⁵⁶ − 1)(2¹²⁸ − 2) by
     // 2²⁵⁶ − 1; 2²⁵⁵ · 1 is 2¹²⁸ · 2¹²⁷, and below 2¹²⁸ · (2¹²⁷ + 1); and 0 · 0 is 0 · 1.
     let full = U256 {

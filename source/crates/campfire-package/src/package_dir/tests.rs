@@ -97,6 +97,18 @@ fn a_package_is_its_index_and_reads_through_it() {
     pack(&scratch, "one");
     let changed = dir.read().unwrap().fingerprint();
     assert_ne!(changed, expected);
+    // A file or a directory whose name on disk differs from its row's only in case fails the
+    // open as missing on every OS, as Linux holds it, though a file system that ignores case
+    // would open it.
+    for (from, to) in [
+        ("one/data/a.toml", "one/data/A.toml"),
+        ("one/data", "one/Data"),
+    ] {
+        scratch.rename(from, to);
+        assert!(matches!(dir.read(), Err(ContentError::Missing { path }) if path == data));
+        scratch.rename(to, from);
+    }
+    assert_eq!(dir.read().unwrap().fingerprint(), changed);
     scratch.rename("one/data", "one/date");
     assert!(matches!(dir.read(), Err(ContentError::Missing { path }) if path == data));
     pack(&scratch, "one");
@@ -291,7 +303,13 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
     for (path, bytes) in tree.iter() {
         scratch.write(path, bytes);
     }
-    let disk = PackageDir::new(scratch.path("one")).read().unwrap();
+    // A file a load does not read fails the open too when it is not on disk by its row's exact
+    // name, or not there at all: a package is whole.
+    let one = PackageDir::new(scratch.path("one"));
+    scratch.rename("one/textures/x.png", "one/textures/X.png");
+    assert!(matches!(one.read(), Err(ContentError::Missing { path }) if path == texture));
+    scratch.rename("one/textures/X.png", "one/textures/x.png");
+    let disk = one.read().unwrap();
     assert_eq!(disk.fingerprint(), expected);
     assert_eq!(disk.read_file(&texture).unwrap(), asset);
     scratch.write("one/textures/x.png", [1]);
@@ -304,6 +322,7 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
         disk.read_file(&texture),
         Err(ContentError::Missing { path }) if path == texture
     ));
+    assert!(matches!(one.read(), Err(ContentError::Missing { path }) if path == texture));
 
     // A file a load reads that is not UTF-8 reads, but not as text.
     let bad = BTreeMap::from([(PathBuf::from("two/data/bad.toml"), vec![0xFF, b'a'])]);
