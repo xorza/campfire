@@ -18,6 +18,10 @@ pub enum ZeroHourError {
         #[source]
         error: ArchiveError,
     },
+    /// An archive's length or time of change differs from the ones its entries were read with:
+    /// another program changed it during the import.
+    #[error("{} changed during the import", .archive.display())]
+    ArchiveChanged { archive: PathBuf },
     /// The install's archives are no version the importer knows: the first archive that differs
     /// from the version they were compared with, and how.
     #[error("no version the importer knows: {archive} {difference}")]

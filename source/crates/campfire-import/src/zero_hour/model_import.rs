@@ -741,8 +741,8 @@ mod tests {
     fn tank() -> ModelImport {
         let scratch = Scratch::new();
         fixture(&scratch);
-        let mut install = Install::open(&scratch.path("zh")).unwrap();
-        let mut assets = ModelAssets::new(&mut install).unwrap();
+        let install = Install::open(&scratch.path("zh")).unwrap();
+        let mut assets = ModelAssets::new(&install).unwrap();
         convert("Tank", &mut assets)
     }
 
@@ -969,8 +969,8 @@ mod tests {
     fn a_name_is_an_hlod_a_mesh_alone_or_a_render_object_that_draws_nothing() {
         let scratch = Scratch::new();
         fixture(&scratch);
-        let mut install = Install::open(&scratch.path("zh")).unwrap();
-        let mut assets = ModelAssets::new(&mut install).unwrap();
+        let install = Install::open(&scratch.path("zh")).unwrap();
+        let mut assets = ModelAssets::new(&install).unwrap();
         // `File.Mesh` is a mesh alone, at the scene's root, and its materials are named by it.
         let hull = convert("TANK.HULL", &mut assets);
         let document = &hull.glb.document;
@@ -1079,8 +1079,8 @@ mod tests {
     fn an_hlod_of_a_pivot_its_hierarchy_lacks_or_of_two_nodes_of_one_name_is_refused() {
         let scratch = Scratch::new();
         fixture(&scratch);
-        let mut install = Install::open(&scratch.path("zh")).unwrap();
-        let assets = ModelAssets::new(&mut install).unwrap();
+        let install = Install::open(&scratch.path("zh")).unwrap();
+        let assets = ModelAssets::new(&install).unwrap();
         let pivot = |name: &str, parent| Pivot {
             name: name.to_owned(),
             parent,

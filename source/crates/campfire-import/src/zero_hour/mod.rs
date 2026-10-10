@@ -81,7 +81,7 @@ pub struct ZeroHour<'a> {
 impl<'a> ZeroHour<'a> {
     /// The install under `root`, refused unless its archives are a version of `known`.
     pub fn open(root: &Path, known: &'a [GameVersion]) -> Result<ZeroHour<'a>, ImportError> {
-        let mut install = Install::open(root)?;
+        let install = Install::open(root)?;
         let version = GameVersion::identify(&install.hashed()?, known)?;
         Ok(ZeroHour { install, version })
     }
@@ -95,7 +95,7 @@ impl<'a> ZeroHour<'a> {
     /// game lists becomes `map/<name>/` and `client/maps/<name>/`, its name its folder's, and
     /// every template its objects name a unit type of `data/units.toml`; each texture becomes a
     /// KTX2 file of `client/textures/`, at its path in the archives.
-    pub fn write(&mut self, out: &Path) -> Result<Imported, ImportError> {
+    pub fn write(&self, out: &Path) -> Result<Imported, ImportError> {
         let mut writer = PackageWriter::create(out).map_err(ImportError::Write)?;
         let mut write = |path: &str, bytes: &[u8]| {
             let path = PackagePath::parse(path).expect("the import's paths are package paths");
@@ -157,7 +157,7 @@ impl<'a> ZeroHour<'a> {
     /// nodes its default look hides; adds the models the objects name that the package lacks to
     /// `skipped`, and the textures the models name that no archive holds to `missing_textures`.
     fn write_models(
-        &mut self,
+        &self,
         write: &mut impl FnMut(&str, &[u8]) -> Result<(), ImportError>,
         skipped: &mut Vec<SkippedModel>,
         missing_textures: &mut BTreeSet<String>,
@@ -172,7 +172,7 @@ impl<'a> ZeroHour<'a> {
                 })
             })?;
         }
-        let mut assets = ModelAssets::new(&mut self.install).map_err(ImportError::ZeroHour)?;
+        let mut assets = ModelAssets::new(&self.install).map_err(ImportError::ZeroHour)?;
         let mut models: BTreeMap<String, Option<ModelParts>> = BTreeMap::new();
         let mut units = ClientUnits::default();
         let mut types = BTreeMap::<String, String>::new();
@@ -302,7 +302,7 @@ mod tests {
         let scratch = Scratch::new();
         fixture(&scratch);
         let known = version_of(&scratch);
-        let mut game = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+        let game = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
         assert_eq!(game.version().name, "fixture");
 
         // The fixture map, in its folder `Fixture Map`, is `fixture_map`: its files are the ones
@@ -369,8 +369,6 @@ mod tests {
         );
 
         // A second folder whose name gives `fixture_map` is refused.
-        // Windows replaces no file a handle holds open, so each install closes before its archive is.
-        drop(game);
         scratch.write(
             "zh/c.BIG",
             big(&[
@@ -379,7 +377,7 @@ mod tests {
             ]),
         );
         let known = version_of(&scratch);
-        let mut clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+        let clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
         assert!(matches!(
             clash.write(&scratch.path("three")),
             Err(ImportError::ZeroHour(ZeroHourError::MapNameClash { first, second }))
@@ -388,7 +386,6 @@ mod tests {
         ));
 
         // An archive of other bytes is no version the importer knows.
-        drop(clash);
         scratch.write("zh/c.BIG", b"BIGF");
         assert!(matches!(
             ZeroHour::open(&scratch.path("zh"), &known),
@@ -409,7 +406,7 @@ mod tests {
         let scratch = Scratch::new();
         fixture(&scratch);
         let known = version_of(&scratch);
-        let mut game = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+        let game = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
         let imported = game.write(&scratch.path("one")).unwrap();
         // Each model the objects name once, as its conversion gives it; its material file; and
         // each object's models with the nodes its default look hides. The tank's turret is hidden
@@ -434,8 +431,8 @@ mod tests {
             scratch.names("one/client/models"),
             ["rock01.glb", "tank.glb"]
         );
-        let mut install = Install::open(&scratch.path("zh")).unwrap();
-        let mut assets = ModelAssets::new(&mut install).unwrap();
+        let install = Install::open(&scratch.path("zh")).unwrap();
+        let mut assets = ModelAssets::new(&install).unwrap();
         let Ok(Converted::Model(tank)) = ModelImport::convert("tank", &mut assets) else {
             panic!("the tank converts");
         };
@@ -471,9 +468,6 @@ mod tests {
         );
 
         // Two objects whose names give one unit type, each with a model, are refused.
-        // Windows replaces no file a handle holds open, so each install closes before its archive is.
-        drop(game);
-        drop(install);
         let clash = "Object Rock!\nDraw = W3DPropDraw M\nModelName = Rock01\nEnd\nEnd\nObject Rock?\nDraw = W3DPropDraw M\nModelName = Rock01\nEnd\nEnd\n";
         scratch.write(
             "zh/c.BIG",
@@ -483,7 +477,7 @@ mod tests {
             ]),
         );
         let known = version_of(&scratch);
-        let mut clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+        let clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
         assert!(matches!(
             clash.write(&scratch.path("two")),
             Err(ImportError::ZeroHour(ZeroHourError::UnitTypeClash { first, second }))

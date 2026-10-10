@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::path::{Path, PathBuf};
 
-use campfire_store::{DirEntries, EntryKind, InputFile, InputRanges};
+use campfire_store::{DirEntries, EntryKind, FileStamp, InputFile, InputRanges};
 use sha2::{Digest, Sha256};
 
 use crate::error::ImportError;
@@ -24,12 +24,14 @@ pub(crate) struct Install {
     files: BTreeMap<ArchivePath, Located>,
 }
 
-/// One archive: its path in the install, with `/` between names, and its file, open to read its
-/// entries' ranges and its hash.
+/// One archive: its path in the install, with `/` between names, its path on disk, and its stamp
+/// as it was first read. Each read opens it again, so no handle outlives a read, and refuses it
+/// when its stamp changed, so every read is of the bytes the version check hashed.
 #[derive(Debug)]
 struct Archive {
     name: String,
-    file: InputRanges,
+    path: PathBuf,
+    stamp: FileStamp,
 }
 
 /// Where a file's bytes are: its archive, by its place in the load order, and their range.
@@ -99,8 +101,8 @@ impl Install {
         let mut files = BTreeMap::new();
         for Found { name, path } in found {
             let mut file = InputFile::ranges(&path).map_err(ImportError::Read)?;
-            let archive = BigArchive::read(&mut file, &path)?;
-            for entry in archive.entries {
+            let big = BigArchive::read(&mut file, &path)?;
+            for entry in big.entries {
                 if let Entry::Vacant(vacant) = files.entry(ArchivePath::of(&entry.path)) {
                     vacant.insert(Located {
                         archive: archives.len(),
@@ -109,21 +111,25 @@ impl Install {
                     });
                 }
             }
-            archives.push(Archive { name, file });
+            archives.push(Archive {
+                name,
+                path,
+                stamp: file.stamp(),
+            });
         }
         Ok(Install { archives, files })
     }
 
     /// The bytes of the file at `path`, as the game names it, in the first archive that holds
     /// it.
-    pub(crate) fn read(&mut self, path: &ArchivePath) -> Result<Vec<u8>, ImportError> {
+    pub(crate) fn read(&self, path: &ArchivePath) -> Result<Vec<u8>, ImportError> {
         let located = *self
             .files
             .get(path)
             .ok_or_else(|| ImportError::ZeroHour(ZeroHourError::NotInArchives(path.to_string())))?;
         let len = usize::try_from(located.size).expect("a u32 fits usize");
         self.archives[located.archive]
-            .file
+            .open()?
             .read_at(located.offset, len)
             .map_err(ImportError::Read)
     }
@@ -223,18 +229,19 @@ impl Install {
             .collect()
     }
 
-    /// Each archive's path and SHA-256, in the load order, each hashed through the handle that
-    /// reads its entries, so the bytes a version check knows are the bytes the import reads.
-    pub(crate) fn hashed(&mut self) -> Result<Vec<HashedArchive>, ImportError> {
+    /// Each archive's path and SHA-256, in the load order, each of the file of the stamp its
+    /// entries were read with, so the bytes a version check knows are the bytes the import reads.
+    pub(crate) fn hashed(&self) -> Result<Vec<HashedArchive>, ImportError> {
         self.archives
-            .iter_mut()
+            .iter()
             .map(|archive| {
+                let mut file = archive.open()?;
                 let mut hasher = Sha256::new();
                 let mut at = 0;
-                while at < archive.file.len() {
-                    let len = (archive.file.len() - at).min(HASH_CHUNK);
+                while at < file.len() {
+                    let len = (file.len() - at).min(HASH_CHUNK);
                     let chunk = usize::try_from(len).expect("a chunk fits usize");
-                    let bytes = archive.file.read_at(at, chunk).map_err(ImportError::Read)?;
+                    let bytes = file.read_at(at, chunk).map_err(ImportError::Read)?;
                     hasher.update(bytes);
                     at += len;
                 }
@@ -263,6 +270,21 @@ impl Install {
             }
         }
         Ok(())
+    }
+}
+
+impl Archive {
+    /// Its file, open to read ranges of; `ArchiveChanged` when its stamp is not the one its
+    /// entries were read with.
+    fn open(&self) -> Result<InputRanges, ImportError> {
+        let file = InputFile::ranges(&self.path).map_err(ImportError::Read)?;
+        if file.stamp() == self.stamp {
+            Ok(file)
+        } else {
+            Err(ImportError::ZeroHour(ZeroHourError::ArchiveChanged {
+                archive: self.path.clone(),
+            }))
+        }
     }
 }
 
@@ -350,7 +372,7 @@ mod tests {
     fn an_install_reads_each_file_from_the_first_archive_that_holds_it() {
         let scratch = Scratch::new();
         fixture(&scratch);
-        let mut install = Install::open(&scratch.path("zh")).unwrap();
+        let install = Install::open(&scratch.path("zh")).unwrap();
         // The order, ignoring case: `a.big`, `b.big`, `c.big`, `zh_generals\base.big`; the
         // duplicate skipped, the text file no archive.
         let names: Vec<String> = install
@@ -426,11 +448,21 @@ mod tests {
         })
         .collect();
         assert_eq!(hashed, expected);
-        // A second language folder with `Art` leaves the importer unable to tell which one the
-        // game reads.
-        // Windows replaces no file a handle holds open, so the install closes before its archive is.
-        drop(install);
+        // The install holds no archive open, so another program may replace one; a read of it
+        // then is refused, as its length is another, and a read of another archive is not. A
+        // second language folder with `Art` leaves the importer unable to tell which one the game
+        // reads.
         scratch.write("zh/c.BIG", big(&[("Data\\German\\Art\\W3D\\x.w3d", b"x")]));
+        let changed = scratch.path("zh/c.BIG");
+        assert!(matches!(
+            install.read(&ArchivePath::of("c.ini")),
+            Err(ImportError::ZeroHour(ZeroHourError::ArchiveChanged { archive })) if archive == changed
+        ));
+        assert!(matches!(
+            install.hashed(),
+            Err(ImportError::ZeroHour(ZeroHourError::ArchiveChanged { .. }))
+        ));
+        assert_eq!(install.read(&ArchivePath::of("data/A.ini")).unwrap(), b"A1");
         assert!(matches!(
             Install::open(&scratch.path("zh")).unwrap().language(),
             Err(ZeroHourError::Languages(languages)) if languages == ["english", "german"]

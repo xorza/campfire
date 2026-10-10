@@ -10,13 +10,13 @@ use crate::zero_hour::w3d_file::W3dFile;
 /// language's folder, `Data\<language>\Art\...`, then in `Art\...`. Each W3D file is read once.
 #[derive(Debug)]
 pub(crate) struct ModelAssets<'a> {
-    install: &'a mut Install,
+    install: &'a Install,
     language: Option<String>,
     files: BTreeMap<String, Option<W3dFile>>,
 }
 
 impl<'a> ModelAssets<'a> {
-    pub(crate) fn new(install: &'a mut Install) -> Result<ModelAssets<'a>, ZeroHourError> {
+    pub(crate) fn new(install: &'a Install) -> Result<ModelAssets<'a>, ZeroHourError> {
         let language = install.language()?;
         Ok(ModelAssets {
             install,
@@ -84,8 +84,8 @@ mod tests {
     fn a_texture_is_its_dds_else_its_tga_as_named() {
         let scratch = Scratch::new();
         fixture(&scratch);
-        let mut install = Install::open(&scratch.path("zh")).unwrap();
-        let assets = ModelAssets::new(&mut install).unwrap();
+        let install = Install::open(&scratch.path("zh")).unwrap();
+        let assets = ModelAssets::new(&install).unwrap();
         let texture = |name: &str| assets.texture(name).map(|path| path.to_string());
         // The archives hold `Rock.dds` and `Sign.tga`.
         let rock = Some("art\\textures\\rock.dds".to_owned());

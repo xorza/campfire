@@ -26,7 +26,7 @@ fn main() -> ExitCode {
         Err(status) => return ExitCode::from(status),
     };
     let imported = match args.game {
-        Game::ZeroHour => ZeroHour::open(&args.install, GameVersion::KNOWN).and_then(|mut game| {
+        Game::ZeroHour => ZeroHour::open(&args.install, GameVersion::KNOWN).and_then(|game| {
             info!(
                 version = game.version().name,
                 "the install is a version the importer knows"

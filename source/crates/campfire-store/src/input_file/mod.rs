@@ -24,14 +24,23 @@ pub struct InputStream {
     file: File,
 }
 
-/// A regular file open to read ranges of, as an archive's entries are read: its length, as its
+/// A regular file open to read ranges of, as an archive's entries are read: its stamp, as its
 /// handle's metadata gave it as it opened, and the bytes of each range, all from the one file it
 /// opened, so a file swapped in between two reads mixes nothing.
 #[derive(Debug)]
 pub struct InputRanges {
     path: PathBuf,
-    len: u64,
+    stamp: FileStamp,
     file: File,
+}
+
+/// A file's length and time of change, as its open handle's metadata gives them: a reader that
+/// opens a file again compares them to know it is the file it read before, as `make` and `git`
+/// do. A change that keeps both is not seen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileStamp {
+    pub len: u64,
+    pub modified: SystemTime,
 }
 
 /// A file's bytes and its time of change, both from one open handle.
@@ -99,12 +108,19 @@ impl InputFile {
 
     /// The regular file at `path`, open to read ranges of; each read is bounded by its range.
     pub fn ranges(path: &Path) -> Result<InputRanges, PathError<ReadError>> {
-        let Opened { file, metadata } = InputFile::open(path).map_err(PathError::at(path))?;
-        Ok(InputRanges {
-            path: path.to_owned(),
-            len: metadata.len(),
-            file,
-        })
+        let open = || {
+            let Opened { file, metadata } = InputFile::open(path)?;
+            let modified = metadata.modified().map_err(ReadError::Read)?;
+            Ok(InputRanges {
+                path: path.to_owned(),
+                stamp: FileStamp {
+                    len: metadata.len(),
+                    modified,
+                },
+                file,
+            })
+        };
+        open().map_err(PathError::at(path))
     }
 
     /// The regular file at `path`, open, with its metadata. The path's kind is checked before
@@ -145,11 +161,16 @@ impl InputStream {
 impl InputRanges {
     /// Its length as it opened.
     pub const fn len(&self) -> u64 {
-        self.len
+        self.stamp.len
     }
 
     pub const fn is_empty(&self) -> bool {
-        self.len == 0
+        self.stamp.len == 0
+    }
+
+    /// Its length and time of change as it opened.
+    pub const fn stamp(&self) -> FileStamp {
+        self.stamp
     }
 
     /// The `len` bytes from `offset`. A range past the length it opened with is `Short` before
@@ -158,7 +179,10 @@ impl InputRanges {
         let short = || ReadError::Short { offset, len };
         let wanted = u64::try_from(len).expect("a length fits u64");
         let read = || {
-            if offset.checked_add(wanted).is_none_or(|end| end > self.len) {
+            if offset
+                .checked_add(wanted)
+                .is_none_or(|end| end > self.stamp.len)
+            {
                 return Err(short());
             }
             (&self.file)

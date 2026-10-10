@@ -90,10 +90,18 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
         ReadError::Missing
     ));
 
-    // The time of change is its handle's, no later than now.
+    // The time of change is its handle's, no later than now; the ranges' stamp holds it and the
+    // length.
     let stamped = InputFile::read_stamped(&five, 5).unwrap();
     assert_eq!(stamped.bytes, b"12345");
     assert!(stamped.modified <= SystemTime::now());
+    assert_eq!(
+        ranges.stamp(),
+        FileStamp {
+            len: 5,
+            modified: stamped.modified
+        }
+    );
 }
 
 #[test]
@@ -135,4 +143,18 @@ fn a_range_the_file_no_longer_holds_as_it_is_read_is_short() {
         ReadError::Short { offset: 1, len: 4 }
     ));
     assert_eq!(ranges.read_at(0, 3).unwrap(), b"abc");
+    // The file opened again has another stamp: its length is 3.
+    assert_eq!(
+        InputFile::ranges(&scratch.path("shrinking"))
+            .unwrap()
+            .stamp()
+            .len,
+        3
+    );
+    assert_ne!(
+        InputFile::ranges(&scratch.path("shrinking"))
+            .unwrap()
+            .stamp(),
+        ranges.stamp()
+    );
 }
