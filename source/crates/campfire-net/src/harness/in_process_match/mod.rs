@@ -1,3 +1,4 @@
+use std::array;
 use std::cell::Cell;
 use std::fmt::Write as _;
 use std::mem;
@@ -7,6 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
+use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
@@ -79,6 +81,8 @@ pub struct MatchSetup {
     /// The players, a client each, in the slots from 0: one or two in the lane mode, a slot a
     /// side, and at most `MAX_PLAYERS`.
     pub players: usize,
+    /// How the server's links lie in its tables, which no result of the match may follow.
+    pub links: LinkLayout,
     /// When each player's client rolls its state back, by player; those past the players go
     /// unused.
     pub rollbacks: [RollbackMode; MatchSetup::MAX_PLAYERS],
@@ -99,6 +103,24 @@ pub struct MatchSetup {
     /// The script of the server's bot in a slot its player left, when it plays one.
     pub takeover: Option<&'static str>,
 }
+
+/// How an `InProcessMatch` lays the server's links out in its tables. A query gives entities in
+/// the order of their tables, which Lightyear's parallel commands change from run to run once
+/// Bevy's `multi_threaded` is on, so a match plays the same in both layouts when the server takes
+/// nothing in a query's order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkLayout {
+    /// The clients connect in player order, and the links lie as Bevy puts them.
+    InOrder,
+    /// The clients connect in reverse, and before each server frame the links' rows go in the
+    /// reverse of player order. The players take the same slots: one frame's joins go in the order
+    /// of their main keys, and each player's sorts after the one before.
+    Reversed,
+}
+
+/// A mark that moves a server link out of its table and back, so its row goes last.
+#[derive(Component, Debug)]
+struct Moved;
 
 /// What a step cost each end: each client's frame, by client, and the server's worst frame.
 #[derive(Debug, Clone, Default)]
@@ -139,6 +161,7 @@ impl MatchSetup {
     ) -> MatchSetup {
         MatchSetup {
             players: 1,
+            links: LinkLayout::InOrder,
             rollbacks: [rollback; MatchSetup::MAX_PLAYERS],
             server_frames,
             link: LinkModel::PERFECT,
@@ -159,6 +182,7 @@ impl MatchSetup {
     pub const fn duo(link: LinkModel, seed_chain: SeedChain) -> MatchSetup {
         MatchSetup {
             players: 2,
+            links: LinkLayout::InOrder,
             rollbacks: [RollbackMode::Check; MatchSetup::MAX_PLAYERS],
             server_frames: 3,
             link,
@@ -199,6 +223,8 @@ pub struct InProcessMatch {
     pace: Arc<Pace>,
     /// What the last step cost each end, kept from step to step.
     step_cost: StepCost,
+    /// The server's links that `lay_out_links` moves, in client order.
+    link_rows: Vec<Entity>,
     /// Last, so it drops after the apps and sees what they log as they drop.
     log: LogCheck,
 }
@@ -262,9 +288,14 @@ impl InProcessMatch {
             data: None,
             pace,
             step_cost: StepCost::default(),
+            link_rows: Vec::with_capacity(setup.players),
             log,
         };
-        for player in 0..setup.players {
+        for client in 0..setup.players {
+            let player = match setup.links {
+                LinkLayout::InOrder => client,
+                LinkLayout::Reversed => setup.players - 1 - client,
+            };
             local.add_client(player);
         }
         for _ in 0..CONNECT_FRAMES {
@@ -526,7 +557,7 @@ impl InProcessMatch {
     }
 
     /// Opens the session for every client, and steps until each joined and every end runs the
-    /// match; see `Lobby`. The players take slots in the order their joins arrive.
+    /// match; see `Lobby`. The players take the slots in player order, as `LinkLayout` says.
     pub(crate) fn open_match(&mut self) {
         let packages = Arc::clone(&self.packages);
         let mut lobby = Lobby::new(LobbySetup {
@@ -594,7 +625,31 @@ impl InProcessMatch {
 
     /// One frame of the server alone, which shifts where in a step its ticks fall.
     pub fn server_frame(&mut self) {
+        self.lay_out_links();
         self.server.update();
+    }
+
+    /// Puts the rows of the server's links in each of their tables in client order, the reverse of
+    /// player order, when the setup lays them out reversed: all go out to another table, then
+    /// back in client order, as Bevy appends a row that enters a table.
+    fn lay_out_links(&mut self) {
+        if self.setup.links == LinkLayout::InOrder {
+            return;
+        }
+        let world = self.server.world_mut();
+        self.link_rows.clear();
+        self.link_rows.extend(
+            self.links
+                .iter()
+                .copied()
+                .filter(|&link| world.get::<LinkOf>(link).is_some()),
+        );
+        for &link in &self.link_rows {
+            world.entity_mut(link).insert(Moved);
+        }
+        for &link in &self.link_rows {
+            world.entity_mut(link).remove::<Moved>();
+        }
     }
 
     /// One frame of each client, then the server's frames: one tick each. A server whose session
@@ -687,8 +742,8 @@ impl InProcessMatch {
     }
 
     /// Makes each client play the script of its avatar's team, by team index, as a bot does; gives
-    /// each client's team index. Players take slots in the order their joins arrive, so a
-    /// scenario cannot fix which client plays which team.
+    /// each client's team index, which follows the client's player, not its index, under
+    /// `LinkLayout::Reversed`.
     pub fn play_by_team(&mut self, scripts: [&str; 2]) -> [usize; 2] {
         let teams = [0, 1].map(|client| self.team(client).index());
         assert_ne!(
@@ -702,7 +757,7 @@ impl InProcessMatch {
         teams
     }
 
-    /// The team of `client`'s player's avatar: players take slots in the order their joins arrive.
+    /// The team of `client`'s player's avatar.
     pub fn team(&self, client: usize) -> Team {
         let world = self.server.world();
         let avatar = world.resource::<EntityIndex>().get(self.avatar(client));
@@ -810,6 +865,15 @@ struct ClientApp {
 }
 
 impl ClientApp {
+    /// The secret of `player`'s main key, which sorts after every lower player's: the session
+    /// key's is the next byte, so the odd bytes are the main keys'.
+    fn main_secret(player: usize) -> u8 {
+        let mut secrets: [u8; MatchSetup::MAX_PLAYERS] =
+            array::from_fn(|player| u8::try_from(2 * player + 1).expect("a small player"));
+        secrets.sort_by_key(|&secret| TestKey::of(secret).x_only_public_key().0.serialize());
+        secrets[player]
+    }
+
     /// The app of `player`, following `pace`.
     fn new(
         setup: &MatchSetup,
@@ -818,7 +882,7 @@ impl ClientApp {
         tick_hz: NonZeroU32,
         pace: &Arc<Pace>,
     ) -> ClientApp {
-        let secret = u8::try_from(2 * player + 1).expect("a small player");
+        let secret = ClientApp::main_secret(player);
         let sim_client = SimClient {
             main_key: TestKey::of(secret),
             session_key: TestKey::of(secret + 1),

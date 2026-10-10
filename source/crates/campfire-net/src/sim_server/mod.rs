@@ -486,7 +486,8 @@ impl SimServer {
 
 /// Logs each packet received in this frame, before the next tick runs, and tells its player where
 /// each of its inputs takes effect. A refused packet ends its link: a client that follows the
-/// rules sends none, and its chain no longer matches the log's.
+/// rules sends none, and its chain no longer matches the log's. The links go in the order of
+/// their slots, as the log's order of one frame's inputs must not follow the query's.
 fn record_inputs(
     mut commands: Commands<'_, '_>,
     mut links: Query<
@@ -502,10 +503,15 @@ fn record_inputs(
     mut session: ResMut<'_, Session>,
     mut frame: ResMut<'_, FrameStart>,
     mut applied: Local<'_, Vec<Applied>>,
+    mut order: Local<'_, Vec<(PlayerSlot, Entity)>>,
 ) {
     frame.0 = session.log().next_tick();
     ServerFrame { tick: frame.0 }.log();
-    for (entity, &held, mut receiver, mut acks) in &mut links {
+    order.extend(links.iter().map(|(entity, link, ..)| (link.slot(), entity)));
+    order.sort_unstable();
+    for (_, entity) in order.drain(..) {
+        let (entity, &held, mut receiver, mut acks) =
+            links.get_mut(entity).expect("a link the query just gave");
         let mut link = held;
         for message in receiver.receive() {
             if link.refused() {

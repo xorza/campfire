@@ -23,7 +23,7 @@ use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::offering::{
-    JoinLink, Joined, OfferLinks, Offering, Refused, Superseding, Unanswered,
+    CheckedJoins, JoinLink, Joined, OfferLinks, Offering, Refused, Superseding, Unanswered,
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
@@ -65,32 +65,44 @@ impl Door {
             .offer(timeline.tick(), &mut links, &mut commands);
     }
 
-    /// Seats the player of each offered link that answered, or refuses them.
+    /// Seats the player of each offered link that answered, or refuses them; the joins of one
+    /// frame in `Offering::check_all`'s order.
     pub(crate) fn take_joins(
         world: &mut World,
         mut links: Local<'_, QueryState<JoinLink, Unanswered>>,
+        mut joins: Local<'_, Vec<(Entity, ConnectChallenge, Join)>>,
+        mut checked: Local<'_, CheckedJoins>,
     ) {
-        let joins: Vec<(Entity, ConnectChallenge, Join)> = links
-            .iter_mut(world)
-            .filter_map(|(link, offered, mut receiver)| {
-                let join = receiver.receive().next()?;
-                Some((link, offered.challenge, join))
-            })
-            .collect();
-        for (link, challenge, join) in joins {
-            let delegation = world.resource::<Door>().offering.check(challenge, &join);
-            match delegation.and_then(|delegation| Door::seat_player(world, link, delegation)) {
+        joins.extend(
+            links
+                .iter_mut(world)
+                .filter_map(|(link, offered, mut receiver)| {
+                    let join = receiver.receive().next()?;
+                    Some((link, offered.challenge, join))
+                }),
+        );
+        world
+            .resource::<Door>()
+            .offering
+            .check_all(joins.drain(..), &mut checked);
+        for (link, error) in checked.refused.drain(..) {
+            Door::refuse(world, link, error);
+        }
+        for (link, delegation) in checked.answered.drain(..) {
+            match Door::seat_player(world, link, delegation) {
                 Ok(seat) => Door::seat(world, link, seat),
-                Err(error) => {
-                    JoinRefused {
-                        link: format!("{link:?}"),
-                        error: ErrorReport::of(&error).to_string(),
-                    }
-                    .log();
-                    world.entity_mut(link).insert(Refused(error));
-                }
+                Err(error) => Door::refuse(world, link, error),
             }
         }
+    }
+
+    fn refuse(world: &mut World, link: Entity, error: JoinError) {
+        JoinRefused {
+            link: format!("{link:?}"),
+            error: ErrorReport::of(&error).to_string(),
+        }
+        .log();
+        world.entity_mut(link).insert(Refused(error));
     }
 
     /// Logs what seating the player of `delegation` changes, and gives where they sit.
