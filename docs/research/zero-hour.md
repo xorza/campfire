@@ -108,8 +108,9 @@ W3D is chunks (`Generals/Code/Libraries/Source/WWVegas/WW3D2/w3d_file.h`): a `u3
 
 ## Textures
 
-- **DDS.** 6,602: DXT1 3,723, DXT5 2,870, DXT3 9; all with mip levels; sides from 4 to 1,024, 256 the commonest.
-- **TGA.** 740, all uncompressed (type 2): 472 of 32 bits and 268 of 24; some sides are no power of two, as 384 and 640.
+- **DDS.** 6,602: DXT1 3,723, DXT5 2,870, DXT3 9; each with its full chain of levels, its sides multiples of 4, from 4 to 1,024, 256 the commonest, 523 not square; no cube map or volume; each file's bytes exactly its header and its levels.
+- **TGA.** 740, all uncompressed true color (type 2) with no color map: 472 of 32 bits and 268 of 24; every one stored bottom row first, and ending with a TGA 2.0 footer that names no extension area. 201 of those of 32 bits say 0 alpha bits in their header; Zero Hour's loader reads every TGA of 32 bits as `A8R8G8B8`, alpha in use (`Get_WW3D_Format`, `Core/Libraries/Source/WWVegas/WW3D2/ww3dformat.cpp`). 36, all terrain textures, have sides of 384 or 640, no power of two. The loader makes a TGA's levels by `BitmapHandlerClass::Combine_A8R8G8B8`, which shifts each of four texels right by 2 before it sums them, so each level darkens by up to 3 of 255.
+- **Names.** No `.dds` and `.tga` share a path but for the extension.
 
 ## Replays
 

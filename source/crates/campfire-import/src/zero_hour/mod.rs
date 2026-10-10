@@ -6,14 +6,18 @@ use campfire_common::{Fingerprint, MapName};
 use campfire_package::PackageWriter;
 
 use crate::error::ImportError;
+use crate::texture::dds_file::DdsFile;
+use crate::texture::tga_file::TgaFile;
+use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::game_version::GameVersion;
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::install::Install;
+use crate::zero_hour::install::{Install, InstallTexture, TextureKind};
 use crate::zero_hour::map_file::MapFile;
 use crate::zero_hour::map_import::MapImport;
 use crate::zero_hour::unit_types::UnitTypes;
 
+pub(crate) mod archive_path;
 pub(crate) mod big_archive;
 pub(crate) mod chunk_reader;
 pub(crate) mod error;
@@ -49,7 +53,8 @@ impl<'a> ZeroHour<'a> {
 
     /// Writes the install's package into the new directory `out`; its fingerprint. Each map the
     /// game lists becomes `map/<name>/` and `client/maps/<name>/`, its name its folder's, and
-    /// every template its objects name a unit type of `data/units.toml`.
+    /// every template its objects name a unit type of `data/units.toml`; each texture becomes a
+    /// KTX2 file of `client/textures/`, at its path in the archives.
     pub fn write(&mut self, out: &Path) -> Result<Fingerprint, ImportError> {
         let mut writer = PackageWriter::create(out).map_err(ImportError::Write)?;
         let mut write = |path: &str, bytes: &[u8]| {
@@ -60,10 +65,10 @@ impl<'a> ZeroHour<'a> {
         let mut names = BTreeMap::<MapName, String>::new();
         for map in self.install.maps() {
             let name = ImportName::of(map.folder.as_bytes()).map();
-            if let Some(first) = names.insert(name.clone(), map.path.clone()) {
+            if let Some(first) = names.insert(name.clone(), map.path.to_string()) {
                 return Err(ImportError::ZeroHour(ZeroHourError::MapNameClash {
                     first,
-                    second: map.path,
+                    second: map.path.to_string(),
                 }));
             }
             let bytes = self.install.read(&map.path)?;
@@ -71,7 +76,7 @@ impl<'a> ZeroHour<'a> {
                 .and_then(|file| MapImport::new(&file, &mut unit_types))
                 .map_err(|error| {
                     ImportError::ZeroHour(ZeroHourError::Map {
-                        map: map.path.clone(),
+                        map: map.path.to_string(),
                         error,
                     })
                 })?;
@@ -82,8 +87,33 @@ impl<'a> ZeroHour<'a> {
                 &imported.terrain,
             )?;
         }
+        for InstallTexture { path, kind } in self.install.textures() {
+            let bytes = self.install.read(&path)?;
+            let texture = |error| {
+                ImportError::ZeroHour(ZeroHourError::Texture {
+                    path: path.to_string(),
+                    error,
+                })
+            };
+            let ktx2 = match kind {
+                TextureKind::Dds => DdsFile::read(&bytes).map_err(texture)?.ktx2(),
+                TextureKind::Tga => TgaFile::read(&bytes).map_err(texture)?.ktx2(),
+            };
+            write(&ZeroHour::texture_path(&path), &ktx2)?;
+        }
         write("data/units.toml", unit_types.toml().as_bytes())?;
         writer.finish().map_err(ImportError::Write)
+    }
+}
+
+impl ZeroHour<'_> {
+    /// Where the texture at `path` in the archives goes: `client/textures/` and its path with `/`
+    /// between names, its extension `.ktx2`.
+    fn texture_path(path: &ArchivePath) -> String {
+        format!(
+            "client/textures/{}.ktx2",
+            path.without_extension().replace('\\', "/")
+        )
     }
 }
 
@@ -97,7 +127,7 @@ mod tests {
     use crate::zero_hour::big_archive::internals::big;
     use crate::zero_hour::error::VersionDifference;
     use crate::zero_hour::game_version::ArchiveHash;
-    use crate::zero_hour::install::internals::{fixture, packed_map};
+    use crate::zero_hour::install::internals::{fixture, packed_map, textures};
     use crate::zero_hour::map_file::internals::map;
 
     /// The fixture install's version, as its archives hold their bytes now.
@@ -152,6 +182,20 @@ mod tests {
             expected.terrain
         );
         assert_eq!(scratch.read_text("one/data/units.toml"), types.toml());
+        // Each texture once, at its path in the archives, as its conversion gives it.
+        let [rock, sign] = textures();
+        assert_eq!(
+            scratch.names("one/client/textures/art/textures"),
+            ["rock.ktx2", "sign.ktx2"]
+        );
+        assert_eq!(
+            scratch.read("one/client/textures/art/textures/rock.ktx2"),
+            DdsFile::read(&rock).unwrap().ktx2()
+        );
+        assert_eq!(
+            scratch.read("one/client/textures/art/textures/sign.ktx2"),
+            TgaFile::read(&sign).unwrap().ktx2()
+        );
         // Two imports write the same bytes, and the package reads as the fingerprint names it.
         assert_eq!(game.write(&scratch.path("two")).unwrap(), fingerprint);
         assert_eq!(

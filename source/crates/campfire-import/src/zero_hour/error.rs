@@ -6,6 +6,8 @@ use derive_more::Display;
 use miniz_oxide::inflate::TINFLStatus;
 use thiserror::Error;
 
+use crate::texture::error::TextureError;
+
 /// Why a Zero Hour install is not one the importer reads.
 #[derive(Debug, Error)]
 pub enum ZeroHourError {
@@ -32,6 +34,13 @@ pub enum ZeroHourError {
         map: String,
         #[source]
         error: MapError,
+    },
+    /// A texture of the install is none the importer converts, by its path.
+    #[error("{path} is no texture the importer converts")]
+    Texture {
+        path: String,
+        #[source]
+        error: TextureError,
     },
     /// Two maps' folders give one map name.
     #[error("{first} and {second} give one map name")]

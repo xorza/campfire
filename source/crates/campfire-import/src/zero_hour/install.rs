@@ -6,6 +6,7 @@ use campfire_store::{DirEntries, EntryKind, InputFile, InputRanges};
 use sha2::{Digest, Sha256};
 
 use crate::error::ImportError;
+use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::big_archive::BigArchive;
 use crate::zero_hour::error::ZeroHourError;
 
@@ -20,7 +21,7 @@ pub(crate) struct Install {
     /// In the order the game loads them.
     archives: Vec<Archive>,
     /// Each file by its key, the first archive's.
-    files: BTreeMap<String, Located>,
+    files: BTreeMap<ArchivePath, Located>,
 }
 
 /// One archive: its path in the install, with `/` between names, and its file, open to read its
@@ -42,8 +43,22 @@ struct Located {
 /// A map the game lists: its path, as `maps\<folder>\<folder>.map`, and its folder's name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstallMap {
-    pub(crate) path: String,
+    pub(crate) path: ArchivePath,
     pub(crate) folder: String,
+}
+
+/// A texture the install holds: its key, and its kind by its extension.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InstallTexture {
+    pub(crate) path: ArchivePath,
+    pub(crate) kind: TextureKind,
+}
+
+/// A texture's file format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TextureKind {
+    Dds,
+    Tga,
 }
 
 /// One archive of the install and the SHA-256 of its bytes, as a version check compares them.
@@ -72,12 +87,12 @@ impl Install {
     pub(crate) fn open(root: &Path) -> Result<Install, ImportError> {
         let mut found = Vec::new();
         Install::find(root, "", &mut found)?;
-        found.retain(|archive| Install::key(&archive.name) != SKIPPED);
+        found.retain(|archive| ArchivePath::of(&archive.name).as_str() != SKIPPED);
         // The game compares paths ignoring case, `\` between names; two that differ only in case
         // keep their bytes' order, so one tree gives one order.
         found.sort_by(|a, b| {
-            Install::key(&a.name)
-                .cmp(&Install::key(&b.name))
+            ArchivePath::of(&a.name)
+                .cmp(&ArchivePath::of(&b.name))
                 .then_with(|| a.name.cmp(&b.name))
         });
         let mut archives = Vec::new();
@@ -86,7 +101,7 @@ impl Install {
             let mut file = InputFile::ranges(&path).map_err(ImportError::Read)?;
             let archive = BigArchive::read(&mut file, &path)?;
             for entry in archive.entries {
-                if let Entry::Vacant(vacant) = files.entry(Install::key(&entry.path)) {
+                if let Entry::Vacant(vacant) = files.entry(ArchivePath::of(&entry.path)) {
                     vacant.insert(Located {
                         archive: archives.len(),
                         offset: entry.offset,
@@ -101,11 +116,11 @@ impl Install {
 
     /// The bytes of the file at `path`, as the game names it, in the first archive that holds
     /// it.
-    pub(crate) fn read(&mut self, path: &str) -> Result<Vec<u8>, ImportError> {
+    pub(crate) fn read(&mut self, path: &ArchivePath) -> Result<Vec<u8>, ImportError> {
         let located = *self
             .files
-            .get(&Install::key(path))
-            .ok_or_else(|| ImportError::ZeroHour(ZeroHourError::NotInArchives(path.to_owned())))?;
+            .get(path)
+            .ok_or_else(|| ImportError::ZeroHour(ZeroHourError::NotInArchives(path.to_string())))?;
         let len = usize::try_from(located.size).expect("a u32 fits usize");
         self.archives[located.archive]
             .file
@@ -118,11 +133,33 @@ impl Install {
     pub(crate) fn maps(&self) -> Vec<InstallMap> {
         self.files
             .keys()
-            .filter_map(|key| {
-                let folder = key.strip_prefix("maps\\")?.split_once('\\')?.0;
-                (*key == format!("maps\\{folder}\\{folder}.map")).then(|| InstallMap {
-                    path: key.clone(),
+            .filter_map(|path| {
+                let names: Vec<&str> = path.names().collect();
+                let ["maps", folder, file] = names[..] else {
+                    return None;
+                };
+                (file.strip_suffix(".map") == Some(folder)).then(|| InstallMap {
+                    path: path.clone(),
                     folder: folder.to_owned(),
+                })
+            })
+            .collect()
+    }
+
+    /// The textures the install holds, each by its key once: every `.dds` and `.tga`, in the order
+    /// of their keys.
+    pub(crate) fn textures(&self) -> Vec<InstallTexture> {
+        self.files
+            .keys()
+            .filter_map(|path| {
+                let kind = match path.extension()? {
+                    "dds" => TextureKind::Dds,
+                    "tga" => TextureKind::Tga,
+                    _ => return None,
+                };
+                Some(InstallTexture {
+                    path: path.clone(),
+                    kind,
                 })
             })
             .collect()
@@ -158,7 +195,9 @@ impl Install {
         for entry in DirEntries::read(dir).map_err(ImportError::Read)? {
             let name = format!("{at}{}", entry.name.to_string_lossy());
             let path = dir.join(&entry.name);
-            let big = name.to_ascii_lowercase().ends_with(".big");
+            let big = Path::new(&entry.name)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("big"));
             match entry.kind {
                 EntryKind::Dir => Install::find(&path, &format!("{name}/"), found)?,
                 EntryKind::File | EntryKind::Link if big => found.push(Found { name, path }),
@@ -167,17 +206,14 @@ impl Install {
         }
         Ok(())
     }
-
-    /// The key the game finds a path by: its ASCII lowercase, with `\` between names.
-    fn key(path: &str) -> String {
-        path.replace('/', "\\").to_ascii_lowercase()
-    }
 }
 
 #[cfg(test)]
 pub(crate) mod internals {
     use campfire_store::Scratch;
 
+    use crate::texture::dds_file::internals::dds;
+    use crate::texture::tga_file::internals::tga;
     use crate::zero_hour::big_archive::internals::big;
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::ref_pack::internals::literal;
@@ -189,12 +225,21 @@ pub(crate) mod internals {
         [&b"EAR\0"[..], &len, &literal(&plain)].concat()
     }
 
+    /// A DXT1 texture of 8 × 8 texels and its full chain, and a TGA of 2 × 1.
+    pub(crate) fn textures() -> [Vec<u8>; 2] {
+        [
+            dds(*b"DXT1", 8, 8, 4, &[7; 32 + 8 + 8 + 8]),
+            tga(2, 1, 32, 0, &[1, 2, 3, 4, 5, 6, 7, 8]),
+        ]
+    }
+
     /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture
-    /// map in its folder and a map outside one, `b.big`, `c.BIG`, base Generals'
-    /// `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that is no
-    /// archive.
+    /// map in its folder, a map outside one and the two textures, `b.big`, `c.BIG`, base
+    /// Generals' `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that
+    /// is no archive.
     pub(crate) fn fixture(scratch: &Scratch) {
         let packed = packed_map();
+        let [rock, sign] = textures();
         scratch.write(
             "zh/A.big",
             big(&[
@@ -202,6 +247,8 @@ pub(crate) mod internals {
                 ("shared.ini", b"from A"),
                 ("Maps\\Fixture Map\\Fixture Map.map", &packed),
                 ("Maps\\Stray\\Other.map", b"no map the game lists"),
+                ("Art\\Textures\\Rock.dds", &rock),
+                ("Art\\Textures\\Sign.tga", &sign),
             ]),
         );
         scratch.write(
@@ -240,22 +287,42 @@ mod tests {
             .map(|archive| archive.name.clone())
             .collect();
         assert_eq!(names, ["A.big", "b.big", "c.BIG", "ZH_Generals/base.big"]);
-        assert_eq!(install.read("shared.ini").unwrap(), b"from A");
-        assert_eq!(install.read("SHARED.INI").unwrap(), b"from A");
-        assert_eq!(install.read("data/A.ini").unwrap(), b"A1");
-        assert_eq!(install.read("b\\B.INI").unwrap(), b"b");
-        assert_eq!(install.read("c.ini").unwrap(), b"c");
-        assert_eq!(install.read("base.ini").unwrap(), b"base only");
+        assert_eq!(
+            install.read(&ArchivePath::of("shared.ini")).unwrap(),
+            b"from A"
+        );
+        assert_eq!(
+            install.read(&ArchivePath::of("SHARED.INI")).unwrap(),
+            b"from A"
+        );
+        assert_eq!(install.read(&ArchivePath::of("data/A.ini")).unwrap(), b"A1");
+        assert_eq!(install.read(&ArchivePath::of("b\\B.INI")).unwrap(), b"b");
+        assert_eq!(install.read(&ArchivePath::of("c.ini")).unwrap(), b"c");
+        assert_eq!(
+            install.read(&ArchivePath::of("base.ini")).unwrap(),
+            b"base only"
+        );
+        let texture = |path: &str, kind| InstallTexture {
+            path: ArchivePath::of(path),
+            kind,
+        };
+        assert_eq!(
+            install.textures(),
+            [
+                texture("art\\textures\\rock.dds", TextureKind::Dds),
+                texture("art\\textures\\sign.tga", TextureKind::Tga),
+            ]
+        );
         // The map in its own folder, by its key; not the one in another's.
         assert_eq!(
             install.maps(),
             [InstallMap {
-                path: "maps\\fixture map\\fixture map.map".to_owned(),
+                path: ArchivePath::of("maps\\fixture map\\fixture map.map"),
                 folder: "fixture map".to_owned(),
             }]
         );
         assert!(matches!(
-            install.read("missing.ini"),
+            install.read(&ArchivePath::of("missing.ini")),
             Err(ImportError::ZeroHour(ZeroHourError::NotInArchives(path))) if path == "missing.ini"
         ));
         // Each archive's hash, in the load order.
