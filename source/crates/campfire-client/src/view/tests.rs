@@ -7,6 +7,7 @@ use bevy::ecs::world::World;
 use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
+use campfire_capabilities::internals::standing_area;
 use campfire_capabilities::{DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOrigins};
 use campfire_math::Num;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits};
@@ -270,4 +271,40 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     );
     let turn = model.get::<Transform>().unwrap().rotation;
     assert!(turn.abs_diff_eq(Quat::from_rotation_y(90.0_f32.to_radians()), 1e-6));
+}
+
+#[test]
+fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
+    let mut app = view();
+    let origins: TypeOrigins = [TypeOrigin {
+        package: 0,
+        name: "fire_pool".into(),
+    }]
+    .into_iter()
+    .collect();
+    let (unit_type, _) = origins.iter().next().unwrap();
+    // An area 2.5 m wide at (3, −4).
+    let area = standing_area(
+        app.world_mut(),
+        unit_type,
+        Num::from_bits(5 << (Num::FRAC_BITS - 1)),
+    );
+    let lies = app
+        .world_mut()
+        .spawn((
+            IdAllocator::default().allocate(),
+            place(3, -4),
+            Team::new(0),
+            unit_type,
+            area,
+        ))
+        .id();
+    app.update();
+    let world = app.world();
+    let (root, _, at) = root(world, lies);
+    assert_eq!(at, Vec3::new(3.0, 0.0, -4.0));
+    let disc = world.get::<Children>(root).unwrap()[0];
+    let disc = world.get::<Transform>(disc).unwrap();
+    assert_eq!(disc.scale, Vec3::new(2.5, 1.0, 2.5));
+    assert_eq!(disc.translation, Vec3::Y * AREA_LIFT);
 }

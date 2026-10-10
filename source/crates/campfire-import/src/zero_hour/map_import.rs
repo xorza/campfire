@@ -94,42 +94,41 @@ impl MapImport {
             if object.road_or_bridge() {
                 continue;
             }
-            let Placement {
-                ground,
-                height,
-                degrees,
-            } = object.placement().ok_or(MapError::Placement(at))?;
-            let pos = take(ground);
-            match &object.waypoint {
-                Some(waypoint) => {
-                    let id = u32::try_from(waypoint.id)
-                        .ok()
-                        .ok_or(MapError::WaypointId(waypoint.id))?;
-                    if !waypoints.insert(id) {
-                        return Err(MapError::WaypointTwice(waypoint.id));
-                    }
-                    let name = String::from_utf8(waypoint.name.clone())
-                        .ok()
-                        .filter(|name| name.is_ascii())
-                        .ok_or(MapError::NotAscii)?;
-                    // A marker's param that reads as a decimal is taken for a number.
-                    if name.parse::<Num>().is_ok() {
-                        return Err(MapError::WaypointName(name));
-                    }
-                    markers.push(MarkerToml {
-                        name: format!("w{id}"),
-                        tags: [WAYPOINT],
-                        pos,
-                        params: MarkerParams { name },
-                    });
+            if let Some(waypoint) = &object.waypoint {
+                let pos = take(object.ground().ok_or(MapError::Placement(at))?);
+                let id = u32::try_from(waypoint.id)
+                    .ok()
+                    .ok_or(MapError::WaypointId(waypoint.id))?;
+                if !waypoints.insert(id) {
+                    return Err(MapError::WaypointTwice(waypoint.id));
                 }
-                None => units.push(UnitToml {
+                let name = String::from_utf8(waypoint.name.clone())
+                    .ok()
+                    .filter(|name| name.is_ascii())
+                    .ok_or(MapError::NotAscii)?;
+                // A marker's param that reads as a decimal is taken for a number.
+                if name.parse::<Num>().is_ok() {
+                    return Err(MapError::WaypointName(name));
+                }
+                markers.push(MarkerToml {
+                    name: format!("w{id}"),
+                    tags: [WAYPOINT],
+                    pos,
+                    params: MarkerParams { name },
+                });
+            } else {
+                let Placement {
+                    ground,
+                    height,
+                    degrees,
+                } = object.placement().ok_or(MapError::Placement(at))?;
+                units.push(UnitToml {
                     unit_type: unit_types.name(&object.template)?.as_str().to_owned(),
                     team: NEUTRAL,
-                    pos,
+                    pos: take(ground),
                     angle: degrees.to_string(),
                     height: height.to_string(),
-                }),
+                });
             }
         }
         let map = MapToml {
@@ -311,7 +310,18 @@ mod tests {
         let mut negative = file.clone();
         negative.objects[waypoint].waypoint.as_mut().unwrap().id = -1;
         assert_eq!(import(&negative), Err(MapError::WaypointId(-1)));
+        // A waypoint reads no angle and no height, so neither an infinite angle nor an infinite
+        // height refuses it; its ground point past the world's bound does.
+        let mut turned = file.clone();
+        turned.objects[waypoint].angle = f32::INFINITY;
+        turned.objects[waypoint].pos[2] = f32::INFINITY;
+        assert_eq!(import(&turned), Ok(()));
+        turned.objects[waypoint].pos[1] = f32::INFINITY;
+        assert_eq!(import(&turned), Err(MapError::Placement(waypoint)));
         file.objects[1].pos[0] = f32::INFINITY;
+        assert_eq!(import(&file), Err(MapError::Placement(1)));
+        file.objects[1].pos[0] = 0.0;
+        file.objects[1].angle = f32::INFINITY;
         assert_eq!(import(&file), Err(MapError::Placement(1)));
     }
 }

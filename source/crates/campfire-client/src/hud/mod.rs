@@ -22,7 +22,8 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use campfire_capabilities::{
-    ActionSlots, Combat, Dead, Learning, Level, PlayerUnits, Points, PoolId, Pools, Rank, Team,
+    ActionSlots, Combat, Dead, Learning, Level, PlayerUnits, Points, PoolId, Pools, Rank,
+    SlotCharges, Team,
 };
 use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
@@ -38,8 +39,9 @@ mod ring;
 
 /// Makes the match readable with plain shapes over the drawings: a bar of the life pool over
 /// every unit; under the own avatar's, its other pools, a gold mark over each ability it may
-/// learn a rank of, its cooldowns, and a tick for each rank of an ability that ranks up, bright
-/// once learned; a ring where each hit lands, and a ring under the unit the own avatar attacks.
+/// learn a rank of, its cooldowns, a tick for each rank of an ability that ranks up, bright
+/// once learned, and a tick for each charge of an ability with charges, bright while held and
+/// filling while it comes back; a ring where each hit lands, and a ring under the unit the own avatar attacks.
 /// It reads the sim's components and changes none.
 #[derive(Debug)]
 pub(crate) struct Hud;
@@ -68,6 +70,77 @@ struct HudPalette {
 struct GaugeScratch {
     kinds: Vec<GaugeKind>,
     ranks: Vec<Ranked>,
+    /// The own avatar's slots, as their rows show them.
+    slots: Vec<SlotRows>,
+}
+
+impl GaugeScratch {
+    /// The own avatar's ability rows from row `row`, for the slots `slots` holds in order: a learn
+    /// mark over each ability that ranks up, when one does; a cooldown pip for each slot; the
+    /// rank ticks of each ability that ranks up; and the charge ticks of each ability with
+    /// charges.
+    fn ability_rows(&mut self, mut row: u8) {
+        let GaugeScratch {
+            kinds,
+            ranks,
+            slots,
+        } = self;
+        let slots = slots.iter().copied();
+        ranks.clear();
+        ranks.extend((0..).zip(slots.clone()).filter_map(|(slot, held)| {
+            Some(Ranked {
+                slot,
+                ranks: held.ranks?,
+            })
+        }));
+        if !ranks.is_empty() {
+            kinds.extend(ranks.iter().map(|ranked| GaugeKind::Learnable {
+                slot: ranked.slot,
+                row,
+            }));
+            row += 1;
+        }
+        kinds.extend(
+            (0..)
+                .zip(slots.clone())
+                .map(|(slot, _)| GaugeKind::Cooldown {
+                    slot,
+                    row,
+                    cooling: None,
+                }),
+        );
+        row += 1;
+        for &Ranked { slot, ranks } in &*ranks {
+            kinds.extend((1..=ranks).map(|rank| GaugeKind::Rank {
+                slot,
+                rank,
+                ranks,
+                row,
+            }));
+        }
+        if !ranks.is_empty() {
+            row += 1;
+        }
+        for (slot, held) in (0..).zip(slots) {
+            let Some(max) = held.charges else {
+                continue;
+            };
+            kinds.extend((1..=max).map(|charge| GaugeKind::Charge {
+                slot,
+                charge,
+                max,
+                row,
+            }));
+        }
+    }
+}
+
+/// What an ability slot's rows show of it: the count of ranks of an ability that ranks up, and
+/// the most charges of one with charges.
+#[derive(Debug, Clone, Copy)]
+struct SlotRows {
+    ranks: Option<u8>,
+    charges: Option<u8>,
 }
 
 /// An ability slot whose ability ranks up, and its count of ranks.
@@ -204,7 +277,8 @@ impl Hud {
     /// Gives each drawn unit its gauges, once the client plays, its team telling friend from
     /// foe: life for every unit with the life pool; for the own avatar, each other pool, then,
     /// when an ability ranks up, a row of learn marks, then a cooldown per ability slot, then the
-    /// rank ticks of each ability that ranks up. The gauges stand over the drawing's top, facing
+    /// rank ticks of each ability that ranks up, then the charge ticks of each ability with
+    /// charges. The gauges stand over the drawing's top, facing
     /// the camera, as children of its root.
     #[expect(
         clippy::too_many_arguments,
@@ -231,7 +305,6 @@ impl Hud {
         let avatar = players.avatar(slot).map(|avatar| avatar.entity);
         let life = life.map(|life| life.0);
         let facing = Quat::from_rotation_arc(Vec3::Y, CAMERA.normalize());
-        let GaugeScratch { kinds, ranks } = &mut *scratch;
         for (unit, drawing, team, pools, slots) in &drawn {
             commands.entity(unit).insert(Gauged);
             // A projectile's drawing has no look, and no gauges.
@@ -240,58 +313,37 @@ impl Hud {
             };
             let mine = Some(unit) == avatar;
             let friend = *team == own_team;
-            kinds.clear();
+            scratch.kinds.clear();
             let current = |pool| pools.and_then(|pools| pools.current(pool));
             if let Some(life) = life
                 && pools.is_some_and(|pools| pools.max(life).is_some())
             {
-                kinds.push(GaugeKind::Life {
+                scratch.kinds.push(GaugeKind::Life {
                     shown: current(life),
                 });
             }
             let mut row = 1;
             if mine && let Some(pools) = pools {
                 for pool in pools.ids().filter(|&pool| Some(pool) != life) {
-                    kinds.push(GaugeKind::Pool { pool, row });
+                    scratch.kinds.push(GaugeKind::Pool { pool, row });
                     row += 1;
                 }
             }
             if mine && let Some(slots) = slots {
-                ranks.clear();
-                ranks.extend((0..).zip(slots.iter()).filter_map(|(slot, held)| {
-                    Some(Ranked {
-                        slot,
-                        ranks: learning.as_ref()?.ranks(held)?,
-                    })
+                let learning = learning.as_ref();
+                scratch.slots.clear();
+                scratch.slots.extend(slots.iter().map(|held| {
+                    SlotRows {
+                        ranks: learning.and_then(|learning| learning.ranks(held)),
+                        charges: learning
+                            .and_then(|learning| learning.charges(held))
+                            .map(|rule| rule.max.get()),
+                    }
                 }));
-                if !ranks.is_empty() {
-                    kinds.extend(ranks.iter().map(|ranked| GaugeKind::Learnable {
-                        slot: ranked.slot,
-                        row,
-                    }));
-                    row += 1;
-                }
-                kinds.extend(
-                    (0..)
-                        .zip(slots.iter())
-                        .map(|(slot, _)| GaugeKind::Cooldown {
-                            slot,
-                            row,
-                            cooling: None,
-                        }),
-                );
-                row += 1;
-                for &Ranked { slot, ranks } in &*ranks {
-                    kinds.extend((1..=ranks).map(|rank| GaugeKind::Rank {
-                        slot,
-                        rank,
-                        ranks,
-                        row,
-                    }));
-                }
+                scratch.ability_rows(row);
             }
             let top = Vec3::Y * (shape.height() + ABOVE);
-            for &kind in &*kinds {
+            for &kind in &scratch.kinds {
                 let layout = kind.layout();
                 let back = commands
                     .spawn((
@@ -429,6 +481,21 @@ impl Hud {
                             }
                         })
                     }
+                    GaugeKind::Charge { slot, charge, .. } => {
+                        let held = slots.and_then(|slots| slots.slot(*slot));
+                        let rule = learning
+                            .as_ref()
+                            .zip(held)
+                            .and_then(|(learning, held)| learning.charges(held));
+                        held.zip(rule).zip(now).map(|((held, rule), now)| {
+                            // A slot that spent none yet holds every charge.
+                            let charges = held.charges.unwrap_or(SlotCharges {
+                                count: rule.max.get(),
+                                next: now,
+                            });
+                            GaugeKind::charge_fill(*charge, charges, rule, now)
+                        })
+                    }
                     GaugeKind::Learnable { slot, .. } => {
                         let held = slots.and_then(|slots| slots.slot(*slot));
                         let learnable = learning
@@ -523,7 +590,9 @@ impl HudPalette {
             GaugeKind::Life { .. } => &self.foe,
             GaugeKind::Pool { .. } => &self.resource,
             GaugeKind::Learnable { .. } => &self.learnable,
-            GaugeKind::Cooldown { .. } | GaugeKind::Rank { .. } => &self.cooldown,
+            GaugeKind::Cooldown { .. } | GaugeKind::Rank { .. } | GaugeKind::Charge { .. } => {
+                &self.cooldown
+            }
         }
     }
 }
@@ -605,5 +674,96 @@ mod tests {
         app.update();
         assert_eq!(app.world().get::<Gauge>(gauge).unwrap().kind, shown(500));
         assert_eq!(rings.iter(app.world()).count(), 1);
+    }
+
+    #[test]
+    fn an_avatars_ability_rows_stack_its_marks_cooldowns_ranks_and_charges() {
+        // Three slots: one of 3 ranks; one of 2 charges; one of neither. Row 1 holds the learn
+        // mark over the ranked slot, row 2 a cooldown pip for each slot, row 3 the ranked slot's
+        // 3 ticks, row 4 the charged slot's 2.
+        let slots = [
+            SlotRows {
+                ranks: Some(3),
+                charges: None,
+            },
+            SlotRows {
+                ranks: None,
+                charges: Some(2),
+            },
+            SlotRows {
+                ranks: None,
+                charges: None,
+            },
+        ];
+        let mut scratch = GaugeScratch {
+            slots: slots.to_vec(),
+            ..GaugeScratch::default()
+        };
+        scratch.ability_rows(1);
+        let cooldown = |slot| GaugeKind::Cooldown {
+            slot,
+            row: 2,
+            cooling: None,
+        };
+        let rank = |rank| GaugeKind::Rank {
+            slot: 0,
+            rank,
+            ranks: 3,
+            row: 3,
+        };
+        let charge = |charge| GaugeKind::Charge {
+            slot: 1,
+            charge,
+            max: 2,
+            row: 4,
+        };
+        assert_eq!(
+            scratch.kinds,
+            [
+                GaugeKind::Learnable { slot: 0, row: 1 },
+                cooldown(0),
+                cooldown(1),
+                cooldown(2),
+                rank(1),
+                rank(2),
+                rank(3),
+                charge(1),
+                charge(2),
+            ]
+        );
+        // With no ability that ranks up, the cooldowns take the first row and the charges the
+        // next.
+        let mut scratch = GaugeScratch {
+            slots: slots[1..].to_vec(),
+            ..GaugeScratch::default()
+        };
+        scratch.ability_rows(1);
+        assert_eq!(
+            scratch.kinds,
+            [
+                GaugeKind::Cooldown {
+                    slot: 0,
+                    row: 1,
+                    cooling: None
+                },
+                GaugeKind::Cooldown {
+                    slot: 1,
+                    row: 1,
+                    cooling: None
+                },
+                GaugeKind::Charge {
+                    slot: 0,
+                    charge: 1,
+                    max: 2,
+                    row: 2
+                },
+                GaugeKind::Charge {
+                    slot: 0,
+                    charge: 2,
+                    max: 2,
+                    row: 2
+                },
+            ]
+        );
     }
 }

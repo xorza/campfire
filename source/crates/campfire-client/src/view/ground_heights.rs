@@ -1,4 +1,5 @@
 use bevy::ecs::resource::Resource;
+use bevy::math::Vec3;
 use campfire_capabilities::HeightGrid;
 use campfire_math::Num;
 
@@ -65,9 +66,15 @@ impl GroundHeights {
             clippy::cast_possible_truncation,
             reason = "a floor within the world's bound"
         )]
-        let [ix, iy] = [column as i64 + self.origin[0], row as i64 + self.origin[1]];
+        let cell = [column as i64 + self.origin[0], row as i64 + self.origin[1]];
+        self.in_cell(cell, fx, fy)
+    }
+
+    /// The ground's height in the original's cell `[ix, iy]`, at the fractions `fx` east and `fy`
+    /// north across it.
+    fn in_cell(&self, [ix, iy]: [i64; 2], fx: f32, fy: f32) -> f32 {
         // The original keeps a ring of samples about the inner cells for its smoothed normals.
-        if ix < 1 || iy < 1 || ix > self.columns - 3 || iy > self.rows - 3 {
+        if !self.inner([ix, iy]) {
             let clamp = |index: i64, extent: i64| index.clamp(0, extent - 1);
             return self.sample(clamp(ix, self.columns), clamp(iy, self.rows)) * self.step;
         }
@@ -81,6 +88,122 @@ impl GroundHeights {
             p1 + fy * (p2 - p1) + (1.0 - fx) * (p0 - p1)
         };
         height * self.step
+    }
+
+    /// Whether the cell `[ix, iy]` is one of the inner cells, whose triangles the ground is.
+    const fn inner(&self, [ix, iy]: [i64; 2]) -> bool {
+        ix >= 1 && iy >= 1 && ix <= self.columns - 3 && iy <= self.rows - 3
+    }
+
+    /// Where the ray from `origin` along `direction` first meets the ground, walking the cells it
+    /// crosses from where it falls below the highest sample to where it falls below the lowest:
+    /// in a cell, its height over the ground is linear on each of the cell's planes, so the first
+    /// plane whose far end lies below the ground holds the crossing; a ray that enters a cell
+    /// below its ground met the step between two cells off the inner ones, where it entered.
+    /// `None` for a ray that does not fall.
+    pub(crate) fn hit(&self, origin: Vec3, direction: Vec3) -> Option<Vec3> {
+        if direction.y >= 0.0 {
+            return None;
+        }
+        let (low, high) = self
+            .samples
+            .iter()
+            .fold((u8::MAX, u8::MIN), |(low, high), &sample| {
+                (low.min(sample), high.max(sample))
+            });
+        let fall = |height: f32| (height - origin.y) / direction.y;
+        let start = fall(f32::from(high) * self.step).max(0.0);
+        let end = fall(f32::from(low) * self.step).max(start);
+        // The ray on the original's grid: `u` east and `v` north, in cells.
+        let grid = |t: f32| {
+            let at = origin + direction * t;
+            #[expect(clippy::cast_precision_loss, reason = "a border of few cells")]
+            let [ox, oy] = self.origin.map(|cells| cells as f32);
+            [at.x * self.inverse + ox, -at.z * self.inverse + oy]
+        };
+        let pace = [direction.x * self.inverse, -direction.z * self.inverse];
+        let above = |t: f32, cell: [i64; 2]| {
+            let [u, v] = grid(t);
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "a cell within the world's bound"
+            )]
+            let [fx, fy] = [
+                (u - cell[0] as f32).clamp(0.0, 1.0),
+                (v - cell[1] as f32).clamp(0.0, 1.0),
+            ];
+            origin.y + direction.y * t - self.in_cell(cell, fx, fy)
+        };
+        let [east_at, north_at] = grid(start);
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a floor within the world's bound"
+        )]
+        let mut cell = [east_at.floor() as i64, north_at.floor() as i64];
+        let mut from = start;
+        loop {
+            // Where the ray leaves the cell: the nearest of its next edges on each axis.
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "a cell within the world's bound"
+            )]
+            let leave = |axis: usize| {
+                let edge = if pace[axis] > 0.0 {
+                    cell[axis] + 1
+                } else {
+                    cell[axis]
+                } as f32;
+                if pace[axis] == 0.0 {
+                    f32::INFINITY
+                } else {
+                    (edge - grid(from)[axis]) / pace[axis] + from
+                }
+            };
+            let [east, north] = [leave(0), leave(1)];
+            // A float off at a cell's edge never steps the walk back.
+            let to = east.min(north).min(end).max(from);
+            if above(from, cell) <= 0.0 {
+                return Some(origin + direction * from);
+            }
+            // An inner cell's two planes meet on its diagonal, where `fy − fx` changes sign.
+            let mut diagonal = None;
+            if self.inner(cell) {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "a cell within the world's bound"
+                )]
+                let side = |t: f32| {
+                    let [u, v] = grid(t);
+                    (v - cell[1] as f32) - (u - cell[0] as f32)
+                };
+                let (before, after) = (side(from), side(to));
+                if (before > 0.0) != (after > 0.0) {
+                    diagonal = Some(from + (to - from) * before / (before - after));
+                }
+            }
+            let mut start = from;
+            for piece in diagonal.into_iter().chain([to]) {
+                let (high, low) = (above(start, cell), above(piece, cell));
+                if low <= 0.0 {
+                    let t = if high > low {
+                        start + (piece - start) * high / (high - low)
+                    } else {
+                        start
+                    };
+                    return Some(origin + direction * t);
+                }
+                start = piece;
+            }
+            if to >= end {
+                return None;
+            }
+            from = to;
+            if east <= north {
+                cell[0] += if pace[0] > 0.0 { 1 } else { -1 };
+            } else {
+                cell[1] += if pace[1] > 0.0 { 1 } else { -1 };
+            }
+        }
     }
 
     fn sample(&self, column: i64, row: i64) -> f32 {
@@ -141,5 +264,76 @@ mod tests {
         )
         .unwrap();
         assert_eq!(GroundHeights::of(&grid), None);
+    }
+
+    #[test]
+    fn a_ray_meets_the_ground_where_it_first_falls_below_it() {
+        // The grid of the test above: sample (i, j) is `i + 10 · j` steps of 0.625.
+        let original = |i: u8, j: u8| i + 10 * j;
+        let samples: Vec<u8> = (0..5)
+            .rev()
+            .flat_map(|j| (0..5).map(move |i| original(i, j)))
+            .collect();
+        let step = Num::from_bits(5 << (Num::FRAC_BITS - 3));
+        let grid = HeightGrid::new(
+            [Num::int(-10), Num::int(-30)],
+            Num::int(10),
+            step,
+            5,
+            samples,
+        )
+        .unwrap();
+        let heights = GroundHeights::of(&grid).unwrap();
+        let close = |a: f32, b: f32| (a - b).abs() < 1e-3;
+        // Straight down onto the sloped cell at the original's (12, 3): its height there.
+        let hit = heights
+            .hit(Vec3::new(12.0, 100.0, -3.0), Vec3::NEG_Y)
+            .unwrap();
+        assert_eq!((hit.x, hit.z), (12.0, -3.0));
+        assert!(close(hit.y, heights.at(12.0, -3.0)), "{hit}");
+        // Slanting across several cells: on the ground, and every point before it above it.
+        let (origin, direction) = (Vec3::new(-5.0, 60.0, 5.0), Vec3::new(0.7, -1.0, -0.4));
+        let hit = heights.hit(origin, direction).unwrap();
+        assert!(close(hit.y, heights.at(hit.x, hit.z)), "{hit}");
+        let reach = (hit - origin).length() / direction.length();
+        for at in 0..1000 {
+            #[expect(clippy::cast_precision_loss, reason = "a small count")]
+            let point = origin + direction * (reach * at as f32 / 1000.0);
+            assert!(
+                point.y >= heights.at(point.x, point.z) - 1e-3,
+                "{point} below the ground before {hit}"
+            );
+        }
+        // Off the map, the nearest sample's height: (100, −100) of the original is sample (4, 0).
+        let hit = heights
+            .hit(Vec3::new(100.0, 50.0, 100.0), Vec3::NEG_Y)
+            .unwrap();
+        assert!(close(hit.y, 4.0 * 0.625));
+        // A ray that rises, or runs level, never meets it.
+        assert_eq!(heights.hit(Vec3::new(0.0, 50.0, 0.0), Vec3::Y), None);
+        assert_eq!(heights.hit(Vec3::new(0.0, 50.0, 0.0), Vec3::X), None);
+
+        // A low middle within a high rim: 5 × 5 samples, 100 steps on the edge, 0 inside. A ray
+        // east at 20 m, falling 0.1 m a meter, crosses the low cells and meets the rim's step
+        // where it enters it, at x = 30, 18.5 m up.
+        let rim: Vec<u8> = (0..25)
+            .map(|at| {
+                if at % 5 == 0 || at % 5 == 4 || !(5..20).contains(&at) {
+                    100
+                } else {
+                    0
+                }
+            })
+            .collect();
+        let grid =
+            HeightGrid::new([Num::int(-10), Num::int(-30)], Num::int(10), step, 5, rim).unwrap();
+        let heights = GroundHeights::of(&grid).unwrap();
+        let hit = heights
+            .hit(Vec3::new(15.0, 20.0, -15.0), Vec3::new(1.0, -0.1, 0.0))
+            .unwrap();
+        assert!(
+            close(hit.x, 30.0) && close(hit.y, 18.5) && close(hit.z, -15.0),
+            "{hit}"
+        );
     }
 }

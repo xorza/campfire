@@ -24,6 +24,7 @@ pub(crate) mod area_data;
 pub(crate) mod area_holds;
 pub(crate) mod area_launches;
 pub(crate) mod area_life;
+pub(crate) mod area_reach;
 pub(crate) mod area_spec;
 pub(crate) mod areas_api;
 pub(crate) mod areas_effect;
@@ -106,20 +107,55 @@ impl Areas {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use crate::areas::Areas;
-    use crate::areas::area_data::AreaData;
-    use crate::areas::area_spec::AreaSpec;
-    use crate::stats::Stats;
-    use crate::units::by_type::ByType;
-    use crate::units::engine_tag::EngineTag;
-    use crate::units::unit_type::UnitType;
-    use crate::units::view::View;
-    use crate::values::declared_name::DeclaredName;
     use bevy_ecs::world::World;
+    use campfire_common::{Tick, Ticks};
+    use campfire_math::Num;
+    use campfire_sim::IdAllocator;
+
+    use crate::areas::area::Area;
+    use crate::areas::area_spec::{AreaSpec, Inside};
+    use crate::deliveries::delivering::Delivering;
+    use crate::units::action_id::ActionId;
+    use crate::units::by_type::ByType;
+    use crate::units::filter::Filter;
+    use crate::units::unit_type::UnitType;
+    use crate::values::rank::Rank;
+    use crate::values::relation_set::RelationSet;
+
+    /// An area unit of `unit_type`, a type that reaches `radius`, as a client draws it: the type's
+    /// spec in `world`'s book of them, and the area, from tick 0 to tick 1.
+    pub fn standing_area(world: &mut World, unit_type: UnitType, radius: Num) -> Area {
+        let spec = AreaSpec {
+            radius,
+            delay: Ticks::new(0),
+            duration: Ticks::new(1),
+            affects: Filter::of_relations(RelationSet::All),
+            inside: Inside::default(),
+        };
+        world
+            .get_resource_or_init::<ByType<AreaSpec>>()
+            .set(unit_type, spec);
+        let by = Delivering {
+            source: IdAllocator::default().allocate(),
+            action: ActionId::new(0),
+            rank: Rank::FIRST,
+            start: None,
+            launch: None,
+        };
+        Area::new(by, None, None, Tick::new(1)).expect("an area with no trigger")
+    }
+
+    #[cfg(test)]
+    use crate::{
+        areas::Areas, areas::area_data::AreaData, stats::Stats, units::engine_tag::EngineTag,
+        units::view::View, values::declared_name::DeclaredName,
+    };
+    #[cfg(test)]
     use campfire_sim::TickRate;
 
+    #[cfg(test)]
     impl Areas {
         /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in ticks
         /// at the match's rate, rounded up, which the package load checked: its `affects` filter

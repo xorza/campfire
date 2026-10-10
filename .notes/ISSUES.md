@@ -4,6 +4,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Decide
 
+- **Net.** **Stage 8.** No production state replicates: a client sees no train queue and no player resource, where design 04's production sends a player's queues, supply, loads and resources to that player and, as the mode sets, to the team ([Production](../docs/design/04-capabilities/production.md#network)). A player's resources and supply live in one world resource for all players, `PlayerResources`, which Lightyear does not replicate, as it replicates entities' components. Options: a player entity for each slot that holds its resources and supply, replicated to that player's link, and to the team's where the mode says; or a message to each player when its amounts change. And the mode's setting that shares them with the team: a new field of its `[players]`, or none until a mode needs it.
 - **Zero Hour.** A texture no archive holds leaves its triangles untextured in the import, where the game draws `MissingTexture`, a solid color of `0x7FFF00FF`: draw them as the game does, or untextured, as now.
 - **Zero Hour.** The import ignores a vertex material's ambient color, as glTF's material has none: 336 vertex materials of converted models have one other than their diffuse color, which the game lights by the scene's ambient light. Options: a material file with the ambient color, which the client draws; or the diffuse color for both, as now.
 
@@ -25,13 +26,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 ## Ready
 
 - **Actions.** **Stage 15.** The projectile section's `gravity` is planned: no projectile falls, so no grenade arcs and no bullet drops.
-- **Client.** The pointer takes the ground under the cursor where its ray meets the plane at height 0 (`Pointer::ground`), though a map with a heightmap draws its ground and its units at the heights `GroundHeights` gives, so a move order on such a map lands off the point clicked.
-- **Client.** The HUD shows no charges: an action with charges shows only its lockout as its cooldown, not how many charges it holds or when the next comes back.
 - **Client.** The client has no shop and no item keys: a player cannot buy, sell or use an item, which design 04's items give as orders.
-- **Client.** **Stage 8.** The client draws no area units: a unit with an `Area` is left out of the drawn units, and nothing shows where an area lies or how far it reaches.
 - **Interaction.** `interaction` is planned: no action of the `use` kind runs.
 - **Navigation.** **Stage 8.** The widest body is 64 m, `Shape::MAX_BOUND`, and the collision and box math is sized for it, where design 04 gives 2,048 m ([Zero Hour](../docs/design/12-zero-hour.md#decisions), D11).
-- **Net.** **Stage 8.** No production state replicates: a client sees no train queue and no player resource, where design 04's production sends a player's queues and resources to that player ([Production](../docs/design/04-capabilities/production.md#network)).
-- **Net.** No unit's inventory replicates: a client sees no item its units carry, where design 04's items send a unit's own inventory to its owner ([Items](../docs/design/04-capabilities/items.md#network)).
-- **Server.** A server that restores a session loads the map its `--map` names, or the mode's only one, before it reads the journal, and not the map the journal's terms name: a mode of several maps restarted with no `--map`, or another one, does not restore.
-- **Zero Hour.** The import turns a waypoint's angle into degrees, though no marker keeps it, and so refuses a map whose waypoint has an angle that the game's `normalizeAngle` never ends on, as an infinite one; the game never normalizes a waypoint's angle (`MapImport::new`, `MapObject::placement`).

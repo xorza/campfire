@@ -32,8 +32,8 @@ use campfire_capabilities::CapabilitySet;
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, ServerBots, ServerDir,
-    ServerExit, ServerSetup, SessionTimes, SimServer,
+    JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, RestoredSession, ServerBots,
+    ServerDir, ServerExit, ServerSetup, SessionTimes, SimServer,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::CertificateHash;
@@ -101,6 +101,19 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
+    // A waiting session names its own map, which its restore, or its end, replays.
+    let waiting = Opening::waiting(&data).and_then(|waiting| {
+        let journal = waiting.as_ref().map(|session| &session.private.terms.map);
+        let map = Opening::map(journal, map)?;
+        Ok((waiting, map))
+    });
+    let (waiting, map) = match waiting {
+        Ok(found) => found,
+        Err(error) => {
+            error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
+            return ExitCode::from(ExitStatus::Failure);
+        }
+    };
     let mode_dir = PackageDir::new(&mode);
     let packages = ModePackages::choose_map(&mode_dir, map)
         .and_then(|map| ModePackages::from_package_dir(&mode_dir, &map));
@@ -116,7 +129,7 @@ fn main() -> ExitCode {
         opening,
         server,
         tls,
-    } = match Started::open(&data, packages, key, times, bots) {
+    } = match Started::open(&data, waiting, packages, key, times, bots) {
         Ok(started) => started,
         Err(code) => return code,
     };
@@ -147,11 +160,12 @@ struct Started {
 }
 
 impl Started {
-    /// The session the data directory `data` holds to restore, or a new one of the mode
+    /// The session `waiting` in the data directory `data` to restore, or a new one of the mode
     /// `packages` holds, with `bots`; the TLS identity, made again only when no session
     /// restores; and the server's setup of `key` and `times`. The exit code when one fails.
     fn open(
         data: &ServerDir,
+        waiting: Option<RestoredSession>,
         packages: ModePackages,
         key: Keypair,
         times: SessionTimes,
@@ -161,8 +175,15 @@ impl Started {
             error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
             ExitCode::from(ExitStatus::Failure)
         };
-        let found = Opening::find(data, &packages, times.restore_window, key, Os::fill)
-            .map_err(no_session)?;
+        let found = Opening::find(
+            waiting,
+            data,
+            &packages,
+            times.restore_window,
+            key,
+            Os::fill,
+        )
+        .map_err(no_session)?;
         let tls = ServerTls::open(&data.layout().tls_file(), Os::unix_now(), found.is_some()).map_err(
             |error| {
                 error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "the TLS identity does not open");

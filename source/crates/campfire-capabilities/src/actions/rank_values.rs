@@ -47,9 +47,9 @@ pub(crate) struct ChannelRule {
 
 /// How many charges an action holds at most, and the ticks one takes to come back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChargeRule {
-    pub(crate) max: NonZeroU8,
-    pub(crate) recharge: Ticks,
+pub struct ChargeRule {
+    pub max: NonZeroU8,
+    pub recharge: Ticks,
 }
 
 impl RankValues {

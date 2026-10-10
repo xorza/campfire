@@ -277,7 +277,7 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     use super::*;
-    use crate::texture::internals::textures;
+    use crate::texture::internals::ktx2;
     use crate::zero_hour::big_archive::internals::big;
     use crate::zero_hour::error::VersionDifference;
     use crate::zero_hour::game_version::ArchiveHash;
@@ -339,18 +339,18 @@ mod tests {
         );
         assert_eq!(scratch.read_text("one/data/units.toml"), types.toml());
         // Each texture once, at its path in the archives, as its conversion gives it.
-        let [rock, sign] = textures();
+        let [rock, sign] = ktx2();
         assert_eq!(
             scratch.names("one/client/textures/art/textures"),
             ["rock.ktx2", "sign.ktx2"]
         );
         assert_eq!(
             scratch.read("one/client/textures/art/textures/rock.ktx2"),
-            DdsFile::read(&rock).unwrap().ktx2()
+            rock
         );
         assert_eq!(
             scratch.read("one/client/textures/art/textures/sign.ktx2"),
-            TgaFile::read(&sign).unwrap().ktx2()
+            sign
         );
         // Two imports write the same bytes, and the package reads as the fingerprint names it.
         assert_eq!(

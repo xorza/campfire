@@ -120,24 +120,27 @@ impl MapObject {
         self.flags & ROAD_OR_BRIDGE != 0
     }
 
-    /// Where it stands on the engine's axes: the original's `x` east, `y` north and `z` up
-    /// become `x`, `−z` and the height, which keeps the axes right-handed with `y` up. Its angle,
-    /// turned from `x` towards `y`, keeps its sign: a turn from `x` towards `−z` is
-    /// counter-clockwise seen from above. `None` past the world's bound, or for an angle the
-    /// game's own normalization never ends on.
-    pub(crate) fn placement(&self) -> Option<Placement> {
-        let [x, y, z] = self.pos.map(MapObject::num);
+    /// Where it stands on the engine's ground plane: the original's `x` east and `y` north become
+    /// `x` and `−z`, which keeps the axes right-handed with `y` up. `None` past the world's bound.
+    pub(crate) fn ground(&self) -> Option<[Num; 2]> {
+        let [x, y, _] = self.pos.map(MapObject::num);
         let ground = [x?, y?.checked_neg()?];
         let bound = Position::BOUND.to_bits();
-        if ground
+        ground
             .iter()
-            .any(|value| value.to_bits().unsigned_abs() > bound.unsigned_abs())
-        {
-            return None;
-        }
+            .all(|value| value.to_bits().unsigned_abs() <= bound.unsigned_abs())
+            .then_some(ground)
+    }
+
+    /// How it stands as a unit: its ground point, the original's `z` up as its height, and its
+    /// angle, turned from `x` towards `y`, which keeps its sign, as a turn from `x` towards `−z`
+    /// is counter-clockwise seen from above. `None` past the world's bound, or for an angle the
+    /// game's own normalization never ends on. A waypoint takes its ground point alone, as the
+    /// game reads neither its height nor its angle.
+    pub(crate) fn placement(&self) -> Option<Placement> {
         Some(Placement {
-            ground,
-            height: z?,
+            ground: self.ground()?,
+            height: MapObject::num(self.pos[2])?,
             degrees: MapObject::degrees(MapObject::normalized(self.angle)?)?,
         })
     }

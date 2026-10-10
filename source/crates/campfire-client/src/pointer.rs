@@ -11,6 +11,7 @@ use campfire_capabilities::{Dead, PlayerUnits, Team};
 use campfire_net::JoinState;
 use campfire_sim::{StableId, Unpredicted};
 
+use crate::view::client_data::ClientData;
 use crate::view::drawing::Drawing;
 use crate::view::footing::Footing;
 use crate::view::look::Shape;
@@ -25,6 +26,7 @@ pub(crate) struct Pointer<'w, 's> {
     players: PlayerUnits<'w, 's>,
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, (&'static Transform, &'static Shape)>,
+    data: Option<Res<'w, ClientData>>,
 }
 
 /// The living units the client holds, and the drawing of each.
@@ -53,12 +55,16 @@ impl Pointer<'_, '_> {
         })
     }
 
-    /// The point of the ground under the cursor, when the cursor is over the window and the ground.
+    /// The point of the ground under the cursor, when the cursor is over the window and the ground:
+    /// the drawn ground of a map with heights, else the plane at height 0.
     pub(crate) fn ground(&self) -> Option<Vec3> {
         let (camera, place) = *self.camera;
         let cursor = self.window.cursor_position()?;
         let ray = camera.viewport_to_world(place, cursor).ok()?;
-        ray.plane_intersection_point(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y))
+        match self.data.as_deref().and_then(|data| data.heights.as_ref()) {
+            Some(heights) => heights.hit(ray.origin, *ray.direction),
+            None => ray.plane_intersection_point(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y)),
+        }
     }
 
     /// The living unit, other than the player's own avatar, drawn over `point` of the ground.

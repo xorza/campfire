@@ -3,13 +3,15 @@ use bevy_ecs::system::{Res, SystemParam};
 use crate::actions::action::Action;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlot;
+use crate::actions::rank_values::ChargeRule;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::progression::points::Points;
 use crate::stats::level::Level;
 use crate::values::rank::Rank;
 
 /// The rule of the `learn` order, as the orders check it and a client's HUD shows it: how many
-/// ranks a slot's action has, and whether a unit may learn its next one.
+/// ranks a slot's action has, and whether a unit may learn its next one; and, for the HUD, the
+/// charges its action holds.
 #[derive(SystemParam, Debug)]
 pub struct Learning<'w> {
     book: Res<'w, ActionBook>,
@@ -42,6 +44,12 @@ impl Learning<'_> {
                     .is_none_or(|needed| needed <= level)
             })
     }
+    /// The charges of the action in `held` at its rank: how many it holds at most, and the ticks
+    /// one takes to come back; none for an action without charges, or one not learned.
+    pub fn charges(&self, held: ActionSlot) -> Option<ChargeRule> {
+        self.action(held)?.values_at(held.rank?)?.charges
+    }
+
     /// The action in `held`; none in an inventory slot that holds no action.
     fn action(&self, held: ActionSlot) -> Option<&Action> {
         let action = held.action?;

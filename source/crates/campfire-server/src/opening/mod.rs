@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime};
 use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
+use campfire_common::MapName;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_net::{
     Lobby, LobbySetup, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionDir,
@@ -75,19 +76,45 @@ impl Opening {
         }
     }
 
-    /// The session a stop ended, under the data directory `data`, of the mode `packages` holds,
-    /// within the restore window `window`: none when the directory holds none; when its match
-    /// never started, whose directory goes; and when it is past the window or ended, whose log
-    /// is published, the server key `key` signing its result with auxiliary randomness from
-    /// `entropy`. An error for a session that does not read or end.
+    /// The session a stop ended, under the data directory `data`: none when the directory holds
+    /// none, and when its match never started, whose directory goes. An error for a session that
+    /// does not read.
+    pub(crate) fn waiting(data: &ServerDir) -> Result<Option<RestoredSession>, OpeningError> {
+        SessionDir::waiting(data).map_err(OpeningError::Waiting)
+    }
+
+    /// The map the server loads: `journal`, the one a waiting session's terms name, which it
+    /// restores or ends, else the one `asked` names, else none, for the mode's only map. An
+    /// error when a waiting session's map is not the one asked.
+    pub(crate) fn map(
+        journal: Option<&MapName>,
+        asked: Option<MapName>,
+    ) -> Result<Option<MapName>, OpeningError> {
+        let Some(journal) = journal else {
+            return Ok(asked);
+        };
+        match asked {
+            Some(asked) if &asked != journal => Err(OpeningError::OtherMap {
+                asked,
+                journal: journal.clone(),
+            }),
+            _ => Ok(Some(journal.clone())),
+        }
+    }
+
+    /// The session `waiting` to restore, of the mode `packages` holds, within the restore
+    /// window `window`: when it is past the window or ended, its log is published under the data
+    /// directory `data` instead, the server key `key` signing its result with auxiliary
+    /// randomness from `entropy`, and none restores. An error for a session that does not end.
     pub(crate) fn find(
+        waiting: Option<RestoredSession>,
         data: &ServerDir,
         packages: &ModePackages,
         window: Duration,
         key: Keypair,
         entropy: fn(&mut [u8; 32]),
     ) -> Result<Option<RestoredSession>, OpeningError> {
-        let Some(session) = SessionDir::waiting(data).map_err(OpeningError::Waiting)? else {
+        let Some(session) = waiting else {
             return Ok(None);
         };
         let idle = SystemTime::now()
@@ -155,5 +182,32 @@ impl Restore {
                 world.write_message(AppExit::error());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_waiting_sessions_map_is_loaded_and_another_asked_is_refused() {
+        let name = |name: &str| MapName::new(name).unwrap();
+        let (lane, river) = (name("lane"), name("river"));
+        // No session waits: the map asked, or none, for the mode's only map.
+        assert_eq!(
+            Opening::map(None, Some(river.clone())).unwrap(),
+            Some(river.clone())
+        );
+        assert_eq!(Opening::map(None, None).unwrap(), None);
+        // A session of `lane` waits: `lane`, asked or not; `river` asked is refused, naming both.
+        assert_eq!(Opening::map(Some(&lane), None).unwrap(), Some(lane.clone()));
+        assert_eq!(
+            Opening::map(Some(&lane), Some(lane.clone())).unwrap(),
+            Some(lane.clone())
+        );
+        assert!(matches!(
+            Opening::map(Some(&lane), Some(river.clone())),
+            Err(OpeningError::OtherMap { asked, journal }) if asked == river && journal == lane
+        ));
     }
 }

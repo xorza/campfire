@@ -16,7 +16,8 @@ use bevy::ecs::schedule::common_conditions::resource_added;
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
-use bevy::math::primitives::{Capsule3d, Cuboid, Plane3d, Sphere};
+use bevy::material::AlphaMode;
+use bevy::math::primitives::{Capsule3d, Cuboid, Cylinder, Plane3d, Sphere};
 use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
@@ -25,8 +26,8 @@ use bevy::transform::components::Transform;
 use bevy::window::Window;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_capabilities::{
-    ActionSlots, Area, Body, Dead, Facing, MatchEnd, MatchResult, MoveStep, Owner, Projectile,
-    Team, UnitType,
+    ActionSlots, Area, AreaReach, Body, Dead, Facing, MatchEnd, MatchResult, MoveStep, Owner,
+    Projectile, Team, UnitType,
 };
 use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
@@ -54,8 +55,8 @@ pub(crate) mod unit_looks;
 pub(crate) mod unit_models;
 
 /// Draws the match: a camera over the lane, the ground, a capsule for every unit the client holds,
-/// colored by team, and a ball for every projectile, each moving smoothly between the places the
-/// sim gives it; a unit in its attack's windup leans towards its target. Each unit's drawing is a
+/// colored by team, a ball for every projectile and a disc for every area, each moving smoothly
+/// between the places the sim gives it; a unit in its attack's windup leans towards its target. Each unit's drawing is a
 /// tree under a root on the ground, which glides, and which the unit's despawn takes along.
 #[derive(Debug)]
 pub(crate) struct View;
@@ -71,8 +72,12 @@ pub(crate) const CAMERA: Vec3 = Vec3::new(0.0, 24.0, 18.0);
 #[derive(Resource, Debug)]
 struct Palette {
     projectile: Handle<Mesh>,
+    /// A disc of radius 1, which an area's drawing scales to its radius.
+    area: Handle<Mesh>,
     own: Handle<StandardMaterial>,
     shot: Handle<StandardMaterial>,
+    /// A see-through tint, which shows the ground under an area.
+    reach: Handle<StandardMaterial>,
     /// By team index: the first playing team, the second, and any other.
     teams: [Handle<StandardMaterial>; 3],
     dead: Handle<StandardMaterial>,
@@ -137,6 +142,24 @@ const LEAN: f32 = 0.35;
 type Attackers<'w, 's> =
     Query<'w, 's, (&'static Drawing, &'static ActionSlots), (Without<Dead>, Allow<Unpredicted>)>;
 
+/// The areas not drawn yet: where each lies, its type, and whether the client only receives it.
+type NewAreas<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Position,
+        &'static UnitType,
+        Has<Unpredicted>,
+    ),
+    (With<Area>, Without<Drawing>, Allow<Unpredicted>),
+>;
+
+/// An area's disc: how thick it is, and how far over the ground it lies, so the ground does not
+/// hide it.
+const AREA_THICKNESS: f32 = 0.02;
+const AREA_LIFT: f32 = 0.03;
+
 /// The projectiles not drawn yet.
 type NewShots<'w, 's> = Query<
     'w,
@@ -154,6 +177,7 @@ impl Plugin for View {
             (
                 View::draw_new,
                 View::draw_shots,
+                View::draw_areas,
                 View::mourn,
                 View::follow,
                 View::glide,
@@ -190,6 +214,7 @@ impl View {
         ));
         let palette = Palette {
             projectile: meshes.add(Sphere::new(SHOT_RADIUS).mesh()),
+            area: meshes.add(Cylinder::new(1.0, AREA_THICKNESS).mesh()),
             own: materials.add(Color::srgb(1.0, 0.85, 0.2)),
             teams: [
                 materials.add(Color::srgb(0.25, 0.45, 0.95)),
@@ -198,6 +223,11 @@ impl View {
             ],
             dead: materials.add(Color::srgb(0.22, 0.22, 0.24)),
             shot: materials.add(Color::srgb(1.0, 0.95, 0.6)),
+            reach: materials.add(StandardMaterial {
+                base_color: Color::srgba(1.0, 0.6, 0.2, 0.35),
+                alpha_mode: AlphaMode::Blend,
+                ..StandardMaterial::default()
+            }),
         };
         commands.insert_resource(palette);
     }
@@ -319,6 +349,43 @@ impl View {
                     View::rest(at, received, &time),
                 ))
                 .add_child(ball);
+        }
+    }
+
+    /// Gives each area the client received a drawing where it lies: a see-through disc of its
+    /// radius on the ground, which glides as a unit's drawing does.
+    fn draw_areas(
+        palette: Res<'_, Palette>,
+        time: Res<'_, Time>,
+        areas: NewAreas<'_, '_>,
+        reach: Option<AreaReach<'_>>,
+        data: Option<Res<'_, ClientData>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
+        for (area, &pos, &unit_type, received) in &areas {
+            let radius = reach
+                .as_ref()
+                .and_then(|reach| reach.radius(unit_type))
+                .expect("an area's type has its reach")
+                .float();
+            let disc = commands
+                .spawn((
+                    Mesh3d(palette.area.clone()),
+                    MeshMaterial3d(palette.reach.clone()),
+                    Transform::from_translation(Vec3::Y * AREA_LIFT)
+                        .with_scale(Vec3::new(radius, 1.0, radius)),
+                ))
+                .id();
+            let at = ground(pos, heights);
+            commands
+                .spawn((
+                    DrawingOf(area),
+                    Transform::from_translation(at),
+                    Visibility::default(),
+                    View::rest(at, received, &time),
+                ))
+                .add_child(disc);
         }
     }
 

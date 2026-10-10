@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
-    ActionSlots, Area, Body, CapabilitySet, Dead, Destination, Facing, ForcedMove, Level, MatchEnd,
-    ModifierClocks, Modifiers, MoveStep, Owner, Points, Pools, Progress, Projectile, Relations,
-    Respawn, Route, SpawnPoint, Team, UnitType,
+    ActionSlots, Area, Body, CapabilitySet, Dead, Destination, Facing, ForcedMove, Inventory,
+    Level, MatchEnd, ModifierClocks, Modifiers, MoveStep, Owner, Points, Pools, Progress,
+    Projectile, Relations, Respawn, Route, SpawnPoint, Team, UnitType,
 };
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{Capability, Position, StableId};
@@ -111,6 +111,12 @@ impl NetProtocol {
                     .replicate_with(WireCodec::component())
                     .predict();
             }
+            // A unit's inventory goes to its owner alone, as `OwnedBy`'s scope holds it, and no
+            // client predicts it: its slots come from the server (design 04's items).
+            Capability::Items => {
+                app.component::<Inventory>()
+                    .replicate_with(WireCodec::component());
+            }
             Capability::Abilities
             | Capability::Orders
             | Capability::Character
@@ -120,7 +126,6 @@ impl NetProtocol {
             | Capability::World
             | Capability::Mode
             | Capability::Production
-            | Capability::Items
             | Capability::Quests
             | Capability::Interaction => {}
         }
@@ -204,7 +209,8 @@ mod tests {
 
     #[test]
     fn a_capability_the_mode_lacks_registers_no_component() {
-        // Of each kind: the core's, stats', combat's, navigation's, progression's, projectiles'.
+        // Of each kind: the core's, stats', combat's, navigation's, progression's, projectiles',
+        // items'.
         let registered = |declared: &[Capability]| {
             let mut app = App::new();
             app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
@@ -222,16 +228,21 @@ mod tests {
                 registry.is_registered::<Destination>(),
                 registry.is_registered::<Points>(),
                 registry.is_registered::<Projectile>(),
+                registry.is_registered::<Inventory>(),
             ]
         };
-        assert_eq!(registered(&[]), [true, false, false, false, false, false]);
+        assert_eq!(
+            registered(&[]),
+            [true, false, false, false, false, false, false]
+        );
         let declared = [
             Capability::Stats,
             Capability::Combat,
             Capability::Navigation,
             Capability::Progression,
             Capability::Projectiles,
+            Capability::Items,
         ];
-        assert_eq!(registered(&declared), [true; 6]);
+        assert_eq!(registered(&declared), [true; 7]);
     }
 }

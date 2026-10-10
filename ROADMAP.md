@@ -17,7 +17,7 @@ Done when a retail replay plays to the same end in the oracle on Linux and macOS
 
 - The rules package: the module audit, each module type to a capability, a script or a backend; navigation's movement interface, and Zero Hour's pathfinder and locomotors as its pathfinding and movement backends; general's powers and sciences, upgrades, veterancy, containers for garrisons and transports, stealth and detection, crates, superweapons.
 - Production as Zero Hour uses it: dozers that build, supply docks and gatherers, money over time; what each client receives of production, and the components that go only to a unit's owner or team.
-- The client: interpolation; presentation systems that read data, a unit's model and animation by its condition state, effect lists, particles, terrain, the control bar; areas drawn where they lie; assets within their limits; the mode's and the units' script state sent to each client as each field's `sync` says ([Script state](docs/design/03-game-scripting.md#script-state)).
+- The client: interpolation; presentation systems that read data, a unit's model and animation by its condition state, effect lists, particles, terrain, the control bar; assets within their limits; the mode's and the units' script state sent to each client as each field's `sync` says ([Script state](docs/design/03-game-scripting.md#script-state)).
 - The skirmish AI, as server bots ([Sessions](docs/design/10-sessions.md#decisions), D4), and the parity test's bot inputs from the oracle's AI commands ([Zero Hour](docs/design/12-zero-hour.md#decisions), D9).
 - Multiplayer pause and game speed, by the host's setting of who may pause: each client pauses and changes its tick length with the server ([Sessions](docs/design/10-sessions.md#decisions), D6).
 

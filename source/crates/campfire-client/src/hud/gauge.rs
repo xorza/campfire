@@ -2,7 +2,7 @@ use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::math::{Quat, Vec3};
 use bevy::transform::components::Transform;
-use campfire_capabilities::PoolId;
+use campfire_capabilities::{ChargeRule, PoolId, SlotCharges};
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 
@@ -42,6 +42,14 @@ pub(crate) enum GaugeKind {
     /// The mark over ability slot `slot`, in row `row`, shown while the unit may learn its next
     /// rank.
     Learnable { slot: u8, row: u8 },
+    /// Charge `charge`, from 1, of the `max` of ability slot `slot`, a tick in row `row` under its
+    /// cooldown: full while the slot holds it, filling while it comes back.
+    Charge {
+        slot: u8,
+        charge: u8,
+        max: u8,
+        row: u8,
+    },
 }
 
 /// A cooldown as the client saw it start: the tick the ability is ready again, and the tick the
@@ -101,18 +109,24 @@ impl GaugeKind {
             },
             GaugeKind::Rank {
                 slot,
-                rank,
-                ranks,
+                rank: index,
+                ranks: count,
+                row,
+            }
+            | GaugeKind::Charge {
+                slot,
+                charge: index,
+                max: count,
                 row,
             } => {
-                let count = f32::from(ranks);
+                let count = f32::from(count);
                 let width = (PIP - (count - 1.0) * TICK_GAP) / count;
                 let left = pip(slot) - PIP / 2.0 + width / 2.0;
                 Layout {
                     width,
                     thickness: TICK_THICKNESS,
                     center: Vec3::new(
-                        left + f32::from(rank - 1) * (width + TICK_GAP),
+                        left + f32::from(index - 1) * (width + TICK_GAP),
                         0.0,
                         down(row),
                     ),
@@ -160,6 +174,27 @@ impl Layout {
     }
 }
 
+impl GaugeKind {
+    /// How full charge tick `charge`, from 1, is at tick `now`, of a slot that holds `held` under
+    /// `rule`: full while the slot holds it; the one after the last held filling over the
+    /// recharge until `held.next`; empty past it.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a recharge lasts far fewer ticks than an f32 counts exactly"
+    )]
+    pub(crate) fn charge_fill(charge: u8, held: SlotCharges, rule: ChargeRule, now: Tick) -> f32 {
+        if charge <= held.count {
+            return 1.0;
+        }
+        let total = rule.recharge.get();
+        if charge > held.count + 1 || total == 0 {
+            return 0.0;
+        }
+        let left = held.next.since(now).map_or(0, Ticks::get).min(total);
+        (total - left) as f32 / total as f32
+    }
+}
+
 impl Cooling {
     /// How far the gauge has filled at tick `now`: 0 when the client saw the cooldown start, 1
     /// once the ability is ready.
@@ -179,6 +214,8 @@ impl Cooling {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU8;
+
     use super::*;
 
     #[test]
@@ -249,6 +286,61 @@ mod tests {
             seen_at: Tick::new(60),
         };
         assert_eq!(ready.filled(Tick::new(60)), 1.0);
+    }
+
+    #[test]
+    fn a_charge_tick_is_full_while_held_and_fills_while_it_comes_back() {
+        // Of 3 charges back every 90 ticks, 1 held, the next back in tick 190: the first full;
+        // the second empty when its recharge starts in tick 100, half in 145, full in 190; the
+        // third empty.
+        let rule = ChargeRule {
+            max: NonZeroU8::new(3).unwrap(),
+            recharge: Ticks::new(90),
+        };
+        let held = SlotCharges {
+            count: 1,
+            next: Tick::new(190),
+        };
+        let fill = |charge, now| GaugeKind::charge_fill(charge, held, rule, Tick::new(now));
+        assert_eq!(
+            [
+                fill(1, 100),
+                fill(2, 100),
+                fill(2, 145),
+                fill(2, 190),
+                fill(3, 145)
+            ],
+            [1.0, 0.0, 0.5, 1.0, 0.0]
+        );
+        // Charges that come back at once are full or empty.
+        let instant = ChargeRule {
+            recharge: Ticks::new(0),
+            ..rule
+        };
+        assert_eq!(
+            GaugeKind::charge_fill(2, held, instant, Tick::new(100)),
+            0.0
+        );
+        // A charge tick sits as a rank tick does: slot 1's 3 ticks span its pip.
+        let tick = |charge| {
+            GaugeKind::Charge {
+                slot: 1,
+                charge,
+                max: 3,
+                row: 4,
+            }
+            .layout()
+        };
+        let rank = |rank| {
+            GaugeKind::Rank {
+                slot: 1,
+                rank,
+                ranks: 3,
+                row: 4,
+            }
+            .layout()
+        };
+        assert_eq!([tick(1), tick(3)], [rank(1), rank(3)]);
     }
 
     #[test]

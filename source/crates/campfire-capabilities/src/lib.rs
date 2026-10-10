@@ -64,6 +64,7 @@ pub use crate::actions::range_field::RangeField;
 pub use crate::actions::rank_fields::{
     RankChannel, RankCharges, RankFields, RankToggle, TogglePer,
 };
+pub use crate::actions::rank_values::ChargeRule;
 pub use crate::actions::requires_data::RequiresData;
 pub use crate::actions::slot_kind::SlotKind;
 pub use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
@@ -72,6 +73,7 @@ pub use crate::actions::targeting::Targeting;
 pub use crate::areas::Areas;
 pub use crate::areas::area::Area;
 pub use crate::areas::area_data::{AreaData, AreaInside};
+pub use crate::areas::area_reach::AreaReach;
 pub use crate::books::Books;
 pub use crate::books::book_input::{BookInput, BookKind, BookPackage};
 pub use crate::books::error::BookError;
@@ -251,6 +253,7 @@ pub use crate::vision::vision_data::VisionData;
 
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
+    pub use crate::areas::internals::standing_area;
     pub use crate::combat::internals::{Arms, ArmsParts, queue_damage};
     pub use crate::geometry::kernel_scene::{Density, KernelScene};
     pub use crate::mode::internals::spawn_typed;
