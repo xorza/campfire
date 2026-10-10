@@ -28,6 +28,11 @@ const MASK: u128 = u64::MAX as u128;
 impl U256 {
     pub const ZERO: U256 = U256 { high: 0, low: 0 };
 
+    /// The number `high · 2¹²⁸ + low`.
+    pub(crate) const fn from_halves(high: u128, low: u128) -> U256 {
+        U256 { high, low }
+    }
+
     /// `value`, widened.
     pub const fn from_u128(value: u128) -> U256 {
         U256 {
@@ -152,6 +157,24 @@ impl U256 {
     /// How `self × by` orders against `other × other_by`, exactly: each product, up to 384 bits,
     /// held as three 128-bit limbs, so no product passes them.
     pub const fn cmp_products(self, by: u128, other: U256, other_by: u128) -> Ordering {
+        // Most values fit 128 bits, whose products fit 256: half the multiplies.
+        if self.high | other.high == 0 {
+            let ours = U256::product(self.low, by);
+            let theirs = U256::product(other.low, other_by);
+            return if ours.high != theirs.high {
+                if ours.high < theirs.high {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            } else if ours.low < theirs.low {
+                Ordering::Less
+            } else if ours.low > theirs.low {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            };
+        }
         let ours = self.wide_product(by);
         let theirs = other.wide_product(other_by);
         let mut limb = 0;

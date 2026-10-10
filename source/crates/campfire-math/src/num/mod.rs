@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::floor_root::FloorRoot;
+use crate::floor_root::NearestRoot;
 use crate::num::decimal::Decimal;
 use crate::num::error::ParseNumError;
 use crate::rounding::Rounding;
@@ -222,15 +222,11 @@ impl Num {
     /// The value whose bits are the integer nearest to √`squared_bits`; `None` when it does not
     /// fit. √ of an integer is never exactly a half, so no tie rule is needed.
     pub(crate) fn from_root_of_bits(squared_bits: u128) -> Option<Num> {
-        let floor = squared_bits.floor_root();
-        // The floor is below 2⁶⁴ and its square at most the value, so no step can overflow, and
-        // the wrapping ones skip the checks a release build makes.
-        let nearest = if squared_bits.wrapping_sub(floor.wrapping_mul(floor)) > floor {
-            floor + 1
-        } else {
-            floor
-        };
-        narrow(nearest.cast_signed())
+        // From 2¹²⁶ on, the root is at least 2⁶³, past `i64`.
+        if squared_bits >= 1 << 126 {
+            return None;
+        }
+        narrow(squared_bits.nearest_root().cast_signed())
     }
 
     #[must_use]

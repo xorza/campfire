@@ -78,6 +78,8 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     let index = (r + (1 << (WIDE_BITS - SIN_COS_STEP_BITS - 1))) >> (WIDE_BITS - SIN_COS_STEP_BITS);
     let b = r - (index << (WIDE_BITS - SIN_COS_STEP_BITS));
     let entry = to_index(index.unsigned_abs());
+    // The index's sign and the quadrant are as random as the angles, so each turns the values
+    // by arithmetic, which takes no branch to mispredict.
     let sin_a = if index < 0 {
         -SIN_TABLE[entry]
     } else {
@@ -92,12 +94,16 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     let sin = mul(sin_a, cos_b) + mul(cos_a, sin_b);
     let cos = mul(cos_a, cos_b) - mul(sin_a, sin_b);
 
-    let (sin, cos) = match quadrant.rem_euclid(4) {
-        0 => (sin, cos),
-        1 => (cos, -sin),
-        2 => (-sin, -cos),
-        _ => (-cos, sin),
+    // Quadrants 0 to 3 give (sin, cos), (cos, −sin), (−sin, −cos) and (−cos, sin): an odd one
+    // swaps the two, the upper two negate the first, and the middle two the second.
+    let quadrant = quadrant as i64 & 3;
+    let (sin, cos) = if quadrant & 1 == 1 {
+        (cos, sin)
+    } else {
+        (sin, cos)
     };
+    let sin = if quadrant & 2 == 2 { -sin } else { sin };
+    let cos = if (quadrant + 1) & 2 == 2 { -cos } else { cos };
     SinCos {
         sin: to_num(sin as i128),
         cos: to_num(cos as i128),

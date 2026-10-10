@@ -5,44 +5,56 @@ use crate::u256::U256;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 
-/// A sum of products of raw values, exact at any size: what its positive products add, and what
-/// its negative ones take away, each as a magnitude.
+/// A sum of products of raw values, exact at any size: a 256-bit two's complement number, its
+/// high half first. Each product is below 2¹⁹⁰ in magnitude, so a sum of fewer than 2⁶⁴ never
+/// leaves the range, and each add is the same arithmetic whatever the signs, with no branch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProductSum {
-    positive: U256,
-    negative: U256,
+    high: u128,
+    low: u128,
 }
 
 impl ProductSum {
-    pub const ZERO: ProductSum = ProductSum {
-        positive: U256::ZERO,
-        negative: U256::ZERO,
-    };
+    pub const ZERO: ProductSum = ProductSum { high: 0, low: 0 };
 
-    /// Adds `a × b`. Each product is below 2¹⁹¹, so a sum of fewer than 2⁶⁴ never passes 256
-    /// bits.
+    /// Adds `a × b`, as `a × b_low + a × b_high · 2⁶⁴` for `b`'s halves, each a product that
+    /// fits `i128`: `b_low` below 2⁶⁴ and `b_high` within `i64`.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the halves of b, each within its type"
+    )]
     pub const fn add(&mut self, a: i64, b: i128) {
-        let product = U256::product(a.unsigned_abs() as u128, b.unsigned_abs());
-        let side = if (a < 0) == (b < 0) {
-            &mut self.positive
-        } else {
-            &mut self.negative
-        };
-        *side = side.checked_add(product).expect("fewer than 2⁶⁴ products");
+        let a = a as i128;
+        let low_part = a.wrapping_mul(b as u64 as i128);
+        let high_part = a.wrapping_mul((b >> 64) as i64 as i128);
+        self.add_wide(low_part.cast_unsigned(), (low_part >> 127).cast_unsigned());
+        self.add_wide(
+            (high_part << 64).cast_unsigned(),
+            (high_part >> 64).cast_unsigned(),
+        );
+    }
+
+    /// Adds the 256-bit two's complement number `high · 2¹²⁸ + low`, wrapping, which the bound
+    /// of the sum keeps exact.
+    const fn add_wide(&mut self, low: u128, high: u128) {
+        let (sum, carry) = self.low.overflowing_add(low);
+        self.low = sum;
+        self.high = self.high.wrapping_add(high).wrapping_add(carry as u128);
     }
 
     /// The number nearest to the sum ÷ 2²⁴, rounded once, ties to even, and at the end of the
     /// range of numbers when past it.
     pub fn saturating_num(self) -> Num {
-        if let Some(above) = self.positive.checked_sub(self.negative) {
+        if self.high.cast_signed() >= 0 {
+            let above = U256::from_halves(self.high, self.low);
             let bits = above.shr_rounded(Num::FRAC_BITS, Rounding::NearestEven);
             let bits = bits.and_then(|bits| i64::try_from(bits).ok());
             return bits.map_or(Num::MAX, Num::from_bits);
         }
-        let below = self
-            .negative
-            .checked_sub(self.positive)
-            .expect("one side is the larger");
+        // The magnitude: the complement plus one.
+        let (low, carry) = (!self.low).overflowing_add(1);
+        let below = U256::from_halves((!self.high).wrapping_add(u128::from(carry)), low);
         let bits = below.shr_rounded(Num::FRAC_BITS, Rounding::NearestEven);
         let bits = bits.and_then(|bits| u64::try_from(bits).ok());
         let bits = bits.and_then(|bits| 0_i64.checked_sub_unsigned(bits));

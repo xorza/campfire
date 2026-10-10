@@ -126,13 +126,13 @@ impl Vec3 {
         if length == 0 {
             return None;
         }
-        // One reciprocal and three multiplies in place of three divisions; `unit_component`
-        // corrects each quotient exactly, so the result is the same.
-        let reciprocal = (1 << (Num::FRAC_BITS + RECIPROCAL_BITS)) / u128::from(length);
+        // One float quotient and three multiplies estimate the three quotients, and
+        // `unit_component` corrects each exactly, so the result does not depend on the float.
+        let scale = unit_scale(length);
         Some(Vec3::new(
-            unit_component(self.x, length, reciprocal),
-            unit_component(self.y, length, reciprocal),
-            unit_component(self.z, length, reciprocal),
+            unit_component(self.x, length, scale),
+            unit_component(self.y, length, scale),
+            unit_component(self.z, length, scale),
         ))
     }
 
@@ -213,37 +213,60 @@ impl Vec3 {
     }
 }
 
-/// Fractional bits of the reciprocal in `normalized`.
-const RECIPROCAL_BITS: u32 = 62;
+/// 2²⁴, exact in f64.
+const TWO_POW_24: f64 = 16_777_216.0;
+/// 2⁻²⁰, exact in f64: what lifts a quotient's estimate past its error.
+const TWO_POW_MINUS_20: f64 = 1.0 / 1_048_576.0;
 
-/// `component / length` rounded to nearest, ties to even, from `reciprocal` =
-/// ⌊2⁸⁶ / length⌋ (`length` in raw units).
-const fn unit_component(component: Num, length: u64, reciprocal: u128) -> Num {
-    // |component| ≤ length, because the length is the nearest root of the squared sum, so the
-    // product stays below 2⁸⁷ and the quotient at most 2²⁴.
-    let magnitude = component.to_bits().unsigned_abs() as u128;
-    let divisor = length as u128;
-    let numerator = magnitude << Num::FRAC_BITS;
-    // The reciprocal is short by less than one unit, which leaves the estimate at most two
-    // below the true quotient. With these bounds no step below can overflow.
-    let mut quotient = magnitude.wrapping_mul(reciprocal) >> RECIPROCAL_BITS;
-    let mut rest = numerator.wrapping_sub(quotient.wrapping_mul(divisor));
-    while rest >= divisor {
-        quotient = quotient.wrapping_add(1);
-        rest = rest.wrapping_sub(divisor);
+/// 2²⁴ / `length`, rounded twice, for a `length` from 1 to below 2⁶³: within 2⁻⁵² of it.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::float_arithmetic,
+    reason = "an estimate that `unit_component` corrects exactly"
+)]
+fn unit_scale(length: u64) -> f64 {
+    debug_assert!(0 < length && length < 1 << 63);
+    TWO_POW_24 / length.cast_signed() as f64
+}
+
+/// `component / length` rounded to nearest, ties to even, from `scale`, `unit_scale(length)`.
+/// |component| ≤ length, because the length is the nearest root of the squared sum, so the
+/// quotient is at most 2²⁴. The estimate `|component| · scale` rounds three times, by at most
+/// 2⁻⁵³ of itself each, so it lies within 2⁻²⁷ of the quotient, and lifted by 2⁻²⁰ it lies
+/// above it and within 2⁻¹⁹: its floor is the quotient's floor or one above it, the second only
+/// for a quotient within 2⁻¹⁹ below an integer, which one rare step corrects. A whole quotient,
+/// as an axis's component gives, takes no step.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    reason = "an estimate of at most 2²⁴ + 1, which the integer steps correct"
+)]
+fn unit_component(component: Num, length: u64, scale: f64) -> Num {
+    let magnitude = component.to_bits().unsigned_abs();
+    let estimate = (magnitude.cast_signed() as f64).mul_add(scale, TWO_POW_MINUS_20);
+    let mut quotient = estimate as i64 as u64;
+    // The rest `magnitude · 2²⁴ − quotient · length` lies from −length to below length, within
+    // 2⁶³, so its low 64 bits, wrapped, are the rest, and every step runs on `u64`.
+    let mut rest = (magnitude << Num::FRAC_BITS)
+        .wrapping_sub(quotient.wrapping_mul(length))
+        .cast_signed();
+    if rest < 0 {
+        quotient -= 1;
+        rest += length.cast_signed();
     }
     // The rounding and the sign are as random as the components, so both are arithmetic, which
     // takes no branch to mispredict.
-    let twice_rest = rest << 1;
+    let twice_rest = rest.cast_unsigned() << 1;
     #[expect(
         clippy::needless_bitwise_bool,
         reason = "the lazy operators branch on a random rounding"
     )]
-    let up = (twice_rest > divisor) | ((twice_rest == divisor) & (quotient & 1 == 1));
-    let quotient = quotient.wrapping_add(up as u128).cast_signed();
+    let up = (twice_rest > length) | ((twice_rest == length) & (quotient & 1 == 1));
+    let quotient = (quotient + u64::from(up)).cast_signed();
     // All ones for a negative component, so the xor and the subtraction negate.
-    let sign = (component.to_bits() >> 63) as i128;
-    Num::from_wide_bits((quotient ^ sign) - sign)
+    let sign = component.to_bits() >> 63;
+    Num::from_bits((quotient ^ sign) - sign)
 }
 
 impl Add for Vec3 {
