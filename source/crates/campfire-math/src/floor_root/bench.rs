@@ -7,11 +7,11 @@ use crate::num::bench::COUNT;
 use crate::rng::split_mix64::SplitMix64;
 use crate::simd::u64x4::U64x4;
 
-/// `FloorRoot::floor_root` over `COUNT` values each, its throughput the roots: `floor` on values
+/// `FloorRoot::floor_root` over `COUNT` values each, its throughput the roots: `wide` on values
 /// whose widths spread evenly from 1 to 128 bits, so that each path counts: the `u64` path, the
 /// `u128` guess alone, and its Newton step above 2¹⁰⁴; `narrow` and `lanes` on the same values
 /// of 1 to 64 bits, the first one at a time, the second four at a time.
-pub(crate) fn root(c: &mut Criterion) {
+pub(crate) fn floor_root(c: &mut Criterion) {
     let wide = values(6, 128);
     let narrow: Vec<u64> = values(7, 64)
         .into_iter()
@@ -26,7 +26,7 @@ pub(crate) fn root(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("atomic/floor_root");
     group.throughput(Throughput::Elements(COUNT as u64));
-    group.bench_function("floor", |b| {
+    group.bench_function("wide", |b| {
         b.iter(|| {
             for &value in &wide {
                 black_box(black_box(value).floor_root());

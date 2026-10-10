@@ -10,7 +10,8 @@ use crate::rng::rng_stream::RngStream;
 use crate::rng::split_mix64::SplitMix64;
 
 /// The sim's random sequences, each operation `COUNT` times: opening an entity's stream, and
-/// drawing a word, a value below a bound within 1000, and a chance from an open one.
+/// drawing from an open one a word, a value below a bound within 1000, an index below such a
+/// length, a fraction, a chance, and a chance of a ratio below such a bound.
 pub(crate) fn rng(c: &mut Criterion) {
     let mut source = RngSource::new(SegmentSeed::new([7; 32]));
     source.begin_tick(1);
@@ -25,6 +26,10 @@ pub(crate) fn rng(c: &mut Criterion) {
                     .rem_euclid(Num::ONE.to_bits()),
             )
         })
+        .collect();
+    let lens: Vec<usize> = bounds
+        .iter()
+        .map(|&bound| usize::try_from(bound).unwrap())
         .collect();
     let mut entity = 0_u64;
     let mut rng = source.open(RngStream::new("bench"), u64::MAX);
@@ -54,10 +59,31 @@ pub(crate) fn rng(c: &mut Criterion) {
             }
         });
     });
+    group.bench_function("pick", |b| {
+        b.iter(|| {
+            for &len in &lens {
+                black_box(rng.pick(black_box(len)));
+            }
+        });
+    });
+    group.bench_function("fraction", |b| {
+        b.iter(|| {
+            for _ in 0..COUNT {
+                black_box(rng.fraction());
+            }
+        });
+    });
     group.bench_function("chance", |b| {
         b.iter(|| {
             for &probability in &chances {
                 black_box(rng.chance(black_box(probability)));
+            }
+        });
+    });
+    group.bench_function("chance_ratio", |b| {
+        b.iter(|| {
+            for &denominator in &bounds {
+                black_box(rng.chance_ratio(black_box(denominator / 2), denominator));
             }
         });
     });

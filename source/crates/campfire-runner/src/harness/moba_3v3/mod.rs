@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use campfire_capabilities::{
     Action, ActionSlots, Combat, Dead, InputValue, Inventory, ItemId, ModeInput, Order, PathWalker,
     Pools, Team,
@@ -311,11 +313,7 @@ impl Moba3v3 {
 
     /// The MOBA 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: Vec<SlotPlan>) -> Moba3v3 {
-        let packages = ModePackages::from_dir(
-            &PackageDir::workspace("test/moba/modes/3v3"),
-            &MapName::new("two_lanes").unwrap(),
-        )
-        .unwrap();
+        let packages = ModePackages::from_dir(&Moba3v3::dir(), &Moba3v3::map()).unwrap();
         let items = &packages.packages().next().expect("a mode").content.items;
         let item = |name: &str| ItemId::named(items, name).expect("an item of the 3v3");
         let script = Moba3v3::script(&item);
@@ -323,6 +321,16 @@ impl Moba3v3 {
             session: FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan),
             script,
         }
+    }
+
+    /// The directory of the 3v3's mode package.
+    pub fn dir() -> PathBuf {
+        PackageDir::workspace("test/moba/modes/3v3")
+    }
+
+    /// The map the 3v3 plays.
+    pub fn map() -> MapName {
+        MapName::new("two_lanes").unwrap()
     }
 
     pub const fn packages(&self) -> &ModePackages {

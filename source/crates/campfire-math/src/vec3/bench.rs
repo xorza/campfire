@@ -17,7 +17,8 @@ fn points(seed: u64) -> Vec<Vec3> {
 }
 
 /// `Vec3`'s operations, each over `COUNT` pairs of points within ±1000 m: the dot product, the
-/// distance, the range test, the unit vector and the turn about the vertical.
+/// length, the distance, the range test, a step of a meter toward the other, as a unit moves,
+/// the unit vector and the turn about the vertical.
 pub(crate) fn vec3(c: &mut Criterion) {
     let a = points(1);
     let b = points(2);
@@ -33,6 +34,13 @@ pub(crate) fn vec3(c: &mut Criterion) {
             }
         });
     });
+    group.bench_function("length", |bench| {
+        bench.iter(|| {
+            for &p in &a {
+                black_box(black_box(p).checked_length());
+            }
+        });
+    });
     group.bench_function("distance", |bench| {
         bench.iter(|| {
             for (&p, &q) in a.iter().zip(&b) {
@@ -44,6 +52,13 @@ pub(crate) fn vec3(c: &mut Criterion) {
         bench.iter(|| {
             for (&p, &q) in a.iter().zip(&b) {
                 black_box(black_box(p).within(q, radius));
+            }
+        });
+    });
+    group.bench_function("step_toward", |bench| {
+        bench.iter(|| {
+            for (&p, &q) in a.iter().zip(&b) {
+                black_box(black_box(p).checked_step_toward(q, Num::ONE));
             }
         });
     });

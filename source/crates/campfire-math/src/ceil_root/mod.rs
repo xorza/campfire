@@ -1,5 +1,8 @@
 use crate::floor_root::FloorRoot;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 /// The exact integer square root, rounded up.
 pub trait CeilRoot {
     /// The least integer whose square is at least `self`.

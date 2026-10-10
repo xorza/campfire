@@ -92,7 +92,7 @@ A box costs a test of each of its four edges where a circle costs one, each in w
 
 The Collide stage, for 1,000 bodies on one core of a Ryzen 7 6800U, finds and parts their contacts in 0.30 ms when they crowd into 40 m square, `integration/collision/crowded`, and in 0.06 ms when they spread over 120 m square, `integration/collision/spread`: 0.9 % and 0.2 % of a tick at 30 Hz.
 
-A static body that enters a grid of half-meter cells over 124 m square, which holds the other static bodies of the spread scene, each of its 1,000 bodies static by a draw of one in four, costs 20 µs on the same core for the 3v3's five walker sizes, `integration/pathing_grid/one`: 0.06 % of a tick at 30 Hz. 43 % of it labels again each chunk of 64 by 64 cells the body touches, once for each walker size, by the runs of open cells along each row; 15 % finds again the pairs along those chunks' sides and joins the regions; 29 % puts the body into the static body index. So the cost grows with the walker sizes and with the chunks a body spans, not with the map.
+A static body that enters a grid of half-meter cells over 124 m square, which holds the other static bodies of the spread scene, each of its 1,000 bodies static by a draw of one in four, costs 20 µs on the same core for the 3v3's five walker sizes, `integration/pathing_grid/enter`: 0.06 % of a tick at 30 Hz. 43 % of it labels again each chunk of 64 by 64 cells the body touches, once for each walker size, by the runs of open cells along each row; 15 % finds again the pairs along those chunks' sides and joins the regions; 29 % puts the body into the static body index. So the cost grows with the walker sizes and with the chunks a body spans, not with the map.
 
 ## Genres
 

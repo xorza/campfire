@@ -11,7 +11,8 @@ use crate::u256::U256;
 /// `div_rounded` up and to nearest, as `Collider::reaching` and `Fraction::of` take it, the square of
 /// a value of 1 to 72 bits over one of 17 to 72, so the quotient fits and both the native path
 /// and the long division count; and `cmp_products` of two such squares, each times the other's
-/// divisor, the second from other draws.
+/// divisor, the second from other draws; and `shr_rounded` of such a square by 1 to 127 bits, to
+/// nearest, as `ProductSum` and the stats' totals take it.
 pub(crate) fn u256(c: &mut Criterion) {
     let (a, b) = (values(8, 128), values(9, 128));
     let squares = |seed: u64| -> Vec<U256> {
@@ -48,6 +49,14 @@ pub(crate) fn u256(c: &mut Criterion) {
         bench.iter(|| {
             for (&square, &divisor) in ours.iter().zip(&our_dens) {
                 black_box(black_box(square).div_rounded(divisor, Rounding::NearestEven));
+            }
+        });
+    });
+    group.bench_function("shr_rounded", |bench| {
+        bench.iter(|| {
+            for (at, &square) in ours.iter().enumerate() {
+                let shift = u32::try_from(at % 127).expect("a shift below 127") + 1;
+                black_box(black_box(square).shr_rounded(shift, Rounding::NearestEven));
             }
         });
     });

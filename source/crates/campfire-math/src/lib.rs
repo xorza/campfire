@@ -40,12 +40,13 @@ pub mod internals {
 pub mod bench {
     use criterion::Criterion;
 
-    use crate::{floor_root, num, product_sum, rng, rounding, u256, vec3};
+    use crate::{ceil_root, floor_root, num, product_sum, rng, rounding, u256, vec3};
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         num::bench::num(c);
-        floor_root::bench::root(c);
+        floor_root::bench::floor_root(c);
+        ceil_root::bench::ceil_root(c);
         rng::bench::rng(c);
         vec3::bench::vec3(c);
         u256::bench::u256(c);

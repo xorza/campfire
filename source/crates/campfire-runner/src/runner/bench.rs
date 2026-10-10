@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::world::World;
 use campfire_capabilities::Pools;
+use campfire_protocol::SessionLog;
 use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, StateDelta};
 use criterion::{Criterion, Throughput};
@@ -25,6 +26,7 @@ pub(crate) fn server(c: &mut Criterion) {
     server_tick(c, &moba);
     server_stage(c, &moba);
     battle(c, &moba);
+    session_log(c, &moba);
 }
 
 /// A tick of the MOBA 3v3 as its packages hold it: its first tick, `first_3v3`, which
@@ -140,6 +142,49 @@ fn battle(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
             });
         });
     }
+    group.finish();
+}
+
+/// A match of the MOBA 3v3 that its players' scripted orders played for `TICKS` ticks, and its
+/// session log's file.
+#[derive(Debug)]
+struct PlayedLog {
+    fixed: FixedMatch,
+    file: Vec<u8>,
+}
+
+impl PlayedLog {
+    fn new(moba: &Moba3v3) -> PlayedLog {
+        let mut fixed = moba.start();
+        for tick in 0..TICKS {
+            moba.play_tick(&mut fixed, tick);
+        }
+        let mut file = Vec::new();
+        fixed.runner().log().encode(&mut file);
+        PlayedLog { fixed, file }
+    }
+}
+
+/// The session log of a match of the MOBA 3v3 that its players' scripted orders play for `TICKS`
+/// ticks, as a server writes it at the session's end and a verifier reads it: `encode_3v3`, its
+/// file written; and `decode_3v3`, that file read back, which records each entry again and so
+/// checks each chain link and signature.
+fn session_log(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
+    let mut played = None;
+    let mut out = Vec::new();
+    let mut group = c.benchmark_group("integration/session_log");
+    group.bench_function("encode_3v3", |b| {
+        let PlayedLog { fixed, .. } = played.get_or_insert_with(|| PlayedLog::new(moba));
+        b.iter(|| {
+            out.clear();
+            fixed.runner().log().encode(&mut out);
+            black_box(&out);
+        });
+    });
+    group.bench_function("decode_3v3", |b| {
+        let PlayedLog { file, .. } = played.get_or_insert_with(|| PlayedLog::new(moba));
+        b.iter(|| black_box(SessionLog::decode(black_box(file)).expect("the log reads back")));
+    });
     group.finish();
 }
 

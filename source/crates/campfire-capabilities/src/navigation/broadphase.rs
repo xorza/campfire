@@ -298,7 +298,13 @@ pub(crate) mod internals {
             .map(Collider::radius)
             .max();
         let mut index = BodyIndex::new(widest.unwrap_or(Num::ONE));
-        let bodies: Vec<IndexedBody> = colliders
+        index.update(&static_bodies(colliders));
+        index
+    }
+
+    /// The colliders that may not be pushed, as the static index holds them, by stable id.
+    pub(crate) fn static_bodies(colliders: &[Collider]) -> Vec<IndexedBody> {
+        colliders
             .iter()
             .filter(|collider| !collider.movable)
             .map(|collider| IndexedBody {
@@ -307,9 +313,7 @@ pub(crate) mod internals {
                 shape: collider.shape,
                 layer: collider.layer,
             })
-            .collect();
-        index.update(&bodies);
-        index
+            .collect()
     }
 }
 

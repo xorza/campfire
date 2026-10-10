@@ -4,6 +4,7 @@ use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
 use crate::rng::split_mix64::SplitMix64;
+use crate::rounding::Rounding;
 
 /// The inputs of each primitive case, each iteration's.
 pub(crate) const COUNT: usize = 4096;
@@ -16,9 +17,9 @@ fn spread(seed: u64, span: i64) -> Vec<Num> {
         .collect()
 }
 
-/// `Num`'s arithmetic and its functions, each over `COUNT` inputs: products and quotients of
-/// values within ±1000, roots, the sine and cosine of angles within ±8 and of huge ones, and
-/// `atan2`, also of points near an axis.
+/// `Num`'s arithmetic and its functions, each over `COUNT` inputs: products and quotients of values
+/// within ±1000, and their product over a third, `mul_div`, rounded once, roots, the sine and
+/// cosine of angles within ±8 and of huge ones, and `atan2`, also of points near an axis.
 pub(crate) fn num(c: &mut Criterion) {
     let one = Num::ONE.to_bits();
     let small = spread(1, 1000 * one);
@@ -44,6 +45,13 @@ pub(crate) fn num(c: &mut Criterion) {
         b.iter(|| {
             for (&x, &y) in small.iter().zip(&nonzero) {
                 black_box(black_box(x) / y);
+            }
+        });
+    });
+    group.bench_function("mul_div", |b| {
+        b.iter(|| {
+            for ((&x, &y), &over) in small.iter().zip(&other).zip(&nonzero) {
+                black_box(black_box(x).checked_mul_div(y, over, Rounding::NearestEven));
             }
         });
     });

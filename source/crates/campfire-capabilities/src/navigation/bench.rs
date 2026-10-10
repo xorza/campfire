@@ -15,7 +15,7 @@ use crate::geometry::kernel_scene::{Density, KernelScene};
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
-use crate::navigation::broadphase::internals::{scene, statics};
+use crate::navigation::broadphase::internals::{scene, static_bodies, statics};
 use crate::navigation::collider::Collider;
 use crate::navigation::party::{Party, PartyKey};
 use crate::navigation::pathing_grid::PathingGrid;
@@ -74,10 +74,10 @@ pub(crate) fn collision(c: &mut Criterion) {
     group.finish();
 }
 
-/// The Inputs stage's update when one static body enters, as a tower that dies or a building
-/// an RTS places does: the static index takes the spread scene's static bodies with one more,
-/// and the pathing grid of half-meter cells over the scene marks that body's cells for each of
-/// the 3v3's walker sizes and labels again the chunks they touch. Between runs the body leaves
+/// The Inputs stage's update when one static body enters, `enter`, as a tower that dies or a
+/// building an RTS places does: the static index takes the spread scene's static bodies with one
+/// more, and the pathing grid of half-meter cells over the scene marks that body's cells for each
+/// of the 3v3's walker sizes and labels again the chunks they touch. Between runs the body leaves
 /// again, untimed.
 pub(crate) fn pathing_grid(c: &mut Criterion) {
     let span = Density::Spread.span();
@@ -98,7 +98,7 @@ pub(crate) fn pathing_grid(c: &mut Criterion) {
     grid.update(&index);
 
     let mut group = c.benchmark_group("integration/pathing_grid");
-    group.bench_function("one", |bench| {
+    group.bench_function("enter", |bench| {
         bench.iter_custom(|runs| {
             let mut spent = Duration::ZERO;
             for _ in 0..runs {
@@ -278,16 +278,7 @@ impl GroupScene<'_> {
 
 /// The static bodies of the spread scene's 1,000, one in four, by stable id.
 fn scene_statics(span: u64) -> Vec<IndexedBody> {
-    scene(9, KernelScene::UNITS, span, 1, false)
-        .iter()
-        .filter(|body| !body.movable)
-        .map(|body| IndexedBody {
-            id: body.id,
-            at: Position::new(body.at).unwrap(),
-            shape: body.shape,
-            layer: body.layer,
-        })
-        .collect()
+    static_bodies(&scene(9, KernelScene::UNITS, span, 1, false))
 }
 
 /// A grid of half-meter cells over a scene of `span` meters' half side, and 2 m past it, so the

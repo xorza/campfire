@@ -61,5 +61,6 @@ pub mod bench {
     pub fn run(c: &mut Criterion) {
         state_registry::bench::state_hash(c);
         state_registry::bench::snapshot(c);
+        state_registry::bench::state_delta(c);
     }
 }
