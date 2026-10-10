@@ -60,7 +60,7 @@ A step that ends a gather, chooses a drop-off, delivers a load or moves the work
 
 A `gather` order aimed at a drop-off of its player that takes its load's resource, by a worker with a load, takes the load there and goes back to its last node, as StarCraft II's return cargo does. A worker with a load of the resource it is sent to gather takes it to a drop-off first; one with a load of another resource drops it. Any other order ends the loop, and the worker keeps its load. Two units that both have the `gathering` tag do not collide, and do not steer round each other ([RTS foundations](../11-rts-foundations.md#decisions), D4).
 
-Selection and control groups are client-side; orders name the units they go to. A unit that a `rally`, a `build` or a `gather` aims at follows the rule of every order's unit target ([Issue log](../../issues/control.md)).
+Selection and control groups are client-side; orders name the units they go to. A unit that a `rally`, a `build` or a `gather` aims at follows the rule of every order's unit target.
 
 ## State and derived
 
@@ -73,7 +73,7 @@ Selection and control groups are client-side; orders name the units they go to. 
 
 ## Network
 
-A player's queues, supply, loads and resources go to that player and, as the mode sets, to the team. No client receives them yet; Stage 8 sends them ([Issue log](../../issues/net.md)).
+A player's queues, supply, loads and resources go to that player and, as the mode sets, to the team. No client receives them yet; Stage 8 sends them ([Issue log](../../../.notes/ISSUES.md)).
 
 ## Cost
 

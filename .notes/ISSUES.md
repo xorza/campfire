@@ -1,0 +1,37 @@
+# Issues
+
+The issue log: every open problem of the project, under the step it waits for. The rules are in [AGENTS.md](../AGENTS.md#issue-log).
+
+## Decide
+
+- **Zero Hour.** A texture no archive holds leaves its triangles untextured in the import, where the game draws `MissingTexture`, a solid color of `0x7FFF00FF`: draw them as the game does, or untextured, as now.
+- **Zero Hour.** The import ignores a vertex material's ambient color, as glTF's material has none: 336 vertex materials of converted models have one other than their diffuse color, which the game lights by the scene's ambient light. Options: a material file with the ambient color, which the client draws; or the diffuse color for both, as now.
+
+## Research
+
+- **Core.** The script view copies the whole match for each script batch: `ScriptBatch::run` reads every unit again and fills its row from all seven column sources, though few units change between two batches of one tick. `View::read` takes 14.2 % of a 3v3 match's time, in Think and the damage pass most.
+- **LAN check.** The check starts bot 1 again as soon as the server logs bot 1's first order, while the other bot's order of the same stamp may still be on its way, and it fails an order that misses its stamp tick. In CI run 37523961750 on Ubuntu, attempt 1, the server logged bot 1's order stamped 20 at 20:13:55.960; bot 0 sent its own at 55.971, and the server logged it at 56.086, 115 ms later, in tick 21; the new bot 1 process started in that window and joined at 56.108. On a runner of 4 cores, the new process's start shares them with the server and bot 0.
+- **Navigation.** `pathing_grid/one` moves by 8 % with where the linker places `Regions::label`: the same machine code at offset 32 of its 64-byte line takes 131.7 µs, and at offset 48 121.4 µs, as its instructions a cycle fall from 4.49 to 4.23. A change anywhere in the crate can move it.
+- **Net.** In the 3v3, a client that rolls back only on a misprediction rolls back on every confirmed update while its hero walks at its base after the first wave: 2,000 rollbacks of 3 ticks each in 2,000 frames, where the lane mode's walk makes none. Its frame costs 152.0 µs against 67.4 µs for a client that never rolls back. Which predicted part differs from the server's is not known.
+- **Net.** A client whose server dropped time after a stall past a frame's bound runs ahead of it, and Lightyear shifts the client's timeline back whole ticks at a time; from then on the client's sim mispredicts its own hero every tick and rolls back every tick, its hero standing where the server no longer has it, in the net scenario of a 2 s server stall.
+- **Net.** **Stage 8.** Every replicated component of a unit goes to every client that sees the unit. Design 04 sends pools other than life to the owner or the team ([Combat](../docs/design/04-capabilities/combat.md#network)), and experience and points to the owner ([Progression](../docs/design/04-capabilities/progression.md#network)).
+- **Package.** A read finds a file by its index path through the OS, so where the file system ignores case, as macOS's and Windows' do by default, a file whose name differs from its row only in case reads and passes its hash, where on Linux it is missing: one package can load on one OS and fail on another.
+- **Package.** **Stage 8.** Only an avatar names its human text, its `name`; an action, a loadout's spell, a mode, a team and a choice have no message id, so a client can show none of their names, while the design says each name is a message id ([Human text](../docs/design/03-game-scripting.md#game-package)).
+- **Script.** Scripts get no completion, signatures or descriptions in an editor. Rhai's VS Code extension highlights syntax only, and Rhai's language server, the one tool that reads a definition file such as `Engine::definitions` writes, is unpublished, marked experimental, and unchanged since October 2022.
+- **Vision.** `Bitmap::set` is the largest function of `server_tick/mean_3v3`, 6.9 % of it, for runs of one or two words a row; which of its parts costs that, the words' writes, the brush's mask or the record of each word set, is not known.
+- **Zero Hour.** The import draws a mesh's first material pass and its first texture stage alone; 275 meshes of converted models have a second pass, which the game draws over the first.
+- **Zero Hour.** The import makes a unit of every object a map places but a road's or bridge's end and a waypoint, whatever its template: the game spawns no object whose template no INI object names, adds props, optimized trees and, in multiplayer, fluff to the client alone, and spawns no shrub when trees are off (`GameLogic::startNewGame`).
+
+## Ready
+
+- **Actions.** **Stage 15.** The projectile section's `gravity` is planned: no projectile falls, so no grenade arcs and no bullet drops.
+- **Client.** The pointer takes the ground under the cursor where its ray meets the plane at height 0 (`Pointer::ground`), though a map with a heightmap draws its ground and its units at the heights `GroundHeights` gives, so a move order on such a map lands off the point clicked.
+- **Client.** The HUD shows no charges: an action with charges shows only its lockout as its cooldown, not how many charges it holds or when the next comes back.
+- **Client.** The client has no shop and no item keys: a player cannot buy, sell or use an item, which design 04's items give as orders.
+- **Client.** **Stage 8.** The client draws no area units: a unit with an `Area` is left out of the drawn units, and nothing shows where an area lies or how far it reaches.
+- **Interaction.** `interaction` is planned: no action of the `use` kind runs.
+- **Navigation.** **Stage 8.** The widest body is 64 m, `Shape::MAX_BOUND`, and the collision and box math is sized for it, where design 04 gives 2,048 m ([Zero Hour](../docs/design/12-zero-hour.md#decisions), D11).
+- **Net.** **Stage 8.** No production state replicates: a client sees no train queue and no player resource, where design 04's production sends a player's queues and resources to that player ([Production](../docs/design/04-capabilities/production.md#network)).
+- **Net.** No unit's inventory replicates: a client sees no item its units carry, where design 04's items send a unit's own inventory to its owner ([Items](../docs/design/04-capabilities/items.md#network)).
+- **Server.** A server that restores a session loads the map its `--map` names, or the mode's only one, before it reads the journal, and not the map the journal's terms name: a mode of several maps restarted with no `--map`, or another one, does not restore.
+- **Zero Hour.** The import turns a waypoint's angle into degrees, though no marker keeps it, and so refuses a map whose waypoint has an angle that the game's `normalizeAngle` never ends on, as an infinite one; the game never normalizes a waypoint's angle (`MapImport::new`, `MapObject::placement`).

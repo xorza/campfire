@@ -55,7 +55,8 @@ impl ClientData {
         for path in files.files_under(MATERIALS) {
             let Some(name) = path
                 .as_str()
-                .strip_prefix("client/materials/")
+                .strip_prefix(MATERIALS)
+                .and_then(|rest| rest.strip_prefix('/'))
                 .and_then(|file| file.strip_suffix(".toml"))
             else {
                 continue;

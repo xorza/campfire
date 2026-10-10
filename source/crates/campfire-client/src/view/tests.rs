@@ -1,14 +1,19 @@
 use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
 
-use bevy::asset::{AssetApp, AssetPlugin};
+use bevy::asset::{AssetApp, AssetPlugin, AssetServer};
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::world::World;
+use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
+use bevy::world_serialization::WorldAsset;
+use campfire_capabilities::{DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOrigins};
 use campfire_math::Num;
+use campfire_package::{ClientModel, ClientUnit, ClientUnits};
 use campfire_sim::IdAllocator;
 
 use super::*;
+use crate::view::unit_looks::ModelParts;
 
 /// A view with no window, whose clock moves only as a test sets it.
 fn view() -> App {
@@ -187,4 +192,82 @@ fn the_result_stands_by_the_clients_team() {
     for own in [Some(a), None] {
         assert_eq!(Standing::of(MatchResult::Draw, own), Some(Standing::Draw));
     }
+}
+
+#[test]
+fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() {
+    IoTaskPool::get_or_init(TaskPool::new);
+    let mut app = view();
+    app.init_asset::<WorldAsset>();
+    // Ground 8 samples high everywhere, a step of 0.5 m: 4 m under every point.
+    let grid = HeightGrid::new(
+        [Num::int(-10), Num::int(-10)],
+        Num::int(10),
+        Num::from_bits(1 << (Num::FRAC_BITS - 1)),
+        4,
+        vec![8; 16],
+    )
+    .unwrap();
+    let tank = ClientUnit {
+        models: vec![ClientModel {
+            model: PackagePath::parse("client/models/tank.glb").unwrap(),
+            hide: vec!["tank.flash".to_owned()],
+        }],
+    };
+    let data = ClientData {
+        units: vec![ClientUnits {
+            units: [(DeclaredName::new("tank").unwrap(), tank)]
+                .into_iter()
+                .collect(),
+        }],
+        heights: GroundHeights::of(&grid),
+        ..ClientData::default()
+    };
+    let origins: TypeOrigins = [TypeOrigin {
+        package: 0,
+        name: "tank".into(),
+    }]
+    .into_iter()
+    .collect();
+    let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
+    app.insert_resource(looks);
+    app.insert_resource(data);
+    let (unit_type, _) = origins.iter().next().unwrap();
+    // The tank stands 2 m above the ground at (3, 0), turned 90°.
+    let at = Position::new(campfire_math::Vec3::new(
+        Num::int(3),
+        Num::int(2),
+        Num::ZERO,
+    ))
+    .unwrap();
+    let unit = app
+        .world_mut()
+        .spawn((
+            IdAllocator::default().allocate(),
+            at,
+            Team::new(0),
+            unit_type,
+            Facing::of(Num::int(90)),
+        ))
+        .id();
+    app.update();
+    let world = app.world();
+    // Its root stands at the ground's 4 m and its own 2 m, with its shape and no figure; its one
+    // child is its model, turned a quarter about y, with the node its look hides.
+    let (root, _, translation) = root(world, unit);
+    assert_eq!(translation, Vec3::new(3.0, 6.0, 0.0));
+    assert!(world.get::<Shape>(root).is_some() && world.get::<Look>(root).is_none());
+    let children = world.get::<Children>(root).unwrap();
+    assert_eq!(children.len(), 1);
+    let model = world.entity(children[0]);
+    assert!(model.get::<WorldAssetRoot>().is_some());
+    assert_eq!(
+        model.get::<ModelParts>(),
+        Some(&ModelParts {
+            package: 0,
+            hide: vec!["tank.flash".to_owned()],
+        })
+    );
+    let turn = model.get::<Transform>().unwrap().rotation;
+    assert!(turn.abs_diff_eq(Quat::from_rotation_y(90.0_f32.to_radians()), 1e-6));
 }
