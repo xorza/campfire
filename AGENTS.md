@@ -22,6 +22,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
         - `13-bodies-uses-shop-gravity.md` — bodies up to 2,048 m and the spatial indexes' levels, the `use` action kind, the client's shop and item keys, projectiles that fall
     - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import
 - `.notes/ISSUES.md` — the issue log: every open problem, under the step it waits for ([Issue log](#issue-log))
+- `.notes/FOUNDATIONS.md` — the open problems whose cause is in the architecture or a chosen format, each with the issue-log items it holds ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
 - `../GeneralsX/` — beside this repository, not in it: a checkout of [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS. It is the reference for Zero Hour's formats and rules, and the base of the parity oracle. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions), D2).
 
@@ -51,6 +52,7 @@ The issue log is `.notes/ISSUES.md`, one file for every open problem of the proj
     - **Ready**: the fix is known, and waits for its turn.
 - **Items.** One bullet for each problem: its system, then what is wrong, where the code and the design differ, and not how to fix it. An item that a roadmap stage or a plan step takes carries its tag after its system, `**Client.** **Stage 5.**` or `**Net.** **Plan: F3.**`; an item with no tag has no stage yet. Within a section, items go in the order of their systems' names.
 - **Life.** An item moves between sections as it is triaged. A fixed item is deleted, with no done marker and no history. A section with no items stays, empty.
+- **Foundations.** A problem whose cause is in the architecture or a chosen format, not in one piece of code, as several items show one cause or it limits every system built after it, also has an entry in `.notes/FOUNDATIONS.md`: its cause, what it limits, and the issue-log items it holds, named by system and the start of their text. Its own item in the issue log states the cause. The entry goes when its cause is fixed, and an item it names goes from it when that item is deleted.
 
 ## Code
 
