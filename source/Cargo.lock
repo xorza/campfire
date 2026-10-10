@@ -2019,7 +2019,6 @@ dependencies = [
  "campfire-store",
  "criterion 0.8.2",
  "derive_more",
- "postcard",
  "serde",
  "thiserror 2.0.21",
  "toml",
@@ -2050,10 +2049,14 @@ dependencies = [
 name = "campfire-common"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "campfire-store",
  "derive_more",
  "postcard",
  "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "toml",
 ]
 
 [[package]]
@@ -2116,7 +2119,6 @@ dependencies = [
  "blake3",
  "campfire-common",
  "criterion 0.8.2",
- "postcard",
  "proptest",
  "serde",
  "thiserror 2.0.21",
@@ -2144,6 +2146,7 @@ dependencies = [
  "criterion 0.8.2",
  "getrandom 0.3.4",
  "lightyear",
+ "lightyear_serde",
  "serde",
  "thiserror 2.0.21",
  "toml",
@@ -2164,7 +2167,6 @@ dependencies = [
  "derive_more",
  "fluent-bundle",
  "fluent-syntax",
- "postcard",
  "serde",
  "sha2 0.11.0",
  "thiserror 2.0.21",
@@ -2250,13 +2252,13 @@ dependencies = [
 name = "campfire-sim"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "bevy_ecs",
  "blake3",
  "campfire-common",
  "campfire-log",
  "campfire-math",
  "criterion 0.8.2",
- "postcard",
  "serde",
  "thiserror 2.0.21",
 ]

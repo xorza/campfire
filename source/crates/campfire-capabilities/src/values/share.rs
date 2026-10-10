@@ -79,6 +79,8 @@ impl<'de> Deserialize<'de> for Share {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Toml;
+
     use super::*;
 
     #[test]
@@ -105,7 +107,7 @@ mod tests {
         ] {
             assert_eq!(share(refused), None, "{refused}");
         }
-        let read = |text: &str| toml::from_str::<toml::Table>(text).unwrap()["share"].clone();
+        let read = |text: &str| Toml::parse::<toml::Table>(text).unwrap()["share"].clone();
         let of = |text: &str| {
             Share::deserialize(read(text))
                 .map(|share| share.of(100))

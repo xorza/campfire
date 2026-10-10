@@ -27,6 +27,7 @@ mod session_times;
 mod sim_client;
 mod sim_server;
 mod superseded;
+mod wire_codec;
 
 pub use crate::bot_script::BotScript;
 pub use crate::events::avatar_missing::AvatarMissing;

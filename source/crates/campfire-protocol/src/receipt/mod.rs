@@ -1,4 +1,4 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Binary, PlayerSlot, Taken, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
@@ -85,7 +85,7 @@ impl SignedReceipt {
     pub fn encode(&self, out: &mut Vec<u8>) {
         out.clear();
         out.extend_from_slice(FILE_TAG);
-        postcard::to_io(self, out).expect("postcard into a Vec cannot fail");
+        Binary::encode_into(self, out);
     }
 
     /// The receipt of a file's `bytes`; an error for bytes that `encode` did not write.
@@ -93,8 +93,10 @@ impl SignedReceipt {
         let rest = bytes
             .strip_prefix(FILE_TAG)
             .ok_or(ReceiptFileError::NotReceipt)?;
-        let (receipt, rest) = postcard::take_from_bytes::<SignedReceipt>(rest)
-            .map_err(ReceiptFileError::Malformed)?;
+        let Taken {
+            value: receipt,
+            rest,
+        } = Binary::take::<SignedReceipt>(rest).map_err(ReceiptFileError::Malformed)?;
         if !rest.is_empty() {
             return Err(ReceiptFileError::Trailing);
         }

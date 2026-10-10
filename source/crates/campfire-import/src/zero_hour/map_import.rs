@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
-use campfire_capabilities::{BinaryFile, HeightGrid};
+use campfire_capabilities::HeightGrid;
+use campfire_common::{Binary, Toml};
 use campfire_math::Num;
 use campfire_package::{Terrain, TerrainParts};
 use serde::Serialize;
@@ -140,9 +141,9 @@ impl MapImport {
             markers,
         };
         Ok(MapImport {
-            map: toml::to_string(&map).expect("a map encodes as TOML"),
-            heights: heights.encode(),
-            terrain: terrain.encode(),
+            map: Toml::write(&map).expect("a map encodes as TOML"),
+            heights: Binary::encode(&heights),
+            terrain: Binary::encode(&terrain),
         })
     }
 
@@ -201,7 +202,7 @@ mod tests {
 
         // 4 × 3 samples, a border of 1: x from −10 to 20, and z from −(3 − 1 − 1) · 10 = −10 to
         // 10, the file's last row first.
-        let heights = HeightGrid::decode(&imported.heights).unwrap();
+        let heights = Binary::decode::<HeightGrid>(&imported.heights).unwrap();
         let expected = HeightGrid::new(
             [Num::int(-10), Num::int(-10)],
             Num::int(10),
@@ -215,7 +216,7 @@ mod tests {
         // The file's row 2 is the engine's row 0, so its cell of column x and row y is the
         // engine's (2 − y) · 4 + x: its last, a cliff of tile 3, the engine's 3; its first, a
         // cliff of tile 0, the engine's 8; its cell 2, of cliff UVs, the engine's 10.
-        let terrain = Terrain::decode(&imported.terrain).unwrap();
+        let terrain = Binary::decode::<Terrain>(&imported.terrain).unwrap();
         let cells = &terrain.parts().cells;
         assert_eq!(cells.len(), 12);
         assert!(cells[3].cliff && cells[3].tile == 3);
@@ -239,7 +240,7 @@ mod tests {
         // 1,509,949,482 steps of 2⁻²⁴ degrees. The rock at (−10, 15), 4.5 below the ground,
         // turned 4.729842 − 2π = −1.5533433 in `f32`, −1,493,172,475.64 steps, so
         // −1,493,172,476. The waypoint at (12.5, 7.5) is marker `w3`. The road's end is none.
-        let map: MapData = toml::from_str(&imported.map).unwrap();
+        let map: MapData = Toml::parse(&imported.map).unwrap();
         let decimal = |text: &str| Scalar::Decimal(text.parse().unwrap());
         let ground = |x: &str, z: &str| MapPoint::Ground([decimal(x), decimal(z)]);
         let unit = |unit_type: &str, pos, angle: i64, height: Num| PlacedUnitData {
@@ -285,7 +286,7 @@ mod tests {
             }]
         );
         // The bounds hold the heights and reach the tank's x of 30 and the rock's z of −15.
-        let bounds: Bounds = toml::from_str("min = [-10, -15]\nmax = [30, 10]").unwrap();
+        let bounds: Bounds = Toml::parse("min = [-10, -15]\nmax = [30, 10]").unwrap();
         assert_eq!(map.bounds, bounds);
         assert_eq!(
             types.toml(),

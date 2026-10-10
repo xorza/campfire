@@ -66,6 +66,7 @@ impl SimComponent for RecentAttackers {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
     use campfire_sim::IdAllocator;
 
     use super::*;
@@ -78,8 +79,8 @@ mod tests {
             tick: Tick::new(4),
         });
         let decode = |attacks: &[RecentAttack]| {
-            let bytes = postcard::to_allocvec(attacks).unwrap();
-            postcard::from_bytes::<RecentAttackers>(&bytes).is_ok()
+            let bytes = Binary::encode(attacks);
+            Binary::decode::<RecentAttackers>(&bytes).is_ok()
         };
         assert!(decode(&[]) && decode(&[first, second]));
         assert!(!decode(&[second, first]) && !decode(&[first, first]));

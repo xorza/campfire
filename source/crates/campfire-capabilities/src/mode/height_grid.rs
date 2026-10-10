@@ -3,9 +3,7 @@ use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::values::binary_file::BinaryFile;
-
-/// A map's ground, `map/<name>/heights.bin` in postcard: samples `cell` meters apart, the one of
+/// A map's ground, `map/<name>/heights.bin`, through `Binary`: samples `cell` meters apart, the one of
 /// `column` and `row` at `[x, z] = origin + [column, row] · cell`, row after row from the first,
 /// each `step` meters per unit above height 0.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -98,8 +96,6 @@ impl HeightGrid {
     }
 }
 
-impl BinaryFile for HeightGrid {}
-
 /// A package's file is untrusted, so a grid `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for HeightGrid {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<HeightGrid, D::Error> {
@@ -131,7 +127,7 @@ impl<'de> Deserialize<'de> for HeightGrid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::values::error::DecodeError;
+    use campfire_common::{Binary, BinaryError};
 
     #[test]
     fn a_grid_encodes_its_fields_and_decodes_only_as_new_takes_it() {
@@ -157,8 +153,8 @@ mod tests {
             &[2, 4, 0, 1, 2, 3],
         ]
         .concat();
-        assert_eq!(grid.encode(), bytes);
-        assert_eq!(HeightGrid::decode(&bytes).unwrap(), grid);
+        assert_eq!(Binary::encode(&grid), bytes);
+        assert_eq!(Binary::decode::<HeightGrid>(&bytes).unwrap(), grid);
 
         // A cell or a step of 0, a ragged or a single row, one column, and a grid past the
         // world's bound, 2²⁰ m, at its far corner or at its highest.
@@ -177,16 +173,19 @@ mod tests {
         assert_eq!(edge.unwrap().far_corner(), [bound, Num::ONE]);
         let ragged = [&bytes[..13], &[2, 3, 0, 1, 2]].concat();
         assert!(matches!(
-            HeightGrid::decode(&ragged),
-            Err(DecodeError::Malformed(_))
+            Binary::decode::<HeightGrid>(&ragged),
+            Err(BinaryError::Malformed(_))
         ));
         // The same grid with its column count over-long, 2 as 0x82 0x00, or a byte past its end.
         let long = [&bytes[..13], &[0x82, 0x00], &bytes[14..]].concat();
         let trailing = [&bytes[..], &[0]].concat();
-        assert_eq!(HeightGrid::decode(&long), Err(DecodeError::NotCanonical));
         assert_eq!(
-            HeightGrid::decode(&trailing),
-            Err(DecodeError::NotCanonical)
+            Binary::decode::<HeightGrid>(&long),
+            Err(BinaryError::NotCanonical)
+        );
+        assert_eq!(
+            Binary::decode::<HeightGrid>(&trailing),
+            Err(BinaryError::NotCanonical)
         );
     }
 }

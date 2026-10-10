@@ -2,7 +2,9 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::str;
 
+use campfire_common::Json;
 use serde::Deserialize;
 
 use crate::error::CheckError;
@@ -65,7 +67,7 @@ impl Binaries {
             let Ok(Message::CompilerArtifact {
                 target,
                 executable: Some(executable),
-            }) = serde_json::from_slice(line)
+            }) = str::from_utf8(line).map_or(Ok(Message::Other), Json::parse)
             else {
                 continue;
             };

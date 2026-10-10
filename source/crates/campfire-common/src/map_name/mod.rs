@@ -47,6 +47,8 @@ impl<'de> Deserialize<'de> for MapName {
 
 #[cfg(test)]
 mod tests {
+    use crate::codec::binary::Binary;
+
     use super::*;
 
     #[test]
@@ -59,9 +61,9 @@ mod tests {
         }
         // Postcard writes a string as its length and its bytes.
         let lane = MapName::new("lane").unwrap();
-        let encoded = postcard::to_allocvec(&lane).unwrap();
+        let encoded = Binary::encode(&lane);
         assert_eq!(encoded, b"\x04lane");
-        assert_eq!(postcard::from_bytes::<MapName>(&encoded).unwrap(), lane);
-        assert!(postcard::from_bytes::<MapName>(b"\x04Lane").is_err());
+        assert_eq!(Binary::decode::<MapName>(&encoded).unwrap(), lane);
+        assert!(Binary::decode::<MapName>(b"\x04Lane").is_err());
     }
 }

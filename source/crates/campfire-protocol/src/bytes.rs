@@ -20,21 +20,23 @@ impl<'de: 'a, 'a> Deserialize<'de> for Bytes<'a> {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
 
     #[test]
     fn bytes_encode_as_a_slice_does() {
         // The length 3, then the bytes; empty, the length 0 alone.
         for payload in [&b"abc"[..], b""] {
-            let as_bytes = postcard::to_allocvec(&Bytes(payload)).unwrap();
-            assert_eq!(as_bytes, postcard::to_allocvec(payload).unwrap());
-            let read: Bytes<'_> = postcard::from_bytes(&as_bytes).unwrap();
+            let as_bytes = Binary::encode(&Bytes(payload));
+            assert_eq!(as_bytes, Binary::encode(payload));
+            let read: Bytes<'_> = Binary::decode(&as_bytes).unwrap();
             assert_eq!(read, Bytes(payload));
         }
-        assert_eq!(postcard::to_allocvec(&Bytes(b"abc")).unwrap(), b"\x03abc");
+        assert_eq!(Binary::encode(&Bytes(b"abc")), b"\x03abc");
         // Through a writer, as the log writes it.
         let mut out = Vec::new();
-        postcard::to_io(&Bytes(b"xy"), &mut out).unwrap();
+        Binary::encode_into(&Bytes(b"xy"), &mut out);
         assert_eq!(out, b"\x02xy");
     }
 }

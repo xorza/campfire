@@ -24,6 +24,8 @@ impl Fingerprint {
 
 #[cfg(test)]
 mod tests {
+    use crate::codec::binary::Binary;
+
     use super::*;
 
     #[test]
@@ -33,7 +35,7 @@ mod tests {
         bytes[31] = 0x05;
         let fingerprint = Fingerprint::new(bytes);
         assert_eq!(fingerprint.to_string(), format!("ab{}05", "00".repeat(30)));
-        let encoded = postcard::to_allocvec(&fingerprint).unwrap();
-        assert_eq!(encoded, postcard::to_allocvec(&bytes).unwrap());
+        let encoded = Binary::encode(&fingerprint);
+        assert_eq!(encoded, Binary::encode(&bytes));
     }
 }

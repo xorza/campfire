@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::DeclaredName;
+use campfire_common::Toml;
 use serde::Serialize;
 use toml::Table;
 
@@ -45,7 +46,7 @@ impl UnitTypes {
             .keys()
             .map(|name| (name.as_str(), Table::new()))
             .collect();
-        toml::to_string(&UnitsToml { units }).expect("units encode as TOML")
+        Toml::write(&UnitsToml { units }).expect("units encode as TOML")
     }
 }
 
@@ -76,7 +77,7 @@ mod tests {
         let toml = types.toml();
         assert_eq!(toml, "[units.americatank]\n\n[units.rocks1]\n");
 
-        let units: Units = toml::from_str(&toml).unwrap();
+        let units: Units = Toml::parse(&toml).unwrap();
         assert_eq!(
             units
                 .units

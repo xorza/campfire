@@ -1,3 +1,4 @@
+use campfire_common::BinaryError;
 use thiserror::Error;
 
 use crate::delegation::error::DelegationError;
@@ -6,7 +7,7 @@ use crate::delegation::error::DelegationError;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ServerInputDecodeError {
     #[error("does not decode")]
-    Malformed(#[source] postcard::Error),
+    Malformed(#[source] BinaryError),
     #[error("delegation")]
     Delegation(#[source] DelegationError),
 }

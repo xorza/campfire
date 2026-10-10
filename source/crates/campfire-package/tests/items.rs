@@ -4,6 +4,7 @@
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_capabilities::{DeclaredName, NameKind, UnitTypeFile};
+use campfire_common::Toml;
 use campfire_package::{
     ChoiceProblem, ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef,
     Place,
@@ -56,7 +57,7 @@ fn the_3v3s_items_read_as_their_data_holds_them() {
     // 70% of a warblade's 1100 is 770.
     assert_eq!(shop.sell_share.of(1100), 770);
     // A unit type's inventory, as every hero's reads.
-    let unit: UnitTypeFile = toml::from_str("inventory = { slots = 6, kind = \"item\" }").unwrap();
+    let unit: UnitTypeFile = Toml::parse("inventory = { slots = 6, kind = \"item\" }").unwrap();
     let inventory = unit.inventory.unwrap();
     assert_eq!(
         (inventory.slots, inventory.kind),

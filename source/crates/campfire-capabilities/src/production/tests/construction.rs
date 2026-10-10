@@ -1,3 +1,4 @@
+use campfire_common::Toml;
 use campfire_sim::{EntityIndex, TickInput, TickInputs};
 use serde::Deserialize;
 
@@ -57,7 +58,7 @@ fn share(text: &str) -> Share {
     struct Field {
         share: Share,
     }
-    toml::from_str::<Field>(&format!("share = \"{text}\""))
+    Toml::parse::<Field>(&format!("share = \"{text}\""))
         .unwrap()
         .share
 }

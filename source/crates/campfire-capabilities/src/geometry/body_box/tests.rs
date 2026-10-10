@@ -1,3 +1,5 @@
+use campfire_common::Binary;
+
 use super::*;
 
 impl BodyBox {
@@ -134,24 +136,23 @@ fn a_box_has_a_bound_and_decodes_only_as_a_box() {
     assert_eq!(made("4", "2", "90").bound(), body.bound());
     // A snapshot's box decodes to the same box, its bound derived again; half edges that turn
     // clockwise, lie flat, or reach past 64 m do not decode.
-    let decoded: BodyBox = postcard::from_bytes(&postcard::to_allocvec(&body).unwrap()).unwrap();
+    let decoded: BodyBox = Binary::decode(&Binary::encode(&body)).unwrap();
     assert_eq!(decoded, body);
-    let encode =
-        |half: [[&str; 2]; 2]| postcard::to_allocvec(&half.map(|edge| edge.map(num))).unwrap();
+    let encode = |half: [[&str; 2]; 2]| Binary::encode(&half.map(|edge| edge.map(num)));
     for half in [
         [["0", "1"], ["2", "0"]],
         [["2", "0"], ["4", "0"]],
         [["50", "0"], ["0", "40"]],
     ] {
         assert!(
-            postcard::from_bytes::<BodyBox>(&encode(half)).is_err(),
+            Binary::decode::<BodyBox>(&encode(half)).is_err(),
             "{half:?}"
         );
     }
     // A component as large as a number holds is refused, with no product of it.
-    let huge = postcard::to_allocvec(&[[Num::MAX, Num::ZERO], [Num::ZERO, Num::MAX]]).unwrap();
-    assert!(postcard::from_bytes::<BodyBox>(&huge).is_err());
-    assert!(postcard::from_bytes::<BodyBox>(&encode([["2", "0"], ["0", "1"]])).is_ok());
+    let huge = Binary::encode(&[[Num::MAX, Num::ZERO], [Num::ZERO, Num::MAX]]);
+    assert!(Binary::decode::<BodyBox>(&huge).is_err());
+    assert!(Binary::decode::<BodyBox>(&encode([["2", "0"], ["0", "1"]])).is_ok());
 }
 
 #[test]

@@ -1088,7 +1088,9 @@ fn flawed_log_files_are_refused() {
         ([valid.as_slice(), &[0]].concat(), LogError::Trailing),
         (
             [&valid[..valid.len() - 1], &[2]].concat(),
-            LogError::Malformed(postcard::Error::DeserializeBadOption),
+            LogError::Malformed(BinaryError::Malformed(
+                postcard::Error::DeserializeBadOption,
+            )),
         ),
         (
             frame(&header(), &sent, &[], Some(ServerSeed::new([4; 32]))),

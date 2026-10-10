@@ -1,3 +1,4 @@
+use campfire_common::{Binary, Toml};
 use campfire_math::Num;
 use campfire_sim::{Position, SimComponent};
 use serde::Serialize;
@@ -84,8 +85,8 @@ fn a_snapshot_with_tracks_out_of_order_or_negative_experience_fails_to_decode() 
         level: Some(Level::default()),
     };
     let decode = |tracks: Vec<TrackXp>| {
-        let bytes = postcard::to_allocvec(&Fields { tracks }).unwrap();
-        postcard::from_bytes::<Experience>(&bytes)
+        let bytes = Binary::encode(&Fields { tracks });
+        Binary::decode::<Experience>(&bytes)
     };
     assert!(decode(vec![held(0, Num::int(5)), held(3, Num::ZERO)]).is_ok());
     assert!(decode(vec![held(3, Num::int(5)), held(0, Num::int(5))]).is_err());
@@ -111,7 +112,7 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
         thresholds(&[100, 101, 300]).unwrap().get(),
         [Num::int(100), Num::int(101), Num::int(300)]
     );
-    let read = |text: &str| toml::from_str::<TrackData>(text);
+    let read = |text: &str| Toml::parse::<TrackData>(text);
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
     assert_eq!(
         read("levels = [\"0.5\", 300]\nlevel = true").unwrap(),

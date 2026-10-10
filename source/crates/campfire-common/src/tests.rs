@@ -11,7 +11,7 @@ fn read(path: &str) -> String {
 }
 
 #[test]
-fn the_crate_depends_on_serde_and_derive_more_alone() {
+fn the_crate_depends_on_its_values_crates_and_the_codecs_alone() {
     // Read by hand, as the crate has no TOML parser. Only the listed sections may appear, so
     // a dependency in any other form, such as `[dependencies.name]`, a target's section or
     // a dotted key before the first section, fails the test instead of passing it unseen.
@@ -33,7 +33,18 @@ fn the_crate_depends_on_serde_and_derive_more_alone() {
             }
         }
     }
-    assert_eq!(names, ["derive_more", "serde"]);
+    assert_eq!(
+        names,
+        [
+            "arrayvec",
+            "derive_more",
+            "postcard",
+            "serde",
+            "serde_json",
+            "thiserror",
+            "toml"
+        ]
+    );
 }
 
 #[test]
@@ -148,6 +159,10 @@ const GROUPS: [&str; 2] = [concat!("clippy::", "style"), concat!("clippy::", "al
 /// The crate root whose `expect` of both lints lets `store` touch files and start threads.
 const STORE_ROOT: &str = "crates/campfire-store/src/lib.rs";
 
+/// The module root whose `expect` of `disallowed_methods` lets `common`'s `codec` call the
+/// formats.
+const CODEC_ROOT: &str = "crates/campfire-common/src/codec/mod.rs";
+
 /// The one file outside `store` that may `expect` `disallowed_methods`, on a statement: the sim
 /// schedule's build settings, which the same lint bans for another rule than storage's.
 const SCHEDULE_SETTINGS: &str = "crates/campfire-sim/src/sim_update/mod.rs";
@@ -155,8 +170,8 @@ const SCHEDULE_SETTINGS: &str = "crates/campfire-sim/src/sim_update/mod.rs";
 /// The lines of `text`, the source at `path` under `source/`, whose attribute exempts code from
 /// either lint other than as the rules let it: only `expect` of a lint itself, never `allow`, a
 /// `cfg_attr` or a group that holds it, so a stale one fails and none hides; of both for the
-/// whole of `store`, which owns the rules, and of `disallowed_methods` in `SCHEDULE_SETTINGS`;
-/// nowhere else.
+/// whole of `store`, which owns the rules, of `disallowed_methods` for the whole of `codec`, which
+/// owns the formats, and in `SCHEDULE_SETTINGS`; nowhere else.
 fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
     let line_of = |at: usize| text[..at].matches('\n').count() + 1;
     let mut misplaced = Vec::new();
@@ -187,7 +202,7 @@ fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
             let allowed = LINTS.contains(name)
                 && kind == "expect"
                 && if inner {
-                    path == STORE_ROOT
+                    path == STORE_ROOT || (*name == LINTS[0] && path == CODEC_ROOT)
                 } else {
                     *name == LINTS[0] && path == SCHEDULE_SETTINGS
                 };
@@ -234,6 +249,56 @@ fn only_store_touches_a_file_or_starts_a_thread() {
         .collect();
     assert_eq!(misplaced, Vec::<String>::new());
     assert!(sources.iter().any(|file| file.path == STORE_ROOT));
+    assert!(sources.iter().any(|file| file.path == CODEC_ROOT));
+}
+
+/// The functions only `codec` calls (design 02, Serialization): each format's own encodes and
+/// decodes, replicon's helpers over postcard, and Lightyear's registrations that take Lightyear's
+/// own encoding.
+const CODEC_METHODS: [&str; 24] = [
+    "postcard::to_allocvec",
+    "postcard::to_stdvec",
+    "postcard::to_extend",
+    "postcard::to_io",
+    "postcard::to_slice",
+    "postcard::serialize_with_flavor",
+    "postcard::from_bytes",
+    "postcard::take_from_bytes",
+    "postcard::from_io",
+    "toml::from_str",
+    "toml::to_string",
+    "toml::to_string_pretty",
+    "serde_json::from_str",
+    "serde_json::from_slice",
+    "serde_json::from_reader",
+    "serde_json::to_string",
+    "serde_json::to_vec",
+    "serde_json::to_writer",
+    "bevy_replicon::postcard_utils::to_extend_mut",
+    "bevy_replicon::postcard_utils::from_buf",
+    "lightyear_messages::registry::AppMessageExt::register_message",
+    "lightyear_replication::registry::replication::AppComponentExt::register_component",
+    "lightyear_replication::registry::replication::ComponentRegistration::replicate",
+    "lightyear_replication::registry::replication::ComponentRegistration::replicate_once",
+];
+
+/// The types only `codec` holds, each banned whole so every method of it is.
+const CODEC_TYPES: [&str; 6] = [
+    "postcard::Serializer",
+    "postcard::Deserializer",
+    "toml::Serializer",
+    "toml::Deserializer",
+    "serde_json::Serializer",
+    "serde_json::Deserializer",
+];
+
+#[test]
+fn only_the_codec_calls_a_format() {
+    let clippy = read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../clippy.toml"));
+    let methods = unlisted(&clippy, "disallowed-methods", &CODEC_METHODS);
+    assert_eq!(methods, Vec::<&str>::new());
+    let types = unlisted(&clippy, "disallowed-types", &CODEC_TYPES);
+    assert_eq!(types, Vec::<&str>::new());
 }
 
 /// The one module whose code may differ by OS (design 02, Platform).

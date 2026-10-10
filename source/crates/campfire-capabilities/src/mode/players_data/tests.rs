@@ -1,8 +1,10 @@
+use campfire_common::Toml;
+
 use super::*;
 
 #[test]
 fn players_read_with_their_defaults_and_refuse_what_they_do_not_know() {
-    let read = |text: &str| toml::from_str::<PlayersData>(text);
+    let read = |text: &str| Toml::parse::<PlayersData>(text);
     assert_eq!(read("").unwrap(), PlayersData::default());
     assert_eq!(PlayersData::DEFAULT, PlayersData::default());
     assert_eq!(

@@ -1,10 +1,9 @@
-use campfire_common::{StateHash, Tick};
+use campfire_common::{Binary, StateHash, Taken, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::checkpoint::log_carry::{CarryWire, LogCarry};
-use crate::decoded::Decoded;
 use crate::session_id::SessionId;
 use crate::signature::Signature;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
@@ -49,14 +48,14 @@ impl Checkpoint {
             snapshot: self.snapshot,
             carry: self.carry.wire(),
         };
-        postcard::to_io(&wire, out).expect("postcard into a Vec cannot fail");
+        Binary::encode_into(&wire, out);
     }
 
     /// The record at the front of `bytes`, and the bytes after it; an error for bytes that do
     /// not decode, and for a delegation that does not parse.
-    pub(crate) fn take(bytes: &[u8]) -> Result<Decoded<'_, Checkpoint>, CheckpointDecodeError> {
-        let (wire, rest) = postcard::take_from_bytes::<Wire<'_>>(bytes)
-            .map_err(CheckpointDecodeError::Malformed)?;
+    pub(crate) fn take(bytes: &[u8]) -> Result<Taken<'_, Checkpoint>, CheckpointDecodeError> {
+        let Taken { value: wire, rest } =
+            Binary::take::<Wire<'_>>(bytes).map_err(CheckpointDecodeError::Malformed)?;
         let record = Checkpoint {
             segment: wire.segment,
             tick: wire.tick,
@@ -64,7 +63,7 @@ impl Checkpoint {
             snapshot: wire.snapshot,
             carry: LogCarry::from_wire(wire.carry)?,
         };
-        Ok(Decoded {
+        Ok(Taken {
             value: record,
             rest,
         })

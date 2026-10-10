@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::slice;
 
 use bevy_ecs::entity::Entity;
-use campfire_common::Tick;
+use campfire_common::{Tick, Toml};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, IdAllocator, Position, SimComponent, SimUpdate};
 
@@ -747,8 +747,5 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
 
 #[test]
 fn a_modifiers_default_is_what_an_empty_table_reads() {
-    assert_eq!(
-        toml::from_str::<ModifierData>(""),
-        Ok(ModifierData::default())
-    );
+    assert_eq!(Toml::parse::<ModifierData>(""), Ok(ModifierData::default()));
 }

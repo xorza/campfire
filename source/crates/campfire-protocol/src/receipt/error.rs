@@ -1,3 +1,4 @@
+use campfire_common::BinaryError;
 use thiserror::Error;
 
 /// Why a file's bytes are no receipt file.
@@ -7,7 +8,7 @@ pub enum ReceiptFileError {
     #[error("not a receipt file")]
     NotReceipt,
     #[error("does not decode")]
-    Malformed(#[source] postcard::Error),
+    Malformed(#[source] BinaryError),
     /// Bytes remain after the receipt.
     #[error("bytes after the receipt")]
     Trailing,

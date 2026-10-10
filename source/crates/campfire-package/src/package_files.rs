@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::PackagePath;
-use campfire_common::Fingerprint;
+use campfire_common::{Fingerprint, Toml};
 use serde::de::DeserializeOwned;
 
 use crate::error::ContentError;
@@ -41,7 +41,7 @@ impl PackageFiles {
 
     /// The TOML data file at `path`, read as a `T`.
     pub fn read_data<T: DeserializeOwned>(&self, path: &PackagePath) -> Result<T, ContentError> {
-        toml::from_str(self.read_text(path)?).map_err(|error| ContentError::Data {
+        Toml::parse(self.read_text(path)?).map_err(|error| ContentError::Data {
             path: path.clone(),
             error,
         })
@@ -63,7 +63,7 @@ impl PackageFiles {
         path: &PackagePath,
     ) -> Result<T, ContentError> {
         let bytes = self.read_file(path)?;
-        toml::from_str(PackageFiles::text(path, &bytes)?).map_err(|error| ContentError::Data {
+        Toml::parse(PackageFiles::text(path, &bytes)?).map_err(|error| ContentError::Data {
             path: path.clone(),
             error,
         })

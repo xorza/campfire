@@ -59,6 +59,8 @@ impl<T> From<Vec<T>> for PendingCalls<T> {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
 
     #[test]
@@ -71,8 +73,8 @@ mod tests {
         assert_eq!(pending.iter().copied().collect::<Vec<_>>(), [3, 4, 5]);
         assert_eq!((pending.len(), later.is_empty()), (3, true));
         // As state, it is the list of its calls.
-        let bytes = postcard::to_allocvec(&pending).unwrap();
-        assert_eq!(bytes, postcard::to_allocvec(&vec![3, 4, 5]).unwrap());
+        let bytes = Binary::encode(&pending);
+        assert_eq!(bytes, Binary::encode(&vec![3, 4, 5]));
         pending.clear();
         assert!(pending.is_empty());
     }

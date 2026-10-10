@@ -1,4 +1,4 @@
-use campfire_common::{Tick, Ticks};
+use campfire_common::{Binary, Tick, Ticks, Toml};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::Serialize;
@@ -48,8 +48,8 @@ fn an_area_that_triggers_after_it_ends_fails_to_decode() {
             triggers_at,
             ends_at,
         };
-        let bytes = postcard::to_allocvec(&fields).unwrap();
-        postcard::from_bytes::<Area>(&bytes)
+        let bytes = Binary::encode(&fields);
+        Binary::decode::<Area>(&bytes)
     };
     let area = decode(Some(5), 9).unwrap();
     assert_eq!(
@@ -87,7 +87,7 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
 
 #[test]
 fn an_area_reads_only_with_a_radius_that_is_not_negative() {
-    let read = |text: &str| toml::from_str::<AreaData>(text);
+    let read = |text: &str| Toml::parse::<AreaData>(text);
     assert_eq!(
         read("radius = 0").unwrap(),
         AreaData {

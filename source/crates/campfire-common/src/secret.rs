@@ -69,6 +69,8 @@ impl<'de, const N: usize> Visitor<'de> for SecretVisitor<N> {
 mod tests {
     use std::array;
 
+    use crate::codec::binary::Binary;
+
     use super::*;
     use crate::segment_seed::SegmentSeed;
 
@@ -79,12 +81,12 @@ mod tests {
         assert_eq!(format!("{seed:?}"), "SegmentSeed(Secret(..))");
         assert_eq!(format!("{:#?}", Secret::new([1_u8; 4])), "Secret(..)");
         // 32 bytes, each above 127, as postcard writes the array: one byte each, no length.
-        let encoded = postcard::to_allocvec(&seed).unwrap();
-        assert_eq!(encoded, postcard::to_allocvec(&bytes).unwrap());
+        let encoded = Binary::encode(&seed);
+        assert_eq!(encoded, Binary::encode(&bytes));
         assert_eq!(encoded.len(), 32);
-        let read: SegmentSeed = postcard::from_bytes(&encoded).unwrap();
+        let read: SegmentSeed = Binary::decode(&encoded).unwrap();
         assert_eq!(read.as_bytes(), &bytes);
         // One byte short does not read.
-        assert!(postcard::from_bytes::<SegmentSeed>(&encoded[..31]).is_err());
+        assert!(Binary::decode::<SegmentSeed>(&encoded[..31]).is_err());
     }
 }

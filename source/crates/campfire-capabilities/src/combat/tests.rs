@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::system::RunSystemOnce;
-use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_common::{Binary, PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
 use campfire_sim::{EntityIndex, Position, SimComponent, SimRng, StableId};
 
@@ -202,8 +202,8 @@ fn an_attack_winds_up_and_strikes_each_period() {
     // One that despawned stays while known attackers strike again, and goes when a new one
     // comes: the list never outgrows the units of the match.
     let held = |attacks: &[RecentAttack]| {
-        let bytes = postcard::to_allocvec(attacks).unwrap();
-        postcard::from_bytes::<RecentAttackers>(&bytes).unwrap()
+        let bytes = Binary::encode(attacks);
+        Binary::decode::<RecentAttackers>(&bytes).unwrap()
     };
     let mut recent = held(&[attack(fighter, 4), attack(dummy, 3)]);
     recent.record(fighter, Tick::new(7), index);
@@ -642,7 +642,7 @@ fn every_combat_type_is_state_and_restores() {
             None::<StableId>,
             None::<ChannelCall>,
         );
-        postcard::from_bytes::<ActionSlots>(&postcard::to_allocvec(&held).unwrap()).is_ok()
+        Binary::decode::<ActionSlots>(&Binary::encode(&held)).is_ok()
     };
     assert!(decodes(vec![of_kind(0), of_kind(1)]));
     assert!(!decodes(vec![of_kind(1), of_kind(0)]));
@@ -668,8 +668,8 @@ fn stats_out_of_their_limits_are_refused() {
     let carrying = |current: i64, max: i64, carry: u32| {
         let mut meters = [None; PoolId::LIMIT];
         meters[0] = Some((Num::int(current), Num::int(max), carry));
-        let bytes = postcard::to_allocvec(&meters).unwrap();
-        postcard::from_bytes::<Pools>(&bytes).ok()
+        let bytes = Binary::encode(&meters);
+        Binary::decode::<Pools>(&bytes).ok()
     };
     let health = |current, max| carrying(current, max, 0);
     assert!(health(0, 1).is_some() && health(1, 1).is_some());

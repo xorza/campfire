@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::{BinaryError, PlayerSlot};
 
 use super::*;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot};
@@ -76,7 +76,7 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
     let read = Checkpoint::take(&bytes).unwrap();
     assert_eq!(
         read,
-        Decoded {
+        Taken {
             value: record.clone(),
             rest: &[9][..],
         }
@@ -127,8 +127,6 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
     ));
     assert!(matches!(
         Checkpoint::take(&bytes[..10]),
-        Err(CheckpointDecodeError::Malformed(
-            postcard::Error::DeserializeUnexpectedEnd
-        ))
+        Err(CheckpointDecodeError::Malformed(BinaryError::Truncated))
     ));
 }

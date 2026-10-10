@@ -497,11 +497,13 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Toml;
+
     use super::*;
 
     #[test]
     fn a_cast_is_what_a_table_of_its_targeting_alone_reads() {
-        let read = |text: &str| toml::from_str::<ActionData>(text);
+        let read = |text: &str| Toml::parse::<ActionData>(text);
         assert_eq!(
             read(r#"targeting = "none""#),
             Ok(ActionData::cast(Targeting::None))

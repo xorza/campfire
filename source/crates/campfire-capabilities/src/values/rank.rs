@@ -51,6 +51,8 @@ impl Default for Rank {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
 
     #[test]
@@ -63,7 +65,7 @@ mod tests {
         assert_eq!(Rank::new(u8::MAX).unwrap().next(), None);
         assert_eq!((Rank::count(None), Rank::count(Some(third))), (0, 3));
         // A rank decodes from 1 up; 0 is none.
-        let decode = |rank: u8| postcard::from_bytes::<Rank>(&[rank]).ok();
+        let decode = |rank: u8| Binary::decode::<Rank>(&[rank]).ok();
         assert_eq!((decode(0), decode(3)), (None, Some(third)));
     }
 }

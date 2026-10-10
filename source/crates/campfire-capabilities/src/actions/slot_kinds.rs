@@ -79,11 +79,13 @@ impl SlotKinds {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Toml;
+
     use super::*;
 
     #[test]
     fn a_kind_reads_its_ranks_and_the_levels_they_need() {
-        let read = |text: &str| toml::from_str::<SlotKindData>(text);
+        let read = |text: &str| Toml::parse::<SlotKindData>(text);
         let levels = |text: &str| {
             let kind = read(&format!("name = \"basic\"\n{text}")).unwrap();
             let ranks = kind.ranks.unwrap();

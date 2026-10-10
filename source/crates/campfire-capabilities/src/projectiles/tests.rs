@@ -1,4 +1,4 @@
-use campfire_common::{SegmentSeed, Tick};
+use campfire_common::{Binary, SegmentSeed, Tick, Toml};
 use campfire_math::RngSource;
 use campfire_sim::{Capability, EntityIndex};
 
@@ -260,8 +260,9 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
 
     // A projectile is state while it flies, and so are the units a cast struck.
     let hits = [first, second].map(|by| Struck { by, unit: doomed });
-    let bytes = postcard::to_allocvec(&hits).unwrap();
-    let struck = postcard::from_bytes::<StruckUnits>(&bytes).unwrap();
+    let bytes = Binary::encode(&hits[..]);
+    let struck = Binary::decode::<StruckUnits>(&bytes).unwrap();
+    assert!(hits.iter().all(|&hit| struck.contains(hit)));
     volley.sim.world.insert_resource(struck);
     // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Volley::new();
@@ -280,8 +281,8 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     // The struck units decode only in order, each once: the ids were allocated in order.
     let decode = |hits: &[(StableId, StableId)]| {
         let hits: Vec<Struck> = hits.iter().map(|&(by, unit)| Struck { by, unit }).collect();
-        let bytes = postcard::to_allocvec(&hits).unwrap();
-        postcard::from_bytes::<StruckUnits>(&bytes)
+        let bytes = Binary::encode(&hits);
+        Binary::decode::<StruckUnits>(&bytes)
     };
     assert!(decode(&[(first, doomed), (first, gone), (second, doomed)]).is_ok());
     assert!(decode(&[(first, gone), (first, doomed)]).is_err());
@@ -511,7 +512,7 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
 
 #[test]
 fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range() {
-    let read = |text: &str| toml::from_str::<ProjectileData>(text);
+    let read = |text: &str| Toml::parse::<ProjectileData>(text);
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
     let plain = ProjectileData::flying(Num::HALF);
     assert_eq!(read("speed = \"0.5\"").unwrap(), plain);

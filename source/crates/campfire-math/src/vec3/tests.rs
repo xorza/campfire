@@ -1,3 +1,4 @@
+use campfire_common::Binary;
 use proptest::prelude::*;
 
 use super::*;
@@ -163,12 +164,9 @@ fn rotated_y_turns_on_the_ground_plane() {
 #[test]
 fn serializes_as_three_nums() {
     let a = raw(1, -2, i64::MIN);
-    let encoded = postcard::to_allocvec(&a).unwrap();
-    assert_eq!(
-        encoded,
-        postcard::to_allocvec(&(1_i64, -2_i64, i64::MIN)).unwrap()
-    );
-    assert_eq!(postcard::from_bytes::<Vec3>(&encoded).unwrap(), a);
+    let encoded = Binary::encode(&a);
+    assert_eq!(encoded, Binary::encode(&(1_i64, -2_i64, i64::MIN)));
+    assert_eq!(Binary::decode::<Vec3>(&encoded).unwrap(), a);
 }
 
 fn component() -> impl Strategy<Value = i64> {

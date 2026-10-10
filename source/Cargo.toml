@@ -24,6 +24,7 @@ campfire-sim = { path = "crates/campfire-sim" }
 campfire-store = { path = "crates/campfire-store" }
 campfire-verifier = { path = "crates/campfire-verifier" }
 
+arrayvec = { version = "=0.7.8", default-features = false }
 bevy = { version = "=0.19.1", default-features = false, features = [
     "std",
     "multi_threaded",
@@ -67,6 +68,9 @@ getrandom = "=0.3.4"
 # Only `store`'s platform layer, on Unix: the process's effective user, which std does not give.
 libc = "=0.2.190"
 lightyear = { version = "=0.30.1", features = ["webtransport", "crossbeam", "raw_connection"] }
+# The version Lightyear builds, for the types of its message registration with our own encode and
+# decode, which Lightyear does not re-export: the pin follows Lightyear's at each upgrade.
+lightyear_serde = "=0.30.1"
 miniz_oxide = "=0.9.1"
 nostr = "=0.45.5"
 postcard = { version = "=1.1.3", features = ["use-std"] }

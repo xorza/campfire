@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::Ticks;
+use campfire_common::{Binary, Ticks};
 use campfire_sim::IdAllocator;
 
 use super::*;
@@ -256,8 +256,8 @@ fn modifiers_decode_only_with_ordered_ends_that_count_their_stacks() {
             max_stacks: None,
         };
         modifiers.apply(&mut clocks, application);
-        let bytes = postcard::to_allocvec(&modifiers).unwrap();
-        postcard::from_bytes::<Modifiers>(&bytes).is_ok()
+        let bytes = Binary::encode(&modifiers);
+        Binary::decode::<Modifiers>(&bytes).is_ok()
     };
     let mut instance = applied(0, None, Reapply::Stack, None, 1, None, Some((0, 4))).instance;
     instance.stacks = 3;

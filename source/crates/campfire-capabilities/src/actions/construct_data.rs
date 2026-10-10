@@ -56,6 +56,7 @@ impl<'de> Deserialize<'de> for ConstructData {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Toml;
     use toml::de;
 
     use super::*;
@@ -67,7 +68,7 @@ mod tests {
             struct Field {
                 construct: ConstructData,
             }
-            toml::from_str::<Field>(text).map(|field| field.construct)
+            Toml::parse::<Field>(text).map(|field| field.construct)
         };
         assert_eq!(
             read(r#"construct = "alone""#).unwrap(),

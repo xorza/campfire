@@ -8,7 +8,8 @@ use bevy_ecs::query::{Allow, QueryState};
 use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::{Mut, World};
 use blake3::Hasher;
-use campfire_common::{Bytes32, StateHash};
+use campfire_common::{Binary, BinaryError, Bytes32, Sink, StateHash, Taken};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::entity_index::EntityIndex;
@@ -22,7 +23,6 @@ use crate::state_registry::copy_queries::CopyQueries;
 use crate::state_registry::error::SnapshotError;
 use crate::state_registry::hash_sink::HashSink;
 use crate::state_registry::state_delta::StateDelta;
-use crate::state_registry::writer::{Sink, Writer};
 use crate::unpredicted::Unpredicted;
 
 #[cfg(feature = "bench")]
@@ -31,7 +31,6 @@ mod copy_queries;
 pub(crate) mod error;
 mod hash_sink;
 pub(crate) mod state_delta;
-mod writer;
 
 /// Starts the combined hash, so no other BLAKE3 use can produce the same state hash.
 const HASH_DOMAIN: &[u8] = b"campfire/state/v1";
@@ -131,13 +130,6 @@ struct Section<'a> {
 #[derive(Debug)]
 struct Split<'a> {
     head: &'a [u8],
-    rest: &'a [u8],
-}
-
-/// A decoded value, and the bytes after it.
-#[derive(Debug)]
-struct Taken<'a, T> {
-    value: T,
     rest: &'a [u8],
 }
 
@@ -526,14 +518,17 @@ fn split_len(bytes: &[u8], len: u64) -> Result<Split<'_>, SnapshotError> {
 }
 
 /// Reads one value and the bytes after it.
-fn take<T: DeserializeOwned>(bytes: &[u8]) -> Result<Taken<'_, T>, SnapshotError> {
-    let (value, rest) = postcard::take_from_bytes(bytes).map_err(SnapshotError::Malformed)?;
-    Ok(Taken { value, rest })
+fn take<T: DeserializeOwned + Serialize>(bytes: &[u8]) -> Result<Taken<'_, T>, SnapshotError> {
+    Binary::take(bytes).map_err(|error| match error {
+        BinaryError::Truncated => SnapshotError::Truncated,
+        BinaryError::NotCanonical => SnapshotError::NotCanonical,
+        BinaryError::Malformed(_) => SnapshotError::Malformed(error),
+    })
 }
 
 fn encode_entities(world: &World, sink: &mut dyn Sink) {
     let ids = world.resource::<EntityIndex>().iter().map(|(id, _)| id);
-    Writer::write_each(sink, ids);
+    Binary::encode_each_to(ids, sink);
 }
 
 fn decode_entities(world: &mut World, mut body: &[u8]) -> Result<(), SnapshotError> {
@@ -556,7 +551,7 @@ fn encode_component<C: SimComponent>(world: &World, sink: &mut dyn Sink) {
     }
     let index = world.resource::<EntityIndex>().iter();
     let held = index.filter_map(|(id, entity)| Some((id, world.get::<C>(entity)?)));
-    Writer::write_each(sink, held);
+    Binary::encode_each_to(held, sink);
 }
 
 /// Whether an archetype of `world` holds `C`: one that none does has an empty section, with no
@@ -596,7 +591,7 @@ fn decode_component<C: SimComponent>(
 
 /// A missing resource encodes differently from an empty one: the value goes in as an `Option`.
 fn encode_resource<R: SimResource>(world: &World, sink: &mut dyn Sink) {
-    Writer::write(sink, &world.get_resource::<R>());
+    Binary::encode_to(&world.get_resource::<R>(), sink);
 }
 
 fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(), SnapshotError> {
@@ -650,7 +645,7 @@ fn copy_component<C: SimComponent>(
             .is_some_and(|entity| !world.entity(entity).contains::<C>())
     });
     let values = changed.map(|(&id, value)| (id, Some(value.into_inner())));
-    Writer::write_each(out, values.chain(removed.map(|removal| (removal.id, None))));
+    Binary::encode_each_to(values.chain(removed.map(|removal| (removal.id, None))), out);
 }
 
 fn apply_component<C: SimComponent>(world: &mut World, mut body: &[u8], pass: Pass) {
@@ -700,13 +695,13 @@ fn copy_resource<R: SimResource>(
     out: &mut Vec<u8>,
 ) {
     match world.get_resource_ref::<R>() {
-        None => Writer::write(out, &None::<&R>),
+        None => Binary::encode_to(&None::<&R>, out),
         Some(value)
             if copying
                 .since
                 .is_none_or(|since| value.last_changed().is_newer_than(since, copying.now)) =>
         {
-            Writer::write(out, &Some(&*value));
+            Binary::encode_to(&Some(&*value), out);
         }
         Some(_) => {}
     }

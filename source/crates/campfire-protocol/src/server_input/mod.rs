@@ -1,9 +1,8 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Binary, PlayerSlot, Taken, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
 use crate::bytes::Bytes;
-use crate::decoded::Decoded;
 use crate::delegation::Delegation;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::session_id::SessionId;
@@ -106,16 +105,16 @@ impl<'a> ServerInput<'a> {
 
     /// Appends its postcard bytes, as it is signed and logged.
     pub(crate) fn encode(&self, out: &mut Vec<u8>) {
-        postcard::to_io(&self.wire(), out).expect("postcard into a Vec cannot fail");
+        Binary::encode_into(&self.wire(), out);
     }
 
     /// The input at the front of `bytes`, and the bytes after it; an error for bytes that do not
     /// decode, and for a delegation that does not parse.
     pub(crate) fn take(
         bytes: &'a [u8],
-    ) -> Result<Decoded<'a, ServerInput<'a>>, ServerInputDecodeError> {
-        let (wire, rest) = postcard::take_from_bytes::<Wire<'a>>(bytes)
-            .map_err(ServerInputDecodeError::Malformed)?;
+    ) -> Result<Taken<'a, ServerInput<'a>>, ServerInputDecodeError> {
+        let Taken { value: wire, rest } =
+            Binary::take::<Wire<'a>>(bytes).map_err(ServerInputDecodeError::Malformed)?;
         let delegation =
             |json: &str| Delegation::parse(json).map_err(ServerInputDecodeError::Delegation);
         let input = match wire {
@@ -156,7 +155,7 @@ impl<'a> ServerInput<'a> {
                 slot: PlayerSlot::new(slot),
             },
         };
-        Ok(Decoded { value: input, rest })
+        Ok(Taken { value: input, rest })
     }
 
     /// The server key's signature over the input, logged before `tick` as its `index`th server

@@ -17,7 +17,6 @@ campfire-sim.workspace = true
 bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
 derive_more.workspace = true
-postcard.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 

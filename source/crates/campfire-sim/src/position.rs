@@ -69,6 +69,8 @@ impl<'de> Deserialize<'de> for Position {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
 
     #[test]
@@ -83,7 +85,7 @@ mod tests {
             (Vec3::new(Num::MIN, Num::ZERO, Num::ZERO), false),
         ] {
             assert_eq!(Position::new(at).is_some(), inside, "{at:?}");
-            let decoded = postcard::from_bytes::<Position>(&postcard::to_allocvec(&at).unwrap());
+            let decoded = Binary::decode::<Position>(&Binary::encode(&at));
             assert_eq!(decoded.ok(), Position::new(at), "{at:?}");
         }
         assert_eq!(Position::BOUND, Num::from_int(1 << 20).unwrap());

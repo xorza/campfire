@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+use campfire_common::Binary;
 use proptest::prelude::*;
 
 use super::*;
@@ -174,9 +175,9 @@ fn div_by_zero_panics() {
 
 #[test]
 fn serializes_as_its_bits() {
-    let encoded = postcard::to_allocvec(&Num::ONE).unwrap();
-    assert_eq!(encoded, postcard::to_allocvec(&16_777_216_i64).unwrap());
-    let decoded: Num = postcard::from_bytes(&postcard::to_allocvec(&Num::MIN).unwrap()).unwrap();
+    let encoded = Binary::encode(&Num::ONE);
+    assert_eq!(encoded, Binary::encode(&16_777_216_i64));
+    let decoded: Num = Binary::decode(&Binary::encode(&Num::MIN)).unwrap();
     assert_eq!(decoded, Num::MIN);
 }
 

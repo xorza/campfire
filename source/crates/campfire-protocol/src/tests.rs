@@ -2,7 +2,7 @@ use std::array;
 use std::fmt::{Debug, Display, Write};
 use std::str::FromStr;
 
-use campfire_common::{Fingerprint, NotHex, SegmentSeed, StateHash};
+use campfire_common::{Binary, Fingerprint, NotHex, SegmentSeed, StateHash};
 use serde::Serialize;
 
 use crate::connect::ConnectChallenge;
@@ -31,10 +31,7 @@ fn hex() -> String {
 /// Whether `value` holds `sample()` and encodes as the bare 32 bytes, as every 32-byte value does.
 fn encodes_its_bytes<T: Serialize>(value: &T, bytes: &[u8; 32]) {
     assert_eq!(bytes, &sample());
-    assert_eq!(
-        postcard::to_allocvec(value).unwrap(),
-        postcard::to_allocvec(&sample()).unwrap()
-    );
+    assert_eq!(Binary::encode(value), Binary::encode(&sample()));
 }
 
 /// Whether a public `value` of `sample()` writes as their hex.

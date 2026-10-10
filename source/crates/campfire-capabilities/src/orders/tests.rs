@@ -2,7 +2,7 @@ use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
-use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
+use campfire_common::{Binary, PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptError;
 use campfire_sim::{
@@ -1467,7 +1467,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
 
 /// The payload of an order of `action` to `units`, in the order given, as a client may send it.
 fn order_to(units: &[StableId], action: Action) -> Vec<u8> {
-    let body = postcard::to_allocvec(&(units, action)).unwrap();
+    let body = Binary::encode(&(units, action));
     Command::encode(&[Command {
         capability: Order::CAPABILITY,
         body: &body,

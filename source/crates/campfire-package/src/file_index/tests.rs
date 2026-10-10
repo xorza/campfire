@@ -1,3 +1,5 @@
+use campfire_common::BinaryError;
+
 use super::*;
 
 /// An index's bytes: its tag, then `list`.
@@ -72,11 +74,12 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
             Err(ContentError::IndexDecode(_))
         ));
     }
-    // The count 0 as an overlong varint, and bytes past the list: not the one encoding.
+    // The count 0 as an overlong varint, and bytes past the list: not the one encoding, so one
+    // package has one fingerprint.
     for bytes in [vec![0x80, 0x00], vec![0, 0]].map(|list| tagged(&list)) {
         assert!(matches!(
             FileIndex::decode(&bytes),
-            Err(ContentError::IndexNotCanonical)
+            Err(ContentError::IndexDecode(BinaryError::NotCanonical))
         ));
     }
     // A path no package names, the index's own path, and two that differ only in case.

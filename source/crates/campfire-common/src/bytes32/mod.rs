@@ -64,6 +64,8 @@ impl FromStr for Bytes32 {
 mod tests {
     use std::array;
 
+    use crate::codec::binary::Binary;
+
     use super::*;
 
     #[test]
@@ -83,7 +85,7 @@ mod tests {
         ] {
             assert_eq!(flawed.parse::<Bytes32>(), Err(NotHex), "{flawed}");
         }
-        let encoded = postcard::to_allocvec(&bytes).unwrap();
-        assert_eq!(encoded, postcard::to_allocvec(bytes.as_bytes()).unwrap());
+        let encoded = Binary::encode(&bytes);
+        assert_eq!(encoded, Binary::encode(bytes.as_bytes()));
     }
 }

@@ -1,6 +1,6 @@
 use super::*;
 fn id(value: u8) -> StableId {
-    postcard::from_bytes(&[value]).unwrap()
+    Binary::decode(&[value]).unwrap()
 }
 
 #[test]
@@ -20,7 +20,7 @@ fn orders_decode_exactly() {
 
     // The count of units, then each unit's id, then variant 1 with the target's id, each a
     // varint: 300 = 0xAC 0x02.
-    let target = postcard::from_bytes::<StableId>(&[0xAC, 0x02]).unwrap();
+    let target = Binary::decode::<StableId>(&[0xAC, 0x02]).unwrap();
     let attack = Order::one(target, Action::Attack { target });
     assert_eq!(attack.encode(), [1, 0xAC, 0x02, 1, 0xAC, 0x02]);
     assert_eq!(

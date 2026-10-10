@@ -1,6 +1,7 @@
+use arrayvec::ArrayVec;
 use blake3::Hasher;
 
-use crate::state_registry::writer::Sink;
+use campfire_common::Sink;
 
 /// A BLAKE3 hasher fed through a buffer. Postcard writes a value at a time, and from small pieces
 /// BLAKE3 hashes one block at a time; from a piece of many chunks it hashes several at once with
@@ -8,8 +9,7 @@ use crate::state_registry::writer::Sink;
 #[derive(Debug)]
 pub(crate) struct HashSink {
     hasher: Hasher,
-    buffer: [u8; HashSink::FLUSH],
-    len: usize,
+    buffer: ArrayVec<u8, { HashSink::FLUSH }>,
 }
 
 impl HashSink {
@@ -20,15 +20,14 @@ impl HashSink {
     pub(crate) fn new() -> HashSink {
         HashSink {
             hasher: Hasher::new(),
-            buffer: [0; HashSink::FLUSH],
-            len: 0,
+            buffer: ArrayVec::new_const(),
         }
     }
 
     /// The hash of the bytes it took since it was made or last finished, and a fresh start.
     pub(crate) fn finish(&mut self) -> [u8; 32] {
-        self.hasher.update(&self.buffer[..self.len]);
-        self.len = 0;
+        self.hasher.update(&self.buffer);
+        self.buffer.clear();
         let hash = *self.hasher.finalize().as_bytes();
         self.hasher.reset();
         hash
@@ -38,13 +37,14 @@ impl HashSink {
 impl Sink for HashSink {
     fn put(&mut self, mut bytes: &[u8]) {
         while !bytes.is_empty() {
-            let taken = bytes.len().min(HashSink::FLUSH - self.len);
-            self.buffer[self.len..self.len + taken].copy_from_slice(&bytes[..taken]);
-            self.len += taken;
-            bytes = &bytes[taken..];
-            if self.len == HashSink::FLUSH {
+            let (taken, rest) = bytes.split_at(bytes.len().min(self.buffer.remaining_capacity()));
+            self.buffer
+                .try_extend_from_slice(taken)
+                .expect("a piece within the buffer's room");
+            bytes = rest;
+            if self.buffer.is_full() {
                 self.hasher.update(&self.buffer);
-                self.len = 0;
+                self.buffer.clear();
             }
         }
     }

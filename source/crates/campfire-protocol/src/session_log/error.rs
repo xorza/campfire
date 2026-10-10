@@ -1,4 +1,4 @@
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{BinaryError, PlayerSlot, Tick};
 use thiserror::Error;
 
 use crate::checkpoint::error::CheckpointDecodeError;
@@ -186,7 +186,7 @@ pub enum LogError {
     Truncated,
     /// A value does not decode.
     #[error("session log value does not decode")]
-    Malformed(#[source] postcard::Error),
+    Malformed(#[source] BinaryError),
     /// The header does not start a log.
     #[error("session log header refused")]
     Header(#[source] HeaderError),

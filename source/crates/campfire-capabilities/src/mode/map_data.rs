@@ -269,6 +269,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
 
+    use campfire_common::Toml;
     use campfire_math::Vec3;
 
     use super::*;
@@ -333,7 +334,7 @@ mod tests {
 
     #[test]
     fn a_placed_unit_stands_its_height_above_the_ground_or_on_it() {
-        let map: MapData = toml::from_str(
+        let map: MapData = Toml::parse(
             r#"
             bounds = { min = [0, 0], max = [4, 4] }
             [[units]]

@@ -81,6 +81,8 @@ impl Ticks {
 
 #[cfg(test)]
 mod tests {
+    use crate::codec::binary::Binary;
+
     use super::*;
 
     #[test]
@@ -90,16 +92,16 @@ mod tests {
         assert_eq!(Tick::new(12).since(start), Some(length));
         assert_eq!(start.since(Tick::new(12)), None);
         assert_eq!(start.after(Ticks::ZERO), start);
-        let encoded = postcard::to_allocvec(&(Tick::new(300), Ticks::new(300))).unwrap();
-        assert_eq!(encoded, postcard::to_allocvec(&(300_u64, 300_u32)).unwrap());
+        let encoded = Binary::encode(&(Tick::new(300), Ticks::new(300)));
+        assert_eq!(encoded, Binary::encode(&(300_u64, 300_u32)));
         assert_eq!(Tick::new(300).to_string(), "300");
         // Two values at the limit sum to 2⁶³, within a `u64`.
         assert_eq!(Tick::LIMIT.after(Ticks::LIMIT), Tick::new(1 << 63));
         // A decoded time or length is at most the limit: 2⁶² decodes, one past it and the
         // largest do not.
-        let bytes = |value: u64| postcard::to_allocvec(&value).unwrap();
-        let tick = |value| postcard::from_bytes::<Tick>(&bytes(value));
-        let ticks = |value| postcard::from_bytes::<Ticks>(&bytes(value));
+        let bytes = |value: u64| Binary::encode(&value);
+        let tick = |value| Binary::decode::<Tick>(&bytes(value));
+        let ticks = |value| Binary::decode::<Ticks>(&bytes(value));
         assert_eq!(tick(Tick::LIMIT.get()).unwrap(), Tick::LIMIT);
         assert_eq!(ticks(Ticks::LIMIT.get()).unwrap(), Ticks::LIMIT);
         for past in [Tick::LIMIT.get() + 1, u64::MAX] {

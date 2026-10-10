@@ -13,10 +13,10 @@ bench = ["internals", "dep:criterion"]
 campfire-common.workspace = true
 campfire-math.workspace = true
 
+arrayvec.workspace = true
 bevy_ecs.workspace = true
 blake3.workspace = true
 criterion = { workspace = true, optional = true }
-postcard.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 

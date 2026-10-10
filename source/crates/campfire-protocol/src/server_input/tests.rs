@@ -52,7 +52,7 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
         let read = ServerInput::take(&bytes).unwrap();
         assert_eq!(
             read,
-            Decoded {
+            Taken {
                 value: input.clone(),
                 rest: &[9][..],
             }
@@ -91,15 +91,10 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
     assert!(!inputs[4].signed_by(&secp, &key, id, place, &signature, &mut Vec::new()));
 
     // A delegation that does not parse, and bytes that do not decode.
-    let mut bytes = Vec::new();
-    postcard::to_io(
-        &Wire::Join {
-            slot: 0,
-            delegation: "{}",
-        },
-        &mut bytes,
-    )
-    .unwrap();
+    let bytes = Binary::encode(&Wire::Join {
+        slot: 0,
+        delegation: "{}",
+    });
     assert!(matches!(
         ServerInput::take(&bytes),
         Err(ServerInputDecodeError::Delegation(_))

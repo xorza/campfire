@@ -58,6 +58,8 @@ impl<'de> Deserialize<'de> for PackageName {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Toml;
+
     use super::*;
 
     #[derive(Debug, Deserialize)]
@@ -87,7 +89,7 @@ mod tests {
             assert_eq!(PackageName::new(bad), None, "{bad:?}");
         }
         // A manifest's name reads only in that form.
-        let read = |text: &str| toml::from_str::<Header>(text).map(|header| header.name);
+        let read = |text: &str| Toml::parse::<Header>(text).map(|header| header.name);
         assert_eq!(read(r#"name = "hero-gale""#).unwrap(), "hero-gale");
         assert!(read(r#"name = "Hero/Gale""#).is_err());
     }

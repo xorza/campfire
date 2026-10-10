@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use campfire_capabilities::{Action, ActionTarget, InputValue, ModeInput, Scalar};
-use campfire_common::Tick;
+use campfire_common::{Tick, Toml};
 use campfire_sim::StableId;
 use campfire_store::InputFile;
 use serde::Deserialize;
@@ -114,7 +114,7 @@ impl OrderScript {
             target: Option<StableId>,
             learn: Option<u8>,
         }
-        let file: File = toml::from_str(text).map_err(OrderScriptError::Toml)?;
+        let file: File = Toml::parse(text).map_err(OrderScriptError::Toml)?;
         let mut orders = Vec::with_capacity(file.order.len());
         for Entry {
             tick,

@@ -1,10 +1,9 @@
-use campfire_capabilities::BinaryFile;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::zero_hour::error::TerrainError;
 
-/// Zero Hour's terrain of one map, `client/maps/<name>/terrain.bin` in postcard: what each cell
+/// Zero Hour's terrain of one map, `client/maps/<name>/terrain.bin`, through `Binary`: what each cell
 /// draws, and the tiles, blends and cliff UVs the cells name, as the map's `BlendTileData` holds
 /// them. Each index a cell names is checked to be in its list.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -149,8 +148,6 @@ impl Terrain {
     }
 }
 
-impl BinaryFile for Terrain {}
-
 /// A package's file is untrusted, so a terrain `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Terrain {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Terrain, D::Error> {
@@ -160,7 +157,7 @@ impl<'de> Deserialize<'de> for Terrain {
 
 #[cfg(test)]
 mod tests {
-    use campfire_capabilities::DecodeError;
+    use campfire_common::{Binary, BinaryError};
 
     use super::*;
 
@@ -200,10 +197,13 @@ mod tests {
             }],
         };
         let terrain = Terrain::new(parts.clone()).unwrap();
-        let bytes = terrain.encode();
-        assert_eq!(Terrain::decode(&bytes).unwrap(), terrain);
+        let bytes = Binary::encode(&terrain);
+        assert_eq!(Binary::decode::<Terrain>(&bytes).unwrap(), terrain);
         let trailing = [&bytes[..], &[0]].concat();
-        assert_eq!(Terrain::decode(&trailing), Err(DecodeError::NotCanonical));
+        assert_eq!(
+            Binary::decode::<Terrain>(&trailing),
+            Err(BinaryError::NotCanonical)
+        );
 
         // Tile 7 is source tile 1 of 2; tile 8 would be source tile 2. Each list holds one entry,
         // so index 1 is past it.
@@ -253,10 +253,10 @@ mod tests {
         );
         let mut short = parts;
         short.tiles = 1;
-        let encoded = postcard::to_stdvec(&short).unwrap();
+        let encoded = Binary::encode(&short);
         assert!(matches!(
-            Terrain::decode(&encoded),
-            Err(DecodeError::Malformed(_))
+            Binary::decode::<Terrain>(&encoded),
+            Err(BinaryError::Malformed(_))
         ));
     }
 }

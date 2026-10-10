@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::num::NonZeroU8;
 use std::rc::Rc;
 
-use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_common::{Binary, PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, IdAllocator, Position, SimComponent, StableId};
 use serde::Serialize;
@@ -295,7 +295,7 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
             head_done,
             paid,
         };
-        postcard::from_bytes::<TrainQueue>(&postcard::to_allocvec(&fields).unwrap())
+        Binary::decode::<TrainQueue>(&Binary::encode(&fields))
     };
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
     let five = ResourceAmount {

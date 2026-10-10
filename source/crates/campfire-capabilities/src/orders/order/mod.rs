@@ -1,5 +1,4 @@
-use std::mem;
-
+use campfire_common::{Binary, Taken};
 use campfire_math::Num;
 use campfire_sim::{Capability, Command, StableId};
 use serde::{Deserialize, Serialize};
@@ -78,7 +77,7 @@ impl Order {
     }
 
     pub fn encode(&self) -> Vec<u8> {
-        postcard::to_allocvec(self).expect("an order always encodes")
+        Binary::encode(self)
     }
 
     /// `None` unless the body is exactly one order, to units in increasing stable id, each once:
@@ -103,7 +102,10 @@ impl Order {
     }
 
     fn read(body: &[u8], units: &mut Vec<StableId>) -> Option<Action> {
-        let (count, mut rest) = postcard::take_from_bytes::<usize>(body).ok()?;
+        let Taken {
+            value: count,
+            mut rest,
+        } = Binary::take::<usize>(body).ok()?;
         // Each id takes a byte at least, so a count past the bytes left is a flaw, found before
         // it reserves anything.
         if count == 0 || count > rest.len() {
@@ -112,14 +114,17 @@ impl Order {
         let start = units.len();
         units.reserve(count);
         for _ in 0..count {
-            let (unit, after) = postcard::take_from_bytes::<StableId>(rest).ok()?;
-            units.push(unit);
-            rest = after;
+            let unit = Binary::take::<StableId>(rest).ok()?;
+            units.push(unit.value);
+            rest = unit.rest;
         }
         if !OrderUnits::rises(&units[start..]) {
             return None;
         }
-        let (action, rest) = postcard::take_from_bytes::<Action>(rest).ok()?;
+        let Taken {
+            value: action,
+            rest,
+        } = Binary::take::<Action>(rest).ok()?;
         rest.is_empty().then_some(action)
     }
 
@@ -133,7 +138,7 @@ impl Order {
     /// caller reuses, so a client that sends orders every tick allocates for none of them.
     pub fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
         body.clear();
-        *body = postcard::to_extend(self, mem::take(body)).expect("an order always encodes");
+        Binary::encode_into(self, body);
         let command = Command {
             capability: Order::CAPABILITY,
             body,

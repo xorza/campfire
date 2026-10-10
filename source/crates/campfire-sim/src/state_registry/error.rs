@@ -1,3 +1,4 @@
+use campfire_common::BinaryError;
 use thiserror::Error;
 
 /// Why a snapshot does not restore. Snapshots are untrusted data, so every flaw is an error.
@@ -18,7 +19,7 @@ pub enum SnapshotError {
     TypesDiffer,
     /// A value does not decode.
     #[error("snapshot value does not decode")]
-    Malformed(#[source] postcard::Error),
+    Malformed(#[source] BinaryError),
     /// The bytes are not the canonical encoding of the state they restore: stable ids within a
     /// type do not strictly increase, or a value is encoded in a form the snapshot never writes.
     #[error("snapshot is not the canonical encoding of its state")]

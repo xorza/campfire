@@ -34,6 +34,8 @@ impl FromStr for StateHash {
 
 #[cfg(test)]
 mod tests {
+    use crate::codec::binary::Binary;
+
     use super::*;
 
     #[test]
@@ -46,7 +48,7 @@ mod tests {
         assert_eq!(written, format!("0a{}ff", "00".repeat(30)));
         assert_eq!(written.parse(), Ok(StateHash::new(bytes)));
         assert_eq!(written.to_uppercase().parse::<StateHash>(), Err(NotHex));
-        let encoded = postcard::to_allocvec(&StateHash::new(bytes)).unwrap();
-        assert_eq!(encoded, postcard::to_allocvec(&bytes).unwrap());
+        let encoded = Binary::encode(&StateHash::new(bytes));
+        assert_eq!(encoded, Binary::encode(&bytes));
     }
 }

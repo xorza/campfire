@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::str::Utf8Error;
 
 use campfire_capabilities::PackagePath;
-use campfire_common::Fingerprint;
+use campfire_common::{BinaryError, Fingerprint};
 use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
 use derive_more::Display;
 use thiserror::Error;
@@ -78,12 +78,9 @@ pub enum ContentError {
     /// The package's index does not start with the tag of this version of its format.
     #[error("the package's index is no index of this version")]
     IndexTag,
-    /// The package's index is no postcard list of rows.
+    /// The package's index is no postcard list of rows, or not their one encoding.
     #[error("the package's index does not decode")]
-    IndexDecode(#[source] postcard::Error),
-    /// The package's index decodes, but not from the one encoding of its rows.
-    #[error("the package's index is not in its one encoding")]
-    IndexNotCanonical,
+    IndexDecode(#[source] BinaryError),
     /// A row of the package's index names no package path.
     #[error("the package's index lists {0:?}, no path a package can name")]
     IndexPath(String),

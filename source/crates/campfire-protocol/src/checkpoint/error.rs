@@ -1,4 +1,4 @@
-use campfire_common::PlayerSlot;
+use campfire_common::{BinaryError, PlayerSlot};
 use thiserror::Error;
 
 use crate::delegation::error::DelegationError;
@@ -7,7 +7,7 @@ use crate::delegation::error::DelegationError;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CheckpointDecodeError {
     #[error("does not decode")]
-    Malformed(#[source] postcard::Error),
+    Malformed(#[source] BinaryError),
     /// The delegation the carry holds for `slot`'s player does not parse.
     #[error("player {}'s delegation", .slot.get())]
     Delegation {

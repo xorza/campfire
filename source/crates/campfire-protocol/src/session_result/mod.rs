@@ -1,4 +1,4 @@
-use campfire_common::{StateHash, Tick};
+use campfire_common::{Binary, StateHash, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
@@ -59,7 +59,7 @@ impl SessionResult {
         message.clear();
         message.extend_from_slice(SIGNATURE_DOMAIN);
         message.extend_from_slice(session_id.as_bytes());
-        postcard::to_io(self, &mut *message).expect("postcard into a Vec cannot fail");
+        Binary::encode_into(self, &mut *message);
     }
 }
 

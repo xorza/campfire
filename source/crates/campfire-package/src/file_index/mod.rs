@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
 use campfire_capabilities::PackagePath;
-use campfire_common::Fingerprint;
+use campfire_common::{Binary, Fingerprint};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -76,8 +76,7 @@ impl FileIndex {
         let list = bytes
             .strip_prefix(INDEX_TAG)
             .ok_or(ContentError::IndexTag)?;
-        let wire: Vec<WireRow<'_>> =
-            postcard::from_bytes(list).map_err(ContentError::IndexDecode)?;
+        let wire: Vec<WireRow<'_>> = Binary::decode(list).map_err(ContentError::IndexDecode)?;
         let mut rows = BTreeMap::new();
         let mut previous: Option<&str> = None;
         for row in &wire {
@@ -95,13 +94,7 @@ impl FileIndex {
                 },
             );
         }
-        let index = FileIndex::new(rows)?;
-        // Postcard reads an overlong varint and ignores bytes past the list, so only the one
-        // encoding of the rows is an index, and one package has one fingerprint.
-        if index.bytes != bytes {
-            return Err(ContentError::IndexNotCanonical);
-        }
-        Ok(index)
+        FileIndex::new(rows)
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
@@ -132,7 +125,9 @@ impl FileIndex {
                 sha256: row.sha256,
             })
             .collect();
-        postcard::to_extend(&wire, INDEX_TAG.to_vec()).expect("an index always encodes")
+        let mut bytes = INDEX_TAG.to_vec();
+        Binary::encode_into(&wire, &mut bytes);
+        bytes
     }
 
     /// Refuses two of `paths`, or two directories on their way, that differ only in case: a

@@ -1,3 +1,4 @@
+use campfire_common::BinaryError;
 use thiserror::Error;
 
 /// Why a file's bytes are no private record.
@@ -7,7 +8,7 @@ pub enum SessionPrivateError {
     #[error("not a session's private record")]
     NotPrivate,
     #[error("does not decode")]
-    Malformed(#[source] postcard::Error),
+    Malformed(#[source] BinaryError),
     /// Bytes remain after the record.
     #[error("bytes after the record")]
     Trailing,

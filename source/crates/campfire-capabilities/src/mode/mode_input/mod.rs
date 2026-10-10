@@ -1,3 +1,4 @@
+use campfire_common::{Binary, Taken};
 use campfire_sim::{Capability, Command};
 
 use crate::mode::mode_data::InputType;
@@ -21,12 +22,11 @@ impl<'a> ModeInput<'a> {
     pub const CAPABILITY: Capability = Capability::Mode;
 
     pub fn encode(&self) -> Vec<u8> {
-        let mut body = postcard::to_allocvec(self.name).expect("a string always encodes");
-        let value = match &self.value {
-            InputValue::String(text) => postcard::to_allocvec(text),
-            InputValue::StringList(texts) => postcard::to_allocvec(texts),
-        };
-        body.extend(value.expect("strings always encode"));
+        let mut body = Binary::encode(self.name);
+        match &self.value {
+            InputValue::String(text) => Binary::encode_into(text, &mut body),
+            InputValue::StringList(texts) => Binary::encode_into(texts, &mut body),
+        }
         body
     }
 
@@ -36,15 +36,21 @@ impl<'a> ModeInput<'a> {
         body: &'a [u8],
         types: impl Fn(&str) -> Option<InputType>,
     ) -> Option<ModeInput<'a>> {
-        let (name, rest): (&str, _) = postcard::take_from_bytes(body).ok()?;
-        let (value, rest) = match types(name)? {
+        let Taken { value: name, rest } = Binary::take::<&str>(body).ok()?;
+        let Taken { value, rest } = match types(name)? {
             InputType::String => {
-                let (text, rest) = postcard::take_from_bytes(rest).ok()?;
-                (InputValue::String(text), rest)
+                let text = Binary::take::<&str>(rest).ok()?;
+                Taken {
+                    value: InputValue::String(text.value),
+                    rest: text.rest,
+                }
             }
             InputType::StringList => {
-                let (texts, rest) = postcard::take_from_bytes(rest).ok()?;
-                (InputValue::StringList(texts), rest)
+                let texts = Binary::take::<Vec<&str>>(rest).ok()?;
+                Taken {
+                    value: InputValue::StringList(texts.value),
+                    rest: texts.rest,
+                }
             }
         };
         rest.is_empty().then_some(ModeInput { name, value })

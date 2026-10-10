@@ -1,6 +1,6 @@
 use std::env;
 
-use campfire_common::Fingerprint;
+use campfire_common::{Fingerprint, Toml};
 use campfire_store::{DurableFile, Scratch};
 
 use super::*;
@@ -226,7 +226,7 @@ fn a_package_reads_its_own_files_only() {
         assert_eq!(PackagePath::parse(text), None, "{text}");
     }
     // Data that names a path outside the package does not read.
-    assert!(toml::from_str::<Named>(r#"script = "../x.rhai""#).is_err());
+    assert!(Toml::parse::<Named>(r#"script = "../x.rhai""#).is_err());
     assert!(matches!(
         walker.read_text(&path("scripts/missing.rhai")),
         Err(ContentError::Missing { .. })

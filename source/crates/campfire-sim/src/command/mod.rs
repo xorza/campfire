@@ -1,6 +1,6 @@
-use std::mem;
 use std::ops::Range;
 
+use campfire_common::{Binary, Taken};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::capability::Capability;
@@ -25,7 +25,7 @@ impl<'a> Command<'a> {
 
     /// Appends the payload of `commands`, in order, to `out`.
     pub fn write(commands: &[Command<'_>], out: &mut Vec<u8>) {
-        *out = postcard::to_extend(commands, mem::take(out)).expect("commands always encode");
+        Binary::encode_into(commands, out);
     }
 
     /// A payload of `bodies`, each a command to `capability`, in order.
@@ -45,11 +45,19 @@ impl<'a> Command<'a> {
     /// client can send any bytes, so a reader of a payload with a flaw keeps none of the commands
     /// it was given.
     pub fn read(payload: &'a [u8], mut read: impl FnMut(Command<'a>, Range<usize>)) -> bool {
-        let Ok((count, mut rest)) = postcard::take_from_bytes::<u64>(payload) else {
+        let Ok(Taken {
+            value: count,
+            mut rest,
+        }) = Binary::take::<u64>(payload)
+        else {
             return false;
         };
         for _ in 0..count {
-            let Ok((command, after)) = postcard::take_from_bytes::<Command<'_>>(rest) else {
+            let Ok(Taken {
+                value: command,
+                rest: after,
+            }) = Binary::take::<Command<'_>>(rest)
+            else {
                 return false;
             };
             // A command's encoding ends with its body, so the body ends where what is left to

@@ -8,7 +8,6 @@ mod bytes;
 mod checkpoint;
 mod connect;
 mod controller;
-mod decoded;
 mod delegation;
 #[cfg(any(test, feature = "internals"))]
 mod harness;

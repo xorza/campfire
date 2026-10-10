@@ -1,8 +1,10 @@
+use campfire_common::Toml;
+
 use super::*;
 
 #[test]
 fn saves_read_with_their_defaults_and_refuse_what_they_do_not_know() {
-    let read = |text: &str| toml::from_str::<SavesData>(text);
+    let read = |text: &str| Toml::parse::<SavesData>(text);
     assert_eq!(
         read("").unwrap(),
         SavesData {

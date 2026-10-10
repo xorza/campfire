@@ -3,7 +3,7 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::mem;
 use std::ops::Range;
 
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{Binary, BinaryError, PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +13,6 @@ use crate::checkpoint::checkpoint_begun::CheckpointBegun;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot, LogCarry};
 use crate::controller::Controller;
-use crate::decoded::Decoded;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 use crate::journal::Journal;
@@ -1385,18 +1384,13 @@ impl SessionLog {
     /// Records the server input `put_server` wrote at the front of `rest`.
     fn record_server_input(&mut self, rest: &mut &[u8]) -> Result<(), LogError> {
         let tick = self.next_tick();
-        let Decoded {
-            value: input,
-            rest: after,
-        } = ServerInput::take(rest).map_err(|error| match error {
-            ServerInputDecodeError::Malformed(postcard::Error::DeserializeUnexpectedEnd) => {
-                LogError::Truncated
-            }
+        let taken = ServerInput::take(rest).map_err(|error| match error {
+            ServerInputDecodeError::Malformed(BinaryError::Truncated) => LogError::Truncated,
             error => LogError::ServerDecode { tick, error },
         })?;
-        *rest = after;
+        *rest = taken.rest;
         let signature = take(rest)?;
-        self.record_server(input, &signature)
+        self.record_server(taken.value, &signature)
             .map_err(|error| LogError::Server { tick, error })
     }
 
@@ -1411,18 +1405,13 @@ impl SessionLog {
     /// Records the record of the checkpoint begun, of segment `segment`, that `encode` wrote at
     /// the front of `rest`, with its signature.
     fn record_done(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
-        let Decoded {
-            value: record,
-            rest: after,
-        } = Checkpoint::take(rest).map_err(|error| match error {
-            CheckpointDecodeError::Malformed(postcard::Error::DeserializeUnexpectedEnd) => {
-                LogError::Truncated
-            }
+        let taken = Checkpoint::take(rest).map_err(|error| match error {
+            CheckpointDecodeError::Malformed(BinaryError::Truncated) => LogError::Truncated,
             error => LogError::CheckpointDecode { segment, error },
         })?;
-        *rest = after;
+        *rest = taken.rest;
         let signature = take(rest)?;
-        self.record_checkpoint(record, &signature)
+        self.record_checkpoint(taken.value, &signature)
             .map_err(|error| LogError::Checkpoint { segment, error })
     }
 
@@ -1736,17 +1725,18 @@ fn offset(len: usize) -> u32 {
 }
 
 fn put<T: Serialize + ?Sized>(out: &mut Vec<u8>, value: &T) {
-    postcard::to_io(value, out).expect("postcard into a Vec cannot fail");
+    Binary::encode_into(value, out);
 }
 
 /// Reads one value off the front of `rest`.
-fn take<'a, T: Deserialize<'a>>(rest: &mut &'a [u8]) -> Result<T, LogError> {
-    let (value, after) = postcard::take_from_bytes(rest).map_err(|error| match error {
-        postcard::Error::DeserializeUnexpectedEnd => LogError::Truncated,
-        error => LogError::Malformed(error),
+fn take<'a, T: Deserialize<'a> + Serialize>(rest: &mut &'a [u8]) -> Result<T, LogError> {
+    let taken = Binary::take(rest).map_err(|error| match error {
+        BinaryError::Truncated => LogError::Truncated,
+        BinaryError::NotCanonical => LogError::NotCanonical,
+        error @ BinaryError::Malformed(_) => LogError::Malformed(error),
     })?;
-    *rest = after;
-    Ok(value)
+    *rest = taken.rest;
+    Ok(taken.value)
 }
 
 /// Reads the header `SessionLog::put_header` wrote, checking each delegation.

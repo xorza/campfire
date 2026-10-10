@@ -6,7 +6,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::{Mut, World};
-use campfire_common::{SegmentSeed, Tick};
+use campfire_common::{Binary, SegmentSeed, Tick};
 use campfire_log::internals::LogCheck;
 use campfire_math::Num;
 use campfire_script::rhai::Dynamic;
@@ -93,7 +93,7 @@ impl TestMatch {
     /// Whether `value`, encoded as a snapshot holds it, decodes again: a decode keeps the rules a
     /// type's own values follow, as a restore check keeps those that need the match.
     pub(crate) fn decodes<T: Serialize + DeserializeOwned>(value: &T) -> bool {
-        postcard::from_bytes::<T>(&postcard::to_allocvec(value).unwrap()).is_ok()
+        Binary::decode::<T>(&Binary::encode(value)).is_ok()
     }
 
     /// A server's match at `RATE` of `declared`, running scripts within `budgets`.

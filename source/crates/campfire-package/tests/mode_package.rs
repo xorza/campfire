@@ -10,7 +10,7 @@ use campfire_capabilities::{
     ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields, Scalar,
     Status, SyncTo, TimeTooLarge, UnitKitError,
 };
-use campfire_common::MapName;
+use campfire_common::{MapName, Toml};
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
     EffectProblem, GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages,
@@ -2907,7 +2907,7 @@ fn raised(map: &str) -> String {
             _ => {}
         }
     }
-    let mut table = toml::from_str::<toml::Table>(map).unwrap();
+    let mut table = Toml::parse::<toml::Table>(map).unwrap();
     for (key, value) in &mut table {
         if key != "bounds" {
             raise(value, None);
@@ -2917,7 +2917,7 @@ fn raised(map: &str) -> String {
         "metric".to_owned(),
         toml::Value::String("spatial".to_owned()),
     );
-    toml::to_string(&table).unwrap()
+    Toml::write(&table).unwrap()
 }
 
 #[test]

@@ -144,6 +144,8 @@ impl<'de> Deserialize<'de> for HoldSet {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
 
     #[test]
@@ -176,7 +178,7 @@ mod tests {
 
     #[test]
     fn a_hold_set_decodes_only_bits_of_holds() {
-        let decode = |bits: u8| postcard::from_bytes::<HoldSet>(&[bits]).ok();
+        let decode = |bits: u8| Binary::decode::<HoldSet>(&[bits]).ok();
         let all = HoldSet::of(Hold::Passive)
             .with(Hold::Held)
             .with(Hold::Running);

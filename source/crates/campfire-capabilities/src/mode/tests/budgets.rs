@@ -1,5 +1,6 @@
 use std::num::NonZeroU64;
 
+use campfire_common::Binary;
 use campfire_script::ScriptError;
 
 use super::*;
@@ -164,12 +165,12 @@ fn on_level_up(ctx, unit, track, level) {
     // The waiting death is state: it decodes to itself, and an assister its runs do not cover
     // fails to decode. Its assisters come last, none: their length is the last byte.
     let unanswered = game.sim.world.resource::<UnansweredDeaths>();
-    let mut bytes = postcard::to_allocvec(unanswered).unwrap();
-    let decoded = postcard::from_bytes::<UnansweredDeaths>(&bytes).ok();
+    let mut bytes = Binary::encode(unanswered);
+    let decoded = Binary::decode::<UnansweredDeaths>(&bytes).ok();
     assert_eq!(decoded.as_ref(), Some(unanswered));
     assert_eq!(bytes.pop(), Some(0));
     bytes.extend([1, 5]);
-    assert!(postcard::from_bytes::<UnansweredDeaths>(&bytes).is_err());
+    assert!(Binary::decode::<UnansweredDeaths>(&bytes).is_err());
     assert_eq!(
         grunts.map(|grunt| stands(&game, grunt)),
         [None, None, Some((true, true))]
@@ -220,8 +221,8 @@ fn on_player_leave(ctx, player) {
     };
     assert_eq!(waiting.0.iter().collect::<Vec<_>>(), [&join]);
     // The waiting join is state: it decodes to itself.
-    let bytes = postcard::to_allocvec(waiting).unwrap();
-    let decoded = postcard::from_bytes::<UnansweredSlotEvents>(&bytes).ok();
+    let bytes = Binary::encode(waiting);
+    let decoded = Binary::decode::<UnansweredSlotEvents>(&bytes).ok();
     assert_eq!(decoded.as_ref(), Some(waiting));
     // It runs first in the next tick, before that tick's leave of player 1.
     game.tick_slots(&[(1, left)]);

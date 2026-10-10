@@ -144,7 +144,7 @@ fn frame(sections: &[(&str, Vec<u8>)]) -> Vec<u8> {
 fn encoded<T: Serialize>(values: &[T]) -> Vec<u8> {
     values
         .iter()
-        .flat_map(|value| postcard::to_allocvec(value).unwrap())
+        .flat_map(|value| Binary::encode(value))
         .collect()
 }
 
@@ -303,11 +303,11 @@ fn flawed_snapshots_are_refused() {
     let at_tick = |bodies: [Vec<u8>; 4], tick: Option<u64>| -> Vec<u8> {
         let mut sections: Vec<_> = names.iter().copied().zip(bodies).collect();
         sections.insert(2, ("sim.position", Vec::new()));
-        sections.insert(3, ("sim.tick", postcard::to_allocvec(&tick).unwrap()));
+        sections.insert(3, ("sim.tick", Binary::encode(&tick)));
         frame(&sections)
     };
     let with = |bodies| at_tick(bodies, Some(0));
-    let allocator = |next: u64| postcard::to_allocvec(&Some(next)).unwrap();
+    let allocator = |next: u64| Binary::encode(&Some(next));
     let valid = with([encoded(&[0_u64, 1]), allocator(2), Vec::new(), Vec::new()]);
     assert!(restore(&valid).is_ok());
 
@@ -366,7 +366,12 @@ fn flawed_snapshots_are_refused() {
         (
             with([vec![0xFF], allocator(2), Vec::new(), Vec::new()]),
             // One byte with the continuation bit set: the varint of an id ends early.
-            SnapshotError::Malformed(postcard::Error::DeserializeUnexpectedEnd),
+            SnapshotError::Truncated,
+        ),
+        (
+            with([vec![0x81, 0x00], allocator(2), Vec::new(), Vec::new()]),
+            // Id 1 as an over-long varint, which no snapshot writes.
+            SnapshotError::NotCanonical,
         ),
     ];
     for (bytes, expected) in cases {
@@ -444,30 +449,25 @@ impl<R: SimResource> Register for R {
     }
 }
 
-fn assert_writer_matches<T: Serialize>(value: &T) {
-    let bytes = postcard::to_allocvec(value).unwrap();
-    let mut expected = Hasher::new();
-    expected.update(&bytes);
-    let mut actual = HashSink::new();
-    Writer::write(&mut actual, value);
-    assert_eq!(actual.finish(), *expected.finalize().as_bytes());
-    let mut written = Vec::new();
-    Writer::write(&mut written, value);
-    assert_eq!(written, bytes);
-    // Three in one writer, as a type's entities: the three encodings one after another.
-    let mut each = Vec::new();
-    Writer::write_each(&mut each, [value; 3]);
-    assert_eq!(each, bytes.repeat(3));
+/// Whether a hash sink, fed `value`'s encoding in the gateway's batches, gives the hash of the
+/// encoding's bytes in one piece.
+fn assert_hashed_as_encoded<T: Serialize>(value: &T) {
+    let mut sink = HashSink::new();
+    Binary::encode_to(value, &mut sink);
+    assert_eq!(
+        sink.finish(),
+        *blake3::hash(&Binary::encode(value)).as_bytes()
+    );
 }
 
 #[test]
-fn writer_matches_postcard_bytes() {
-    // 12 `Num`s of 10 bytes each exceed the 64-byte buffer, so it must flush mid-value.
+fn a_hash_sink_takes_a_values_encoding_as_its_bytes() {
+    // 12 `Num`s of 10 bytes each exceed a 64-byte batch, so a batch ends inside the value.
     let big = [Num::MIN; 12];
-    assert!(postcard::to_allocvec(&big).unwrap().len() > 64);
-    assert_writer_matches(&big);
-    assert_writer_matches(&(7_u8, Num::ONE, "name"));
-    assert_writer_matches(&());
+    assert!(Binary::encode(&big).len() > 64);
+    assert_hashed_as_encoded(&big);
+    assert_hashed_as_encoded(&(7_u8, Num::ONE, "name"));
+    assert_hashed_as_encoded(&());
 }
 
 #[test]

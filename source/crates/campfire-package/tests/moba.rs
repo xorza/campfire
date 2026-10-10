@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use campfire_common::MapName;
+use campfire_common::{MapName, Toml};
 use campfire_package::{LoadError, ModePackages, PackageDir};
 use toml::{Table, Value};
 
@@ -53,7 +53,7 @@ pub(crate) fn edited_at<'a>(
             }
             Edit::Create(text) => text.to_owned(),
             Edit::Set(at, value) => {
-                let value = toml::from_str::<Table>(&format!("value = {value}")).unwrap();
+                let value = Toml::parse::<Table>(&format!("value = {value}")).unwrap();
                 let value = value["value"].clone();
                 at_path(&text(), at, Missing::Add, |parent, key| match parent {
                     Value::Table(table) => drop(table.insert(key.to_owned(), value)),
@@ -101,7 +101,7 @@ fn at_path(
     missing: Missing,
     edit: impl FnOnce(&mut Value, &str),
 ) -> String {
-    let mut root = Value::Table(toml::from_str::<Table>(text).unwrap());
+    let mut root = Value::Table(Toml::parse::<Table>(text).unwrap());
     let (parent, key) = path.rsplit_once('.').unwrap_or(("", path));
     let parent = parent
         .split('.')
@@ -119,7 +119,7 @@ fn at_path(
             _ => panic!("{path} passes through a value"),
         });
     edit(parent, key);
-    toml::to_string(&root).unwrap()
+    Toml::write(&root).unwrap()
 }
 
 /// An edit to a file: text put in place of the first of another, the text of a new file, or, by

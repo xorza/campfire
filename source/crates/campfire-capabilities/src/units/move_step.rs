@@ -50,17 +50,19 @@ impl<'de> Deserialize<'de> for MoveStep {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
 
     #[test]
     fn move_steps_are_never_negative() {
         assert_eq!(MoveStep::new(-Num::EPSILON), None);
         assert_eq!(MoveStep::new(Num::ZERO).map(MoveStep::get), Some(Num::ZERO));
-        let negative = postcard::to_allocvec(&-Num::EPSILON).unwrap();
-        assert!(postcard::from_bytes::<MoveStep>(&negative).is_err());
-        let one = postcard::to_allocvec(&Num::ONE).unwrap();
+        let negative = Binary::encode(&-Num::EPSILON);
+        assert!(Binary::decode::<MoveStep>(&negative).is_err());
+        let one = Binary::encode(&Num::ONE);
         assert_eq!(
-            postcard::from_bytes::<MoveStep>(&one).ok(),
+            Binary::decode::<MoveStep>(&one).ok(),
             MoveStep::new(Num::ONE)
         );
     }

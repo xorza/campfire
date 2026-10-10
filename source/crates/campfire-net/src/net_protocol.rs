@@ -20,6 +20,7 @@ use crate::match_start::MatchStart;
 use crate::offer::Offer;
 use crate::save_command::SaveCommand;
 use crate::superseded::Superseded;
+use crate::wire_codec::WireCodec;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
 /// not link to the one before it.
@@ -61,30 +62,54 @@ impl NetProtocol {
     fn register_components(app: &mut App, capability: Capability) {
         match capability {
             Capability::Stats => {
-                app.component::<Level>().replicate().predict();
-                app.component::<Pools>().replicate();
-                app.component::<Modifiers>().replicate().predict();
-                app.component::<ModifierClocks>().replicate().predict();
+                app.component::<Level>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
+                app.component::<Pools>()
+                    .replicate_with(WireCodec::component());
+                app.component::<Modifiers>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
+                app.component::<ModifierClocks>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
             }
             Capability::Combat => {
-                app.component::<Dead>().replicate().predict();
-                app.component::<Respawn>().replicate().predict();
+                app.component::<Dead>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
+                app.component::<Respawn>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
             }
             Capability::Projectiles => {
-                app.component::<Projectile>().replicate_once();
+                app.component::<Projectile>()
+                    .replicate_once_with(WireCodec::component());
             }
             Capability::Areas => {
-                app.component::<Area>().replicate_once();
+                app.component::<Area>()
+                    .replicate_once_with(WireCodec::component());
             }
             Capability::Navigation => {
-                app.component::<MoveStep>().replicate_once();
-                app.component::<Destination>().replicate().predict();
-                app.component::<Route>().replicate().predict();
-                app.component::<Progress>().replicate().predict();
-                app.component::<ForcedMove>().replicate().predict();
+                app.component::<MoveStep>()
+                    .replicate_once_with(WireCodec::component());
+                app.component::<Destination>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
+                app.component::<Route>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
+                app.component::<Progress>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
+                app.component::<ForcedMove>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
             }
             Capability::Progression => {
-                app.component::<Points>().replicate().predict();
+                app.component::<Points>()
+                    .replicate_with(WireCodec::component())
+                    .predict();
             }
             Capability::Abilities
             | Capability::Orders
@@ -120,35 +145,45 @@ impl Plugin for NetProtocol {
             .add_direction(NetworkDirection::ServerToClient);
         app.add_channel::<JoinChannel>(reliable())
             .add_direction(NetworkDirection::ClientToServer);
-        app.register_message::<InputMessage>()
+        app.register_message_custom_serde::<InputMessage>(WireCodec::message())
             .add_direction(NetworkDirection::ClientToServer);
-        app.register_message::<MatchStart>()
+        app.register_message_custom_serde::<MatchStart>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
-        app.register_message::<MatchEnd>()
+        app.register_message_custom_serde::<MatchEnd>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
-        app.register_message::<Relations>()
+        app.register_message_custom_serde::<Relations>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
-        app.register_message::<Offer>()
+        app.register_message_custom_serde::<Offer>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
-        app.register_message::<Superseded>()
+        app.register_message_custom_serde::<Superseded>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
-        app.register_message::<SignedReceipt>()
+        app.register_message_custom_serde::<SignedReceipt>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
-        app.register_message::<Join>()
+        app.register_message_custom_serde::<Join>(WireCodec::message())
             .add_direction(NetworkDirection::ClientToServer);
-        app.register_message::<SaveCommand>()
+        app.register_message_custom_serde::<SaveCommand>(WireCodec::message())
             .add_direction(NetworkDirection::ClientToServer);
-        app.register_message::<LeaveMatch>()
+        app.register_message_custom_serde::<LeaveMatch>(WireCodec::message())
             .add_direction(NetworkDirection::ClientToServer);
 
-        app.component::<StableId>().replicate_once();
-        app.component::<UnitType>().replicate_once();
-        app.component::<Owner>().replicate();
-        app.component::<Team>().replicate_once();
-        app.component::<SpawnPoint>().replicate_once();
-        app.component::<Body>().replicate_once();
-        app.component::<Position>().replicate().predict();
-        app.component::<ActionSlots>().replicate().predict();
+        app.component::<StableId>()
+            .replicate_once_with(WireCodec::component());
+        app.component::<UnitType>()
+            .replicate_once_with(WireCodec::component());
+        app.component::<Owner>()
+            .replicate_with(WireCodec::component());
+        app.component::<Team>()
+            .replicate_once_with(WireCodec::component());
+        app.component::<SpawnPoint>()
+            .replicate_once_with(WireCodec::component());
+        app.component::<Body>()
+            .replicate_once_with(WireCodec::component());
+        app.component::<Position>()
+            .replicate_with(WireCodec::component())
+            .predict();
+        app.component::<ActionSlots>()
+            .replicate_with(WireCodec::component())
+            .predict();
         for capability in self.capabilities.iter() {
             NetProtocol::register_components(app, capability);
         }

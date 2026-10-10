@@ -164,6 +164,8 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
     use crate::units::body_form::BodyForm;
 
@@ -189,7 +191,7 @@ mod tests {
         assert_eq!(Body::layer_of(Some(&circle)), Layer::FIRST);
         assert_eq!(Body::layer_of(Some(&air)), Layer::new(1));
         assert_eq!(Body::layer_of(None), Layer::FIRST);
-        let decoded = postcard::from_bytes::<Body>(&postcard::to_allocvec(&air).unwrap());
+        let decoded = Binary::decode::<Body>(&Binary::encode(&air));
         assert_eq!(decoded.ok(), Some(air));
         // A form spawns its body: a circle as it is, a box of 4 × 2 m turned by the spawn's
         // angle, which keeps the form's layer; the box has half edges and no radius.
@@ -210,7 +212,7 @@ mod tests {
             (boxed.circle_radius(), form.circle_radius()),
             (None, Some(Num::int(2)))
         );
-        let decoded = postcard::from_bytes::<Body>(&postcard::to_allocvec(&turned).unwrap());
+        let decoded = Binary::decode::<Body>(&Binary::encode(&turned));
         assert_eq!(decoded.ok(), Some(turned));
         // A box of a size `BodyBox` refuses is no form.
         assert_eq!(BodyForm::box_sized([Num::int(126), Num::int(1)]), None);

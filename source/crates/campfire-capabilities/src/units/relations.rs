@@ -176,6 +176,8 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
 
     #[test]
@@ -200,12 +202,9 @@ mod tests {
         relations.set(a, b, Relation::Hostile, true);
         assert_eq!(relations.pairs.len(), 1);
         // A snapshot that holds a default pair fails to decode.
-        let bytes = postcard::to_allocvec(&vec![(a, b, Relation::Hostile, true)]).unwrap();
-        assert!(postcard::from_bytes::<Relations>(&bytes).is_err());
-        let bytes = postcard::to_allocvec(&relations).unwrap();
-        assert_eq!(
-            postcard::from_bytes::<Relations>(&bytes).ok(),
-            Some(relations)
-        );
+        let bytes = Binary::encode(&vec![(a, b, Relation::Hostile, true)]);
+        assert!(Binary::decode::<Relations>(&bytes).is_err());
+        let bytes = Binary::encode(&relations);
+        assert_eq!(Binary::decode::<Relations>(&bytes).ok(), Some(relations));
     }
 }

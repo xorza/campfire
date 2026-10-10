@@ -134,6 +134,8 @@ impl<'de> Deserialize<'de> for Meter {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Binary;
+
     use super::*;
     #[test]
     fn a_meter_holds_0_to_its_positive_max() {
@@ -212,9 +214,8 @@ mod tests {
             (-1, 10, false),
             (0, 0, false),
         ] {
-            let encoded =
-                postcard::to_allocvec(&(Num::int(current), Num::int(max), 0_u32)).unwrap();
-            let decoded = postcard::from_bytes::<Meter>(&encoded);
+            let encoded = Binary::encode(&(Num::int(current), Num::int(max), 0_u32));
+            let decoded = Binary::decode::<Meter>(&encoded);
             assert_eq!(decoded.is_ok(), reads, "{current} of {max}");
         }
     }

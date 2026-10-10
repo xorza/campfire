@@ -1,3 +1,4 @@
+use campfire_common::{Binary, Taken};
 use serde::{Deserialize, Serialize};
 
 use crate::seed_chain::SeedChain;
@@ -28,7 +29,7 @@ impl SessionPrivate {
     pub fn encode(&self, out: &mut Vec<u8>) {
         out.clear();
         out.extend_from_slice(PRIVATE_TAG);
-        postcard::to_io(self, out).expect("postcard into a Vec cannot fail");
+        Binary::encode_into(self, out);
     }
 
     /// The record of a file's `bytes`; an error for bytes that `encode` did not write.
@@ -36,8 +37,10 @@ impl SessionPrivate {
         let rest = bytes
             .strip_prefix(PRIVATE_TAG)
             .ok_or(SessionPrivateError::NotPrivate)?;
-        let (private, rest) = postcard::take_from_bytes::<SessionPrivate>(rest)
-            .map_err(SessionPrivateError::Malformed)?;
+        let Taken {
+            value: private,
+            rest,
+        } = Binary::take::<SessionPrivate>(rest).map_err(SessionPrivateError::Malformed)?;
         if !rest.is_empty() {
             return Err(SessionPrivateError::Trailing);
         }

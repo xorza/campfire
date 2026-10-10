@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
+use campfire_common::Json;
 use serde::de::DeserializeOwned;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -31,7 +32,7 @@ pub enum LogLevel {
 impl LogLine {
     /// The line `text` holds; an error when it is not a JSON event.
     pub fn parse(text: &str) -> Result<LogLine, serde_json::Error> {
-        serde_json::from_str(text)
+        Json::parse(text)
     }
 
     /// The event of type `E`, when the line has its message; an error when its fields do not
@@ -60,7 +61,7 @@ impl LogLine {
         T: DeserializeOwned,
     {
         let text = String::deserialize(deserializer)?;
-        serde_json::from_str(&text).map_err(D::Error::custom)
+        Json::parse(&text).map_err(D::Error::custom)
     }
 }
 
