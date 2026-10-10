@@ -173,3 +173,36 @@ map_err_ignore = "warn"
 self_named_module_files = "warn"
 todo = "warn"
 unused_result_ok = "warn"
+
+# Lightyear 0.30.1 with its confirmed history never pruned past the latest completed checkpoint,
+# until upstream releases the fix (branch campfire-shift-fix of the fork).
+[patch.crates-io]
+lightyear = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_aeronet = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_connection = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_core = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_crossbeam = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_deterministic_replication = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_frame_interpolation = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_inputs = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_inputs_bei = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_inputs_leafwing = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_inputs_native = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_interpolation = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_link = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_messages = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_metrics = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_netcode = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_prediction = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_raw_connection = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_replication = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_serde = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_steam = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_sync = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_tools = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_transport = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_udp = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_utils = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_web = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_websocket = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+lightyear_webtransport = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }

@@ -21,10 +21,11 @@ pub(crate) struct MatchStart {
     pub loaded: bool,
 }
 
-/// Where a player's chain stands in the log: how many inputs it holds, and the hash the next
-/// links to.
+/// Where a player's chain stands in the log: how many inputs it holds, the hash the next links
+/// to, and the last stamp, below which the log refuses the next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ChainHead {
     pub next_seq: u64,
     pub head: InputHash,
+    pub last_stamp: Option<Tick>,
 }

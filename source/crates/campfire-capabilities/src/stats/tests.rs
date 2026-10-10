@@ -4,7 +4,7 @@ use std::slice;
 use bevy_ecs::entity::Entity;
 use campfire_common::{Tick, Toml};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, IdAllocator, Position, SimComponent, SimUpdate};
+use campfire_sim::{Capability, IdAllocator, Position, SimComponent, SimUpdate, Unpredicted};
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
@@ -562,6 +562,9 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = TestMatch::server(&[Capability::Stats], scripts);
+    // Before any system builds its queries, as a predicting client registers it, so that a unit
+    // it holds can be marked below.
+    Unpredicted::register(&mut game.world);
     let book = StatBook::new(&rules(), [], Num::int(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
@@ -638,6 +641,16 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     game.world
         .entity_mut(entity(&game, carrier))
         .remove::<UnitTags>();
+    // As on a predicting client, whose sim runs only on the units it predicts: a carrier it only
+    // holds, as the server sent it, carries its aura still to the ally it predicts, and the pass
+    // writes none of the held carrier's own modifiers.
+    let held = entity(&game, carrier);
+    game.world.entity_mut(held).insert(Unpredicted);
+    let as_sent = game.world.get::<Modifiers>(held).unwrap().clone();
+    game.step();
+    assert!(holds(&game, far));
+    assert_eq!(game.world.get::<Modifiers>(held), Some(&as_sent));
+    game.world.entity_mut(held).remove::<Unpredicted>();
     // The carrier dies: its aura goes, with its own modifiers.
     let dead = entity(&game, carrier);
     game.world.entity_mut(dead).insert(Dead);

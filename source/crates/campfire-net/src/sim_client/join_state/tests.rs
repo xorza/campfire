@@ -234,10 +234,11 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
     let join = state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
     assert_eq!(join.delegation, delegation.json());
     // The server's copy holds 2 of its 3 inputs: the third never applies, and the chain goes on
-    // from the second, at sim tick 500, Lightyear tick 7.
+    // from the second, at sim tick 500, Lightyear tick 7. The log holds its last stamp, 503.
     let head = ChainHead {
         next_seq: 2,
         head: heads[2],
+        last_stamp: Some(Tick::new(503)),
     };
     let resumed = MatchStart {
         start_tick: 7,
@@ -252,6 +253,10 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
         InputChain::resume(PlayerSlot::new(1), heads[2], 2)
     );
     assert_eq!(playing.clock.sim_tick(NetTick(8)), Some(Tick::new(501)));
+    // Its next input, predicted in 501, takes the log's last stamp, 503, as the log refuses a
+    // stamp that goes back; one predicted past it, in 504, keeps its own.
+    assert_eq!(playing.stamp(Tick::new(501)), Tick::new(503));
+    assert_eq!(playing.stamp(Tick::new(504)), Tick::new(504));
 
     // Again: a server whose copy is not the client's own ends it.
     assert_eq!(state.lose(lost, [0; 32]), LinkLoss::Rejoining);
@@ -259,6 +264,7 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
     let rewritten = ChainHead {
         next_seq: 1,
         head: heads[2],
+        last_stamp: None,
     };
     let start = MatchStart {
         chain: Some(rewritten),
@@ -432,6 +438,7 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
             chain: Some(ChainHead {
                 next_seq: 1,
                 head: heads[3],
+                last_stamp: None,
             }),
             loaded: true,
             ..START
@@ -504,6 +511,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         chain: Some(ChainHead {
             next_seq: 3,
             head: heads[3],
+            last_stamp: None,
         }),
         ..START
     };
@@ -546,6 +554,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         chain: Some(ChainHead {
             next_seq: 4,
             head: fourth.head,
+            last_stamp: None,
         }),
         ..START
     };

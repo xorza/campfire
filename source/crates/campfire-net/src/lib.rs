@@ -10,6 +10,7 @@ mod events;
 mod faults;
 #[cfg(feature = "internals")]
 mod harness;
+mod input_ack;
 mod input_message;
 mod join;
 mod leave_match;

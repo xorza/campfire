@@ -13,6 +13,7 @@ use lightyear::prelude::{
     PredictionBuilderExt, ReliableSettings,
 };
 
+use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
@@ -152,6 +153,8 @@ impl Plugin for NetProtocol {
             .add_direction(NetworkDirection::ClientToServer);
         app.register_message_custom_serde::<InputMessage>(WireCodec::message())
             .add_direction(NetworkDirection::ClientToServer);
+        app.register_message_custom_serde::<InputAck>(WireCodec::message())
+            .add_direction(NetworkDirection::ServerToClient);
         app.register_message_custom_serde::<MatchStart>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message_custom_serde::<MatchEnd>(WireCodec::message())

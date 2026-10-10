@@ -21,7 +21,9 @@ use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
 };
-use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
+use lightyear::prelude::client::{
+    ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
+};
 use lightyear::prelude::{
     Client, Connect, Disconnect, LocalTimeline, MessageReceiver, MessageSender, Predicted,
     PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
@@ -40,6 +42,7 @@ use crate::events::orders_sent::OrdersSent;
 use crate::events::receipt_refused::ReceiptRefused;
 use crate::events::session_refused::SessionRefused;
 use crate::faults::Faults;
+use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
@@ -218,7 +221,13 @@ impl Plugin for SimClient {
         app.add_systems(
             Update,
             (
-                (link, receive_relations, receive_match_end, report_deaths),
+                (
+                    link,
+                    receive_input_acks,
+                    receive_relations,
+                    receive_match_end,
+                    report_deaths,
+                ),
                 Faults::watch,
             )
                 .chain(),
@@ -444,6 +453,19 @@ fn playing(state: Res<'_, JoinState>, timeline: Option<SyncedLocalTimeline<'_, '
     state.sim_tick(timeline.as_ref()).is_some()
 }
 
+/// Takes the server's word on where each of the player's inputs takes effect, so a rollback
+/// replays it there.
+fn receive_input_acks(
+    mut receivers: Query<'_, '_, &mut MessageReceiver<InputAck>, With<Client>>,
+    mut sent: ResMut<'_, SentInputs>,
+) {
+    for mut receiver in &mut receivers {
+        for ack in receiver.receive() {
+            sent.acknowledge(ack.first, &ack.applied);
+        }
+    }
+}
+
 /// Takes the teams' relations the server sends into the client's world, where its units' targets
 /// and filters read them.
 fn receive_relations(
@@ -515,18 +537,31 @@ fn send_orders(
     mut pending: ResMut<'_, PendingOrders>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
-    mut sender: Single<'_, '_, &mut MessageSender<InputMessage>, With<Client>>,
+    mut sender: Single<'_, '_, (&mut MessageSender<InputMessage>, &RemoteTimeline), With<Client>>,
 ) {
+    let (ref mut sender, remote) = *sender;
     let Some(playing) = state.playing_mut() else {
         return;
     };
-    let Some(stamp) = playing.clock.sim_tick(timeline.tick()) else {
+    let Some(now) = playing.clock.sim_tick(timeline.tick()) else {
         return;
     };
+    let stamp = playing.stamp(now);
+    // An input stamped past the max input lead beyond the server's next tick is logged as early
+    // and never applies, as after a server stall that let the client run ahead: the orders wait
+    // for the server instead. The last tick the server sent is at most its next, so an input
+    // within the lead of it is within the lead of the next as it arrives.
+    let server = remote
+        .last_received_tick()
+        .and_then(|tick| playing.clock.sim_tick(tick));
+    let lead = playing.member.session.max_input_lead;
+    if server.is_some_and(|server| stamp.since(server).is_some_and(|ahead| ahead > lead)) {
+        return;
+    }
     let reach = prediction
         .rollback_policy
         .effective_max_rollback_ticks(&timeline_config);
-    sent.prune(Tick::new(stamp.get().saturating_sub(u64::from(reach))));
+    sent.prune(Tick::new(now.get().saturating_sub(u64::from(reach))));
     if let Some(mut bot) = bot {
         for input in bot.due_inputs(stamp) {
             pending.push_input(input.clone());
@@ -541,9 +576,11 @@ fn send_orders(
     let first = sent.len();
     let stamped = pending.0.len().min(session.max_inputs as usize);
     for pending in pending.0.drain(..stamped) {
+        let seq =
+            playing.chain.next_seq() + u64::try_from(sent.len() - first).expect("a count fits");
         match pending {
             Pending::Order(order) => {
-                let kept = sent.push(stamp, session.max_payload_len, |body, out| {
+                let kept = sent.push(seq, stamp, session.max_payload_len, |body, out| {
                     order.write_payload(body, out);
                 });
                 if !kept {
@@ -557,7 +594,7 @@ fn send_orders(
                 }
             }
             Pending::Input(input) => {
-                let kept = sent.push(stamp, session.max_payload_len, |_, out| {
+                let kept = sent.push(seq, stamp, session.max_payload_len, |_, out| {
                     input.write_payload(out);
                 });
                 if !kept {

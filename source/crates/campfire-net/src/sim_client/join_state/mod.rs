@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 use campfire_capabilities::Team;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{
     Delegation, DelegationId, DelegationTerms, InputChain, SeedContribution, SessionId,
@@ -98,6 +98,7 @@ pub(crate) struct JoinedSession {
     pub(crate) id: SessionId,
     pub(crate) max_inputs: u32,
     pub(crate) max_payload_len: u32,
+    pub(crate) max_input_lead: Ticks,
 }
 
 /// What a player holds from their first answer on, through each link: the session, their
@@ -131,6 +132,8 @@ pub(crate) struct Playing {
     pub(crate) clock: MatchClock,
     team: Team,
     history: ChainHistory,
+    /// The last stamp the log holds of the player, below which it refuses the next.
+    last_stamp: Option<Tick>,
 }
 
 /// A player who left while they played: what they hold as a member, their slot and their chain's
@@ -302,6 +305,7 @@ impl JoinState {
                             id: offer.terms.session_id(),
                             max_inputs: offer.terms.max_inputs_per_tick,
                             max_payload_len: offer.terms.max_payload_len,
+                            max_input_lead: offer.terms.max_input_lead,
                         },
                         delegation: self.player.delegate(&offer.terms, signer, now),
                         renewed: None,
@@ -363,6 +367,7 @@ impl JoinState {
             // A receipt names inputs the load may have dropped.
             member.receipt = None;
         }
+        let last_stamp = start.chain.and_then(|head| head.last_stamp);
         let (chain, history, discarded) = match (start.chain, answered.history) {
             (None, _) => {
                 let chain = InputChain::new(start.slot, member.delegation.chain_root());
@@ -396,6 +401,7 @@ impl JoinState {
             clock: MatchClock::resumed(NetTick(start.start_tick), start.first),
             team: start.team,
             history,
+            last_stamp,
         });
         Started::Playing { discarded }
     }
@@ -546,6 +552,14 @@ impl Playing {
     pub(crate) fn extend(&mut self, stamp: Tick, payload: &[u8]) {
         self.chain.extend(stamp, payload);
         self.history.push(self.chain.head());
+        self.last_stamp = Some(stamp);
+    }
+
+    /// The stamp of an input sent as the client predicts tick `now`: `now`, or the last stamp
+    /// when the client's timeline went back past it, as Lightyear steps it back after the
+    /// server's tick fell behind, since the log refuses a stamp that goes back.
+    pub(crate) fn stamp(&self, now: Tick) -> Tick {
+        self.last_stamp.map_or(now, |last| last.max(now))
     }
 }
 

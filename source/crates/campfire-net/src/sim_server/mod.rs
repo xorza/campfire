@@ -48,6 +48,7 @@ use crate::events::time_dropped::TimeDropped;
 use crate::events::unit_died::UnitDied;
 use crate::faults::Faults;
 use crate::faults::fault::Fault;
+use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
@@ -483,18 +484,28 @@ impl SimServer {
     }
 }
 
-/// Logs each packet received in this frame, before the next tick runs. A refused packet ends its
-/// link: a client that follows the rules sends none, and its chain no longer matches the log's.
+/// Logs each packet received in this frame, before the next tick runs, and tells its player where
+/// each of its inputs takes effect. A refused packet ends its link: a client that follows the
+/// rules sends none, and its chain no longer matches the log's.
 fn record_inputs(
     mut commands: Commands<'_, '_>,
-    mut links: Query<'_, '_, (Entity, &PlayerLink, &mut MessageReceiver<InputMessage>)>,
+    mut links: Query<
+        '_,
+        '_,
+        (
+            Entity,
+            &PlayerLink,
+            &mut MessageReceiver<InputMessage>,
+            &mut MessageSender<InputAck>,
+        ),
+    >,
     mut session: ResMut<'_, Session>,
     mut frame: ResMut<'_, FrameStart>,
     mut applied: Local<'_, Vec<Applied>>,
 ) {
     frame.0 = session.log().next_tick();
     ServerFrame { tick: frame.0 }.log();
-    for (entity, &held, mut receiver) in &mut links {
+    for (entity, &held, mut receiver, mut acks) in &mut links {
         let mut link = held;
         for message in receiver.receive() {
             if link.refused() {
@@ -532,6 +543,7 @@ fn record_inputs(
                 unreachable!("a packet the log took is of a slot a player controls");
             };
             let first_seq = chain.next_seq() - u64::try_from(applied.len()).expect("a count fits");
+            acks.send::<MatchChannel>(InputAck::of(first_seq, &applied));
             for ((input, &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
                 let outcome = match outcome {
                     Applied::At(tick) => {

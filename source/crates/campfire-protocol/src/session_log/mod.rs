@@ -482,6 +482,12 @@ impl SessionLog {
         }
     }
 
+    /// The last stamp of the inputs `slot`'s player sent since it joined, below which the log
+    /// refuses the next; none before its first, or for a slot the session does not have.
+    pub fn last_stamp(&self, slot: PlayerSlot) -> Option<Tick> {
+        self.slots.get(slot.index())?.stamps.last
+    }
+
     /// Who controls `slot` now; none for a slot the session does not have.
     pub fn controller(&self, slot: PlayerSlot) -> Option<Controller> {
         let held = self.slots.get(slot.index())?;

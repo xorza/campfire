@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Without;
+use bevy_ecs::query::{With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{Position, SimTick, StableId, TickRate};
+use campfire_sim::{Position, SimTick, StableId, TickRate, Unpredicted};
 
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
@@ -29,7 +29,8 @@ use crate::units::unit_tags::UnitTags;
 use crate::values::rank::Rank;
 use crate::values::relation::Relation;
 
-/// The living units whose held modifiers `HeldPass::run` writes.
+/// The living units whose held modifiers `HeldPass::run` writes: on a predicting client, those it
+/// predicts.
 type HeldUnits<'w, 's> = Query<
     'w,
     's,
@@ -43,7 +44,22 @@ type HeldUnits<'w, 's> = Query<
         Option<&'static Body>,
         Entity,
     ),
-    Without<Dead>,
+    (Without<Dead>, Without<Unpredicted>),
+>;
+
+/// The living units a predicting client holds as the server sent them: their auras reach the
+/// units it predicts, but the pass writes none of their modifiers.
+type HeldCarriers<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static StableId,
+        &'static Position,
+        &'static Team,
+        Option<&'static UnitTags>,
+        &'static Modifiers,
+    ),
+    (With<Unpredicted>, Without<Dead>),
 >;
 
 /// The modifiers held on units each tick: by auras, by other capabilities, and by players.
@@ -71,7 +87,7 @@ impl HeldPass {
         params: Res<'_, ParamBook>,
         sources: ParamSources<'_, '_>,
         relations: Res<'_, Relations>,
-        mut units: HeldUnits<'_, '_>,
+        (mut units, carriers): (HeldUnits<'_, '_>, HeldCarriers<'_, '_>),
         tag_book: Option<Res<'_, TagBook>>,
         (mut held, mut grid): (Local<'_, Vec<Held>>, Local<'_, BodyGrid<Entity>>),
     ) {
@@ -86,7 +102,10 @@ impl HeldPass {
             .as_deref()
             .map_or(TagSet::default(), TagBook::granting);
         let mut indexed = false;
-        for (&source, &at, &team, carrier, _, (modifiers, _), ..) in &units {
+        let written = units
+            .iter()
+            .map(|(id, at, team, tags, _, (modifiers, _), ..)| (id, at, team, tags, modifiers));
+        for (&source, &at, &team, carrier, modifiers) in written.chain(&carriers) {
             let immune = carrier.map_or(TagSet::default(), |tags| tags.immune);
             let takes_effect = TagBook::effect_test(granting, immune);
             for instance in modifiers.iter() {

@@ -2,7 +2,7 @@
 //! delayed ones, checked on the server, on both clients and in the replayed log.
 
 use bevy_app::App;
-use campfire_capabilities::{ActionSlots, Body, Dead, PoolId, Pools, SeenBy, Team};
+use campfire_capabilities::{Action, ActionSlots, Body, Dead, PoolId, Pools, SeenBy, Team};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
@@ -466,8 +466,59 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
             "hero {index} on its client"
         );
     }
-    // A stall of 2 s, 60 ticks, runs 9, and drops the rest.
+    // A stall of 2 s, 60 ticks, runs 9, and drops the rest: the clients run 51 ticks ahead of
+    // the server, past the max input lead, until Lightyear steps their timelines back. Each
+    // player orders its hero on: the order waits until it is within the lead of the server, its
+    // stamp never goes back past the last the log holds, and the server acknowledges the tick it
+    // applies in, so the client corrects while its timeline steps back, and then no more.
+    let order = |local: &mut InProcessMatch, targets: [Position; 2]| {
+        for (client, target) in targets.iter().enumerate() {
+            let Vec3 { x, z, .. } = target.get();
+            local.order(client, Action::Move { x, z });
+        }
+    };
+    // An order every 5 frames from before the stall on, so some go out as a timeline steps back.
+    let (away, targets) = ([at(-3, -1), at(3, 1)], [at(-3, 2), at(3, 0)]);
+    for frame in 0..60 {
+        if frame % 5 == 0 {
+            order(&mut local, away);
+        }
+        if frame == 10 {
+            assert_eq!(ran(&mut local, 60), 9);
+        }
+        local.step();
+    }
+    order(&mut local, targets);
+    let ends = |local: &mut InProcessMatch, targets: [Position; 2]| {
+        for _ in 0..100 {
+            local.step();
+        }
+        let settled = [local.rollbacks(0), local.rollbacks(1)];
+        for _ in 0..100 {
+            local.step();
+        }
+        assert_eq!([local.rollbacks(0), local.rollbacks(1)], settled);
+        for (index, (&id, &target)) in heroes.iter().zip(&targets).enumerate() {
+            let end = Hero {
+                position: target,
+                dead: false,
+            };
+            assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
+            assert_eq!(
+                hero(local.client(index), id),
+                end,
+                "hero {index} on its client"
+            );
+        }
+    };
+    ends(&mut local, targets);
+    // Another stall, and one order as the clients run ahead of it, and none after: it waits
+    // until it is within the lead of the server, where an order sent at once would be logged as
+    // early and never apply; and the client, more than its rollback window ahead of the server
+    // meanwhile, keeps no stale confirmed state past what the server confirmed.
     assert_eq!(ran(&mut local, 60), 9);
+    order(&mut local, away);
+    ends(&mut local, away);
 }
 
 #[test]

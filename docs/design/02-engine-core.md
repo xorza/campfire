@@ -288,7 +288,7 @@ Collision, pathfinding, movement and visibility each have one interface and plug
 The open protocol is separate from the transport:
 
 - **`protocol`** (versioned, documented): session log (headers, signed inputs, checkpoints, results). Everything a replay needs.
-- **`net`**: [Lightyear](https://github.com/cBournhonesque/lightyear) for transport, replication, prediction with rollback, interpolation and interest management. Lightyear replicates through [`bevy_replicon`](https://github.com/simgine/bevy_replicon), whose per-client entity visibility the visibility backend drives. `net` depends on `bevy_replicon` itself, pinned to the version Lightyear builds, for the visibility filter Lightyear does not re-export. Internal: client and server always run the same engine release.
+- **`net`**: [Lightyear](https://github.com/cBournhonesque/lightyear) for transport, replication, prediction with rollback, interpolation and interest management. Lightyear replicates through [`bevy_replicon`](https://github.com/simgine/bevy_replicon), whose per-client entity visibility the visibility backend drives. `net` depends on `bevy_replicon` itself, pinned to the version Lightyear builds, for the visibility filter Lightyear does not re-export. Internal: client and server always run the same engine release. Lightyear 0.30.1 is patched, in `source/Cargo.toml`'s `[patch.crates-io]`, until upstream releases a fix: it pruned a predicted entity's confirmed history at the client's tick less the rollback window, and kept the state at the cut as an authoritative sample there, so a client that ran further ahead of the server than that window, as after a server stall, held a stale value at a tick the server had not reached, onto which every later rollback snapped.
 
 ## Libraries
 

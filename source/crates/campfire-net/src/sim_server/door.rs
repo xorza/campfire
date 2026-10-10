@@ -134,6 +134,7 @@ impl Door {
             let head = ChainHead {
                 next_seq: chain.next_seq(),
                 head: chain.head(),
+                last_stamp: world.resource::<Session>().log().last_stamp(slot),
             };
             return Ok(SeatIn {
                 slot,
