@@ -20,6 +20,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
         - `11-rts-foundations.md` — box bodies, package unit types, group orders, production's first cut
         - `12-zero-hour.md` — the first imported game: importer, rules package, parity oracle, presentation
         - `13-bodies-uses-shop-gravity.md` — bodies up to 2,048 m and the spatial indexes' levels, the `use` action kind, the client's shop and item keys, projectiles that fall
+        - `14-replication-audiences.md` — proposal: who receives each part of the state, the kind on each state type, the audiences a mode sets for other teams and spectators, the one list of state types, the player, team and match entities
     - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import
 - `.notes/ISSUES.md` — the issue log: every open problem, under the step it waits for ([Issue log](#issue-log))
 - `.notes/FOUNDATIONS.md` — the open problems whose cause is in the architecture or a chosen format, each with the issue-log items it holds ([Issue log](#issue-log))
