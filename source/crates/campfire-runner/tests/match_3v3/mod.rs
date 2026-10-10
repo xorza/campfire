@@ -176,10 +176,10 @@ fn run(moba: &Moba3v3) -> Run {
     let mut showcase = Showcase::default();
     for tick in 0..TICKS {
         moba.play_tick(&mut fixed, tick);
-        copy.check(fixed.runner_mut());
+        let hashes = copy.check(fixed.runner_mut());
+        trail.record_hashes(hashes);
+        golden.record(fixed.runner(), hashes.total);
         let runner = fixed.runner();
-        trail.record(runner.world());
-        golden.record_hashed(runner, trail.last());
         let world = runner.world();
         let failures = world.non_send::<ScriptFailures>();
         assert!(

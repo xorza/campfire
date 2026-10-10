@@ -1,6 +1,7 @@
 [profile.default]
-# A test past 1 s breaks the bound of AGENTS.md, and SLOW names it; one that runs 30 s is stuck in a
-# loop or a wait, and nextest ends it, as libtest can end no test.
+# SLOW names a test past 1 s, the bound of AGENTS.md; in a full run the tests share the cores, so
+# the bound holds for a test alone, `--test-threads 1`. One that runs 30 s is stuck in a loop or a
+# wait, and nextest ends it, as libtest can end no test.
 slow-timeout = { period = "1s", terminate-after = 5 }
 
 # A mode's scripted match is the one test exempt from the bound of 1 s: it gathers every rule of

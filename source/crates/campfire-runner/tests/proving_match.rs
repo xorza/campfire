@@ -200,8 +200,8 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         assert_eq!(removals.written - removals.held, written, "tick {tick}");
         removed |= removals.held > 0;
         written = removals.written;
-        golden.record(fixed.runner());
-        copy.check(fixed.runner_mut());
+        let state = copy.check(fixed.runner_mut()).total;
+        golden.record(fixed.runner(), state);
         let failures = fixed.runner().world().non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
@@ -344,8 +344,8 @@ fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() 
             world.entity_mut(entity).remove::<Inert>().insert(Inert);
         }
         ProvingMatch::play_tick(&mut fixed, tick);
-        golden.record(fixed.runner());
-        copy.check(fixed.runner_mut());
+        let state = copy.check(fixed.runner_mut()).total;
+        golden.record(fixed.runner(), state);
     }
     golden.check("proving");
 }

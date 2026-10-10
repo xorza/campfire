@@ -89,8 +89,8 @@ mod scripted_match {
                 _ => {}
             }
             fixed.runner_mut().run_tick();
-            golden.record(fixed.runner());
-            copy.check(fixed.runner_mut());
+            let state = copy.check(fixed.runner_mut()).total;
+            golden.record(fixed.runner(), state);
             if tick == 0 {
                 east = MatchUnits::of(&fixed)
                     .all()
