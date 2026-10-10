@@ -218,3 +218,42 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(crates(&game), [ground(0, 2), ground(2, 2)]);
     assert!(game.failures().is_empty());
 }
+
+#[test]
+fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
+    // The tower placed 3 m above the ground at (-8, 0), turned by -90°: it faces 270°, and every
+    // unit the start spawns faces 0°.
+    let mut files = mode_files();
+    files.map.units[0].height = Num::int(3);
+    files.map.units[0].angle = Num::int(-90);
+    let game = Game::start(SCRIPT, ScriptLimits::ROOMY, files).unwrap();
+    let tower = game.sim.world.entity(game.entity(0));
+    let raised = Position::new(Vec3::new(Num::int(-8), Num::int(3), Num::ZERO)).unwrap();
+    assert_eq!(tower.get::<Position>(), Some(&raised));
+    assert_eq!(
+        tower.get::<Facing>().map(|facing| facing.degrees()),
+        Some(Num::int(270))
+    );
+    let grunt = game.sim.world.entity(game.entity(1));
+    assert_eq!(
+        grunt.get::<Facing>().map(|facing| facing.degrees()),
+        Some(Num::ZERO)
+    );
+
+    // A height past the world's bound; and on a spatial map, whose points hold their own, any
+    // height but 0.
+    let mut map = mode_files().map;
+    let ground = MapPoint::Ground([Scalar::Int(0), Scalar::Int(0)]);
+    assert_eq!(
+        map.placed_at(&ground, Num::int(1 << 21)),
+        Err(ModeError::OutOfBounds)
+    );
+    map.metric = Metric::Spatial;
+    let space = MapPoint::Space([Scalar::Int(0), Scalar::Int(1), Scalar::Int(0)]);
+    let lifted = Position::new(Vec3::new(Num::ZERO, Num::int(1), Num::ZERO)).unwrap();
+    assert_eq!(map.placed_at(&space, Num::ZERO), Ok(lifted));
+    assert_eq!(
+        map.placed_at(&space, Num::int(3)),
+        Err(ModeError::SpatialHeight)
+    );
+}

@@ -57,6 +57,9 @@ pub enum ModeError {
     /// A path has no waypoint.
     #[error("path \"{0}\" has no waypoint")]
     EmptyPath(DeclaredName),
+    /// A placed unit of a spatial map gives a height, which its point holds.
+    #[error("a placed unit of a spatial map gives a height")]
+    SpatialHeight,
     /// A point of the map is outside its bounds.
     #[error("a map point is outside the map's bounds")]
     OutOfBounds,

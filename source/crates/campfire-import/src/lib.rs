@@ -14,3 +14,15 @@ pub use crate::zero_hour::error::{
 };
 pub use crate::zero_hour::game_version::{ArchiveHash, GameVersion};
 pub use crate::zero_hour::{Imported, SkipReason, SkippedModel, ZeroHour};
+
+/// What other crates' tests take of the import.
+#[cfg(feature = "internals")]
+pub mod internals {
+    use crate::texture::internals::ktx2;
+
+    /// The import's two fixture textures as it writes them: a DDS of DXT1 blocks, 8 × 8 with its
+    /// 4 levels, BC1 in KTX2; and a 32-bit TGA of 2 × 1, RGBA8 with its 2 levels.
+    pub fn ktx2_fixtures() -> [Vec<u8>; 2] {
+        ktx2()
+    }
+}

@@ -42,6 +42,7 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::stats_effect::StatsEffect;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::by_type::ByType;
+use crate::units::facing::Facing;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
@@ -212,6 +213,7 @@ impl ModeBook {
         let mut unit = world.spawn((
             id,
             pos,
+            Facing::of(angle),
             SpawnPoint::new(pos),
             unit_type,
             team,

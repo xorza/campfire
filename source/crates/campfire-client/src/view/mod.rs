@@ -8,6 +8,7 @@ use bevy::color::Color;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy::ecs::resource::Resource;
@@ -22,24 +23,35 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use bevy::window::Window;
+use bevy::world_serialization::WorldAssetRoot;
 use campfire_capabilities::{
-    ActionSlots, Area, Body, Dead, MatchEnd, MatchResult, MoveStep, Owner, Projectile, Team,
+    ActionSlots, Area, Body, Dead, Facing, MatchEnd, MatchResult, MoveStep, Owner, Projectile,
+    Team, UnitType,
 };
 use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use lightyear::prelude::Predicted;
 
+use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 use crate::view::glide::{Glide, TickClock};
+use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Look, Pose, Shape};
+use crate::view::unit_looks::UnitLooks;
 
+pub(crate) mod client_data;
 pub(crate) mod drawing;
+pub(crate) mod file_material;
 pub(crate) mod float_num;
 pub(crate) mod footing;
 pub(crate) mod glide;
+pub(crate) mod ground_heights;
 pub(crate) mod look;
+pub(crate) mod package_source;
+pub(crate) mod unit_looks;
+pub(crate) mod unit_models;
 
 /// Draws the match: a camera over the lane, the ground, a capsule for every unit the client holds,
 /// colored by team, and a ball for every projectile, each moving smoothly between the places the
@@ -84,7 +96,7 @@ struct Figure;
 
 /// The units not drawn yet, projectiles and areas apart: where each stands, its team, whether it
 /// walks, whether a player controls it, whether it is the client's own, whether it is dead,
-/// whether the client only receives it, and its body.
+/// whether the client only receives it, its body, its type and the way it faces.
 type NewUnits<'w, 's> = Query<
     'w,
     's,
@@ -98,6 +110,8 @@ type NewUnits<'w, 's> = Query<
         Has<Dead>,
         Has<Unpredicted>,
         Option<&'static Body>,
+        Option<&'static UnitType>,
+        Option<&'static Facing>,
     ),
     (
         With<StableId>,
@@ -188,18 +202,54 @@ impl View {
         commands.insert_resource(palette);
     }
 
-    /// Gives each unit the client received a drawing at its place: a root on the ground, and the
-    /// figure over it, posed as the unit lives or lies dead.
+    /// Gives each unit the client received a drawing at its place: a root at its height above the
+    /// ground, and over it its type's models, turned the way it faces, or the figure of its
+    /// shape, posed as the unit lives or lies dead.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a system takes each resource and query it reads"
+    )]
     fn draw_new(
         palette: Res<'_, Palette>,
         time: Res<'_, Time>,
         units: NewUnits<'_, '_>,
+        looks: Option<Res<'_, UnitLooks>>,
+        data: Option<Res<'_, ClientData>>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut capsules: Local<'_, BTreeMap<[u32; 2], Handle<Mesh>>>,
         mut cuboids: Local<'_, BTreeMap<[u32; 3], Handle<Mesh>>>,
         mut commands: Commands<'_, '_>,
     ) {
-        for (unit, &pos, team, walks, owned, own, dead, received, body) in &units {
+        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
+        for (unit, &pos, team, walks, owned, own, dead, received, body, unit_type, facing) in &units
+        {
+            let at = ground(pos, heights);
+            let models = looks
+                .as_deref()
+                .zip(unit_type)
+                .map_or(&[][..], |(looks, &unit_type)| looks.models(unit_type));
+            if !models.is_empty() {
+                let degrees = facing.map_or(0.0, |facing| facing.degrees().float());
+                let turn = Transform::from_rotation(Quat::from_rotation_y(degrees.to_radians()));
+                let root = commands
+                    .spawn((
+                        DrawingOf(unit),
+                        Transform::from_translation(at),
+                        Visibility::default(),
+                        View::rest(at, received, &time),
+                        Shape::of(owned, walks, body),
+                    ))
+                    .id();
+                for model in models {
+                    commands.spawn((
+                        WorldAssetRoot(model.scene.clone()),
+                        model.parts.clone(),
+                        turn,
+                        ChildOf(root),
+                    ));
+                }
+                continue;
+            }
             let shape = Shape::of(owned, walks, body);
             let mesh = match shape.footing {
                 Footing::Circle(_) => capsules
@@ -223,14 +273,12 @@ impl View {
             let look = Look {
                 figure,
                 alive: alive.clone(),
-                shape,
             };
             let Pose {
                 material,
                 transform,
-            } = look.pose(dead, &palette.dead);
+            } = look.pose(shape, dead, &palette.dead);
             commands.entity(figure).insert((material, transform));
-            let at = ground(pos);
             commands
                 .spawn((
                     DrawingOf(unit),
@@ -238,6 +286,7 @@ impl View {
                     Visibility::default(),
                     View::rest(at, received, &time),
                     look,
+                    shape,
                 ))
                 .add_child(figure);
         }
@@ -249,10 +298,12 @@ impl View {
         palette: Res<'_, Palette>,
         time: Res<'_, Time>,
         shots: NewShots<'_, '_>,
+        data: Option<Res<'_, ClientData>>,
         mut commands: Commands<'_, '_>,
     ) {
+        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
         for (shot, &pos, received) in &shots {
-            let at = ground(pos);
+            let at = ground(pos, heights);
             let ball = commands
                 .spawn((
                     Mesh3d(palette.projectile.clone()),
@@ -277,7 +328,7 @@ impl View {
         index: Res<'_, EntityIndex>,
         units: Attackers<'_, '_>,
         drawn: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
-        roots: Query<'_, '_, (&Transform, &Look), Without<Figure>>,
+        roots: Query<'_, '_, (&Transform, Option<&Look>, &Shape), Without<Figure>>,
         mut figures: Query<'_, '_, &mut Transform, With<Figure>>,
     ) {
         for (drawing, slots) in &units {
@@ -286,15 +337,16 @@ impl View {
                 .and_then(|target| index.get(target))
                 .and_then(|target| drawn.get(target).ok())
                 .and_then(|target| roots.get(target.root()).ok())
-                .map(|(transform, _)| transform.translation);
-            let Ok((root, look)) = roots.get(drawing.root()) else {
+                .map(|(transform, _, _)| transform.translation);
+            // A unit its models draw has no figure to lean.
+            let Ok((root, Some(look), shape)) = roots.get(drawing.root()) else {
                 continue;
             };
             let Ok(mut figure) = figures.get_mut(look.figure) else {
                 continue;
             };
             let lean = aim.map_or(Quat::IDENTITY, |to| lean_toward(root.translation, to));
-            let rotation = lean * look.shape.footing.upright();
+            let rotation = lean * shape.footing.upright();
             if figure.rotation != rotation {
                 figure.rotation = rotation;
             }
@@ -309,7 +361,7 @@ impl View {
         died: Query<'_, '_, Entity, (Added<Dead>, Allow<Unpredicted>)>,
         mut revived: RemovedComponents<'_, '_, Dead>,
         units: Query<'_, '_, (&Drawing, Has<Dead>), Allow<Unpredicted>>,
-        roots: Query<'_, '_, &Look>,
+        roots: Query<'_, '_, (&Look, &Shape)>,
         mut figures: Query<
             '_,
             '_,
@@ -326,13 +378,13 @@ impl View {
             let Ok((drawing, dead)) = units.get(unit) else {
                 continue;
             };
-            let Ok(look) = roots.get(drawing.root()) else {
+            let Ok((look, &shape)) = roots.get(drawing.root()) else {
                 continue;
             };
             let Ok((mut material, mut transform)) = figures.get_mut(look.figure) else {
                 continue;
             };
-            let pose = look.pose(dead, &palette.dead);
+            let pose = look.pose(shape, dead, &palette.dead);
             *material = pose.material;
             *transform = pose.transform;
         }
@@ -351,10 +403,15 @@ impl View {
     /// Gives each predicted unit's drawing the unit's place after the tick, in every tick the
     /// client runs, a rollback's included, so the last two ticks it draws between are the ones
     /// that hold now.
-    fn step(units: Query<'_, '_, (&Position, &Drawing)>, mut roots: Query<'_, '_, &mut Glide>) {
+    fn step(
+        units: Query<'_, '_, (&Position, &Drawing)>,
+        data: Option<Res<'_, ClientData>>,
+        mut roots: Query<'_, '_, &mut Glide>,
+    ) {
+        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
         for (&pos, drawing) in &units {
             if let Ok(mut glide) = roots.get_mut(drawing.root()) {
-                glide.tick(ground(pos));
+                glide.tick(ground(pos, heights));
             }
         }
     }
@@ -363,11 +420,13 @@ impl View {
     fn follow(
         time: Res<'_, Time>,
         units: MovedUnits<'_, '_>,
+        data: Option<Res<'_, ClientData>>,
         mut roots: Query<'_, '_, (&Transform, &mut Glide)>,
     ) {
+        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
         for (&pos, drawing) in &units {
             if let Ok((transform, mut glide)) = roots.get_mut(drawing.root()) {
-                glide.head(transform.translation, ground(pos), time.elapsed());
+                glide.head(transform.translation, ground(pos, heights), time.elapsed());
             }
         }
     }
@@ -439,10 +498,13 @@ fn lean_toward(from: Vec3, to: Vec3) -> Quat {
     )
 }
 
-/// A sim place on the ground plane, in the renderer's floats.
-fn ground(pos: Position) -> Vec3 {
+/// A sim place in the renderer's floats: its height above the ground, which `heights` gives
+/// beneath it, or 0 on a map with none.
+fn ground(pos: Position, heights: Option<&GroundHeights>) -> Vec3 {
     let at = pos.get();
-    Vec3::new(at.x.float(), 0.0, at.z.float())
+    let (x, z) = (at.x.float(), at.z.float());
+    let beneath = heights.map_or(0.0, |heights| heights.at(x, z));
+    Vec3::new(x, beneath + at.y.float(), z)
 }
 
 #[cfg(test)]

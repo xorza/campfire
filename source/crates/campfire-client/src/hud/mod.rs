@@ -30,7 +30,7 @@ use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind};
 use crate::hud::ring::Ring;
 use crate::view::drawing::Drawing;
-use crate::view::look::Look;
+use crate::view::look::Shape;
 use crate::view::{CAMERA, ViewSystems};
 
 mod gauge;
@@ -217,7 +217,7 @@ impl Hud {
         state: Option<Res<'_, JoinState>>,
         players: PlayerUnits<'_, '_>,
         drawn: Ungauged<'_, '_>,
-        looks: Query<'_, '_, &Look>,
+        shapes: Query<'_, '_, &Shape>,
         mut scratch: Local<'_, GaugeScratch>,
         mut commands: Commands<'_, '_>,
     ) {
@@ -235,7 +235,7 @@ impl Hud {
         for (unit, drawing, team, pools, slots) in &drawn {
             commands.entity(unit).insert(Gauged);
             // A projectile's drawing has no look, and no gauges.
-            let Ok(look) = looks.get(drawing.root()) else {
+            let Ok(shape) = shapes.get(drawing.root()) else {
                 continue;
             };
             let mine = Some(unit) == avatar;
@@ -290,7 +290,7 @@ impl Hud {
                     }));
                 }
             }
-            let top = Vec3::Y * (look.height() + ABOVE);
+            let top = Vec3::Y * (shape.height() + ABOVE);
             for &kind in &*kinds {
                 let layout = kind.layout();
                 let back = commands
@@ -467,7 +467,7 @@ impl Hud {
         players: PlayerUnits<'_, '_>,
         own: Query<'_, '_, &ActionSlots>,
         units: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
-        looks: Query<'_, '_, &Look>,
+        shapes: Query<'_, '_, &Shape>,
         mut marked: Local<'_, Option<Marked>>,
         mut commands: Commands<'_, '_>,
     ) {
@@ -479,21 +479,21 @@ impl Hud {
             .and_then(ActionSlots::attack_target)
             .and_then(|target| index.get(target))
             .and_then(|target| units.get(target).ok())
-            .and_then(|drawing| Some((drawing.root(), looks.get(drawing.root()).ok()?)));
+            .and_then(|drawing| Some((drawing.root(), shapes.get(drawing.root()).ok()?)));
         if marked.map(|marked| marked.root) == target.map(|(root, _)| root) {
             return;
         }
         if let Some(old) = marked.take() {
             commands.entity(old.ring).try_despawn();
         }
-        if let Some((root, look)) = target {
+        if let Some((root, shape)) = target {
             let ring = commands
                 .spawn((
                     Mesh3d(palette.ring.clone()),
                     MeshMaterial3d(palette.target.clone()),
                     Transform::from_translation(Vec3::Y * 0.04)
                         .with_rotation(Quat::from_rotation_x(-FRAC_PI_2))
-                        .with_scale(Vec3::splat(2.0 * look.radius())),
+                        .with_scale(Vec3::splat(2.0 * shape.reach())),
                     ChildOf(root),
                 ))
                 .id();

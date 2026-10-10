@@ -133,7 +133,7 @@ impl ModeMap {
                 unit_type: of_type,
                 team: team(&unit.team)?,
                 path,
-                pos: point(&unit.pos)?,
+                pos: map.placed_at(&unit.pos, unit.height)?,
                 angle: unit.angle,
             });
         }

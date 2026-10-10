@@ -148,7 +148,7 @@ mod tests {
             params: BTreeMap::new(),
             state: BTreeMap::new(),
         };
-        let tower = types.load(TypeScope::Mode, "tower", &tower);
+        let tower = types.load(TypeScope::Mode, 0, "tower", &tower);
         let data = |blocks: &[Block], detects, immune: &[&str]| TagData {
             blocks: blocks.to_vec(),
             hidden: false,
@@ -197,7 +197,7 @@ mod tests {
             panic::catch_unwind(AssertUnwindSafe(|| late(&mut types))).is_err()
         };
         assert!(fails(&mut |types| {
-            types.load(TypeScope::Mode, "late", &UnitTypeData::default());
+            types.load(TypeScope::Mode, 0, "late", &UnitTypeData::default());
         }));
         assert!(fails(&mut |types| types.give_tag(tower, stunned)));
         assert!(fails(&mut |types| drop(types.tag_book(&data))));

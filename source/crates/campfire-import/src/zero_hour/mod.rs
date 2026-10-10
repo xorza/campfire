@@ -277,10 +277,11 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     use super::*;
+    use crate::texture::internals::textures;
     use crate::zero_hour::big_archive::internals::big;
     use crate::zero_hour::error::VersionDifference;
     use crate::zero_hour::game_version::ArchiveHash;
-    use crate::zero_hour::install::internals::{fixture, packed_map, textures};
+    use crate::zero_hour::install::internals::{fixture, packed_map};
     use crate::zero_hour::map_file::internals::map;
     use campfire_capabilities::DeclaredName;
 

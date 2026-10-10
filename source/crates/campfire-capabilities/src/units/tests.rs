@@ -521,6 +521,18 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     assert_eq!(types.named(TypeScope::Package(1), "grunt"), Some(theirs));
     assert_eq!(types.named(TypeScope::Package(2), "grunt"), None);
     assert_ne!(theirs, first);
+    // Each type's origin: its package and its name there.
+    let origins = types.origins();
+    let origin = |unit_type| {
+        let origin = origins.of(unit_type);
+        (origin.package, &*origin.name)
+    };
+    assert_eq!(
+        [first, second, theirs].map(origin),
+        [(0, "grunt"), (0, "tower"), (1, "grunt")]
+    );
+    let every: Vec<UnitType> = origins.iter().map(|(unit_type, _)| unit_type).collect();
+    assert_eq!(every, [first, second, theirs]);
 }
 
 #[test]

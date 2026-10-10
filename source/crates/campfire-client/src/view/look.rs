@@ -11,19 +11,19 @@ use campfire_capabilities::Body;
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
 
-/// On a unit's drawing root: the figure that draws the unit, the root's child, the material it
-/// wears while the unit lives, and its shape. A dead unit lies on the ground, gray.
+/// On the drawing root of a unit drawn as its shape: the figure that draws it, the root's child,
+/// and the material it wears while the unit lives. A dead unit lies on the ground, gray.
 #[derive(Component, Debug)]
 pub(crate) struct Look {
     pub(crate) figure: Entity,
     pub(crate) alive: Handle<StandardMaterial>,
-    pub(crate) shape: Shape,
 }
 
-/// The shape of a unit: an avatar is under a player's control, a structure does not walk. A
-/// capsule of `radius` and `length`, or, for a box body, a cuboid as tall standing on its
-/// `footing`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// On every unit's drawing root, the shape of the unit, which the pointer picks it by and the HUD
+/// stands over, whether its figure or its models draw it: an avatar is under a player's control,
+/// a structure does not walk. A capsule of `radius` and `length`, or, for a box body, a cuboid as
+/// tall standing on its `footing`.
+#[derive(Component, Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Shape {
     pub(crate) radius: f32,
     pub(crate) length: f32,
@@ -54,31 +54,20 @@ const STRUCTURE: Shape = Shape {
 };
 
 impl Look {
-    /// How far the drawing reaches from its axis: the radius of the least circle that holds what
-    /// it covers of the ground.
-    pub(crate) fn radius(&self) -> f32 {
-        self.shape.footing.bound()
-    }
-
-    /// What the drawing covers of the ground.
-    pub(crate) const fn footing(&self) -> Footing {
-        self.shape.footing
-    }
-
-    /// How tall the drawing stands while its unit lives.
-    pub(crate) fn height(&self) -> f32 {
-        self.shape.height()
-    }
-
-    /// The figure's material and its pose over the root for a unit that is `dead` or alive,
-    /// `dead_material` the one a dead unit wears. A capsule lies down when its unit dies; a box
-    /// stands where it stood, as a ruin.
-    pub(crate) fn pose(&self, dead: bool, dead_material: &Handle<StandardMaterial>) -> Pose {
+    /// The figure's material and its pose over the root for a unit of `shape` that is `dead` or
+    /// alive, `dead_material` the one a dead unit wears. A capsule lies down when its unit dies; a
+    /// box stands where it stood, as a ruin.
+    pub(crate) fn pose(
+        &self,
+        shape: Shape,
+        dead: bool,
+        dead_material: &Handle<StandardMaterial>,
+    ) -> Pose {
         let Shape {
             radius,
             length,
             footing,
-        } = self.shape;
+        } = shape;
         let material = if dead { dead_material } else { &self.alive };
         let transform = if dead && matches!(footing, Footing::Circle(_)) {
             Transform::from_translation(Vec3::Y * radius)
@@ -129,9 +118,15 @@ impl Shape {
         }
     }
 
-    /// How tall it stands.
+    /// How tall it stands while its unit lives.
     pub(crate) fn height(&self) -> f32 {
         self.length + 2.0 * self.radius
+    }
+
+    /// How far it reaches from its axis: the radius of the least circle that holds what it covers
+    /// of the ground.
+    pub(crate) fn reach(&self) -> f32 {
+        self.footing.bound()
     }
 }
 
@@ -165,12 +160,11 @@ mod tests {
         assert_eq!(boxed.footing, expected);
         assert_eq!(boxed.height(), STRUCTURE.height());
         let figure = World::new().spawn_empty().id();
-        let look = |shape| Look {
+        let look = Look {
             figure,
             alive: Handle::default(),
-            shape,
         };
-        assert!((look(boxed).radius() - 5.0_f32.sqrt()).abs() < 1e-6);
+        assert!((boxed.reach() - 5.0_f32.sqrt()).abs() < 1e-6);
         assert!(
             Quat::from_rotation_y(-FRAC_PI_2)
                 .mul_vec3(Vec3::X)
@@ -182,16 +176,16 @@ mod tests {
         // The avatar's capsule stands its half length over its radius, 0.75 + 0.5; dead, it lies
         // on its side, its axis its radius over the ground. The box stands as it stood.
         let dead = Handle::default();
-        let standing = look(avatar).pose(false, &dead).transform;
-        let lying = look(avatar).pose(true, &dead).transform;
+        let standing = look.pose(avatar, false, &dead).transform;
+        let lying = look.pose(avatar, true, &dead).transform;
         assert_eq!(standing.translation, Vec3::Y * 1.25);
         assert_eq!(
             (lying.translation, lying.rotation),
             (Vec3::Y * 0.75, Quat::from_rotation_z(FRAC_PI_2))
         );
         assert_eq!(
-            look(boxed).pose(true, &dead).transform,
-            look(boxed).pose(false, &dead).transform
+            look.pose(boxed, true, &dead).transform,
+            look.pose(boxed, false, &dead).transform
         );
     }
 }

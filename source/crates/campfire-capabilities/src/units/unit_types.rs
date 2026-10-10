@@ -7,6 +7,7 @@ use crate::units::tag_book::TagBook;
 use crate::units::tag_data::TagData;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
+use crate::units::type_origins::{TypeOrigin, TypeOrigins};
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
@@ -30,6 +31,8 @@ pub(crate) struct UnitTypes {
     type_names: NameList,
     /// Every type, sorted by scope, then name.
     by_name: Vec<UnitType>,
+    /// Each type's package and its name there, by type.
+    origins: TypeOrigins,
     /// Each type's params, one run per type, in the order of the types.
     params: NameTable<Scalar>,
     /// Each type's script state fields, one run per type, in the order of the types.
@@ -51,6 +54,7 @@ impl Default for UnitTypes {
             staged_tags: Some(Vec::new()),
             type_names: NameList::default(),
             by_name: Vec::new(),
+            origins: TypeOrigins::default(),
             params: NameTable::default(),
             states: NameTable::default(),
         }
@@ -58,10 +62,16 @@ impl Default for UnitTypes {
 }
 
 impl UnitTypes {
-    /// Loads `data` as the type `name` of `scope`, which the package load checked names no other
-    /// type there, within the most types a match loads: its tags join the match's, and its params
-    /// are kept for `unit.params`.
-    pub(crate) fn load(&mut self, scope: TypeScope, name: &str, data: &UnitTypeData) -> UnitType {
+    /// Loads `data` as the type `name` of `scope`, declared by the package at `package`, which the
+    /// package load checked names no other type there, within the most types a match loads: its
+    /// tags join the match's, and its params are kept for `unit.params`.
+    pub(crate) fn load(
+        &mut self,
+        scope: TypeScope,
+        package: u16,
+        name: &str,
+        data: &UnitTypeData,
+    ) -> UnitType {
         let index =
             u16::try_from(self.types.len()).expect("the load keeps the unit types within u16");
         let Err(at) = self.find(scope, name) else {
@@ -87,6 +97,10 @@ impl UnitTypes {
         self.types.push(TypeEntry { scope });
         self.staged_mut().push(tags);
         self.type_names.push(name);
+        self.origins.push(TypeOrigin {
+            package,
+            name: name.into(),
+        });
         UnitType::new(index)
     }
 
@@ -137,6 +151,11 @@ impl UnitTypes {
                 .cmp(&scope)
                 .then_with(|| held.cmp(name))
         })
+    }
+
+    /// Each type's package and its name there, as the client finds its look.
+    pub(crate) fn origins(&self) -> TypeOrigins {
+        self.origins.clone()
     }
 
     /// Every type's name, by type.

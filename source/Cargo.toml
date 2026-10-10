@@ -43,6 +43,9 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "bevy_camera",
     "bevy_light",
     "bevy_color",
+    "bevy_gltf",
+    "ktx2",
+    "png",
 ] }
 bevy_app = "=0.19.1"
 # The version Lightyear builds, for the component-scope visibility filter that Lightyear uses but

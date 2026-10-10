@@ -316,10 +316,10 @@ impl<'a> BookBuilder<'a> {
                     TypeScope::of_package(index)
                 }
             };
-            types.load(scope, name.as_str(), &file.core);
+            types.load(scope, index, name.as_str(), &file.core);
         }
         if let BookKind::Avatar(unit) = package.kind {
-            types.load(TypeScope::Mode, package.name, &unit.core);
+            types.load(TypeScope::Mode, index, package.name, &unit.core);
         }
     }
 

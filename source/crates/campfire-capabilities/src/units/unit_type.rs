@@ -16,7 +16,8 @@ impl UnitType {
         UnitType(index)
     }
 
-    pub(crate) const fn index(self) -> usize {
+    /// Its place in the match's unit types, from 0.
+    pub const fn index(self) -> usize {
         self.0 as usize
     }
 }

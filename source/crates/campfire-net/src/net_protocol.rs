@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
-    ActionSlots, Area, Body, CapabilitySet, Dead, Destination, ForcedMove, Level, MatchEnd,
+    ActionSlots, Area, Body, CapabilitySet, Dead, Destination, Facing, ForcedMove, Level, MatchEnd,
     ModifierClocks, Modifiers, MoveStep, Owner, Points, Pools, Progress, Projectile, Relations,
     Respawn, Route, SpawnPoint, Team, UnitType,
 };
@@ -175,6 +175,8 @@ impl Plugin for NetProtocol {
         app.component::<Team>()
             .replicate_once_with(WireCodec::component());
         app.component::<SpawnPoint>()
+            .replicate_once_with(WireCodec::component());
+        app.component::<Facing>()
             .replicate_once_with(WireCodec::component());
         app.component::<Body>()
             .replicate_once_with(WireCodec::component());

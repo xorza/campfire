@@ -102,6 +102,7 @@ use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
+use crate::units::facing::Facing;
 use crate::units::layer::Layer;
 use crate::units::modifier_id::ModifierId;
 use crate::units::move_step::MoveStep;

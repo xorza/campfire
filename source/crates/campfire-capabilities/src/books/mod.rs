@@ -93,6 +93,7 @@ impl Books {
         let states = parts.types.state_book();
         UnitsColumn::share(&view, states.clone());
         world.insert_resource(states);
+        world.insert_resource(parts.types.origins());
         view.set_types(parts.types);
         StatsColumn::share_modifiers(&view, parts.modifiers.clone());
         let params = ParamBook::new(parts.params);

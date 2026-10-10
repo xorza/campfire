@@ -7,17 +7,17 @@ use serde::de::DeserializeOwned;
 use crate::error::ContentError;
 use crate::file_index::FileIndex;
 use crate::package_dir::PackageDir;
+use crate::package_reader::PackageReader;
 
-/// A package as a load reads it: its index, and the files a load reads, read once into memory
-/// and checked against their rows, each file's bytes by its path in the package. A load parses
-/// only these bytes, so what it parses is what the fingerprint names; any other file it reads on
-/// demand, checked the same way.
+/// A package as a load reads it: the files a load reads, read once into memory and checked
+/// against their rows, each file's bytes by its path in the package, and its reader. A load
+/// parses only these bytes, so what it parses is what the fingerprint names; any other file it
+/// reads on demand through the reader, checked the same way.
 #[derive(Debug, Clone)]
 pub struct PackageFiles {
     /// In the order of their paths.
     files: BTreeMap<PackagePath, Vec<u8>>,
-    index: FileIndex,
-    dir: PackageDir,
+    reader: PackageReader,
 }
 
 impl PackageFiles {
@@ -27,11 +27,19 @@ impl PackageFiles {
         index: FileIndex,
         dir: PackageDir,
     ) -> PackageFiles {
-        PackageFiles { files, index, dir }
+        PackageFiles {
+            files,
+            reader: PackageReader::new(index, dir),
+        }
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
-        self.index.fingerprint()
+        self.reader.fingerprint()
+    }
+
+    /// Its reader of any file on demand, which its package keeps.
+    pub const fn reader(&self) -> &PackageReader {
+        &self.reader
     }
 
     /// The files under the directory `dir` that a load reads, in the order of their paths.
@@ -70,7 +78,7 @@ impl PackageFiles {
     }
 
     pub(crate) const fn index(&self) -> &FileIndex {
-        &self.index
+        self.reader.index()
     }
 
     fn text<'a>(path: &PackagePath, bytes: &'a [u8]) -> Result<&'a str, ContentError> {
@@ -80,13 +88,8 @@ impl PackageFiles {
         })
     }
 
-    /// The bytes of any file of the package, as an asset is read when it is drawn: read now, and
-    /// checked against its row. A path the index does not list is missing.
+    /// The bytes of any file of the package, read now and checked against its row.
     pub fn read_file(&self, path: &PackagePath) -> Result<Vec<u8>, ContentError> {
-        let row = self
-            .index
-            .row(path)
-            .ok_or_else(|| ContentError::Missing { path: path.clone() })?;
-        self.dir.read_row(path, row)
+        self.reader.read_file(path)
     }
 }

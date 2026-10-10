@@ -99,7 +99,7 @@ impl<'a> DdsFile<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     /// A DDS of `four_cc` blocks, `width` by `height`, of `levels` mip levels whose bytes follow,
     /// with the mip count flag set.

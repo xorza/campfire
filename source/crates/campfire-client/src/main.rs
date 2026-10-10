@@ -25,6 +25,8 @@ use std::sync::Arc;
 
 use bevy::DefaultPlugins;
 use bevy::app::{App, PluginGroup, ScheduleRunnerPlugin, TaskPoolPlugin};
+use bevy::asset::AssetApp;
+use bevy::asset::io::AssetSourceBuilder;
 use bevy::log::LogPlugin;
 use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
@@ -51,6 +53,8 @@ use crate::link_watch::LinkWatch;
 use crate::local_keys::LocalKeys;
 use crate::orders::Orders;
 use crate::view::View;
+use crate::view::package_source::PackageSource;
+use crate::view::unit_models::UnitModels;
 
 mod args;
 mod bot;
@@ -116,7 +120,7 @@ fn main() -> ExitCode {
 
     let mut app = App::new();
     let local = matches!(connection, Connection::Local(_));
-    add_ends(&mut app, script, local.then_some(&pace));
+    add_ends(&mut app, script, local.then_some(&pace), &packages);
     app.add_plugins((
         SimClient {
             main_key,
@@ -140,8 +144,13 @@ fn main() -> ExitCode {
 }
 
 /// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD and the
-/// orders, with the keys of a local match that `pace` follows.
-fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>) {
+/// orders, with the keys of a local match that `pace` follows, and the models of `packages`.
+fn add_ends(
+    app: &mut App,
+    script: Option<OrderScript>,
+    pace: Option<&Arc<Pace>>,
+    packages: &Arc<ModePackages>,
+) {
     if let Some(script) = script {
         app.add_plugins((
             TaskPoolPlugin::default(),
@@ -157,6 +166,12 @@ fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>
             pace: Arc::clone(pace),
         });
     }
+    // Bevy builds its asset sources as its asset plugin is added, so the packages' goes first.
+    let source = Arc::clone(packages);
+    app.register_asset_source(
+        PackageSource::NAME,
+        AssetSourceBuilder::new(move || Box::new(PackageSource::of(&source))),
+    );
     app.add_plugins((
         DefaultPlugins
             .set(WindowPlugin {
@@ -168,6 +183,9 @@ fn add_ends(app: &mut App, script: Option<OrderScript>, pace: Option<&Arc<Pace>>
             })
             .disable::<LogPlugin>(),
         View,
+        UnitModels {
+            packages: Arc::clone(packages),
+        },
         Hud,
         Orders,
     ));

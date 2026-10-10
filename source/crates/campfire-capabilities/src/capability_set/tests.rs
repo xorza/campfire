@@ -532,6 +532,7 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
             "sim.tick",
             "units.body",
             "units.dead",
+            "units.facing",
             "units.forced_move",
             "units.lifespan",
             "units.move_step",

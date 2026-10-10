@@ -292,8 +292,7 @@ impl Archive {
 pub(crate) mod internals {
     use campfire_store::Scratch;
 
-    use crate::texture::dds_file::internals::dds;
-    use crate::texture::tga_file::internals::tga;
+    use crate::texture::internals::textures;
     use crate::zero_hour::big_archive::internals::big;
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::model_import::internals::{nothing_drawn, rock, tank};
@@ -305,14 +304,6 @@ pub(crate) mod internals {
         let plain = map(8);
         let len = u32::try_from(plain.len()).unwrap().to_le_bytes();
         [&b"EAR\0"[..], &len, &literal(&plain)].concat()
-    }
-
-    /// A DXT1 texture of 8 × 8 texels and its full chain, and a TGA of 2 × 1.
-    pub(crate) fn textures() -> [Vec<u8>; 2] {
-        [
-            dds(*b"DXT1", 8, 8, 4, &[7; 32 + 8 + 8 + 8]),
-            tga(2, 1, 32, 0, &[1, 2, 3, 4, 5, 6, 7, 8]),
-        ]
     }
 
     /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture

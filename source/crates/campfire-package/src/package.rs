@@ -7,6 +7,7 @@ use crate::error::load_problem::LoadProblem;
 use crate::error::script_problem::ScriptProblem;
 use crate::files::package_header::PackageHeader;
 use crate::package_files::PackageFiles;
+use crate::package_reader::PackageReader;
 use crate::package_text::PackageText;
 use crate::script_facts::{Function, ScriptFacts};
 
@@ -22,6 +23,8 @@ pub struct Package {
     /// Every file under `scripts/`, by path.
     pub scripts: Vec<Script>,
     pub text: PackageText,
+    /// Each of its files, read on demand, as its client reads its assets.
+    pub files: PackageReader,
 }
 
 #[derive(Debug)]
@@ -72,6 +75,7 @@ impl Package {
             fingerprint: files.fingerprint(),
             scripts,
             text,
+            files: files.reader().clone(),
         })
     }
 

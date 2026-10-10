@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
@@ -188,6 +188,22 @@ impl MapData {
         }
     }
 
+    /// Where a placed unit at `point` stands: on a planar map `height` above the ground, as a
+    /// planar map measures on the ground plane and keeps a position's height for its client; an
+    /// error for a height on a spatial map, whose points hold their own, and for one past the
+    /// world's bound.
+    pub(crate) fn placed_at(&self, point: &MapPoint, height: Num) -> Result<Position, ModeError> {
+        let pos = self.point(point)?;
+        match self.metric {
+            _ if height == Num::ZERO => Ok(pos),
+            Metric::Spatial => Err(ModeError::SpatialHeight),
+            Metric::Planar => {
+                let at = pos.get();
+                Position::new(Vec3::new(at.x, height, at.z)).ok_or(ModeError::OutOfBounds)
+            }
+        }
+    }
+
     fn grid_of(&self, cell: Option<Scalar>) -> Result<Option<Grid>, ModeError> {
         let Some(cell) = cell else {
             return Ok(None);
@@ -270,7 +286,6 @@ pub(crate) mod internals {
 mod tests {
 
     use campfire_common::Toml;
-    use campfire_math::Vec3;
 
     use super::*;
     use crate::geometry::polygon::error::PolygonError;

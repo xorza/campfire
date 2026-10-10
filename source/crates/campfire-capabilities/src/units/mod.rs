@@ -15,6 +15,7 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::facing::Facing;
 use crate::units::forced_move::ForcedMove;
 use crate::units::lifespan::Lifespan;
 use crate::units::move_step::MoveStep;
@@ -42,6 +43,7 @@ pub(crate) mod by_type;
 pub(crate) mod collision_data;
 pub(crate) mod dead;
 pub(crate) mod engine_tag;
+pub(crate) mod facing;
 pub(crate) mod filter;
 pub(crate) mod forced_move;
 pub(crate) mod hit_handle;
@@ -78,6 +80,7 @@ pub(crate) mod team;
 pub(crate) mod team_set;
 pub(crate) mod teams;
 pub(crate) mod track_id;
+pub(crate) mod type_origins;
 pub(crate) mod type_scope;
 pub(crate) mod unit;
 pub(crate) mod unit_row;
@@ -125,6 +128,7 @@ impl Units {
         let view = View::new(rate);
         registry.register_component::<Body>();
         registry.register_component::<Dead>();
+        registry.register_component::<Facing>();
         registry.register_component::<ForcedMove>();
         registry.register_component::<Lifespan>();
         registry.register_component::<MoveStep>();
@@ -263,7 +267,12 @@ pub(crate) mod internals {
             data: &UnitTypeData,
         ) -> UnitType {
             let view = world.non_send::<View>().clone();
-            let unit_type = view.types_mut().load(scope, name, data);
+            // A package's own scope is that package's; the mode's, the mode package's.
+            let package = match scope {
+                TypeScope::Mode => 0,
+                TypeScope::Package(package) => package,
+            };
+            let unit_type = view.types_mut().load(scope, package, name, data);
             view.share_type_names();
             let states = view.types_mut().state_book();
             UnitsColumn::share(&view, states.clone());
