@@ -54,6 +54,7 @@ The issue log is `.notes/ISSUES.md`, one file for every open problem of the proj
 
 ## Code
 
+- **Native only.** Campfire runs natively on Linux, macOS and Windows: no browser and no WebAssembly. Code, features, dependencies and design choices that exist only for a browser or a WebAssembly target are dropped, and the simpler native form takes their place.
 - **No data in strings.** A value from a fixed set is an enum, a value with rules is a checked newtype, and an error is an enum of cases. Text from data files, scripts, JSON or the network becomes these types where it enters. Strings stay only for human text and for names the outside format defines.
 - **All file I/O goes through `store`**, as [Storage](docs/design/02-engine-core.md#storage) says: every read, listing, check and write of a file, in production code, tests and checks alike. Production code uses its types; a test uses its internals for every file it makes or reads. No `std::fs`, no `Path::exists` and its kin, no `tempfile`, and no `expect` or `allow` of `clippy::disallowed_methods` or `clippy::disallowed_types` outside `store`: when `store` lacks what a caller needs, `store` gains it. A read names its bound, and no code asks whether a path exists: it reads or lists, and takes `Missing`.
 - **Game-bound code lives in a module named after its game**, `zero_hour`, in the crate whose interface it serves, so no reader takes it for a general system; nothing but the place that installs it depends on it ([Modules](docs/design/02-engine-core.md#modules)).
