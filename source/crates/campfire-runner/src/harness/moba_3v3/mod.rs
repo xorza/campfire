@@ -96,8 +96,10 @@ const FARM: u64 = 3200;
 const FARM_EVERY: usize = 40;
 const LEARN: u64 = 3220;
 const LEARN_EVERY: usize = 200;
-/// The tick the heroes walk home in, to shop in `Moba3v3::SHOP`.
-const RECALL: u64 = 13_400;
+/// The tick the heroes walk home in, to shop in `Moba3v3::SHOP`: after the learn of tick 12,020,
+/// the first after the last hero reaches level 6, in tick 11,858, as the showcase needs each
+/// hero's ultimate, which the 3v3's farm check asserts.
+const RECALL: u64 = 12_200;
 
 /// The orders of the 3v3's scripted players after the pick, to the farm. Players 0 to 2 hold
 /// Cinder, Gale and Husk, north; 3 to 5 Kensho, Rime and Veil, south. At 20 ticks a second the
@@ -177,8 +179,8 @@ impl Moba3v3 {
     pub const PLAYERS: u32 = 6;
     /// The tick the heroes shop in; the tick the showcase's first cast is sent in, each later
     /// one `CAST_EVERY` ticks after the one before; and how many casts it sends.
-    pub const SHOP: u64 = 13_900;
-    pub const SHOWCASE: u64 = 14_200;
+    pub const SHOP: u64 = 12_700;
+    pub const SHOWCASE: u64 = 13_000;
     pub const CAST_EVERY: u64 = 40;
     pub const CASTS: u64 = 37;
 

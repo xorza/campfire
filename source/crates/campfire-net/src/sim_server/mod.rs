@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use bevy_app::{
-    App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
+    App, FixedUpdate, Last, Plugin, PluginGroup, PostUpdate, RunFixedMainLoop,
+    RunFixedMainLoopSystems, Update,
 };
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
@@ -36,6 +37,7 @@ use lightyear::prelude::{
     PredictionTarget, Replicate, ReplicationSender, RoomAllocator, RoomPlugin,
     ServerMultiMessageSender, Unlink, UnlinkReason,
 };
+use lightyear::webtransport::server::WebTransportServerPlugin;
 use tracing::{debug, info, trace, trace_span};
 
 use crate::events::input_logged::InputLogged;
@@ -104,7 +106,10 @@ pub(crate) mod tick_hashes;
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
 /// its team sees. It hashes the state after a tick only while the world holds `TickHashes`. It
 /// adds Lightyear's server at the tick's length `tick`, the protocol, and the replication to each
-/// new link; its app adds its frame loop or clock, and its session.
+/// new link; its app adds its frame loop or clock, its session, and its transport. A server that
+/// takes WebTransport links adds `WebTransportServerPlugin`, once in its process: the plugin makes a
+/// tokio runtime in each app that adds it and never ends it, and an in-process server links by
+/// channels.
 #[derive(Debug)]
 pub struct SimServer {
     pub tick: Duration,
@@ -114,9 +119,13 @@ pub struct SimServer {
 
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ServerPlugins {
-            tick_duration: self.tick,
-        });
+        app.add_plugins(
+            ServerPlugins {
+                tick_duration: self.tick,
+            }
+            .build()
+            .disable::<WebTransportServerPlugin>(),
+        );
         app.add_plugins((
             NetProtocol {
                 capabilities: self.capabilities,
@@ -486,7 +495,8 @@ impl SimServer {
 
 /// Logs each packet received in this frame, before the next tick runs, and tells its player where
 /// each of its inputs takes effect. A refused packet ends its link: a client that follows the
-/// rules sends none, and its chain no longer matches the log's.
+/// rules sends none, and its chain no longer matches the log's. The links go in the order of
+/// their slots, as the log's order of one frame's inputs must not follow the query's.
 fn record_inputs(
     mut commands: Commands<'_, '_>,
     mut links: Query<
@@ -502,10 +512,15 @@ fn record_inputs(
     mut session: ResMut<'_, Session>,
     mut frame: ResMut<'_, FrameStart>,
     mut applied: Local<'_, Vec<Applied>>,
+    mut order: Local<'_, Vec<(PlayerSlot, Entity)>>,
 ) {
     frame.0 = session.log().next_tick();
     ServerFrame { tick: frame.0 }.log();
-    for (entity, &held, mut receiver, mut acks) in &mut links {
+    order.extend(links.iter().map(|(entity, link, ..)| (link.slot(), entity)));
+    order.sort_unstable();
+    for (_, entity) in order.drain(..) {
+        let (entity, &held, mut receiver, mut acks) =
+            links.get_mut(entity).expect("a link the query just gave");
         let mut link = held;
         for message in receiver.receive() {
             if link.refused() {

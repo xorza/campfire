@@ -31,9 +31,13 @@ impl AppendFile for FailingFile {
     }
 }
 
-/// A file whose each sync waits for the test's word.
+/// A file whose each sync tells `entered` it began, after the writer started its clock, unless the
+/// test stopped listening, then waits for the test's word on `gate`.
 #[derive(Debug)]
-struct GatedFile(mpsc::Receiver<()>);
+struct GatedFile {
+    gate: mpsc::Receiver<()>,
+    entered: mpsc::Sender<()>,
+}
 
 impl AppendFile for GatedFile {
     fn append(&mut self, _: &[u8]) -> io::Result<()> {
@@ -41,7 +45,8 @@ impl AppendFile for GatedFile {
     }
 
     fn sync(&mut self) -> io::Result<()> {
-        self.0.recv().map_err(io::Error::other)
+        self.entered.send(()).unwrap_or(());
+        self.gate.recv().map_err(io::Error::other)
     }
 }
 
@@ -91,11 +96,13 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
     // at once takes microseconds, far below.
     let slow_after = Duration::from_millis(200);
     let (sync, gate) = mpsc::channel();
-    let writer = AppendWriter::start_slow_after("gated", GatedFile(gate), slow_after);
+    let (entered, in_sync) = mpsc::channel();
+    let writer = AppendWriter::start_slow_after("gated", GatedFile { gate, entered }, slow_after);
     let watch = writer.watch();
     assert!(watch.settled());
     writer.append(|out| out.extend_from_slice(b"held"));
     assert!(!watch.settled());
+    in_sync.recv().unwrap();
     sync.send(()).unwrap();
     while watch.durable() < 1 {
         thread::yield_now();
@@ -103,8 +110,10 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
     assert!(watch.settled());
     assert_eq!(watch.take_slow_sync(), None);
 
-    // Held 300 ms: slow, by at least that, and taken once.
+    // Held 300 ms from when the sync began, after the writer's clock started: slow, by at least
+    // that, and taken once.
     writer.append(|out| out.extend_from_slice(b"slow"));
+    in_sync.recv().unwrap();
     let held = Duration::from_millis(300);
     thread::sleep(held);
     sync.send(()).unwrap();
@@ -124,12 +133,10 @@ fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
     let (returned, dropped) = mpsc::channel();
     let owner = thread::spawn(move || {
         let _returned = SendOnDrop(returned);
-        let writer = AppendWriter::start("held", GatedFile(gate));
+        let (entered, in_sync) = mpsc::channel();
+        let writer = AppendWriter::start("held", GatedFile { gate, entered });
         writer.append(|out| out.extend_from_slice(b"held"));
-        // Once the worker took the record, it waits in its sync.
-        while !writer.shared.lock().bytes.is_empty() {
-            thread::yield_now();
-        }
+        in_sync.recv().unwrap();
         // A record that panics as it is written poisons the lock the drop takes.
         writer.append(|_| panic!("the owner panics"));
     });

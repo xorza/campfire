@@ -5,7 +5,7 @@ use bevy_app::App;
 use campfire_capabilities::{Action, ActionSlots, Body, Dead, PoolId, Pools, SeenBy, Team};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_net::internals::{End, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
 use campfire_net::{OrderScript, TickHashes};
 use campfire_protocol::SessionLog;
 use campfire_runner::internals::HashTrail;
@@ -470,10 +470,11 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     // the server, past the max input lead, until Lightyear steps their timelines back. Each
     // player orders its hero on: the order waits until it is within the lead of the server, its
     // stamp never goes back past the last the log holds, and the server acknowledges the tick it
-    // applies in, so the client corrects while its timeline steps back, and then no more.
+    // applies in, so the client corrects while its timeline steps back, and then no more. Each
+    // target is its team's, on its own side of the lane, out of the enemy tower's reach.
     let order = |local: &mut InProcessMatch, targets: [Position; 2]| {
-        for (client, target) in targets.iter().enumerate() {
-            let Vec3 { x, z, .. } = target.get();
+        for (client, &team) in teams.iter().enumerate() {
+            let Vec3 { x, z, .. } = targets[team].get();
             local.order(client, Action::Move { x, z });
         }
     };
@@ -498,9 +499,9 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
             local.step();
         }
         assert_eq!([local.rollbacks(0), local.rollbacks(1)], settled);
-        for (index, (&id, &target)) in heroes.iter().zip(&targets).enumerate() {
+        for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
             let end = Hero {
-                position: target,
+                position: targets[team],
                 dead: false,
             };
             assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
@@ -543,4 +544,41 @@ fn a_cast_through_delayed_links() {
     // the runner stand in its way and goes round it, and corrects once to the server's straight
     // walk.
     assert_eq!(rollbacks, [1, 0]);
+}
+
+#[test]
+fn a_match_plays_the_same_however_the_server_lays_its_links_out() {
+    // Reversed, the clients connect in reverse, and the server's links lie in its tables the other
+    // way in every frame. Each player takes the same slot, so client 0, player 1's in reverse,
+    // plays the east, and the log of the first 100 ticks, whose two orders of tick 60 arrive in
+    // one frame, is the same.
+    let played = |links: LinkLayout| {
+        let setup = MatchSetup {
+            links,
+            ..MatchSetup::duo(LinkModel::PERFECT, InProcessMatch::SEED_CHAIN)
+        };
+        let mut local = InProcessMatch::new(setup);
+        local.start_match();
+        let teams = local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
+        while local.next_tick(End::Server) < 100 {
+            local.step();
+        }
+        let mut log = Vec::new();
+        local
+            .server()
+            .world()
+            .resource::<Session>()
+            .log()
+            .encode(&mut log);
+        (teams, log)
+    };
+    let (teams, log) = played(LinkLayout::InOrder);
+    let (reversed_teams, reversed_log) = played(LinkLayout::Reversed);
+    assert_eq!((teams, reversed_teams), ([0, 1], [1, 0]));
+    let differs = log.iter().zip(&reversed_log).position(|(a, b)| a != b);
+    assert_eq!(
+        (log.len(), differs),
+        (reversed_log.len(), None),
+        "the logs' lengths, and the first byte where they differ"
+    );
 }

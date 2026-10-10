@@ -1,8 +1,18 @@
+use std::mem;
+
 use bevy_ecs::world::World;
 use campfire_common::{Bytes32, StateHash};
 use campfire_sim::TypeHash;
 
 use crate::session::Session;
+
+/// The state hashes of a match after one tick: by state type, in the registry's order, and in
+/// total.
+#[derive(Debug, Clone, Copy)]
+pub struct MatchHashes<'a> {
+    pub types: &'a [TypeHash],
+    pub total: StateHash,
+}
 
 /// The state hashes of a match after each tick, in total and, when it was recorded from a world,
 /// by state type: what the replay of its log must give again.
@@ -27,26 +37,31 @@ impl HashTrail {
     /// Records the state of `world`, where a session runs, after a tick.
     pub fn record(&mut self, world: &World) {
         let session = world.resource::<Session>();
-        let total = session.state_hash_by_type(world, &mut self.scratch);
+        let mut types = mem::take(&mut self.scratch);
+        let total = session.state_hash_by_type(world, &mut types);
+        self.record_hashes(MatchHashes {
+            types: &types,
+            total,
+        });
+        self.scratch = types;
+    }
+
+    /// Records `hashes`, a tick's, which a `CopyCheck` of the tick gives.
+    pub fn record_hashes(&mut self, hashes: MatchHashes<'_>) {
         if self.totals.is_empty() {
-            self.names = self.scratch.iter().map(|hash| hash.name).collect();
+            self.names = hashes.types.iter().map(|hash| hash.name).collect();
         }
-        let names = self.scratch.iter().map(|hash| hash.name);
+        let names = hashes.types.iter().map(|hash| hash.name);
         assert!(
             names.eq(self.names.iter().copied()),
             "a match keeps its state types"
         );
-        self.types.extend(self.scratch.iter().map(|hash| hash.hash));
-        self.totals.push(total);
+        self.types.extend(hashes.types.iter().map(|hash| hash.hash));
+        self.totals.push(hashes.total);
     }
 
     pub fn totals(&self) -> &[StateHash] {
         &self.totals
-    }
-
-    /// The state hash of the tick it recorded last.
-    pub fn last(&self) -> StateHash {
-        *self.totals.last().expect("a trail that recorded a tick")
     }
 
     /// How `replayed` differs from it: the first tick of another hash, or another count of

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bevy_app::{App, First, FixedUpdate, Plugin, Update};
+use bevy_app::{App, First, FixedUpdate, Plugin, PluginGroup, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Add, Insert};
 use bevy_ecs::observer::On;
@@ -29,6 +29,7 @@ use lightyear::prelude::{
     PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
     UnlinkReason, Unlinked, is_in_rollback,
 };
+use lightyear::webtransport::client::WebTransportClientPlugin;
 use tracing::{debug, info};
 
 use crate::bot_script::BotScript;
@@ -77,7 +78,9 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
 /// session key, sends the player's orders as chained inputs, signed once per message with the
 /// session key, and runs the sim in every fixed tick, rollbacks included, with the player's own
 /// inputs, on the units the client predicts. It adds Lightyear's client at the server's tick, the
-/// protocol, and the prediction; its app adds its frame loop or clock, and its link.
+/// protocol, and the prediction; its app adds its frame loop or clock, and its link. A client that
+/// links by WebTransport adds `WebTransportClientPlugin`, once in its process, as `SimServer`
+/// says of the server's.
 #[derive(Debug)]
 pub struct SimClient {
     /// The player's Nostr identity, which signs the delegation.
@@ -159,9 +162,13 @@ impl SimClient {
 impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
         let rate = TickRate::new(self.server.tick_hz);
-        app.add_plugins(ClientPlugins {
-            tick_duration: rate.length(),
-        });
+        app.add_plugins(
+            ClientPlugins {
+                tick_duration: rate.length(),
+            }
+            .build()
+            .disable::<WebTransportClientPlugin>(),
+        );
         app.add_plugins(NetProtocol {
             capabilities: self.packages.manifest().capabilities,
         });

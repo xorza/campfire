@@ -142,6 +142,15 @@ pub(crate) type Unanswered = (Without<Joined>, Without<Refused>);
 /// The offered links still to answer.
 pub(crate) type JoinLinks<'w, 's> = Query<'w, 's, JoinLink, Unanswered>;
 
+/// The joins of one frame, checked: the links that answered, with their delegations, and the
+/// links refused, with why.
+#[derive(Debug, Default)]
+pub(crate) struct CheckedJoins {
+    /// In the order of the players' main keys, then their session keys.
+    pub(crate) answered: Vec<(Entity, Delegation)>,
+    pub(crate) refused: Vec<(Entity, JoinError)>,
+}
+
 impl Offering {
     /// The offering of a session of `terms` on the server of `setup`.
     pub(crate) fn new(terms: SessionTerms, setup: &ServerSetup) -> Offering {
@@ -211,6 +220,29 @@ impl Offering {
             )
             .map_err(JoinError::Connect)?;
         Ok(delegation)
+    }
+
+    /// Checks each of a frame's `joins`, each link's challenge and join, into `checked`. A query
+    /// gives the links in the order of its tables, which changes from run to run once Lightyear
+    /// iterates them in parallel, so the answered ones go in an order of what they sent.
+    pub(crate) fn check_all(
+        &self,
+        joins: impl Iterator<Item = (Entity, ConnectChallenge, Join)>,
+        checked: &mut CheckedJoins,
+    ) {
+        debug_assert!(checked.answered.is_empty() && checked.refused.is_empty());
+        for (link, challenge, join) in joins {
+            match self.check(challenge, &join) {
+                Ok(delegation) => checked.answered.push((link, delegation)),
+                Err(error) => checked.refused.push((link, error)),
+            }
+        }
+        checked.answered.sort_by_key(|(_, delegation)| {
+            (
+                *delegation.main_key(),
+                delegation.terms().session_key.serialize(),
+            )
+        });
     }
 }
 

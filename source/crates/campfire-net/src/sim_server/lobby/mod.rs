@@ -4,24 +4,24 @@ use std::sync::Arc;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Commands, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    ConnectChallenge, Delegation, SeedChain, SessionHeader, SessionLog, SessionTerms, SlotPlan,
-    SlotStart,
+    Delegation, SeedChain, SessionHeader, SessionLog, SessionTerms, SlotPlan, SlotStart,
 };
 use campfire_runner::{InputRules, SessionRules};
 use lightyear::prelude::{Connected, LocalTimeline};
 use tracing::info;
 
 use crate::events::join_refused::JoinRefused;
-use crate::join::Join;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::lobby::error::LobbyError;
-use crate::sim_server::offering::{JoinLinks, Joined, OfferLinks, Offering, Refused, Superseding};
+use crate::sim_server::offering::{
+    CheckedJoins, JoinLinks, Joined, OfferLinks, Offering, Refused, Superseding,
+};
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::SessionFiles;
@@ -30,8 +30,8 @@ use crate::sim_server::{SessionStart, SimServer};
 pub(crate) mod error;
 
 /// A session open for players to join: the server offers each connected client the terms and a
-/// challenge, checks each answer, gives the players slots in the order they joined, and starts
-/// the match when every slot is taken. A main key that joined again takes its seat back, and its
+/// challenge, checks each answer, gives the players slots in the order they joined, those of one
+/// frame in `Offering::check_all`'s order, and starts the match when every slot is taken. A main key that joined again takes its seat back, and its
 /// older link ends.
 #[derive(Resource, Debug)]
 pub struct Lobby {
@@ -152,17 +152,25 @@ impl Lobby {
 
     /// Takes each offered link's join: a player who answered their challenge joins in the next
     /// free slot, or the seat their main key held, whose older link ends; a refused link keeps
-    /// its reason.
+    /// its reason. The joins of one frame take their slots in `Offering::check_all`'s order.
     pub(crate) fn take_joins(
         mut lobby: ResMut<'_, Lobby>,
         mut links: JoinLinks<'_, '_>,
         mut commands: Commands<'_, '_>,
+        mut checked: Local<'_, CheckedJoins>,
     ) {
-        for (link, offered, mut receiver) in &mut links {
-            let Some(join) = receiver.receive().next() else {
-                continue;
-            };
-            match lobby.take(link, offered.challenge, &join) {
+        let joins = links
+            .iter_mut()
+            .filter_map(|(link, offered, mut receiver)| {
+                let join = receiver.receive().next()?;
+                Some((link, offered.challenge, join))
+            });
+        lobby.offering.check_all(joins, &mut checked);
+        for (link, error) in checked.refused.drain(..) {
+            Lobby::refuse(&mut commands, link, error);
+        }
+        for (link, delegation) in checked.answered.drain(..) {
+            match lobby.seat(link, delegation) {
                 Ok(older) => {
                     info!(
                         ?link,
@@ -176,16 +184,18 @@ impl Lobby {
                         Superseding::mark(&mut commands, older);
                     }
                 }
-                Err(error) => {
-                    JoinRefused {
-                        link: format!("{link:?}"),
-                        error: ErrorReport::of(&error).to_string(),
-                    }
-                    .log();
-                    commands.entity(link).insert(Refused(error));
-                }
+                Err(error) => Lobby::refuse(&mut commands, link, error),
             }
         }
+    }
+
+    fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
+        JoinRefused {
+            link: format!("{link:?}"),
+            error: ErrorReport::of(&error).to_string(),
+        }
+        .log();
+        commands.entity(link).insert(Refused(error));
     }
 
     /// Starts the match once every slot is taken, and closes the lobby: the door takes the
@@ -246,15 +256,9 @@ impl Lobby {
         });
     }
 
-    /// Seats the player of `link` if their `join` answers `challenge`: in the seat their main key
-    /// holds, whose older link it gives, or else in the next free slot.
-    fn take(
-        &mut self,
-        link: Entity,
-        challenge: ConnectChallenge,
-        join: &Join,
-    ) -> Result<Option<Entity>, JoinError> {
-        let delegation = self.offering.check(challenge, join)?;
+    /// Seats the player of `link`, whose `delegation` the offering checked: in the seat their main
+    /// key holds, whose older link it gives, or else in the next free slot.
+    fn seat(&mut self, link: Entity, delegation: Delegation) -> Result<Option<Entity>, JoinError> {
         let main_key = delegation.main_key();
         if let Some(seat) = self
             .joined

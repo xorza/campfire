@@ -24,6 +24,7 @@ use campfire_store::Worker;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{Link, LinkOf, Linked, PeerAddr};
+use lightyear::webtransport::server::WebTransportServerPlugin;
 use tracing::error;
 
 use crate::local::local_pace::LocalPace;
@@ -341,6 +342,10 @@ impl Runs {
                 tick: self.tick,
             },
         ));
+        assert!(
+            !app.is_plugin_added::<WebTransportServerPlugin>(),
+            "a local server links by channels: WebTransport's plugin leaves a tokio runtime for each app"
+        );
         app.insert_resource(LocalSession);
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));

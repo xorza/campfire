@@ -2,6 +2,7 @@ use std::fmt::Write as _;
 
 use campfire_sim::{StateCopy, TypeHash};
 
+use crate::harness::hash_trail::MatchHashes;
 use crate::runner::Runner;
 use crate::session::Session;
 
@@ -25,15 +26,19 @@ impl CopyCheck {
         }
     }
 
-    /// Brings the copy up to `runner`'s match, and panics naming each type whose hash differs.
-    pub fn check(&mut self, runner: &mut Runner) {
+    /// Brings the copy up to `runner`'s match, and panics naming each type whose hash differs;
+    /// the match's hashes, which a `HashTrail` and a `Golden` record, so a tick hashes it once.
+    pub fn check(&mut self, runner: &mut Runner) -> MatchHashes<'_> {
         runner.follow(&mut self.copy);
         let world = runner.world();
         let session = world.resource::<Session>();
         session.state_hash_by_type(self.copy.world(), &mut self.copied);
-        session.state_hash_by_type(world, &mut self.own);
+        let total = session.state_hash_by_type(world, &mut self.own);
         if self.copied == self.own {
-            return;
+            return MatchHashes {
+                types: &self.own,
+                total,
+            };
         }
         let mut differ = String::new();
         for (copied, own) in self.copied.iter().zip(&self.own) {

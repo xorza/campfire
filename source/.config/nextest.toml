@@ -1,0 +1,30 @@
+[profile.default]
+# SLOW names a test past 1 s, the bound of AGENTS.md; in a full run the tests share the cores, so
+# the bound holds for a test alone, `--test-threads 1`. One that runs 5 s is stuck in a loop or a
+# wait, and nextest ends it, as libtest can end no test.
+slow-timeout = { period = "1s", terminate-after = 5 }
+
+# A mode's scripted match is the one test exempt from the bound of 1 s: it gathers every rule of
+# its mode into one run (design 02, One scripted match for each mode). Each sits in a module named
+# `scripted_match`, so its path shows the exemption, and a new mode's joins it with no change here.
+[[profile.default.overrides]]
+filter = 'test(/(^|::)scripted_match::/)'
+slow-timeout = { period = "15s", terminate-after = 4 }
+
+# A bench case runs once, in criterion's test mode, as it measures: a whole match for each `worst`
+# and `mean` case, its fixture made again in its own process. It keeps no bound of 1 s, and ends at
+# 60 s (design 02, Benches).
+[[profile.default.overrides]]
+filter = 'kind(bench)'
+slow-timeout = { period = "15s", terminate-after = 4 }
+
+# CI's runners run the suite 3.5 to 6 times slower than an M5, and share their cores: the 3v3's
+# resume, 0.79 s alone on an M5, took 4.5 s on Windows. So a test ends at 30 s there, and a scripted
+# match at 3 min; a bench case keeps its 60 s.
+[profile.ci]
+fail-fast = false
+slow-timeout = { period = "1s", terminate-after = 30 }
+
+[[profile.ci.overrides]]
+filter = 'test(/(^|::)scripted_match::/)'
+slow-timeout = { period = "15s", terminate-after = 12 }

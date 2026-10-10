@@ -121,5 +121,5 @@ pub mod bench {
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::harness::in_process_match::link_model::LinkModel;
-    pub use crate::harness::in_process_match::{End, InProcessMatch, MatchSetup};
+    pub use crate::harness::in_process_match::{End, InProcessMatch, LinkLayout, MatchSetup};
 }

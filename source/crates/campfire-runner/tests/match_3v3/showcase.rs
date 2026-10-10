@@ -407,16 +407,19 @@ fn assert_consumables(moba: &Moba3v3, showcase: &Showcase, world: &World) {
             );
         }
     }
+    // Gale's ward at `x`: the unit there she owns, other than herself, as any hero may walk onto
+    // the spot.
     let north = Team::new(0);
+    let units = MatchUnits::of_world(world);
+    let gale = units.hero(1);
     let ward = |x: i64| {
         let at = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(-23))).unwrap();
-        let index = world.resource::<EntityIndex>();
-        let found = index
-            .iter()
-            .find(|&(_, entity)| world.get::<Position>(entity) == Some(&at));
-        let (_, entity) = found.expect("a ward");
-        let team = *world.get::<Team>(entity).unwrap();
-        (team, world.get::<Lifespan>(entity).map(|life| life.ends()))
+        let found = units.all().find(|(id, unit)| {
+            *id != gale && unit.get::<Position>() == Some(&at) && MatchUnits::owned_by(unit, 1)
+        });
+        let (_, unit) = found.expect("a ward");
+        let team = *unit.get::<Team>().unwrap();
+        (team, unit.get::<Lifespan>().map(|life| life.ends()))
     };
     let sight_ends = Tick::new(stamp(4) + 1800);
     assert_eq!(ward(0), (north, Some(sight_ends)));

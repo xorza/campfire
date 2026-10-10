@@ -46,7 +46,7 @@ pub mod internals {
     pub use crate::harness::fixed_match::FixedMatch;
     pub use crate::harness::fixed_session::FixedSession;
     pub use crate::harness::golden::Golden;
-    pub use crate::harness::hash_trail::{Difference, HashTrail};
+    pub use crate::harness::hash_trail::{Difference, HashTrail, MatchHashes};
     pub use crate::harness::match_units::MatchUnits;
     pub use crate::harness::moba_3v3::Moba3v3;
     pub use crate::harness::proving_match::ProvingMatch;

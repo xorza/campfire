@@ -14,6 +14,7 @@ use campfire_net::{
 use campfire_package::ModePackages;
 use lightyear::prelude::client::WebTransportClientIo;
 use lightyear::prelude::{LocalAddr, PeerAddr};
+use lightyear::webtransport::client::WebTransportClientPlugin;
 use tracing::error;
 
 use crate::args::{Args, Server};
@@ -70,6 +71,7 @@ impl Connection {
     pub(crate) fn link(&mut self, app: &mut App, client: Entity, pace: &Arc<Pace>, tick: Duration) {
         match self {
             Connection::Remote { pin, address } => {
+                app.add_plugins(WebTransportClientPlugin);
                 app.world_mut().entity_mut(client).insert((
                     WebTransportClientIo {
                         certificate_digest: pin.certificate.to_string(),

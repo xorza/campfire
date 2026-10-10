@@ -39,15 +39,20 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Nextest runs each test in its own process, and ends one that runs past its bound in
+      # source/.config/nextest.toml: libtest can end no test.
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: nextest@0.9.135
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test
-        run: cargo test --workspace --tests --all-features --locked
+        run: cargo nextest run --workspace --all-features --locked --profile ci
       - name: Benches
-        run: cargo test --workspace --all-features --locked --bench '*'
+        run: cargo nextest run --workspace --all-features --locked --profile ci --bench '*'
       # One build for the check and the processes it starts, which then share every feature: alone,
       # `cargo run -p campfire-lan-check` selects other features and compiles the workspace again.
       # The check builds the processes with the cargo `CARGO` names, as `cargo run` sets it, and

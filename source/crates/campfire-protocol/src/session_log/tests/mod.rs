@@ -1009,7 +1009,10 @@ fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
             Some(expected),
             "truncated to {at} bytes"
         );
-        for flip in [0x01, 0x80, 0xFF] {
+        // 0x01 keeps most bytes well-formed and reaches the checks of what they mean, and 0x80
+        // breaks their encoding; 0xFF reaches nothing the two do not, but a variant past the
+        // last, which `flawed_server_entries_are_refused` writes.
+        for flip in [0x01, 0x80] {
             let mut corrupt = bytes.clone();
             corrupt[at] ^= flip;
             assert!(
@@ -1040,13 +1043,17 @@ fn flawed_server_entries_are_refused() {
     };
     let tick = Tick::new(0);
     assert_eq!(with(kind_at, 2), Some(LogError::UnknownEntry));
-    assert!(matches!(
+    // A variant past the last, which no flip of
+    // `every_truncation_and_every_flip_of_a_log_file_is_refused` writes.
+    assert_eq!(
         with(kind_at + 1, 200),
         Some(LogError::ServerDecode {
-            tick: at,
-            error: ServerInputDecodeError::Malformed(_)
-        }) if at == tick
-    ));
+            tick,
+            error: ServerInputDecodeError::Malformed(BinaryError::Malformed(
+                postcard::Error::SerdeDeCustom
+            )),
+        })
+    );
     // `Connected` in place of `Disconnected`: the signature no longer holds.
     let bad_signature = LogError::Server {
         tick,
