@@ -11,7 +11,6 @@ use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy::ecs::resource::Resource;
-use bevy::ecs::schedule::common_conditions::resource_added;
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
@@ -164,6 +163,10 @@ type NewAreas<'w, 's> = Query<
 const AREA_THICKNESS: f32 = 0.02;
 const AREA_LIFT: f32 = 0.03;
 
+/// The match's end, in the frame it reaches the match's entity, which the client holds
+/// unpredicted.
+type Ended<'w, 's> = Query<'w, 's, &'static MatchEnd, (Added<MatchEnd>, Allow<Unpredicted>)>;
+
 /// The projectiles not drawn yet.
 type NewShots<'w, 's> = Query<
     'w,
@@ -190,7 +193,7 @@ impl Plugin for View {
                 .chain()
                 .in_set(ViewSystems),
         );
-        app.add_systems(Update, View::show_end.run_if(resource_added::<MatchEnd>));
+        app.add_systems(Update, View::show_end);
     }
 }
 
@@ -533,14 +536,19 @@ impl View {
         }
     }
 
-    /// Shows the match's end for the client's team: the window's title names it, and the view's
-    /// own ground turns gold for a victory, dark red for a defeat and gray for a draw.
+    /// Shows the match's end for the client's team, as it reaches the match's entity: the
+    /// window's title names it, and the view's own ground turns gold for a victory, dark red for
+    /// a defeat and gray for a draw.
     fn show_end(
-        (end, state): (Res<'_, MatchEnd>, Res<'_, JoinState>),
+        (ended, state): (Ended<'_, '_>, Option<Res<'_, JoinState>>),
         ground: Option<Single<'_, '_, &mut MeshMaterial3d<StandardMaterial>, With<Ground>>>,
         mut windows: Query<'_, '_, &mut Window>,
         mut materials: ResMut<'_, Assets<StandardMaterial>>,
     ) {
+        let Some(end) = ended.iter().next() else {
+            return;
+        };
+        let state = state.expect("a client that holds the match's end joined it");
         let standing = Standing::of(end.result(), state.team());
         let (title, color) = match standing {
             Some(Standing::Victory) => ("Campfire: victory", Color::srgb(0.75, 0.6, 0.15)),

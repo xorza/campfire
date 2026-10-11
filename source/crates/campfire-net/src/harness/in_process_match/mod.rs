@@ -255,7 +255,7 @@ impl InProcessMatch {
     }
 
     /// A match of `packages` at their default rate, its clients connected and synced.
-    pub(crate) fn of_mode(setup: MatchSetup, packages: ModePackages) -> InProcessMatch {
+    pub fn of_mode(setup: MatchSetup, packages: ModePackages) -> InProcessMatch {
         let log = LogCheck::start();
         assert!(
             setup.players <= MatchSetup::MAX_PLAYERS,

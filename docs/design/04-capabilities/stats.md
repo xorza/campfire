@@ -98,7 +98,7 @@ A unit's level, from 1, is state; `progression` changes it. Its stats follow at 
 
 ## State and derived
 
-- **State**, hashed, saved, restored and replicated: each unit's modifiers, level and pools, and the players' modifiers. A restore refuses an instance, player modifier or area whose way does not give a param it, its aura or its inside modifiers read.
+- **State**, hashed, saved, restored and replicated: each unit's modifiers, level and pools, and each player's modifiers, on its entity ([Replication audiences](../14-replication-audiences.md), D7). A restore refuses an instance, player modifier or area whose way does not give a param it, its aura or its inside modifiers read.
 - **Derived**, never state: each unit's stats and tags, computed again whenever its modifiers, level or type change, or a live change's source changes, and after a restore, before any system reads them. The components that hold a stat's effect, a unit's step and its pools' maxima, follow the stats each time they change; they are state, hashed and replicated, from the unit's spawn. A weapon's period and damage are derived where they are read.
 
 ## Script API
@@ -107,7 +107,7 @@ A unit's level, from 1, is state; `progression` changes it. Its stats follow at 
 
 ## Network
 
-Modifiers and life go to everyone who sees the unit, the other pools to its owner, or as the mode sets ([Replication audiences](../14-replication-audiences.md)). A client keeps its own units' modifiers as the server sends them and runs their time, so one ends on the client in the tick it ends on the server; it derives their stats, tags, step and pools' maxima as the server does, so its predicted movement and actions obey them. It holds each aura's modifier on its own units from every carrier it sees, as an aura follows from where units stand; it creates no other modifier, as only the server runs effects, so a stun learned late costs a correction. It builds the mode's stat book from the packages it holds, with the unit types numbered as the server numbers them; the server sends each unit's type once and its level as it changes.
+Modifiers and life go to everyone who sees the unit, a player's modifiers to every client, the other pools to its owner, or as the mode sets ([Replication audiences](../14-replication-audiences.md)). A client keeps its own units' modifiers as the server sends them and runs their time, so one ends on the client in the tick it ends on the server; it derives their stats, tags, step and pools' maxima as the server does, so its predicted movement and actions obey them. It holds each aura's modifier on its own units from every carrier it sees, as an aura follows from where units stand; it creates no other modifier, as only the server runs effects, so a stun learned late costs a correction. It builds the mode's stat book from the packages it holds, with the unit types numbered as the server numbers them; the server sends each unit's type once and its level as it changes.
 
 ## Cost
 

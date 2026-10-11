@@ -117,9 +117,7 @@ impl SimComponent for TrainQueue {
             .zip(producers)
             .and_then(|(&unit_type, producers)| producers.get(unit_type))
             .map(|production| usize::from(production.queue.get()));
-        let resources = world
-            .get_resource::<PlayerResources>()
-            .map_or(0, PlayerResources::resources);
+        let resources = PlayerResources::declared(world);
         let paid = self
             .paid
             .iter()

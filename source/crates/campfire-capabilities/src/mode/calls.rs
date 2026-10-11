@@ -14,7 +14,6 @@ use crate::combat::heal_handle::HealHandle;
 use crate::mode::choices::Choices;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_call::ModeCall;
-use crate::mode::mode_state::ModeState;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
@@ -137,12 +136,10 @@ impl Calls<'_, '_> {
     fn commit(&mut self) {
         let world = self.batch.world();
         {
-            let frame = self.ctx.frame();
-            let call = ModeCall::of(&frame);
-            // A write marks the state changed, so a call that changed none writes nothing.
-            if world.resource::<ModeState>().0 != call.state {
-                world.resource_mut::<ModeState>().0.clone_from(&call.state);
-            }
+            let mut frame = self.ctx.frame();
+            let call = ModeCall::of_mut(&mut frame);
+            call.commit_state(world);
+            // A write marks the choices changed, so a call that changed none writes nothing.
             if *world.resource::<Choices>() != call.choices {
                 world.resource_mut::<Choices>().clone_from(&call.choices);
             }

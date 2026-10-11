@@ -311,6 +311,9 @@ fn flawed_snapshots_are_refused() {
     let allocator = |next: u64| Binary::encode(&Some(next));
     let valid = with([encoded(&[0_u64, 1]), allocator(2), Vec::new(), Vec::new()]);
     assert!(restore(&valid).is_ok());
+    // A named id lies past every id the allocator hands out, which need not have issued it.
+    let beyond = encoded(&[0_u64, 1, StableId::MATCH.get()]);
+    assert!(restore(&with([beyond, allocator(2), Vec::new(), Vec::new()])).is_ok());
 
     let cases = [
         (b"not a snapshot".to_vec(), SnapshotError::NotSnapshot),

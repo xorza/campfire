@@ -1,4 +1,4 @@
-data_version 4
+data_version 5
 actions.slot_times 776040a47152d129
 actions.slots 6986814051c8249c
 areas.area 6e7395840db07855
@@ -9,8 +9,8 @@ combat.recent_attackers 58e017c445524785
 combat.respawn b1604652186dcd98
 mode.choices c36f705c3f6b53e9
 mode.match_end c04adfc1d93b84d1
-mode.player_resources 93bd1552371161af
 mode.state c3f62d7fc481570a
+mode.state_all c33c02ec0710e582
 mode.timers f2c0b67432eabbba
 mode.unanswered_deaths 5107f57585637267
 mode.unanswered_slot_events 103324541a7503a3
@@ -21,6 +21,9 @@ navigation.progress 3e51401372f33a6f
 navigation.route 6d613ea293b31a4d
 orders.next_think 7a060640bc9109c7
 orders.resetting 6f07fc05a6a4e4ce
+players.match 6f07fc05a6a4e4ce
+players.player b09ddbaa41487f03
+players.resources 9ace0a18bed4a033
 production.builder 59667e81fbdf0753
 production.gatherer 1e4fdce2ed828ef3
 production.node 7f992cd38c58e8ec
@@ -41,7 +44,7 @@ stats.level 63056ba8b2f524d9
 stats.life e7180879287ab77b
 stats.modifier_clocks ec5229286fb45706
 stats.modifiers 0020272f68b44a9a
-stats.player_modifiers ef54cbcb70396757
+stats.player_modifiers 231a6834c3db968b
 stats.pools 1a2e521912094b8d
 units.body 928bee7234a1783a
 units.dead 6f07fc05a6a4e4ce

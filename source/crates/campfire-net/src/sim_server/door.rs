@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Res};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_capabilities::{Area, MatchEnd, Mode, Owner, Projectile, Relations};
+use campfire_capabilities::{Area, Mode, Owner, Projectile};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
@@ -214,17 +214,6 @@ impl Door {
                 chain,
                 loaded,
             });
-        let relations = world.resource::<Relations>().clone();
-        world
-            .get_mut::<MessageSender<Relations>>(link)
-            .expect("a client link sends the relations")
-            .send::<MatchChannel>(relations);
-        if let Some(&end) = world.get_resource::<MatchEnd>() {
-            world
-                .get_mut::<MessageSender<MatchEnd>>(link)
-                .expect("a client link sends the match's end")
-                .send::<MatchChannel>(end);
-        }
         let mut units = world.query_filtered::<(
             Entity,
             Option<&Owner>,

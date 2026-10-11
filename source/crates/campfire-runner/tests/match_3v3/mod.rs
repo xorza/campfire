@@ -12,8 +12,8 @@ mod showcase;
 use bevy_ecs::world::World;
 use campfire_capabilities::internals;
 use campfire_capabilities::{
-    ActionSlot, ActionSlots, Dead, Deaths, Level, ModeParam, ModeState, Owner, PathWalker, Points,
-    Rank, Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team, UnitType,
+    ActionSlot, ActionSlots, Dead, Deaths, Level, Mode, ModeParam, Owner, PathWalker, Points, Rank,
+    Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team, UnitType,
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
@@ -319,7 +319,7 @@ fn assert_start(moba: &Moba3v3, run: &Run) -> UnitType {
         .state
         .keys()
         .position(|name| name.as_str() == "phase");
-    let phase = &world.resource::<ModeState>().get()[at.unwrap()];
+    let phase = &Mode::state(world)[at.unwrap()];
     assert_eq!(phase, &StateValue::Text("play".to_owned()));
     // Each script file compiles once, however many abilities or unit types run it.
     let scripts = packages.packages().map(|view| view.package.scripts.len());

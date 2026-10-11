@@ -39,6 +39,7 @@ use crate::navigation::walker::Walker;
 use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
 use crate::orders::order::{Action, Order};
+use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -1295,9 +1296,11 @@ fn shop_match() -> Match {
     game.sim
         .world
         .insert_resource(Shop::new(sells, gold, places, share));
-    let mut resources = PlayerResources::new(2, 1);
-    resources.add(PlayerSlot::new(0), gold, 2000).unwrap();
-    game.sim.world.insert_resource(resources);
+    MatchEntity::spawn_players(&mut game.sim.world, 2, 1);
+    PlayerResources::of_mut(&mut game.sim.world, PlayerSlot::new(0))
+        .unwrap()
+        .add(gold, 2000)
+        .unwrap();
     game
 }
 
@@ -1319,11 +1322,9 @@ impl Match {
 
     /// Player 0's gold.
     fn gold(&self) -> i64 {
-        let resources = self.sim.world.resource::<PlayerResources>();
-        resources.amount(
-            PlayerSlot::new(0),
-            ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap(),
-        )
+        let resources = PlayerResources::of_player(&self.sim.world, PlayerSlot::new(0));
+        let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+        resources.unwrap().amount(gold)
     }
 
     /// The items of `unit`'s inventory, slot by slot, each by its book's index and its count.
@@ -1427,18 +1428,17 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         (1005, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
     );
     // An edge from the two blades costs 400 of 1005; one more edge past the gold left is dropped.
-    let mut resources = game.sim.world.resource_mut::<PlayerResources>();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    resources.add(PlayerSlot::new(0), gold, -1000).unwrap();
+    let resources = PlayerResources::of_mut(&mut game.sim.world, PlayerSlot::new(0));
+    resources.unwrap().add(gold, -1000).unwrap();
     step(&mut game, &[buy(1)]);
     assert_eq!(
         (game.gold(), game.carried(hero)),
         (5, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
     );
-    game.sim
-        .world
-        .resource_mut::<PlayerResources>()
-        .add(PlayerSlot::new(0), gold, 395)
+    PlayerResources::of_mut(&mut game.sim.world, PlayerSlot::new(0))
+        .unwrap()
+        .add(gold, 395)
         .unwrap();
     step(&mut game, &[buy(1)]);
     assert_eq!(
@@ -1455,10 +1455,9 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
             Inventory::new(three, SlotKind::new(0)),
         ),
     );
-    game.sim
-        .world
-        .resource_mut::<PlayerResources>()
-        .add(PlayerSlot::new(0), gold, 300)
+    PlayerResources::of_mut(&mut game.sim.world, PlayerSlot::new(0))
+        .unwrap()
+        .add(gold, 300)
         .unwrap();
     game.tick(&[(0, &trades(other, &[buy(0)]))]);
     assert_eq!(

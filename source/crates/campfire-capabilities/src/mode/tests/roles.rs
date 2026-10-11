@@ -27,9 +27,8 @@ fn probe(ctx, unit) {
     // healed in the tick's pass, in the order queued: from 980 to 974, and so on; the pool from
     // 50, 3 a call.
     let gold = |game: &Game| {
-        let resources = game.sim.world.resource::<PlayerResources>();
-        let gold = resource("gold").unwrap();
-        resources.amount(PlayerSlot::new(0), gold)
+        let resources = PlayerResources::of_player(&game.sim.world, PlayerSlot::new(0));
+        resources.unwrap().amount(resource("gold").unwrap())
     };
     for (at, role) in ScriptRole::ALL.into_iter().enumerate() {
         let at = i64::try_from(at).unwrap();

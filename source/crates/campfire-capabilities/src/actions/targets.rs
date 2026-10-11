@@ -5,6 +5,7 @@ use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
+use crate::players::on_match::OnMatch;
 use crate::stats::life::Life;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -24,7 +25,7 @@ use crate::values::relation::Relation;
 #[derive(SystemParam, Debug)]
 pub(crate) struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
-    relations: Res<'w, Relations>,
+    relations: OnMatch<'w, 's, Relations>,
     metric: Res<'w, Metric>,
     units: Query<
         'w,
@@ -73,7 +74,7 @@ impl Targets<'_, '_> {
 
     /// How `of` regards `other`.
     pub(crate) fn relation(&self, of: Team, other: Team) -> Relation {
-        self.relations.between(of, other)
+        self.relations.get().between(of, other)
     }
 
     /// Whether `range` from a unit at `from` of body `shape` reaches `target`: within range in

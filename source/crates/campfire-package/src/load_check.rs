@@ -8,8 +8,8 @@ use campfire_capabilities::{
     LaunchFields, MemberKind, Metric, ModifierData, ModifierFields, ModifierProblem, MoveData,
     NameKind, Number, Offers, PackagePath, Param, ParamProblem, PoolId, ProjectileHits,
     PurgeFields, RangeField, Rank, ResourceId, RestoreFields, Scalar, ScriptApi, ScriptRole, Share,
-    SpawnFields, Stat, StatId, Status, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
-    XpFields,
+    SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackId, TypePlace, UnitTypeData,
+    UnitTypeFile, XpFields,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -232,6 +232,13 @@ impl<'a> LoadCheck<'a> {
         }
         if data.players.bot_takeover && !data.players.late_join {
             return Err(LoadProblem::BotTakeoverWithoutLateJoin);
+        }
+        let owned = data
+            .state
+            .iter()
+            .find(|(_, field)| matches!(field.sync, SyncTo::Owner | SyncTo::Team));
+        if let Some((name, _)) = owned {
+            return Err(LoadProblem::ModeStateSync(name.clone()));
         }
         self.sections_owned()?;
         self.damage_kinds()?;

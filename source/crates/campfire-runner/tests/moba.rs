@@ -36,9 +36,9 @@ pub(crate) fn units_at(world: &World, x: i64, z: i64) -> Vec<StableId> {
 
 pub(crate) fn gold(world: &World, moba: &Moba3v3, slot: u32) -> i64 {
     let gold = ResourceId::named(&moba.packages().data().resources, "gold").unwrap();
-    world
-        .resource::<PlayerResources>()
-        .amount(PlayerSlot::new(slot), gold)
+    let held = PlayerResources::of_player(world, PlayerSlot::new(slot));
+    held.expect("a player of the 3v3 holds its resources")
+        .amount(gold)
 }
 
 pub(crate) fn respawn_at(world: &World, unit: StableId) -> Option<Tick> {

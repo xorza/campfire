@@ -1,7 +1,7 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryState, Without};
-use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
+use bevy_ecs::system::{Local, ParamSet, Query, Res};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
@@ -18,6 +18,7 @@ use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
 use crate::navigation::walker::Walker;
 use crate::players::player_resources::PlayerResources;
+use crate::players::player_rows::{PlayerRows, PlayerRowsMut};
 use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production::held::Held;
 use crate::production::holdings::Holdings;
@@ -87,10 +88,10 @@ impl Trains {
         ),
         (rules, held_modifiers, life): (
             Option<Res<'_, SupplyRules>>,
-            Option<Res<'_, PlayerModifiers>>,
+            PlayerRows<'_, '_, PlayerModifiers>,
             Option<Res<'_, LifePool>>,
         ),
-        mut resources: Option<ResMut<'_, PlayerResources>>,
+        mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: ParamSet<
             '_,
             '_,
@@ -152,7 +153,7 @@ impl Trains {
                 .ordered(&book, ActionKind::Train)
                 .expect("an ordered train");
             slots.stop();
-            let purse = Purse::of(pools.read(), resources.as_deref(), held_by);
+            let purse = Purse::of(pools.read(), resources.of(held_by));
             let owner = held_by.map(|owner| owner.slot());
             let no_target = |_| Relation::Friendly;
             let checked = book.check(now, (&slots, &times), purse, ordered, no_target, |_| None);
@@ -163,11 +164,9 @@ impl Trains {
             if !capacity.is_some_and(|capacity| queue.has_room(capacity)) {
                 continue;
             }
-            let holdings = Holdings {
-                units: &held,
-                modifiers: held_modifiers.as_deref(),
-            };
-            if !holdings.meet(owner, requirements.of(checked.id)) {
+            let holdings = Holdings { units: &held };
+            let modifiers = held_modifiers.of(held_by);
+            if !holdings.meet(owner, modifiers, requirements.of(checked.id)) {
                 continue;
             }
             let KindSpec::Train(made) = checked.action.kind else {
@@ -180,7 +179,8 @@ impl Trains {
             }
             let values = checked.values;
             let paid = checked.action.resource_cost(checked.rank);
-            let payer = Payer::of(pools, resources.as_deref_mut(), held_by);
+            let mut paying = resources.of_mut(held_by);
+            let payer = Payer::of(pools, paying.as_deref_mut());
             payer.pay(&values.cost, paid);
             let queued = Queued {
                 action: checked.id,

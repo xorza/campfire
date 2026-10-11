@@ -536,6 +536,7 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
         &[
             "actions.slot_times",
             "actions.slots",
+            "players.match",
             "sim.entities",
             "sim.id_allocator",
             "sim.position",

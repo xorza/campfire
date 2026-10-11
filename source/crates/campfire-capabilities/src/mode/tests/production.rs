@@ -41,8 +41,8 @@ fn on_mode_input(ctx, player, name, value) {
     world.entity_mut(producer).insert(parts);
     let gold = resource("gold").unwrap();
     let player = PlayerSlot::new(0);
-    let mut resources = world.resource_mut::<PlayerResources>();
-    resources.add(player, gold, 15).unwrap();
+    let mut resources = PlayerResources::of_mut(world, player).unwrap();
+    resources.add(gold, 15).unwrap();
     let order = |game: &mut Game| {
         let mut slots = game.sim.world.get_mut::<ActionSlots>(producer).unwrap();
         slots.order(0, ActionTarget::None);
@@ -55,11 +55,9 @@ fn on_mode_input(ctx, player, name, value) {
             .unwrap()
             .current(MANA)
             .unwrap();
-        let held = game
-            .sim
-            .world
-            .resource::<PlayerResources>()
-            .amount(player, gold);
+        let held = PlayerResources::of_player(&game.sim.world, player)
+            .unwrap()
+            .amount(gold);
         (mana.round(), held)
     };
     let mut grunts = game

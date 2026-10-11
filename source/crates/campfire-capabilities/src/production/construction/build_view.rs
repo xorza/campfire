@@ -16,6 +16,7 @@ use crate::geometry::shape::Shape;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::player_resources::PlayerResources;
+use crate::players::player_rows::PlayerRows;
 use crate::production::build_specs::{BuildSpec, BuildSpecs, Style};
 use crate::production::build_target::BuildTarget;
 use crate::production::builder::{BuildOrder, Builder};
@@ -48,9 +49,9 @@ pub(crate) struct BuildView<'w, 's> {
     pub(super) builds: Res<'w, BuildSpecs>,
     pub(super) requirements: Res<'w, Requirements>,
     pub(super) metric: Res<'w, Metric>,
-    pub(super) resources: Option<Res<'w, PlayerResources>>,
+    pub(super) resources: PlayerRows<'w, 's, PlayerResources>,
     pub(super) life: Option<Res<'w, LifePool>>,
-    pub(super) modifiers: Option<Res<'w, PlayerModifiers>>,
+    pub(super) modifiers: PlayerRows<'w, 's, PlayerModifiers>,
     pub(super) placement: Placement<'w, 's>,
     pub(super) builders: Query<
         'w,
@@ -170,7 +171,8 @@ impl BuildView<'_, '_> {
         let building = self.building(slots, order.slot)?;
         let placed = self.placed(building, from, owner, order.target)?;
         let life = self.life.as_deref().map(|life| life.0);
-        let purse = Purse::of(pools.of(life), self.resources.as_deref(), owner);
+        let purse = Purse::of(pools.of(life), self.resources.of(owner));
+        let modifiers = self.modifiers.of(owner);
         let owner = owner.map(|owner| owner.slot());
         let aim = SlotAim {
             slot: order.slot,
@@ -185,11 +187,8 @@ impl BuildView<'_, '_> {
             no_target,
             |_| None,
         )?;
-        let holdings = Holdings {
-            units: held,
-            modifiers: self.modifiers.as_deref(),
-        };
-        let met = holdings.meet(owner, self.requirements.of(checked.id));
+        let holdings = Holdings { units: held };
+        let met = holdings.meet(owner, modifiers, self.requirements.of(checked.id));
         let room = self
             .placement
             .passes(team, placed.at, placed.body, building.spec);

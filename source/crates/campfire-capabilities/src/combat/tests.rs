@@ -26,6 +26,7 @@ use crate::combat::internals::Armed;
 use crate::combat::pass_queue::PassEntry;
 use crate::combat::recent_attack::RecentAttack;
 use crate::geometry::metric::Metric;
+use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -404,9 +405,11 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     // damage, that costs 4 mana and 2 gold; its unit has 100 mana, and its player 5 gold.
     let mut fight = Fight::new();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    let mut resources = PlayerResources::new(1, 1);
-    resources.add(PlayerSlot::new(0), gold, 5).unwrap();
-    fight.sim.world.insert_resource(resources);
+    MatchEntity::spawn_players(&mut fight.sim.world, 1, 1);
+    PlayerResources::of_mut(&mut fight.sim.world, PlayerSlot::new(0))
+        .unwrap()
+        .add(gold, 5)
+        .unwrap();
     let mana = PoolId::new(1).unwrap();
     let weapon = TestWeapon {
         cost: PoolCost::new([(mana, Num::int(4))]),
@@ -437,16 +440,15 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             .unwrap()
             .to_int()
             .expect("a whole amount");
-        let gold = fight
-            .sim
-            .world
-            .resource::<PlayerResources>()
-            .amount(PlayerSlot::new(0), gold);
+        let gold = PlayerResources::of_player(&fight.sim.world, PlayerSlot::new(0))
+            .unwrap()
+            .amount(gold);
         (mana, gold, fight.sim.health(dummy))
     };
     let add_gold = |fight: &mut Fight, amount| {
-        let mut resources = fight.sim.world.resource_mut::<PlayerResources>();
-        resources.add(PlayerSlot::new(0), gold, amount).unwrap();
+        let mut resources =
+            PlayerResources::of_mut(&mut fight.sim.world, PlayerSlot::new(0)).unwrap();
+        resources.add(gold, amount).unwrap();
     };
 
     // Attacks start in ticks 0 and 5 and strike 2 ticks later, each paying 4 mana and 2 gold:
@@ -567,7 +569,7 @@ fn targets_are_living_enemies() {
     }
     // By the relations: team 2, friendly to team 0, may not attack its units; team 3, neutral,
     // may; team 200, past the 64 teams of before and hostile as every pair not set is, may.
-    let mut relations = fight.sim.world.resource_mut::<Relations>();
+    let mut relations = Relations::of_mut(&mut fight.sim.world);
     relations.set(Team::new(2), Team::new(0), Relation::Friendly, true);
     relations.set(Team::new(3), Team::new(0), Relation::Neutral, true);
     let related = [2, 3, 200].map(|team| enemy_at(&mut fight, Team::new(team), far));

@@ -32,11 +32,12 @@ use crate::values::declared_name::DeclaredName;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
-/// checks them: its ground, its paths, the units it places, its markers, and the cells vision
-/// reveals, when it has them.
+/// checks them: its ground, the relations the match starts with, its paths, the units it places,
+/// its markers, and the cells vision reveals, when it has them.
 #[derive(Debug)]
 pub struct ModeMap {
     pub(crate) ground: MapGround,
+    pub(crate) relations: Relations,
     pub(crate) paths: Paths,
     pub(crate) placed: Vec<PlacedUnit>,
     pub(crate) markers: Vec<MarkerSpec>,
@@ -142,10 +143,10 @@ impl ModeMap {
             ground: MapGround {
                 metric: map.metric,
                 bounds: map.bounds,
-                relations: resolved,
                 pathing,
                 walls,
             },
+            relations: resolved,
             paths,
             placed,
             markers,

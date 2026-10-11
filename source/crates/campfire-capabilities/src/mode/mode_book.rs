@@ -16,6 +16,7 @@ use crate::mode::game_map::GameMap;
 use crate::mode::group_unit::GroupUnit;
 use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::ModeSetup;
+use crate::mode::mode_state::ModeState;
 use crate::mode::placed_unit::PlacedUnit;
 use crate::mode::roster::Roster;
 use crate::mode::slot_action::SlotAction;
@@ -46,11 +47,13 @@ use crate::units::facing::Facing;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
+use crate::units::relations::Relations;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
+use crate::units::unit_state::{SyncAll, SyncNone};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 use crate::values::rank::Rank;
@@ -71,6 +74,10 @@ pub(crate) struct ModeBook {
     actions: Vec<SlotAction>,
     /// The units the map places from the start.
     pub(crate) placed: Vec<PlacedUnit>,
+    /// How the teams regard each other as the match starts, and the mode's state, each class.
+    pub(crate) relations: Relations,
+    pub(crate) state_none: ModeState<SyncNone>,
+    pub(crate) state_all: ModeState<SyncAll>,
     /// `ctx.map`, as scripts read it, and where avatars spawn.
     map: GameMap,
 }
@@ -102,12 +109,13 @@ impl ModeBook {
     }
 
     /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
-    /// seat, with the units its map places, `map` as scripts read it, and `loadout_ranks`, the
-    /// ranks of every loadout entry.
+    /// seat, with the units its map places, the `relations` its teams start with, `map` as
+    /// scripts read it, and `loadout_ranks`, the ranks of every loadout entry.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
         scripts: &ScriptBook,
         placed: Vec<PlacedUnit>,
+        relations: Relations,
         map: GameMap,
         loadout_ranks: u8,
     ) -> ModeBook {
@@ -138,6 +146,9 @@ impl ModeBook {
             types,
             actions,
             placed,
+            relations,
+            state_none: ModeState::initial(setup.data),
+            state_all: ModeState::initial(setup.data),
             map,
         }
     }

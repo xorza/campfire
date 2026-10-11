@@ -1,5 +1,5 @@
 use bevy_ecs::query::Has;
-use bevy_ecs::system::{Local, Query, Res, ResMut};
+use bevy_ecs::system::{Local, Query, Res};
 use campfire_sim::{EntityIndex, Position};
 
 use crate::actions::action_slots::ActionSlots;
@@ -11,6 +11,7 @@ use crate::items::shop::Shop;
 use crate::orders::order::Action;
 use crate::orders::tick_orders::TickOrders;
 use crate::players::player_resources::PlayerResources;
+use crate::players::player_rows::PlayerRowsMut;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
@@ -31,10 +32,10 @@ impl TradeOrders {
     /// anything. A client predicts no trade, as its resources and slots come from the server.
     pub(super) fn trade_items(
         (orders, index): (Res<'_, TickOrders>, Res<'_, EntityIndex>),
-        (book, shop, resources): (
+        (book, shop, mut resources): (
             Res<'_, ItemBook>,
             Option<Res<'_, Shop>>,
-            Option<ResMut<'_, PlayerResources>>,
+            PlayerRowsMut<'_, '_, PlayerResources>,
         ),
         mut units: Query<
             '_,
@@ -50,9 +51,6 @@ impl TradeOrders {
         >,
         (mut given_up, mut before): (Local<'_, Vec<u32>>, Local<'_, Vec<Option<ItemId>>>),
     ) {
-        let Some(mut resources) = resources else {
-            return;
-        };
         for order in orders.iter() {
             let action = order.action;
             if !matches!(
@@ -70,6 +68,9 @@ impl TradeOrders {
                 if owner.slot() != order.slot {
                     continue;
                 }
+                let Some(mut held) = resources.of_mut(Some(owner)) else {
+                    continue;
+                };
                 inventory.note(&mut before);
                 let shop = shop
                     .as_deref()
@@ -88,11 +89,10 @@ impl TradeOrders {
                         else {
                             continue;
                         };
-                        if resources.amount(order.slot, shop.resource) < price {
+                        if held.amount(shop.resource) < price {
                             continue;
                         }
-                        resources
-                            .add(order.slot, shop.resource, -price)
+                        held.add(shop.resource, -price)
                             .expect("a price the player affords takes nothing below zero");
                         inventory.complete(&book, item, &given_up);
                     }
@@ -105,7 +105,7 @@ impl TradeOrders {
                             .expect("a carried item is in the book")
                             .cost_in(shop.resource);
                         let refund = shop.refund(cost, carried.count.get());
-                        if resources.add(order.slot, shop.resource, refund).is_none() {
+                        if held.add(shop.resource, refund).is_none() {
                             inventory.restore(slot, carried);
                         }
                     }

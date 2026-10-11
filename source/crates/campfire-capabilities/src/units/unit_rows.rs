@@ -112,7 +112,7 @@ impl UnitRows {
     /// rows each source must fill again. Whether every row must be filled.
     fn begin_read(&mut self, world: &World, full: bool) -> bool {
         let now = world.resource::<SimTick>().start();
-        let relations = world.resource::<Relations>();
+        let relations = Relations::of(world);
         let refill = mem::take(&mut self.refill) || full || *relations != self.relations;
         self.now = now;
         self.relations.clone_from(relations);

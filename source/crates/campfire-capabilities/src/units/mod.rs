@@ -9,6 +9,8 @@ use campfire_sim::{EntityIndex, Position, SimSet, StateRegistry, TickRate};
 
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
+use crate::players::match_entity::MatchEntity;
+use crate::players::player_parts::PlayerParts;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
@@ -125,6 +127,7 @@ impl Units {
         types.component::<Facing>();
         types.component::<ForcedMove>();
         types.component::<Lifespan>();
+        types.component::<MatchEntity>();
         types.component::<MoveStep>();
         types.sim_component::<Position>();
         types.component::<Owner>();
@@ -137,7 +140,7 @@ impl Units {
         types.component::<UnitState<SyncTeam>>();
         types.component::<UnitState<SyncAll>>();
         types.derived::<UnitTags>();
-        types.resource::<Relations>();
+        types.component::<Relations>();
     }
 
     /// Adds the core to a match, on a planar map until the mode sets its own. With `budgets`,
@@ -153,11 +156,12 @@ impl Units {
         let view = View::new(rate);
         Self::state_types(registry);
         registry.add_check::<Position>(Units::within_bounds);
+        registry.add_check::<Relations>(Units::relations_held);
         world.insert_resource(UnitStateBook::default());
         world.insert_resource(NewUnitStates::default());
         view.add_column(UnitsColumn::default());
         view.add_source::<StateRowParts, _>(world, UnitsColumn::fill_state);
-        world.insert_resource(Relations::default());
+        world.init_resource::<PlayerParts>();
         world.insert_resource(Metric::default());
         // The world's bounds until a map's take their place.
         world.insert_resource(Bounds::WORLD);
@@ -196,6 +200,12 @@ impl Units {
                 .get::<Position>(entity)
                 .is_none_or(|&at| bounds.contains(at))
         })
+    }
+
+    /// Whether the match's entity holds the relations, as every match that started does, so no
+    /// system finds them missing.
+    fn relations_held(world: &World) -> bool {
+        MatchEntity::entity(world).is_some_and(|entity| world.get::<Relations>(entity).is_some())
     }
 
     /// Compiles `source` in the match's script host, once for every capability that runs it.

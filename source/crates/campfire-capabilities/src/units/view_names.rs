@@ -107,14 +107,15 @@ impl ViewNames {
         teams.is_none_or(|teams| teams.of(slot).is_some())
     }
 
-    /// Whether amounts of `resources` resources in `amounts` places make a row of each resource
-    /// the mode declares for each player; any do before a mode sets the teams.
-    pub(crate) fn fits_resources(&self, resources: usize, amounts: usize) -> bool {
-        self.teams.as_deref().is_none_or(|teams| {
-            let players = teams.players() as usize;
-            resources == self.resource_names.len()
-                && Some(amounts) == players.checked_mul(resources)
-        })
+    /// How many resources the mode declares; none before a mode sets them.
+    pub(crate) fn resource_count(&self) -> usize {
+        self.resource_names.len()
+    }
+
+    /// Whether a player's `resources` amounts make one of each resource the mode declares; any do
+    /// before a mode sets the teams.
+    pub(crate) fn fits_resources(&self, resources: usize) -> bool {
+        self.teams.is_none() || resources == self.resource_names.len()
     }
 
     /// Player `player`'s slot, as a script names it, when the session has it.

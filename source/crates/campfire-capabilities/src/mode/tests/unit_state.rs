@@ -1,5 +1,5 @@
 use super::*;
-use crate::units::unit_state::{SyncAll, SyncOwner, UnitState};
+use crate::units::unit_state::{SyncOwner, UnitState};
 
 #[test]
 fn a_call_reads_its_unit_state_writes_back_and_the_next_call_of_the_stage_reads_them() {

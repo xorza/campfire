@@ -11,7 +11,7 @@ use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_capabilities::{Dead, MatchEnd, Order, PlayerUnits, Relations};
+use campfire_capabilities::{Dead, MatchEnd, MatchEntity, Order, PlayerUnits};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
@@ -228,13 +228,7 @@ impl Plugin for SimClient {
         app.add_systems(
             Update,
             (
-                (
-                    link,
-                    receive_input_acks,
-                    receive_relations,
-                    receive_match_end,
-                    report_deaths,
-                ),
+                (link, receive_input_acks, report_end, report_deaths),
                 Faults::watch,
             )
                 .chain(),
@@ -473,29 +467,11 @@ fn receive_input_acks(
     }
 }
 
-/// Takes the teams' relations the server sends into the client's world, where its units' targets
-/// and filters read them.
-fn receive_relations(
-    mut receivers: Query<'_, '_, &mut MessageReceiver<Relations>, With<Client>>,
-    mut commands: Commands<'_, '_>,
-) {
-    for mut receiver in &mut receivers {
-        for relations in receiver.receive() {
-            commands.insert_resource(relations);
-        }
-    }
-}
-
-/// Takes the end of the match into the client's world, which then predicts nothing more.
-fn receive_match_end(
-    mut receivers: Query<'_, '_, &mut MessageReceiver<MatchEnd>, With<Client>>,
-    mut commands: Commands<'_, '_>,
-) {
-    for mut receiver in &mut receivers {
-        for end in receiver.receive() {
-            info!(tick = end.tick().get(), result = ?end.result(), "the match ended");
-            commands.insert_resource(end);
-        }
+/// Logs the end of the match, which reaches the client on the match's entity: its sim then
+/// predicts nothing more.
+fn report_end(ended: Query<'_, '_, &MatchEnd, (Added<MatchEnd>, Allow<Unpredicted>)>) {
+    for end in &ended {
+        info!(tick = end.tick().get(), result = ?end.result(), "the match ended");
     }
 }
 
@@ -635,12 +611,17 @@ fn send_orders(
 }
 
 /// Runs the sim tick of the current Lightyear tick with the player's inputs stamped for it; in a
-/// rollback, Lightyear has wound its timeline back, so the sim follows.
+/// rollback, Lightyear has wound its timeline back, so the sim follows. The match's state, which
+/// every tick reads, reaches the client on the match's entity: until it holds it, the client
+/// predicts nothing, as it holds no unit either.
 fn run_predicted_tick(world: &mut World) {
     let tick = world.resource::<LocalTimeline>().tick();
     let Some(playing) = world.resource::<JoinState>().playing() else {
         return;
     };
+    if MatchEntity::entity(world).is_none() {
+        return;
+    }
     let slot = playing.chain.slot();
     let Some(sim_tick) = playing.clock.sim_tick(tick) else {
         return;

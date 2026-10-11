@@ -5,6 +5,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_sim::{Position, SimTick};
 
 use crate::geometry::shape::Shape;
+use crate::players::on_match::OnMatch;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::relations::Relations;
@@ -30,7 +31,7 @@ impl Seeing {
     pub(super) fn see(
         (grid, relations, tick): (
             Option<Res<'_, VisionGrid>>,
-            Res<'_, Relations>,
+            OnMatch<'_, '_, Relations>,
             Res<'_, SimTick>,
         ),
         mut reveals: ResMut<'_, Reveals>,
@@ -53,6 +54,7 @@ impl Seeing {
         let Some(grid) = grid else {
             return;
         };
+        let relations = relations.get();
         if relations.is_changed() || grid.is_changed() {
             fog.rebuild(&grid, &relations);
         }

@@ -5,6 +5,8 @@ use campfire_sim::{Position, SimTick, StableId, TickRate, Unpredicted};
 
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
+use crate::players::on_match::OnMatch;
+use crate::players::player_rows::PlayerRows;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
@@ -81,12 +83,12 @@ impl HeldPass {
             Option<Res<'_, StatBook>>,
             (Res<'_, SimTick>, Res<'_, TickRate>),
             Res<'_, Metric>,
-            Res<'_, PlayerModifiers>,
+            PlayerRows<'_, '_, PlayerModifiers>,
             ResMut<'_, HeldModifiers>,
         ),
         params: Res<'_, ParamBook>,
         sources: ParamSources<'_, '_>,
-        relations: Res<'_, Relations>,
+        relations: OnMatch<'_, '_, Relations>,
         (mut units, carriers): (HeldUnits<'_, '_>, HeldCarriers<'_, '_>),
         tag_book: Option<Res<'_, TagBook>>,
         (mut held, mut grid): (Local<'_, Vec<Held>>, Local<'_, BodyGrid<Entity>>),
@@ -94,6 +96,7 @@ impl HeldPass {
         if stats.is_none() {
             return;
         }
+        let relations = relations.get();
         let rate = *rate;
         held.clear();
         held.extend(others.0.drain(..));
@@ -187,15 +190,15 @@ impl HeldPass {
     fn hold_player_modifiers(
         held: &mut Vec<Held>,
         book: &ModifierBook,
-        players: &PlayerModifiers,
+        players: &PlayerRows<'_, '_, PlayerModifiers>,
         units: &HeldUnits<'_, '_>,
     ) {
         for (&target, _, _, tags, owner, ..) in units {
-            let Some(owner) = owner else {
+            let Some(held_by) = players.of(owner) else {
                 continue;
             };
             let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
-            for modifier in players.of(owner.slot()) {
+            for modifier in held_by.iter() {
                 let affects = book.get(modifier).spec.affects;
                 if affects.is_none_or(|filter| filter.selects(Relation::Friendly, tags)) {
                     held.push(Held {

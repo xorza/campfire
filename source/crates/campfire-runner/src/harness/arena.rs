@@ -2,8 +2,8 @@ use std::path::Path;
 
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    ActionId, Actions, ModeInputs, ModifierId, Order, PoolId, ScriptFailure, ScriptFailures, Stats,
-    Vision,
+    ActionId, Actions, MatchEntity, ModeInputs, ModifierId, Order, PoolId, ScriptFailure,
+    ScriptFailures, Stats, Vision,
 };
 use campfire_common::{PlayerSlot, SegmentSeed};
 use campfire_log::internals::LogCheck;
@@ -13,8 +13,9 @@ use campfire_sim::{SimUpdate, StateRegistry, TickInput, TickInputs, TickRate};
 use crate::match_build::MatchBuild;
 
 /// A match of a mode's packages with every book in place, the mode's own among them, and no mode
-/// installed: its script never runs, so no `calc_damage` weighs a hit and no map unit spawns. A
-/// test places its units by hand and drives their actions, as the packages hold them.
+/// installed: its script never runs, so no `calc_damage` weighs a hit and no map unit spawns, and
+/// its match starts with the match's entity alone. A test places its units by hand and drives
+/// their actions, as the packages hold them.
 #[derive(Debug)]
 pub struct Arena {
     world: World,
@@ -39,6 +40,7 @@ impl Arena {
         let ModeInputs { books, .. } =
             MatchBuild::books(&packages, &mut world, &mut schedule, &mut registry, players);
         books.install(&mut world);
+        MatchEntity::start_without_mode(&mut world);
         world.add_schedule(schedule);
         Arena {
             world,

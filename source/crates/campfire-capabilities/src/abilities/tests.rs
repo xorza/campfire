@@ -51,6 +51,7 @@ use crate::navigation::destination::Destination;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::orders::order::{Action, Order};
+use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_id::ResourceId;
 use crate::progression::Progression;
@@ -341,7 +342,7 @@ impl Match {
             &POOLS,
             &["gold"],
         );
-        sim.world.insert_resource(PlayerResources::new(2, 1));
+        MatchEntity::spawn_players(&mut sim.world, 2, 1);
         Match { sim }
     }
 
@@ -873,14 +874,13 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     game.give_pools(ownerless, 100, 20);
     let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
     let player = PlayerSlot::new(0);
-    game.sim
-        .world
-        .resource_mut::<PlayerResources>()
-        .add(player, gold, 40)
+    PlayerResources::of_mut(&mut game.sim.world, player)
+        .unwrap()
+        .add(gold, 40)
         .unwrap();
     let held = |game: &Match, unit| {
-        let amounts = game.sim.world.resource::<PlayerResources>();
-        (game.pool(unit), amounts.amount(player, gold))
+        let amounts = PlayerResources::of_player(&game.sim.world, player).unwrap();
+        (game.pool(unit), amounts.amount(gold))
     };
     // A unit no player owns pays no player resource, so it may not cast.
     game.cast(ownerless, ActionTarget::Unit(enemy));

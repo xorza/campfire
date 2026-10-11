@@ -1,8 +1,9 @@
 use bevy_ecs::world::World;
-use campfire_common::Tick;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{IdAllocator, StableId};
 
+use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
 use crate::scripts::call_part::{CallPart, CallParts};
 use crate::scripts::call_start::CallStart;
@@ -30,9 +31,9 @@ pub(crate) struct Frame {
     /// The stable ids as the call takes them for the units it creates, and whether it took one.
     ids: IdAllocator,
     ids_taken: bool,
-    /// The players' resources as the call sees them, when the match has them, and whether the
-    /// call changed them.
-    resources: Option<PlayerResources>,
+    /// The players' resources as the call sees them, by slot, none in a match with no mode, and
+    /// whether the call changed them.
+    resources: Vec<PlayerResources>,
     resources_written: bool,
     pub(crate) effects: Effects,
     /// What each capability reads and writes of a call besides the core's.
@@ -119,20 +120,30 @@ impl Frame {
         self.pure = pure;
     }
 
-    /// Reads the players' resources as `world` holds them, for the call to add to; none in a
-    /// match with no mode.
+    /// Reads the players' resources as `world` holds them, for the call to add to, each in the
+    /// place it held at the last call, so a call allocates none.
     fn read_resources(&mut self, world: &World) {
         self.resources_written = false;
-        match (world.get_resource::<PlayerResources>(), &mut self.resources) {
-            (Some(held), Some(resources)) => resources.clone_from(held),
-            (held, resources) => *resources = held.cloned(),
+        let held = (0..).map_while(|slot| {
+            let entity = Player::entity(world, PlayerSlot::new(slot))?;
+            world.get::<PlayerResources>(entity)
+        });
+        let mut players = 0;
+        for (at, held) in held.enumerate() {
+            match self.resources.get_mut(at) {
+                Some(resources) => resources.clone_from(held),
+                None => self.resources.push(held.clone()),
+            }
+            players = at + 1;
         }
+        self.resources.truncate(players);
     }
 
-    /// The players' resources, for the call to change; `None` in a match with no mode.
-    pub(crate) const fn resources_mut(&mut self) -> Option<&mut PlayerResources> {
+    /// The resources of player `slot`, for the call to change; `None` for a player the session
+    /// lacks, or in a match with no mode.
+    pub(crate) fn resources_mut(&mut self, slot: PlayerSlot) -> Option<&mut PlayerResources> {
         self.resources_written = true;
-        self.resources.as_mut()
+        self.resources.get_mut(slot.index())
     }
 
     /// Takes the stable id of a unit the call creates, which the unit spawns with once the call
@@ -172,10 +183,14 @@ impl Frame {
         }
         self.effects.clear();
         self.parts.apply(world);
-        if let (true, Some(resources)) = (self.resources_written, &self.resources) {
-            world
-                .resource_mut::<PlayerResources>()
-                .clone_from(resources);
+        if !self.resources_written {
+            return;
+        }
+        for (slot, resources) in (0..).map(PlayerSlot::new).zip(&self.resources) {
+            let mut held = PlayerResources::of_mut(world, slot).expect("a player the call read");
+            if *held != *resources {
+                held.clone_from(resources);
+            }
         }
     }
 

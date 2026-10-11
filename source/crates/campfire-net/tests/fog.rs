@@ -197,8 +197,8 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     let units = held(&mut local, second);
     assert!(units.contains(&hero), "{units:?}");
     assert!(!units.contains(&tower), "{units:?}");
-    let relations = |app: &App| app.world().resource::<Relations>().clone();
-    assert_ne!(relations(local.server()), Relations::default());
+    let relations = |app: &App| Relations::held(app.world()).cloned();
+    assert_ne!(relations(local.server()), Some(Relations::default()));
     assert_eq!(relations(local.client(second)), relations(local.server()));
     assert_eq!(local.log().take::<LinkLost>().len(), 1);
 

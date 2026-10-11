@@ -18,6 +18,7 @@ use crate::geometry::bounds::Bounds;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
+use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_id::ResourceId;
 use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
@@ -71,7 +72,7 @@ fn two_fields() -> World {
     world.add_schedule(schedule);
 
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    world.insert_resource(PlayerResources::new(1, 1));
+    MatchEntity::spawn_player(&mut world, PlayerSlot::new(0), Team::new(0), 1);
     let (node_type, drop_off_type) = (UnitType::new(0), UnitType::new(1));
     let mut book = NodeBook::default();
     book.nodes.set(node_type, gold);
@@ -135,9 +136,9 @@ fn two_fields() -> World {
     for _ in 0..30 {
         world.run_schedule(SimUpdate);
     }
-    let gold_in = world
-        .resource::<PlayerResources>()
-        .amount(PlayerSlot::new(0), gold);
+    let gold_in = PlayerResources::of_player(&world, PlayerSlot::new(0))
+        .unwrap()
+        .amount(gold);
     assert_eq!(gold_in, 2 * NODES * 9 * 5, "the scene runs the loop");
     world
 }

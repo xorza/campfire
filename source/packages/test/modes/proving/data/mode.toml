@@ -34,8 +34,9 @@ late_join = true
 [saves]
 autosave_ms = 12000
 
+# The slot of the last join, which every client receives, and of the last leave, which none does.
 [state]
-joined = { type = "int", default = -1 }
+joined = { type = "int", default = -1, sync = "all" }
 left = { type = "int", default = -1 }
 
 [params]

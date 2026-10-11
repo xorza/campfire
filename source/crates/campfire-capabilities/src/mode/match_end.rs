@@ -1,18 +1,26 @@
-use bevy_ecs::resource::Resource;
+use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::{Allow, With};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::Res;
+use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::{SimEdge, SimResource, SimSet};
+use campfire_sim::{SimComponent, SimEdge, SimSet, Unpredicted};
 use serde::{Deserialize, Serialize};
 
+use crate::players::match_entity::MatchEntity;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnce;
 use crate::units::team::Team;
 use crate::units::view::View;
 
-/// The end of a match: the tick whose stage ended it, and its result. It is state, so the final
-/// state hash a verifier checks holds the result too; once it exists, no later stage runs, nor
-/// any pass between two stages but the closing set of the stage that ended it.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// The end of a match: the tick whose stage ended it, and its result, on the match's entity. It
+/// is state, so the final state hash a verifier checks holds the result too; once it exists, no
+/// later stage runs, nor any pass between two stages but the closing set of the stage that ended
+/// it. Immutable: a match ends once.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[component(immutable)]
 pub struct MatchEnd {
     tick: Tick,
     result: MatchResult,
@@ -33,6 +41,11 @@ pub enum MatchResult {
 impl MatchEnd {
     pub(crate) const fn new(tick: Tick, result: MatchResult) -> MatchEnd {
         MatchEnd { tick, result }
+    }
+
+    /// The end of the match in `world`, once it ended.
+    pub fn of(world: &World) -> Option<MatchEnd> {
+        world.get(MatchEntity::entity(world)?).copied()
     }
 
     pub const fn tick(self) -> Tick {
@@ -59,21 +72,29 @@ impl MatchEnd {
         }
     }
 
-    const fn running(end: Option<Res<'_, MatchEnd>>) -> bool {
-        end.is_none()
+    /// Whether the match runs: a client holds its entity unpredicted, as the server sends it.
+    fn running(ended: Query<'_, '_, (), (With<MatchEnd>, Allow<Unpredicted>)>) -> bool {
+        ended.is_empty()
     }
 }
 
-impl SimResource for MatchEnd {
+impl SimComponent for MatchEnd {
     const NAME: &'static str = "mode.match_end";
 
-    // A winner that is not one of the mode's teams has no name to report.
-    fn check(&self, world: &World) -> bool {
-        match self.result {
+    // An end on another entity is no match's, and a winner that is not one of the mode's teams
+    // has no name to report.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        let won = match self.result {
             MatchResult::Won(team) => world
                 .get_non_send::<View>()
                 .is_none_or(|view| view.has_team(team)),
             MatchResult::Draw => true,
-        }
+        };
+        won && world.get::<MatchEntity>(entity).is_some()
     }
+}
+
+impl Replication for MatchEnd {
+    const KIND: DataKind = DataKind::Match;
+    type Sending = SentOnce;
 }

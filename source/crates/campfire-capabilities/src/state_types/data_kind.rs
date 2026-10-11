@@ -18,6 +18,15 @@ pub enum DataKind {
     Progression,
     /// A unit's inventory; its owner.
     Inventory,
+    /// The match's public state, on the match's entity and each player's: the teams' relations,
+    /// the match's end, the players' slots; every client.
+    Match,
+    /// The mode's script state fields of `sync = "all"`, on the match's entity; every client.
+    ModeState,
+    /// A player's resources, on its entity; its owner.
+    Resources,
+    /// The modifiers a player holds for its units, on its entity; every client.
+    PlayerModifiers,
     /// What only the owner's prediction reads: a unit's spawn point, route, progress, modifiers'
     /// clocks and respawn; its owner.
     Prediction,

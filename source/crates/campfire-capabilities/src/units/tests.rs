@@ -271,6 +271,7 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
         scene.sim.registry.snapshot(&scene.sim.world, &mut snapshot);
         let mut fresh = Scene::new();
         fresh.sim.world.insert_resource(bounds);
+        fresh.sim.clear();
         scene.sim.registry.restore(&snapshot, &mut fresh.sim.world)
     };
     assert_eq!(restores(Num::int(10)), Ok(()));

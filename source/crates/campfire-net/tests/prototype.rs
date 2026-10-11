@@ -8,15 +8,17 @@ use bevy_ecs::query::With;
 use campfire_capabilities::internals::{give_modifier, set_relation};
 use campfire_capabilities::{
     Action, ActionSlots, Bounds, Combat, DashTo, Dead, Destination, ForcedMove, Life, MatchEnd,
-    MatchResult, Metric, Modifiers, MoveStep, Owner, PoolId, Projectile, Relation, Relations,
-    Respawn, Stats, Team,
+    MatchEntity, MatchResult, Metric, ModeState, Modifiers, MoveStep, Owner, Player,
+    PlayerResources, PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue,
+    Stats, SyncAll, SyncNone, Team,
 };
-use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_common::{MapName, PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     InputChannel, InputMessage, InputMessageRefused, LinkLost, PlayerLink, TickHashes,
 };
+use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_runner::internals::HashTrail;
 use campfire_runner::{Runner, Session};
@@ -348,7 +350,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     // the same target, start and cooldowns.
     let mut windups = [None, None];
     let mut frames = 0;
-    while !local.server().world().contains_resource::<MatchEnd>() {
+    while MatchEnd::of(local.server().world()).is_none() {
         assert!(frames < 400, "the walker fells the tower");
         local.step();
         frames += 1;
@@ -361,13 +363,10 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     let [server, client] = windups;
     assert!(server.is_some());
     assert_eq!(client, server);
-    let end = *local.server().world().resource::<MatchEnd>();
+    let end = MatchEnd::of(local.server().world()).unwrap();
     assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
     local.step();
-    assert_eq!(
-        local.client(0).world().get_resource::<MatchEnd>(),
-        Some(&end)
-    );
+    assert_eq!(MatchEnd::of(local.client(0).world()), Some(end));
 
     // After the end neither end moves the hero, and the server's tick still counts on.
     let still = hero(local.server());
@@ -385,13 +384,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
 
     // A second login of the player, which sits after the end, learns it as it sits.
     let second = local.add_client(0);
-    let ended = |local: &InProcessMatch| {
-        local
-            .client(second)
-            .world()
-            .get_resource::<MatchEnd>()
-            .copied()
-    };
+    let ended = |local: &InProcessMatch| MatchEnd::of(local.client(second).world());
     for _ in 0..300 {
         if ended(&local).is_some() {
             break;
@@ -496,8 +489,12 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
 fn the_client_takes_the_relations_a_script_sets() {
     let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
-    let relations = |app: &App| app.world().resource::<Relations>().clone();
-    assert_eq!(relations(local.client(0)), Relations::default());
+    // The client holds the relations from its first replication, on the match's entity.
+    let relations = |app: &App| Relations::held(app.world()).cloned();
+    while relations(local.client(0)).is_none() {
+        local.step();
+    }
+    assert_eq!(relations(local.client(0)), Some(Relations::default()));
     let (west, east) = (Team::new(0), Team::new(1));
     set_relation(
         local.server_mut().world_mut(),
@@ -510,8 +507,74 @@ fn the_client_takes_the_relations_a_script_sets() {
     local.step();
     local.step();
     let set = relations(local.server());
-    assert_ne!(set, Relations::default());
+    assert_ne!(set, Some(Relations::default()));
     assert_eq!(relations(local.client(0)), set);
+}
+
+#[test]
+fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_players() {
+    // The proving mode for two players, with a server frame a tick: each holds its income of 100
+    // gold from the start, and 100 more every 5 s, 100 ticks at its 20 Hz; its state's `joined`
+    // goes to every client, and `left` to none.
+    let map = MapName::new("proving").unwrap();
+    let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/proving"), &map);
+    let packages = packages.unwrap();
+    let gold = ResourceId::named(&packages.data().resources, "gold").unwrap();
+    let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
+    setup.players = 2;
+    let mut local = InProcessMatch::of_mode(setup, packages);
+    local.start_match();
+    // A player's gold as `app` holds it: `None` for a player's entity it lacks, `Some(None)` for
+    // one whose resources it lacks.
+    let gold_of = |app: &App, slot| {
+        let world = app.world();
+        let entity = Player::entity(world, PlayerSlot::new(slot))?;
+        Some(
+            world
+                .get::<PlayerResources>(entity)
+                .map(|held| held.amount(gold)),
+        )
+    };
+    let both_held = |local: &InProcessMatch| {
+        (0..2).all(|client| (0..2).all(|slot| gold_of(local.client(client), slot).is_some()))
+    };
+    while !both_held(&local) {
+        local.step();
+    }
+    // Past the first income, every client holds both players' entities, its own player's gold
+    // as the server holds it, and never the other's.
+    let mut frames = 0;
+    while gold_of(local.server(), 0) != Some(Some(200)) {
+        assert!(frames < 200, "the income comes");
+        local.step();
+        frames += 1;
+        for (client, other) in [(0, 1), (1, 0)] {
+            assert_eq!(gold_of(local.client(client), other), Some(None));
+        }
+    }
+    local.step();
+    local.step();
+    for client in 0..2 {
+        let own = u32::try_from(client).unwrap();
+        assert_eq!(gold_of(local.client(client), own), Some(Some(200)));
+        assert_eq!(gold_of(local.client(client), 1 - own), Some(None));
+    }
+    // The mode's state that syncs to all reaches each client, and the rest none.
+    for app in [local.server(), local.client(0), local.client(1)] {
+        let world = app.world();
+        let entity = MatchEntity::entity(world).unwrap();
+        let all = world
+            .get::<ModeState<SyncAll>>(entity)
+            .map(ModeState::values);
+        assert_eq!(all, Some(&[StateValue::Int(-1)][..]));
+    }
+    let none = |app: &App| {
+        let world = app.world();
+        world
+            .get::<ModeState<SyncNone>>(MatchEntity::entity(world).unwrap())
+            .is_some()
+    };
+    assert!(none(local.server()) && !none(local.client(0)) && !none(local.client(1)));
 }
 
 #[test]

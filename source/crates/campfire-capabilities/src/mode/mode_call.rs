@@ -14,6 +14,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::script_role::ScriptRole;
 use crate::scripts::state_value::StateValue;
+use crate::units::unit_state::{SyncAll, SyncNone};
 
 /// What the mode adds to the call frame: the mode's params, which a mode's or an AI's call reads;
 /// and as a mode call sees them, the mode's state and the players' choices, which it writes and
@@ -22,7 +23,11 @@ use crate::scripts::state_value::StateValue;
 #[derive(Debug)]
 pub(crate) struct ModeCall {
     book: Rc<ModeBook>,
+    /// Every field of the mode's state, in the order of their names.
     pub(crate) state: Vec<StateValue>,
+    /// The fields of each class, `none` and `all`, as a commit splits them.
+    none: Vec<StateValue>,
+    all: Vec<StateValue>,
     pub(crate) choices: Choices,
     pub(crate) ended: bool,
     pub(crate) boxes: Vec<IndexedBody>,
@@ -35,9 +40,13 @@ impl CallPart for ModeCall {
         if start.role != ScriptRole::Mode {
             return Ok(());
         }
-        self.state.clone_from(&world.resource::<ModeState>().0);
+        let (none, all) = (
+            ModeState::<SyncNone>::of(world),
+            ModeState::<SyncAll>::of(world),
+        );
+        self.book.schema.merge_state(none, all, &mut self.state);
         self.choices.clone_from(world.resource::<Choices>());
-        self.ended = world.contains_resource::<MatchEnd>();
+        self.ended = MatchEnd::of(world).is_some();
         self.boxes.clear();
         Ok(())
     }
@@ -59,10 +68,20 @@ impl ModeCall {
         ModeCall {
             book,
             state: Vec::new(),
+            none: Vec::new(),
+            all: Vec::new(),
             choices: Choices::default(),
             ended: false,
             boxes: Vec::new(),
         }
+    }
+
+    /// Writes the call's state, each class of it unless it is what `world` holds.
+    pub(crate) fn commit_state(&mut self, world: &mut World) {
+        let (none, all) = (&mut self.none, &mut self.all);
+        self.book.schema.split_state(&self.state, none, all);
+        ModeState::<SyncNone>::commit(world, none);
+        ModeState::<SyncAll>::commit(world, all);
     }
 
     /// The mode's part of `frame`, which the mode added as it installed.

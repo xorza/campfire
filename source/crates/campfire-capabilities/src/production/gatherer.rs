@@ -95,9 +95,7 @@ impl SimComponent for Gatherer {
     // node to go back to; a checked loop's node is the last it chose. A step's tick of any value
     // is compared, not counted from.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let resources = world
-            .get_resource::<PlayerResources>()
-            .map_or(0, PlayerResources::resources);
+        let resources = PlayerResources::declared(world);
         let load = self
             .load
             .is_none_or(|load| load.resource.index() < resources && self.last.is_some());
@@ -118,16 +116,24 @@ mod tests {
     use campfire_math::{Num, Vec3};
     use campfire_sim::IdAllocator;
 
+    use std::num::NonZeroU32;
+    use std::sync::Arc;
+
+    use campfire_sim::TickRate;
+
     use super::*;
+    use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
 
     #[test]
     fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
         // A match of gold alone: wood, the second of two resources, is not its own.
         let mut world = World::new();
-        world.insert_resource(PlayerResources::new(1, 1));
-        let entity = world.spawn_empty().id();
         let names = ["gold", "wood"].map(|name| DeclaredName::new(name).unwrap());
+        let view = View::new(TickRate::new(NonZeroU32::new(30).unwrap()));
+        view.set_mode_names(&[], Arc::from(&names[..1]));
+        world.insert_non_send(view);
+        let entity = world.spawn_empty().id();
         let [gold, wood] = ["gold", "wood"].map(|name| ResourceId::named(&names, name).unwrap());
         let mut ids = IdAllocator::default();
         let [first, second] = [0, 1].map(|z| NodeAt {

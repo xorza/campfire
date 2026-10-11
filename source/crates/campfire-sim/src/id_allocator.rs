@@ -21,6 +21,7 @@ impl IdAllocator {
 
     pub const fn allocate(&mut self) -> StableId {
         let id = StableId::new(self.next);
+        debug_assert!(id.is_allocated(), "the allocator hands out no named id");
         self.next = self.next.checked_add(1).expect("stable ids exhausted");
         id
     }

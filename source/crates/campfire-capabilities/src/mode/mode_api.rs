@@ -785,10 +785,10 @@ impl ModeApi {
             .ok_or_else(|| ApiError::UnknownResource.fail())?;
         let mut frame = ctx.write()?;
         let resources = frame
-            .resources_mut()
+            .resources_mut(slot)
             .ok_or_else(|| ApiError::NoMode.fail())?;
         resources
-            .add(slot, resource, amount)
+            .add(resource, amount)
             .ok_or_else(|| ApiError::ResourceOverflow.fail().into())
     }
 

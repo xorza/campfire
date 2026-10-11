@@ -3,9 +3,11 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::world::World;
-use campfire_common::Ticks;
+use campfire_common::{PlayerSlot, Ticks};
 use campfire_sim::{EntityIndex, SimEdge, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
+use crate::players::player::Player;
+use crate::players::player_parts::PlayerParts;
 use crate::scripts::ctx::Ctx;
 use crate::state_types::StateTypes;
 use crate::stats::applier::Applier;
@@ -105,7 +107,7 @@ pub(crate) enum StatsSet {
 impl Stats {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.resource::<PlayerModifiers>();
+        types.component::<PlayerModifiers>();
         types.component::<Level>();
         types.component::<Modifiers>();
         types.component::<ModifierClocks>();
@@ -127,10 +129,13 @@ impl Stats {
         if let Some(ctx) = world.get_non_send::<Ctx>() {
             ctx.frame().add_part(StatsCall::default());
         }
-        world.insert_resource(PlayerModifiers::default());
+        world.resource_mut::<PlayerParts>().add(|player| {
+            player.insert(PlayerModifiers::default());
+        });
         world.insert_resource(HeldModifiers::default());
         world.insert_resource(LiveCarriers::default());
         Self::state_types(registry);
+        registry.add_check::<PlayerModifiers>(Stats::player_modifiers_held);
         schedule.add_systems((
             (
                 ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
@@ -152,6 +157,15 @@ impl Stats {
                     .in_set(SimEdge::After(stage)),
             );
         }
+    }
+
+    /// Whether each player's entity holds its modifiers, as stats puts them on it as it spawns,
+    /// so no system finds them missing.
+    fn player_modifiers_held(world: &World) -> bool {
+        (0..)
+            .map(PlayerSlot::new)
+            .map_while(|slot| Player::entity(world, slot))
+            .all(|entity| world.get::<PlayerModifiers>(entity).is_some())
     }
 
     /// Gives the match the mode's stat book and pool book, whose names its scripts read.

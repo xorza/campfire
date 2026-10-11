@@ -2,6 +2,7 @@ use bevy_ecs::query::Allow;
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 
+use crate::players::on_match::OnMatch;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::vision::seen_by::SeenBy;
@@ -16,7 +17,7 @@ use crate::vision::vision_grid::VisionGrid;
 pub(crate) struct SeenTargets<'w, 's> {
     index: Res<'w, EntityIndex>,
     grid: Option<Res<'w, VisionGrid>>,
-    relations: Res<'w, Relations>,
+    relations: OnMatch<'w, 's, Relations>,
     units: Query<'w, 's, (&'static Team, Option<&'static SeenBy>), Allow<Unpredicted>>,
 }
 
@@ -37,7 +38,7 @@ impl SeenTargets<'_, '_> {
         }
         match seen {
             Some(seen) => seen.get().contains(team),
-            None => self.relations.vision_group(own).contains(team),
+            None => self.relations.get().vision_group(own).contains(team),
         }
     }
 }

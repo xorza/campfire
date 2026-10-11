@@ -108,10 +108,9 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     ]);
     // Gold, the first of the mode's resources, and gems, the second; a resource the mode does
     // not declare fails, as a sum past what an integer holds does.
-    let resources = game.sim.world.resource::<PlayerResources>();
     let amount = |slot, name| {
-        let resource = resource(name).unwrap();
-        resources.amount(PlayerSlot::new(slot), resource)
+        let resources = PlayerResources::of_player(&game.sim.world, PlayerSlot::new(slot));
+        resources.unwrap().amount(resource(name).unwrap())
     };
     assert_eq!(
         [amount(1, "gold"), amount(1, "gems"), amount(0, "gold")],

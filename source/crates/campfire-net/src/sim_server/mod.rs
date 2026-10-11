@@ -7,18 +7,16 @@ use bevy_app::{
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::{Changed, Has, With, Without};
+use bevy_ecs::query::{Added, Changed, Has, Or, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::{
-    resource_added, resource_exists, resource_exists_and_changed,
-};
+use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
-    Area, CapabilitySet, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy,
-    Team,
+    Area, CapabilitySet, Deaths, MatchEnd, MatchEntity, MatchResult, Mode, Owner, Player,
+    Projectile, SeenBy, Team,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
@@ -33,8 +31,8 @@ use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, NetworkTarget,
-    PredictionTarget, Replicate, ReplicationSender, RoomAllocator, RoomPlugin,
-    ServerMultiMessageSender, Unlink, UnlinkReason,
+    PredictionTarget, Replicate, ReplicationSender, RoomAllocator, RoomPlugin, Unlink,
+    UnlinkReason,
 };
 use lightyear::webtransport::server::WebTransportServerPlugin;
 use tracing::{debug, info, trace, trace_span};
@@ -206,9 +204,9 @@ impl Plugin for SimServer {
                 // Right after the tick, before any entry of the next.
                 Checkpoints::begin.run_if(resource_exists::<Checkpoints>),
                 show_units,
+                show_match,
                 report_deaths,
-                announce_end.run_if(resource_added::<MatchEnd>),
-                send_relations.run_if(resource_exists_and_changed::<Relations>),
+                report_end,
             )
                 .chain()
                 .run_if(sim_tick_due),
@@ -655,36 +653,41 @@ fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
     }
 }
 
-/// Logs the end of the match the tick just run ended, and tells each player's client; a player
-/// seated after learns it as they sit.
-fn announce_end(
-    end: Res<'_, MatchEnd>,
-    links: Query<'_, '_, Entity, With<PlayerLink>>,
-    mut sender: ServerMultiMessageSender<'_, '_>,
-) {
-    let tick = end.tick().get();
-    match end.result() {
-        MatchResult::Won(team) => info!(tick, team = team.index(), "the match ended: a team won"),
-        MatchResult::Draw => info!(tick, "the match ended in a draw"),
+/// Logs the end of the match the tick just run ended, which reaches the clients on the match's
+/// entity.
+fn report_end(ended: Query<'_, '_, &MatchEnd, Added<MatchEnd>>) {
+    for end in &ended {
+        let tick = end.tick().get();
+        match end.result() {
+            MatchResult::Won(team) => {
+                info!(tick, team = team.index(), "the match ended: a team won");
+            }
+            MatchResult::Draw => info!(tick, "the match ended in a draw"),
+        }
     }
-    sender
-        .send_to_entities::<MatchEnd, MatchChannel>(&end, links.iter())
-        .expect("the match channel carries the match's end");
 }
 
-/// Tells each player's client how the teams regard each other, once as the match starts, and
-/// again in each tick a script changes it; a player seated after learns them as they sit.
-fn send_relations(
-    relations: Res<'_, Relations>,
-    links: Query<'_, '_, Entity, With<PlayerLink>>,
-    mut sender: ServerMultiMessageSender<'_, '_>,
+/// The match's entity and each player's, not replicated yet.
+type NewMatchEntities<'w, 's> =
+    Query<'w, 's, Entity, (Or<(With<MatchEntity>, With<Player>)>, Without<Replicate>)>;
+
+/// Replicates the match's entity and each player's, as the match starts, to every seated link:
+/// they stand in every team's room, whatever vision says, and no link with no seat receives them.
+/// What a player's own link alone receives, a kind's filter keeps from every other link.
+fn show_match(
+    rooms: Res<'_, TeamRooms>,
+    new: NewMatchEntities<'_, '_>,
+    mut commands: Commands<'_, '_>,
 ) {
-    sender
-        .send_to_entities::<Relations, MatchChannel>(&relations, links.iter())
-        .expect("the match channel carries the relations");
+    for entity in &new {
+        commands.entity(entity).insert((
+            Replicate::to_clients(NetworkTarget::All),
+            rooms.seeing(None),
+        ));
+    }
 }
 
-/// The units not replicated yet, with their owner if they have one, whether they are projectiles
+/// The units not replicated yet, a player's entity no unit, with their owner if they have one, whether they are projectiles
 /// or areas, and the teams that see them.
 type NewUnits<'w, 's> = Query<
     'w,
@@ -696,7 +699,7 @@ type NewUnits<'w, 's> = Query<
         Has<Area>,
         Option<&'static SeenBy>,
     ),
-    (With<Team>, Without<Replicate>),
+    (With<Team>, Without<Player>, Without<Replicate>),
 >;
 
 /// The replicated units whose seers changed this tick.

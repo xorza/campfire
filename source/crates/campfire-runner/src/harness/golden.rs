@@ -61,7 +61,8 @@ impl Golden {
 
     /// The digest of what the tick `runner` just ran did, in no type's layout:
     /// - each unit by stable id: its position, team, owner, pools by id, its life among them, and
-    ///   whether it is dead;
+    ///   whether it is dead; the match's and the players' entities, of named ids, by what they
+    ///   hold below;
     /// - each death of the tick, with its killer and assisters;
     /// - each failed script call, with its unit, hook and error;
     /// - each player's resources.
@@ -69,7 +70,8 @@ impl Golden {
         let world = runner.world();
         let bytes = &mut self.scratch;
         bytes.clear();
-        for (id, entity) in world.resource::<EntityIndex>().iter() {
+        let units = world.resource::<EntityIndex>().iter();
+        for (id, entity) in units.filter(|(id, _)| id.is_allocated()) {
             let unit = world.entity(entity);
             bytes.extend_from_slice(&id.get().to_le_bytes());
             if let Some(pos) = unit.get::<Position>() {
@@ -113,11 +115,12 @@ impl Golden {
                     .expect("text writes into bytes");
             }
         }
-        if let Some(amounts) = world.get_resource::<PlayerResources>() {
-            for slot in (0..self.players).map(PlayerSlot::new) {
-                for &resource in &self.resources {
-                    bytes.extend_from_slice(&amounts.amount(slot, resource).to_le_bytes());
-                }
+        for slot in (0..self.players).map(PlayerSlot::new) {
+            let Some(amounts) = PlayerResources::of_player(world, slot) else {
+                continue;
+            };
+            for &resource in &self.resources {
+                bytes.extend_from_slice(&amounts.amount(resource).to_le_bytes());
             }
         }
         StateRegistry::digest(bytes)

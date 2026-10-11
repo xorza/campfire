@@ -4,7 +4,7 @@
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use campfire_capabilities::{Action, Life, MoveStep, Owner, Team};
+use campfire_capabilities::{Action, Life, MoveStep, Owner, Team, UnitType};
 use campfire_math::Num;
 use campfire_net::internals::{End, InProcessMatch, MatchSetup};
 use campfire_sim::EntityIndex;
@@ -45,6 +45,7 @@ fn units(app: &App, team: u8, walks: bool) -> Vec<Entity> {
             unit.get::<Team>() == Some(&Team::new(team))
                 && unit.contains::<MoveStep>() == walks
                 && !unit.contains::<Owner>()
+                && unit.contains::<UnitType>()
         })
         .collect()
 }

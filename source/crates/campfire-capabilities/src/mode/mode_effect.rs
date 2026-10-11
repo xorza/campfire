@@ -13,6 +13,7 @@ use crate::mode::mode_book::ModeBook;
 use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::navigation::path_walker::PathEnd;
+use crate::players::match_entity::MatchEntity;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
@@ -89,7 +90,8 @@ impl Effect for ModeEffect {
                 .set(now, name, ticks, repeat, data),
             ModeEffect::End(result) => {
                 let tick = world.resource::<SimTick>().start();
-                world.insert_resource(MatchEnd::new(tick, result));
+                let entity = MatchEntity::entity(world).expect("a match that runs has its entity");
+                world.entity_mut(entity).insert(MatchEnd::new(tick, result));
             }
             ModeEffect::SpawnUnit { at, owner } => {
                 book.spawn_owned(world, at, owner);
@@ -132,9 +134,7 @@ impl Effect for ModeEffect {
                 slots.expect("a unit with ability slots").learn(slot);
             }
             ModeEffect::SetRelation { a, b, relation } => {
-                world
-                    .resource_mut::<Relations>()
-                    .set_keeping_vision(a, b, relation);
+                Relations::of_mut(world).set_keeping_vision(a, b, relation);
             }
             // A call's `now` is the end of its tick.
             ModeEffect::Save => world.insert_resource(SaveAsked::new(now)),

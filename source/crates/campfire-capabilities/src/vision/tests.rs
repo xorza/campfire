@@ -105,7 +105,7 @@ impl Scene {
     }
 
     fn seen_by(&self, id: StableId) -> TeamSet {
-        let relations = self.sim.world.resource::<Relations>();
+        let relations = Relations::of(&self.sim.world);
         let parts = (self.sim.try_get::<SeenBy>(id), self.sim.try_get::<Team>(id));
         VisionColumn::seen_by(parts, relations)
     }
@@ -186,7 +186,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
 
     // A new unit is seen by its whole group before its first Vision stage, as that stage gives
     // it: teams 1 and 2 become friends that share vision.
-    let relations = &mut scene.sim.world.resource_mut::<Relations>();
+    let relations = &mut Relations::of_mut(&mut scene.sim.world);
     relations.set(Team::new(1), Team::new(2), Relation::Friendly, true);
     let new = scene.spawn(2, 9, 9, None);
     assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
@@ -214,7 +214,7 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
     .map(|(team, x, z, sight)| scene.spawn(team, x, z, sight));
     let [zero, forty, sixty_three, one] = units;
     // 0 and 40 friends that share vision, 0 and 63 friends with vision off.
-    let mut relations = scene.sim.world.resource_mut::<Relations>();
+    let mut relations = Relations::of_mut(&mut scene.sim.world);
     relations.set(Team::new(0), Team::new(40), Relation::Friendly, true);
     relations.set(Team::new(63), Team::new(0), Relation::Friendly, false);
     let teams = |list: &[u8]| {
@@ -229,7 +229,7 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
     assert_eq!(scene.seen_by(one), teams(&[1]));
 
     // With vision off between 0 and 40, as between 0 and 63, each team sees alone.
-    let mut relations = scene.sim.world.resource_mut::<Relations>();
+    let mut relations = Relations::of_mut(&mut scene.sim.world);
     relations.set(Team::new(0), Team::new(40), Relation::Friendly, false);
     scene.sim.step();
     assert_eq!(scene.seen_by(zero), teams(&[0]));

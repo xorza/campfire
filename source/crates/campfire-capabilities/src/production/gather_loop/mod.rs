@@ -301,13 +301,12 @@ impl GatherLoop {
         Destination::go(world, entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
         if let Some(load) = gatherer.load() {
-            let owner = world
+            let owner = *world
                 .get::<Owner>(entity)
                 .expect("a load joins its owner's");
-            let owner = owner.slot();
-            world
-                .resource_mut::<PlayerResources>()
-                .add(owner, load.resource, i64::from(load.amount))
+            PlayerResources::of_mut(world, owner.slot())
+                .expect("a player of the session holds its resources")
+                .add(load.resource, i64::from(load.amount))
                 .expect("the step checked the player's resources take the load");
         }
         let mut gatherer = world.get_mut::<Gatherer>(entity).expect("a worker");

@@ -145,7 +145,7 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(game.failures(), [FailureKind::Api(ApiError::Ended)]);
     game.tick(&[(0, input("hero", "z"))]);
     assert_eq!(game.failures(), [FailureKind::Api(ApiError::UnknownTeam)]);
-    assert!(!game.sim.world.contains_resource::<MatchEnd>());
+    assert!(MatchEnd::of(&game.sim.world).is_none());
     assert_eq!(game.field("count"), StateValue::Int(2));
 
     // A pass in each gap between stages counts its runs: the gap before the first stage and
@@ -169,10 +169,10 @@ fn on_mode_input(ctx, player, name, value) {
     let before = game.units();
     game.tick(&[(0, input("hero", "b"))]);
     let end = MatchEnd::new(Tick::new(2), MatchResult::Won(Team::new(1)));
-    assert_eq!(game.sim.world.get_resource::<MatchEnd>(), Some(&end));
+    assert_eq!(MatchEnd::of(&game.sim.world), Some(end));
     game.tick(&[(0, input("phase", "draw"))]);
     assert!(game.failures().is_empty());
-    assert_eq!(game.sim.world.get_resource::<MatchEnd>(), Some(&end));
+    assert_eq!(MatchEnd::of(&game.sim.world), Some(end));
     assert_eq!(game.units(), before);
     assert_eq!(game.field("count"), StateValue::Int(2));
     assert_eq!(game.sim.world.resource::<SimTick>().start(), Tick::new(4));
@@ -191,5 +191,5 @@ fn on_mode_input(ctx, player, name, value) {
     let mut game = Game::new(script, ScriptLimits::ROOMY);
     game.tick(&[(0, input("phase", "draw"))]);
     let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
-    assert_eq!(game.sim.world.get_resource::<MatchEnd>(), Some(&draw));
+    assert_eq!(MatchEnd::of(&game.sim.world), Some(draw));
 }

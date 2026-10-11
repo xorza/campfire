@@ -10,9 +10,9 @@ use bevy_ecs::query::{Has, With};
 use bevy_ecs::system::{Commands, Query};
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
 use campfire_capabilities::{
-    CapabilitySet, DataKind, Declared, Experience, Inventory, ModifierClocks, Owner, Points, Pools,
-    Progress, Replication, Respawn, Route, SlotTimes, SpawnPoint, StateTypes, SyncOwner, SyncTeam,
-    Team, UnitState,
+    CapabilitySet, DataKind, Declared, Experience, Inventory, ModifierClocks, Owner, Player,
+    PlayerResources, Points, Pools, Progress, Replication, Respawn, Route, SlotTimes, SpawnPoint,
+    StateTypes, SyncOwner, SyncTeam, Team, UnitState,
 };
 use campfire_common::PlayerSlot;
 use campfire_sim::SimResource;
@@ -79,6 +79,16 @@ impl FilteredKind for ProgressionKind {
     type Scope = (Experience, Points);
 }
 
+/// A player's resources.
+#[derive(Debug)]
+pub(crate) struct ResourcesKind;
+
+impl FilteredKind for ResourcesKind {
+    const KIND: DataKind = DataKind::Resources;
+    const ALLIES: bool = false;
+    type Scope = SingleComponent<PlayerResources>;
+}
+
 /// A unit's script state fields of `sync = "owner"`.
 #[derive(Debug)]
 pub(crate) struct UnitStateOwnerKind;
@@ -99,19 +109,21 @@ impl FilteredKind for UnitStateTeamKind {
     type Scope = SingleComponent<UnitState<SyncTeam>>;
 }
 
-/// Each entity's owner and team, and whether it holds the filter of `K`.
+/// Each entity's owner, a unit's or a player's entity's slot, its team, and whether it holds the
+/// filter of `K`.
 type Owners<'w, 's, K> = Query<
     'w,
     's,
     (
         Option<&'static Owner>,
+        Option<&'static Player>,
         Option<&'static Team>,
         Has<KindFilter<K>>,
     ),
 >;
 
-/// On each entity that holds a type of kind `K`: the slot that owns it, if one does, and its
-/// team, if it has one. Replicon reads it to send the kind's types to the clients `K` names
+/// On each entity that holds a type of kind `K`: the slot that owns it, if one does, a player's
+/// entity its own slot, and its team, if it has one. Replicon reads it to send the kind's types to the clients `K` names
 /// alone. Immutable, as replicon requires: a change of owner or team inserts a new one.
 #[derive(Component, Debug)]
 #[component(immutable)]
@@ -131,6 +143,14 @@ impl<K: FilteredKind> KindFilter<K> {
             team: team.copied(),
             kind: PhantomData,
         }
+    }
+
+    /// The filter of an entity of `owner` or, a player's entity, of `player`, and of `team`.
+    fn of(owner: Option<&Owner>, player: Option<&Player>, team: Option<&Team>) -> KindFilter<K> {
+        let owner = owner
+            .copied()
+            .or(player.map(|player| Owner::new(player.slot())));
+        KindFilter::new(owner.as_ref(), team)
     }
 
     /// The filter of `K`, and the observers that follow its entity's owner and team.
@@ -176,10 +196,10 @@ impl<K: FilteredKind> KindFilter<K> {
             |inserted: On<'_, '_, Insert, C>,
              units: Owners<'_, '_, K>,
              mut commands: Commands<'_, '_>| {
-                if let Ok((owner, team, true)) = units.get(inserted.entity) {
+                if let Ok((owner, player, team, true)) = units.get(inserted.entity) {
                     commands
                         .entity(inserted.entity)
-                        .try_insert(KindFilter::<K>::new(owner, team));
+                        .try_insert(KindFilter::<K>::of(owner, player, team));
                 }
             },
         );
@@ -193,10 +213,10 @@ impl<K: FilteredKind> KindFilter<K> {
             |added: On<'_, '_, Add, C>,
              units: Owners<'_, '_, K>,
              mut commands: Commands<'_, '_>| {
-                if let Ok((owner, team, false)) = units.get(added.entity) {
+                if let Ok((owner, player, team, false)) = units.get(added.entity) {
                     commands
                         .entity(added.entity)
-                        .try_insert(KindFilter::<K>::new(owner, team));
+                        .try_insert(KindFilter::<K>::of(owner, player, team));
                 }
             },
         );
@@ -229,6 +249,7 @@ impl KindFilters {
         KindFilter::<CooldownsKind>::register_kind(app);
         KindFilter::<InventoryKind>::register_kind(app);
         KindFilter::<ProgressionKind>::register_kind(app);
+        KindFilter::<ResourcesKind>::register_kind(app);
         KindFilter::<UnitStateOwnerKind>::register_kind(app);
         KindFilter::<UnitStateTeamKind>::register_kind(app);
         capabilities.state_types(&mut FilterObservers(app));
@@ -248,9 +269,13 @@ impl FilterObservers<'_> {
             DataKind::Cooldowns => KindFilter::<CooldownsKind>::observe::<C>(self.0),
             DataKind::Inventory => KindFilter::<InventoryKind>::observe::<C>(self.0),
             DataKind::Progression => KindFilter::<ProgressionKind>::observe::<C>(self.0),
+            DataKind::Resources => KindFilter::<ResourcesKind>::observe::<C>(self.0),
             DataKind::UnitStateOwner => KindFilter::<UnitStateOwnerKind>::observe::<C>(self.0),
             DataKind::UnitStateTeam => KindFilter::<UnitStateTeamKind>::observe::<C>(self.0),
             DataKind::Unit
+            | DataKind::Match
+            | DataKind::ModeState
+            | DataKind::PlayerModifiers
             | DataKind::Life
             | DataKind::Modifiers
             | DataKind::UnitStateAll
@@ -426,6 +451,7 @@ mod tests {
         assert_eq!(scope_of::<CooldownsKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<InventoryKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<ProgressionKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<ResourcesKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<UnitStateOwnerKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<UnitStateTeamKind>(&kinds), (vec![], 0));
         // The check itself: `Stray`, of the kind, which the scope lacks, fails by its name, and

@@ -23,6 +23,7 @@ use crate::items::item_book::ItemSpec;
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
 use crate::orders::order::{Action, Order};
+use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -176,9 +177,11 @@ impl Carrier {
         let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
         sim.world
             .insert_resource(Shop::new(sells, resource, places, share));
-        let mut resources = PlayerResources::new(1, 1);
-        resources.add(PlayerSlot::new(0), resource, 1000).unwrap();
-        sim.world.insert_resource(resources);
+        MatchEntity::spawn_players(&mut sim.world, 1, 1);
+        PlayerResources::of_mut(&mut sim.world, PlayerSlot::new(0))
+            .unwrap()
+            .add(resource, 1000)
+            .unwrap();
     }
 
     /// Runs a tick in which player 0 orders the carrier each of `actions`.

@@ -28,6 +28,7 @@ use crate::items::inventory::Inventory;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::player_resources::PlayerResources;
+use crate::players::player_rows::PlayerRows;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
@@ -76,7 +77,10 @@ impl Casts {
     pub(super) fn start_casts(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
-        (resources, life): (Option<Res<'_, PlayerResources>>, Option<Res<'_, LifePool>>),
+        (resources, life): (
+            PlayerRows<'_, '_, PlayerResources>,
+            Option<Res<'_, LifePool>>,
+        ),
         targets: Targets<'_, '_>,
         mut units: Query<
             '_,
@@ -167,7 +171,7 @@ impl Casts {
                 slots.stop();
                 continue;
             }
-            let purse = Purse::of(pools.of(life), resources.as_deref(), owner);
+            let purse = Purse::of(pools.of(life), resources.of(owner));
             let relation = |other| targets.relation(team, other);
             let shape = Body::shape_of(body);
             let checked = book
@@ -278,7 +282,10 @@ impl Casts {
     pub(super) fn predict_casts(
         (tick, rate): (Res<'_, SimTick>, Res<'_, TickRate>),
         book: Res<'_, ActionBook>,
-        (resources, life): (Option<Res<'_, PlayerResources>>, Option<Res<'_, LifePool>>),
+        (resources, life): (
+            PlayerRows<'_, '_, PlayerResources>,
+            Option<Res<'_, LifePool>>,
+        ),
         targets: Targets<'_, '_>,
         mut casters: Query<
             '_,
@@ -314,7 +321,7 @@ impl Casts {
                 slots.interrupt();
                 continue;
             }
-            let purse = Purse::of(pools.of(life), resources.as_deref(), owner);
+            let purse = Purse::of(pools.of(life), resources.of(owner));
             let living = |id| targets.living(id);
             let relation = |other| targets.relation(team, other);
             let resolved = book
@@ -428,7 +435,7 @@ impl Casts {
         let owner = unit.get::<Owner>();
         let pools = unit.get_components::<UnitPoolsReadOnly>();
         let pools = pools.expect("a caster's pools").of(Combat::life(world));
-        let purse = Purse::of(pools, world.get_resource::<PlayerResources>(), owner);
+        let purse = Purse::of(pools, PlayerResources::of(world, owner));
         let living = |id| view.living(id);
         let relation = |other| view.relation(team, other);
         let Some(checked) = book.check(now, (slots, times), purse, casting, relation, living)
@@ -460,9 +467,9 @@ impl Casts {
         let resource_cost = checked.action.resource_cost(checked.rank);
         if !resource_cost.is_empty() {
             let owner = owner.expect("a unit that pays player resources has an owner");
-            let resources = frame.resources_mut();
+            let resources = frame.resources_mut(owner.slot());
             let resources = resources.expect("a match that takes player resources keeps them");
-            resources.pay(owner.slot(), resource_cost);
+            resources.pay(resource_cost);
         }
         drop(frame);
         let pool = Pool::of(owner.map(|owner| owner.slot()));

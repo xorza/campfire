@@ -3,9 +3,7 @@ use std::time::Duration;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::component::{Component, Immutable, Mutable};
-use campfire_capabilities::{
-    CapabilitySet, Declared, MatchEnd, Relations, Replication, StateTypes,
-};
+use campfire_capabilities::{CapabilitySet, Declared, Replication, StateTypes};
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
 use lightyear::prelude::{
@@ -28,8 +26,8 @@ use crate::wire_codec::WireCodec;
 #[derive(Debug)]
 pub struct InputChannel;
 
-/// Carries the offer, the match start and end, the relations as they change, the receipts, and
-/// the word that a newer login took the seat, to the client.
+/// Carries the offer, the match start, the receipts, and the word that a newer login took the
+/// seat, to the client.
 #[derive(Debug)]
 pub(crate) struct MatchChannel;
 
@@ -47,8 +45,8 @@ pub(crate) struct JoinChannel;
 /// each unit's type once and its level as it changes, and derives its own units' stats, tags and
 /// step from them and their modifiers as the server does, so the server sends a unit's step only
 /// with the unit. It starts their actions as the server does, and learns their pools and the
-/// actions' effects from the server. It learns the teams' relations as it sits, and again as a
-/// script changes them.
+/// actions' effects from the server. It learns the teams' relations, the match's end and each
+/// player's state on the match's and the players' entities, which replicate as units do.
 #[derive(Debug)]
 pub struct NetProtocol {
     pub capabilities: CapabilitySet,
@@ -83,10 +81,6 @@ impl Plugin for NetProtocol {
         app.register_message_custom_serde::<InputAck>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message_custom_serde::<MatchStart>(WireCodec::message())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<MatchEnd>(WireCodec::message())
-            .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<Relations>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message_custom_serde::<Offer>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);

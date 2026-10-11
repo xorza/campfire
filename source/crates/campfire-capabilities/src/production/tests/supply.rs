@@ -1,6 +1,7 @@
 use super::*;
+use crate::players::player::Player;
 use crate::production::requirements::Requirements;
-use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
+use crate::stats::player_modifiers::PlayerModifiers;
 use crate::units::modifier_id::ModifierId;
 
 /// A supply of `cost` used and `provides` given.
@@ -94,7 +95,11 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     let mut requirements = Requirements::default();
     requirements.push(train, [shop.forge], [drill]);
     shop.sim.world.insert_resource(requirements);
-    shop.sim.world.insert_resource(PlayerModifiers::default());
+    // A match of production alone, whose players hold no modifiers until one is given them.
+    MatchEntity::spawn_players(&mut shop.sim.world, 2, 0);
+    let entity = Player::entity(&shop.sim.world, PlayerSlot::new(0)).unwrap();
+    let given = PlayerModifiers::default();
+    shop.sim.world.entity_mut(entity).insert(given);
     let player = PlayerSlot::new(0);
     let producer = shop.id();
     shop.producer(producer, 1, 10, Some(player), train, TrainQueue::default());
@@ -110,11 +115,8 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     let forge = shop.owned(shop.forge, player);
     step(&mut shop, 0, 2);
     // Both: it joins.
-    let held = PlayerModifier {
-        player,
-        modifier: drill,
-    };
-    shop.sim.world.resource_mut::<PlayerModifiers>().add(held);
+    let held = PlayerModifiers::of_mut(&mut shop.sim.world, player);
+    held.unwrap().add(drill);
     step(&mut shop, 1, 3);
     // The forge dies: the next is refused, and the queued one stays.
     shop.sim.insert(forge, Dead);

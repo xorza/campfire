@@ -114,9 +114,14 @@ impl View {
         self.names().has_player(slot)
     }
 
+    /// See `ViewNames::resource_count`.
+    pub(crate) fn resource_count(&self) -> usize {
+        self.names().resource_count()
+    }
+
     /// See `ViewNames::fits_resources`.
-    pub(crate) fn fits_resources(&self, resources: usize, amounts: usize) -> bool {
-        self.names().fits_resources(resources, amounts)
+    pub(crate) fn fits_resources(&self, resources: usize) -> bool {
+        self.names().fits_resources(resources)
     }
 
     /// Player `player`'s slot, as a script names it, when the session has it.

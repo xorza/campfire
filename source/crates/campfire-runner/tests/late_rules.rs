@@ -98,7 +98,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
         "true",
     );
     run_to(&mut fixed, 2401);
-    let end = *fixed.runner().world().resource::<MatchEnd>();
+    let end = MatchEnd::of(fixed.runner().world()).expect("the match ended");
     assert_eq!(
         (end.tick(), end.result()),
         (Tick::new(2400), MatchResult::Won(Team::new(1)))

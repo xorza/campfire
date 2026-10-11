@@ -22,6 +22,7 @@ use crate::combat::shots::{Shot, Shots};
 use crate::combat::wielded::Wielded;
 use crate::combat::{Combat, ROLL_STREAM};
 use crate::players::player_resources::PlayerResources;
+use crate::players::player_rows::{PlayerRows, PlayerRowsMut};
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::life_pool::LifePool;
 use crate::stats::unit_pools::{UnitPools, UnitPoolsReadOnly};
@@ -61,7 +62,10 @@ impl Attacks {
     pub(super) fn start_attacks(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
-        (resources, life): (Option<Res<'_, PlayerResources>>, Option<Res<'_, LifePool>>),
+        (resources, life): (
+            PlayerRows<'_, '_, PlayerResources>,
+            Option<Res<'_, LifePool>>,
+        ),
         targets: Targets<'_, '_>,
         mut units: Query<
             '_,
@@ -119,7 +123,7 @@ impl Attacks {
                         slot,
                         target: ActionTarget::Unit(target),
                     };
-                    let purse = Purse::of(pools.of(life), resources.as_deref(), owner);
+                    let purse = Purse::of(pools.of(life), resources.of(owner));
                     let relation = |other| targets.relation(team, other);
                     let shape = Body::shape_of(body);
                     let started = book
@@ -148,11 +152,10 @@ impl Attacks {
         };
         let now = world.resource::<SimTick>().start();
         let book = world.resource::<ActionBook>();
-        let resources = world.get_resource::<PlayerResources>();
         let life = Combat::life(world);
         going.clear();
         for (&attacker, slots, tags, forced, pools, owner) in attackers.iter(world) {
-            let purse = Purse::of(pools.of(life), resources, owner);
+            let purse = Purse::of(pools.of(life), PlayerResources::of(world, owner));
             if let Some(target) = Self::going_off(slots, now)
                 && Self::wielded(book, slots).strikes(tags, forced, purse)
             {
@@ -215,7 +218,7 @@ impl Attacks {
         (mut queue, mut fired, mut resources, predicting): (
             ResMut<'_, PassQueue>,
             ResMut<'_, Shots>,
-            Option<ResMut<'_, PlayerResources>>,
+            PlayerRowsMut<'_, '_, PlayerResources>,
             Option<Res<'_, Predicting>>,
         ),
         mut attackers: Query<
@@ -247,7 +250,7 @@ impl Attacks {
                 attackers.get_mut(entity).expect("an attacker in the order");
             let target = Self::going_off(&slots, now).expect("an attack going off");
             let pools = pools.of(life);
-            let purse = Purse::of(pools.read(), resources.as_deref(), owner);
+            let purse = Purse::of(pools.read(), resources.of(owner));
             let wielded = Self::wielded(&book, &slots);
             if !wielded.strikes(tags, forced, purse) {
                 slots.interrupt();
@@ -298,7 +301,8 @@ impl Attacks {
                     hit: None,
                 }),
             }
-            let payer = Payer::of(pools, resources.as_deref_mut(), owner);
+            let mut held = resources.of_mut(owner);
+            let payer = Payer::of(pools, held.as_deref_mut());
             payer.pay(&values.cost, resource_cost);
         }
     }

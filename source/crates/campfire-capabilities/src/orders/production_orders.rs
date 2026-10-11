@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Has;
-use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, Res};
 use campfire_sim::{EntityIndex, SimTick};
 
 use crate::geometry::bounds::Bounds;
@@ -8,6 +8,7 @@ use crate::orders::order::Action;
 use crate::orders::seen_targets::SeenTargets;
 use crate::orders::tick_orders::TickOrders;
 use crate::players::player_resources::PlayerResources;
+use crate::players::player_rows::PlayerRowsMut;
 use crate::players::resource_amount::ResourceAmount;
 use crate::production::build_specs::BuildSpecs;
 use crate::production::rally::Rally;
@@ -41,7 +42,7 @@ impl ProductionOrders {
             Res<'_, EntityIndex>,
         ),
         builds: Res<'_, BuildSpecs>,
-        mut resources: Option<ResMut<'_, PlayerResources>>,
+        mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: Query<
             '_,
             '_,
@@ -62,9 +63,9 @@ impl ProductionOrders {
         let mut refunds = |amounts: &[ResourceAmount], slot| {
             amounts.is_empty()
                 || resources
-                    .as_deref_mut()
+                    .of_slot_mut(slot)
                     .expect("an order that paid resources runs in a match with them")
-                    .refund(slot, amounts)
+                    .refund(amounts)
         };
         for order in orders.iter() {
             if !matches!(

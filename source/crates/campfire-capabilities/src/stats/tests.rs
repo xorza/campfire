@@ -763,6 +763,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     let mut snapshot = Vec::new();
     game.registry.snapshot(&game.world, &mut snapshot);
     let mut restored = start();
+    restored.clear();
     game.registry
         .restore(&snapshot, &mut restored.world)
         .unwrap();

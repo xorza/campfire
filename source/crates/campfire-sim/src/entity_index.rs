@@ -21,6 +21,14 @@ impl EntityIndex {
         self.entities.iter().map(|(&id, &entity)| (id, entity))
     }
 
+    /// The highest allocated id in use, past which every named id lies.
+    pub(crate) fn last_allocated(&self) -> Option<StableId> {
+        self.entities
+            .range(..StableId::MATCH)
+            .next_back()
+            .map(|(&id, _)| id)
+    }
+
     pub(crate) fn insert(&mut self, id: StableId, entity: Entity) -> Option<Entity> {
         self.entities.insert(id, entity)
     }

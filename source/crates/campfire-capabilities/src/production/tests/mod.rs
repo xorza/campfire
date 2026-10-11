@@ -14,6 +14,7 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::navigation::destination::Destination;
+use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -240,9 +241,11 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     let mut shop = Shop::new();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
     let player = PlayerSlot::new(0);
-    let mut resources = PlayerResources::new(1, 1);
-    resources.add(player, gold, 5).unwrap();
-    shop.sim.world.insert_resource(resources);
+    MatchEntity::spawn_players(&mut shop.sim.world, 1, 1);
+    PlayerResources::of_mut(&mut shop.sim.world, player)
+        .unwrap()
+        .add(gold, 5)
+        .unwrap();
     let cost = ResourceAmount {
         resource: gold,
         amount: 2,
@@ -257,11 +260,9 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     shop.order(unowned);
     shop.tick();
     assert_eq!(shop.spawns(), [(Team::new(1), at(10), Some(player))]);
-    let held = shop
-        .sim
-        .world
-        .resource::<PlayerResources>()
-        .amount(player, gold);
+    let held = PlayerResources::of_player(&shop.sim.world, player)
+        .unwrap()
+        .amount(gold);
     assert_eq!(held, 3);
     for id in [owned, unowned] {
         let entity = shop.sim.entity(id);

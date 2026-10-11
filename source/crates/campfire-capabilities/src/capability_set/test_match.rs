@@ -23,6 +23,7 @@ use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::slot_kind_data::SlotKindData;
 use crate::capability_set::CapabilitySet;
 use crate::combat::internals;
+use crate::players::match_entity::MatchEntity;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::script_book::ScriptBook;
@@ -49,8 +50,20 @@ impl TestMatch {
     pub(crate) const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
     /// A match at `rate` of the capabilities `declared`, running scripts within `budgets`, or
-    /// none, as a client; with combat, its life pool the first.
+    /// none, as a client; with combat, its life pool the first. It has no mode to start it, so it
+    /// starts with the match's entity, as a start spawns it.
     pub(crate) fn new(
+        declared: &[Capability],
+        rate: TickRate,
+        budgets: Option<ScriptBudgets>,
+    ) -> TestMatch {
+        let mut started = TestMatch::unstarted(declared, rate, budgets);
+        MatchEntity::start_without_mode(&mut started.world);
+        started
+    }
+
+    /// The match `new` gives, with no entity yet, for a mode to start.
+    pub(crate) fn unstarted(
         declared: &[Capability],
         rate: TickRate,
         budgets: Option<ScriptBudgets>,
@@ -174,9 +187,17 @@ impl TestMatch {
         per_type.iter().map(|TypeHash { name, .. }| *name).collect()
     }
 
+    /// Despawns the match's entity it started with, as a restore takes a world of no entity.
+    pub(crate) fn clear(&mut self) {
+        if let Some(entity) = MatchEntity::entity(&self.world) {
+            self.world.despawn(entity);
+        }
+    }
+
     /// Restores its state into `fresh`, a match that loaded the same books, as a restore does, and
     /// asserts that the two hash the same.
     pub(crate) fn restore_into(&self, fresh: &mut TestMatch) {
+        fresh.clear();
         let mut snapshot = Vec::new();
         self.registry.snapshot(&self.world, &mut snapshot);
         self.registry

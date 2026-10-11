@@ -36,6 +36,9 @@ use crate::navigation::NavigationSet;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::orders::OrdersSet;
+use crate::players::match_entity::MatchEntity;
+use crate::players::player::Player;
+use crate::players::player_parts::PlayerParts;
 use crate::players::player_resources::PlayerResources;
 use crate::production::ProductionSet;
 use crate::scripts::ctx::Ctx;
@@ -43,12 +46,14 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
+use crate::scripts::state_value::StateValue;
 use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
 use crate::units::team::Team;
+use crate::units::unit_state::{SyncAll, SyncNone};
 use crate::units::view::View;
 use crate::vision::Vision;
 
@@ -104,10 +109,12 @@ pub struct Mode;
 impl Mode {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.resource::<MatchEnd>();
-        types.resource::<ModeState>();
+        types.component::<MatchEnd>();
+        types.component::<ModeState<SyncNone>>();
+        types.component::<ModeState<SyncAll>>();
         types.resource::<Choices>();
-        types.resource::<PlayerResources>();
+        types.component::<PlayerResources>();
+        types.component::<Player>();
         types.resource::<Timers>();
         types.resource::<UnansweredDeaths>();
         types.resource::<UnansweredSlotEvents>();
@@ -136,6 +143,7 @@ impl Mode {
         let resource_count = books.resources.len();
         let ModeMap {
             ground,
+            relations,
             paths,
             placed,
             markers,
@@ -143,11 +151,11 @@ impl Mode {
             brush,
         } = books.install(world);
         ground.install(world, walkers);
-        let state = ModeState::initial(setup.data);
         let book = ModeBook::new(
             setup,
             world.resource::<ScriptBook>(),
             placed,
+            relations,
             GameMap::new(paths.names().map(ImmutableString::from), &markers),
             loadout_ranks,
         );
@@ -159,10 +167,11 @@ impl Mode {
         }
         view.set_names(Rc::clone(&book.teams), paths.shared_names());
         world.insert_resource(paths);
-        world.insert_resource(state);
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
-        world.insert_resource(PlayerResources::new(players, resource_count));
+        world.resource_mut::<PlayerParts>().add(move |player| {
+            player.insert(PlayerResources::new(resource_count));
+        });
         world.insert_resource(Timers::default());
         world.insert_resource(UnansweredDeaths::default());
         world.insert_resource(UnansweredSlotEvents::default());
@@ -209,12 +218,47 @@ impl Mode {
                 .after(ProductionSet::Finish),
         ));
         Self::state_types(registry);
+        registry.add_check::<Player>(Mode::entities_held);
     }
 
     /// The boundary the mode in `world` last asked for a save at, by `ctx.save()`, by the tick
     /// it comes before.
     pub fn save_asked(world: &World) -> Option<Tick> {
         world.get_resource::<SaveAsked>().map(|asked| asked.at())
+    }
+
+    /// The mode's state in the match in `world`, every field in the order of their names, as a
+    /// mode call reads it.
+    pub fn state(world: &World) -> Vec<StateValue> {
+        let ctx = world.non_send::<Ctx>();
+        let mut state = Vec::new();
+        let (none, all) = (
+            ModeState::<SyncNone>::of(world),
+            ModeState::<SyncAll>::of(world),
+        );
+        ModeBook::of_match(ctx)
+            .schema
+            .merge_state(none, all, &mut state);
+        state
+    }
+
+    /// Whether the match's entity holds the mode's state, each class, and each slot of the session
+    /// has its entity, holding its resources, as the mode's start spawns them, so no call finds
+    /// one missing.
+    fn entities_held(world: &World) -> bool {
+        let ctx = world.get_non_send::<Ctx>();
+        let Some(players) = ctx.and_then(ModeBook::of).map(|book| book.teams.players()) else {
+            return true;
+        };
+        let state = MatchEntity::entity(world).is_some_and(|entity| {
+            let entity = world.entity(entity);
+            entity.contains::<ModeState<SyncNone>>() && entity.contains::<ModeState<SyncAll>>()
+        });
+        state
+            && (0..players).map(PlayerSlot::new).all(|slot| {
+                Player::entity(world, slot)
+                    .is_some_and(|entity| world.get::<PlayerResources>(entity).is_some())
+            })
     }
 
     /// The team of player `slot` in the match in `world`; `None` before the mode installs, or for
@@ -230,6 +274,14 @@ impl Mode {
     pub fn start(world: &mut World) -> Result<(), CallError> {
         let ctx = world.non_send::<Ctx>().clone();
         let book = ModeBook::of_match(&ctx);
+        let teams = &book.teams;
+        let slots = (0..teams.players()).map(PlayerSlot::new);
+        let state = (book.state_none.clone(), book.state_all.clone());
+        MatchEntity::spawn(
+            world,
+            (book.relations.clone(), state),
+            slots.map(|slot| teams.of(slot).expect("every player has a team")),
+        );
         for placed in &book.placed {
             let at = SpawnAt {
                 id: world.resource_mut::<IdAllocator>().allocate(),

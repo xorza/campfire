@@ -124,9 +124,11 @@ impl Yard {
         Navigation::load_pathing(world, grid, &rules.walls, vec![walker]);
         let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
         let player = PlayerSlot::new(0);
-        let mut resources = PlayerResources::new(1, 1);
-        resources.add(player, gold, 100).unwrap();
-        world.insert_resource(resources);
+        MatchEntity::spawn_players(world, 1, 1);
+        PlayerResources::of_mut(world, player)
+            .unwrap()
+            .add(gold, 100)
+            .unwrap();
         let cost = ResourceAmount {
             resource: gold,
             amount: 15,
@@ -209,11 +211,9 @@ impl Yard {
     }
 
     fn gold(&self) -> i64 {
-        self.shop
-            .sim
-            .world
-            .resource::<PlayerResources>()
-            .amount(self.player, self.gold)
+        PlayerResources::of_player(&self.shop.sim.world, self.player)
+            .unwrap()
+            .amount(self.gold)
     }
 
     /// The depots spawned so far, by stable id.

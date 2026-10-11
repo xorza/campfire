@@ -21,6 +21,43 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         game.sim.world.get::<OnPath>(tower).map(|path| path.get()),
         Some(PathId::new(0))
     );
+    // Beside them, the match's entity and each player's, of their named ids: players 0 and 1 of
+    // team a, player 2 of b.
+    let world = &game.sim.world;
+    let named: Vec<_> = world
+        .resource::<EntityIndex>()
+        .iter()
+        .filter(|(id, _)| !id.is_allocated())
+        .map(|(id, entity)| {
+            (
+                id,
+                world.get::<Player>(entity).copied(),
+                world.get::<Team>(entity),
+            )
+        })
+        .collect();
+    let player = |slot| {
+        (
+            StableId::of_player(PlayerSlot::new(slot)),
+            Some(Player::new(PlayerSlot::new(slot))),
+        )
+    };
+    let [zero, one, two] = [0, 1, 2].map(player);
+    assert_eq!(
+        named,
+        [
+            (StableId::MATCH, None, None),
+            (zero.0, zero.1, Some(&Team::new(0))),
+            (one.0, one.1, Some(&Team::new(0))),
+            (two.0, two.1, Some(&Team::new(1))),
+        ]
+    );
+    assert!(
+        world
+            .entity(MatchEntity::entity(world).unwrap())
+            .contains::<MatchEntity>()
+    );
+    assert_eq!(Player::entity(world, PlayerSlot::new(3)), None);
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
     let vision = game.sim.world.resource::<VisionGrid>();
     let grid = Grid::new(Num::int(1), map().bounds).unwrap();

@@ -1,20 +1,25 @@
 use std::array;
 
-use bevy_ecs::resource::Resource;
-use bevy_ecs::world::World;
-use campfire_sim::SimResource;
+use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::{Mut, World};
+use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::players::match_entity::MatchEntity;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnChange;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::view::View;
 use crate::values::relation::Relation;
 
-/// How the match's teams regard each other, and which friendly pairs share vision: state, which
-/// `ctx.set_relation` changes. A pair it does not hold is hostile, and would share vision were it
-/// friendly; a team is friendly to itself.
-#[derive(Resource, Debug, Clone, Default, PartialEq, Eq, Serialize)]
+/// How the match's teams regard each other, and which friendly pairs share vision: state on the
+/// match's entity, which `ctx.set_relation` changes. A pair it does not hold is hostile, and
+/// would share vision were it friendly; a team is friendly to itself.
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct Relations {
     /// The pairs that differ from the default, the lower team first, sorted by their teams.
@@ -31,6 +36,25 @@ struct RelationPair {
 }
 
 impl Relations {
+    /// The relations of the match in `world`, on its entity, which every match spawns as it
+    /// starts.
+    pub(crate) fn of(world: &World) -> &Relations {
+        Relations::held(world).expect("a match that started holds its relations")
+    }
+
+    /// The relations of the match in `world`, once its entity spawned, or reached a client.
+    pub fn held(world: &World) -> Option<&Relations> {
+        world.get(MatchEntity::entity(world)?)
+    }
+
+    /// The relations of the match in `world`, to change.
+    pub(crate) fn of_mut(world: &mut World) -> Mut<'_, Relations> {
+        let entity = MatchEntity::entity(world).expect("a match that started has its entity");
+        world
+            .get_mut(entity)
+            .expect("the match's entity holds the relations")
+    }
+
     /// How `of` regards `other`, and so `other` regards `of`.
     pub(crate) fn between(&self, of: Team, other: Team) -> Relation {
         if of == other {
@@ -124,17 +148,24 @@ impl Relations {
     }
 }
 
-impl SimResource for Relations {
+impl SimComponent for Relations {
     const NAME: &'static str = "units.relations";
 
-    // A relation of a team the mode lacks would join it to a vision group of the mode's teams.
-    fn check(&self, world: &World) -> bool {
-        world.get_non_send::<View>().is_none_or(|view| {
-            self.pairs
-                .iter()
-                .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
-        })
+    // Relations on another entity are no match's, and a relation of a team the mode lacks would
+    // join it to a vision group of the mode's teams.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        world.get::<MatchEntity>(entity).is_some()
+            && world.get_non_send::<View>().is_none_or(|view| {
+                self.pairs
+                    .iter()
+                    .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
+            })
     }
+}
+
+impl Replication for Relations {
+    const KIND: DataKind = DataKind::Match;
+    type Sending = SentOnChange;
 }
 
 /// A snapshot is untrusted, so pairs out of order, of a team with itself, or that are the
@@ -168,9 +199,7 @@ pub(crate) mod internals {
     /// Sets how the two teams of the match in `world` regard each other, as `ctx.set_relation`
     /// does, their vision as it was.
     pub fn set_relation(world: &mut World, of: Team, other: Team, relation: Relation) {
-        world
-            .resource_mut::<Relations>()
-            .set_keeping_vision(of, other, relation);
+        Relations::of_mut(world).set_keeping_vision(of, other, relation);
     }
 }
 

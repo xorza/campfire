@@ -37,7 +37,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     // paid 10, 20 and 30 gold: the head is done at time 4.
     let mut shop = Shop::ordering();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    shop.sim.world.insert_resource(PlayerResources::new(1, 1));
+    MatchEntity::spawn_players(&mut shop.sim.world, 1, 1);
     let train = internals::train(&mut shop.sim.world, shop.grunt, Ticks::new(4), None);
     let mut queue = TrainQueue::default();
     for paid in [10, 20, 30] {
@@ -57,11 +57,9 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     let producer = shop.id();
     shop.producer(producer, 1, 10, Some(player), train, queue);
     let held = |shop: &Shop| {
-        let amount = shop
-            .sim
-            .world
-            .resource::<PlayerResources>()
-            .amount(player, gold);
+        let amount = PlayerResources::of_player(&shop.sim.world, player)
+            .unwrap()
+            .amount(gold);
         (amount, shop.queued(producer), shop.spawns().len())
     };
     let cancel = |place| Action::CancelTrain { place };
@@ -96,8 +94,8 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     };
     queue.push(queued, &[ten], Tick::new(7));
     shop.sim.insert(producer, queue);
-    let mut resources = shop.sim.world.resource_mut::<PlayerResources>();
-    resources.add(player, gold, i64::MAX - 35).unwrap();
+    let mut resources = PlayerResources::of_mut(&mut shop.sim.world, player).unwrap();
+    resources.add(gold, i64::MAX - 35).unwrap();
     shop.tick_ordering(0, producer, cancel(0));
     assert_eq!(held(&shop), (i64::MAX - 5, 1, 1));
 }

@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::{EntityMut, World};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
 
@@ -12,6 +12,7 @@ use crate::actions::slot_times::SlotTimes;
 use crate::combat::Combat;
 use crate::geometry::metric::Metric;
 use crate::navigation::destination::Destination;
+use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::production::build_specs::{BuildSpecs, Style};
@@ -175,19 +176,18 @@ impl Construction {
         let cost = book.get(action).expect("a build in the book");
         paid.extend_from_slice(cost.resource_cost(start.rank));
         let life = Combat::life(world);
-        let pay = |world: &mut World, resources: Option<&mut PlayerResources>| {
-            let mut unit = world.entity_mut(entity);
+        let pay = |unit: &mut EntityMut<'_>, resources: Option<&mut PlayerResources>| {
             let pools = unit.get_components_mut::<UnitPools>();
             let pools = pools.expect("a builder's pools").of(life);
-            let payer = Payer::of(pools, resources, owner.as_ref());
-            payer.pay(&start.cost, paid);
+            Payer::of(pools, resources).pay(&start.cost, paid);
         };
-        if world.contains_resource::<PlayerResources>() {
-            world.resource_scope(|world, mut resources: Mut<'_, PlayerResources>| {
-                pay(world, Some(&mut resources));
-            });
+        if let Some(player) = owner.and_then(|owner| Player::entity(world, owner.slot())) {
+            let [mut unit, mut held] = world.entity_mut([entity, player]);
+            let mut resources = held.get_mut::<PlayerResources>();
+            pay(&mut unit, resources.as_deref_mut());
         } else {
-            pay(world, None);
+            let [mut unit] = world.entity_mut([entity]);
+            pay(&mut unit, None);
         }
         let mut times = world
             .get_mut::<SlotTimes>(entity)

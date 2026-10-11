@@ -61,6 +61,8 @@ use crate::navigation::path_walker::PathEnd;
 use crate::navigation::paths::Paths;
 use crate::navigation::route::Route;
 use crate::navigation::walker::Walker;
+use crate::players::match_entity::MatchEntity;
+use crate::players::player::Player;
 use crate::players::resource_id::ResourceId;
 use crate::production::production_data::ProductionData;
 use crate::production::train_queue::{Queued, TrainQueue};
@@ -90,7 +92,7 @@ use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
-use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
+use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
@@ -513,7 +515,7 @@ fn resource(name: &str) -> Option<ResourceId> {
     ResourceId::named(&names, name)
 }
 
-/// The mode's state fields, each sent to all.
+/// The mode's state fields: `kind` and `seen` kept on the server, every other sent to all.
 fn mode_state() -> BTreeMap<DeclaredName, SyncedStateDecl> {
     [
         (
@@ -536,7 +538,11 @@ fn mode_state() -> BTreeMap<DeclaredName, SyncedStateDecl> {
         ("kind", field(StateType::String, None)),
     ]
     .map(|(name, decl)| {
-        let sync = SyncTo::All;
+        let sync = if matches!(name, "kind" | "seen") {
+            SyncTo::None
+        } else {
+            SyncTo::All
+        };
         (
             DeclaredName::new(name).unwrap(),
             SyncedStateDecl { decl, sync },
@@ -749,7 +755,7 @@ impl Game {
             Capability::Progression,
             Capability::Production,
         ];
-        let mut sim = TestMatch::new(&declared, RATE, Some(scripts));
+        let mut sim = TestMatch::unstarted(&declared, RATE, Some(scripts));
         let world = &mut sim.world;
         let resources: Vec<&str> = files
             .data
@@ -873,7 +879,7 @@ impl Game {
             .state_field_named(name)
             .unwrap()
             .index;
-        self.sim.world.resource::<ModeState>().get()[at].clone()
+        Mode::state(&self.sim.world)[at].clone()
     }
 
     /// Each unit: its id, where it stands, its team, and the end of a path it walks from.
@@ -882,6 +888,7 @@ impl Game {
         world
             .resource::<EntityIndex>()
             .iter()
+            .filter(|&(_, entity)| world.entity(entity).contains::<UnitType>())
             .map(|(id, entity)| {
                 let unit = world.entity(entity);
                 (

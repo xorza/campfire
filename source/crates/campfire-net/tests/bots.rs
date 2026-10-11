@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use bevy_ecs::query::With;
 use campfire_capabilities::{
-    Destination, Experience, Leaver, ModeState, Owner, PlayersData, StateValue,
+    Destination, Experience, Leaver, Mode, Owner, PlayersData, StateValue,
 };
 use campfire_common::{PlayerSlot, StateHash};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
@@ -27,7 +27,7 @@ fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {
 
 /// The lane mode's one state field, the word picked.
 fn picked(local: &InProcessMatch) -> StateValue {
-    local.server().world().resource::<ModeState>().get()[0].clone()
+    Mode::state(local.server().world())[0].clone()
 }
 
 #[test]

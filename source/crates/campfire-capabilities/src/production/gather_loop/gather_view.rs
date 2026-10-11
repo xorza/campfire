@@ -11,7 +11,9 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::kind_spec::KindSpec;
 use crate::geometry::metric::Metric;
+use crate::players::on_match::OnMatch;
 use crate::players::player_resources::PlayerResources;
+use crate::players::player_rows::PlayerRows;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::production::gather_loop::Worker;
@@ -40,8 +42,8 @@ pub(crate) struct GatherView<'w, 's> {
     pub(super) book: Res<'w, ActionBook>,
     pub(super) nodes_book: Res<'w, NodeBook>,
     pub(super) metric: Res<'w, Metric>,
-    pub(super) relations: Res<'w, Relations>,
-    pub(super) resources: Option<Res<'w, PlayerResources>>,
+    pub(super) relations: OnMatch<'w, 's, Relations>,
+    pub(super) resources: PlayerRows<'w, 's, PlayerResources>,
     pub(super) workers: Query<'w, 's, Worker, Without<Dead>>,
     pub(super) nodes: Query<
         'w,
@@ -104,7 +106,7 @@ impl GatherView<'_, '_> {
     pub(super) fn node(&self, node: StableId, gather: Gather, team: Team) -> Option<FoundNode> {
         let (entity, _, &at, body, &unit_type, held, &node_team, tags) =
             self.nodes.get(self.index.get(node)?).ok()?;
-        let relation = self.relations.between(team, node_team);
+        let relation = self.relations.get().between(team, node_team);
         let tags = tags.map(|tags| tags.tags).unwrap_or_default();
         let ours = held.amount() > 0
             && self.nodes_book.resource(unit_type) == Some(gather.spec.resource)
@@ -205,8 +207,8 @@ impl GatherView<'_, '_> {
             amount: i64::from(load.amount),
         };
         self.resources
-            .as_ref()
-            .is_some_and(|resources| resources.takes(owner, slice::from_ref(&amount)))
+            .of_slot(owner)
+            .is_some_and(|resources| resources.takes(slice::from_ref(&amount)))
     }
 
     /// Whether a worker at `from` with a body of `body` and a gather of `gather` reaches `place`.

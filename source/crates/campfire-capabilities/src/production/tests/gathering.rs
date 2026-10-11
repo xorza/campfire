@@ -54,7 +54,7 @@ impl Mine {
         let grid = Grid::new(Num::ONE, bounds).unwrap();
         Navigation::load_pathing(world, grid, &[], vec![walker]);
         let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-        world.insert_resource(PlayerResources::new(1, 1));
+        MatchEntity::spawn_players(world, 1, 1);
         let mineral = Units::load_type(world, TypeScope::Mode, "mineral", &UnitTypeData::default());
         let mut nodes = NodeBook::default();
         nodes.nodes.set(mineral, gold);
@@ -135,11 +135,9 @@ impl Mine {
     }
 
     fn gold(&self) -> i64 {
-        self.shop
-            .sim
-            .world
-            .resource::<PlayerResources>()
-            .amount(PlayerSlot::new(0), self.gold)
+        PlayerResources::of_player(&self.shop.sim.world, PlayerSlot::new(0))
+            .unwrap()
+            .amount(self.gold)
     }
 
     /// What `node` holds, none once gone.
@@ -354,10 +352,8 @@ fn a_load_past_what_an_amount_holds_stays_with_its_worker() {
     let node = mine.mineral(half(0, 12), 100);
     let worker = mine.worker(half(1, 8), 0);
     let near_most = i64::MAX - 2;
-    let mut resources = mine.shop.sim.world.resource_mut::<PlayerResources>();
-    resources
-        .add(PlayerSlot::new(0), mine.gold, near_most)
-        .unwrap();
+    let resources = PlayerResources::of_mut(&mut mine.shop.sim.world, PlayerSlot::new(0));
+    resources.unwrap().add(mine.gold, near_most).unwrap();
     mine.gather_at(&[worker], node);
     for _ in 1..=4 {
         mine.shop.tick();
@@ -484,7 +480,11 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     mine.shop.order(barracks);
     mine.shop.tick();
     let index = mine.shop.sim.world.resource::<EntityIndex>();
-    let trained = index.iter().map(|(id, _)| id).max().unwrap();
+    let units = index
+        .iter()
+        .map(|(id, _)| id)
+        .filter(|id| id.is_allocated());
+    let trained = units.max().unwrap();
     assert_eq!(mine.step(trained), Some(GatherStep::Ordered));
     mine.shop.tick();
     assert_eq!(

@@ -9,6 +9,7 @@ use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::walls::Walls;
+use crate::players::on_match::OnMatch;
 use crate::production::build_specs::{BuildSpec, PlacementCheck};
 use crate::units::body::Body;
 use crate::units::dead::Dead;
@@ -26,7 +27,7 @@ pub(crate) struct Placement<'w, 's> {
     bounds: Res<'w, Bounds>,
     walls: Option<Res<'w, Walls>>,
     statics: Res<'w, BodyIndex>,
-    relations: Res<'w, Relations>,
+    relations: OnMatch<'w, 's, Relations>,
     metric: Res<'w, Metric>,
     units: Query<
         'w,
@@ -76,7 +77,7 @@ impl Placement<'_, '_> {
                     Shape::Circle(radius) => boxed.nearest(at, pos, radius) == Ordering::Less,
                     Shape::Box(other) => boxed.overlaps(at, &other, pos),
                 };
-                let friendly = self.relations.between(team, other_team) == Relation::Friendly;
+                let friendly = self.relations.get().between(team, other_team) == Relation::Friendly;
                 let sees = seen.is_none_or(|seen| seen.get().contains(team));
                 inside && !friendly && sees
             });
@@ -97,7 +98,7 @@ impl Placement<'_, '_> {
         self.units
             .iter()
             .any(|(&pos, other, &other_team, tags, ..)| {
-                let relation = self.relations.between(team, other_team);
+                let relation = self.relations.get().between(team, other_team);
                 let tags = tags.map(|tags| tags.tags).unwrap_or_default();
                 rule.filter.selects(relation, tags)
                     && self.metric.reaches(

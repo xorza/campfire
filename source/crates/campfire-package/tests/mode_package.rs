@@ -393,7 +393,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 270] = [
+static FLAWS: [Flaw; 271] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1456,6 +1456,16 @@ static FLAWS: [Flaw; 270] = [
         Edit::Replace("late_join = true", "late_join = false"),
         MODE,
         |problem| matches!(problem, LoadProblem::BotTakeoverWithoutLateJoin),
+    ),
+    // The match has no owner or team for a mode field to sync to.
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "first_blood = { type = \"bool\", default = false, sync = \"all\" }",
+            "first_blood = { type = \"bool\", default = false, sync = \"team\" }",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::ModeStateSync(name) if name.as_str() == "first_blood"),
     ),
     // Names design 08 plans: a `ctx` method and field, a handle's field, a hook and data fields.
     flaw(

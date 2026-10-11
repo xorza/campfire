@@ -120,7 +120,9 @@ fn on_mode_input(ctx, player, name, value) {
     let drilled = |game: &Game| {
         let mut held = Vec::new();
         for (id, entity) in game.sim.world.resource::<EntityIndex>().iter() {
-            let modifiers = game.sim.world.get::<Modifiers>(entity).unwrap();
+            let Some(modifiers) = game.sim.world.get::<Modifiers>(entity) else {
+                continue;
+            };
             if let Some(instance) = modifiers.get(drill, None) {
                 assert!(
                     instance.lifetime.held_by(Hold::Held) && instance.lifetime.until().is_none()
@@ -138,9 +140,16 @@ fn on_mode_input(ctx, player, name, value) {
     // A grunt of player 1 spawned later holds it from its first Resolve.
     game.tick(&[(1, input("probe", "another"))]);
     assert_eq!(drilled(&game), [1, 4]);
-    let held = game.sim.world.resource::<PlayerModifiers>();
-    assert_eq!(held.of(PlayerSlot::new(1)).collect::<Vec<_>>(), [drill]);
-    assert_eq!(held.of(PlayerSlot::new(0)).count(), 0);
+    let held = |slot| {
+        let world = &game.sim.world;
+        let entity = Player::entity(world, PlayerSlot::new(slot)).unwrap();
+        world
+            .get::<PlayerModifiers>(entity)
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!((held(1), held(0)), (vec![drill], vec![]));
     // A modifier the package does not declare, a player the session does not have, a modifier
     // that reads a param of an action, which a player's never has, and a unit of player 2, of
     // team `b`, on team `a`, fail, and the last spawns nothing.
@@ -158,5 +167,9 @@ fn on_mode_input(ctx, player, name, value) {
         ApiError::PlayerOffTeam,
     ];
     assert_eq!(game.failures(), refused.map(FailureKind::Api));
-    assert_eq!(game.sim.world.resource::<EntityIndex>().iter().count(), 5);
+    // The five units, then the match's entity and the three players'.
+    assert_eq!(
+        game.sim.world.resource::<EntityIndex>().iter().count(),
+        5 + 4
+    );
 }

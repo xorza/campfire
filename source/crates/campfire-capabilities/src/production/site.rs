@@ -127,9 +127,7 @@ impl SimComponent for Site {
                         .windup_ticks(self.rank)
                         .is_some_and(|time| self.progress <= time)
             });
-        let resources = world
-            .get_resource::<PlayerResources>()
-            .map_or(0, PlayerResources::resources);
+        let resources = PlayerResources::declared(world);
         let paid = self
             .paid
             .iter()

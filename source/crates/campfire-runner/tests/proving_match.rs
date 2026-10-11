@@ -5,9 +5,8 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
 use campfire_capabilities::internals::{reaches, reaches_bound, sinks_into};
 use campfire_capabilities::{
-    ActionSlots, Area, Body, CapabilitySet, Dead, Experience, Level, Lifespan, ModeState,
-    Modifiers, MoveStep, Owner, Projectile, ScriptFailures, SeenBy, StateValue, Team, TeamSet,
-    TrainQueue,
+    ActionSlots, Area, Body, CapabilitySet, Dead, Experience, Level, Lifespan, Mode, Modifiers,
+    MoveStep, Owner, Projectile, ScriptFailures, SeenBy, StateValue, Team, TeamSet, TrainQueue,
 };
 use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, ProvingMatch, RestoreTarget};
@@ -111,7 +110,8 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
             north_sees.contains(Team::new(0)),
         ));
     }
-    let state = world.resource::<ModeState>().get();
+    let state = Mode::state(world);
+    let state = state.as_slice();
     if seen.states.last().is_none_or(|(_, last)| last != state) {
         seen.states.push((tick, state.to_vec()));
     }

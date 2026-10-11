@@ -195,6 +195,10 @@ pub enum LoadProblem {
     /// slot is a late join, which `late_join` allows.
     #[error("the mode's [players]: bot_takeover without late_join")]
     BotTakeoverWithoutLateJoin,
+    /// A field of the mode's state syncs to an owner or a team, which the match does not have:
+    /// it takes `none` or `all`.
+    #[error("the mode's state field \"{0}\" syncs to an owner or a team")]
+    ModeStateSync(DeclaredName),
     /// A projectile or an area type, or what delivers or makes one.
     #[error(transparent)]
     Delivery(DeliveryProblem),

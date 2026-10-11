@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::SimComponent;
+use campfire_sim::{SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
@@ -29,11 +29,15 @@ impl UnitType {
 impl SimComponent for UnitType {
     const NAME: &'static str = "units.unit_type";
 
-    // A type the match did not load names nothing its books hold.
-    fn check(&self, world: &World, _: Entity) -> bool {
+    // A type the match did not load names nothing its books hold, and a unit of a named id
+    // would stand where a player's or the match's entity is looked for.
+    fn check(&self, world: &World, entity: Entity) -> bool {
         world
-            .get_non_send::<View>()
-            .is_none_or(|view| view.has_type(*self))
+            .get::<StableId>(entity)
+            .is_some_and(|id| id.is_allocated())
+            && world
+                .get_non_send::<View>()
+                .is_none_or(|view| view.has_type(*self))
     }
 }
 
