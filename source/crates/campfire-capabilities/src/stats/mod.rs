@@ -30,6 +30,7 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::RowParts;
 use crate::stats::stats_column::StatsColumn;
+use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
@@ -103,10 +104,11 @@ impl Stats {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
         types.resource::<PlayerModifiers>();
-        types.predicted::<Level>();
-        types.predicted::<Modifiers>();
-        types.predicted::<ModifierClocks>();
+        types.component::<Level>();
+        types.component::<Modifiers>();
+        types.component::<ModifierClocks>();
         types.component::<Pools>();
+        types.derived::<UnitStats>();
     }
 
     /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,

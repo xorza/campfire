@@ -1,5 +1,6 @@
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -41,8 +42,9 @@ impl SimComponent for Level {
     }
 }
 
-impl Kinded for Level {
+impl Replication for Level {
     const KIND: DataKind = DataKind::Unit;
+    type Sending = SentPredicted;
 }
 
 /// A snapshot is untrusted, so level 0 fails to decode.

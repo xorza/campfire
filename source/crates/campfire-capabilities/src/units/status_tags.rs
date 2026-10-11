@@ -5,7 +5,8 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::NotSent;
 use crate::units::engine_tag::EngineTag;
 use crate::units::tag_set::TagSet;
 
@@ -47,8 +48,9 @@ impl SimComponent for StatusTags {
     }
 }
 
-impl Kinded for StatusTags {
+impl Replication for StatusTags {
     const KIND: DataKind = DataKind::Server;
+    type Sending = NotSent;
 }
 
 #[cfg(test)]

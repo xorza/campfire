@@ -7,9 +7,11 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
+use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnce;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
@@ -19,48 +21,38 @@ use crate::values::damage_kind::DamageKind;
 use crate::values::rank::Rank;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
-/// carries.
+/// carries. None of it changes as it flies; its `FlightState` does.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
+#[component(immutable)]
 pub struct Projectile {
     source: StableId,
     flight: Flight,
     payload: Payload,
 }
 
-/// How a projectile flies: homing on a unit, `lost` once a teleport of the unit disjointed it, or
-/// along a line, a unit vector on the ground or in space, for `range` meters, with the unit its
-/// action aimed at, if one; `flown` meters of it so far.
+/// How a projectile flies: homing on a unit, or along a line, a unit vector on the ground or in
+/// space, for `range` meters, with the unit its action aimed at, if one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Flight {
     Homing {
         target: StableId,
-        flown: Num,
-        lost: bool,
     },
     Line {
         direction: Vec3,
-        flown: Num,
         range: Num,
         aimed: Option<StableId>,
     },
 }
 
 impl Flight {
-    /// A fresh flight homing on `target`, none of it flown.
     pub(crate) const fn homing(target: StableId) -> Flight {
-        Flight::Homing {
-            target,
-            flown: Num::ZERO,
-            lost: false,
-        }
+        Flight::Homing { target }
     }
 
-    /// A fresh flight along `direction` for `range`, none of it flown, aimed at `aimed` if a
-    /// unit.
+    /// A flight along `direction` for `range`, aimed at `aimed` if a unit.
     pub(crate) const fn line(direction: Vec3, range: Num, aimed: Option<StableId>) -> Flight {
         Flight::Line {
             direction,
-            flown: Num::ZERO,
             range,
             aimed,
         }
@@ -89,12 +81,12 @@ pub(crate) enum Payload {
 }
 
 impl Projectile {
-    /// `None` unless a line's distance flown is within its range, an attack's amount is not
-    /// negative, and its roll is at least 0 and less than 1.
+    /// `None` unless a line's range is not negative, an attack's amount is not negative, and its
+    /// roll is at least 0 and less than 1.
     pub(crate) fn new(source: StableId, flight: Flight, payload: Payload) -> Option<Projectile> {
         let flies = match flight {
-            Flight::Homing { flown, .. } => flown >= Num::ZERO,
-            Flight::Line { flown, range, .. } => Num::ZERO <= flown && flown <= range,
+            Flight::Homing { .. } => true,
+            Flight::Line { range, .. } => range >= Num::ZERO,
         };
         let carries = match payload {
             Payload::Attack { amount, roll, .. } => {
@@ -121,30 +113,9 @@ impl Projectile {
         self.payload
     }
 
-    /// Loses the unit it homes on, as a teleport of the unit disjoints it: it ends in its next
-    /// step, with no hit.
-    pub(crate) const fn disjoint(&mut self) {
-        if let Flight::Homing { lost, .. } = &mut self.flight {
-            *lost = true;
-        }
-    }
-
-    /// Whether it homes on `unit`, its target not lost.
+    /// Whether it homes on `unit`.
     pub(crate) const fn homes_on(&self, unit: StableId) -> bool {
-        matches!(self.flight, Flight::Homing { target, lost: false, .. } if target.get() == unit.get())
-    }
-
-    /// Counts `flown` meters flown in all.
-    pub(crate) fn fly_to(&mut self, flown: Num) {
-        match &mut self.flight {
-            Flight::Homing { flown: at, .. } => *at = flown,
-            Flight::Line {
-                flown: at, range, ..
-            } => {
-                debug_assert!(flown <= *range, "a line is flown within its range");
-                *at = flown;
-            }
-        }
+        matches!(self.flight, Flight::Homing { target } if target.get() == unit.get())
     }
 }
 
@@ -152,12 +123,14 @@ impl SimComponent for Projectile {
     const NAME: &'static str = "projectiles.projectile";
 
     // A projectile of a type with no flight, of an action the book lacks or at a rank past its
-    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit.
+    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit; one with
+    // no flight state never flies.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let flies = world
             .get::<UnitType>(entity)
             .zip(world.get_resource::<ByType<ProjectileSpec>>())
-            .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some());
+            .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some())
+            && world.get::<FlightState>(entity).is_some();
         let book = world.get_resource::<ActionBook>();
         let carries = match self.payload {
             Payload::Attack {
@@ -177,8 +150,9 @@ impl SimComponent for Projectile {
     }
 }
 
-impl Kinded for Projectile {
+impl Replication for Projectile {
     const KIND: DataKind = DataKind::Unit;
+    type Sending = SentOnce;
 }
 
 /// A snapshot is untrusted, so a projectile that `new` refuses fails to decode.

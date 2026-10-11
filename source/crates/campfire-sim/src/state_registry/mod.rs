@@ -147,7 +147,7 @@ impl StateRegistry {
     /// release changes their format, a type's layout included, as Minecraft's `DataVersion` is:
     /// a snapshot of another is refused, naming both, and the converter from the version before,
     /// which design 02's Saves plans, comes with the first release that raises it.
-    pub const DATA_VERSION: u32 = 2;
+    pub const DATA_VERSION: u32 = 3;
 
     /// A registry with the sim's own state: the entity list, the id allocator, the tick and
     /// positions.

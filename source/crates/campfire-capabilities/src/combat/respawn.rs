@@ -1,5 +1,6 @@
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -22,6 +23,7 @@ impl SimComponent for Respawn {
     }
 }
 
-impl Kinded for Respawn {
+impl Replication for Respawn {
     const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentPredicted;
 }

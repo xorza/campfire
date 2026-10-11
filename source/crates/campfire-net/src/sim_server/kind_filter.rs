@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use bevy_app::App;
-use bevy_ecs::component::{Component, Mutable};
+use bevy_ecs::component::{Component, Immutable, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Add, Insert, Remove};
 use bevy_ecs::observer::On;
@@ -10,8 +10,8 @@ use bevy_ecs::query::{Has, With};
 use bevy_ecs::system::{Commands, Query};
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
 use campfire_capabilities::{
-    CapabilitySet, DataKind, Experience, Inventory, Kinded, ModifierClocks, Owner, Points,
-    Progress, Respawn, Route, SpawnPoint, StateTypes,
+    CapabilitySet, DataKind, Declared, Experience, Inventory, ModifierClocks, Owner, Points,
+    Progress, Replication, Respawn, Route, SpawnPoint, StateTypes,
 };
 use campfire_common::PlayerSlot;
 use campfire_sim::SimResource;
@@ -108,7 +108,7 @@ impl<K: OwnedKind> KindFilter<K> {
 
     /// Puts the filter of `K` on each entity that gains `C`, one of `K`'s types, unless it holds
     /// it already.
-    fn observe<C: Kinded>(app: &mut App) {
+    fn observe<C: Replication>(app: &mut App) {
         assert_eq!(C::KIND, K::KIND, "{} is of its filter's kind", C::NAME);
         app.add_observer(
             |added: On<'_, '_, Add, C>,
@@ -156,7 +156,7 @@ impl OwnedFilters {
 struct FilterObservers<'a>(&'a mut App);
 
 impl FilterObservers<'_> {
-    fn filter<C: Kinded>(&mut self) {
+    fn filter<C: Replication>(&mut self) {
         match C::KIND {
             DataKind::Prediction => KindFilter::<PredictionKind>::observe::<C>(self.0),
             DataKind::Inventory => KindFilter::<InventoryKind>::observe::<C>(self.0),
@@ -167,25 +167,24 @@ impl FilterObservers<'_> {
 }
 
 impl StateTypes for FilterObservers<'_> {
-    fn component<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
         self.filter::<C>();
     }
 
-    fn component_once<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
         self.filter::<C>();
     }
 
-    fn predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
+    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
         &mut self,
+        _: Declared,
     ) {
         self.filter::<C>();
     }
 
-    fn sim_predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-    ) {
-        self.filter::<C>();
-    }
+    fn server<C: Replication>(&mut self, _: Declared) {}
+
+    fn derived<C: Component>(&mut self) {}
 
     fn resource<R: SimResource>(&mut self) {}
 }
@@ -196,7 +195,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use bevy_ecs::world::World;
-    use campfire_capabilities::Team;
+    use campfire_capabilities::{SentOnChange, Team};
     use campfire_sim::{Capability, SimComponent};
     use serde::{Deserialize, Serialize};
 
@@ -214,8 +213,9 @@ mod tests {
         }
     }
 
-    impl Kinded for Stray {
+    impl Replication for Stray {
         const KIND: DataKind = DataKind::Progression;
+        type Sending = SentOnChange;
     }
 
     /// A scope's types, by their `TypeId`s.
@@ -266,7 +266,7 @@ mod tests {
             kinds
         }
 
-        fn push<C: Kinded>(&mut self) {
+        fn push<C: Replication>(&mut self) {
             self.0.push((C::KIND, TypeId::of::<C>(), C::NAME));
         }
 
@@ -284,27 +284,28 @@ mod tests {
     }
 
     impl StateTypes for Kinds {
-        fn component<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+        fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
             self.push::<C>();
         }
 
-        fn component_once<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+        fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
             self.push::<C>();
         }
 
-        fn predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-            &mut self,
-        ) {
-            self.push::<C>();
-        }
-
-        fn sim_predicted<
-            C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
+        fn predicted<
+            C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
         >(
             &mut self,
+            _: Declared,
         ) {
             self.push::<C>();
         }
+
+        fn server<C: Replication>(&mut self, _: Declared) {
+            self.push::<C>();
+        }
+
+        fn derived<C: Component>(&mut self) {}
 
         fn resource<R: SimResource>(&mut self) {}
     }

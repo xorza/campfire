@@ -9,7 +9,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnChange;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
 
@@ -104,8 +105,9 @@ impl SimComponent for Experience {
     }
 }
 
-impl Kinded for Experience {
+impl Replication for Experience {
     const KIND: DataKind = DataKind::Progression;
+    type Sending = SentOnChange;
 }
 
 /// A snapshot is untrusted, so tracks out of order or twice, or negative experience, fail to

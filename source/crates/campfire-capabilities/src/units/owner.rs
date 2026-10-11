@@ -6,7 +6,8 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnChange;
 use crate::units::view::View;
 
 /// The player who controls a unit, by slot: design 04's control relation, which `orders` and,
@@ -36,6 +37,7 @@ impl SimComponent for Owner {
     }
 }
 
-impl Kinded for Owner {
+impl Replication for Owner {
     const KIND: DataKind = DataKind::Unit;
+    type Sending = SentOnChange;
 }

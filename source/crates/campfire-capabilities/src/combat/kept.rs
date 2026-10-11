@@ -1,5 +1,6 @@
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::NotSent;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -21,6 +22,7 @@ impl SimComponent for Kept {
     }
 }
 
-impl Kinded for Kept {
+impl Replication for Kept {
     const KIND: DataKind = DataKind::Server;
+    type Sending = NotSent;
 }

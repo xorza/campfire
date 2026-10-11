@@ -15,6 +15,7 @@ use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
 use crate::navigation::walker::Walker;
+use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::projectile::Projectile;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, CallError};
@@ -234,10 +235,10 @@ fn teleport(world: &mut World, entity: Entity, unit: StableId, to: Position, now
         place = open;
     }
     NavigationEffect::put(world, entity, place, now);
-    let mut projectiles = world.query::<&mut Projectile>();
-    for mut projectile in projectiles.iter_mut(world) {
+    let mut projectiles = world.query::<(&Projectile, &mut FlightState)>();
+    for (projectile, mut state) in projectiles.iter_mut(world) {
         if projectile.homes_on(unit) {
-            projectile.disjoint();
+            state.disjoint();
         }
     }
 }

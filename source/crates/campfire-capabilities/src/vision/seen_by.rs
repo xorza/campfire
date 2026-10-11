@@ -5,7 +5,8 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::NotSent;
 use crate::units::team_set::TeamSet;
 
 /// The teams that see a unit, as the Vision stage of the last tick found them: those of its own
@@ -33,8 +34,9 @@ impl SimComponent for SeenBy {
     }
 }
 
-impl Kinded for SeenBy {
+impl Replication for SeenBy {
     const KIND: DataKind = DataKind::Server;
+    type Sending = NotSent;
 }
 
 #[cfg(any(test, feature = "internals"))]

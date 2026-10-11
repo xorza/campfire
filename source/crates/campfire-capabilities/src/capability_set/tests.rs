@@ -1,8 +1,9 @@
+use std::any::type_name;
 use std::fmt::Debug;
 use std::path::Path;
 
-use bevy_ecs::component::{Component, Mutable};
-use campfire_sim::SimResource;
+use bevy_ecs::component::{Component, Immutable, Mutable};
+use campfire_sim::{Position, SimResource};
 use campfire_store::{InputFile, SourceFiles};
 
 use super::*;
@@ -11,8 +12,10 @@ use crate::capability_set::test_match::TestMatch;
 use crate::mode;
 use crate::orders::ai::Ai;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::Declared;
+use crate::state_types::replication::Replication;
 use crate::units::by_type::ByType;
+use crate::units::team::Team;
 use crate::units::view::View;
 
 use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
@@ -594,9 +597,16 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
     ),
     (
         Some(Projectiles),
-        &["projectiles.projectile", "projectiles.struck_units"],
+        &[
+            "projectiles.flight_state",
+            "projectiles.projectile",
+            "projectiles.struck_units",
+        ],
     ),
-    (Some(Capability::Areas), &["areas.area"]),
+    (
+        Some(Capability::Areas),
+        &["areas.area", "areas.area_trigger"],
+    ),
     (Some(Abilities), &[]),
     (Some(Orders), &["orders.next_think", "orders.resetting"]),
     (
@@ -650,25 +660,28 @@ fn a_match_registers_exactly_the_types_its_capabilities_list() {
     // install registers a type its list lacks, and `net`, which reads the lists, misses none.
     #[derive(Debug, Default)]
     struct Names(Vec<&'static str>);
+    /// A part of a unit that no list declares.
+    #[derive(Component, Debug)]
+    struct Unlisted;
     impl StateTypes for Names {
-        fn component<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+        fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
             self.0.push(C::NAME);
         }
-        fn component_once<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+        fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
             self.0.push(C::NAME);
         }
-        fn predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-            &mut self,
-        ) {
-            self.0.push(C::NAME);
-        }
-        fn sim_predicted<
-            C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
+        fn predicted<
+            C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
         >(
             &mut self,
+            _: Declared,
         ) {
             self.0.push(C::NAME);
         }
+        fn server<C: Replication>(&mut self, _: Declared) {
+            self.0.push(C::NAME);
+        }
+        fn derived<C: Component>(&mut self) {}
         fn resource<R: SimResource>(&mut self) {
             self.0.push(R::NAME);
         }
@@ -689,5 +702,15 @@ fn a_match_registers_exactly_the_types_its_capabilities_list() {
         .0
         .extend(["sim.entities", "sim.id_allocator", "sim.tick"]);
     listed.0.sort_unstable();
-    assert_eq!(listed.0, TestMatch::client(&declared).state_names());
+    let mut sim = TestMatch::client(&declared);
+    assert_eq!(listed.0, sim.state_names());
+    // A unit holds only parts the lists declare, as state or derived; one more is named.
+    let set = CapabilitySet::new(&declared).unwrap();
+    let unit = sim.spawn(Position::ORIGIN, Team::new(0));
+    assert_eq!(set.unlisted_components(&sim.world), Vec::<String>::new());
+    sim.insert(unit, Unlisted);
+    assert_eq!(
+        set.unlisted_components(&sim.world),
+        [type_name::<Unlisted>()]
+    );
 }

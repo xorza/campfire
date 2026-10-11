@@ -9,7 +9,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 
 use crate::actions::action_call::{ActionCall, ResolvedCast, Started};
 use crate::actions::action_kind::ActionKind;
@@ -792,6 +793,7 @@ impl SimComponent for ActionSlots {
     }
 }
 
-impl Kinded for ActionSlots {
+impl Replication for ActionSlots {
     const KIND: DataKind = DataKind::Unit;
+    type Sending = SentPredicted;
 }

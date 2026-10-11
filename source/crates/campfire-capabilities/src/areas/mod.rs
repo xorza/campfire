@@ -10,6 +10,7 @@ use crate::areas::area_holds::AreaHolds;
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_life::AreaLife;
 use crate::areas::area_spec::AreaSpec;
+use crate::areas::area_trigger::AreaTrigger;
 use crate::areas::areas_effect::AreasEffect;
 use crate::combat::CombatSet;
 use crate::deliveries::deliverers::Deliverers;
@@ -27,6 +28,7 @@ pub(crate) mod area_launches;
 pub(crate) mod area_life;
 pub(crate) mod area_reach;
 pub(crate) mod area_spec;
+pub(crate) mod area_trigger;
 pub(crate) mod areas_api;
 pub(crate) mod areas_effect;
 
@@ -38,7 +40,8 @@ pub struct Areas;
 impl Areas {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component_once::<Area>();
+        types.component::<Area>();
+        types.component::<AreaTrigger>();
     }
 
     /// Adds areas to a match. In Hit, after projectiles fly, each area due triggers, and its
@@ -150,7 +153,7 @@ pub(crate) mod internals {
             start: None,
             launch: None,
         };
-        Area::new(by, None, None, Tick::new(1)).expect("an area with no trigger")
+        Area::new(by, None, Tick::new(1))
     }
 
     #[cfg(test)]

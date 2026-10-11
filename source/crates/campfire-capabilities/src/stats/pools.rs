@@ -6,7 +6,8 @@ use campfire_sim::{SimComponent, TickRate};
 use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnChange;
 use crate::stats::meter::Meter;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
@@ -124,8 +125,9 @@ impl SimComponent for Pools {
     }
 }
 
-impl Kinded for Pools {
+impl Replication for Pools {
     const KIND: DataKind = DataKind::Life;
+    type Sending = SentOnChange;
 }
 
 #[cfg(any(test, feature = "internals"))]

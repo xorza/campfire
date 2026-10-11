@@ -9,6 +9,7 @@ use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
 use crate::geometry::fraction::Fraction;
 use crate::geometry::shape::Shape;
+use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::struck_units::{Struck, StruckUnits};
@@ -28,15 +29,16 @@ pub(crate) struct Flights<'a> {
     pub(crate) met: &'a mut Vec<(Fraction, StableId)>,
 }
 
-/// A projectile in flight this tick: its stable id, its team, its type's spec, where it is, and
-/// itself.
+/// A projectile in flight this tick: its stable id, its team, its type's spec, where it is,
+/// itself, and how far it flew.
 #[derive(Debug)]
 pub(crate) struct Aloft<'a> {
     pub(crate) id: StableId,
     pub(crate) team: Team,
     pub(crate) spec: ProjectileSpec,
     pub(crate) position: &'a mut Position,
-    pub(crate) projectile: &'a mut Projectile,
+    pub(crate) projectile: &'a Projectile,
+    pub(crate) state: &'a mut FlightState,
 }
 
 impl Aloft<'_> {
@@ -61,35 +63,25 @@ impl Flights<'_> {
     /// stops on one, and at the end of its range.
     pub(crate) fn fly(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>) -> bool {
         match aloft.projectile.flight() {
-            Flight::Homing {
-                target,
-                flown,
-                lost,
-            } => self.homing(targets, aloft, target, flown, lost),
+            Flight::Homing { target } => self.homing(targets, aloft, target),
             Flight::Line {
                 direction,
-                flown,
                 range,
                 aimed,
-            } => self.line(targets, aloft, direction, flown, range, aimed),
+            } => self.line(targets, aloft, direction, range, aimed),
         }
     }
 
-    fn homing(
-        &mut self,
-        targets: &Targets<'_, '_>,
-        aloft: Aloft<'_>,
-        target: StableId,
-        flown: Num,
-        lost: bool,
-    ) -> bool {
+    fn homing(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>, target: StableId) -> bool {
         let Aloft {
             id,
             spec,
             position,
             projectile,
+            state,
             ..
         } = aloft;
+        let (flown, lost) = (state.flown(), state.lost());
         let from = *position;
         let Some(unit) = targets.living(target).filter(|_| !lost) else {
             let hit = Hit {
@@ -114,7 +106,7 @@ impl Flights<'_> {
             unit.shape,
         ) {
             *position = moved;
-            projectile.fly_to(flown);
+            state.fly_to(flown);
             return false;
         }
         let hit = Hit {
@@ -129,14 +121,13 @@ impl Flights<'_> {
         true
     }
 
-    /// Flies `aloft` a step along `direction`, `flown` meters of its `range`; its hits and its end
-    /// name `aimed` as their action's target.
+    /// Flies `aloft` a step along `direction`, on from the meters of its `range` it flew; its hits
+    /// and its end name `aimed` as their action's target.
     fn line(
         &mut self,
         targets: &Targets<'_, '_>,
         aloft: Aloft<'_>,
         direction: Vec3,
-        flown: Num,
         range: Num,
         aimed: Option<StableId>,
     ) -> bool {
@@ -147,7 +138,9 @@ impl Flights<'_> {
             spec,
             position,
             projectile,
+            state,
         } = aloft;
+        let flown = state.flown();
         let from = *position;
         let step = spec.speed.min(range - flown);
         let line = |pos, distance| Hit {
@@ -205,7 +198,7 @@ impl Flights<'_> {
             }
         }
         *position = to;
-        projectile.fly_to(flown + step);
+        state.fly_to(flown + step);
         if flown + step < range {
             return false;
         }

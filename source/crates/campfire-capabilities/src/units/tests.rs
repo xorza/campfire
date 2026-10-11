@@ -27,7 +27,6 @@ use crate::units::block::Block;
 use crate::units::path_id::PathId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
-use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;

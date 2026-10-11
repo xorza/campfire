@@ -1,5 +1,6 @@
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnce;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// Where a unit spawned, and where it comes back when it respawns.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[component(immutable)]
 #[serde(transparent)]
 pub struct SpawnPoint(Position);
 
@@ -30,6 +32,7 @@ impl SimComponent for SpawnPoint {
     }
 }
 
-impl Kinded for SpawnPoint {
+impl Replication for SpawnPoint {
     const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentOnce;
 }

@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::scripts::state_value::StateValue;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::NotSent;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 
@@ -49,6 +50,7 @@ impl SimComponent for UnitState {
     }
 }
 
-impl Kinded for UnitState {
+impl Replication for UnitState {
     const KIND: DataKind = DataKind::Server;
+    type Sending = NotSent;
 }

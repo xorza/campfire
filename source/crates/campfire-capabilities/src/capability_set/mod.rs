@@ -280,6 +280,89 @@ const fn needs(capability: Capability) -> &'static [Capability] {
     panic!("the table holds every capability")
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::any::TypeId;
+    use std::collections::BTreeSet;
+    use std::fmt::Debug;
+
+    use bevy_ecs::archetype::Archetype;
+    use bevy_ecs::component::{Component, Immutable, Mutable};
+    use bevy_ecs::world::World;
+    use campfire_sim::{SimResource, StableId};
+
+    use crate::capability_set::CapabilitySet;
+    use crate::state_types::replication::Replication;
+    use crate::state_types::{Declared, StateTypes};
+
+    /// The component types the lists declare, as state or as derived, by their ids.
+    #[derive(Debug, Default)]
+    struct ListedTypes(BTreeSet<TypeId>);
+
+    impl ListedTypes {
+        fn push<C: Component>(&mut self) {
+            self.0.insert(TypeId::of::<C>());
+        }
+    }
+
+    impl StateTypes for ListedTypes {
+        fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+            self.push::<C>();
+        }
+
+        fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
+            self.push::<C>();
+        }
+
+        fn predicted<
+            C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
+        >(
+            &mut self,
+            _: Declared,
+        ) {
+            self.push::<C>();
+        }
+
+        fn server<C: Replication>(&mut self, _: Declared) {
+            self.push::<C>();
+        }
+
+        fn derived<C: Component>(&mut self) {
+            self.push::<C>();
+        }
+
+        fn resource<R: SimResource>(&mut self) {}
+    }
+
+    impl CapabilitySet {
+        /// The names of the component types a unit of `world`, an entity with a stable id, holds
+        /// or held, that no list of these capabilities declares as state or as derived, sorted:
+        /// each a part of a unit that no hash, snapshot or client holds. The stable id is the
+        /// entity list's, which the state registry holds.
+        pub fn unlisted_components(self, world: &World) -> Vec<String> {
+            let mut listed = ListedTypes::default();
+            self.state_types(&mut listed);
+            listed.push::<StableId>();
+            let components = world.components();
+            let Some(unit) = components.component_id::<StableId>() else {
+                return Vec::new();
+            };
+            let mut names: Vec<String> = world
+                .archetypes()
+                .iter()
+                .filter(|archetype| archetype.contains(unit))
+                .flat_map(Archetype::components)
+                .filter_map(|&id| components.get_info(id))
+                .filter(|info| info.type_id().is_none_or(|id| !listed.0.contains(&id)))
+                .map(|info| info.name().to_string())
+                .collect();
+            names.sort_unstable();
+            names.dedup();
+            names
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod test_match;
 

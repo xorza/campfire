@@ -90,7 +90,7 @@ pub(crate) enum ActionsSet {
 impl Actions {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.predicted::<ActionSlots>();
+        types.component::<ActionSlots>();
     }
 
     /// Adds the actions to a match whose core is installed, with none loaded yet, and its column

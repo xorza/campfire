@@ -7,7 +7,8 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 use crate::units::body::Body;
 
 /// How far a unit walks in one tick, never negative: the effect of its move speed, which its
@@ -42,8 +43,9 @@ impl SimComponent for MoveStep {
     }
 }
 
-impl Kinded for MoveStep {
+impl Replication for MoveStep {
     const KIND: DataKind = DataKind::Unit;
+    type Sending = SentPredicted;
 }
 
 /// A snapshot is untrusted, so a negative step fails to decode.

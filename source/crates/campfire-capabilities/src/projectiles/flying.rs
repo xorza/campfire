@@ -7,6 +7,7 @@ use crate::actions::targets::{TargetKey, Targets};
 use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
 use crate::geometry::fraction::Fraction;
+use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::flights::{Aloft, Flights};
 use crate::projectiles::projectile::{Flight, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -41,7 +42,8 @@ impl Flying {
                 Entity,
                 &StableId,
                 &mut Position,
-                &mut Projectile,
+                &Projectile,
+                &mut FlightState,
                 &UnitType,
                 &Team,
             ),
@@ -57,7 +59,7 @@ impl Flying {
         flying.clear();
         let lines = projectiles
             .iter()
-            .any(|(.., projectile, _, _)| matches!(projectile.flight(), Flight::Line { .. }));
+            .any(|(.., projectile, _, _, _)| matches!(projectile.flight(), Flight::Line { .. }));
         if lines {
             grid.rebuild(targets.placed());
         }
@@ -72,7 +74,7 @@ impl Flying {
             .iter()
             .map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { id, entity } in order.sort(aloft) {
-            let (_, _, mut position, mut projectile, &unit_type, &team) = projectiles
+            let (_, _, mut position, projectile, mut state, &unit_type, &team) = projectiles
                 .get_mut(entity)
                 .expect("a projectile in the order");
             let aloft = Aloft {
@@ -82,7 +84,8 @@ impl Flying {
                     .get(unit_type)
                     .expect("a projectile's type has a spec"),
                 position: &mut position,
-                projectile: &mut projectile,
+                projectile,
+                state: &mut state,
             };
             let by = aloft.strikes_by();
             if flights.fly(&targets, aloft) {

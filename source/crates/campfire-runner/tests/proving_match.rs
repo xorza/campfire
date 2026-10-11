@@ -5,8 +5,9 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
 use campfire_capabilities::internals::{reaches, reaches_bound, sinks_into};
 use campfire_capabilities::{
-    ActionSlots, Area, Body, Dead, Experience, Level, Lifespan, ModeState, Modifiers, MoveStep,
-    Owner, Projectile, ScriptFailures, SeenBy, StateValue, Team, TeamSet, TrainQueue,
+    ActionSlots, Area, Body, CapabilitySet, Dead, Experience, Level, Lifespan, ModeState,
+    Modifiers, MoveStep, Owner, Projectile, ScriptFailures, SeenBy, StateValue, Team, TeamSet,
+    TrainQueue,
 };
 use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, ProvingMatch, RestoreTarget};
@@ -80,6 +81,21 @@ fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
                     .is_some_and(|owner| owner.slot().get() == slot)
         })
         .unwrap()
+}
+
+/// Asserts that tick `tick` of `fixed`, a match of `capabilities`, failed no script call, and
+/// that each part a unit holds is state or derived, as a list declares it: a part none declares
+/// would be held by no hash, snapshot or client.
+fn assert_sound(fixed: &FixedMatch, tick: u64, capabilities: CapabilitySet) {
+    let world = fixed.runner().world();
+    let failures = world.non_send::<ScriptFailures>();
+    assert!(
+        failures.get().is_empty(),
+        "tick {tick}: {:?}",
+        failures.get()
+    );
+    let unlisted = capabilities.unlisted_components(world);
+    assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
 }
 
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
@@ -189,6 +205,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     let mut seen = Seen::default();
     let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
     let mut copy = CopyCheck::new(fixed.runner_mut());
+    let capabilities = proving.packages().manifest().capabilities;
     // The match's setup clears none, so the first tick's messages hold its removals too.
     let start = Removals::of(fixed.runner().world());
     let (mut written, mut removed) = (start.written - start.held, false);
@@ -202,12 +219,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         written = removals.written;
         let state = copy.check(fixed.runner_mut()).total;
         golden.record(fixed.runner(), state);
-        let failures = fixed.runner().world().non_send::<ScriptFailures>();
-        assert!(
-            failures.get().is_empty(),
-            "tick {tick}: {:?}",
-            failures.get()
-        );
+        assert_sound(&fixed, tick, capabilities);
         look(&fixed, tick, &mut seen);
         if fixed.runner().save_due() {
             seen.saves.push(tick + 1);

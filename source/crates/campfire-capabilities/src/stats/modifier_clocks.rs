@@ -9,7 +9,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::scripts::state_value::StateValue;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
 use crate::units::modifier_id::ModifierId;
@@ -201,8 +202,9 @@ impl SimComponent for ModifierClocks {
     }
 }
 
-impl Kinded for ModifierClocks {
+impl Replication for ModifierClocks {
     const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentPredicted;
 }
 
 /// A snapshot is untrusted, so runs of state that do not cover the buffer, an interval of no

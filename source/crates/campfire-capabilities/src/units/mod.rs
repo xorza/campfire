@@ -28,6 +28,7 @@ use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
 use crate::units::unit_state::UnitState;
 use crate::units::unit_state_book::UnitStateBook;
+use crate::units::unit_tags::UnitTags;
 use crate::units::unit_ticks::UnitTicks;
 use crate::units::unit_type::UnitType;
 use crate::units::units_call::UnitsCall;
@@ -118,19 +119,20 @@ pub struct Units;
 impl Units {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component_once::<Body>();
-        types.predicted::<Dead>();
-        types.component_once::<Facing>();
-        types.predicted::<ForcedMove>();
+        types.component::<Body>();
+        types.component::<Dead>();
+        types.component::<Facing>();
+        types.component::<ForcedMove>();
         types.component::<Lifespan>();
-        types.component_once::<MoveStep>();
-        types.sim_predicted::<Position>();
+        types.component::<MoveStep>();
+        types.sim_component::<Position>();
         types.component::<Owner>();
-        types.component_once::<SpawnPoint>();
+        types.component::<SpawnPoint>();
         types.component::<StatusTags>();
-        types.component_once::<Team>();
-        types.component_once::<UnitType>();
+        types.component::<Team>();
+        types.component::<UnitType>();
         types.component::<UnitState>();
+        types.derived::<UnitTags>();
         types.resource::<Relations>();
     }
 

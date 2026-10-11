@@ -1,5 +1,6 @@
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnce;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 /// its spawn's angle, a placed unit's or a build order's, taken modulo 360, as its box body turns
 /// by it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[component(immutable)]
 #[serde(transparent)]
 pub struct Facing(Num);
 
@@ -37,8 +39,9 @@ impl SimComponent for Facing {
     }
 }
 
-impl Kinded for Facing {
+impl Replication for Facing {
     const KIND: DataKind = DataKind::Unit;
+    type Sending = SentOnce;
 }
 
 #[cfg(test)]

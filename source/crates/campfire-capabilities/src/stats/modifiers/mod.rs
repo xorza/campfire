@@ -10,7 +10,8 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 use crate::stats::application::Application;
 use crate::stats::application::NewInstance;
 use crate::stats::instance::Instance;
@@ -552,8 +553,9 @@ impl SimComponent for Modifiers {
     }
 }
 
-impl Kinded for Modifiers {
+impl Replication for Modifiers {
     const KIND: DataKind = DataKind::Modifiers;
+    type Sending = SentPredicted;
 }
 
 /// A snapshot is untrusted, so instances out of order or twice, runs that do not cover the

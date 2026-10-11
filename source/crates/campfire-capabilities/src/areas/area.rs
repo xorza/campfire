@@ -3,44 +3,33 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{SimComponent, StableId};
-use serde::de::Error;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::effect_lists::EffectLists;
 use crate::areas::area_spec::AreaSpec;
 use crate::deliveries::delivering::Delivering;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnce;
 use crate::stats::modifier_book::ModifierBook;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
 
 /// An area unit on the ground: the delivery it is, whose lists and hooks it runs, the unit
-/// its action aimed at, if one, the tick it triggers, `None` once it did, and the tick it ends,
-/// never before its trigger.
-#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
+/// its action aimed at, if one, and the tick it ends. None of it changes; its `AreaTrigger`, until
+/// it triggers, holds the tick it triggers.
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[component(immutable)]
 pub struct Area {
     by: Delivering,
     aimed: Option<StableId>,
-    triggers_at: Option<Tick>,
     ends_at: Tick,
 }
 
 impl Area {
-    /// `None` when it would trigger after it ends.
-    pub(crate) fn new(
-        by: Delivering,
-        aimed: Option<StableId>,
-        triggers_at: Option<Tick>,
-        ends_at: Tick,
-    ) -> Option<Area> {
-        triggers_at.is_none_or(|at| at <= ends_at).then_some(Area {
-            by,
-            aimed,
-            triggers_at,
-            ends_at,
-        })
+    pub(crate) const fn new(by: Delivering, aimed: Option<StableId>, ends_at: Tick) -> Area {
+        Area { by, aimed, ends_at }
     }
 
     pub(crate) const fn by(&self) -> Delivering {
@@ -51,17 +40,8 @@ impl Area {
         self.aimed
     }
 
-    pub(crate) const fn triggers_at(&self) -> Option<Tick> {
-        self.triggers_at
-    }
-
     pub(crate) const fn ends_at(&self) -> Tick {
         self.ends_at
-    }
-
-    /// Counts its trigger as done.
-    pub(crate) const fn trigger(&mut self) {
-        self.triggers_at = None;
     }
 }
 
@@ -98,22 +78,7 @@ impl SimComponent for Area {
     }
 }
 
-impl Kinded for Area {
+impl Replication for Area {
     const KIND: DataKind = DataKind::Unit;
-}
-
-/// A snapshot is untrusted, so an area that would trigger after it ends fails to decode.
-impl<'de> Deserialize<'de> for Area {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Area, D::Error> {
-        #[derive(Debug, Deserialize)]
-        struct Fields {
-            by: Delivering,
-            aimed: Option<StableId>,
-            triggers_at: Option<Tick>,
-            ends_at: Tick,
-        }
-        let fields = Fields::deserialize(deserializer)?;
-        Area::new(fields.by, fields.aimed, fields.triggers_at, fields.ends_at)
-            .ok_or_else(|| D::Error::custom("an area that triggers after it ends"))
-    }
+    type Sending = SentOnce;
 }

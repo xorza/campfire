@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::{Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
@@ -8,6 +8,7 @@ use crate::actions::targets::{TargetKey, Targets};
 use crate::areas::area::Area;
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_spec::AreaSpec;
+use crate::areas::area_trigger::AreaTrigger;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivery_spawner::DeliverySpawner;
@@ -26,13 +27,27 @@ impl AreaLife {
     /// Triggers each area whose delay ended, and ends each whose time is up, in the order of their
     /// stable ids. A trigger reaches each living unit its type's `affects` selects whose body comes
     /// within its radius, whose tags block it as a target or not, by stable id, each with its
-    /// action's `on_hit`; an end runs `on_end`, and the area despawns after the hooks. Each hit is
-    /// at the area's centre, of no distance or direction.
+    /// action's `on_hit`, and the area's trigger goes; an end, of an area with no trigger to come,
+    /// runs `on_end`, and the area despawns after the hooks. Each hit is at the area's centre, of
+    /// no distance or direction.
     pub(super) fn trigger(
         targets: Targets<'_, '_>,
         (specs, tick): (Res<'_, ByType<AreaSpec>>, Res<'_, SimTick>),
         mut deliveries: ResMut<'_, Deliveries>,
-        mut areas: Query<'_, '_, (Entity, &StableId, &Position, &Team, &UnitType, &mut Area)>,
+        mut commands: Commands<'_, '_>,
+        areas: Query<
+            '_,
+            '_,
+            (
+                Entity,
+                &StableId,
+                &Position,
+                &Team,
+                &UnitType,
+                &Area,
+                Option<&AreaTrigger>,
+            ),
+        >,
         (mut order, mut reached, mut grid): (
             Local<'_, Ordered>,
             Local<'_, Vec<StableId>>,
@@ -42,14 +57,15 @@ impl AreaLife {
         let now = tick.start();
         let triggers = areas
             .iter()
-            .any(|(.., area)| area.triggers_at().is_some_and(|at| at <= now));
+            .any(|(.., trigger)| trigger.is_some_and(|trigger| trigger.get() <= now));
         if triggers {
             grid.rebuild(targets.placed());
         }
         let placed = areas.iter().map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { id, entity } in order.sort(placed) {
-            let (_, _, &pos, &team, &unit_type, mut area) =
-                areas.get_mut(entity).expect("an area in the order");
+            let (_, _, &pos, &team, &unit_type, area, trigger) =
+                areas.get(entity).expect("an area in the order");
+            let triggers_at = trigger.map(|trigger| trigger.get());
             let hit = Hit {
                 delivery: Some(id),
                 target: area.aimed(),
@@ -59,7 +75,7 @@ impl AreaLife {
             };
             let by = area.by();
             let delivered = |reach| Delivered { by, reach, hit };
-            if area.triggers_at().is_some_and(|at| at <= now) {
+            if triggers_at.is_some_and(|at| at <= now) {
                 let spec = specs.get(unit_type).expect("an area's type has a spec");
                 reached.clear();
                 grid.visit_near(pos, spec.radius, |body| {
@@ -74,9 +90,9 @@ impl AreaLife {
                 reached.sort_unstable();
                 let hits = reached.iter().map(|&unit| delivered(Reached::Hit(unit)));
                 deliveries.delivered.extend(hits);
-                area.trigger();
+                commands.entity(entity).remove::<AreaTrigger>();
             }
-            if area.triggers_at().is_none() && area.ends_at() <= now {
+            if triggers_at.is_none_or(|at| at <= now) && area.ends_at() <= now {
                 deliveries.delivered.push(delivered(Reached::End));
                 deliveries.ended.push(entity);
             }
@@ -107,8 +123,7 @@ impl AreaLife {
             let triggers_at = now.after(spec.delay.max(Ticks::ONE));
             let ends_at = triggers_at.max(now.after(spec.duration));
             spawner.spawn(by.source, at, unit_type, id, |_| {
-                Area::new(by, aimed, Some(triggers_at), ends_at)
-                    .expect("an area triggers before it ends")
+                (Area::new(by, aimed, ends_at), AreaTrigger::at(triggers_at))
             });
         }
         launches.0.clear();

@@ -9,13 +9,15 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::geometry::body_box::BodyBox;
 use crate::geometry::shape::Shape;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnce;
 use crate::units::layer::Layer;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
 /// that does not walk on a planar map may have. Living bodies of one layer do not overlap, and
 /// every range counts from a body's edge; a unit with no body is a point, on the first layer.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[component(immutable)]
 pub struct Body {
     shape: Shape,
     layer: Layer,
@@ -98,8 +100,9 @@ impl SimComponent for Body {
     }
 }
 
-impl Kinded for Body {
+impl Replication for Body {
     const KIND: DataKind = DataKind::Unit;
+    type Sending = SentOnce;
 }
 
 /// A snapshot is untrusted, so a radius `new` refuses fails to decode, and a box its own decode

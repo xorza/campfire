@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::production::build_target::BuildTarget;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::NotSent;
 
 /// A unit that builds, as one whose slots hold a build: its build order, none while it has none.
 /// Any other order ends it.
@@ -42,6 +43,7 @@ impl SimComponent for Builder {
     }
 }
 
-impl Kinded for Builder {
+impl Replication for Builder {
     const KIND: DataKind = DataKind::Server;
+    type Sending = NotSent;
 }

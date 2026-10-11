@@ -22,7 +22,6 @@ use crate::stats::stat_change::StatChange;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
-use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;

@@ -30,7 +30,7 @@ impl Progression {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
         types.component::<Experience>();
-        types.predicted::<Points>();
+        types.component::<Points>();
         types.resource::<LevelUps>();
     }
 

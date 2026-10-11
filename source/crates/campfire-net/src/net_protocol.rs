@@ -2,8 +2,10 @@ use std::fmt::Debug;
 use std::time::Duration;
 
 use bevy_app::{App, Plugin};
-use bevy_ecs::component::{Component, Mutable};
-use campfire_capabilities::{CapabilitySet, DataKind, Kinded, MatchEnd, Relations, StateTypes};
+use bevy_ecs::component::{Component, Immutable, Mutable};
+use campfire_capabilities::{
+    CapabilitySet, Declared, MatchEnd, Relations, Replication, StateTypes,
+};
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
 use lightyear::prelude::{
@@ -112,42 +114,31 @@ impl Plugin for NetProtocol {
 struct Replicated<'a>(&'a mut App);
 
 impl StateTypes for Replicated<'_> {
-    fn component<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
-        if C::KIND != DataKind::Server {
-            self.0
-                .component::<C>()
-                .replicate_with(WireCodec::component());
-        }
+    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+        self.0
+            .component::<C>()
+            .replicate_once_with(WireCodec::component());
     }
 
-    fn component_once<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
-        if C::KIND != DataKind::Server {
-            self.0
-                .component::<C>()
-                .replicate_once_with(WireCodec::component());
-        }
+    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
+        self.0
+            .component::<C>()
+            .replicate_with(WireCodec::component());
     }
 
-    fn predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
+    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
         &mut self,
+        _: Declared,
     ) {
-        assert_ne!(
-            C::KIND,
-            DataKind::Server,
-            "{} is predicted, so it replicates",
-            C::NAME
-        );
         self.0
             .component::<C>()
             .replicate_with(WireCodec::component())
             .predict();
     }
 
-    fn sim_predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-    ) {
-        self.predicted::<C>();
-    }
+    fn server<C: Replication>(&mut self, _: Declared) {}
+
+    fn derived<C: Component>(&mut self) {}
 
     fn resource<R: SimResource>(&mut self) {}
 }

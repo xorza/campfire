@@ -8,7 +8,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::combat::recent_attack::RecentAttack;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::NotSent;
 
 /// Who struck a unit, and the last tick each did, by stable id. An attacker that no longer exists
 /// is forgotten as a new one comes, so the list never holds more than the units that lived since
@@ -66,8 +67,9 @@ impl SimComponent for RecentAttackers {
     }
 }
 
-impl Kinded for RecentAttackers {
+impl Replication for RecentAttackers {
     const KIND: DataKind = DataKind::Server;
+    type Sending = NotSent;
 }
 
 #[cfg(test)]

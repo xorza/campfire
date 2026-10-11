@@ -94,7 +94,7 @@ impl Combat {
         types.component::<Kept>();
         types.component::<OnDeath>();
         types.component::<RecentAttackers>();
-        types.predicted::<Respawn>();
+        types.component::<Respawn>();
     }
 
     /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act,

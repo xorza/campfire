@@ -3,6 +3,7 @@ use campfire_sim::StableId;
 
 use crate::combat::shots::Shots;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
+use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::launches::{Launch, LaunchPayload, Launches};
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 
@@ -84,8 +85,9 @@ impl Launching {
                         roll,
                     },
                 };
-                Projectile::new(source, flight, payload)
-                    .expect("a launch flies within its range and carries what holds")
+                let projectile = Projectile::new(source, flight, payload)
+                    .expect("a launch flies a range and carries what holds");
+                (projectile, FlightState::START)
             });
         }
         launches.clear();

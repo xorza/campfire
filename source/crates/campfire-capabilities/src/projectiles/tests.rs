@@ -1,6 +1,7 @@
+use bevy_ecs::entity::Entity;
 use campfire_common::{Binary, SegmentSeed, Tick, Toml};
 use campfire_math::RngSource;
-use campfire_sim::{Capability, EntityIndex};
+use campfire_sim::{Capability, EntityIndex, SimComponent};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -236,6 +237,16 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     source.begin_tick(12);
     let roll = source.open(ROLL_STREAM, shooter_id.get()).fraction();
     assert_eq!(volley.rolls(), [roll]);
+    // It holds its flight state, or it never flies.
+    let world = &mut volley.sim.world;
+    let (bolt, projectile) = world
+        .query::<(Entity, &Projectile)>()
+        .single(world)
+        .map(|(bolt, projectile)| (bolt, projectile.clone()))
+        .unwrap();
+    assert!(projectile.check(world, bolt));
+    world.entity_mut(bolt).remove::<FlightState>();
+    assert!(!projectile.check(world, bolt));
 }
 
 #[test]
@@ -334,11 +345,11 @@ fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
     let flying = volley
         .sim
         .world
-        .query::<&Projectile>()
+        .query::<(&Projectile, &FlightState)>()
         .iter(&volley.sim.world)
-        .map(Projectile::flight)
+        .map(|(projectile, state)| (projectile.flight(), state.lost()))
         .collect::<Vec<_>>();
-    assert!(matches!(flying[..], [Flight::Homing { target, lost: false, .. }] if target == dasher));
+    assert!(matches!(flying[..], [(Flight::Homing { target }, false)] if target == dasher));
     volley.sim.run_until(14);
     assert_eq!(
         [blinker, dasher].map(|id| volley.sim.health(id)),
@@ -431,6 +442,27 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
         volley.projectiles(),
         [point(Num::int(5) + Num::HALF, Num::ZERO)]
     );
+    // Its state holds the 5.5 m it flew. A line flies within its range, 6 m, and loses no unit,
+    // and a state of fewer than 0 m fails to decode.
+    let world = &mut volley.sim.world;
+    let (entity, &state) = world
+        .query::<(Entity, &FlightState)>()
+        .single(world)
+        .unwrap();
+    assert_eq!(state.flown(), Num::int(5) + Num::HALF);
+    let flown = |meters| {
+        let mut state = FlightState::START;
+        state.fly_to(meters);
+        state
+    };
+    let mut lost = flown(Num::ONE);
+    lost.disjoint();
+    let checks =
+        [flown(Num::int(6)), flown(Num::int(6) + e), lost].map(|state| state.check(world, entity));
+    assert_eq!(checks, [true, false, false]);
+    let decodes =
+        |meters: Num| Binary::decode::<FlightState>(&Binary::encode(&(meters, false))).is_ok();
+    assert_eq!([Num::ZERO, -e].map(decodes), [true, false]);
     volley.sim.step();
     assert_eq!(volley.projectiles(), []);
     let healths = [beside, wide, ally, past, beyond].map(|unit| volley.sim.health(unit));

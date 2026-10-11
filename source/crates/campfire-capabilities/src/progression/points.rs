@@ -8,7 +8,8 @@ use crate::progression::experience::Experience;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 use crate::units::track_id::TrackId;
 
 /// The points a unit with the `level` track has to spend on ranks: one for each level it has
@@ -59,6 +60,7 @@ impl SimComponent for Points {
     }
 }
 
-impl Kinded for Points {
+impl Replication for Points {
     const KIND: DataKind = DataKind::Progression;
+    type Sending = SentPredicted;
 }

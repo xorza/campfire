@@ -1,7 +1,6 @@
-use campfire_common::{Binary, Tick, Ticks, Toml};
+use campfire_common::{Tick, Ticks, Toml};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
-use serde::Serialize;
 
 use super::*;
 use crate::actions::action_book;
@@ -23,43 +22,6 @@ use crate::values::number::{Number, ParamRef};
 use crate::values::rank::Rank;
 use crate::values::relation::Relation;
 use crate::values::relation_set::RelationSet;
-
-#[test]
-fn an_area_that_triggers_after_it_ends_fails_to_decode() {
-    #[derive(Debug, Serialize)]
-    struct Fields {
-        source: u64,
-        action: u32,
-        rank: u8,
-        start: Option<()>,
-        launch: Option<u32>,
-        aimed: Option<u64>,
-        triggers_at: Option<u64>,
-        ends_at: u64,
-    }
-    let decode = |triggers_at: Option<u64>, ends_at| {
-        let fields = Fields {
-            source: 1,
-            action: 0,
-            rank: 1,
-            start: None,
-            launch: None,
-            aimed: None,
-            triggers_at,
-            ends_at,
-        };
-        let bytes = Binary::encode(&fields);
-        Binary::decode::<Area>(&bytes)
-    };
-    let area = decode(Some(5), 9).unwrap();
-    assert_eq!(
-        (area.triggers_at(), area.ends_at()),
-        (Some(Tick::new(5)), Tick::new(9))
-    );
-    assert!(decode(Some(5), 5).is_ok());
-    assert!(decode(None, 9).is_ok());
-    assert!(decode(Some(6), 5).is_err());
-}
 
 #[test]
 fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
@@ -135,28 +97,32 @@ fn an_area_is_state_and_restores() {
         start: None,
         launch: None,
     };
-    let area = Area::new(by, None, Some(Tick::new(5)), Tick::new(9)).unwrap();
-    let id = sim.spawn(Position::ORIGIN, (Team::new(0), field, area));
+    let area = Area::new(by, None, Tick::new(9));
+    let trigger = AreaTrigger::at(Tick::new(5));
+    let id = sim.spawn(Position::ORIGIN, (Team::new(0), field, area, trigger));
     let mut restored = TestMatch::client(&declared);
     loads(&mut restored);
     sim.restore_into(&mut restored);
     assert_eq!(restored.get::<Area>(id), sim.get::<Area>(id));
-    // Its times are at most the limit: either a tick past it fails to decode.
+    assert_eq!(restored.get::<AreaTrigger>(id), &trigger);
+    // It triggers by its end, at tick 9 at the latest; a unit that is no area has no trigger.
     let entity = sim.entity(id);
+    let triggers = |at| AreaTrigger::at(Tick::new(at)).check(&sim.world, entity);
+    assert_eq!([5, 9, 10].map(triggers), [true, true, false]);
+    let unit = sim.spawn(Position::ORIGIN, Team::new(0));
+    assert!(!trigger.check(&sim.world, sim.entity(unit)));
+    // Its times are at most the limit: a tick past it fails to decode.
     let past = Tick::new(Tick::LIMIT.get() + 1);
-    let check = |triggers_at, ends_at| {
-        let area = Area::new(by, None, triggers_at, ends_at).unwrap();
-        TestMatch::decodes(&area) && area.check(&sim.world, entity)
-    };
-    assert!(check(Some(Tick::LIMIT), Tick::LIMIT));
-    assert!(!check(None, past));
-    assert!(!check(Some(past), past));
+    assert!(TestMatch::decodes(&Area::new(by, None, Tick::LIMIT)));
+    assert!(!TestMatch::decodes(&Area::new(by, None, past)));
+    assert!(TestMatch::decodes(&AreaTrigger::at(Tick::LIMIT)));
+    assert!(!TestMatch::decodes(&AreaTrigger::at(past)));
     // An area of a launch the match did not load has no lists to run.
     let launched = Delivering {
         launch: Some(LaunchId::nth(0)),
         ..by
     };
-    let area = Area::new(launched, None, None, Tick::LIMIT).unwrap();
+    let area = Area::new(launched, None, Tick::LIMIT);
     assert!(!area.check(&sim.world, entity));
     // An area that holds Rally on allies, which reads its action's `ward`: the train, which
     // declares none, cannot have delivered it, as Rally would fail as an ally takes it.
@@ -181,7 +147,7 @@ fn an_area_is_state_and_restores() {
     };
     Areas::load_type(&mut sim.world, warding, 0, &area);
     let warded = sim.spawn(Position::ORIGIN, (Team::new(0), warding));
-    let area = Area::new(by, None, None, Tick::LIMIT).unwrap();
+    let area = Area::new(by, None, Tick::LIMIT);
     assert!(area.check(&sim.world, entity));
     assert!(!area.check(&sim.world, sim.entity(warded)));
 }

@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::navigation::paths::Paths;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::NotSent;
 use crate::units::path_id::PathId;
 
 /// The path a unit belongs to: the one a structure guards, or the one a `PathWalker` walks.
@@ -36,6 +37,7 @@ impl SimComponent for OnPath {
     }
 }
 
-impl Kinded for OnPath {
+impl Replication for OnPath {
     const KIND: DataKind = DataKind::Server;
+    type Sending = NotSent;
 }

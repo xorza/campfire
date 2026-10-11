@@ -92,11 +92,11 @@ pub struct Navigation;
 impl Navigation {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.predicted::<Destination>();
+        types.component::<Destination>();
         types.component::<PathWalker>();
         types.component::<OnPath>();
-        types.predicted::<Route>();
-        types.predicted::<Progress>();
+        types.component::<Route>();
+        types.component::<Progress>();
     }
 
     /// The components of a new unit that walks `step` a tick, with nowhere to go yet.

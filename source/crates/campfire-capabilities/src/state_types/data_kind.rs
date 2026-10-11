@@ -20,3 +20,10 @@ pub enum DataKind {
     /// State no client receives.
     Server,
 }
+
+impl DataKind {
+    /// Whether a client receives state of this kind.
+    pub const fn is_sent(self) -> bool {
+        !matches!(self, DataKind::Server)
+    }
+}

@@ -11,7 +11,8 @@ use crate::navigation::party::Party;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::progress::Progress;
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 
 /// A walker's long route to its destination: the goal it serves, with its ask while it waits for
 /// the planner, and the waypoints of the route planned last, the next one first among those left.
@@ -168,8 +169,9 @@ impl SimComponent for Route {
     }
 }
 
-impl Kinded for Route {
+impl Replication for Route {
     const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentPredicted;
 }
 
 /// A snapshot is untrusted, so a next waypoint past the last fails to decode.

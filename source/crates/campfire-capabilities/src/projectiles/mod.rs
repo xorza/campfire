@@ -14,6 +14,7 @@ use crate::deliveries::delivering::Delivering;
 use crate::deliveries::{Deliveries, DeliverySet};
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
+use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::flying::Flying;
 use crate::projectiles::launches::{Launch, LaunchPayload, Launches};
 use crate::projectiles::launching::Launching;
@@ -24,6 +25,7 @@ use crate::state_types::StateTypes;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
 
+pub(crate) mod flight_state;
 pub(crate) mod flights;
 pub(crate) mod flying;
 pub(crate) mod launches;
@@ -43,7 +45,8 @@ pub struct Projectiles;
 impl Projectiles {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component_once::<Projectile>();
+        types.component::<Projectile>();
+        types.component::<FlightState>();
         types.resource::<StruckUnits>();
     }
 

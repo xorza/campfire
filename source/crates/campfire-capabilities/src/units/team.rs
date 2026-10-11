@@ -5,7 +5,8 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
-use crate::state_types::kinded::Kinded;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentOnce;
 use crate::units::bits256::Bits256;
 use crate::units::view::View;
 
@@ -14,6 +15,7 @@ use crate::units::view::View;
 #[derive(
     Component, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
+#[component(immutable)]
 #[serde(transparent)]
 pub struct Team(u8);
 
@@ -46,6 +48,7 @@ impl SimComponent for Team {
     }
 }
 
-impl Kinded for Team {
+impl Replication for Team {
     const KIND: DataKind = DataKind::Unit;
+    type Sending = SentOnce;
 }

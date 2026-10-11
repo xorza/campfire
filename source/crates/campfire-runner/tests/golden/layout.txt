@@ -1,6 +1,7 @@
-data_version 2
+data_version 3
 actions.slots 58047d0a58c98c62
-areas.area f6116558e7653d07
+areas.area 6e7395840db07855
+areas.area_trigger 5b5d033e67c80f93
 combat.kept 6f07fc05a6a4e4ce
 combat.on_death a4f4b17fec8c8db4
 combat.recent_attackers 58e017c445524785
@@ -28,7 +29,8 @@ production.train_queue c3fc23c8a1a1bff0
 progression.experience 9f97267ca4ebe1e8
 progression.level_ups 51c840b0e8ee01d6
 progression.points 15fb8f345c37c1c2
-projectiles.projectile 913f20490569b5ae
+projectiles.flight_state e424d4aaefae6056
+projectiles.projectile 463da4e36c379b2d
 projectiles.struck_units 60c25a1ff0844794
 sim.entities 3ad3c5b04100e61c
 sim.id_allocator b6efbc7ed70c398e
