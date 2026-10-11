@@ -159,8 +159,8 @@ impl Volley {
     }
 
     fn unit(&mut self, team: u8, at: Position, combatant: Armed) -> StableId {
-        let bundle = combatant.bundle(&mut self.sim.world, Team::new(team));
-        self.sim.spawn(at, bundle)
+        let bundle = combatant.bundle(&mut self.sim.world);
+        self.sim.spawn(at, Team::new(team), bundle)
     }
 
     fn attack(&mut self, attacker: StableId, target: StableId) {
@@ -275,7 +275,7 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
             target(),
             target(),
         ] {
-            let _weapon = armed.bundle(&mut restored.sim.world, Team::new(0));
+            let _weapon = armed.bundle(&mut restored.sim.world);
         }
         restored
     };

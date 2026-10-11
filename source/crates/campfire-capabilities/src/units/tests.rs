@@ -58,10 +58,23 @@ impl Scene {
         Units::load_next_type(&mut self.sim.world, &data)
     }
 
-    /// A `unit()` of `team` with `parts`.
+    /// A `unit()` of the match's own type and `team` with `parts`.
     fn unit(&mut self, at: Position, team: u8, parts: impl Bundle) -> StableId {
-        let armed = unit().bundle(&mut self.sim.world, Team::new(team));
-        self.sim.spawn(at, (armed, parts))
+        let unit_type = self.sim.unit_type();
+        self.unit_of(unit_type, at, team, parts)
+    }
+
+    /// A `unit()` of `unit_type` and `team` with `parts`.
+    fn unit_of(
+        &mut self,
+        unit_type: UnitType,
+        at: Position,
+        team: u8,
+        parts: impl Bundle,
+    ) -> StableId {
+        let armed = unit().bundle(&mut self.sim.world);
+        self.sim
+            .spawn_of(unit_type, at, Team::new(team), (armed, parts))
     }
 }
 
@@ -72,17 +85,19 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     let of = scene.unit(at(0, 0, 0), 1, ());
     // Up at y = 9, 3 m away on the ground plane: the nearest.
     let high = scene.unit(at(0, 9, 3), 0, ());
-    let east = scene.unit(at(4, 0, 0), 0, creep);
+    let east = scene.unit_of(creep, at(4, 0, 0), 0, ());
     let west = scene.unit(at(-4, 0, 0), 0, ());
     let edge = scene.unit(at(0, 0, 5), 0, ());
     let far = scene.unit(at(6, 0, 0), 0, ());
     let ally = scene.unit(at(1, 0, 0), 1, ());
     let dead = scene.unit(at(0, 0, 1), 0, Dead);
     // Within 2 m, but no target: one untargetable, one invulnerable.
-    let hidden = UnitTags::blocking(&[Block::Target]);
-    let hidden = scene.unit(at(2, 0, 0), 0, hidden);
-    let guarded = UnitTags::blocking(&[Block::Target, Block::Damage]);
-    let guarded = scene.unit(at(-2, 0, 0), 0, guarded);
+    let hidden = scene.unit(at(2, 0, 0), 0, ());
+    scene.sim.set_blocks(hidden, &[Block::Target]);
+    let guarded = scene.unit(at(-2, 0, 0), 0, ());
+    scene
+        .sim
+        .set_blocks(guarded, &[Block::Target, Block::Damage]);
 
     let find = |scene: &mut Scene, filter: &str| {
         let source = format!(r#"fn probe(ctx, of) {{ ctx.find(of, of.pos, 5, "{filter}") }}"#);
@@ -265,11 +280,12 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
         let mut scene = Scene::new();
         scene.sim.world.insert_resource(bounds);
         let at = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-        let unit = scene.sim.spawn(at, Team::new(0));
+        let unit = scene.sim.spawn(at, Team::new(0), ());
         let mut snapshot = Vec::new();
         scene.sim.registry.snapshot(&scene.sim.world, &mut snapshot);
         let mut fresh = Scene::new();
         fresh.sim.world.insert_resource(bounds);
+        assert_eq!(fresh.sim.unit_type(), scene.sim.unit_type());
         fresh.sim.clear();
         let restored = scene.sim.registry.restore(&snapshot, &mut fresh.sim.world);
         restored.map_err(|error| (error, unit))
@@ -287,11 +303,14 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
 fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     // A read keeps the row of each unit whose parts did not change since the last read, and a
     // debug build checks every read against one that fills every row. A part that only goes
-    // away, and a team an entity gains, change no part's tick, only the unit's archetype.
+    // away, and a team an entity gains, change no part's tick, only the unit's archetype. The
+    // loose unit loses its team at once, as no spawn makes a unit of no team.
     let mut scene = Scene::new();
     let of = scene.unit(at(0, 0, 0), 0, ());
     let other = scene.unit(at(3, 0, 4), 1, ());
-    let loose = scene.sim.spawn(at(1, 0, 0), ());
+    let loose = scene.sim.spawn(at(1, 0, 0), Team::new(1), ());
+    let loose_entity = scene.sim.entity(loose);
+    scene.sim.world.entity_mut(loose_entity).remove::<Team>();
     let value =
         |scene: &mut Scene, unit, expression: &str| scene.sim.read(expression, unit).unwrap();
     let enemies =
@@ -308,7 +327,6 @@ fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     assert_eq!(enemies(&mut scene), [other]);
 
     // The entity with no team is no unit until it gains one; one that loses its team is none.
-    let loose_entity = scene.sim.entity(loose);
     scene
         .sim
         .world
@@ -344,12 +362,13 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
     let spawn = SpawnPoint::new(at(5, 0, -5));
-    let of = scene.unit(at(0, 0, 0), 0, (hero, owner, path, body, spawn));
+    let of = scene.unit_of(hero, at(0, 0, 0), 0, (owner, path, body, spawn));
     let near = scene.unit(at(3, 0, 4), 1, ());
     let recent = scene.unit(at(9, 0, 0), 1, ());
     let fallen = scene.unit(at(9, 0, 1), 1, Dead);
-    let health_only = (Team::new(1), Life::full(Num::int(1)));
-    let bare = scene.sim.spawn(at(9, 0, 2), health_only);
+    let bare = scene
+        .sim
+        .spawn(at(9, 0, 2), Team::new(1), Life::full(Num::int(1)));
     let entity = scene.sim.entity(of);
     scene
         .sim
@@ -463,8 +482,8 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     life.take(Num::int(4));
     let bare = scene
         .sim
-        .spawn(at(1, 0, 0), (Team::new(1), Life::full(Num::int(1))));
-    let shell = scene.sim.spawn(at(2, 0, 0), Team::new(1));
+        .spawn(at(1, 0, 0), Team::new(1), Life::full(Num::int(1)));
+    let shell = scene.sim.spawn(at(2, 0, 0), Team::new(1), ());
 
     let read = |scene: &mut Scene, unit, expression: &str| scene.sim.read(expression, unit);
     let value = |scene: &mut Scene, expression: &str| read(scene, of, expression).unwrap();

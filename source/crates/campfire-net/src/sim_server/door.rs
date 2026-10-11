@@ -1,17 +1,16 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{QueryState, With, Without};
+use bevy_ecs::query::QueryState;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Res};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_capabilities::{DeliveryEntity, Mode, Owner, UnitEntity};
+use campfire_capabilities::Mode;
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
 use campfire_runner::{ServerInputRefused, Session, SlotRuleError};
 use lightyear::prelude::{
-    Connected, LocalTimeline, MessageReceiver, MessageSender, PredictionTarget, Replicate, Unlink,
-    UnlinkReason,
+    Connected, LocalTimeline, MessageReceiver, MessageSender, Unlink, UnlinkReason,
 };
 use tracing::info;
 
@@ -185,7 +184,8 @@ impl Door {
     }
 
     /// Seats `link` as `seat` says: it carries that slot's inputs, learns the match from the
-    /// next tick on, the teams' relations and any end at once, predicts the slot's units, and
+    /// next tick on, the teams' relations and any end at once, predicts the slot's entities its
+    /// kind lets its owner predict ([`KindShows`](crate::sim_server::kind_shows::KindShows)), and
     /// stands in its team's room, so it receives every unit its team sees and no other.
     fn seat(world: &mut World, link: Entity, seat: SeatIn) {
         let SeatIn { slot, chain } = seat;
@@ -214,22 +214,6 @@ impl Door {
                 chain,
                 loaded,
             });
-        let mut units = world.query_filtered::<
-            (Entity, &Owner),
-            (With<Replicate>, With<UnitEntity>, Without<DeliveryEntity>),
-        >();
-        let owned: Vec<Entity> = units
-            .iter(world)
-            .filter(|&(_, owner)| owner.slot() == slot)
-            .map(|(unit, ..)| unit)
-            .collect();
-        let mut commands = world.commands();
-        for unit in owned {
-            commands
-                .entity(unit)
-                .insert(PredictionTarget::manual(vec![link]));
-        }
-        world.flush();
         info!(slot = slot.get(), ?link, "a player took their seat");
     }
 

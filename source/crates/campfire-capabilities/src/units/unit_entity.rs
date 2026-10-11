@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
+use crate::units::entity_kind::{EntityKind, KindAudience};
+use crate::units::kind_filters::BodyUnit;
 
 /// The kind of every unit, a delivery among them. A unit type requires it, so every spawn of a
 /// typed unit gives it; it is state too, so a unit of no type, as a test spawns, stays a unit
@@ -16,6 +18,12 @@ use crate::state_types::sending::SentOnce;
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 pub struct UnitEntity;
+
+impl EntityKind for UnitEntity {
+    const AUDIENCE: KindAudience = KindAudience::Seers;
+    const OWNER_PREDICTS: bool = true;
+    type Only = BodyUnit;
+}
 
 impl HostRule for UnitEntity {
     fn holds(world: &World, entity: Entity) -> bool {

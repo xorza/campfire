@@ -118,7 +118,6 @@ use crate::units::relations::Relations;
 use crate::units::tag_set::TagSet;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
@@ -988,20 +987,13 @@ impl Game {
             .non_send::<View>()
             .unit_type_named("grunt")
             .unwrap();
-        let id = self.sim.world.resource_mut::<IdAllocator>().allocate();
-        let defaults = self.sim.world.resource::<UnitStateBook>().initial(grunt);
-        let mut unit = self.sim.world.spawn((
-            id,
-            at(0, 0),
-            Team::new(team),
+        let parts = (
             Life::full(Num::int(1000)),
-            grunt,
             Level::default(),
             UnitStats::default(),
             modifiers,
-        ));
-        defaults.insert_into(&mut unit);
-        id
+        );
+        self.sim.spawn_of(grunt, at(0, 0), Team::new(team), parts)
     }
 
     /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by `cause`.

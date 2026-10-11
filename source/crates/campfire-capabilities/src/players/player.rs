@@ -2,14 +2,17 @@ use std::any::TypeId;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::With;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_sim::{EntityIndex, HostRule, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::declare::parted_kind::PartedKind;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
+use crate::units::entity_kind::{EntityKind, KindAudience};
 use crate::units::view::View;
 
 /// The entity of a player slot, of the slot's named id, which holds the player's state that
@@ -34,6 +37,14 @@ impl Player {
             .resource::<EntityIndex>()
             .get(StableId::of_player(slot))
     }
+}
+
+impl PartedKind for Player {}
+
+impl EntityKind for Player {
+    const AUDIENCE: KindAudience = KindAudience::EverySeat;
+    const OWNER_PREDICTS: bool = false;
+    type Only = With<Player>;
 }
 
 impl HostRule for Player {

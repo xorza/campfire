@@ -77,7 +77,7 @@ impl Walk {
     /// A unit at `at` walking a meter a tick to `to`.
     fn unit(&mut self, at: Position, to: Option<Position>) -> StableId {
         let walker = Navigation::walker(MoveStep::new(Num::ONE).unwrap());
-        let id = self.sim.spawn(at, (Team::new(0), walker));
+        let id = self.sim.spawn(at, Team::new(0), walker);
         *self.sim.get_mut::<Destination>(id) = Destination::to(to);
         id
     }
@@ -103,7 +103,7 @@ impl Walk {
         step: Option<Num>,
         body: Body,
     ) -> StableId {
-        let id = self.sim.spawn(at, (Team::new(0), body));
+        let id = self.sim.spawn(at, Team::new(0), body);
         if let Some(step) = step {
             self.sim
                 .insert(id, Navigation::walker(MoveStep::new(step).unwrap()));
@@ -161,7 +161,7 @@ fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
     let past = walk.unit(at(3, 0, 0), Some(at(5, 0, 0)));
     let inside = walk.unit(at(1, 0, 1), None);
-    let id = walk.sim.spawn(at(9, 0, 9), ());
+    let id = walk.sim.spawn(at(9, 0, 9), Team::new(0), ());
 
     walk.sim.step();
     assert_eq!(*walk.sim.get::<Position>(outside), at(4, 1, 2));

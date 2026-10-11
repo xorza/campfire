@@ -195,8 +195,6 @@ pub(crate) mod internals {
     use crate::combat::recent_attackers::RecentAttackers;
     #[cfg(test)]
     use crate::stats::life::Life;
-    #[cfg(test)]
-    use crate::units::team::Team;
     use crate::values::rank::Rank;
 
     use campfire_sim::StableId;
@@ -387,15 +385,14 @@ pub(crate) mod internals {
             }
         }
 
-        /// The components of a new unit of this type on `team` in `world`, whose book takes its
-        /// weapon: its team and its life pool, which the spawn and its kit give; its death and
-        /// its attackers, which its `combat` gives; and its weapon's parts.
-        pub(crate) fn bundle(self, world: &mut World, team: Team) -> impl Bundle + use<> {
+        /// The components of a new unit of this type in `world`, whose book takes its weapon: its
+        /// life pool, which its kit gives; its death and its attackers, which its `combat` gives;
+        /// and its weapon's parts.
+        pub(crate) fn bundle(self, world: &mut World) -> impl Bundle + use<> {
             let parts = self
                 .arms
                 .map_or_else(ArmsParts::unarmed, |arms| arms.parts(world));
             (
-                team,
                 Life::full(self.life),
                 self.on_death,
                 RecentAttackers::default(),

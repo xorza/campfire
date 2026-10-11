@@ -257,7 +257,7 @@ const PROXIES: [Proxy; 3] = [
     },
     Proxy {
         dir: "campfire-codec",
-        lints: &[LINTS[0]],
+        lints: &LINTS,
         methods: &CODEC_METHODS,
         types: &CODEC_TYPES,
         dependencies: &[
@@ -608,15 +608,15 @@ fn the_ban_checks_fail_on_what_breaks_them() {
             format!("//! x\n{}", inner(types)),
             vec![2],
         ),
-        // A proxy's root, of the lints it exempts: `store`'s of both, `codec`'s and `schedule`'s
+        // A proxy's root, of the lints it exempts: `store`'s and `codec`'s of both, `schedule`'s
         // of the methods' alone; another of its files, or a statement anywhere, is found.
         (
             "crates/campfire-store/src/lib.rs",
             format!("#![expect(\n    {methods},\n    {types},\n    reason = \"r\"\n)]\n"),
             vec![],
         ),
-        ("crates/campfire-codec/src/lib.rs", inner(methods), vec![]),
-        ("crates/campfire-codec/src/lib.rs", inner(types), vec![1]),
+        ("crates/campfire-codec/src/lib.rs", inner(types), vec![]),
+        ("crates/campfire-schedule/src/lib.rs", inner(types), vec![1]),
         (
             "crates/campfire-schedule/src/lib.rs",
             inner(methods),

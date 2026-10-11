@@ -1,4 +1,3 @@
-use std::iter;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -41,12 +40,10 @@ use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
 use crate::units::spawn_at::SpawnAt;
-use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::track_id::TrackId;
 use crate::units::unit_state::{SyncAll, SyncNone};
-use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 use crate::values::rank::Rank;
 
@@ -224,35 +221,33 @@ impl ModeBook {
         at: SpawnAt,
         owner: Option<PlayerSlot>,
     ) -> Entity {
-        match owner {
-            Some(slot) => self.spawn(world, at, Owner::new(slot)),
-            None => self.spawn(world, at, ()),
-        }
+        self.spawn(world, at, owner.map(Owner::new), ())
     }
 
     /// Spawns `at`, with its kit, its script state at its type's defaults, its actions, each at
     /// the first rank of its kind, an empty slot of its inventory's kind for each inventory slot,
     /// its passive, and `parts`.
-    pub(crate) fn spawn(&self, world: &mut World, at: SpawnAt, parts: impl Bundle) -> Entity {
+    pub(crate) fn spawn(
+        &self,
+        world: &mut World,
+        at: SpawnAt,
+        owner: Option<Owner>,
+        parts: impl Bundle,
+    ) -> Entity {
         let SpawnAt {
             id,
             unit_type,
-            team,
             pos,
             angle,
+            ..
         } = at;
         let kit = self
             .kit(unit_type)
             .expect("a unit type of the mode has a kit");
-        let tags = world
-            .resource::<TagBook>()
-            .unit_tags(unit_type, iter::empty());
         let level_track = world
             .get_resource::<TrackBook>()
             .and_then(TrackBook::level_track);
-        let state = world.resource::<UnitStateBook>().initial(unit_type);
-        let mut unit = world.spawn((id, pos, unit_type, team, UnitStats::default(), tags, parts));
-        state.insert_into(&mut unit);
+        let mut unit = at.core(owner).spawn(world, (UnitStats::default(), parts));
         let at = KitSpawn {
             kit: &kit,
             level_track,
@@ -313,7 +308,7 @@ impl ModeBook {
                 pos,
                 angle: Num::ZERO,
             };
-            self.spawn(world, at, walker);
+            self.spawn(world, at, None, walker);
         }
     }
 }

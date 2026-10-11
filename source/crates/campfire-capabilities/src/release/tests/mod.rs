@@ -537,7 +537,7 @@ fn a_unit_holds_only_parts_the_declarations_list() {
     let set = Release::capabilities();
     let declared: Vec<Capability> = set.iter().collect();
     let mut sim = TestMatch::client(&declared);
-    let unit = sim.spawn(Position::ORIGIN, Team::new(0));
+    let unit = sim.spawn(Position::ORIGIN, Team::new(0), ());
     assert_eq!(
         Release::unlisted_components(set, &sim.world),
         Vec::<String>::new()

@@ -7,8 +7,8 @@ use campfire_codec::Binary;
 use campfire_common::{StateHash, Tick};
 use campfire_math::internals::SplitMix64;
 use serde::de::{
-    self, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
-    VariantAccess, Visitor,
+    self, DeserializeOwned, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess,
+    SeqAccess, VariantAccess, Visitor,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -248,9 +248,9 @@ impl Draws {
         true
     }
 
-    /// Changes where `C` sits, as `mutation` says, on one entity of those that hold one, and one
-    /// of those that hold none; false when no entity holds one, or none lacks it for a move or a
-    /// copy.
+    /// Changes `C`, as `mutation` says, on one entity of those that hold one: where it sits,
+    /// moved or copied to one of those that hold none, or one of its `Some`s; false when no entity
+    /// holds one, none lacks it for a move or a copy, or the value holds no `Some` to drop.
     pub(crate) fn mutate_component<C: SimComponent>(
         &mut self,
         world: &mut World,
@@ -267,9 +267,20 @@ impl Draws {
         let Some(&holder) = self.pick(&holders) else {
             return false;
         };
-        if mutation == Mutation::Remove {
-            world.entity_mut(holder).remove::<C>();
-            return true;
+        match mutation {
+            Mutation::Remove => {
+                world.entity_mut(holder).remove::<C>();
+                return true;
+            }
+            Mutation::DropOption => {
+                let held = world.get::<C>(holder).expect("a holder holds its value");
+                let Some(value) = self.without_option(held) else {
+                    return false;
+                };
+                world.entity_mut(holder).insert(value);
+                return true;
+            }
+            Mutation::Move | Mutation::Copy => {}
         }
         let Some(&other) = self.pick(&others) else {
             return false;
@@ -280,7 +291,7 @@ impl Draws {
                 let held = world.get::<C>(holder).expect("a holder holds its value");
                 Binary::decode::<C>(&Binary::encode(held)).ok()
             }
-            Mutation::Remove => unreachable!("a removal returned above"),
+            Mutation::Remove | Mutation::DropOption => unreachable!("each returned above"),
         };
         world
             .entity_mut(other)
@@ -288,18 +299,39 @@ impl Draws {
         true
     }
 
-    /// Removes `R` from the match, as `mutation` says, which a resource can only lose; false
-    /// when it has none, or for another mutation.
-    #[expect(
-        clippy::unused_self,
-        reason = "an entry calls it through the pointer it shares with `mutate_component`"
-    )]
+    /// Changes `R` in the match, as `mutation` says: a resource can lose its value, or one of its
+    /// `Some`s, as no entity holds it; false when it has none, or nothing to change so.
     pub(crate) fn mutate_resource<R: SimResource>(
         &mut self,
         world: &mut World,
         mutation: Mutation,
     ) -> bool {
-        mutation == Mutation::Remove && world.remove_resource::<R>().is_some()
+        match mutation {
+            Mutation::Remove => world.remove_resource::<R>().is_some(),
+            Mutation::DropOption => {
+                let Some(held) = world.get_resource::<R>() else {
+                    return false;
+                };
+                let Some(value) = self.without_option(held) else {
+                    return false;
+                };
+                world.insert_resource(value);
+                true
+            }
+            Mutation::Move | Mutation::Copy => false,
+        }
+    }
+
+    /// `value` with one of its `Some`s, drawn, as `None`; none when it holds no `Some`, or its
+    /// type refuses the change, as a value that must hold one.
+    fn without_option<T: Serialize + DeserializeOwned>(&mut self, value: &T) -> Option<T> {
+        let count = u64::try_from(Binary::options(value)).expect("a count fits u64");
+        if count == 0 {
+            return None;
+        }
+        let at = usize::try_from(self.below(count)).expect("a drawn place");
+        let bytes = Binary::encode_without_option(value, at).expect("the drawn some is held");
+        Binary::decode::<T>(&bytes).ok()
     }
 
     /// One of `items`, drawn; none when it is empty.
@@ -363,10 +395,18 @@ pub enum Mutation {
     Move,
     /// One holder's value is copied to an entity that holds none.
     Copy,
+    /// One holder's value, or a resource, with one of its `Some`s, drawn, as `None`: a value of
+    /// its type that a draw rarely makes, as every other part stays as it was.
+    DropOption,
 }
 
 impl Mutation {
-    pub const ALL: [Mutation; 3] = [Mutation::Remove, Mutation::Move, Mutation::Copy];
+    pub const ALL: [Mutation; 4] = [
+        Mutation::Remove,
+        Mutation::Move,
+        Mutation::Copy,
+        Mutation::DropOption,
+    ];
 }
 
 /// Why a draw does not make a value: a type the state does not hold, or a refusal of its decode.

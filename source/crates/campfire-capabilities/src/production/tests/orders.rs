@@ -133,7 +133,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     shop.sim.insert(producer, body);
     let flag = shop
         .sim
-        .spawn(half(0, 12), (Team::new(1), Body::new(Num::HALF).unwrap()));
+        .spawn(half(0, 12), Team::new(1), Body::new(Num::HALF).unwrap());
     let rally = |target| Action::Rally {
         target: Some(target),
     };
@@ -189,7 +189,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     VisionGrid::fog(&mut shop.sim.world, 2);
     let watch = shop
         .sim
-        .spawn(half(0, 12), (Team::new(0), Body::new(Num::HALF).unwrap()));
+        .spawn(half(0, 12), Team::new(0), Body::new(Num::HALF).unwrap());
     let team0 = TeamSet::of(Team::new(0));
     for (at, (seers, place)) in [(team0, half(0, 0)), (team0.with(Team::new(1)), half(-1, 3))]
         .into_iter()

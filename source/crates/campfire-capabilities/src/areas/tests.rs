@@ -72,7 +72,8 @@ fn an_area_reads_only_with_a_radius_that_is_not_negative() {
 
 #[test]
 fn an_area_is_state_and_restores() {
-    // A match of combat and areas with an area type and a train for its action, the same in both.
+    // A match of combat and areas with an area type and a train for its action, the same in both,
+    // and a warding area type, which holds Rally on allies, reading its action's `ward`.
     let loads = |sim: &mut TestMatch| {
         let data = UnitTypeData::default();
         let field = Units::load_type(&mut sim.world, TypeScope::Mode, "field", &data);
@@ -85,12 +86,25 @@ fn an_area_is_state_and_restores() {
         };
         Areas::load_type(&mut sim.world, field, 0, &area);
         let action = action_book::internals::train(&mut sim.world, field, Ticks::ZERO, None);
-        (field, action)
+        let ward = DeclaredName::new("ward").unwrap();
+        let rally = ModifierData {
+            shield: Some(Number::Param(ParamRef { param: ward })),
+            ..ModifierData::default()
+        };
+        Stats::load_modifier(&mut sim.world, 0, "rally", &rally, None);
+        let warding = Units::load_type(&mut sim.world, TypeScope::Mode, "warding", &data);
+        let inside = AreaInside {
+            allies: Some(DeclaredName::new("rally").unwrap()),
+            ..AreaInside::default()
+        };
+        let area = AreaData { inside, ..area };
+        Areas::load_type(&mut sim.world, warding, 0, &area);
+        (field, action, warding)
     };
     let declared = [Capability::Stats, Capability::Combat, Capability::Areas];
     let mut sim = TestMatch::client(&declared);
-    let (field, action) = loads(&mut sim);
-    let source = sim.spawn(Position::ORIGIN, Team::new(0));
+    let (field, action, warding) = loads(&mut sim);
+    let source = sim.spawn(Position::ORIGIN, Team::new(0), ());
     let by = Delivering {
         source,
         action,
@@ -100,7 +114,7 @@ fn an_area_is_state_and_restores() {
     };
     let area = Area::new(by, None, Tick::new(9));
     let trigger = AreaTrigger::at(Tick::new(5));
-    let id = sim.spawn(Position::ORIGIN, (Team::new(0), field, area, trigger));
+    let id = sim.spawn_of(field, Position::ORIGIN, Team::new(0), (area, trigger));
     let mut restored = TestMatch::client(&declared);
     loads(&mut restored);
     sim.restore_into(&mut restored);
@@ -110,7 +124,7 @@ fn an_area_is_state_and_restores() {
     let entity = sim.entity(id);
     let triggers = |at| AreaTrigger::at(Tick::new(at)).check(&sim.world, entity);
     assert_eq!([5, 9, 10].map(triggers), [true, true, false]);
-    let unit = sim.spawn(Position::ORIGIN, Team::new(0));
+    let unit = sim.spawn(Position::ORIGIN, Team::new(0), ());
     assert!(!trigger.check(&sim.world, sim.entity(unit)));
     // Its times are at most the limit: a tick past it fails to decode.
     let past = Tick::new(Tick::LIMIT.get() + 1);
@@ -125,29 +139,9 @@ fn an_area_is_state_and_restores() {
     };
     let area = Area::new(launched, None, Tick::LIMIT);
     assert!(!area.check(&sim.world, entity));
-    // An area that holds Rally on allies, which reads its action's `ward`: the train, which
-    // declares none, cannot have delivered it, as Rally would fail as an ally takes it.
-    let ward = DeclaredName::new("ward").unwrap();
-    let rally = ModifierData {
-        shield: Some(Number::Param(ParamRef { param: ward })),
-        ..ModifierData::default()
-    };
-    Stats::load_modifier(&mut sim.world, 0, "rally", &rally, None);
-    let data = UnitTypeData::default();
-    let warding = Units::load_type(&mut sim.world, TypeScope::Mode, "warding", &data);
-    let inside = AreaInside {
-        allies: Some(DeclaredName::new("rally").unwrap()),
-        ..AreaInside::default()
-    };
-    let area = AreaData {
-        radius: Num::int(2),
-        delay_ms: 0,
-        duration_ms: 0,
-        affects: None,
-        inside,
-    };
-    Areas::load_type(&mut sim.world, warding, 0, &area);
-    let warded = sim.spawn(Position::ORIGIN, (Team::new(0), warding));
+    // A warding area: the train, which declares no `ward`, cannot have delivered it, as Rally
+    // would fail as an ally takes it.
+    let warded = sim.spawn_of(warding, Position::ORIGIN, Team::new(0), ());
     let area = Area::new(by, None, Tick::LIMIT);
     assert!(area.check(&sim.world, entity));
     assert!(!area.check(&sim.world, sim.entity(warded)));

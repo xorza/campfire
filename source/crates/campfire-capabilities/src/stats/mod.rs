@@ -9,6 +9,7 @@ use campfire_sim::{Capability, EntityIndex, SimEdge, SimSet, SimTick, StableId, 
 use crate::declare::declarations::Declarations;
 use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::players::player::Player;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::HeldModifiers;
@@ -115,7 +116,7 @@ impl Declares for Stats {
         d.component::<ModifierClocks>();
         d.component::<Pools>();
         d.derived::<UnitStats>();
-        d.player_part(|_| PlayerModifiers::default());
+        d.part::<Player, PlayerModifiers>(|_| PlayerModifiers::default());
         d.book::<ModifierBook>();
         d.column::<StatsColumn, RowParts>(StatsColumn::fill_row);
         d.call_part::<StatsCall>();

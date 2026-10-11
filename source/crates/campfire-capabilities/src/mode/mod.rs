@@ -57,6 +57,7 @@ use crate::scripts::state_value::StateValue;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
 use crate::units::delivery_entity::DeliveryEntity;
+use crate::units::relations::Relations;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
 use crate::units::team::Team;
@@ -130,9 +131,16 @@ impl Declares for Mode {
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
         d.check::<Player>(Mode::players_seated);
-        d.player_part(|world| PlayerResources::new(world.non_send::<View>().resource_count()));
-        d.require::<MatchEntity, ModeState<SyncNone>>();
-        d.require::<MatchEntity, ModeState<SyncAll>>();
+        d.part::<Player, PlayerResources>(|world| {
+            PlayerResources::new(world.non_send::<View>().resource_count())
+        });
+        d.part::<MatchEntity, Relations>(|world| world.non_send::<MatchMode>().relations.clone());
+        d.part::<MatchEntity, ModeState<SyncNone>>(|world| {
+            world.non_send::<MatchMode>().state_none.clone()
+        });
+        d.part::<MatchEntity, ModeState<SyncAll>>(|world| {
+            world.non_send::<MatchMode>().state_all.clone()
+        });
         d.check::<UnitType>(Mode::kits_held);
         d.api(ModeApi::register);
     }
@@ -294,10 +302,8 @@ impl Mode {
         let book = world.non_send::<MatchMode>().clone();
         let teams = &book.teams;
         let slots = (0..teams.players()).map(PlayerSlot::new);
-        let state = (book.state_none.clone(), book.state_all.clone());
         MatchEntity::spawn(
             world,
-            (book.relations.clone(), state),
             slots.map(|slot| teams.of(slot).expect("every player has a team")),
         );
         for placed in &book.placed {
@@ -309,14 +315,16 @@ impl Mode {
                 angle: placed.angle,
             };
             match placed.path {
-                None => book.spawn(world, at, ()),
-                Some(PlacedPath { path, from: None }) => book.spawn(world, at, OnPath::new(path)),
+                None => book.spawn(world, at, None, ()),
+                Some(PlacedPath { path, from: None }) => {
+                    book.spawn(world, at, None, OnPath::new(path))
+                }
                 Some(PlacedPath {
                     path,
                     from: Some(from),
                 }) => {
                     let walker = (OnPath::new(path), PathWalker::start(from, at.id));
-                    book.spawn(world, at, walker)
+                    book.spawn(world, at, None, walker)
                 }
             };
         }

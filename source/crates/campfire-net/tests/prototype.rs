@@ -5,6 +5,7 @@
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
+use campfire_capabilities::Order;
 use campfire_capabilities::internals::{give_modifier, set_relation};
 use campfire_capabilities::{
     Action, ActionSlots, Bounds, Combat, DashTo, Dead, Destination, ForcedMove, Life, MatchEnd,
@@ -14,6 +15,7 @@ use campfire_capabilities::{
 };
 use campfire_common::{MapName, PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
+use campfire_net::PendingOrders;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     InputChannel, InputMessage, InputMessageRefused, LinkLost, PlayerLink, TickHashes,
@@ -22,7 +24,10 @@ use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_runner::internals::HashTrail;
 use campfire_runner::{Runner, Session};
+use campfire_sim::StableId;
 use campfire_sim::{EntityIndex, Position, SimTick, Unpredicted};
+use lightyear::prelude::PredictionTarget;
+use lightyear::prelude::Replicate;
 use lightyear::prelude::{
     Client, Connected, MessageSender, Predicted, PredictionManager, RollbackMode,
 };
@@ -592,4 +597,155 @@ fn each_players_client_rolls_back_as_the_setup_gives_for_that_player() {
         matches!(modes, [RollbackMode::Check, RollbackMode::Always]),
         "{modes:?}"
     );
+}
+
+/// How a client holds a unit: predicted, as the server sends it, or with no marker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Held {
+    Predicted,
+    Unpredicted,
+    Unmarked,
+}
+
+/// A match of two players whose first player's hero changes owner, and the hero's stable id.
+#[derive(Debug)]
+struct Handoff {
+    local: InProcessMatch,
+    hero: StableId,
+}
+
+impl Handoff {
+    /// Frames the scenario waits for a change to reach the clients, at most.
+    const FRAMES: usize = 60;
+
+    fn entity_in(&self, app: &App) -> Entity {
+        app.world()
+            .resource::<EntityIndex>()
+            .get(self.hero)
+            .unwrap()
+    }
+
+    fn held(&self, client: usize) -> Held {
+        let app = self.local.client(client);
+        let unit = app.world().entity(self.entity_in(app));
+        match (unit.contains::<Predicted>(), unit.contains::<Unpredicted>()) {
+            (true, false) => Held::Predicted,
+            (false, true) => Held::Unpredicted,
+            (false, false) => Held::Unmarked,
+            (true, true) => panic!("a client holds a unit predicted and unpredicted"),
+        }
+    }
+
+    fn at(&self, end: End) -> Position {
+        let app = self.local.app(end);
+        *app.world().get::<Position>(self.entity_in(app)).unwrap()
+    }
+
+    fn slot(&self, client: usize) -> PlayerSlot {
+        let world = self.local.server().world();
+        world
+            .get::<PlayerLink>(self.local.link(client))
+            .unwrap()
+            .slot()
+    }
+
+    /// Gives the hero to `owner` on the server, or takes its owner.
+    fn set_owner(&mut self, owner: Option<PlayerSlot>) {
+        let entity = self.entity_in(self.local.server());
+        let mut unit = self.local.server_mut().world_mut().entity_mut(entity);
+        match owner {
+            Some(slot) => unit.insert(Owner::new(slot)),
+            None => unit.remove::<Owner>(),
+        };
+    }
+
+    /// Steps every end until `done`.
+    fn step_until(&mut self, done: impl Fn(&Handoff) -> bool) {
+        for _ in 0..Handoff::FRAMES {
+            if done(self) {
+                return;
+            }
+            self.local.step();
+        }
+        assert!(done(self), "the change reaches the clients");
+    }
+
+    /// Steps the server and the first client alone until `done`.
+    fn step_first_until(&mut self, done: impl Fn(&Handoff) -> bool) {
+        for _ in 0..Handoff::FRAMES {
+            if done(self) {
+                return;
+            }
+            self.local.client_frame(0);
+            for _ in 0..self.local.setup().server_frames {
+                self.local.server_frame();
+            }
+        }
+        assert!(done(self), "the change reaches the first client");
+    }
+}
+
+#[test]
+fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_alone() {
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.start_match();
+    let hero = local.avatar(0);
+    let mut game = Handoff { local, hero };
+    let held_in = |app: &App| app.world().resource::<EntityIndex>().get(hero).is_some();
+    game.step_until(|game| held_in(game.local.client(0)) && held_in(game.local.client(1)));
+    assert_eq!(
+        (game.held(0), game.held(1)),
+        (Held::Predicted, Held::Unpredicted)
+    );
+    let (first, second) = (game.slot(0), game.slot(1));
+
+    // The hero walks under its first owner, and the server gives it to the second player's slot
+    // on its way, as soon as it left its spawn: the second client takes it predicted, with its
+    // state as the server last sent it, and rolls back once to bring it to its own tick; the
+    // first takes it unpredicted. The second player's hero stands at its spawn, (0, 2), and sees
+    // 6 m: the first hero walks within 5 m of it, so the second client, which receives what its
+    // team sees, holds it throughout.
+    let spawn = game.at(End::Server);
+    game.local.order(0, move_to(-4, -1));
+    game.step_until(|game| game.at(End::Server) != spawn);
+    game.set_owner(Some(second));
+    game.step_until(|game| (game.held(0), game.held(1)) == (Held::Unpredicted, Held::Predicted));
+    // The second client orders it, predicts the walk, and agrees with the server and the first
+    // client where it ends, with no more rollbacks.
+    game.local
+        .client_mut(1)
+        .world_mut()
+        .resource_mut::<PendingOrders>()
+        .push(Order::one(hero, move_to(3, -1)));
+    let end = Position::new(Vec3::new(Num::int(3), Num::ZERO, Num::int(-1))).unwrap();
+    game.step_until(|game| {
+        [End::Server, End::Client(0), End::Client(1)]
+            .into_iter()
+            .all(|at| game.at(at) == end)
+    });
+    assert_eq!((game.local.rollbacks(0), game.local.rollbacks(1)), (0, 1));
+
+    // A unit with no owner is the server's alone: no client predicts it. Given back to the first
+    // player's slot, the first client predicts it again.
+    game.set_owner(None);
+    game.step_until(|game| (game.held(0), game.held(1)) == (Held::Unpredicted, Held::Unpredicted));
+    game.set_owner(Some(first));
+    game.step_until(|game| game.held(0) == Held::Predicted);
+    // No client predicts a unit whose owner has no seated link: given to the second player's
+    // slot as its link is gone, it leaves the first client's prediction, and none takes it. The
+    // second client runs no more frames: one whose link is cut tries it again, which this
+    // scenario does not follow.
+    game.local.cut_link(1);
+    game.step_first_until(|game| {
+        let server = game.local.server().world();
+        server.get::<PlayerLink>(game.local.link(1)).is_none()
+    });
+    game.set_owner(Some(second));
+    game.step_first_until(|game| game.held(0) == Held::Unpredicted);
+    let server = game.local.server();
+    let unit = server.world().entity(game.entity_in(server));
+    assert!(unit.contains::<Replicate>() && !unit.contains::<PredictionTarget>());
 }

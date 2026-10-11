@@ -10,11 +10,12 @@ use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 use crate::declare::declarations::Declarations;
 use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::kind_visitor::KindVisitor;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
+use crate::players::kind_parts::KindParts;
 use crate::players::match_entity::MatchEntity;
 use crate::players::player::Player;
-use crate::players::player_parts::PlayerParts;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -58,11 +59,13 @@ pub(crate) mod collision_data;
 pub(crate) mod dead;
 pub(crate) mod delivery_entity;
 pub(crate) mod engine_tag;
+pub(crate) mod entity_kind;
 pub(crate) mod facing;
 pub(crate) mod filter;
 pub(crate) mod forced_move;
 pub(crate) mod hit_handle;
 pub(crate) mod kept_rows;
+pub(crate) mod kind_filters;
 pub(crate) mod layer;
 pub(crate) mod lifespan;
 pub(crate) mod living_unit;
@@ -82,6 +85,7 @@ pub(crate) mod row_parts;
 mod source_reads;
 pub(crate) mod spawn_at;
 pub(crate) mod spawn_point;
+pub(crate) mod spawn_target;
 pub(crate) mod spawner;
 pub(crate) mod status_tags;
 pub(crate) mod tag;
@@ -98,6 +102,7 @@ pub(crate) mod track_id;
 pub(crate) mod type_origins;
 pub(crate) mod type_scope;
 pub(crate) mod unit;
+pub(crate) mod unit_core;
 pub(crate) mod unit_entity;
 pub(crate) mod unit_row;
 pub(crate) mod unit_rows;
@@ -135,10 +140,7 @@ impl Declares for Units {
     const MODULE: Option<Capability> = None;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.kind::<UnitEntity>();
-        d.kind::<DeliveryEntity>();
-        d.kind::<MatchEntity>();
-        d.kind::<Player>();
+        Units::kinds(d);
         d.component::<Body>();
         d.component::<Dead>();
         d.component::<Facing>();
@@ -165,7 +167,6 @@ impl Declares for Units {
         d.require::<UnitEntity, Position>();
         d.require::<UnitEntity, Team>();
         d.require::<Player, Team>();
-        d.require::<MatchEntity, Relations>();
         d.check::<MatchEntity>(Units::match_spawned);
         d.book::<UnitStateBook>();
         d.book::<TypeOrigins>();
@@ -181,13 +182,22 @@ impl Declares for Units {
 }
 
 impl Units {
+    /// Visits each kind of entity, which state types name as their host.
+    pub(crate) fn kinds<V: KindVisitor>(v: &mut V) {
+        v.kind::<UnitEntity>();
+        v.kind::<DeliveryEntity>();
+        v.kind::<MatchEntity>();
+        v.kind::<Player>();
+    }
+
     /// Opens a match for the modules' installs: the script view, and with `budgets`, the script
     /// host the scripts run in within them, and the context of their calls. A client runs no
     /// scripts.
     pub(crate) fn open(world: &mut World, budgets: Option<ScriptBudgets>) {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate);
-        world.init_resource::<PlayerParts>();
+        world.init_resource::<KindParts<MatchEntity>>();
+        world.init_resource::<KindParts<Player>>();
         if let Some(budgets) = budgets {
             let ctx = Ctx::new(view.clone());
             let mut host = ScriptHost::new(budgets.limits().per_call);

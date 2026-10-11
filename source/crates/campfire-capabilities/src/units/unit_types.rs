@@ -217,13 +217,5 @@ pub(crate) mod internals {
         pub(crate) fn count(&self) -> usize {
             self.types.len()
         }
-
-        pub(crate) fn tags(&self, unit_type: UnitType) -> TagSet {
-            let staged = self
-                .staged_tags
-                .as_ref()
-                .expect("the tags are still staged");
-            staged[unit_type.index()]
-        }
     }
 }

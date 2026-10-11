@@ -33,6 +33,7 @@ use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
+use crate::units::unit_core::UnitCore;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
@@ -87,12 +88,8 @@ impl Shop {
         let log = Rc::clone(&spawned);
         world.insert_non_send(Spawner::new(move |world, at, owner| {
             log.borrow_mut().push(Spawned { at, owner });
-            let parts = (at.id, at.unit_type, at.team, at.pos, Destination::default());
-            let mut unit = world.spawn(parts);
-            if let Some(owner) = owner {
-                unit.insert(Owner::new(owner));
-            }
-            unit.id()
+            let core = at.core(owner.map(Owner::new));
+            core.spawn(world, Destination::default()).id()
         }));
         let data = UnitTypeData::default();
         let grunt = Units::load_type(world, TypeScope::Mode, "grunt", &data);
@@ -128,8 +125,8 @@ impl Shop {
 
     /// A unit of `unit_type` owned by `owner`, at the origin.
     fn owned(&mut self, unit_type: UnitType, owner: PlayerSlot) -> StableId {
-        let parts = (unit_type, Team::new(1), Owner::new(owner));
-        self.sim.spawn(at(0), parts)
+        self.sim
+            .spawn_of(unit_type, at(0), Team::new(1), Owner::new(owner))
     }
 
     /// The trains in `producer`'s queue.
@@ -149,11 +146,14 @@ impl Shop {
         queue: TrainQueue,
     ) {
         let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]).timed();
-        let parts = (id, at(x), self.barracks, Team::new(team), slots, queue);
-        let mut producer = self.sim.world.spawn(parts);
-        if let Some(owner) = owner {
-            producer.insert(Owner::new(owner));
-        }
+        let core = UnitCore {
+            id,
+            pos: at(x),
+            unit_type: self.barracks,
+            team: Team::new(team),
+            owner: owner.map(Owner::new),
+        };
+        self.sim.spawn_core(core, (slots, queue));
     }
 
     fn id(&mut self) -> StableId {

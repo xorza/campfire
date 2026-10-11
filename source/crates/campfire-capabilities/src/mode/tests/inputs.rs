@@ -316,11 +316,8 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     let hero_type = *game.sim.world.get::<UnitType>(hero).unwrap();
     let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
     for (slot, unit_type) in [(0, grunt), (1, grunt), (0, hero_type)] {
-        let id = game.sim.world.resource_mut::<IdAllocator>().allocate();
         let owner = Owner::new(PlayerSlot::new(slot));
-        game.sim
-            .world
-            .spawn((id, at, unit_type, Team::new(0), owner));
+        game.sim.spawn_of(unit_type, at, Team::new(0), owner);
     }
     let world = &mut game.sim.world;
     let mut players = HeldPlayerUnits::new(world);

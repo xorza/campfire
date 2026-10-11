@@ -1,10 +1,9 @@
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::EntityCommands;
-use bevy_ecs::world::{EntityWorldMut, World};
+use bevy_ecs::world::World;
 
 use crate::scripts::state_decl::synced_state_decl::SyncTo;
 use crate::scripts::state_value::StateValue;
+use crate::units::spawn_target::SpawnTarget;
 use crate::units::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::StatePlace;
 
@@ -16,23 +15,6 @@ pub(crate) struct UnitStates {
     owner: Vec<StateValue>,
     team: Vec<StateValue>,
     all: Vec<StateValue>,
-}
-
-/// What a new unit's state components go into: its entity in the world, or by commands.
-pub(crate) trait StateTarget {
-    fn insert_state<B: Bundle>(&mut self, state: B);
-}
-
-impl StateTarget for EntityWorldMut<'_> {
-    fn insert_state<B: Bundle>(&mut self, state: B) {
-        self.insert(state);
-    }
-}
-
-impl StateTarget for EntityCommands<'_> {
-    fn insert_state<B: Bundle>(&mut self, state: B) {
-        self.insert(state);
-    }
 }
 
 impl UnitStates {
@@ -58,7 +40,7 @@ impl UnitStates {
     }
 
     /// Inserts a component into `target` for each class it holds a field of.
-    pub(crate) fn insert_into(self, target: &mut impl StateTarget) {
+    pub(crate) fn insert_into(self, target: &mut impl SpawnTarget) {
         let UnitStates {
             none,
             owner,
@@ -71,9 +53,9 @@ impl UnitStates {
         UnitStates::insert_class::<SyncAll>(target, all);
     }
 
-    fn insert_class<S: StateSync>(target: &mut impl StateTarget, values: Vec<StateValue>) {
+    fn insert_class<S: StateSync>(target: &mut impl SpawnTarget, values: Vec<StateValue>) {
         if !values.is_empty() {
-            target.insert_state(UnitState::<S>::new(values));
+            target.insert_part(UnitState::<S>::new(values));
         }
     }
 

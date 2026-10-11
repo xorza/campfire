@@ -103,10 +103,7 @@ impl Yard {
         let world = &mut shop.sim.world;
         world.insert_non_send(Spawner::new(move |world, at, owner| {
             log.borrow_mut().push(Spawned { at, owner });
-            let mut unit = world.spawn((at.id, at.unit_type, at.team, at.pos));
-            if let Some(owner) = owner {
-                unit.insert(Owner::new(owner));
-            }
+            let mut unit = at.core(owner.map(Owner::new)).spawn(world, ());
             let entity = unit.id();
             if at.unit_type == depot {
                 unit.insert((form.at(at.angle), Life::full(Num::int(100))));
@@ -158,24 +155,22 @@ impl Yard {
     fn builder(&mut self, at: Position, team: u8, owner: u32) -> StableId {
         let slots = ActionSlots::new([(self.build, SlotKind::new(0), Rank::new(1))]).timed();
         let parts = (
-            Team::new(team),
             Owner::new(PlayerSlot::new(owner)),
             Body::new(Num::HALF).unwrap(),
             Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
             slots,
             Builder::default(),
         );
-        self.shop.sim.spawn(at, parts)
+        self.shop.sim.spawn(at, Team::new(team), parts)
     }
 
     /// A walker of `team` at `at`, of a half meter, seen by `seen`, by all when `None`.
     fn walker(&mut self, at: Position, team: u8, seen: Option<TeamSet>) -> StableId {
         let parts = (
-            Team::new(team),
             Body::new(Num::HALF).unwrap(),
             Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
         );
-        let id = self.shop.sim.spawn(at, parts);
+        let id = self.shop.sim.spawn(at, Team::new(team), parts);
         if let Some(teams) = seen {
             self.shop.sim.insert(id, SeenBy::new(teams));
         }
@@ -473,8 +468,8 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
             "static body",
             Rules::of(Style::Alone),
             Some(|yard: &mut Yard| {
-                let parts = (Team::new(2), Body::new(Num::ONE).unwrap());
-                yard.shop.sim.spawn(half(2, 0), parts);
+                let body = Body::new(Num::ONE).unwrap();
+                yard.shop.sim.spawn(half(2, 0), Team::new(2), body);
             }),
             0,
         ),
@@ -531,7 +526,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
     });
     yard.shop
         .sim
-        .spawn(half(0, 6), (Team::new(1), Body::new(Num::HALF).unwrap()));
+        .spawn(half(0, 6), Team::new(1), Body::new(Num::HALF).unwrap());
     let builder = yard.builder(half(-6, 0), 0, 0);
     yard.build_at(builder, 0, 0);
     assert_eq!(yard.depots().len(), 1);

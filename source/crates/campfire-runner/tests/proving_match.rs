@@ -448,12 +448,13 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
 /// The draws of each mutation of each state type: each picks its holder and its other entity anew.
 const MUTATIONS: usize = 4;
 
-/// Each state type's value removed from one holder, moved to an entity that holds none, or copied
-/// to one, in a snapshot of the proving match: each restores or is refused, and what restores
-/// plays on with no panic. A value draw keeps each value where it sat, so this reaches the
-/// checks of where a value may sit, and which parts a holder needs.
+/// Each state type's value removed from one holder, moved to an entity that holds none, copied to
+/// one, or with one of its `Some`s as `None`, in a snapshot of the proving match: each restores
+/// or is refused, and what restores plays on with no panic. A value draw keeps each value where
+/// it sat and draws every part anew, so this reaches the checks of where a value may sit, which
+/// parts a holder needs, and an option a system expects to hold.
 #[test]
-fn a_snapshot_with_a_value_removed_moved_or_copied_restores_or_is_refused_and_never_panics() {
+fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and_never_panics() {
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
     for tick in 0..60 {
@@ -464,16 +465,19 @@ fn a_snapshot_with_a_value_removed_moved_or_copied_restores_or_is_refused_and_ne
     target.snapshot(fixed.runner().world(), &mut base);
     let mut draws = Draws::new(11);
     let (mut restored, mut refused) = (0, 0);
+    let mut made = [0; Mutation::ALL.len()];
     let mut flawed = Vec::new();
     let draws_of = Mutation::ALL
         .into_iter()
-        .flat_map(|mutation| [mutation; MUTATIONS]);
+        .enumerate()
+        .flat_map(|kind| [kind; MUTATIONS]);
     for name in target.state_names() {
-        for mutation in draws_of.clone() {
+        for (kind, mutation) in draws_of.clone() {
             target.restore(&base).unwrap();
             if !target.mutate(name, &mut draws, mutation) {
                 continue;
             }
+            made[kind] += 1;
             flawed.clear();
             target.snapshot_own(&mut flawed);
             if target.restore(&flawed).is_ok() {
@@ -490,6 +494,8 @@ fn a_snapshot_with_a_value_removed_moved_or_copied_restores_or_is_refused_and_ne
         restored > 0 && refused > 0,
         "{restored} restored, {refused} refused"
     );
+    // Each mutation reaches some state type of the match.
+    assert!(made.iter().all(|&count| count > 0), "{made:?}");
 }
 
 #[test]

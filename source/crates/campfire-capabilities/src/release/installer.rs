@@ -7,13 +7,15 @@ use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, Stat
 use crate::declare::book::Book;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
-use crate::players::player::Player;
-use crate::players::player_parts::PlayerParts;
+use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::parted_kind::PartedKind;
+use crate::players::kind_parts::KindParts;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::ctx::Ctx;
 use crate::state_types::replication::Replication;
 use crate::state_types::{Declared, StateTypes};
+use crate::units::entity_kind::EntityKind;
 use crate::units::row_parts::RowParts;
 use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
@@ -77,10 +79,12 @@ impl StateTypes for Installer<'_> {
     }
 }
 
+impl KindVisitor for Installer<'_> {
+    fn kind<K: EntityKind>(&mut self) {}
+}
+
 impl Declarations for Installer<'_> {
     fn module(&mut self, _: Option<Capability>) {}
-
-    fn kind<K: HostRule + Component>(&mut self) {}
 
     fn require<H: SimComponent, C: SimComponent>(&mut self) {
         self.registry.require::<H, C>();
@@ -112,12 +116,14 @@ impl Declarations for Installer<'_> {
         }
     }
 
-    fn player_part<C: SimComponent>(&mut self, start: fn(&World) -> C) {
-        self.world.resource_mut::<PlayerParts>().add(move |player| {
-            let part = start(player.world());
-            player.insert(part);
-        });
-        self.registry.require::<Player, C>();
+    fn part<K: PartedKind, C: SimComponent>(&mut self, start: fn(&World) -> C) {
+        self.world
+            .resource_mut::<KindParts<K>>()
+            .add(move |entity| {
+                let part = start(entity.world());
+                entity.insert(part);
+            });
+        self.registry.require::<K, C>();
     }
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}

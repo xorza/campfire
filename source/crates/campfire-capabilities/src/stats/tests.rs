@@ -122,13 +122,17 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
     )
 }
 
-/// A match with the stats capability and a book of `types`, with a move speed cap of 6.
+/// A match with the stats capability, a unit type for each of `types`, and a book of their
+/// stats, with a move speed cap of 6.
 fn stat_match(types: &[StatsData]) -> TestMatch {
     let mut game = TestMatch::client(&[Capability::Stats]);
-    let types = types.iter().enumerate().map(|(at, data)| {
-        let unit_type = UnitType::new(u16::try_from(at).unwrap());
-        (unit_type, data)
-    });
+    let types: Vec<_> = types
+        .iter()
+        .map(|data| {
+            let unit_type = Units::load_next_type(&mut game.world, &UnitTypeData::default());
+            (unit_type, data)
+        })
+        .collect();
     let book = StatBook::new(&rules(), types, Num::int(6));
     let pools = PoolBook::new(&pools(), &book);
     Stats::load(&mut game.world, book, pools);
@@ -138,27 +142,29 @@ fn stat_match(types: &[StatsData]) -> TestMatch {
 /// A unit of `unit_type` at level 1 that walks and has a pool of health and of mana, its values
 /// before the stats derive them: health its life when the match's life pool is health.
 fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
-    let id = game.world.resource_mut::<IdAllocator>().allocate();
     let bound = game.world.get_resource::<LifePool>() == Some(&LifePool(HEALTH));
-    let mut unit = game.world.spawn((
-        id,
+    let parts = (
+        Level::default(),
+        UnitStats::default(),
+        MoveStep::new(Num::ZERO).unwrap(),
+    );
+    let id = game.spawn_of(
         UnitType::new(unit_type),
         Position::new(Vec3::ZERO).unwrap(),
         Team::new(0),
-        Level::default(),
-        UnitStats::default(),
-        UnitTags::default(),
-        MoveStep::new(Num::ZERO).unwrap(),
-    ));
+        parts,
+    );
+    let unit = game.entity(id);
     if bound {
-        unit.insert((
+        game.world.entity_mut(unit).insert((
             Life::full(Num::ONE),
             Pools::new([(MANA, Num::ONE)]).unwrap(),
         ));
     } else {
-        unit.insert(Pools::new([(HEALTH, Num::ONE), (MANA, Num::ONE)]).unwrap());
+        let pools = Pools::new([(HEALTH, Num::ONE), (MANA, Num::ONE)]).unwrap();
+        game.world.entity_mut(unit).insert(pools);
     }
-    unit.id()
+    unit
 }
 
 /// The current amount and the maximum of `pool` of `unit`: its life's when the match's life pool
@@ -606,7 +612,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     Stats::load_modifier(&mut game.world, 0, "presence", &data(Some(presence)), None);
     let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
     let spawn = |game: &mut TestMatch, x: i64, team: u8| {
-        game.spawn(at(x), (Team::new(team), Modifiers::default()))
+        game.spawn(at(x), Team::new(team), Modifiers::default())
     };
     // The carrier at 0; an ally at 2, on the edge, and one at 3; an enemy at 1.
     let carrier = spawn(&mut game, 0, 0);
@@ -695,7 +701,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let book = StatBook::new(&rules(), [], Num::int(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     Stats::load_modifier(&mut game.world, 0, "inspired", &modifier_data(None), None);
-    let id = game.spawn(Position::ORIGIN, (Team::new(0), Modifiers::default()));
+    let id = game.spawn(Position::ORIGIN, Team::new(0), Modifiers::default());
     let unit = game.entity(id);
     let inspired = game
         .world
@@ -741,13 +747,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         ];
         let book = TagBook::new(effects, own);
         game.world.insert_resource(book);
-        // The type of the unit, 0, and the modifiers the shares below are instances of, 0 and 1.
-        Units::load_type(
-            &mut game.world,
-            TypeScope::Mode,
-            "walker",
-            &UnitTypeData::default(),
-        );
+        // The modifiers the shares below are instances of, 0 and 1.
         let speed = game.world.resource::<StatBook>();
         let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
         let stunning = TagSet::of([stunned]);

@@ -1,11 +1,11 @@
-use bevy_ecs::query::{Allow, With};
+use bevy_ecs::query::Allow;
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 
 use crate::players::on_match::OnMatch;
+use crate::units::kind_filters::UnitFilter;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
-use crate::units::unit_entity::UnitEntity;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::vision_grid::VisionGrid;
 
@@ -19,12 +19,8 @@ pub(crate) struct SeenTargets<'w, 's> {
     index: Res<'w, EntityIndex>,
     grid: Option<Res<'w, VisionGrid>>,
     relations: OnMatch<'w, 's, Relations>,
-    units: Query<
-        'w,
-        's,
-        (&'static Team, Option<&'static SeenBy>),
-        (With<UnitEntity>, Allow<Unpredicted>),
-    >,
+    units:
+        Query<'w, 's, (&'static Team, Option<&'static SeenBy>), (UnitFilter, Allow<Unpredicted>)>,
 }
 
 impl SeenTargets<'_, '_> {

@@ -85,14 +85,13 @@ impl Mine {
     fn worker_ranked(&mut self, at: Position, owner: u32, rank: Option<Rank>) -> StableId {
         let slots = ActionSlots::new([(self.gather, SlotKind::new(0), rank)]).timed();
         let parts = (
-            Team::new(0),
             Owner::new(PlayerSlot::new(owner)),
             Body::new(Num::HALF).unwrap(),
             Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
             slots,
             Gatherer::default(),
         );
-        self.shop.sim.spawn(at, parts)
+        self.shop.sim.spawn(at, Team::new(0), parts)
     }
 
     /// A mineral at `at` holding `amount`.
@@ -100,8 +99,10 @@ impl Mine {
         let body = BodyForm::box_sized([Num::int(2), Num::ONE])
             .unwrap()
             .at(Num::ZERO);
-        let parts = (self.mineral, Team::new(2), body, Node::new(amount));
-        self.shop.sim.spawn(at, parts)
+        let parts = (body, Node::new(amount));
+        self.shop
+            .sim
+            .spawn_of(self.mineral, at, Team::new(2), parts)
     }
 
     /// Player 0's hall at `at`.
@@ -109,13 +110,10 @@ impl Mine {
         let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
             .unwrap()
             .at(Num::ZERO);
-        let parts = (
-            self.shop.depot,
-            Team::new(0),
-            Owner::new(PlayerSlot::new(0)),
-            body,
-        );
-        self.shop.sim.spawn(at, parts)
+        let parts = (Owner::new(PlayerSlot::new(0)), body);
+        self.shop
+            .sim
+            .spawn_of(self.shop.depot, at, Team::new(0), parts)
     }
 
     /// Runs a tick in which player 0 orders each of `workers` to gather at `node`.
@@ -464,21 +462,13 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     world.insert_non_send(Spawner::new(move |world, at, owner| {
         let slots = ActionSlots::new([(gather, SlotKind::new(0), Rank::new(1))]).timed();
         let parts = (
-            at.id,
-            at.unit_type,
-            at.team,
-            at.pos,
             Body::new(Num::HALF).unwrap(),
             Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
             slots,
             Gatherer::default(),
         );
-        let mut unit = world.spawn(parts);
-        if let Some(owner) = owner {
-            unit.insert(Owner::new(owner));
-        }
         assert_eq!(at.unit_type, worker_type);
-        unit.id()
+        at.core(owner.map(Owner::new)).spawn(world, parts).id()
     }));
     let train = internals::train(world, worker_type, Ticks::ZERO, None);
     let barracks = mine.shop.id();

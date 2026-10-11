@@ -6,10 +6,13 @@ use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
 
 use crate::declare::book::Book;
 use crate::declare::declarations::{ColumnFill, Declarations};
+use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::parted_kind::PartedKind;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::state_types::replication::Replication;
 use crate::state_types::{Declared, StateTypes};
+use crate::units::entity_kind::EntityKind;
 use crate::units::row_parts::RowParts;
 use crate::units::view_column::ViewColumn;
 
@@ -38,12 +41,14 @@ impl StateTypes for ApiBinder<'_, '_> {
     fn sim_component<C: Replication>(&mut self) {}
 }
 
+impl KindVisitor for ApiBinder<'_, '_> {
+    fn kind<K: EntityKind>(&mut self) {}
+}
+
 impl Declarations for ApiBinder<'_, '_> {
     fn module(&mut self, module: Option<Capability>) {
         self.0.module(module);
     }
-
-    fn kind<K: HostRule + Component>(&mut self) {}
 
     fn require<H: SimComponent, C: SimComponent>(&mut self) {}
 
@@ -57,7 +62,7 @@ impl Declarations for ApiBinder<'_, '_> {
 
     fn call_part<P: CallPart + Default>(&mut self) {}
 
-    fn player_part<C: SimComponent>(&mut self, _: fn(&World) -> C) {}
+    fn part<K: PartedKind, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
 
     fn api(&mut self, register: fn(&mut ApiBuilder<'_>)) {
         register(self.0);

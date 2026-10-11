@@ -5,7 +5,7 @@ An audit of the workspace at `source/` after slice 3's A4: the entities and how 
 ## Findings
 
 - **Registration.** Each module declares once what it adds; effect queues, deliverers and cast spends still register in install bodies, and systems order against each other's sets in each install.
-- **Entities.** Two spawn paths give units different parts, the match's and the players' entities get their parts by hand, and net writes its prediction rule twice.
+- **Entities.** Every unit spawns through one core, the kinds declare their audience and their parts, and net reads the kinds; a unit's stats still derive after its spawn.
 - **Ownership.** A script function reaches the match only through `Ctx`, never the world, so `View` keeps what a call reads: names, unit types, and the call's snapshot of the tick, rate, bounds and metric. `ModeBook` holds the script engine's values, which are not `Send` while Rhai builds without `sync`, so systems read it through the non-send `MatchMode`, and script calls through `Ctx`. A script batch holds its `ctx`, and combat's passes take `CombatHooks` out of the world as one group. `deliveries` and `players` have no tests, `actions` 6 for 53 files.
 - **Arguments.** Systems take `TickClock`, `ModifierParams`, `StatBooks` and `ProductionBooks`, and the client's `OwnPlayer`, and a call's tick travels in its frame. A unit's life pool still travels beside its pools query in nine systems: the query sits inside each system's own tuple query, which already borrows `UnitPools`, so a separate pools param would conflict with it.
 
@@ -14,7 +14,7 @@ The recommendations consolidate into five systems. Each is one declaration that 
 | System | Replaces | Enforced by |
 | --- | --- | --- |
 | 1. One declaration per capability (§1) | the registrations left in install bodies, restated orderings | the compiler (visitor with no defaults), the declaration audit test |
-| 2. One entity model (§2) | two spawn paths, parts put on by hand, net's prediction rule | required components, the compiler (`Host` with no default), one spawn function for each kind |
+| 2. One entity model (§2) | stats derived after the spawn, two sight books | required components, the compiler (`Host` with no default), one spawn core for every unit |
 | 3. Explicit dependencies (§3) | five match-world builders, the log in the core, layers with cycles | one builder, the layer test |
 | 4. Restore as a checked boundary (§4) | value-only mutations, checks of the load copied in builders | the registry, a mutation fuzz test |
 | 5. One session host (§5) | three server compositions, two replay loops, two restore glues | one type |
@@ -36,39 +36,13 @@ Each module implements `Declares`, and `Release` visits the core's, each declare
 
 ## 2. One entity model
 
-### Today
+Each kind of entity implements `EntityKind`: who receives it, whether its owner's client predicts it, and the filter of its entities alone. The core visits its kinds once, and net shows each kind by that visit, with one rooms rule and one prediction rule, which follows a change of owner. The match's and the players' entities take their parts from `part::<K, C>(start)` declarations. Every unit, a mode's, a delivery and a test's, spawns through `UnitCore`, which puts on its stable id, place, type, team, owner, its type's tags and its script state; a test match seals its unit types before its first spawn, as a match loads them all first. What stays:
 
-| Kind | Spawn path | Identity | Replication |
-| --- | --- | --- | --- |
-| Mode unit (hero, creep, tower, building, node, site, trained unit) | `ModeBook::spawn` via `Spawner`, `spawn_owned`, `Mode::start`, mode effects, `ActionsEffect`, trains, construction | `IdAllocator`, called by each caller, or the script's `Frame::take_id` | `show_units`; predicted by its owner |
-| Projectile, area | `DeliverySpawner::spawn` | id the script took, else allocated | `show_units`; never predicted |
-| Match | `MatchEntity::spawn` | `StableId::MATCH` | `show_match`, every room |
-| Player | `MatchEntity::spawn_player_of` with `PlayerParts` | `StableId::of_player` | `show_match`; `Player` is its filter's owner |
-
-- `UnitRows::row` tests a unit by `Position + Team`, where the other filters name `UnitEntity`.
-- `ModeBook::spawn` gives `Facing`, `SpawnPoint`, `Level`, `Modifiers` and the type's derived tags; `DeliverySpawner` gives none of them, takes sight from another book, and consumes `NewUnitStates`, which `ModeBook::spawn` does not.
-- Despawn happens in five places.
-- Net writes the prediction rule twice (`sim_server/mod.rs:731`, `door.rs:218`) and sets it only for a new unit or a seat, though `Owner` changes.
-- Test spawners build units no production path makes (`TestMatch::spawn`, three test `Spawner`s, `production/bench.rs:149`), which is how the delivery tags bug stayed unseen.
-
-### 2.1 Kinds for net, parts with their start, typed filters
-
-- `EntityKind: HostRule`, with `ROOMS` and `OWNER_PREDICTS`, for §2.5.
-- Parts declared with their start, `d.part::<K, C>(start)`, so one declaration gives the spawn as well as the check, as `KitPart::ALL` does for a unit's kit; today `require` gives the check, and the spawns of the match's and the players' entities put their parts on by hand.
-- Typed filter aliases, `UnitFilter`, `LivingUnit`, `BodyUnit`; today the filters name `With<UnitEntity>` and `Without<DeliveryEntity>` themselves.
-
-### 2.4 One spawn per kind
-
-- `Units::spawn(world, UnitSpawn { id: Option<StableId>, unit_type, team, pos, angle, owner }) -> StableId` allocates when `id` is `None`, inserts the core (`id`, `pos`, `unit_type`, `team`, owner, state from the books, consuming `NewUnitStates`) and the kind's parts; `ModeBook::spawn` adds the kit, `DeliverySpawner` the spec, and the test spawners call it. Sight comes from one book.
-- Each derived part has one derivation function, which the spawn calls and the edge after a restore calls: `UnitTags` for every unit, on a client as well, and `UnitStats` for a unit with a level. A spawn bundle without them would leave a unit spawned in the middle of a stage without tags until the stage's edge, so a system later in the same tick would not see them. This part belongs to PLAN A6, which must give a client tags as well as stats.
-- `MatchEntity::spawn` stays the match's and the players' one spawn, reading the declared parts.
-- The kinds' spawn functions are the only way to make an entity of a kind with its parts: each takes the kind's whole input as one struct and gives back its stable id, so a caller has no reason to call `World::spawn`. A new rule of the declaration audit checks, on a played match, that every entity with a stable id is of a declared kind; the restore's kit and part checks already catch a spawn that skips a part. Bevy's `World::spawn` stays public, so review holds the rest.
-
-### 2.5 Net reads the kinds
-
-Net registers one `show::<K>` system per declared kind, by `K::ROOMS`, and one `prediction_target` for `show_units` and the door, by `K::OWNER_PREDICTS`. The duplicated rule, and a future kind (the team entity of design 14 D7) with no replication rule, become impossible. Design 14 D10 names the list.
-
-An observer on `Owner` would set the target again as `KindFilter` already follows the owner. Lightyear's `PredictionTarget` is a visibility filter on `PredictedSend`, so a change adds or removes `Predicted` on each client; no test shows that a client takes `Predicted` on a live entity with its rollback history. A net scenario that changes an owner mid-match comes first, and the observer only if it passes.
+- **Stats at the spawn.** A unit's stats derive in the first refresh after its spawn, not in the spawn, so a unit spawned in the middle of a stage has none until the stage's edge, and a client derives none. This part belongs to PLAN A6.
+- **Sight.** A mode's unit takes its sight from its kit, a delivery from the projectile and area books.
+- **Despawn** happens in five places.
+- **Unit rows.** `UnitRows::row` tests a unit by `Position + Team`, where the other filters name `UnitEntity`.
+- **Audit rule.** No rule of the declaration audit checks, on a played match, that every entity with a stable id is of a declared kind.
 
 ## 3. Explicit dependencies
 
@@ -85,10 +59,6 @@ The prepare, schedule, registry and install sequence appears five times (`Sessio
 The layer test rejects imports from a higher layer only. Within a layer, modules import each other in both directions: `units ↔ scripts`, `units ↔ players`, `abilities ↔ items` (`items/mod.rs:6` imports `CastSpends`; four `abilities` files import `Inventory`). The needs table disagrees with the imports: production uses navigation and vision and needs neither; abilities uses items and navigation; orders uses production and items. The declaration audit adds both checks: no cycle within a layer, and imports within the capability's needs, its optional uses and the lower layers. An optional use is correct: production runs without navigation, with no gathering. So each capability declares `USES`, the capabilities it reads when the match has them, and each such read is guarded by `cx.has`. `CastSpends`, a registry of hooks, moves down into `actions`; `abilities` reads a unit's inventory through a hook that `items` registers, as an item's state has no place in the core. `View` and its API users meet in one layer-1 module.
 
 ## 4. Restore as a checked boundary
-
-### 4.3 Two more mutations
-
-The mutation fuzz gains a nested option replaced with `None` where its type allows, as a slot's rank. It keeps its five ticks on what restores: a hundred would take it past the bound of 1 s for a test, at 0.3 s with five.
 
 ### 4.4 Load, then trust
 
@@ -112,7 +82,7 @@ The mutation fuzz gains a nested option replaced with `None` where its type allo
 
 ## Tests
 
-`TestMatch` is the shared base; the duplication is in leaf helpers: about fifteen copies of `fn at(x, z) -> Position`, 22 of `NonZeroU32::new(30)`, 35 of `resource::<EntityIndex>().get(id).unwrap()`, three near-identical hero probes (`net/tests/scenario.rs:25`, `net/tests/prototype.rs:40`, `verifier/tests/headless.rs:99`), and one sequence of budgets, server, names and players in fourteen harness constructors. `Position::ground(x, z)` and `EntityIndex::entity_of(world, id)` in `sim`'s internals; a `UnitProbe` beside `MatchUnits`; `TestMatch::server_with(declared, players, kinds)`. Test units spawn through §2.4's `Units::spawn`, so a test builds only units a production path makes.
+`TestMatch` is the shared base; the duplication is in leaf helpers: about fifteen copies of `fn at(x, z) -> Position`, 22 of `NonZeroU32::new(30)`, 35 of `resource::<EntityIndex>().get(id).unwrap()`, three near-identical hero probes (`net/tests/scenario.rs:25`, `net/tests/prototype.rs:40`, `verifier/tests/headless.rs:99`), and one sequence of budgets, server, names and players in fourteen harness constructors. `Position::ground(x, z)` and `EntityIndex::entity_of(world, id)` in `sim`'s internals; a `UnitProbe` beside `MatchUnits`; `TestMatch::server_with(declared, players, kinds)`.
 
 ## Hot paths
 
@@ -121,5 +91,5 @@ The mutation fuzz gains a nested option replaced with `None` where its type allo
 
 ## Order
 
-1. §2.1, §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule; §4.3.
+1. §2's stats at the spawn, within PLAN A6.
 2. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.

@@ -1,19 +1,17 @@
 use std::fmt;
-use std::iter;
 
 use bevy_ecs::bundle::Bundle;
-use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
 
 use crate::units::by_type::ByType;
+use crate::units::kind_filters::UnitFilter;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
-use crate::units::unit_entity::UnitEntity;
+use crate::units::unit_core::UnitCore;
 use crate::units::unit_state_book::UnitStateBook;
-use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::vision::sight::Sight;
 
@@ -24,10 +22,10 @@ pub(crate) struct DeliverySpawner<'w, 's> {
     ids: ResMut<'w, IdAllocator>,
     index: Res<'w, EntityIndex>,
     tag_book: Option<Res<'w, TagBook>>,
-    states: Option<Res<'w, UnitStateBook>>,
-    new_states: Option<ResMut<'w, NewUnitStates>>,
+    states: Res<'w, UnitStateBook>,
+    new_states: ResMut<'w, NewUnitStates>,
     sights: Option<Res<'w, ByType<Sight>>>,
-    sources: Query<'w, 's, (&'static Team, Option<&'static Owner>), With<UnitEntity>>,
+    sources: Query<'w, 's, (&'static Team, Option<&'static Owner>), UnitFilter>,
 }
 
 /// `Commands` prints nothing, so a spawner prints only what it is.
@@ -56,27 +54,18 @@ impl DeliverySpawner<'_, '_> {
             .get(source)
             .and_then(|entity| self.sources.get(entity).ok())?;
         let id = id.unwrap_or_else(|| self.ids.allocate());
-        let tags = self
-            .tag_book
-            .as_deref()
-            .map_or(UnitTags::default(), |book| {
-                book.unit_tags(unit_type, iter::empty())
-            });
-        let mut unit = self
-            .commands
-            .spawn((id, at, unit_type, team, tags, make(id)));
-        if let Some(&owner) = owner {
-            unit.insert(owner);
-        }
+        let core = UnitCore {
+            id,
+            pos: at,
+            unit_type,
+            team,
+            owner: owner.copied(),
+        };
+        let parts = core.made(self.tag_book.as_deref(), &self.states, &mut self.new_states);
+        let mut unit = self.commands.spawn(make(id));
+        parts.insert_into(&mut unit);
         if let Some(&sight) = self.sights.as_deref().and_then(|book| book.get(unit_type)) {
             unit.insert(sight);
-        }
-        if let Some(book) = self.states.as_deref() {
-            let mut states = book.initial(unit_type);
-            if let Some(new_states) = self.new_states.as_deref_mut() {
-                new_states.take(id, &mut states);
-            }
-            states.insert_into(&mut unit);
         }
         Some(id)
     }

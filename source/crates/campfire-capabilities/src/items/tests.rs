@@ -126,8 +126,9 @@ impl Carrier {
         let three = NonZeroU8::new(3).unwrap();
         let unit = sim.spawn(
             at,
+            Team::new(0),
             (
-                (Owner::new(PlayerSlot::new(0)), Team::new(0), life),
+                (Owner::new(PlayerSlot::new(0)), life),
                 (OnDeath::Stay, RecentAttackers::default()),
                 (Modifiers::default(), ModifierClocks::default()),
                 (slots, Inventory::new(three, kind)),

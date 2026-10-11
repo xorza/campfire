@@ -41,18 +41,23 @@ impl UnitTags {
             || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
     }
 
+    /// The tags a unit of `unit_type` spawns with: its type's own, from `book`, none in a match
+    /// with no tag book. Its modifiers' grants join them as stats derive them.
+    pub(crate) fn at_spawn(book: Option<&TagBook>, unit_type: UnitType) -> UnitTags {
+        book.map_or(UnitTags::default(), |book| {
+            book.unit_tags(unit_type, iter::empty())
+        })
+    }
+
     /// Gives each delivery that lacks them, as one a restore brings back, the tags it spawned
-    /// with: its type's, none with no tag book, as `DeliverySpawner` gives them. A delivery holds
-    /// no modifier to change them.
+    /// with, as `UnitCore` gives them. A delivery holds no modifier to change them.
     pub(crate) fn give_delivery_tags(
         book: Option<Res<'_, TagBook>>,
         deliveries: Query<'_, '_, (Entity, &UnitType), (With<DeliveryEntity>, Without<UnitTags>)>,
         mut commands: Commands<'_, '_>,
     ) {
         for (entity, &unit_type) in &deliveries {
-            let tags = book.as_deref().map_or(UnitTags::default(), |book| {
-                book.unit_tags(unit_type, iter::empty())
-            });
+            let tags = UnitTags::at_spawn(book.as_deref(), unit_type);
             commands.entity(entity).insert(tags);
         }
     }
@@ -60,33 +65,12 @@ impl UnitTags {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use bevy_ecs::entity::Entity;
-    use bevy_ecs::world::World;
 
     use crate::units::block::Block;
-    use crate::units::tag_book::TagBook;
     use crate::units::tag_properties::TagProperties;
     use crate::units::unit_tags::UnitTags;
-    use crate::units::unit_type::UnitType;
-    use crate::units::view::View;
 
     impl UnitTags {
-        /// Gives `entity` the tags of its unit type, as a match's spawn does; one of no type
-        /// keeps none.
-        pub(crate) fn give_type_tags(world: &mut World, entity: Entity) {
-            let Some(&unit_type) = world.get::<UnitType>(entity) else {
-                return;
-            };
-            let tags = match world.get_resource::<TagBook>() {
-                Some(book) => book.own(unit_type),
-                None => world.non_send::<View>().types_mut().tags(unit_type),
-            };
-            world.entity_mut(entity).insert(UnitTags {
-                tags,
-                ..UnitTags::default()
-            });
-        }
-
         /// Tags of no name whose properties block `blocks`, as a unit's tags would.
         pub(crate) fn blocking(blocks: &[Block]) -> UnitTags {
             let properties = blocks

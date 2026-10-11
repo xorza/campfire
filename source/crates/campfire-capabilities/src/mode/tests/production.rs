@@ -165,19 +165,11 @@ fn on_mode_input(ctx, player, name, value) {
         .into_iter()
         .zip(loads)
     {
-        let id = world.resource_mut::<IdAllocator>().allocate();
         let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
-        let states = world.resource::<UnitStateBook>().initial(grunt);
-        let mut unit = world.spawn((
-            id,
-            at,
-            grunt,
-            Team::new(0),
-            Owner::new(PlayerSlot::new(slot)),
-        ));
-        states.insert_into(&mut unit);
+        let parts = (Owner::new(PlayerSlot::new(slot)), UnitStats::default());
+        let unit = game.sim.spawn_of(grunt, at, Team::new(0), parts);
         if dead {
-            unit.insert(Dead);
+            game.sim.insert(unit, Dead);
         }
         if let Some(amount) = load {
             let mut gatherer = Gatherer::default();
@@ -185,10 +177,8 @@ fn on_mode_input(ctx, player, name, value) {
                 resource: gold,
                 amount,
             }));
-            unit.insert(gatherer);
+            game.sim.insert(unit, gatherer);
         }
-        let entity = unit.insert(UnitStats::default()).id();
-        UnitTags::give_type_tags(world, entity);
     }
     // Player 0 uses 2 + 1 + 1 = 4 of a cap of 6 at most 5; player 1 uses 1 of none.
     game.tick(&[(0, input("phase", "read"))]);

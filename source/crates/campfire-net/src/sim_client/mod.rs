@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bevy_app::{App, First, FixedUpdate, Plugin, PluginGroup, Update};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::{Add, Insert};
+use bevy_ecs::lifecycle::{Add, Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
@@ -634,8 +634,8 @@ fn run_predicted_tick(world: &mut World) {
     world.run_schedule(SimUpdate);
 }
 
-/// Marks each replicated entity `Unpredicted` until it is predicted, in whatever order the two
-/// markers arrive.
+/// Marks each replicated entity `Unpredicted` while it is not predicted, in whatever order the
+/// two markers arrive, and again as the server stops its prediction here, as its owner changes.
 fn mark_unpredicted(world: &mut World) {
     Unpredicted::register(world);
     world.add_observer(
@@ -650,6 +650,15 @@ fn mark_unpredicted(world: &mut World) {
     world.add_observer(
         |added: On<'_, '_, Add, Predicted>, mut commands: Commands<'_, '_>| {
             commands.entity(added.entity).remove::<Unpredicted>();
+        },
+    );
+    world.add_observer(
+        |removed: On<'_, '_, Remove, Predicted>,
+         replicated: Query<'_, '_, (), With<Replicated>>,
+         mut commands: Commands<'_, '_>| {
+            if replicated.contains(removed.entity) {
+                commands.entity(removed.entity).try_insert(Unpredicted);
+            }
         },
     );
 }

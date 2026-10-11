@@ -7,17 +7,14 @@ use bevy_app::{
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::{Added, Changed, Has, Or, With, Without};
+use bevy_ecs::query::Added;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time, Virtual};
-use campfire_capabilities::{
-    CapabilitySet, Deaths, DeliveryEntity, MatchEnd, MatchEntity, MatchResult, Mode, Owner, Player,
-    SeenBy, UnitEntity,
-};
+use campfire_capabilities::{CapabilitySet, Deaths, MatchEnd, MatchResult, Mode};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
@@ -25,17 +22,16 @@ use campfire_protocol::{
     Applied, Controller, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms,
 };
 use campfire_runner::{Session, StartError};
-use campfire_sim::{SimTick, StableId, StateRegistry, TickRate};
+use campfire_sim::{SimTick, StateRegistry, TickRate};
 use campfire_store::{DurableError, InputFile, PathError};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
-    LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, NetworkTarget,
-    PredictionTarget, Replicate, ReplicationSender, RoomAllocator, RoomPlugin, Unlink,
-    UnlinkReason,
+    LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
+    RoomAllocator, RoomPlugin, Unlink, UnlinkReason,
 };
 use lightyear::webtransport::server::WebTransportServerPlugin;
-use tracing::{debug, info, trace, trace_span};
+use tracing::{info, trace, trace_span};
 
 use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
@@ -59,6 +55,7 @@ use crate::sim_server::door::Door;
 use crate::sim_server::error::RestoreMatchError;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::kind_filter::KindFilters;
+use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::offering::{Offering, Superseding};
 use crate::sim_server::player_link::PlayerLink;
@@ -82,6 +79,7 @@ pub(crate) mod error;
 pub(crate) mod journal_watch;
 pub(crate) mod key_file;
 pub(crate) mod kind_filter;
+pub(crate) mod kind_shows;
 pub(crate) mod lobby;
 pub(crate) mod offering;
 pub(crate) mod player_link;
@@ -130,6 +128,7 @@ impl Plugin for SimServer {
             RoomPlugin,
         ));
         KindFilters::register(app, self.capabilities);
+        KindShows::register(app);
         let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
         app.insert_resource(rooms);
         app.add_observer(
@@ -203,16 +202,27 @@ impl Plugin for SimServer {
                 record_hash.run_if(resource_exists::<TickHashes>),
                 // Right after the tick, before any entry of the next.
                 Checkpoints::begin.run_if(resource_exists::<Checkpoints>),
-                show_units,
-                show_match,
                 report_deaths,
                 report_end,
             )
                 .chain()
-                .run_if(sim_tick_due),
+                .in_set(SimTickSystems),
+        );
+        app.configure_sets(FixedUpdate, SimTickSystems.run_if(sim_tick_due));
+        app.configure_sets(
+            FixedUpdate,
+            Shows
+                .in_set(SimTickSystems)
+                .after(Checkpoints::begin)
+                .before(report_deaths),
         );
     }
 }
+
+/// The systems of a fixed tick that runs a sim tick, whose condition is checked once, before the
+/// first of them, so the tick runs whole even when it ends the session.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct SimTickSystems;
 
 /// The session went back to a save: its server starts again on its data, which restores the
 /// match from it.
@@ -664,77 +674,5 @@ fn report_end(ended: Query<'_, '_, &MatchEnd, Added<MatchEnd>>) {
             }
             MatchResult::Draw => info!(tick, "the match ended in a draw"),
         }
-    }
-}
-
-/// The match's entity and each player's, not replicated yet.
-type NewMatchEntities<'w, 's> =
-    Query<'w, 's, Entity, (Or<(With<MatchEntity>, With<Player>)>, Without<Replicate>)>;
-
-/// Replicates the match's entity and each player's, as the match starts, to every seated link:
-/// they stand in every team's room, whatever vision says, and no link with no seat receives them.
-/// What a player's own link alone receives, a kind's filter keeps from every other link.
-fn show_match(
-    rooms: Res<'_, TeamRooms>,
-    new: NewMatchEntities<'_, '_>,
-    mut commands: Commands<'_, '_>,
-) {
-    for entity in &new {
-        commands.entity(entity).insert((
-            Replicate::to_clients(NetworkTarget::All),
-            rooms.seeing(None),
-        ));
-    }
-}
-
-/// The units not replicated yet, with their owner if they have one, whether they are deliveries,
-/// and the teams that see them.
-type NewUnits<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        Option<&'static Owner>,
-        Has<DeliveryEntity>,
-        Option<&'static SeenBy>,
-    ),
-    (With<UnitEntity>, Without<Replicate>),
->;
-
-/// The replicated units whose seers changed this tick.
-type SeersChanged<'w, 's> =
-    Query<'w, 's, (Entity, &'static StableId, &'static SeenBy), (Changed<SeenBy>, With<Replicate>)>;
-
-/// After a sim tick, replicates each new unit, predicted by its owner's client unless it is a
-/// delivery, a projectile or an area, which the server's sim alone runs, and puts each unit in the rooms of
-/// the teams that see it, again as they change, so Lightyear sends a seated client exactly the
-/// units its team sees, and a link with no seat none. A unit stands in its rooms from the tick it
-/// replicates in, so a client never receives a unit its team did not see: a projectile shows
-/// where it flies, not where its source stands. Without vision no unit has `SeenBy`, and every
-/// seated client receives every unit. What its owner alone receives, a kind's filter keeps from
-/// every other link ([`KindFilters`]).
-fn show_units(
-    rooms: Res<'_, TeamRooms>,
-    links: Query<'_, '_, (Entity, &PlayerLink)>,
-    new: NewUnits<'_, '_>,
-    changed: SeersChanged<'_, '_>,
-    mut commands: Commands<'_, '_>,
-) {
-    for (unit, owner, delivery, seen) in &new {
-        let mut replicated = commands.entity(unit);
-        replicated.insert((
-            Replicate::to_clients(NetworkTarget::All),
-            rooms.seeing(seen),
-        ));
-        let owner = owner
-            .filter(|_| !delivery)
-            .and_then(|owner| links.iter().find(|(_, link)| link.slot() == owner.slot()));
-        if let Some((link, _)) = owner {
-            replicated.insert(PredictionTarget::manual(vec![link]));
-        }
-    }
-    for (unit, &id, seen) in &changed {
-        debug!(unit = id.get(), "the teams that see a unit changed");
-        commands.entity(unit).insert(rooms.seeing(Some(seen)));
     }
 }

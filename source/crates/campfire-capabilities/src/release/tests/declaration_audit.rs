@@ -16,6 +16,8 @@ use crate::actions::effect_queues::EffectQueues;
 use crate::declare::book::Book;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
+use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::parted_kind::PartedKind;
 use crate::players::player::Player;
 use crate::release::Release;
 use crate::release::test_match::TestMatch;
@@ -25,6 +27,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
 use crate::state_types::{Declared, StateTypes};
+use crate::units::entity_kind::EntityKind;
 use crate::units::row_parts::RowParts;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::view_column::ViewColumn;
@@ -79,7 +82,7 @@ struct DeclarationAudit {
     books: Vec<Declaring>,
     columns: Vec<Named>,
     call_parts: Vec<Named>,
-    player_parts: Vec<Named>,
+    parts: Vec<(Named, Named)>,
 }
 
 impl DeclarationAudit {
@@ -98,8 +101,7 @@ impl DeclarationAudit {
     /// declared once; each state type sits on declared kinds, by its host, by a `host`
     /// declaration when its host takes any entity, or as a kind itself; a pair's holder is a kind
     /// or a state type and its part a state type; a check and a `host` name state types; a book's
-    /// owner is the module that declares it; and a player's part is a state type of the player's
-    /// kind.
+    /// owner is the module that declares it; and a kind's part is a state type of that kind.
     fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
         let mut once = |what: &str, names: Vec<&'static str>| {
@@ -120,10 +122,7 @@ impl DeclarationAudit {
             "call part",
             self.call_parts.iter().map(|ty| ty.name).collect(),
         );
-        once(
-            "player part",
-            self.player_parts.iter().map(|ty| ty.name).collect(),
-        );
+        once("part", self.parts.iter().map(|(_, ty)| ty.name).collect());
         let kinds_declared = |kinds: &[TypeId]| kinds.iter().all(|kind| self.kinds.contains(kind));
         for state in &self.states {
             let hosted = self.hosts.iter().find(|(ty, _)| ty.id == state.ty.id);
@@ -164,13 +163,12 @@ impl DeclarationAudit {
                 problems.push(format!("{} is declared by another module", book.ty.name));
             }
         }
-        let player = [TypeId::of::<Player>()];
-        for ty in &self.player_parts {
-            let of_player = self
+        for (kind, ty) in &self.parts {
+            let of_kind = self
                 .state_of(ty.id)
-                .is_some_and(|state| state.kinds.as_deref() == Some(&player[..]));
-            if !of_player {
-                problems.push(format!("{} is no player's state", ty.name));
+                .is_some_and(|state| state.kinds.as_deref() == Some(&[kind.id][..]));
+            if !of_kind {
+                problems.push(format!("{} is no state of {}", ty.name, kind.name));
             }
         }
         problems
@@ -208,13 +206,15 @@ impl StateTypes for DeclarationAudit {
     }
 }
 
+impl KindVisitor for DeclarationAudit {
+    fn kind<K: EntityKind>(&mut self) {
+        self.kinds.push(TypeId::of::<K>());
+    }
+}
+
 impl Declarations for DeclarationAudit {
     fn module(&mut self, module: Option<Capability>) {
         self.module = module;
-    }
-
-    fn kind<K: HostRule + Component>(&mut self) {
-        self.kinds.push(TypeId::of::<K>());
     }
 
     fn require<H: SimComponent, C: SimComponent>(&mut self) {
@@ -245,8 +245,8 @@ impl Declarations for DeclarationAudit {
         self.call_parts.push(Named::of::<P>());
     }
 
-    fn player_part<C: SimComponent>(&mut self, _: fn(&World) -> C) {
-        self.player_parts.push(Named::of::<C>());
+    fn part<K: PartedKind, C: SimComponent>(&mut self, _: fn(&World) -> C) {
+        self.parts.push((Named::of::<K>(), Named::of::<C>()));
     }
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
@@ -258,9 +258,9 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the mode's parts of a
-    // player, and the 18 books, 5 of the core's.
+    // player, the mode's three of the match, and the 18 books, 5 of the core's.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.player_parts.len(), 2);
+    assert_eq!(audit.parts.len(), 5);
     assert_eq!(audit.books.len(), 18);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 5);
@@ -308,7 +308,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.require::<UnitEntity, Player>();
     audit.check::<Player>(|_| Ok(()));
     audit.book::<StrayBook>();
-    audit.player_part(|_| Stray);
+    audit.part::<Player, Stray>(|_| Stray);
     let stray = type_name::<Stray>();
     let player = type_name::<Player>();
     let unit = type_name::<UnitEntity>();
@@ -321,7 +321,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
             format!("{unit} needs {player}, not both declared"),
             format!("a check of {player}, not declared"),
             format!("{} is declared by another module", type_name::<StrayBook>()),
-            format!("{stray} is no player's state"),
+            format!("{stray} is no state of {player}"),
         ]
     );
     // A `host` declaration puts the stray on a declared kind.

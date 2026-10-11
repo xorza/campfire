@@ -7,4 +7,6 @@ pub(crate) mod declarations;
 pub(crate) mod declares;
 pub(crate) mod error;
 pub(crate) mod install_cx;
+pub(crate) mod kind_visitor;
+pub(crate) mod parted_kind;
 pub(crate) mod per_type;

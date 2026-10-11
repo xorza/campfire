@@ -1,10 +1,11 @@
 use std::mem;
 
-use postcard::ser_flavors::Flavor;
+use postcard::ser_flavors::{AllocVec, Flavor};
 use serde::{Deserialize, Serialize};
 
 use crate::batch::Batch;
 use crate::compare::Compare;
+use crate::drop_option::{DropOption, OptionCount};
 use crate::error::BinaryError;
 use crate::sink::Sink;
 
@@ -53,6 +54,42 @@ impl Binary {
             .expect("a batch into a sink cannot fail");
     }
 
+    /// How many `Some`s `value` holds, each nested one that its outer one holds among them.
+    pub fn options<T: Serialize + ?Sized>(value: &T) -> usize {
+        Binary::without_option(value, usize::MAX).seen
+    }
+
+    /// The bytes of `value` with its `Some` at `at`, in the order it encodes them, written as
+    /// `None`, and the options it held left out; none when it holds `at` or fewer.
+    pub fn encode_without_option<T: Serialize + ?Sized>(value: &T, at: usize) -> Option<Vec<u8>> {
+        let dropped = Binary::without_option(value, at);
+        (dropped.seen > at).then_some(dropped.bytes)
+    }
+
+    fn without_option<T: Serialize + ?Sized>(value: &T, at: usize) -> Dropped {
+        let mut serializer = postcard::Serializer {
+            output: AllocVec::new(),
+        };
+        let mut count = OptionCount {
+            seen: 0,
+            dropped: at,
+        };
+        value
+            .serialize(DropOption {
+                inner: &mut serializer,
+                count: &mut count,
+            })
+            .expect("a value encodes in postcard");
+        let bytes = serializer
+            .output
+            .finalize()
+            .expect("an encode into a vec cannot fail");
+        Dropped {
+            bytes,
+            seen: count.seen,
+        }
+    }
+
     /// The value `bytes` hold, all of them.
     pub fn decode<'a, T: Deserialize<'a> + Serialize>(bytes: &'a [u8]) -> Result<T, BinaryError> {
         let taken = Binary::take(bytes)?;
@@ -73,6 +110,13 @@ impl Binary {
             _ => Err(BinaryError::NotCanonical),
         }
     }
+}
+
+/// An encode with one `Some` written as `None`: its bytes, and how many `Some`s it met.
+#[derive(Debug)]
+struct Dropped {
+    bytes: Vec<u8>,
+    seen: usize,
 }
 
 #[cfg(test)]
@@ -137,5 +181,56 @@ mod tests {
         Binary::encode_each_to([1_u8, 2, 3], &mut each);
         assert_eq!(each, [1, 2, 3]);
         assert_eq!(Binary::decode::<(Vec<u8>, u32, &str)>(&bytes), Ok(value));
+    }
+
+    /// A value with options at each depth: a field, a tuple's inside a `Some`, a vector's
+    /// element, an enum's variant, and a struct's.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    struct Nested {
+        first: Option<u8>,
+        pair: Option<(Option<u8>, u16)>,
+        list: Vec<Option<u32>>,
+        kind: Kind,
+        none: Option<u8>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    enum Kind {
+        Plain,
+        With { rank: Option<u8> },
+    }
+
+    #[test]
+    fn an_encode_writes_each_some_in_turn_as_none_and_the_rest_as_it_is() {
+        let value = Nested {
+            first: Some(1),
+            pair: Some((Some(2), 3)),
+            list: vec![Some(4), None, Some(5)],
+            kind: Kind::With { rank: Some(6) },
+            none: None,
+        };
+        // The `Some`s in order: `first`, `pair`, its inner one, the list's two, the rank.
+        assert_eq!(Binary::options(&value), 6);
+        let dropped = |at| {
+            let bytes = Binary::encode_without_option(&value, at)?;
+            Some(Binary::decode::<Nested>(&bytes).unwrap())
+        };
+        let with = |change: fn(&mut Nested)| {
+            let mut changed = value.clone();
+            change(&mut changed);
+            Some(changed)
+        };
+        assert_eq!(dropped(0), with(|v| v.first = None));
+        // The outer `None` takes the inner `Some` with it.
+        assert_eq!(dropped(1), with(|v| v.pair = None));
+        assert_eq!(dropped(2), with(|v| v.pair = Some((None, 3))));
+        assert_eq!(dropped(3), with(|v| v.list[0] = None));
+        assert_eq!(dropped(4), with(|v| v.list[2] = None));
+        assert_eq!(dropped(5), with(|v| v.kind = Kind::With { rank: None }));
+        assert_eq!(dropped(6), None);
+        // A value with no `Some` has nothing to write as `None`.
+        let plain = (Kind::Plain, None::<u8>, vec![None::<u8>]);
+        assert_eq!(Binary::options(&plain), 0);
+        assert_eq!(Binary::encode_without_option(&plain, 0), None);
     }
 }

@@ -156,7 +156,7 @@ fn experience_is_state_and_restores() {
     experience.add(track(0), Num::int(150), &book, Some(&mut level));
     experience.add(track(1), Num::int(10), &book, None);
     points.gain(1);
-    let unit = sim.spawn(Position::ORIGIN, (Team::new(0), level, experience, points));
+    let unit = sim.spawn(Position::ORIGIN, Team::new(0), (level, experience, points));
     let mut restored = TestMatch::client(&declared);
     tracks(&mut restored);
     sim.restore_into(&mut restored);
@@ -172,6 +172,7 @@ fn experience_is_state_and_restores() {
     assert_eq!(Points::at_spawn(valor, book.level_track()), None);
     let held = sim.spawn(
         Position::ORIGIN,
+        Team::new(0),
         (Experience::new(valor, book.level_track()), points),
     );
     assert!(!points.check(&sim.world, sim.entity(held)));

@@ -248,17 +248,17 @@ impl Match {
 
     /// A hero of `slot` that walks a meter a tick.
     fn hero(&mut self, slot: u32, team: Team, at: Position, combatant: Armed) -> StableId {
-        let combatant = self.arm(combatant, team);
+        let combatant = self.arm(combatant);
         let parts = (
             combatant,
             Navigation::walker(meter()),
             Owner::new(PlayerSlot::new(slot)),
         );
-        self.sim.spawn(at, parts)
+        self.sim.spawn(at, team, parts)
     }
 
-    fn arm(&mut self, combatant: Armed, team: Team) -> impl Bundle + use<> {
-        combatant.bundle(&mut self.sim.world, team)
+    fn arm(&mut self, combatant: Armed) -> impl Bundle + use<> {
+        combatant.bundle(&mut self.sim.world)
     }
 
     /// A unit type of `tags` and `params`, and with the AI script `ai` when it has one, thinking
@@ -295,8 +295,8 @@ impl Match {
     }
 
     fn still(&mut self, team: Team, at: Position, combatant: Armed) -> StableId {
-        let combatant = self.arm(combatant, team);
-        self.sim.spawn(at, combatant)
+        let combatant = self.arm(combatant);
+        self.sim.spawn(at, team, combatant)
     }
 
     fn tick(&mut self, inputs: &[(u32, &[u8])]) {
@@ -690,17 +690,25 @@ fn a_tower_prefers_creeps_and_defends_its_heroes() {
     // The tower strikes 10 within 5 m, a tick into an attack every 3 ticks. The enemy hero
     // strikes the ally hero, 2 m away, a tick into its attack.
     let tower_stats = combatant(1000, 5, 1, 3, 10);
-    let tower_stats = game.arm(tower_stats, Team::new(1));
-    let tower = game.sim.spawn(at(0, 0, 0), (tower_type, tower_stats));
-    let ally_stats = game.arm(standing(), Team::new(1));
-    let ally = game.sim.spawn(at(1, 0, 0), (hero, ally_stats));
-    let foe_stats = game.arm(combatant(1000, 3, 1, 30, 5), Team::new(0));
-    let foe = game.sim.spawn(
+    let tower_stats = game.arm(tower_stats);
+    let tower = game
+        .sim
+        .spawn_of(tower_type, at(0, 0, 0), Team::new(1), tower_stats);
+    let ally_stats = game.arm(standing());
+    let ally = game
+        .sim
+        .spawn_of(hero, at(1, 0, 0), Team::new(1), ally_stats);
+    let foe_stats = game.arm(combatant(1000, 3, 1, 30, 5));
+    let foe = game.sim.spawn_of(
+        hero,
         at(3, 0, 0),
-        (hero, foe_stats, Owner::new(PlayerSlot::new(0))),
+        Team::new(0),
+        (foe_stats, Owner::new(PlayerSlot::new(0))),
     );
-    let creep_stats = game.arm(standing(), Team::new(0));
-    let enemy_creep = game.sim.spawn(at(4, 0, 0), (creep, creep_stats));
+    let creep_stats = game.arm(standing());
+    let enemy_creep = game
+        .sim
+        .spawn_of(creep, at(4, 0, 0), Team::new(0), creep_stats);
     assert_eq!(tower.get(), 0);
 
     // The tower thinks every 8 ticks, 250 ms at 30 ticks a second being 7.5, in the ticks that
@@ -738,8 +746,8 @@ fn a_creep_takes_an_enemy_structure_last_and_keeps_it() {
     let creep = game.unit_type(&["creep"], &params, Some(CREEP_AI));
     let still_creep = game.unit_type(&["creep"], &[], None);
     let unit = |game: &mut Match, unit_type, team, at| {
-        let stats = game.arm(standing(), Team::new(team));
-        game.sim.spawn(at, (unit_type, stats))
+        let stats = game.arm(standing());
+        game.sim.spawn_of(unit_type, at, Team::new(team), stats)
     };
     let first = unit(&mut game, creep, 0, at(0, 0, 0));
     let second = unit(&mut game, creep, 0, at(0, 0, 20));
@@ -776,14 +784,16 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     ];
     let creep = game.unit_type(&["creep"], &params, Some(CREEP_AI));
     let unit = |game: &mut Match, unit_type, team, at| {
-        let stats = game.arm(standing(), Team::new(team));
-        game.sim.spawn(at, (unit_type, stats))
+        let stats = game.arm(standing());
+        game.sim.spawn_of(unit_type, at, Team::new(team), stats)
     };
     // The foe strikes within 4 m, a tick into its attack.
-    let foe_stats = game.arm(combatant(1000, 4, 1, 30, 5), Team::new(1));
-    let foe = game.sim.spawn(
+    let foe_stats = game.arm(combatant(1000, 4, 1, 30, 5));
+    let foe = game.sim.spawn_of(
+        hero,
         at(3, 0, 0),
-        (hero, foe_stats, Owner::new(PlayerSlot::new(0))),
+        Team::new(1),
+        (foe_stats, Owner::new(PlayerSlot::new(0))),
     );
     let first = unit(&mut game, creep, 0, at(0, 0, 0));
     let second = unit(&mut game, creep, 0, at(0, 0, 2));
@@ -850,8 +860,19 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         }
     }"#;
     let meddler = game.unit_type(&[], &[], Some(meddle));
-    let stats = game.arm(standing(), Team::new(0));
-    let thinker = game.sim.spawn(at(0, 0, 0), (meddler, stats));
+    // Every type loads before a unit spawns, as a match's types do.
+    let resetter = game.unit_type(
+        &[],
+        &[],
+        Some("fn on_think(ctx, unit) { ctx.order_reset(unit); }"),
+    );
+    let striker = game.unit_type(
+        &[],
+        &[],
+        Some(r#"fn on_think(ctx, unit) { ctx.order_attack(unit, ctx.find(unit, unit.pos, 20, "enemies")[0]); }"#),
+    );
+    let stats = game.arm(standing());
+    let thinker = game.sim.spawn_of(meddler, at(0, 0, 0), Team::new(0), stats);
     let ally = game.still(Team::new(0), at(1, 0, 0), standing());
     let enemy = game.still(Team::new(1), at(9, 0, 0), standing());
     game.set_target(ally, Some(enemy));
@@ -872,13 +893,10 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     assert_eq!(game.target(ally), Some(enemy));
 
     // A unit the mode did not spawn has no spawn place to reset to: the call fails.
-    let resetter = game.unit_type(
-        &[],
-        &[],
-        Some("fn on_think(ctx, unit) { ctx.order_reset(unit); }"),
-    );
-    let stats = game.arm(standing(), Team::new(0));
-    let homeless = game.sim.spawn(at(2, 0, 0), (resetter, stats));
+    let stats = game.arm(standing());
+    let homeless = game
+        .sim
+        .spawn_of(resetter, at(2, 0, 0), Team::new(0), stats);
     // It thinks first in the tick of its id, 3.
     assert_eq!(homeless.get(), 3);
     game.run_until(homeless.get());
@@ -895,11 +913,6 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     // An attack order needs a learned weapon whose filter selects the target. Units 4 and 5 order
     // an attack on the enemy, 9 m off, in ticks 4 and 5: the first's weapon aims at enemies, and
     // attacks; the second's aims only at allies, and its call fails.
-    let striker = game.unit_type(
-        &[],
-        &[],
-        Some(r#"fn on_think(ctx, unit) { ctx.order_attack(unit, ctx.find(unit, unit.pos, 20, "enemies")[0]); }"#),
-    );
     let mut armed = |aim: &str| {
         let weapon = TestWeapon::new(
             Filter::parse(aim, &UnitTypes::default()).unwrap(),
@@ -908,8 +921,8 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         );
         let weapon = internals::weapon(&mut game.sim.world, weapon);
         let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed();
-        let stats = game.arm(standing(), Team::new(0));
-        let unit = game.sim.spawn(at(0, 0, 0), (striker, stats));
+        let stats = game.arm(standing());
+        let unit = game.sim.spawn_of(striker, at(0, 0, 0), Team::new(0), stats);
         game.sim.insert(unit, slots);
         unit
     };
@@ -950,10 +963,10 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     let spin = "fn on_think(ctx, unit) { loop {} }";
     let spin = Units::compile_hooked(&mut game.sim.world, spin).unwrap();
     Orders::load_ai(&mut game.sim.world, spinner, &ai, spin).unwrap();
-    let stats = game.arm(standing(), Team::new(0));
-    let first = game.sim.spawn(at(0, 0, 0), (spinner, stats));
-    let stats = game.arm(standing(), Team::new(0));
-    let second = game.sim.spawn(at(1, 0, 0), (spinner, stats));
+    let stats = game.arm(standing());
+    let first = game.sim.spawn_of(spinner, at(0, 0, 0), Team::new(0), stats);
+    let stats = game.arm(standing());
+    let second = game.sim.spawn_of(spinner, at(1, 0, 0), Team::new(0), stats);
 
     // Tick 0: both due since 0; the first runs, the second finds the pool spent and stays due
     // since 0. Tick 1: the second, due since 0, goes before the first, due since 1, and the
@@ -993,12 +1006,12 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
     let waypoints = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
     let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
     let walker = (
-        game.arm(combatant(100, 1, 1, 5, 0), Team::new(0)),
+        game.arm(combatant(100, 1, 1, 5, 0)),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
         PathWalker::start(PathEnd::Start, lone()),
     );
-    let chaser = game.sim.spawn(at(0, 0, 0), walker);
+    let chaser = game.sim.spawn(at(0, 0, 0), Team::new(0), walker);
     let prey = game.still(Team::new(1), at(1, 0, 3), dummy(100));
 
     // A meter towards the second waypoint, then towards the prey until it is a meter away.
@@ -1043,15 +1056,15 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     );
     for z in 0..3 {
         game.sim
-            .spawn(place(4, z).unwrap(), Body::new(half).unwrap());
+            .spawn(place(4, z).unwrap(), Team::new(0), Body::new(half).unwrap());
     }
     let walker = (
-        game.arm(combatant(100, 1, 1, 5, 0), Team::new(0)),
+        game.arm(combatant(100, 1, 1, 5, 0)),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
         PathWalker::start(PathEnd::Start, lone()),
     );
-    let walker = game.sim.spawn(waypoints[0], walker);
+    let walker = game.sim.spawn(waypoints[0], Team::new(0), walker);
     game.run_until(3);
     assert_eq!(game.position(walker), place(3, 1).unwrap());
     let entity = game.sim.entity(walker);
@@ -1077,14 +1090,13 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     ];
     let camp = game.unit_type(&["camp"], &params, Some(CAMP_AI));
     let home = at(0, 0, 0);
-    let arms = game.arm(combatant(100, 1, 1, 5, 0), Team::new(0));
+    let arms = game.arm(combatant(100, 1, 1, 5, 0));
     let parts = (
-        camp,
         arms,
         Navigation::walker(MoveStep::new(half).unwrap()),
         SpawnPoint::new(home),
     );
-    let monster = game.sim.spawn(home, parts);
+    let monster = game.sim.spawn_of(camp, home, Team::new(0), parts);
     let hero = game.hero(0, Team::new(1), at(2, 0, 0), fighter_stats());
     assert_eq!(monster.get(), 0);
     let resets = |game: &Match| game.sim.try_get::<Resetting>(monster).is_some();
@@ -1148,15 +1160,17 @@ fn on_think(ctx, unit) {
     let walker_type = game.unit_type(&["walker"], &[], Some(mover));
     let post_type = game.unit_type(&["post"], &[], None);
     let parts = (
-        walker_type,
-        game.arm(dummy(10), Team::new(0)),
+        game.arm(dummy(10)),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
         PathWalker::start(PathEnd::Start, lone()),
     );
-    let walker = game.sim.spawn(at(0, 0, 0), parts);
-    let post = game.arm(standing(), Team::new(0));
-    game.sim.spawn(at(0, 0, 3), (post_type, post));
+    let walker = game
+        .sim
+        .spawn_of(walker_type, at(0, 0, 0), Team::new(0), parts);
+    let post = game.arm(standing());
+    game.sim
+        .spawn_of(post_type, at(0, 0, 3), Team::new(0), post);
     assert_eq!(walker.get(), 0);
 
     // It thinks in tick 0, off the path to the post 3 m away, there in tick 2, and stays: the
@@ -1201,13 +1215,13 @@ fn on_think(ctx, unit) {
     // A player's move leaves the path too, as every order applies alike: a walker of player 0
     // on the path, ordered off it, walks there and no longer follows the path.
     let parts = (
-        game.arm(dummy(10), Team::new(0)),
+        game.arm(dummy(10)),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
         PathWalker::start(PathEnd::Start, lone()),
         Owner::new(PlayerSlot::new(0)),
     );
-    let led = game.sim.spawn(at(0, 0, 0), parts);
+    let led = game.sim.spawn(at(0, 0, 0), Team::new(0), parts);
     game.tick(&[(0, &move_to(led, -3, 0))]);
     assert!(game.sim.try_get::<PathWalker>(led).copied().unwrap().left());
     assert_eq!(game.destination(led), Some(at(-3, 0, 0)));
@@ -1217,18 +1231,18 @@ fn on_think(ctx, unit) {
 fn a_walker_follows_its_path_in_its_direction() {
     let waypoints = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
     let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
-    let path_walker = |game: &mut Match, team, direction| {
+    let path_walker = |game: &mut Match, direction| {
         (
-            game.arm(dummy(10), team),
+            game.arm(dummy(10)),
             Navigation::walker(meter()),
             OnPath::new(PathId::new(0)),
             PathWalker::start(direction, lone()),
         )
     };
-    let forward = path_walker(&mut game, Team::new(0), PathEnd::Start);
-    let forward = game.sim.spawn(at(0, 0, 0), forward);
-    let backward = path_walker(&mut game, Team::new(1), PathEnd::End);
-    let backward = game.sim.spawn(at(4, 0, 4), backward);
+    let forward = path_walker(&mut game, PathEnd::Start);
+    let forward = game.sim.spawn(at(0, 0, 0), Team::new(0), forward);
+    let backward = path_walker(&mut game, PathEnd::End);
+    let backward = game.sim.spawn(at(4, 0, 4), Team::new(1), backward);
 
     // Each walks a meter a tick along the waypoints in its direction, then stays.
     let walked: Vec<_> = (0..9)
@@ -1263,8 +1277,8 @@ fn every_orders_type_is_state_and_restores() {
 
     // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Match::new();
-    let _weapon = restored.arm(fighter_stats(), Team::new(0));
-    let _weapon = restored.arm(fighter_stats(), Team::new(1));
+    let _weapon = restored.arm(fighter_stats());
+    let _weapon = restored.arm(fighter_stats());
     game.sim.restore_into(&mut restored.sim);
     assert_eq!(restored.destination(fighter), Some(at(0, 0, 3)));
     assert!(restored.sim.try_get::<Resetting>(still).is_some());
@@ -1366,9 +1380,9 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     let three = NonZeroU8::new(3).unwrap();
     let hero = game.sim.spawn(
         at(0, 0, 0),
+        Team::new(0),
         (
             Owner::new(PlayerSlot::new(0)),
-            Team::new(0),
             Inventory::new(three, SlotKind::new(0)),
         ),
     );
@@ -1457,9 +1471,9 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     // A unit of another team in the shop's region is out of a shop of its own.
     let other = game.sim.spawn(
         at(0, 0, 0),
+        Team::new(1),
         (
             Owner::new(PlayerSlot::new(0)),
-            Team::new(1),
             Inventory::new(three, SlotKind::new(0)),
         ),
     );
@@ -1560,13 +1574,13 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     let waypoints = [at(0, 0, 0), at(8, 0, 0)];
     let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
     let parts = (
-        game.arm(fighter_stats(), Team::new(0)),
+        game.arm(fighter_stats()),
         Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
         PathWalker::start(PathEnd::Start, lone()),
         Owner::new(PlayerSlot::new(0)),
     );
-    let walker = game.sim.spawn(at(0, 0, 0), parts);
+    let walker = game.sim.spawn(at(0, 0, 0), Team::new(0), parts);
     let target = game.still(Team::new(1), at(1, 0, 0), dummy(1000));
     game.set_target(walker, Some(target));
     game.tick(&[]);

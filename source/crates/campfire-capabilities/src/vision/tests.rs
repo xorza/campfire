@@ -1,6 +1,6 @@
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost};
-use campfire_sim::{IdAllocator, Position, SimTick, StableId};
+use campfire_sim::{Position, SimTick, StableId};
 
 use super::*;
 use crate::geometry::body_box::BodyBox;
@@ -19,7 +19,6 @@ use crate::units::tag_properties::TagProperties;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
-use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation::Relation;
 
@@ -60,14 +59,10 @@ impl Scene {
     /// A unit of `team` at `x`, `z` with the life pool, so it may be a target, and seeing
     /// `sight` when given.
     fn spawn(&mut self, team: u8, x: i64, z: i64, sight: Option<i64>) -> StableId {
-        let id = self.sim.world.resource_mut::<IdAllocator>().allocate();
         let life = Life::full(Num::int(100));
-        let mut unit = self
-            .sim
-            .world
-            .spawn((id, UnitEntity, at(x, z), Team::new(team), life));
+        let id = self.sim.spawn(at(x, z), Team::new(team), life);
         if let Some(range) = sight {
-            unit.insert(Sight::new(Num::int(range)).unwrap());
+            self.sim.insert(id, Sight::new(Num::int(range)).unwrap());
         }
         id
     }

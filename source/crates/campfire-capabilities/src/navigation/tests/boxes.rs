@@ -99,14 +99,14 @@ fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     walk.load_pathing(HALF, [-4, -4], [4, 4], vec![ground(QUARTER)]);
     let walker = walk.body(quarters(1, 1), None, Some(QUARTER), QUARTER);
     walk.sim.step();
-    let building = walk.sim.spawn(at(0, 0, 0), boxed(2, 2, 0));
+    let building = walk.sim.spawn(at(0, 0, 0), Team::new(0), boxed(2, 2, 0));
     let entity = walk.sim.entity(building);
     Navigation::make_room(&mut walk.sim.world, entity);
     assert_eq!(*walk.sim.get::<Position>(walker), quarters(5, 1));
     // With no pathing grid, the box pushes it out through its nearest edge, x = 1, to touch.
     let mut bare = Walk::new();
     let walker = bare.body(quarters(1, 0), None, Some(QUARTER), QUARTER);
-    let building = bare.sim.spawn(at(0, 0, 0), boxed(2, 2, 0));
+    let building = bare.sim.spawn(at(0, 0, 0), Team::new(0), boxed(2, 2, 0));
     let entity = bare.sim.entity(building);
     Navigation::make_room(&mut bare.sim.world, entity);
     assert_eq!(*bare.sim.get::<Position>(walker), quarters(5, 0));

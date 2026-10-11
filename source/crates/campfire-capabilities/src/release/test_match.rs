@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
@@ -20,6 +21,14 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::actions::slot_kinds::SlotKinds;
+use crate::units::Units;
+use crate::units::tag_book::TagBook;
+use crate::units::tag_data::TagData;
+use crate::units::team::Team;
+use crate::units::unit_core::UnitCore;
+use crate::units::unit_type::UnitType;
+use crate::units::unit_type_data::UnitTypeData;
+use crate::units::view::View;
 
 use crate::actions::slot_kind_data::SlotKindData;
 use crate::combat::internals;
@@ -33,7 +42,6 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::stats::life::Life;
 use crate::stats::pool_id::PoolId;
 use crate::units::block::Block;
-use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_tags::UnitTags;
 use crate::values::declared_name::DeclaredName;
 
@@ -44,6 +52,9 @@ use crate::values::declared_name::DeclaredName;
 pub(crate) struct TestMatch {
     pub(crate) world: World,
     pub(crate) registry: StateRegistry,
+    /// The type of the units a test spawns with no type of its own, once the first spawn sealed
+    /// the match's unit types.
+    unit_type: Option<UnitType>,
     /// Last, so it drops after the world and sees what the world logs as it drops.
     _log: LogCheck,
 }
@@ -96,6 +107,7 @@ impl TestMatch {
         TestMatch {
             world,
             registry,
+            unit_type: None,
             _log: log,
         }
     }
@@ -127,13 +139,68 @@ impl TestMatch {
         })
     }
 
-    /// A unit at `at` with `parts`, of the next stable id, with its type's tags when it has a
-    /// type.
-    pub(crate) fn spawn(&mut self, at: Position, parts: impl Bundle) -> StableId {
+    /// A unit of `team` at `at` with `parts`, of the match's own type, `unit_type`, spawned as
+    /// `spawn_of` spawns one.
+    pub(crate) fn spawn(&mut self, at: Position, team: Team, parts: impl Bundle) -> StableId {
+        let unit_type = self.unit_type();
+        self.spawn_of(unit_type, at, team, parts)
+    }
+
+    /// A unit of `unit_type` and `team` at `at`, of the next stable id, spawned as a mode's unit
+    /// and a delivery are: `parts`, then its core, with its type's tags and its script state from
+    /// the match's books. The first spawn seals the match's unit types, as a match loads them all
+    /// before any unit spawns.
+    pub(crate) fn spawn_of(
+        &mut self,
+        unit_type: UnitType,
+        at: Position,
+        team: Team,
+        parts: impl Bundle,
+    ) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        let entity = self.world.spawn((id, at, UnitEntity, parts)).id();
-        UnitTags::give_type_tags(&mut self.world, entity);
-        id
+        let core = UnitCore {
+            id,
+            pos: at,
+            unit_type,
+            team,
+            owner: None,
+        };
+        self.spawn_core(core, parts)
+    }
+
+    /// The unit of `core`, with `parts`, spawned as `spawn_of` spawns one.
+    pub(crate) fn spawn_core(&mut self, core: UnitCore, parts: impl Bundle) -> StableId {
+        self.seal_types();
+        core.spawn(&mut self.world, parts);
+        core.id
+    }
+
+    /// The type of the units a test spawns with no type of its own: one of no tag, param or
+    /// state field, which sealing the match's unit types loads.
+    pub(crate) fn unit_type(&mut self) -> UnitType {
+        self.seal_types();
+        self.unit_type
+            .expect("a test that puts its own tag book spawns units of its own types")
+    }
+
+    /// Seals the match's unit types, once, with no effect for any tag but an engine tag's own,
+    /// as `seal_types_with` does.
+    fn seal_types(&mut self) {
+        if self.unit_type.is_some() || self.world.contains_resource::<TagBook>() {
+            return;
+        }
+        self.seal_types_with(&BTreeMap::new());
+    }
+
+    /// Seals the match's unit types: loads the match's own type, and gives the tag book their
+    /// tags and `effects`, by tag, as a match's books take them once its packages load. A test
+    /// that put a tag book of its own sealed them itself, and its match has no type of its own.
+    pub(crate) fn seal_types_with(&mut self, effects: &BTreeMap<DeclaredName, TagData>) {
+        assert_eq!(self.unit_type, None, "a match seals its unit types once");
+        let unit_type = Units::load_next_type(&mut self.world, &UnitTypeData::default());
+        self.unit_type = Some(unit_type);
+        let book = self.world.non_send::<View>().types_mut().tag_book(effects);
+        self.world.insert_resource(book);
     }
 
     pub(crate) fn entity(&self, id: StableId) -> Entity {
@@ -169,8 +236,16 @@ impl TestMatch {
     }
 
     /// Restores its state into `fresh`, a match that loaded the same books, as a restore does; the
-    /// error that refuses it, if one does.
+    /// error that refuses it, if one does. A match whose spawns sealed its unit types seals
+    /// `fresh`'s, which loads the same type of its own.
     pub(crate) fn refusal_into(&self, fresh: &mut TestMatch) -> Option<SnapshotError> {
+        if self.unit_type.is_some() {
+            fresh.seal_types();
+            assert_eq!(
+                fresh.unit_type, self.unit_type,
+                "the fresh match loaded the same types"
+            );
+        }
         fresh.clear();
         let mut snapshot = Vec::new();
         self.registry.snapshot(&self.world, &mut snapshot);

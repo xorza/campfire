@@ -56,7 +56,7 @@ use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_tags::UnitTags;
+use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::view::View;
 use crate::values::damage_kind::DamageKind;
@@ -128,8 +128,19 @@ impl Fight {
     }
 
     fn unit(&mut self, team: Team, at: Position, combatant: Armed) -> StableId {
-        let bundle = combatant.bundle(&mut self.sim.world, team);
-        self.sim.spawn(at, bundle)
+        let unit_type = self.sim.unit_type();
+        self.unit_of(unit_type, team, at, combatant)
+    }
+
+    fn unit_of(
+        &mut self,
+        unit_type: UnitType,
+        team: Team,
+        at: Position,
+        combatant: Armed,
+    ) -> StableId {
+        let bundle = combatant.bundle(&mut self.sim.world);
+        self.sim.spawn_of(unit_type, at, team, bundle)
     }
 
     fn attack(&mut self, attacker: StableId, target: StableId) {
@@ -298,13 +309,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
         (types[2], structure_at),
         (hover, hover_at),
     ]
-    .map(|(unit_type, x)| {
-        let target = fight.unit(Team::new(1), at(x, 0, 0), dummy());
-        let entity = fight.sim.entity(target);
-        fight.sim.insert(target, unit_type);
-        UnitTags::give_type_tags(&mut fight.sim.world, entity);
-        target
-    });
+    .map(|(unit_type, x)| fight.unit_of(unit_type, Team::new(1), at(x, 0, 0), dummy()));
     let [ground_unit, air_unit, structure, hovering] = targets;
     let healths = |fight: &Fight| targets.map(|target| fight.sim.health(target));
     let underway = |fight: &Fight| {
@@ -595,9 +600,9 @@ fn every_combat_type_is_state_and_restores() {
     // A restore loads the match's books first, as the packages give them: the same weapons, in
     // the same order.
     let mut restored = Fight::new();
-    let _weapon = self::fighter().bundle(&mut restored.sim.world, Team::new(0));
+    let _weapon = self::fighter().bundle(&mut restored.sim.world);
     let doomed_kind = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
-    let _weapon = doomed_kind.bundle(&mut restored.sim.world, Team::new(1));
+    let _weapon = doomed_kind.bundle(&mut restored.sim.world);
     fight.sim.restore_into(&mut restored.sim);
     assert_eq!(
         restored.sim.try_get::<ActionSlots>(fighter),

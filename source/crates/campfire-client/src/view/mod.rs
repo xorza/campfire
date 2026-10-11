@@ -24,8 +24,8 @@ use bevy::transform::components::Transform;
 use bevy::window::Window;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_capabilities::{
-    ActionSlots, Area, AreaReach, Body, Dead, DeliveryEntity, Facing, MatchEnd, MatchResult,
-    MoveStep, Owner, Projectile, Team, UnitEntity, UnitType,
+    ActionSlots, Area, AreaReach, Body, BodyUnit, Dead, Facing, MatchEnd, MatchResult, MoveStep,
+    Owner, Projectile, Team, UnitType,
 };
 use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, Position, Unpredicted};
@@ -121,12 +121,7 @@ type NewUnits<'w, 's> = Query<
         Option<&'static UnitType>,
         Option<&'static Facing>,
     ),
-    (
-        With<UnitEntity>,
-        Without<Drawing>,
-        Without<DeliveryEntity>,
-        Allow<Unpredicted>,
-    ),
+    (BodyUnit, Without<Drawing>, Allow<Unpredicted>),
 >;
 
 /// The drawn units the client only receives whose sim place changed.

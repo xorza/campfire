@@ -1,18 +1,20 @@
 use std::any::TypeId;
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::With;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
 use campfire_sim::{EntityIndex, HostRule, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::declare::parted_kind::PartedKind;
+use crate::players::kind_parts::KindParts;
 use crate::players::player::Player;
-use crate::players::player_parts::PlayerParts;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
+use crate::units::entity_kind::{EntityKind, KindAudience};
 use crate::units::team::Team;
 
 /// The entity of the match, of the named id `StableId::MATCH`, which holds the match's state that
@@ -22,12 +24,13 @@ use crate::units::team::Team;
 pub struct MatchEntity;
 
 impl MatchEntity {
-    /// Spawns the match's entity with `parts`, then each player's, in slot order, `teams` giving
-    /// each slot's team, each with its named id; each player's with what the installed
-    /// capabilities put on it.
-    pub(crate) fn spawn(world: &mut World, parts: impl Bundle, teams: impl Iterator<Item = Team>) {
-        world.spawn((StableId::MATCH, MatchEntity, parts));
-        world.resource_scope(|world, parts: Mut<'_, PlayerParts>| {
+    /// Spawns the match's entity, then each player's, in slot order, `teams` giving each slot's
+    /// team, each with its named id and the parts the installed modules declare for its kind.
+    pub(crate) fn spawn(world: &mut World, teams: impl Iterator<Item = Team>) {
+        world.resource_scope(|world, parts: Mut<'_, KindParts<MatchEntity>>| {
+            parts.put_on(&mut world.spawn((StableId::MATCH, MatchEntity)));
+        });
+        world.resource_scope(|world, parts: Mut<'_, KindParts<Player>>| {
             for (slot, team) in (0..).map(PlayerSlot::new).zip(teams) {
                 MatchEntity::spawn_player_of(world, &parts, slot, team);
             }
@@ -37,7 +40,7 @@ impl MatchEntity {
     /// Spawns the entity of player `slot` on `team`, of its named id, with `parts`.
     fn spawn_player_of(
         world: &mut World,
-        parts: &PlayerParts,
+        parts: &KindParts<Player>,
         slot: PlayerSlot,
         team: Team,
     ) -> Entity {
@@ -50,6 +53,14 @@ impl MatchEntity {
     pub fn entity(world: &World) -> Option<Entity> {
         world.resource::<EntityIndex>().get(StableId::MATCH)
     }
+}
+
+impl PartedKind for MatchEntity {}
+
+impl EntityKind for MatchEntity {
+    const AUDIENCE: KindAudience = KindAudience::EverySeat;
+    const OWNER_PREDICTS: bool = false;
+    type Only = With<MatchEntity>;
 }
 
 impl HostRule for MatchEntity {
@@ -91,7 +102,9 @@ pub(crate) mod internals {
         /// Starts a match in `world` that has no mode to start it: the match's entity spawns, of
         /// teams that regard each other as hostile, with no player.
         pub fn start_without_mode(world: &mut World) {
-            MatchEntity::spawn(world, Relations::default(), iter::empty());
+            MatchEntity::spawn(world, iter::empty());
+            let entity = MatchEntity::entity(world).expect("the match's entity spawned");
+            world.entity_mut(entity).insert(Relations::default());
         }
     }
 }
@@ -102,8 +115,9 @@ pub(crate) mod test_players {
     use bevy_ecs::world::{Mut, World};
     use campfire_common::PlayerSlot;
 
+    use crate::players::kind_parts::KindParts;
     use crate::players::match_entity::MatchEntity;
-    use crate::players::player_parts::PlayerParts;
+    use crate::players::player::Player;
     use crate::players::player_resources::PlayerResources;
     use crate::units::team::Team;
 
@@ -117,7 +131,7 @@ pub(crate) mod test_players {
             team: Team,
             resources: usize,
         ) -> Entity {
-            world.resource_scope(|world, parts: Mut<'_, PlayerParts>| {
+            world.resource_scope(|world, parts: Mut<'_, KindParts<Player>>| {
                 let player = MatchEntity::spawn_player_of(world, &parts, slot, team);
                 world
                     .entity_mut(player)

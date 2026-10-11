@@ -358,16 +358,29 @@ impl Match {
         Actions::load(&mut self.sim.world, 0, name, data, Some(script), 5).unwrap()
     }
 
-    /// A unit of `team` with 500 health that stays when it dies, and `parts`, with no slots
-    /// unless they hold some.
+    /// A unit of the match's own type and `team` with 500 health that stays when it dies, and
+    /// `parts`, with no slots unless they hold some.
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
+        let unit_type = self.sim.unit_type();
+        self.spawn_of(unit_type, team, at, parts)
+    }
+
+    /// A unit of `unit_type`, spawned as `spawn` spawns one.
+    fn spawn_of(
+        &mut self,
+        unit_type: UnitType,
+        team: u8,
+        at: Position,
+        parts: impl Bundle,
+    ) -> StableId {
         let combat = (
-            Team::new(team),
             Life::full(Num::int(500)),
             OnDeath::Stay,
             RecentAttackers::default(),
         );
-        let id = self.sim.spawn(at, (combat, parts));
+        let id = self
+            .sim
+            .spawn_of(unit_type, at, Team::new(team), (combat, parts));
         let unit = self.sim.entity(id);
         self.sim
             .world
@@ -378,8 +391,8 @@ impl Match {
 
     /// A unit of `team` armed as `armed` that attacks `target`.
     fn attacker(&mut self, team: u8, at: Position, armed: Armed, target: StableId) -> StableId {
-        let armed = armed.bundle(&mut self.sim.world, Team::new(team));
-        let id = self.sim.spawn(at, armed);
+        let armed = armed.bundle(&mut self.sim.world);
+        let id = self.sim.spawn(at, Team::new(team), armed);
         let mut slots = self.sim.get_mut::<ActionSlots>(id);
         slots.set_attack_target(Some(target));
         id
@@ -733,11 +746,9 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         Capability::Orders,
     ];
     let mut game = Match::with(ScriptLimits::ROOMY, &declared);
-    let strike = game.load("strike", &strike(), STRIKE);
-    let caster = game.caster(strike, 1);
-    let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
     // Eleven units whose AI spins, all due in every tick: ten calls fail at the 10 000 limit and
-    // spend the 100 000 of the think pool, and the eleventh finds it spent.
+    // spend the 100 000 of the think pool, and the eleventh finds it spent. Their type loads
+    // before any unit spawns, as a match's types do.
     let spinner = Units::load_type(
         &mut game.sim.world,
         TypeScope::Mode,
@@ -751,8 +762,11 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     let spin = "fn on_think(ctx, unit) { loop {} }";
     let spin = Units::compile_hooked(&mut game.sim.world, spin).unwrap();
     Orders::load_ai(&mut game.sim.world, spinner, &ai, spin).unwrap();
+    let strike = game.load("strike", &strike(), STRIKE);
+    let caster = game.caster(strike, 1);
+    let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
     let spinners: Vec<_> = (0..11)
-        .map(|z| game.spawn(2, ground(Num::ZERO, Num::int(20 + z)), spinner))
+        .map(|z| game.spawn_of(spinner, 2, ground(Num::ZERO, Num::int(20 + z)), ()))
         .collect();
 
     // The cast in the same tick draws from its player's pool, whole: 500 → 450, 100 → 90.
@@ -1401,7 +1415,8 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
         });
         sim.spawn(
             ground(Num::ZERO, Num::ZERO),
-            (Team::new(0), ActionSlots::new(slots).timed()),
+            Team::new(0),
+            ActionSlots::new(slots).timed(),
         )
     };
     let mut server = TestMatch::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
@@ -1908,8 +1923,8 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
     let strike = game.load("strike", &heroes_only, STRIKE);
     let caster = game.caster(strike, 1);
-    let enemy_creep = game.spawn(1, ground(Num::int(3), Num::ZERO), creep);
-    let enemy_hero = game.spawn(1, ground(Num::int(4), Num::ZERO), hero);
+    let enemy_creep = game.spawn_of(creep, 1, ground(Num::int(3), Num::ZERO), ());
+    let enemy_hero = game.spawn_of(hero, 1, ground(Num::int(4), Num::ZERO), ());
     // The creep is an enemy, but no hero: the cast goes nowhere. The hero takes 50.
     game.cast(caster, ActionTarget::Unit(enemy_creep));
     assert_eq!(game.sim.health(enemy_creep), 500);
@@ -2112,24 +2127,12 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         ..TagData::default()
     };
     let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
-    let book = game
-        .sim
-        .world
-        .non_send::<View>()
-        .types_mut()
-        .tag_book(&effects);
-    game.sim.world.insert_resource(book);
+    game.sim.seal_types_with(&effects);
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
     let strike = game.load("strike", &strike(), script);
     let caster = game.caster(strike, 1);
-    let parts = (
-        target_type,
-        Level::default(),
-        UnitStats::default(),
-        UnitTags::default(),
-        Modifiers::default(),
-    );
-    let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), parts);
+    let parts = (Level::default(), UnitStats::default(), Modifiers::default());
+    let enemy = game.spawn_of(target_type, 1, ground(Num::int(5), Num::ZERO), parts);
     let entity = game.sim.entity(enemy);
     let mut seen = Vec::new();
     for tick in 0..8 {
@@ -2187,13 +2190,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         ..TagData::default()
     };
     let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
-    let book = game
-        .sim
-        .world
-        .non_send::<View>()
-        .types_mut()
-        .tag_book(&effects);
-    game.sim.world.insert_resource(book);
+    game.sim.seal_types_with(&effects);
     let purge = Effecting::Purge(PurgeFields {
         tag: DeclaredName::new("stunned").unwrap(),
     });
@@ -2205,17 +2202,9 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     let ability = Actions::load(&mut game.sim.world, 0, "cleanse", &data, None, 1).unwrap();
     EffectLists::load(&mut game.sim.world, ability, 0, &data);
     let [first, second] = [(); 2].map(|()| game.caster(ability, 1));
-    let parts = || {
-        (
-            target,
-            Level::default(),
-            UnitStats::default(),
-            UnitTags::default(),
-            Modifiers::default(),
-        )
-    };
-    let freed = game.spawn(1, ground(Num::int(1), Num::ZERO), parts());
-    let held = game.spawn(1, ground(Num::int(-1), Num::ZERO), parts());
+    let parts = || (Level::default(), UnitStats::default(), Modifiers::default());
+    let freed = game.spawn_of(target, 1, ground(Num::int(1), Num::ZERO), parts());
+    let held = game.spawn_of(target, 1, ground(Num::int(-1), Num::ZERO), parts());
     for source in [first, second] {
         game.give_from(freed, source, "stun");
     }
@@ -2881,8 +2870,8 @@ impl Match {
 
     /// A `fighter` of team 0 at the origin, of level 1, with `slots`.
     fn fighter(&mut self, fighter: UnitType, slots: TimedSlots) -> StableId {
-        let parts = (fighter, Level::new(1).unwrap(), UnitStats::default(), slots);
-        self.spawn(0, ground(Num::ZERO, Num::ZERO), parts)
+        let parts = (Level::new(1).unwrap(), UnitStats::default(), slots);
+        self.spawn_of(fighter, 0, ground(Num::ZERO, Num::ZERO), parts)
     }
 
     /// The shield of `unit`'s `mark` from `source`, if it carries one.
@@ -3091,6 +3080,9 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
     );
     let mut target = |x| game.spawn(1, ground(Num::int(x), Num::ZERO), Modifiers::default());
     let [living, blocked, spent, deep, deepest, warded] = [1, 2, 3, 4, 5, 6].map(&mut target);
+    // A tick first, whose stats derive each new unit's tags, as for every unit that spawns: the
+    // blocked target's tags, set after it, stay.
+    game.sim.step();
     game.sim.set_blocks(blocked, &[Block::Damage]);
     game.sim.get_mut::<Life>(spent).take(Num::int(500));
     game.give_from(warded, warded, "ward");
@@ -3328,10 +3320,11 @@ impl VeilMatch {
         ] {
             Stats::load_modifier(&mut game.sim.world, 0, name, &data, None);
         }
-        let veil = game.spawn(
+        let veil = game.spawn_of(
+            veil_type,
             0,
             ground(Num::ZERO, Num::ZERO),
-            (veil_type, Level::default(), UnitStats::default()),
+            (Level::default(), UnitStats::default()),
         );
         game.give(veil, "dual_path");
         game.give(veil, "fortify");
@@ -3385,8 +3378,10 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     let source = veil.veil;
     // Ward, of Veil's type, holds Dual Path from Veil, with Boost: 0.06 and 0.00167 of Veil's
     // bonus of 30, as above, spell vamp 1 847 173 bits.
-    let ward_parts = (veil.veil_type, Level::default(), UnitStats::default());
-    let ward = veil.game.spawn(0, ground(Num::ONE, Num::ZERO), ward_parts);
+    let ward_parts = (Level::default(), UnitStats::default());
+    let ward = veil
+        .game
+        .spawn_of(veil.veil_type, 0, ground(Num::ONE, Num::ZERO), ward_parts);
     veil.game.give(source, "boost");
     veil.game.give_from(ward, source, "dual_path");
     // A copy of the state follows the match: the value a live change last had is state, and
@@ -3930,11 +3925,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     };
     Areas::load_type(world, field, 0, &data);
     // The tag book, which a match's stats derive each unit's tags from, once every type is tagged.
-    let book = world
-        .non_send::<View>()
-        .types_mut()
-        .tag_book(&BTreeMap::new());
-    world.insert_resource(book);
+    game.sim.seal_types_with(&BTreeMap::new());
     let shot = ActionData {
         targeting: Targeting::Point,
         delivery: Some(DeliveryData::Area {
@@ -3956,12 +3947,12 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     let point = |x: i64, z: i64| ground(Num::int(x), Num::int(z));
     let none = Modifiers::default;
     let ally = game.spawn(0, point(1, 1), none());
-    let enemy_grunt = game.spawn(1, point(2, 0), (grunt, Level::default(), none()));
+    let enemy_grunt = game.spawn_of(grunt, 1, point(2, 0), (Level::default(), none()));
     let enemy = game.spawn(1, point(1, -1), none());
     let hidden = game.spawn(1, point(0, 0), none());
     game.sim.set_blocks(hidden, &[Block::Target]);
     let far_ally = game.spawn(0, point(4, 0), none());
-    let far_grunt = game.spawn(1, point(1, 3), (grunt, Level::default(), none()));
+    let far_grunt = game.spawn_of(grunt, 1, point(1, 3), (Level::default(), none()));
     let units = [
         caster,
         ally,

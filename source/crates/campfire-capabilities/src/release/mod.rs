@@ -13,6 +13,7 @@ use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::Declarations;
 use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::kind_visitor::KindVisitor;
 use crate::deliveries::Deliveries;
 use crate::items::Items;
 use crate::mode::Mode;
@@ -131,6 +132,11 @@ impl Release {
     /// Lists, into `types`, the state types of a match of `set`, as its install registers them.
     pub fn state_types<T: StateTypes>(set: CapabilitySet, types: &mut T) {
         Release::declare(set, &mut StateOnly(types));
+    }
+
+    /// Visits, with `v`, each kind of entity of a match, whatever its capabilities.
+    pub fn kinds<V: KindVisitor>(v: &mut V) {
+        Units::kinds(v);
     }
 
     /// Installs into a match the core, then each capability of `set` the release runs, each
