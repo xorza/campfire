@@ -1,4 +1,4 @@
-//! The first half of the Stage 2 gate, without the network: a match of the test lane mode run from
+//! The first half of the prototype's gate, without the network: a match of the test lane mode run from
 //! its session log and the replay of that log in a bare `World` agree on the state hash after
 //! every tick, and so does the replay of the log's file with the packages a verifier holds. So
 //! does the MOBA 3v3's, whose players learn ranks.

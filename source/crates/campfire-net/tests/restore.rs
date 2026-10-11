@@ -66,7 +66,7 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
         .session_id();
     local.stop_server();
 
-    // The private record, at the path Stage 6 names, names another release: the restore refuses
+    // The private record, at the path design 10 names, names another release: the restore refuses
     // it, naming the release.
     let stopped = ServerDir::open(&data.path("data")).unwrap();
     let path = data

@@ -1,4 +1,4 @@
-//! The Stage 2 prototype: the sim schedule in Lightyear's `World`, a server and one predicting
+//! The prototype of milestone 1: the sim schedule in Lightyear's `World`, a server and one predicting
 //! client over in-process channels, and the server's session log replayed in a bare `World`
 //! with the same state hash after every tick.
 

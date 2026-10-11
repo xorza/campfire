@@ -168,7 +168,7 @@ An imported game is one players already know, rebuilt on Campfire's sim: General
 
 ## Milestones
 
-All four pillars ship in 1.0, in this order, in the stages of the [roadmap](../../ROADMAP.md).
+All four pillars ship in 1.0, in this order.
 
 1. **Zero Hour on LAN.** The determinism core, the prototype that proves the sim runs the same inside Lightyear and in a bare verifier, the game model in code and sessions that restore, built with the MOBA test content; then the `import` app and the parity oracle; then a Zero Hour skirmish with its AI on LAN or a local server, with verified replays and crash restore, within the parity measure. Players use local Nostr key files through the final delegation, handshake and log formats; no relays, listings, launcher or payments.
 2. **Open network.** Nostr listings, packages over Blossom and import recipes, reputation, ban lists, and the launcher with signed releases.

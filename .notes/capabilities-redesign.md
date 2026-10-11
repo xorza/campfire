@@ -18,7 +18,7 @@ The faults are at the edges, where a capability was built for its first genre:
 - **Reuse.** Most capabilities require `combat` for schedule anchors only. `orders` owns the commands of `items`, `production` and `progression`, so a mode with no `orders` cannot buy an item or learn a rank. The core lists production's engine tags. Three tables state the capability graph, and no test ties them together.
 - **Genericity.** Several genre rules are fixed in native code: one supply counter, one shop at markers, one point per level, an actor that is always a unit, a gather loop that only fills player resources, and a train that only spawns units.
 
-The proposal has 12 changes in three phases, and a 13th that adds the tests which keep the model generic. Phase 1 removes couplings with no change of behaviour. Phase 2 generalizes production. Phase 3 opens the closed sets. Phase 2 changes the model that the Stage 7 skirmish tests. So it should land before the skirmish's match and golden (R9 of the skirmish plan), or the skirmish is built twice.
+The proposal has 12 changes in three phases, and a 13th that adds the tests which keep the model generic. Phase 1 removes couplings with no change of behaviour. Phase 2 generalizes production. Phase 3 opens the closed sets. Phase 2 changes the model that the skirmish tests. So it should land before the skirmish's match and golden (R9 of the skirmish plan), or the skirmish is built twice.
 
 ## Findings
 
@@ -61,7 +61,7 @@ An item on the ground is planned as a unit that a pickup turns into an entry. A 
 - `Action` (`orders/order/mod.rs`) holds `Learn`, `Buy`, `Sell`, `Swap`, `CancelTrain`, `Rally`, `Build` and `CancelBuild`.
 - `Orders::install` schedules `ProductionOrders` and `TradeOrders` when production and items are present.
 
-The layer test allows this import, as `orders` is layer 6 and `production` and `items` are layer 5 (`LAYERS` in `capability_set/tests.rs`). The fault is ownership, not direction: the verbs live with the one capability that a mode may not declare. A mode that drives characters and has no `orders` cannot buy, sell, learn, cancel or rally. Counter-Strike's buy menu is the first case (Stage 8). The overview already states the rule this breaks: "each command names the capability that owns it" (`00-overview.md`, Commands).
+The layer test allows this import, as `orders` is layer 6 and `production` and `items` are layer 5 (`LAYERS` in `capability_set/tests.rs`). The fault is ownership, not direction: the verbs live with the one capability that a mode may not declare. A mode that drives characters and has no `orders` cannot buy, sell, learn, cancel or rally. Counter-Strike's buy menu is the first case. The overview already states the rule this breaks: "each command names the capability that owns it" (`00-overview.md`, Commands).
 
 **B3. The core lists capabilities' engine tags.** `units/engine_tag.rs` fixes `Avatar, Projectile, Area, Constructing, Node, DropOff, Gathering` as the first tags of every match. Each new capability adds to a core list. The overview says "the core names no capability".
 
@@ -222,11 +222,11 @@ A change that moves a column it must not move is a bug in the change, not a new 
 
 These already pass the three questions.
 
-## Order and its effect on Stage 7
+## Order and its effect on the skirmish
 
 | Phase | Changes | Goldens | When |
 | --- | --- | --- | --- |
-| 1 | R1, R2, R3, R4 | None expected | Before Stage 8, which needs R3 for the CS buy menu |
+| 1 | R1, R2, R3, R4 | None expected | Before Counter-Strike's buy menu, which needs R3 |
 | 2 | R5, R6, R7, R8 | The skirmish is new, so nothing moves if Phase 2 lands first | Before R9 of the skirmish plan, the skirmish's match and golden |
 | 3 | R9, R10, R11, R12 | The 3v3 moves for R9 | With the genre proof that first needs each one |
 | Guards | R13 | The Hive golden is new | The genre-word test and the graph test at once; the Hive mode after Phase 3 |
@@ -238,4 +238,4 @@ Each change also changes `docs/design/04-capabilities/` and the script API refer
 1. **Phase 2 before the skirmish?** Option A: do Phase 2, then the skirmish, so its golden is built once (recommended). Option B: do the skirmish on today's model, then re-bless it after Phase 2.
 2. **R8's scope.** Option A: full haul with unit stock and chains (recommended for genericity). Option B: keep gather and add only a sink that is a unit, which costs less and serves the skirmish and a delivery game, but not chains.
 3. **R11's form.** Option A: a player unit with no body, which reuses the whole pipeline (recommended). Option B: a second actor kind, the player, in the pipeline, which needs every check to know two kinds of actor.
-4. **R9 and the MOBA.** Is the MOBA's shop rule worth a golden change now, or only at Stage 10 with the reference game?
+4. **R9 and the MOBA.** Is the MOBA's shop rule worth a golden change now, or only later, with the reference game?

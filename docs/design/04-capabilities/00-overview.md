@@ -132,7 +132,7 @@ orders = { ai = "scripts/tank_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11" }
 ```
 
-The team and the owner come from the spawn. A section of an undeclared capability fails the load. Times are in milliseconds and rates per second; they become whole ticks at load, rounded up, so a unit type behaves the same at any tick rate to within one tick.
+The team and the owner come from the spawn; the owner is a player of the unit's team, and a change of owner inserts a new one, which moves the unit to the new owner's team ([Replication audiences](../14-replication-audiences.md), D17, D18). A section of an undeclared capability fails the load. Times are in milliseconds and rates per second; they become whole ticks at load, rounded up, so a unit type behaves the same at any tick rate to within one tick.
 
 ## Script API
 

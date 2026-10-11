@@ -77,8 +77,8 @@ Dashed: planned. `log` is left out: the binaries, `net` and `verifier` use it. `
 | `verifier` | built | CLI: replays a session log segment and checks the result |
 | `lan-check` | built | The real server and bot clients over QUIC on `127.0.0.1`, on request ([Testing and diagnostics](#testing-and-diagnostics)) |
 | `zero-hour-check` | built | Imports the Zero Hour install `GENERALSZH_DATA` names and checks it, on request |
-| `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
-| `net` | built | Lightyear over `quic`: handshake, replication; internal ([Networking](#networking)) |
+| `server` | built | The dedicated server's headless binary: its host config from the command line, logging, socket, port map and exit; `net` hosts its session |
+| `net` | built | Lightyear over `quic`: handshake, replication; and the session host the dedicated server, the client's local server on a thread and the test harness share: lifecycle, lobby, saves, journal and checkpoints; internal ([Networking](#networking)) |
 | `quic` | built | QUIC alone under Lightyear's link: an endpoint on a thread of its own, the server's raw TLS key and the client's pin, and the server's port mapping; no game ([QUIC transport](15-quic-transport.md)) |
 | `log` | built | Log output: text on standard error and JSON lines into a file; the events a tool reads back; the end of a command line |
 | `store` | built | Durable and secret files, data directories and their locks, and worker threads, a proxy crate ([Storage](#storage)) |
