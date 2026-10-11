@@ -1444,5 +1444,6 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     assert_eq!(replayed.next_place(), place);
 }
 
+mod format;
 mod journal;
 mod segments;

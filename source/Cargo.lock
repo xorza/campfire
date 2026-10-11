@@ -2219,6 +2219,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "campfire-common",
+ "campfire-store",
  "criterion 0.8.2",
  "derive_more",
  "nostr",

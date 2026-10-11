@@ -4,7 +4,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use serde::{Deserialize, Serialize};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::*;
 
@@ -761,4 +762,110 @@ fn a_copy_keeps_a_required_component_removed_before_its_requirer_changes() {
             .get::<Clock>(entity(&following.copy, id))
             .is_none()
     );
+}
+
+/// A state type of the name `test.layout` that holds a `T`.
+#[derive(Component, Debug, Serialize, Deserialize)]
+struct Held<T: Send + Sync + 'static>(T);
+
+impl<T: Serialize + DeserializeOwned + Send + Sync + 'static> SimComponent for Held<T> {
+    const NAME: &'static str = "test.layout";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
+}
+
+/// A `u32` under another type, with the same layout.
+#[derive(Debug, Serialize, Deserialize)]
+struct Again(u32);
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Point {
+    x: u32,
+    y: u32,
+}
+
+/// `Point` with its fields in the other order.
+#[derive(Debug, Serialize, Deserialize)]
+struct Turned {
+    y: u32,
+    x: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum Pick {
+    First(u32),
+    Second,
+}
+
+/// `Pick` with its variants in the other order.
+#[derive(Debug, Serialize, Deserialize)]
+enum Swapped {
+    Second,
+    First(u32),
+}
+
+/// A type whose decode reads a `T`, then refuses it, as a decode whose checks refuse every draw
+/// does.
+#[derive(Debug, Serialize)]
+struct Refused<T>(T);
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Refused<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Refused<T>, D::Error> {
+        T::deserialize(deserializer)?;
+        Err(D::Error::custom("refused"))
+    }
+}
+
+#[test]
+fn a_types_layout_fingerprint_moves_with_its_encoding_alone() {
+    // Each registry holds `sim`'s own types and one `test.layout`. A field more, fields or
+    // variants in another order, and a wider number in a decode that refuses every draw, each
+    // move its fingerprint; the same layout under another type keeps it, and the others keep
+    // theirs.
+    let layout = |register: fn(&mut StateRegistry)| {
+        let mut registry = StateRegistry::new();
+        register(&mut registry);
+        registry.layout()
+    };
+    let of = |layout: &[(&'static str, StateHash)], name| {
+        layout
+            .iter()
+            .find(|&&(held, _)| held == name)
+            .map(|&(_, fingerprint)| fingerprint)
+            .unwrap()
+    };
+    let narrow = layout(StateRegistry::register_component::<Held<u32>>);
+    let again = layout(StateRegistry::register_component::<Held<Again>>);
+    assert_eq!(of(&narrow, "test.layout"), of(&again, "test.layout"));
+    let changes = [
+        (
+            narrow,
+            layout(StateRegistry::register_component::<Held<(u32, bool)>>),
+        ),
+        (
+            layout(StateRegistry::register_component::<Held<Point>>),
+            layout(StateRegistry::register_component::<Held<Turned>>),
+        ),
+        (
+            layout(StateRegistry::register_component::<Held<Pick>>),
+            layout(StateRegistry::register_component::<Held<Swapped>>),
+        ),
+        (
+            layout(StateRegistry::register_component::<Held<Refused<u32>>>),
+            layout(StateRegistry::register_component::<Held<Refused<u64>>>),
+        ),
+    ];
+    for (at, (before, after)) in changes.iter().enumerate() {
+        assert_ne!(of(before, "test.layout"), of(after, "test.layout"), "{at}");
+        for name in [
+            "sim.entities",
+            "sim.id_allocator",
+            "sim.position",
+            "sim.tick",
+        ] {
+            assert_eq!(of(before, name), of(after, name), "{at}: {name}");
+        }
+    }
 }

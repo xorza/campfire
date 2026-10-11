@@ -4,3 +4,5 @@
 # A package index is binary: no line ending of it may change, or its hash, the package's
 # fingerprint, would.
 package.index binary
+# A pinned session log is binary: a changed line ending would fail its format's pin.
+source/crates/campfire-protocol/tests/golden/session-log/* binary

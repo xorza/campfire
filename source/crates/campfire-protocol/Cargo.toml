@@ -21,8 +21,10 @@ sha2.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
 
-# A test names the postcard error a decode keeps.
 [dev-dependencies]
+# A test reads and writes the pinned log files.
+campfire-store.workspace = true
+# A test names the postcard error a decode keeps.
 postcard.workspace = true
 
 # Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.

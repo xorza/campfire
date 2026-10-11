@@ -82,6 +82,10 @@ struct Entry {
     watch: fn(&mut World, u16),
     #[cfg(any(test, feature = "internals"))]
     scramble: fn(&mut internals::Draws, &mut World) -> bool,
+    /// Writes into the buffer the encodings of values of the type the draws make: what its
+    /// layout fingerprint digests.
+    #[cfg(any(test, feature = "internals"))]
+    layout: fn(&mut internals::Draws, &mut Vec<u8>),
 }
 
 /// What a type's copy takes: the world's change tick at the last copy, none for a first copy of
@@ -163,6 +167,8 @@ impl StateRegistry {
             watch: |_, _| {},
             #[cfg(any(test, feature = "internals"))]
             scramble: |_, _| false,
+            #[cfg(any(test, feature = "internals"))]
+            layout: |_, _| {},
         };
         registry.register(entities);
         registry.require_resource::<IdAllocator>();
@@ -183,6 +189,8 @@ impl StateRegistry {
             watch: watch_component::<C>,
             #[cfg(any(test, feature = "internals"))]
             scramble: internals::Draws::scramble_component::<C>,
+            #[cfg(any(test, feature = "internals"))]
+            layout: internals::Draws::layout_of::<C>,
         });
     }
 
@@ -232,6 +240,8 @@ impl StateRegistry {
             watch: |_, _| {},
             #[cfg(any(test, feature = "internals"))]
             scramble: internals::Draws::scramble_resource::<R>,
+            #[cfg(any(test, feature = "internals"))]
+            layout: internals::Draws::layout_of::<R>,
         });
     }
 
