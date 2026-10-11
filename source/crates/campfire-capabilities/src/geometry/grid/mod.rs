@@ -138,9 +138,9 @@ impl Grid {
 
     /// Calls `mark` with each row's run of the cells whose centers come closer than `reach` to
     /// `body` at `pos` on the ground plane, exactly: a center at `reach` is not closer. A box and
-    /// a disc round it are convex, so each row's cells are one run. Rows in order. It tests each
-    /// cell of the box's bounding rectangle grown by `reach`, which a body that never moves pays
-    /// only as it spawns or goes.
+    /// a disc round it are convex, so each row's cells are one run. Rows in order. It tests the
+    /// cells by each run's ends, searched from the row before's, which a body that never moves
+    /// pays only as it spawns or goes.
     pub(crate) fn box_spans_closer(
         &self,
         pos: Position,
@@ -161,11 +161,16 @@ impl Grid {
             let from = at[axis] - grow - Halves::of(min[axis]) - cell;
             let to = at[axis] + grow - Halves::of(min[axis]) - cell;
             let first = Rounding::Ceiling.divide(from, 2 * cell).max(0);
-            let end = to.div_euclid(2 * cell).min(last(axis));
+            let end = Grid::floor_halves(to, 2 * cell).min(last(axis));
             first..=end
         };
-        let closer = |off| body.closer_twice(off, reach);
-        self.runs(span(1), span(0), centre, closer, &mut mark);
+        self.runs(
+            span(1),
+            span(0),
+            centre,
+            body.closer_twice(reach),
+            &mut mark,
+        );
     }
 
     /// Calls `mark` with each row's run of the cells whose squares a box's inside shares a point
@@ -186,17 +191,17 @@ impl Grid {
         let span = |axis: usize| {
             let from = at[axis] - Halves::of(extent[axis]) - Halves::of(min[axis]);
             let to = at[axis] + Halves::of(extent[axis]) - Halves::of(min[axis]);
-            let first = from.div_euclid(2 * cell).max(0);
-            let end = to.div_euclid(2 * cell).min(last(axis));
+            let first = Grid::floor_halves(from, 2 * cell).max(0);
+            let end = Grid::floor_halves(to, 2 * cell).min(last(axis));
             first..=end
         };
-        let covers = |off| body.overlaps_square_twice(off, cell);
+        let covers = body.overlaps_square_twice(cell);
         self.runs(span(1), span(0), centre, covers, &mut mark);
     }
 
     /// Calls `mark` with each of `rows`' run of the cells of `columns` whose centres, as offsets
-    /// from `centre` in halves of a bit, `hit` holds of: a convex shape's cells of a row are one
-    /// run, which ends at the first cell past it. Rows in order.
+    /// from `centre` in halves of a bit, `hit` holds of, for a convex shape: a row's cells are one
+    /// run. Rows in order.
     fn runs(
         &self,
         rows: RangeInclusive<i128>,
@@ -206,18 +211,16 @@ impl Grid {
         mark: &mut impl FnMut(Range<usize>),
     ) {
         let index = |value: i128| usize::try_from(value).expect("a cell of the grid");
+        let centre = centre.to_array();
+        let offset = |axis: usize, index: i128| self.center_twice_along(axis, index) - centre[axis];
+        let mut last = None;
         for row in rows {
-            let mut run: Option<(usize, usize)> = None;
-            for column in columns.clone() {
-                let cell_at = index(row) * self.columns() + index(column);
-                if hit(self.center_twice(cell_at) - centre) {
-                    run = Some(run.map_or((cell_at, cell_at), |(first, _)| (first, cell_at)));
-                } else if run.is_some() {
-                    break;
-                }
-            }
-            if let Some((first, held)) = run {
-                mark(first..held + 1);
+            let across = offset(1, row);
+            let hits = |column: i128| hit(Flat::new(offset(0, column), across));
+            last = Run::of_row(*columns.start(), *columns.end(), last, hits);
+            if let Some(Run { first, end }) = last {
+                let start = index(row) * self.columns();
+                mark(start + index(first)..start + index(end) + 1);
             }
         }
     }
@@ -347,12 +350,15 @@ impl Grid {
     /// The center of `cell`, `[x, z]` in halves of a bit, exactly.
     pub(crate) fn center_twice(&self, cell: usize) -> Flat {
         let at = [cell % self.columns(), cell / self.columns()];
-        let step = i128::from(self.cell.to_bits());
-        let min = self.bounds.min();
         Flat::from_array([0, 1].map(|axis| {
             let index = i128::try_from(at[axis]).expect("a cell of the grid");
-            Halves::of(min[axis]) + step * (2 * index + 1)
+            self.center_twice_along(axis, index)
         }))
+    }
+
+    /// The center along `axis`, 0 for x and 1 for z, of the cells at `index`, in halves of a bit.
+    fn center_twice_along(&self, axis: usize, index: i128) -> i128 {
+        Halves::of(self.bounds.min()[axis]) + i128::from(self.cell.to_bits()) * (2 * index + 1)
     }
 
     /// Whether `hit` is true of a cell of the grid whose closed square the segment from `from` to
@@ -431,6 +437,13 @@ impl Grid {
         false
     }
 
+    /// `value / by` rounded down, for halves of a bit within twice the world's bound, which fit
+    /// `i64`, whose division is one instruction, where `i128`'s is a library call.
+    fn floor_halves(value: i128, by: i128) -> i128 {
+        let narrow = |value: i128| i64::try_from(value).expect("halves within the bound fit i64");
+        i128::from(narrow(value).div_euclid(narrow(by)))
+    }
+
     /// The index along `axis`, 0 for x and 1 for z, of `at`, which is within the bounds.
     pub(crate) fn index(&self, axis: usize, at: Num) -> usize {
         let offset = at.to_bits() - self.bounds.min()[axis].to_bits();
@@ -456,6 +469,58 @@ impl Rows {
     /// `i32` and each square 62 bits.
     const fn fit_lanes(&self, cell: i64) -> bool {
         self.reach + 8 * cell < 1 << 31
+    }
+}
+
+/// A row's run of cells, from column `first` to `end`, both in.
+#[derive(Debug, Clone, Copy)]
+struct Run {
+    first: i128,
+    end: i128,
+}
+
+impl Run {
+    /// The run of the columns from `low` to `high` that `hits` holds of, one run as a convex
+    /// shape's row is; `None` when it holds of none. Each boundary is searched from `near`'s, the
+    /// run of the row before, as a convex shape's boundaries move little from row to row: a
+    /// boundary that is still hit steps out until the first miss, and one that is missed steps in
+    /// until the first hit, so the cells between them take no test. A row whose run shares no
+    /// cell with `near`'s is searched from `low`.
+    fn of_row(
+        low: i128,
+        high: i128,
+        near: Option<Run>,
+        hits: impl Fn(i128) -> bool,
+    ) -> Option<Run> {
+        let first = near
+            .and_then(|near| {
+                let (first, end) = (near.first.clamp(low, high), near.end.clamp(low, high));
+                if hits(first) {
+                    Some(
+                        (low..first)
+                            .rev()
+                            .take_while(|&column| hits(column))
+                            .last()
+                            .unwrap_or(first),
+                    )
+                } else {
+                    (first + 1..=end).find(|&column| hits(column))
+                }
+            })
+            .or_else(|| (low..=high).find(|&column| hits(column)))?;
+        let from = near.map_or(first, |near| near.end.clamp(first, high));
+        let end = if from == first || hits(from) {
+            (from + 1..=high)
+                .take_while(|&column| hits(column))
+                .last()
+                .unwrap_or(from)
+        } else {
+            (first..from)
+                .rev()
+                .find(|&column| hits(column))
+                .expect("the first is hit")
+        };
+        Some(Run { first, end })
     }
 }
 

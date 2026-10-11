@@ -10,7 +10,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::body::Body;
-use crate::units::body_grid::{GridBody, Placed};
+use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
 use crate::units::living_unit::LivingUnit;
 use crate::units::relations::Relations;
@@ -145,7 +145,7 @@ impl Targets<'_, '_> {
     }
 
     /// The unit of `body`, a body of the grid `placed` built, as it was when the grid was built.
-    pub(crate) const fn unit_of(body: &GridBody<TargetKey>) -> LivingUnit {
+    pub(crate) const fn unit_of(body: &Placed<TargetKey>) -> LivingUnit {
         LivingUnit {
             id: body.id,
             pos: body.at,

@@ -2,7 +2,7 @@ use campfire_math::Num;
 use campfire_sim::Position;
 
 use crate::geometry::shape::Shape;
-use crate::units::body_grid::{BodyGrid, GridBody, Placed};
+use crate::units::body_grid::{BodyGrid, Placed};
 use crate::units::filter::Filter;
 use crate::units::team::Team;
 use crate::units::unit_row::UnitRow;
@@ -59,7 +59,7 @@ impl TargetIndex {
         rows: &UnitRows,
         query: TargetQuery<'_>,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-        visit: impl FnMut(&GridBody<usize>),
+        visit: impl FnMut(&Placed<usize>),
     ) {
         self.index(rows.units());
         TargetIndex::each_reached(&self.bodies, rows, query, seen, visit);
@@ -87,7 +87,7 @@ impl TargetIndex {
         rows: &UnitRows,
         query: TargetQuery<'_>,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-        mut visit: impl FnMut(&GridBody<usize>),
+        mut visit: impl FnMut(&Placed<usize>),
     ) {
         let TargetQuery {
             team,

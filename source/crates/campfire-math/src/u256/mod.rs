@@ -51,10 +51,17 @@ impl U256 {
         let middle_b = a_low * b_high;
         let high = a_high * b_high;
         // The middle terms sit 64 bits up; their sum with the low term's carry fits 130 bits,
-        // so it is added in two steps.
-        let middle = (middle_a & MASK) + (middle_b & MASK) + (low >> HALF);
+        // so it is added in two steps. No sum passes `u128`: the middle one is below 3 · 2⁶⁴,
+        // and the high one is the product's high half; the wrapping steps skip the checks a
+        // release build makes.
+        let middle = (middle_a & MASK)
+            .wrapping_add(middle_b & MASK)
+            .wrapping_add(low >> HALF);
         U256 {
-            high: high + (middle_a >> HALF) + (middle_b >> HALF) + (middle >> HALF),
+            high: high
+                .wrapping_add(middle_a >> HALF)
+                .wrapping_add(middle_b >> HALF)
+                .wrapping_add(middle >> HALF),
             low: (middle << HALF) | (low & MASK),
         }
     }

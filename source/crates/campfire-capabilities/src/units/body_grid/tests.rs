@@ -153,5 +153,22 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
             expected.sort_unstable();
             assert_eq!(got, expected, "{low:?} {high:?}");
         }
+        // Columns past the cell keys' 28 bits clamp to their ends: a band of z -0.3 to 0.3 m
+        // over every x covers rows -1 to 0 of the base, and is searched row by row, as it spans
+        // fewer rows than the level has bodies; it finds each body of its rows, in every column.
+        let mut got = Vec::new();
+        grid.visit([Num::MIN, m(-3)], [Num::MAX, m(3)], |body| {
+            got.push(body.id);
+        });
+        got.sort_unstable();
+        let in_band = |body: &&Placed<()>| {
+            let level = grid.levels.level(body.shape.bound());
+            let grow = m([5, 10, 12][usize::from(level)]);
+            let row = |at: Num| grid.levels.index(level, at.to_bits());
+            (row(m(-3) - grow)..=row(m(3) + grow)).contains(&row(body.at.get().z))
+        };
+        let mut expected: Vec<_> = bodies.iter().filter(in_band).map(|body| body.id).collect();
+        expected.sort_unstable();
+        assert_eq!(got, expected, "outliers {outliers}");
     }
 }

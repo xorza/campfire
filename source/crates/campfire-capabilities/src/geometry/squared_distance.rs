@@ -31,14 +31,16 @@ impl SquaredDistance {
         }
     }
 
-    /// The square of `reach`, not negative.
-    pub(crate) const fn of(reach: Num) -> SquaredDistance {
+    /// The square of `reach`'s bits, not negative, which fits `u128`.
+    pub(crate) const fn bits(reach: Num) -> u128 {
         debug_assert!(reach.to_bits() >= 0, "a reach is not negative");
         let bits = reach.to_bits().unsigned_abs() as u128;
-        SquaredDistance {
-            num: U256::product(bits, bits),
-            den: 1,
-        }
+        bits * bits
+    }
+
+    /// The square of `reach`, not negative.
+    pub(crate) const fn of(reach: Num) -> SquaredDistance {
+        SquaredDistance::whole(SquaredDistance::bits(reach))
     }
 }
 

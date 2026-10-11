@@ -66,6 +66,21 @@ struct Clip {
     high: Option<Fraction>,
 }
 
+/// A box's test of the points closer than a reach to it, as `Frame::nearest_to` measures them,
+/// with what each point's test shares made once: the corners, the edges from each to the next,
+/// their squared lengths, and each edge's bound on a point's cross product with it, squared,
+/// which is the squared reach times its squared length.
+#[derive(Debug, Clone, Copy)]
+struct Closer {
+    frame: Frame,
+    area: i128,
+    reach: u128,
+    corners: [Flat; 4],
+    edges: [Flat; 4],
+    lengths: [i128; 4],
+    limits: [U256; 4],
+}
+
 impl BodyBox {
     /// The least size: 2⁻¹⁰ m, about a millimeter, many bits above the rounding of a half
     /// edge, so the rounded box never lies flat at any angle.
@@ -173,14 +188,17 @@ impl BodyBox {
         [0, 1].map(|axis| Num::from_bits(a[axis].to_bits().abs() + b[axis].to_bits().abs()))
     }
 
-    /// The squared distance from `at` to the nearest point of the box at `centre`; 0 inside.
-    pub(crate) fn distance(&self, centre: Position, at: Position) -> SquaredDistance {
-        self.frame().nearest_to(flat(at) - flat(centre)).distance
-    }
-
-    /// How the distance from `at` to the box at `centre` lies against `reach`.
+    /// How the distance from `at` to the box at `centre` lies against `reach`: past it when `at`
+    /// lies past the box's extent and the reach along an axis, as the distance is at least that
+    /// gap; else as the nearest of the box's features lies against it.
     pub(crate) fn nearest(&self, centre: Position, at: Position, reach: Num) -> Ordering {
-        self.distance(centre, at).cmp(&SquaredDistance::of(reach))
+        let off = flat(at) - flat(centre);
+        let extent = self.extent();
+        let reach_bits = reach.to_bits();
+        if (0..2).any(|axis| off[axis].abs() > extent[axis].to_bits().saturating_add(reach_bits)) {
+            return Ordering::Greater;
+        }
+        Closer::new(self.frame(), SquaredDistance::bits(reach)).against(off)
     }
 
     /// The point of the box at `centre` nearest `at`, each coordinate rounded to the nearest bit:
@@ -254,6 +272,39 @@ impl BodyBox {
             nearest: best.0.cmp(&reach),
             share: best.1,
         }
+    }
+
+    /// Whether the straight path from `from` to `to` comes closer than `reach` to the box at
+    /// `centre`, as `approach` finds it, with no share: a path that meets the closed box is at 0,
+    /// and one that does not comes nearest at an end, or where a corner's nearest point lies
+    /// inside it, so it is closer when one of these is.
+    pub(crate) fn comes_within(
+        &self,
+        centre: Position,
+        from: Position,
+        to: Position,
+        reach: Num,
+    ) -> bool {
+        if reach <= Num::ZERO {
+            return false;
+        }
+        let frame = self.frame();
+        let start = flat(from) - flat(centre);
+        let path = flat(to) - flat(from);
+        let reach = SquaredDistance::bits(reach);
+        let closer = Closer::new(frame, reach);
+        if frame.meets_path(start, path) || closer.holds(start) || closer.holds(start + path) {
+            return true;
+        }
+        let length = path.dot(path);
+        frame.corners().into_iter().any(|corner| {
+            let off = corner - start;
+            let along = off.dot(path);
+            0 < along && along < length && {
+                let across = path.cross(off).unsigned_abs();
+                U256::product(across, across) < U256::product(reach, length.unsigned_abs())
+            }
+        })
     }
 
     /// `at` moved out of the box at `centre` when a body of `radius` there overlaps it, as a box
@@ -343,23 +394,25 @@ impl BodyBox {
         crosses || polygon.holds_point([at.x, at.z])
     }
 
-    /// Whether a point `off`, from the box's position in halves of a bit, comes closer than
-    /// `reach` to the box, exactly: as a grid's cell centres, whole only in halves, see it.
-    pub(crate) fn closer_twice(&self, off: Flat, reach: Num) -> bool {
+    /// The test of whether a point, from the box's position in halves of a bit, comes closer
+    /// than `reach` to the box, exactly: as a grid's cell centres, whole only in halves, see it.
+    pub(crate) fn closer_twice(&self, reach: Num) -> impl Fn(Flat) -> bool {
         let reach = reach
             .checked_mul_int(2)
             .expect("a reach within a body and a walker doubles");
-        self.frame_twice().nearest_to(off).distance < SquaredDistance::of(reach)
+        let closer = Closer::new(self.frame_twice(), SquaredDistance::bits(reach));
+        move |off| closer.holds(off)
     }
 
-    /// Whether the insides of the box and of a square share a point: the square's centre `off`
-    /// from the box's position, and its half side `half`, both in halves of a bit, as a grid's
-    /// cells lie. Touching is not overlap.
-    pub(crate) fn overlaps_square_twice(&self, off: Flat, half: i128) -> bool {
+    /// The test of whether the insides of the box and of a square share a point, from the
+    /// square's centre: its offset from the box's position, and the half side `half`, both in
+    /// halves of a bit, as a grid's cells lie. Touching is not overlap.
+    pub(crate) fn overlaps_square_twice(&self, half: i128) -> impl Fn(Flat) -> bool {
         let square = Frame {
             halves: [Flat::new(half, 0), Flat::new(0, half)],
         };
-        self.frame_twice().meets(off, square, true)
+        let frame = self.frame_twice();
+        move |off| frame.meets(off, square, true)
     }
 
     fn frame(&self) -> Frame {
@@ -458,6 +511,22 @@ impl Frame {
         best.expect("four edges")
     }
 
+    /// Whether the closed path from `start`, along `path`, meets the closed box, as `entry` finds
+    /// it, by separating axes, with no fraction: a box and a segment are convex, so they meet
+    /// unless one of the box's two slab axes or the path's normal separates them. Along a slab
+    /// the path runs from its start's value to its end's; across the path, the box spans its
+    /// half edges' crosses with the path either side of 0, and the path lies at its start's.
+    fn meets_path(&self, start: Flat, path: Flat) -> bool {
+        let area = self.quarter_area();
+        let (from, along) = (self.slabs(start), self.slabs(path));
+        let slab_apart = (0..2).any(|slab| {
+            let (from, to) = (from[slab], from[slab] + along[slab]);
+            from.min(to) > area || from.max(to) < -area
+        });
+        let [a, b] = self.halves;
+        !slab_apart && path.cross(start).abs() <= path.cross(a).abs() + path.cross(b).abs()
+    }
+
     /// The edge nearest `off`, which lies inside the box; the first on a tie.
     fn nearest_edge_inside(&self, off: Flat) -> usize {
         let corners = self.corners();
@@ -554,6 +623,95 @@ impl Frame {
             }
         }
         Some(clip)
+    }
+}
+
+impl Closer {
+    /// The test of the points closer than `√reach` to `frame`.
+    fn new(frame: Frame, reach: u128) -> Closer {
+        let corners = frame.corners();
+        let edges = [0, 1, 2, 3].map(|edge| corners[(edge + 1) % 4] - corners[edge]);
+        let lengths = edges.map(|edge| edge.dot(edge));
+        Closer {
+            frame,
+            area: frame.quarter_area(),
+            reach,
+            corners,
+            edges,
+            lengths,
+            limits: lengths.map(|length| U256::product(reach, length.unsigned_abs())),
+        }
+    }
+
+    /// Whether `off` lies closer than `√reach` to the box: inside it, at 0, or nearer than that
+    /// to an edge or a corner, the first found ending the search.
+    fn holds(&self, off: Flat) -> bool {
+        if self.inside(off) {
+            return self.reach > 0;
+        }
+        // Each edge is one compare against the reach, not `edge_against`'s order compared after:
+        // that made `grid/box_spans_closer` 26 % slower on a Ryzen.
+        (0..4).any(|edge| {
+            let off_start = off - self.corners[edge];
+            let along = off_start.dot(self.edges[edge]);
+            if along <= 0 {
+                off_start.length_squared() < self.reach
+            } else if along >= self.lengths[edge] {
+                (off - self.corners[(edge + 1) % 4]).length_squared() < self.reach
+            } else {
+                Closer::square(self.edges[edge].cross(off_start).unsigned_abs()) < self.limits[edge]
+            }
+        })
+    }
+
+    /// How the squared distance from `off` to the box lies against `reach`: inside it, 0; else
+    /// the nearest of its edges' distances, each measured against `reach` alone, with no compare
+    /// of one with another, and the first closer one ending the search.
+    fn against(&self, off: Flat) -> Ordering {
+        if self.inside(off) {
+            return 0.cmp(&self.reach);
+        }
+        let mut nearest = Ordering::Greater;
+        for edge in 0..4 {
+            match self.edge_against(off, edge) {
+                Ordering::Less => return Ordering::Less,
+                order => nearest = nearest.min(order),
+            }
+        }
+        nearest
+    }
+
+    fn inside(&self, off: Flat) -> bool {
+        self.frame
+            .slabs(off)
+            .iter()
+            .all(|value| value.abs() <= self.area)
+    }
+
+    /// How the squared distance from `off` to `edge`, its nearest point on it, lies against
+    /// `reach`: a corner's square when the nearest is an end, else the square of the cross
+    /// product with the edge against `limits`, over the same squared length.
+    fn edge_against(&self, off: Flat, edge: usize) -> Ordering {
+        let off_start = off - self.corners[edge];
+        let along = off_start.dot(self.edges[edge]);
+        if along <= 0 {
+            off_start.length_squared().cmp(&self.reach)
+        } else if along >= self.lengths[edge] {
+            (off - self.corners[(edge + 1) % 4])
+                .length_squared()
+                .cmp(&self.reach)
+        } else {
+            Closer::square(self.edges[edge].cross(off_start).unsigned_abs()).cmp(&self.limits[edge])
+        }
+    }
+
+    /// `value²`: below 2⁶⁴, it fits `u128`, and takes one multiply in place of four.
+    const fn square(value: u128) -> U256 {
+        if value >> 64 == 0 {
+            U256::from_u128(value * value)
+        } else {
+            U256::product(value, value)
+        }
     }
 }
 

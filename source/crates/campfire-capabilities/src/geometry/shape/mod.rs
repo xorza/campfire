@@ -69,7 +69,34 @@ impl Shape {
         to: Position,
         reach: Num,
     ) -> bool {
-        self.approach(Metric::Planar, at, from, to, reach).nearest == Ordering::Less
+        // A path whose span along an axis lies at least `reach` beyond the shape's comes no
+        // closer: most shapes a search of buckets finds lie so, and take no exact test. A reach
+        // past every number saturates, and no span lies beyond it.
+        let (centre, ends) = (at.get(), [from.get(), to.get()]);
+        let extent = self.extent();
+        let reach_bits = reach.to_bits();
+        let clear = |centre: Num, ends: [Num; 2], extent: Num| {
+            let (low, high) = (
+                ends[0].min(ends[1]).to_bits(),
+                ends[0].max(ends[1]).to_bits(),
+            );
+            let (centre, far) = (
+                centre.to_bits(),
+                extent.to_bits().saturating_add(reach_bits),
+            );
+            low - centre >= far || centre - high >= far
+        };
+        if clear(centre.x, ends.map(|end| end.x), extent[0])
+            || clear(centre.z, ends.map(|end| end.z), extent[1])
+        {
+            return false;
+        }
+        match self {
+            Shape::Circle(_) => {
+                self.approach(Metric::Planar, at, from, to, reach).nearest == Ordering::Less
+            }
+            Shape::Box(body) => body.comes_within(at, from, to, reach),
+        }
     }
 
     /// How the straight path from `from` to `to` comes to the shape at `at` in `metric`, against

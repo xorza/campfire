@@ -37,6 +37,11 @@ fn polygon(body: &BodyBox, centre: Position) -> Polygon {
     Polygon::new(points.to_vec()).unwrap()
 }
 
+/// The squared distance from `at` to the nearest point of `body` at `centre`; 0 inside.
+fn distance(body: &BodyBox, centre: Position, at: Position) -> SquaredDistance {
+    body.frame().nearest_to(flat(at) - flat(centre)).distance
+}
+
 fn flat_vec3(off: Flat) -> Vec3 {
     Vec3::new(Num::from_bits(off[0]), Num::ZERO, Num::from_bits(off[1]))
 }
@@ -196,11 +201,11 @@ fn a_distance_runs_to_the_nearest_edge_or_corner() {
     );
     // Two distances compare exactly: 3 m from the edge at x = 2 and from the one at z = 1;
     // a bit further from the second is further.
-    let side = body.distance(centre, at("5", "0"));
-    assert_eq!(side, body.distance(centre, at("0", "4")));
-    assert!(body.distance(centre, at("0", "4.000000059604644775390625")) > side);
+    let side = distance(&body, centre, at("5", "0"));
+    assert_eq!(side, distance(&body, centre, at("0", "4")));
+    assert!(distance(&body, centre, at("0", "4.000000059604644775390625")) > side);
     // √18 from the corner against 4 from an edge: 18 > 16.
-    assert!(body.distance(centre, at("5", "4")) > body.distance(centre, at("0", "5")));
+    assert!(distance(&body, centre, at("5", "4")) > distance(&body, centre, at("0", "5")));
     // Turned a quarter, the edge at x = 1 lies 3 m from (4, 0).
     let upright = made("4", "2", "90");
     assert_eq!(
@@ -226,7 +231,7 @@ fn the_nearest_point_lies_on_the_nearest_edge_or_corner() {
     // the exact distance d, and its square within 2d + 1 of d².
     let way = (flat(point) - flat(probe)).length_squared();
     let slack = 2 * (way.floor_root() + 1) + 1;
-    let gap = turned.distance(centre, probe);
+    let gap = distance(&turned, centre, probe);
     assert!(SquaredDistance::whole(way - slack) < gap && gap < SquaredDistance::whole(way + slack));
 }
 
@@ -237,17 +242,23 @@ fn twice_the_scale_sees_halves_of_a_bit() {
     // 1.5 m along x lies half a meter off the edge: not closer than half a meter, closer than a
     // bit more.
     let off = Flat::new(twice(1, 1 << 24), 0);
-    assert!(!body.closer_twice(off, Num::HALF));
-    assert!(body.closer_twice(off, Num::HALF + Num::EPSILON));
+    assert!(!body.closer_twice(Num::HALF)(off));
+    assert!(body.closer_twice(Num::HALF + Num::EPSILON)(off));
     // Half a bit past the edge: closer than a bit, not than nothing.
     let off = Flat::new(twice(1, 1), 0);
-    assert!(body.closer_twice(off, Num::EPSILON));
-    assert!(!body.closer_twice(off, Num::ZERO));
+    assert!(body.closer_twice(Num::EPSILON)(off));
+    assert!(!body.closer_twice(Num::ZERO)(off));
     // A square of 1 m centred 1.5 m along x touches the box's edge; half a bit nearer, it
     // overlaps.
     let half = 1 << 24;
-    assert!(!body.overlaps_square_twice(Flat::new(twice(1, 1 << 24), 0), half));
-    assert!(body.overlaps_square_twice(Flat::new(twice(1, (1 << 24) - 1), 0), half));
+    assert!(!body.overlaps_square_twice(half)(Flat::new(
+        twice(1, 1 << 24),
+        0
+    )));
+    assert!(body.overlaps_square_twice(half)(Flat::new(
+        twice(1, (1 << 24) - 1),
+        0
+    )));
 }
 
 #[test]
@@ -289,6 +300,22 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
             share: share(2, 5)
         }
     );
+    // As a yes or no through the shape, which tests the spans first: touching at the reach is
+    // not closer, a bit more reach is; through it, any reach but 0; along x = 4, 2 m off the end
+    // at x = 2, the spans alone tell.
+    let as_shape = Shape::Box(body);
+    let comes = |from: Position, to: Position, reach: Num| {
+        let comes = as_shape.comes_within(centre, from, to, reach);
+        assert_eq!(comes, body.comes_within(centre, from, to, reach));
+        comes
+    };
+    let bit = Num::EPSILON;
+    assert!(!comes(at("-10", "3"), at("10", "3"), num("2")));
+    assert!(comes(at("-10", "3"), at("10", "3"), num("2") + bit));
+    assert!(!comes(at("-10", "0"), at("10", "0"), Num::ZERO));
+    assert!(comes(at("-10", "0"), at("10", "0"), bit));
+    assert!(!comes(at("4", "-5"), at("4", "5"), num("2")));
+    assert!(comes(at("4", "-5"), at("4", "5"), num("2") + bit));
     let short = body.approach(
         centre,
         at("-10", "3"),
@@ -561,6 +588,9 @@ fn check_point(body: &BodyBox, centre: Position, probe: Position, reach: Num) {
         expected,
         "{body:?} {probe:?}"
     );
+    let within =
+        Closer::new(body.frame(), SquaredDistance::bits(reach)).holds(flat(probe) - flat(centre));
+    assert_eq!(within, expected == Ordering::Less, "{body:?} {probe:?}");
 }
 
 /// A path's approach agrees with its crossings of the edges where it meets the box, and else
@@ -568,6 +598,13 @@ fn check_point(body: &BodyBox, centre: Position, probe: Position, reach: Num) {
 fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, reach: Num) {
     let approach = body.approach(centre, from, to, reach);
     let (start, path) = ((flat(from) - flat(centre)), (flat(to) - flat(from)));
+    let case = format!("{body:?} {from:?} {to:?} {reach:?}");
+    let comes_within = body.comes_within(centre, from, to, reach);
+    assert_eq!(comes_within, approach.nearest == Ordering::Less, "{case}");
+    let by_shape = Shape::Box(*body).comes_within(centre, from, to, reach);
+    assert_eq!(by_shape, comes_within, "{case}");
+    let meets = body.frame().meets_path(start, path);
+    assert_eq!(meets, body.frame().entry(start, path).is_some(), "{case}");
     let corners = body.frame().corners();
     let enters = (0..4)
         .filter_map(|edge| crossing(start, path, corners[edge], corners[(edge + 1) % 4]))
@@ -670,12 +707,17 @@ fn random_boxes(scale: i64) {
             let (probe, reach) = (draws.near(centre, 15), draws.reach(10));
             check_point(&body, centre, probe, reach);
         }
-        let (from, to, reach) = (
-            draws.near(centre, 20),
-            draws.near(centre, 20),
-            draws.reach(5),
-        );
-        check_path(&body, centre, from, to, reach);
+        // Paths of any length, and of none, through the box or by it, against reaches from 0.
+        for _ in 0..4 {
+            let (from, to, reach) = (
+                draws.near(centre, 20),
+                draws.near(centre, 20),
+                draws.reach(5),
+            );
+            check_path(&body, centre, from, to, reach);
+            check_path(&body, centre, from, from, reach);
+            check_path(&body, centre, from, to, Num::ZERO);
+        }
         let high = 3 * draws.meter();
         let radius = Num::from_bits(draws.bits(BodyBox::MIN_SIZE.to_bits(), high));
         check_push(&body, centre, draws.near(centre, 12), radius);
