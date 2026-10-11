@@ -2,7 +2,7 @@
 
 ## Mechanism
 
-Who starts a unit's actions and moves it, and what players choose before their units spawn. Both kinds of control go through the control relation of the [overview](00-overview.md#control): `orders` for units that take orders, `character` for units a player drives. Both start the same actions ([Actions](actions.md)).
+Who starts a unit's actions and moves it, and what players choose before their units spawn: `orders` for units that take orders, `character` for units a player drives ([Control](00-overview.md#control)). Both start the same actions ([Actions](actions.md)).
 
 ## Data
 
@@ -12,34 +12,32 @@ A unit type's `orders = { ai = "scripts/creep.rhai", think_ms = 500 }` names its
 
 ### Orders
 
-Units that take orders: move, attack, an action (by its id, with a target), stop, hold (planned), follow a path, and the orders of the action kinds other capabilities add (use, enter, train, build, gather), production's `cancel_train`, `cancel_build` and `rally` ([Production](production.md#rules)), items' `buy`, `sell` and `swap` ([Items](items.md#rules)), and progression's `learn` ([Progression](progression.md#rules)), which no unit carries out: it applies as the tick's inputs do. Players, bots and AI issue the same orders, and an order names the units it goes to. The capability runs them: it asks `navigation` for a route, and starts the actions through the pipeline.
+Move, attack, an action (by its slot, with a target), stop, hold (planned), follow a path, and the orders other capabilities add: `use` ([Interaction](interaction.md)), production's `cancel_train`, `cancel_build` and `rally` ([Production](production.md#rules)), items' `buy`, `sell` and `swap` ([Items](items.md#rules)), and progression's `learn` ([Progression](progression.md#rules)), which apply as the tick's inputs do, not as a unit's action. Players, bots and AI issue the same orders. `orders` runs them: it asks `navigation` for a route, and starts actions through the pipeline.
 
-- **Queues** (planned): an order can wait behind the current ones (shift-click).
-- **Groups:** one command names the units it goes to, in increasing stable id, and each of them that its player controls carries it out; a command whose list is empty, out of order or names a unit twice is ignored, as one that does not decode is. A move to many units moves them as a group, which keeps its shape on a move away from it and shares one route search ([Groups](navigation.md#groups)); formations and flow fields come later.
-- **Stop:** a unit ends what it has under way, an attack, a cast in its windup or walking in range, or a charge, with nothing spent, cuts a channel, drops its target and its destination, and leaves its path, so it stands; a queue of trains stays.
-- **Out of sight.** An order's unit target is one its player's vision group sees as the order applies, every unit in a match with no `vision`; an order that aims at any other is ignored, so a stable id never tells a client what its group does not see. A target that leaves sight after the order applies follows its action's rules.
+- **Queues** (planned): an order waits behind the current ones (shift-click).
+- **Groups:** a command names its units in increasing stable id, and each that its player controls carries it out; an empty list, one out of order or one that names a unit twice is ignored. A move to many units moves them as a group sharing one route ([Groups](navigation.md#groups)); formations and flow fields come later.
+- **Stop:** a unit ends what it has under way, an attack, a cast in its windup or walking in range, or a charge, with nothing spent; cuts a channel; drops its target and destination; leaves its path. A train queue stays.
+- **Out of sight.** An order's unit target is one its player's group sees as the order applies, any unit in a match with no `vision`; an order at any other is ignored, so a stable id never tells a client what its group does not see.
 - **Kept behind a block.** An order a tag blocks waits, and runs when the block ends ([Tags](stats.md#tags)).
 
 ### AI
 
-A unit type names an AI script; `on_think(ctx, unit)` runs every `think_ms`, rounded up to whole ticks, in the Think stage.
+A unit type names an AI script; `on_think(ctx, unit)` runs every `think_ms`, rounded up to whole ticks, in Think.
 
-- Think times are staggered by stable id: a unit first thinks in the first tick whose number leaves the remainder of its id when divided by its period, so the units of a type spread over the period, and then a period after each think. The units due longest think first, then by stable id. A unit whose call finds the think pool spent stays due, so under load AI thinks later, and no unit misses its turn for good.
-- AI sees only game queries (units in a radius, the nearest visible unit a filter selects, recent attackers) and the sim RNG; results are sorted by stable id. Every call of a tick's Think sees the units as the stage began. Until a match has `vision`, every unit is visible.
-- Orders go through `ctx`, which checks each as it is queued: an AI orders only the unit that thinks, and an attack needs a weapon whose filter selects the target. An AI type loads only when its script has `on_think(ctx, unit)`. They apply when the call returns, and not at all when it fails. `order_follow_path` drops the target; the unit then walks back to the waypoint it had not reached. `order_move(unit, pos)` drops the target and walks to `pos`, within the map's bounds, as a player's move does; a unit that walks a path leaves it until `order_follow_path`.
-- **Reset.** `order_reset(unit)` drops the target and walks the unit to its spawn place, `unit.spawn_pos`, off any path, as a League of Legends jungle monster's hard reset does: until it arrives it takes no order, an AI's or a player's. As the Think stage after its arrival begins, before any unit thinks, every pool of it is full again; a unit that dies on the way stops resetting, with no heal. A unit with no spawn place fails the call.
-- The MOBA test content ships creep, tower and camp AI as ordinary scripts.
-- An avatar takes no AI, and the load refuses one with `orders`: a player controls it, and a bot plays it through player inputs ([Game scripting](../03-game-scripting.md)).
+- Think times are staggered by stable id: a unit first thinks in the first tick whose number leaves its id's remainder by its period, then a period after each think. The units due longest think first, then by stable id. A unit whose call finds the think pool spent stays due, so under load AI thinks later, and no unit loses its turn.
+- AI sees only game queries and the sim RNG; results are sorted by stable id, and every call of a tick's Think sees the units as the stage began. Without `vision`, every unit is visible.
+- Orders go through `ctx`, checked as they are queued: an AI orders only the unit that thinks, and an attack needs a weapon whose filter selects the target. They apply when the call returns, and not at all when it fails. `order_follow_path` drops the target, and the unit walks back to the waypoint it had not reached. `order_move(unit, pos)` drops the target and walks to `pos`, within the bounds; a unit on a path leaves it until `order_follow_path`. An AI type loads only when its script has `on_think`.
+- **Reset.** `order_reset(unit)` drops the target and walks the unit to `unit.spawn_pos`, off any path, as a League of Legends jungle monster's hard reset: it takes no order until it arrives, and as the next Think begins, before any unit thinks, its life and pools are full again. A unit that dies on the way stops resetting, unhealed. A unit with no spawn place fails the call.
+- The MOBA test content's creep, tower and camp AI are ordinary scripts.
+- An avatar takes no AI, and the load refuses one with `orders`: a player controls it, and a bot plays it through player inputs.
 
 ### Character
 
-Units a player drives directly, one input frame per tick: movement keys, view angles (yaw, pitch), buttons (jump, crouch, and one for each action slot the mode binds: fire, use, reload, abilities), and the tick the player's screen was showing. A button starts the action of its slot, aimed where the character looks.
-
-The character controller moves a 3D capsule against level geometry, with gravity, jumping, stairs, slopes, crouching and ladders, on its layer. Clients predict their own character every frame with the same code.
+Planned. A player drives a unit with one input frame per tick: movement keys, view angles (yaw, pitch), buttons (jump, crouch, and one for each action slot the mode binds), and the tick the player's screen showed. A button starts its slot's action, aimed where the character looks. The controller moves a 3D capsule against level geometry, with gravity, jumping, stairs, slopes, crouching and ladders, on its layer; clients predict their own character every frame with the same code.
 
 ### Choices
 
-A player owns any number of units, or none. A mode that lets players choose before their units spawn, a hero, a class, a faction, a loadout of weapons or spells, declares each choice:
+A mode that lets players choose before their units spawn, a hero, a class, a faction, a loadout, declares each choice:
 
 ```toml
 [choices.hero]
@@ -48,14 +46,14 @@ unique = true        # no two players choose the same
 [choices.spells]
 offers = "loadout"   # the entries of the mode's loadout
 count = 2            # the values a player chooses; 1 by default
-slot = "spell"       # the slot kind the entries fill, whose ranks they have
+slot = "spell"       # the slot kind the entries fill
 ```
 
-A choice of loadout entries names the slot kind they fill, and one of avatars names none; every choice of loadout entries fills a kind of the same ranks, as each entry loads with one count of ranks. `ctx.choose(player, choice, values)` records a player's choice, from a mode input as the mode reads it: exactly `count` values, one of which may be given alone, none twice, each one the choice offers and, with `unique`, none another player chose; a second choice replaces the first. `ctx.chosen(player, choice)` lists the values in order, empty before the player chose, and `ctx.available(player, choice, value)` tells whether no other player chose a value of a unique choice. The choices are state, and a call that fails changes none. `ctx.team_of(player)` names a player's team. A unit spawns with `ctx.spawn_unit(type, team, pos, player)`, owned by `player`, who must play on `team`: a player's units play on its team, so the team of a unit a player orders names the player's vision group; it spawns when the call ends, so the call gets a new unit, which it can give to `ctx.grant` and whose `.state` it can write, but whose other fields it cannot read. `ctx.grant(unit, slot_kind, ids)` puts loadout entries in a slot kind of a unit ([Slot kinds](actions.md#data)), each with the ranks of that kind. A MOBA's pick, a shooter's class and loadout, an RTS's faction and an MMO's character creation are choices.
+A choice of loadout entries names the slot kind they fill, and every such choice fills a kind of the same ranks. `ctx.choose(player, choice, values)` records a player's choice from a mode input: exactly `count` values, of which one may be given alone, none twice, each one the choice offers, and with `unique` none another player chose; a second choice replaces the first. `ctx.chosen(player, choice)` lists the values, empty before a choice, and `ctx.available(player, choice, value)` tells whether no one else chose a unique value. The choices are state. `ctx.team_of(player)` names a player's team. `ctx.spawn_unit(type, team, pos, player)` spawns a unit owned by `player`, who must play on `team`, so a unit a player orders names the player's vision group; it spawns when the call ends, and the call gets a new unit for `ctx.grant` and its `.state` ([New units at once](../08-script-api.md#rules)). `ctx.grant(unit, slot_kind, ids)` puts loadout entries in a slot kind.
 
 ## State and derived
 
-- **State:** each unit's orders and queue, its AI's next think; each player's choices; each driven unit's last input frame and the controller's state (velocity, grounded).
+- **State:** each unit's orders, its AI's next think; each player's choices; later each driven unit's last input frame and the controller's state.
 
 ## Script API
 
@@ -63,11 +61,11 @@ A choice of loadout entries names the slot kind they fill, and one of avatars na
 
 ## Network
 
-Position and the current animation go to everyone who sees the unit. The client predicts what its player controls directly, and the start of its own orders; everything else is interpolated.
+Position and animation go to everyone who sees the unit. The client predicts what its player drives and the start of its own orders; everything else is interpolated.
 
 ## Cost
 
-Each due AI costs one `on_think` call, under the think pool. Each order costs its route request once, and each driven unit one controller step a tick.
+Each due AI costs one `on_think` call, under the think pool; each order its route request once; each driven unit a controller step a tick.
 
 ## Genres
 

@@ -2,22 +2,24 @@
 
 ## Mechanism
 
-How units grow during a match or a life: experience on **tracks**, each with its own levels; points to learn ranks of actions; and **perks** that grant modifiers and actions. `stats` owns a unit's level, as an input to its stats; `progression` decides when it changes. A MOBA hero has one track; a Skyrim character a track for each skill, whose level-ups feed the character's level, as Skyrim's skills level by use.
+How units grow during a match or a life: experience on **tracks**, each with its own levels; points to learn ranks of actions; and **perks** that grant modifiers and actions. `stats` owns a unit's level; `progression` decides when it changes. A MOBA hero has one track; a Skyrim character one for each skill, whose level-ups feed the character's level.
 
 ## Data
 
-The mode's `[tracks.<name>]`, at most 32: the experience each level needs, from level 2, positive and strictly ascending (`levels = [280, 660, ...]`), and whether the track is the unit's `level` (`level = true`, one track at most), which its stats read. A unit type lists the tracks it has: `tracks = ["level"]`. The slot kinds' `ranks` and `levels` give the level of the `level` track each rank of an action needs ([Actions](actions.md#data)). A package's `[perks.<id>]`: what it needs (tracks at levels, other perks), its cost in points, and what it grants (modifiers, held as passives, and actions in a slot kind). A unit type lists the perks its units may take, `perks = ["..."]`, each one a package declares, as Dota 2 gives each hero its own talents; a unit takes no perk its type does not list. A perk may name a group, `group = "<name>"`, of which a unit takes at most one, as Dota 2's talent pairs at each level; a perk in no group excludes none. Perks are planned, for the imported games that need them.
+The mode's `[tracks.<name>]`, at most 32: the experience each level needs from level 2, positive and strictly ascending (`levels = [280, 660, ...]`), and whether it is the unit's `level` (`level = true`, one track at most), which its stats read. A unit type lists its tracks: `tracks = ["level"]`. The slot kinds' `levels` give the `level` track's level each rank needs ([Actions](actions.md#data)).
+
+Perks are planned: a package's `[perks.<id>]` with what it needs (tracks at levels, other perks), its cost in points, and what it grants (modifiers held as passives, actions in a slot kind); a unit type lists the perks it may take, as Dota 2 gives each hero its talents; a perk's `group` admits one perk of the group, as Dota 2's talent pairs.
 
 ## Rules
 
-- **Experience.** `ctx.add_xp(unit, track, amount)`, or the effect `xp = { track, amount }`, adds experience to a track of any unit: a hero's, an RTS unit's veterancy, a Skyrim character's archery when an arrow hits. The amount is a decimal, not negative, so a share splits exactly, and experience stops at the largest number; a unit without the track fails the call. A track's level is the highest it reached, as experience meets each threshold; experience never lowers it. Each level reached on a track runs the mode's `on_level_up(ctx, unit, track, level)`, in the Mode stage after `on_unit_died`, in the order reached, which may add experience to another track: Skyrim's rule, character experience from skill level-ups, is that hook. A level a hook reaches runs in the same stage, so a chain ends within the tick, as levels are finite. A call that finds the mode pool spent waits, with those after it, for a later tick's Mode stage, and runs there first; one whose unit is gone by then does not run. A level reached on the `level` track raises the unit's level, and with it its stats and, by the rule of a maximum that rises, its pools ([Pools](stats.md#pools)).
-- **Points.** A unit with the `level` track has a point for each level it has there: one as it spawns, at level 1, and one more for each level it reaches, as League of Legends and Dota 2 give them, so 18 levels give 18 points. A unit keeps the points it does not spend.
-- **Learning.** A player learns by the order `learn = slot`: the next rank of the action in the slot, for a point. The order holds when the player controls the unit, the slot's kind has `ranks`, the action is below its last rank, the unit has a point, and the unit's level is at least the one the kind's `levels` give the next rank; otherwise it is dropped, as an order that fails its checks is. A dead unit learns too, as in League of Legends and Dota 2. Learning is not an order of the unit's actions: it stops nothing under way, so a channel or a walk goes on. It applies in Inputs, in the order of the tick's orders, so a cast ordered after it in the same tick starts at the new rank, and a passive holds its new rank from the same stage. `ctx.learn` grants a rank with no point and no level rule; `ctx.grant_perk` grants a perk with no point and no rule, its type's list and its group included.
-- **Perks** grant what they name for as long as the unit has them; a perk is never lost unless a script removes it.
+- **Experience.** `ctx.add_xp(unit, track, amount)`, or the effect `xp = { track, amount }`, adds a decimal amount, not negative, to a track of any unit, stopping at the largest number; a unit without the track fails the call. A track's level is the highest it reached, as experience meets each threshold, and never falls. Each level reached runs the mode's `on_level_up(ctx, unit, track, level)`, in Mode after `on_unit_died`, in the order reached; it may add experience to another track, as Skyrim's skills feed its character level, and a level it reaches runs in the same stage, so a chain ends within the tick. A call that finds the mode pool spent waits, with those after it, for a later tick, and one whose unit is gone by then does not run. A level of the `level` track raises the unit's level, its stats and, by the rule of a rising maximum, its pools ([Pools](stats.md#pools)).
+- **Points.** A unit with the `level` track has a point for each level it has, one as it spawns, so 18 levels give 18 points, as in League of Legends and Dota 2, and keeps those it does not spend.
+- **Learning.** `learn = slot` learns the slot's action's next rank for a point, when the player controls the unit, the slot's kind has `ranks`, the action is below its last rank, the unit has a point, and its level is at least the next rank's; otherwise it is dropped. A dead unit learns too. Learning stops nothing under way. It applies in Inputs, in order, so a cast ordered after it in the tick starts at the new rank. `ctx.learn` grants a rank with no point and no level rule; `ctx.grant_perk` a perk with no point and no rule.
+- **Perks** grant what they name while the unit has them; a perk is lost only if a script removes it.
 
 ## State and derived
 
-- **State:** each unit's experience and level on each track, its unspent points, and its perks. A level is state, not derived from experience, so a script may set it, as `ctx.learn` grants a rank. Points are state, not derived from the level, as `ctx.learn` spends none.
+- **State:** each unit's experience and level on each track, its unspent points, its perks. Levels and points are state, not derived, as `ctx.learn` grants a rank with neither.
 
 ## Script API
 
@@ -25,7 +27,7 @@ The mode's `[tracks.<name>]`, at most 32: the experience each level needs, from 
 
 ## Network
 
-Experience, points and perks go to the unit's owner; the level to everyone who sees the unit. A client predicts its own units' points and the ranks they learn, as it predicts their actions.
+Experience and points go to the unit's owner, or as the mode sets ([Replication audiences](../14-replication-audiences.md), `progression`); the level to everyone who sees the unit. A client predicts its own units' points and the ranks they learn.
 
 ## Cost
 
@@ -33,4 +35,4 @@ A level reached costs an `on_level_up` call, and on the `level` track a refresh 
 
 ## Genres
 
-A MOBA's levels 1 to 18 and ability ranks; an RTS's veterancy; an MMO's levels and talents; Skyrim's skills, character level and perk trees; Diablo's levels and skill points. A shooter and a battle royale take none, or a mode's own perks.
+A MOBA's levels and ability ranks; an RTS's veterancy; an MMO's levels and talents; Skyrim's skills and perk trees; Diablo's levels and skill points.
