@@ -3,9 +3,11 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 use serde::{Deserialize, Serialize};
 
 use crate::num::{Num, SinCos};
+use crate::vec3::step_moves::StepMoves;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+mod step_moves;
 
 /// A 3D vector of `Num`s; the ground plane is x and z, height is y.
 ///
@@ -56,7 +58,7 @@ impl Vec3 {
         )
     }
 
-    pub const fn checked_div(self, divisor: Num) -> Option<Vec3> {
+    pub fn checked_div(self, divisor: Num) -> Option<Vec3> {
         Vec3::from_parts(
             self.x.checked_div(divisor),
             self.y.checked_div(divisor),
@@ -152,18 +154,16 @@ impl Vec3 {
         let offset = target.checked_sub(self)?;
         // The exact distance is above `step`, so the rounded one is at least `step`: every
         // ratio below is at most 1, and each move at most its offset.
-        let distance = i128::from(offset.checked_length()?.to_bits());
-        let step = i128::from(step.to_bits());
-        let advance = |from: Num, offset: Num| {
-            let moved = Num::from_raw_ratio(i128::from(offset.to_bits()) * step, distance)
-                .expect("a move is at most its offset");
+        let distance = offset.checked_length()?.to_bits();
+        let moves = StepMoves::new(step.to_bits(), distance).of([offset.x, offset.y, offset.z]);
+        let advance = |from: Num, moved: Num| {
             from.checked_add(moved)
                 .expect("a move ends between the start and the target")
         };
         Some(Vec3::new(
-            advance(self.x, offset.x),
-            advance(self.y, offset.y),
-            advance(self.z, offset.z),
+            advance(self.x, moves[0]),
+            advance(self.y, moves[1]),
+            advance(self.z, moves[2]),
         ))
     }
 

@@ -1,5 +1,6 @@
 use crate::num::{Num, SinCos, to_i64};
 use crate::rounding::Rounding;
+use crate::wide_division::WideDivision;
 
 /// Fractional bits of the internal fixed point. Every intermediate of the kernels is at most 1 in
 /// magnitude, so it fits `i64` and a product of two is a single 64×64 multiply.
@@ -17,7 +18,7 @@ const PI_WIDE: i128 =
 const HALF_PI_WIDE: i128 =
     Rounding::NearestEven.shift_right(PI_SCALED.cast_signed(), PI_BITS - WIDE_BITS + 1);
 /// 2/π · 2⁶², to find the quadrant with a multiply.
-const TWO_OVER_PI: i64 = to_i64(Rounding::NearestEven.divide(1 << 124, HALF_PI_WIDE));
+const TWO_OVER_PI: i64 = to_i64(Rounding::NearestEven.divide_in_const(1 << 124, HALF_PI_WIDE));
 /// Fractional bits of π/2 for reducing an angle: with 101, `n · π/2` stays exact to 2⁻⁶² for
 /// every quadrant count `n` of a `Num`, which is below 2³⁹.
 const REDUCE_BITS: u32 = 101;
@@ -110,7 +111,7 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     }
 }
 
-pub(super) const fn atan2(y: Num, x: Num) -> Num {
+pub(super) fn atan2(y: Num, x: Num) -> Num {
     let y_abs = y.to_bits().unsigned_abs();
     let x_abs = x.to_bits().unsigned_abs();
     if y_abs == 0 && x_abs == 0 {
@@ -130,20 +131,30 @@ pub(super) const fn atan2(y: Num, x: Num) -> Num {
     let entry = to_index(((small_cut << (ATAN_STEP_BITS + 1)) + large_cut) / (2 * large_cut));
 
     // Rotating (large, small) by −atan(k/32) leaves a vector whose tangent u is about 1/64 at most.
-    let cos_k = ATAN_COS[entry] as i128;
-    let sin_k = ATAN_SIN[entry] as i128;
-    let x_rot = large as i128 * cos_k + small as i128 * sin_k;
-    let y_rot = small as i128 * cos_k - large as i128 * sin_k;
+    let cos_k = i128::from(ATAN_COS[entry]);
+    let sin_k = i128::from(ATAN_SIN[entry]);
+    let x_rot = i128::from(large) * cos_k + i128::from(small) * sin_k;
+    let y_rot = i128::from(small) * cos_k - i128::from(large) * sin_k;
     let normalize = x_rot
         .cast_unsigned()
         .bit_width()
         .saturating_sub(WIDE_BITS + 1);
-    let u = to_i64(((y_rot >> normalize) << WIDE_BITS) / (x_rot >> normalize));
+    // |u| ≤ 2⁻⁶ and a hair, so its quotient at 2⁻⁶² fits 64 bits, as the divisor does.
+    let rotated = to_i64(y_rot >> normalize);
+    let quotient = to_i64(
+        WideDivision::of(
+            u128::from(rotated.unsigned_abs()) << WIDE_BITS,
+            (x_rot >> normalize).cast_unsigned(),
+        )
+        .quotient
+        .cast_signed(),
+    );
+    let u = if rotated < 0 { -quotient } else { quotient };
 
     // |u| ≤ 2⁻⁶ and a hair: the first omitted term, u⁹/9, is below 2⁻⁵⁴.
     let u2 = mul(u, u);
     let atan_u = u - mul(u, mul(u2, INV_3 - mul(u2, INV_5 - mul(u2, INV_7))));
-    let mut angle = ATAN_ANGLE[entry] as i128 + atan_u as i128;
+    let mut angle = i128::from(ATAN_ANGLE[entry]) + i128::from(atan_u);
 
     if steep {
         angle = HALF_PI_WIDE - angle;
@@ -212,8 +223,8 @@ const fn atan_table(column: AtanColumn) -> [i64; ATAN_ENTRIES] {
             .cast_signed();
         table[k] = to_i64(match column {
             AtanColumn::Angle => atan_series(halve(halve(tangent))) << 2,
-            AtanColumn::Cos => Rounding::NearestEven.divide(1 << (2 * WIDE_BITS), root),
-            AtanColumn::Sin => Rounding::NearestEven.divide(tangent << WIDE_BITS, root),
+            AtanColumn::Cos => Rounding::NearestEven.divide_in_const(1 << (2 * WIDE_BITS), root),
+            AtanColumn::Sin => Rounding::NearestEven.divide_in_const(tangent << WIDE_BITS, root),
         });
         k += 1;
     }
@@ -274,7 +285,7 @@ const fn halve(t: i128) -> i128 {
     let root = ((WIDE_ONE as i128 + exact_mul(t, t)).cast_unsigned() << WIDE_BITS)
         .isqrt()
         .cast_signed();
-    Rounding::NearestEven.divide(t << WIDE_BITS, WIDE_ONE as i128 + root)
+    Rounding::NearestEven.divide_in_const(t << WIDE_BITS, WIDE_ONE as i128 + root)
 }
 
 /// A rounded product at 2⁻⁶², for building the tables.

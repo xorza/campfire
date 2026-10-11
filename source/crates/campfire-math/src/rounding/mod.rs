@@ -1,3 +1,5 @@
+use crate::wide_division::WideDivision;
+
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 
@@ -16,24 +18,56 @@ pub enum Rounding {
 impl Rounding {
     /// `numerator / denominator`, rounded. The denominator is not 0, and neither is `i128::MIN`,
     /// whose magnitude overflows. One unsigned division of the magnitudes gives the quotient
-    /// toward 0 and its rest, as one library call, where a floor and a rest of signed values
-    /// take two; a negative quotient rounds its magnitude the mirrored way. Magnitudes that fit
-    /// 64 bits take the native division in place of the call, 3.4 times as fast on an M2.
+    /// toward 0 and its rest, where a floor and a rest of signed values take two; a negative
+    /// quotient rounds its magnitude the mirrored way. A `u128` division is a library call:
+    /// magnitudes that fit 64 bits take the native division, 3.4 times as fast on an M2, and
+    /// others `WideDivision`, each platform's fastest.
     #[expect(
         clippy::cast_possible_truncation,
         reason = "the 64-bit division takes only magnitudes below 2⁶⁴"
     )]
-    pub const fn divide(self, numerator: i128, denominator: i128) -> i128 {
+    pub fn divide(self, numerator: i128, denominator: i128) -> i128 {
         debug_assert!(denominator != 0, "a division by 0");
         debug_assert!(numerator != i128::MIN && denominator != i128::MIN);
+        // The sign first, so only it lives across the division, which may be a call.
         let negative = (numerator < 0) != (denominator < 0);
         let (magnitude, divisor) = (numerator.unsigned_abs(), denominator.unsigned_abs());
         let (toward_zero, rest) = if (magnitude | divisor) >> 64 == 0 {
             let (magnitude, divisor) = (magnitude as u64, divisor as u64);
-            ((magnitude / divisor) as u128, (magnitude % divisor) as u128)
+            (
+                u128::from(magnitude / divisor),
+                u128::from(magnitude % divisor),
+            )
         } else {
-            (magnitude / divisor, magnitude % divisor)
+            let WideDivision { quotient, rest } = WideDivision::of(magnitude, divisor);
+            (quotient, rest)
         };
+        self.round_quotient(toward_zero, rest, divisor, negative)
+    }
+
+    /// `divide` for constants: the same quotient, by the `u128` division alone, which a `const`
+    /// function can call.
+    pub(crate) const fn divide_in_const(self, numerator: i128, denominator: i128) -> i128 {
+        debug_assert!(denominator != 0, "a division by 0");
+        debug_assert!(numerator != i128::MIN && denominator != i128::MIN);
+        let (magnitude, divisor) = (numerator.unsigned_abs(), denominator.unsigned_abs());
+        self.round_quotient(
+            magnitude / divisor,
+            magnitude % divisor,
+            divisor,
+            (numerator < 0) != (denominator < 0),
+        )
+    }
+
+    /// The quotient of magnitudes `toward_zero` with its rest over `divisor`, rounded, and
+    /// negated when `negative`.
+    const fn round_quotient(
+        self,
+        toward_zero: u128,
+        rest: u128,
+        divisor: u128,
+        negative: bool,
+    ) -> i128 {
         // Twice the rest fits, as the divisor is below 2¹²⁷. A rest takes the magnitude one past
         // `toward_zero` only for a divisor of 2 or more, so below 2¹²⁶: neither the sum nor its
         // negation can overflow, and the wrapping steps skip the checks a release build makes.

@@ -148,40 +148,40 @@ impl Num {
 
     /// The value whose bits are nearest to `numerator / denominator`, for a ratio of raw products;
     /// `None` when it does not fit.
-    pub(crate) const fn from_raw_ratio(numerator: i128, denominator: i128) -> Option<Num> {
+    pub(crate) fn from_raw_ratio(numerator: i128, denominator: i128) -> Option<Num> {
         narrow(Rounding::NearestEven.divide(numerator, denominator))
     }
 
-    pub const fn checked_div(self, rhs: Num) -> Option<Num> {
+    pub fn checked_div(self, rhs: Num) -> Option<Num> {
         self.checked_div_rounded(rhs, Rounding::NearestEven)
     }
 
     /// `self ÷ rhs`, rounded once by `rounding`; `None` for a divisor of 0 or a result that does
     /// not fit.
-    pub const fn checked_div_rounded(self, rhs: Num, rounding: Rounding) -> Option<Num> {
+    pub fn checked_div_rounded(self, rhs: Num, rounding: Rounding) -> Option<Num> {
         if rhs.0 == 0 {
             return None;
         }
-        narrow(rounding.divide((self.0 as i128) << Self::FRAC_BITS, rhs.0 as i128))
+        narrow(rounding.divide(i128::from(self.0) << Self::FRAC_BITS, i128::from(rhs.0)))
     }
 
     /// `self × by ÷ over`, from the exact product, rounded once by `rounding`; `None` for a
     /// divisor of 0 or a result that does not fit.
-    pub const fn checked_mul_div(self, by: Num, over: Num, rounding: Rounding) -> Option<Num> {
+    pub fn checked_mul_div(self, by: Num, over: Num, rounding: Rounding) -> Option<Num> {
         if over.0 == 0 {
             return None;
         }
-        narrow(rounding.divide(self.0 as i128 * by.0 as i128, over.0 as i128))
+        narrow(rounding.divide(i128::from(self.0) * i128::from(by.0), i128::from(over.0)))
     }
 
     /// `self × by ÷ over` for whole `by` and `over`, as a share of a value, from the exact
     /// product, rounded once by `rounding`; `None` for a divisor of 0 or a result that does not
     /// fit.
-    pub const fn checked_mul_ratio(self, by: i64, over: i64, rounding: Rounding) -> Option<Num> {
+    pub fn checked_mul_ratio(self, by: i64, over: i64, rounding: Rounding) -> Option<Num> {
         if over == 0 {
             return None;
         }
-        narrow(rounding.divide(self.0 as i128 * by as i128, over as i128))
+        narrow(rounding.divide(i128::from(self.0) * i128::from(by), i128::from(over)))
     }
 
     /// Exact scaling by an integer.
@@ -194,21 +194,21 @@ impl Num {
 
     /// `self × rhs ÷ divisor`, rounded once to nearest, ties to even; `None` for a divisor of 0
     /// or a result that does not fit.
-    pub const fn checked_mul_div_int(self, rhs: Num, divisor: i64) -> Option<Num> {
+    pub fn checked_mul_div_int(self, rhs: Num, divisor: i64) -> Option<Num> {
         if divisor == 0 {
             return None;
         }
         narrow(Rounding::NearestEven.divide(
-            self.0 as i128 * rhs.0 as i128,
-            (divisor as i128) << Self::FRAC_BITS,
+            i128::from(self.0) * i128::from(rhs.0),
+            i128::from(divisor) << Self::FRAC_BITS,
         ))
     }
 
-    pub const fn checked_div_int(self, rhs: i64) -> Option<Num> {
+    pub fn checked_div_int(self, rhs: i64) -> Option<Num> {
         if rhs == 0 {
             return None;
         }
-        narrow(Rounding::NearestEven.divide(self.0 as i128, rhs as i128))
+        narrow(Rounding::NearestEven.divide(i128::from(self.0), i128::from(rhs)))
     }
 
     /// `None` for a negative value.
@@ -242,7 +242,7 @@ impl Num {
 
     /// The angle of the point `(x, self)` in radians, in `[−π, π]`; `0` for the origin.
     #[must_use]
-    pub const fn atan2(self, x: Num) -> Num {
+    pub fn atan2(self, x: Num) -> Num {
         trig::atan2(self, x)
     }
 }
