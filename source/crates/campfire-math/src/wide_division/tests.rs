@@ -17,7 +17,7 @@ fn each_way_divides_exactly_at_the_edges() {
     // The smallest and largest divisors of 64 bits with the largest numerator whose quotient fits
     // 64 bits, `d · 2⁶⁴ − 1`, and one past it; exact multiples, whose rest is 0; a rest of
     // `d − 1`; and divisors past 64 bits.
-    let cases: [(u128, u128); 12] = [
+    let cases: [(u128, u128); 15] = [
         (0, 1),
         ((1 << 64) - 1, 1),
         ((u128::from(u64::MAX) << 64) - 1, u64::MAX.into()),
@@ -30,6 +30,10 @@ fn each_way_divides_exactly_at_the_edges() {
         (u128::MAX, u128::from(u64::MAX)),
         (u128::MAX, 1 << 64),
         (u128::MAX, u128::MAX - 1),
+        // Quotients either side of 2⁴⁹, where AArch64 turns to its second step.
+        (((1 << 49) - 1) * 1_000_003 + 1_000_002, 1_000_003),
+        ((1 << 49) * 1_000_003, 1_000_003),
+        ((1 << 49) * 1_000_003 - 1, 1_000_003),
     ];
     for (numerator, divisor) in cases {
         let expected = reference(numerator, divisor);

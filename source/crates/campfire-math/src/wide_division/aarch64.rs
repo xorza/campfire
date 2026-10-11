@@ -29,8 +29,14 @@ fn narrow_quotient(numerator: u128, divisor: u64) -> WideDivision {
     let rest = numerator
         .wrapping_sub(u128::from(estimate) * u128::from(divisor))
         .cast_signed();
-    let float_rest = ((rest >> 32) as i64 as f64).mul_add(TWO_POW_32, f64::from(rest as u32));
-    let step = (float_rest * reciprocal).floor() as i64;
+    // Below 2⁴⁹, the estimate lies within ½ of the quotient, so its integer part within one of
+    // it, and the last step alone corrects it.
+    let step = if estimate < 1 << 49 {
+        0
+    } else {
+        let float_rest = ((rest >> 32) as i64 as f64).mul_add(TWO_POW_32, f64::from(rest as u32));
+        (float_rest * reciprocal).floor() as i64
+    };
     let mut quotient = i128::from(estimate) + i128::from(step);
     let mut rest = rest - i128::from(step) * i128::from(divisor);
     let wide_divisor = i128::from(divisor);
