@@ -28,7 +28,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
 - `source/` — engine and game code; `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
 - `../GeneralsX/` — beside this repository, not in it: a checkout of [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS. It is the reference for Zero Hour's formats and rules, and the base of the parity oracle. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions), D2).
 
-`ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice. Both list open items only.
+`ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice, and `PLAN-QUIC.md` those of the QUIC transport's slice. All list open items only.
 
 When code and design disagree, fix one of them, and state which one.
 
