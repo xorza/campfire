@@ -15,10 +15,13 @@ const _: () = assert!(
 );
 
 impl CapabilitySet {
+    /// No capability: a match of the core alone.
+    pub const CORE: CapabilitySet = CapabilitySet(0);
+
     /// The set of `declared`; an error when one is `mode`, one is declared twice, or one lacks a
     /// capability it builds on.
     pub fn new(declared: &[Capability]) -> Result<CapabilitySet, CapabilityError> {
-        let mut set = CapabilitySet(0);
+        let mut set = CapabilitySet::CORE;
         for &capability in declared {
             if capability == Capability::Mode {
                 return Err(CapabilityError::DeclaresMode);

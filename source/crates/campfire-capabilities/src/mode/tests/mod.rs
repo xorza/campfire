@@ -31,7 +31,6 @@ use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
-use crate::declare::capability_set::CapabilitySet;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::metric::Metric;
@@ -71,7 +70,6 @@ use crate::progression::experience::Experience;
 use crate::progression::points::Points;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
-use crate::release::Release;
 use crate::release::test_match::TestMatch;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::internals::FailureKind;
@@ -756,7 +754,6 @@ impl Game {
             Capability::Progression,
             Capability::Production,
         ];
-        let set = CapabilitySet::new(&declared).unwrap();
         let mut sim = TestMatch::unstarted(&declared, RATE, Some(scripts));
         let world = &mut sim.world;
         let resources: Vec<&str> = files
@@ -830,9 +827,7 @@ impl Game {
             })
         };
         assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
-        sim.install(|world, schedule, registry| {
-            Release::install_mode(set, world, schedule, registry, setup, books);
-        });
+        sim.install_mode(setup, books);
         // The scripts name pools the data does not declare, whose maxima no stat sets.
         Units::name_kinds(&sim.world, &DAMAGE_KINDS, &POOLS, &RESOURCES);
         Mode::start(&mut sim.world)?;
