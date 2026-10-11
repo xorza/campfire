@@ -209,7 +209,11 @@ impl Vec3 {
         let x = self.x.to_bits().unsigned_abs() as u128;
         let y = self.y.to_bits().unsigned_abs() as u128;
         let z = self.z.to_bits().unsigned_abs() as u128;
-        x.wrapping_mul(x) + y.wrapping_mul(y) + z.wrapping_mul(z)
+        // Below 3 · 2¹²⁶, the sum cannot wrap, and the wrapping steps skip the checks a release
+        // build makes.
+        x.wrapping_mul(x)
+            .wrapping_add(y.wrapping_mul(y))
+            .wrapping_add(z.wrapping_mul(z))
     }
 }
 
