@@ -1,6 +1,7 @@
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -20,6 +21,7 @@ pub enum OnDeath {
 
 impl SimComponent for OnDeath {
     const NAME: &'static str = "combat.on_death";
+    type Host = UnitEntity;
 
     // Each of its cases is a rule of the engine.
     fn check(&self, _: &World, _: Entity) -> bool {

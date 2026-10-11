@@ -15,8 +15,8 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
-    Area, CapabilitySet, Deaths, MatchEnd, MatchEntity, MatchResult, Mode, Owner, Player,
-    Projectile, SeenBy, Team,
+    CapabilitySet, Deaths, DeliveryEntity, MatchEnd, MatchEntity, MatchResult, Mode, Owner, Player,
+    SeenBy, UnitEntity,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
@@ -687,19 +687,18 @@ fn show_match(
     }
 }
 
-/// The units not replicated yet, a player's entity no unit, with their owner if they have one, whether they are projectiles
-/// or areas, and the teams that see them.
+/// The units not replicated yet, with their owner if they have one, whether they are deliveries,
+/// and the teams that see them.
 type NewUnits<'w, 's> = Query<
     'w,
     's,
     (
         Entity,
         Option<&'static Owner>,
-        Has<Projectile>,
-        Has<Area>,
+        Has<DeliveryEntity>,
         Option<&'static SeenBy>,
     ),
-    (With<Team>, Without<Player>, Without<Replicate>),
+    (With<UnitEntity>, Without<Replicate>),
 >;
 
 /// The replicated units whose seers changed this tick.
@@ -707,7 +706,7 @@ type SeersChanged<'w, 's> =
     Query<'w, 's, (Entity, &'static StableId, &'static SeenBy), (Changed<SeenBy>, With<Replicate>)>;
 
 /// After a sim tick, replicates each new unit, predicted by its owner's client unless it is a
-/// projectile or an area, which the server's sim alone runs, and puts each unit in the rooms of
+/// delivery, a projectile or an area, which the server's sim alone runs, and puts each unit in the rooms of
 /// the teams that see it, again as they change, so Lightyear sends a seated client exactly the
 /// units its team sees, and a link with no seat none. A unit stands in its rooms from the tick it
 /// replicates in, so a client never receives a unit its team did not see: a projectile shows
@@ -721,14 +720,14 @@ fn show_units(
     changed: SeersChanged<'_, '_>,
     mut commands: Commands<'_, '_>,
 ) {
-    for (unit, owner, projectile, area, seen) in &new {
+    for (unit, owner, delivery, seen) in &new {
         let mut replicated = commands.entity(unit);
         replicated.insert((
             Replicate::to_clients(NetworkTarget::All),
             rooms.seeing(seen),
         ));
         let owner = owner
-            .filter(|_| !projectile && !area)
+            .filter(|_| !delivery)
             .and_then(|owner| links.iter().find(|(_, link)| link.slot() == owner.slot()));
         if let Some((link, _)) = owner {
             replicated.insert(PredictionTarget::manual(vec![link]));

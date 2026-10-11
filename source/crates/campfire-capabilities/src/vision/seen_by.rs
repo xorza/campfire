@@ -8,6 +8,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
 use crate::units::team_set::TeamSet;
+use crate::units::unit_entity::UnitEntity;
 
 /// The teams that see a unit, as the Vision stage of the last tick found them: those of its own
 /// vision group, and of each group with a living unit that sees the grid cell it stands in.
@@ -27,6 +28,7 @@ impl SeenBy {
 
 impl SimComponent for SeenBy {
     const NAME: &'static str = "vision.seen_by";
+    type Host = UnitEntity;
 
     // A set of teams, which a reader only asks about the teams it has.
     fn check(&self, _: &World, _: Entity) -> bool {

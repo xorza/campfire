@@ -1,9 +1,17 @@
+use std::iter;
+
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::{With, Without};
+use bevy_ecs::system::{Commands, Query, Res};
 
 use crate::units::block::Block;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::engine_tag::EngineTag;
+use crate::units::tag_book::TagBook;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
+use crate::units::unit_type::UnitType;
 
 /// A unit's tags, their properties, and the tags it is immune to: derived from its type and its
 /// modifiers whenever they change, never state.
@@ -31,6 +39,22 @@ impl UnitTags {
     pub(crate) fn blocks(tags: Option<&UnitTags>, forced: bool, block: Block) -> bool {
         UnitTags::properties_of(tags).blocks(block)
             || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
+    }
+
+    /// Gives each delivery that lacks them, as one a restore brings back, the tags it spawned
+    /// with: its type's, none with no tag book, as `DeliverySpawner` gives them. A delivery holds
+    /// no modifier to change them.
+    pub(crate) fn give_delivery_tags(
+        book: Option<Res<'_, TagBook>>,
+        deliveries: Query<'_, '_, (Entity, &UnitType), (With<DeliveryEntity>, Without<UnitTags>)>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for (entity, &unit_type) in &deliveries {
+            let tags = book.as_deref().map_or(UnitTags::default(), |book| {
+                book.unit_tags(unit_type, iter::empty())
+            });
+            commands.entity(entity).insert(tags);
+        }
     }
 }
 

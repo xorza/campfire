@@ -1,6 +1,7 @@
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
+use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -46,6 +47,7 @@ impl Progress {
 
 impl SimComponent for Progress {
     const NAME: &'static str = "navigation.progress";
+    type Host = UnitEntity;
 
     // Its decode keeps its position within the bound, and it names no book.
     fn check(&self, _: &World, _: Entity) -> bool {

@@ -14,6 +14,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
 use crate::units::action_id::ActionId;
+use crate::units::unit_entity::UnitEntity;
 use crate::values::rank::Rank;
 
 /// A building under construction: the build that placed it, at its rank, its progress in ticks
@@ -112,6 +113,7 @@ impl Site {
 
 impl SimComponent for Site {
     const NAME: &'static str = "production.site";
+    type Host = UnitEntity;
 
     // A build the book lacks, or of a rank past its ranks, has no time to grow toward, and a
     // progress past that time would take life back; a paid resource the mode lacks, or an amount

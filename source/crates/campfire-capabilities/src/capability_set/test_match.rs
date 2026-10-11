@@ -12,8 +12,8 @@ use campfire_math::Num;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{Budget, ScriptHost};
 use campfire_sim::{
-    Capability, EntityIndex, IdAllocator, Position, SimSet, SimTick, SimUpdate, StableId,
-    StateCopy, StateRegistry, TickRate, TypeHash,
+    Capability, EntityIndex, IdAllocator, Position, SimSet, SimTick, SimUpdate, SnapshotError,
+    StableId, StateCopy, StateRegistry, TickRate, TypeHash,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -31,6 +31,7 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::stats::life::Life;
 use crate::stats::pool_id::PoolId;
 use crate::units::block::Block;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_tags::UnitTags;
 use crate::values::declared_name::DeclaredName;
 
@@ -128,7 +129,7 @@ impl TestMatch {
     /// type.
     pub(crate) fn spawn(&mut self, at: Position, parts: impl Bundle) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        let entity = self.world.spawn((id, at, parts)).id();
+        let entity = self.world.spawn((id, at, UnitEntity, parts)).id();
         UnitTags::give_type_tags(&mut self.world, entity);
         id
     }
@@ -165,6 +166,15 @@ impl TestMatch {
         self.world.entity_mut(entity).insert(parts);
     }
 
+    /// Restores its state into `fresh`, a match that loaded the same books, as a restore does; the
+    /// error that refuses it, if one does.
+    pub(crate) fn refusal_into(&self, fresh: &mut TestMatch) -> Option<SnapshotError> {
+        fresh.clear();
+        let mut snapshot = Vec::new();
+        self.registry.snapshot(&self.world, &mut snapshot);
+        self.registry.restore(&snapshot, &mut fresh.world).err()
+    }
+
     /// Gives unit `id` tags of no name that block `blocks`, in place of its own.
     pub(crate) fn set_blocks(&mut self, id: StableId, blocks: &[Block]) {
         self.insert(id, UnitTags::blocking(blocks));
@@ -197,12 +207,11 @@ impl TestMatch {
     /// Restores its state into `fresh`, a match that loaded the same books, as a restore does, and
     /// asserts that the two hash the same.
     pub(crate) fn restore_into(&self, fresh: &mut TestMatch) {
-        fresh.clear();
-        let mut snapshot = Vec::new();
-        self.registry.snapshot(&self.world, &mut snapshot);
-        self.registry
-            .restore(&snapshot, &mut fresh.world)
-            .expect("a match's own snapshot restores");
+        assert_eq!(
+            self.refusal_into(fresh),
+            None,
+            "a match's own snapshot restores"
+        );
         assert_eq!(
             self.registry.hash(&fresh.world),
             self.registry.hash(&self.world),

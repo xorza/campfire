@@ -10,7 +10,7 @@ use campfire_capabilities::{
 };
 use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, ProvingMatch, RestoreTarget};
-use campfire_sim::internals::{Draws, StageClock};
+use campfire_sim::internals::{Draws, Mutation, StageClock};
 use campfire_sim::{EntityIndex, Position, StableId};
 
 /// What the match showed over its ticks.
@@ -438,6 +438,53 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
         }
     }
     // The draws reach both outcomes, so the checks are exercised, not passed over.
+    assert!(
+        restored > 0 && refused > 0,
+        "{restored} restored, {refused} refused"
+    );
+}
+
+/// The draws of each mutation of each state type: each picks its holder and its other entity anew.
+const MUTATIONS: usize = 4;
+
+/// Each state type's value removed from one holder, moved to an entity that holds none, or copied
+/// to one, in a snapshot of the proving match: each restores or is refused, and what restores
+/// plays on with no panic. A value draw keeps each value where it sat, so this reaches the
+/// checks of where a value may sit, and which parts a holder needs.
+#[test]
+fn a_snapshot_with_a_value_removed_moved_or_copied_restores_or_is_refused_and_never_panics() {
+    let proving = ProvingMatch::load();
+    let mut fixed = proving.start();
+    for tick in 0..60 {
+        ProvingMatch::play_tick(&mut fixed, tick);
+    }
+    let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut base = Vec::new();
+    target.snapshot(fixed.runner().world(), &mut base);
+    let mut draws = Draws::new(11);
+    let (mut restored, mut refused) = (0, 0);
+    let mut flawed = Vec::new();
+    let draws_of = Mutation::ALL
+        .into_iter()
+        .flat_map(|mutation| [mutation; MUTATIONS]);
+    for name in target.state_names() {
+        for mutation in draws_of.clone() {
+            target.restore(&base).unwrap();
+            if !target.mutate(name, &mut draws, mutation) {
+                continue;
+            }
+            flawed.clear();
+            target.snapshot_own(&mut flawed);
+            if target.restore(&flawed).is_ok() {
+                restored += 1;
+                for _ in 0..5 {
+                    target.run_tick();
+                }
+            } else {
+                refused += 1;
+            }
+        }
+    }
     assert!(
         restored > 0 && refused > 0,
         "{restored} restored, {refused} refused"

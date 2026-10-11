@@ -20,6 +20,7 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::unit_pools::UnitPools;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::tag_book::TagBook;
@@ -33,13 +34,14 @@ use crate::units::unit_type::UnitType;
 pub(crate) struct Refresh;
 
 impl Refresh {
-    /// Gives each unit of a type that lacks them the parts its stats and tags derive into, which a
-    /// restore does not bring back, as they are never state; the refresh after it derives them, as
-    /// it does a new unit's.
+    /// Gives each unit of a type, but a delivery, that lacks them the parts its stats and tags
+    /// derive into, which a restore does not bring back, as they are never state; the refresh
+    /// after it derives them, as it does a new unit's. A delivery has no level to derive stats
+    /// from, and its tags come back by `UnitTags::give_delivery_tags`.
     pub(crate) fn give_parts(
         book: Option<Res<'_, StatBook>>,
         mut commands: Commands<'_, '_>,
-        units: Query<'_, '_, Entity, (With<UnitType>, Without<UnitStats>)>,
+        units: Query<'_, '_, Entity, (With<UnitType>, Without<DeliveryEntity>, Without<UnitStats>)>,
     ) {
         if book.is_none() {
             return;

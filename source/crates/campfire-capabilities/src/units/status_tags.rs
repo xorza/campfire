@@ -9,6 +9,7 @@ use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
 use crate::units::engine_tag::EngineTag;
 use crate::units::tag_set::TagSet;
+use crate::units::unit_entity::UnitEntity;
 
 /// The engine tags a capability gives a unit for what it is now, such as `constructing` to a
 /// site, beside those of its type and its modifiers; a change of them derives the unit's tags
@@ -41,6 +42,7 @@ impl StatusTags {
 
 impl SimComponent for StatusTags {
     const NAME: &'static str = "units.status_tags";
+    type Host = UnitEntity;
 
     // Engine tags alone, which every match declares first.
     fn check(&self, _: &World, _: Entity) -> bool {

@@ -1,6 +1,7 @@
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
+use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -25,6 +26,7 @@ impl SpawnPoint {
 
 impl SimComponent for SpawnPoint {
     const NAME: &'static str = "units.spawn_point";
+    type Host = UnitEntity;
 
     // Its decode keeps it within the bound.
     fn check(&self, _: &World, _: Entity) -> bool {

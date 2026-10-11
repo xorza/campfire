@@ -5,19 +5,19 @@ An audit of the workspace at `source/` after slice 3's A4: the entities and how 
 ## Findings
 
 - **Registration.** Two of fourteen registration channels are declared by a type and enforced by the compiler; twelve are calls in `install` bodies, held together by install order and runtime `expect`s. Some fail silently: `Books::replace` (`books/mod.rs:53`) drops a book whose resource the install did not insert.
-- **Entities.** No entity has a declared kind: five subsystems each decide "is this a unit" by a different component test, and two spawn paths give units different parts. The delivery tags bug and the seen-targets bug of the issue log follow from it.
+- **Entities.** Each entity has a declared kind, and each state type names the kind it sits on. Two spawn paths still give units different parts, and each spawn puts a kind's parts on by hand.
 - **Ownership.** Almost every pass reaches through `&mut World` to `!Send` shared handles (`View`, `Ctx`, boxed hooks): 152 production functions take `&mut World` and 96 `&World`, against 13 `SystemParam` derives. No pass is testable without a whole `TestMatch`; `deliveries` and `players` have no tests, `actions` 6 for 53 files.
 - **Arguments.** 59 `now: Tick` parameters sit beside worlds that hold the tick; 57 `ctx: &Ctx` and 57 `view: &View`; 24 systems group parameters in tuples to pass Bevy's limit of 16.
-- **Restore.** A check looks at one value on one entity. That a component sits on the right kind of entity, and that a holder carries the parts later systems `expect`, is hand-written where it is checked at all, which leaves four snapshot shapes that restore and then panic or stay wrong. The snapshot fuzz tests replace values only (`sim/src/state_registry/internals.rs:231`), so none of the four is found by them.
+- **Restore.** A check runs with books that may be absent, and an error names the type alone (§4.1, §4.2).
 
 The recommendations consolidate into five systems. Each is one declaration that every consumer reads, enforced by the compiler where it can be, else by one generic test or a clippy rule, never by memory.
 
 | System | Replaces | Enforced by |
 | --- | --- | --- |
 | 1. One declaration per capability (§1) | the twelve install-body channels, API side-lists, needs probes | the compiler (visitor with no defaults), one declaration audit test |
-| 2. One entity model (§2) | five unit tests, two spawn paths, host checks, player parts, pair checks, net's prediction rule | required components, the compiler (`Host` with no default), a clippy rule on spawning |
+| 2. One entity model (§2) | two spawn paths, parts put on by hand, net's prediction rule | required components, the compiler (`Host` with no default), a clippy rule on spawning |
 | 3. Explicit dependencies (§3) | `!Send` reach-through, threaded `now`, tuple parameters, five match-world builders | typed params, a clippy rule on `non_send` |
-| 4. Restore as a checked boundary (§4) | silent checks, wrong-type errors, value-only fuzzing | the registry, a mutation fuzz test |
+| 4. Restore as a checked boundary (§4) | silent checks, wrong-type errors | the registry, a mutation fuzz test |
 | 5. One session host (§5) | three server compositions, two replay loops, two restore glues | one type |
 
 Two policies hold across all five:
@@ -125,35 +125,22 @@ A book knows its owner, `trait Book: Resource { const OWNER: Option<Capability>;
 | Match | `MatchEntity::spawn` | `StableId::MATCH` | `show_match`, every room |
 | Player | `MatchEntity::spawn_player_of` with `PlayerParts` | `StableId::of_player` | `show_match`; `Player` is its filter's owner |
 
-- Five tests of "unit": `With<UnitType>` (`give_parts`), `With<Team>, Without<Player>` (`show_units`), `StableId + Position + Team` less deliveries (client `NewUnits`), `Position + Team` (`UnitRows::row`), `&Team` alone (`SeenTargets`).
+- `UnitRows::row` tests a unit by `Position + Team`, where the other filters name `UnitEntity`.
 - `ModeBook::spawn` gives `Facing`, `SpawnPoint`, `Level`, `Modifiers` and the type's derived tags; `DeliverySpawner` gives none of them, takes sight from another book, and consumes `NewUnitStates`, which `ModeBook::spawn` does not.
 - Despawn happens in five places.
 - Net writes the prediction rule twice (`sim_server/mod.rs:731`, `door.rs:218`) and sets it only for a new unit or a seat, though `Owner` changes.
 - Test spawners build units no production path makes (`TestMatch::spawn`, three test `Spawner`s, `production/bench.rs:149`), which is how the delivery tags bug stayed unseen.
 
-### 2.1 A kind is a type that declares everything about its entities
+### 2.1 Kinds, hosts, parts and pairs: built
 
-```rust
-pub trait EntityKind: Component<Mutability = Immutable> + HostRule {
-    /// How its entities' stable ids come: allocated, or named by the kind.
-    type Id: KindId;
-    /// Who holds its entities: the vision rooms of the teams that see one, or every seat.
-    const ROOMS: Rooming;
-    /// Whether the client of an entity's owner predicts it.
-    const OWNER_PREDICTS: bool;
-}
-```
+`UnitEntity` (state, required by `UnitType`), `DeliveryEntity` (derived, required by `Projectile` and `Area`), `MatchEntity` and `Player` are the kinds, each a `HostRule`. `SimComponent::Host` names each state type's kind, and `StateRegistry::host` and `require` declare a kind and a pair beside a type's own check. A registered resource is required in every snapshot. The mutation fuzz removes, moves and copies each state type's value.
 
-Four kinds: `Unit` (allocated, vision, predicted), `Delivery` (allocated, vision, not predicted), `MatchEntity` (named, every seat), `Player` (named by slot, every seat). The markers `Unit` and `Delivery` are added by `#[require(Unit)]` on `UnitType` and `#[require(Delivery)]` on `Projectile` and `Area`, so a restore and a client's replication bring them back with their state, and no spawn path can leave one out. A delivery holds `Unit` and `Delivery`; filters name the narrower kind. Typed aliases replace the five tests: `UnitFilter = With<Unit>`, `LivingUnit = (With<Unit>, Without<Dead>)`, `BodyUnit = (With<Unit>, Without<Delivery>)`.
+What stays of the model:
 
-### 2.2 Every state type names its host
-
-`SimComponent` gains `type Host: HostRule`, `trait HostRule { fn holds(world: &World, entity: Entity) -> bool; }`, implemented by `OnAny` in `sim` and by each kind. `check_component` runs `C::Host::holds` before the value's own check, so a state type on the wrong kind of entity fails the restore by construction. No default: each of about sixty types chooses, and the hand-written host tests in `PlayerModifiers`, `PlayerResources`, `Relations`, `MatchEnd`, `ModeState` and `MatchEntity` go, as does the `TrainQueue` bug.
-
-### 2.3 Parts and pairs, declared once
-
-- `d.part::<K, C>(start)`: every entity of kind `K` holds `C`, put on it at spawn from `start` (a default, or a function of the books, as `PlayerResources::new(count)` needs). One declaration gives the spawn, the restore check and the audit; `PlayerParts`, `player_modifiers_held`, `relations_held` and `Mode::entities_held` go.
-- `d.pair::<H, C>()`: every holder of `H` holds `C`. It replaces the hand-written pairs `ActionSlots`/`SlotTimes`, `Projectile`/`FlightState`, `AreaTrigger`/`Area`, `Points`/`Experience`, and covers what nobody checks: `Respawn` ⇒ `Dead` and `SpawnPoint`. A unit's state classes are a pair per class its type declares, a custom check beside the pairs, as the classes depend on the type.
+- `EntityKind`, with `ROOMS` and `OWNER_PREDICTS`, for §2.5.
+- Parts declared with their start, `d.part::<K, C>(start)`, so one declaration gives the spawn as well as the check; today `require` gives the check, and the spawns of the match's and the players' entities put their parts on by hand.
+- Typed filter aliases, `UnitFilter`, `LivingUnit`, `BodyUnit`; today the filters name `With<UnitEntity>` and `Without<DeliveryEntity>` themselves.
+- A unit's kit parts are one table, `KitPart::ALL`: each row makes its part from the spawn's inputs, or none, and `ModeBook::spawn` and the restore check `Mode::kits_held` both read it. `DeliverySpawner` and the test spawners give parts outside it (§2.4).
 
 ### 2.4 One spawn per kind
 
@@ -214,14 +201,7 @@ The layer test rejects imports from a higher layer only. Within a layer, modules
 
 ### 4.3 Fuzz by mutation, and play on
 
-The fuzz tests restore a flawed snapshot and, when it restores, play on (`runner/tests/proving_match.rs:369`, `:410`), but their mutations replace a value on a holder only. Each of these joins them:
-
-- remove one holder's component of a type;
-- move one value to an entity of another kind;
-- duplicate one value onto a second entity;
-- replace a value of a nested option with `None` where its type allows, as a slot's rank.
-
-Each mutation either fails the restore or plays a hundred ticks with no panic. The four snapshot bugs of the issue log are each one mutation, so the test would have found them, and it keeps the class found.
+The mutation fuzz removes, moves and copies each state type's value, and plays five ticks on what restores. Two mutations stay: a nested option replaced with `None` where its type allows, as a slot's rank, and a hundred ticks on what restores, within the bound of 1 s for a test.
 
 ### 4.4 Load, then trust
 
@@ -254,9 +234,8 @@ Each mutation either fails the restore or plays a hundred ticks with no panic. T
 
 ## Order
 
-1. §2.1 to §2.3 with §4.3: kind markers, hosts, parts and pairs, and the mutation fuzz that proves them; the four restore bugs and the seen-targets bug go with them, and the delivery tags bug with §2.4's derivation.
-2. §1.1 to §1.3: one declaration per capability, its audit, installs that read the set. Parts and pairs move into the declaration here.
-3. §3.3 and §4.1, §4.2: the typed params, one book convention, errors that name the entity.
-4. §3.1, §3.2: books out of `View` and `Ctx`, `!Send` access in `ScriptPass`, and its clippy rule.
-5. §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule.
-6. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.
+1. §1.1 to §1.3: one declaration per capability, its audit, installs that read the set. Parts and pairs move into the declaration here.
+2. §3.3 and §4.1, §4.2: the typed params, one book convention, errors that name the entity.
+3. §3.1, §3.2: books out of `View` and `Ctx`, `!Send` access in `ScriptPass`, and its clippy rule.
+4. §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule.
+5. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.

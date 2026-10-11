@@ -16,6 +16,7 @@ use campfire_math::{Num, RngSource, RngStream};
 use serde::{Deserialize, Serialize};
 
 use super::*;
+use crate::host_rule::OnAny;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::stable_id::StableId;
 use crate::state_registry::StateRegistry;
@@ -35,6 +36,7 @@ struct Offset(Num);
 
 impl SimComponent for Offset {
     const NAME: &'static str = "test.offset";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -47,6 +49,7 @@ struct Age(u64);
 
 impl SimComponent for Age {
     const NAME: &'static str = "test.age";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true

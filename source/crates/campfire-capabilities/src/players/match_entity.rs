@@ -3,7 +3,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
-use campfire_sim::{EntityIndex, SimComponent, StableId};
+use campfire_sim::{EntityIndex, HostRule, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::players::player::Player;
@@ -50,8 +50,15 @@ impl MatchEntity {
     }
 }
 
+impl HostRule for MatchEntity {
+    fn holds(world: &World, entity: Entity) -> bool {
+        world.get::<MatchEntity>(entity).is_some()
+    }
+}
+
 impl SimComponent for MatchEntity {
     const NAME: &'static str = "players.match";
+    type Host = MatchEntity;
 
     // An id not the match's would hide the match's state from where it is looked for.
     fn check(&self, world: &World, entity: Entity) -> bool {

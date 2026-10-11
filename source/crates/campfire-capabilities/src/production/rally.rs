@@ -8,6 +8,7 @@ use crate::production::rally_target::RallyTarget;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::unit_entity::UnitEntity;
 
 /// A producer's rally point, where the units it trains go; a producer with none has no component.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +27,7 @@ impl Rally {
 
 impl SimComponent for Rally {
     const NAME: &'static str = "production.rally";
+    type Host = UnitEntity;
 
     // Its decode keeps a point a `Num`'s and names any stable id, which a train finds or not.
     fn check(&self, _: &World, _: Entity) -> bool {

@@ -1,4 +1,5 @@
-use campfire_sim::{SnapshotError, StateDelta};
+use bevy_ecs::component::Component;
+use campfire_sim::{HostRule, SnapshotError, StateDelta};
 
 use super::*;
 use crate::actions::slot_times::{SlotCharges, SlotTimes};
@@ -119,31 +120,41 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     let game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     let grunt = game.entity(2);
     let world = &game.sim.world;
-    let own_type = *world.get::<UnitType>(grunt).unwrap();
     // The match's entity and each player's stand at their named ids, of a player the session
-    // has; a unit stands at none.
+    // has; a unit stands at an allocated id.
     let match_entity = MatchEntity::entity(world).unwrap();
     let first = Player::entity(world, PlayerSlot::new(0)).unwrap();
     let player = |slot| Player::new(PlayerSlot::new(slot));
     assert!(MatchEntity.check(world, match_entity) && !MatchEntity.check(world, first));
     assert!(player(0).check(world, first) && !player(1).check(world, first));
-    assert!(!player(0).check(world, grunt) && !own_type.check(world, first));
+    assert!(!player(0).check(world, grunt));
+    assert!(UnitEntity.check(world, grunt) && !UnitEntity.check(world, first));
+    // Each state type sits on its kind of entity: the match's parts on its entity, a player's on
+    // a player's, a unit's on a unit, and a team on a unit or a player's entity.
+    let on = |hosted: fn(&World, Entity) -> bool| {
+        [match_entity, first, grunt].map(|entity| hosted(world, entity))
+    };
+    assert_eq!(on(hosts::<Relations>), [true, false, false]);
+    assert_eq!(on(hosts::<MatchEnd>), [true, false, false]);
+    assert_eq!(on(hosts::<ModeState<SyncNone>>), [true, false, false]);
+    assert_eq!(on(hosts::<ModeState<SyncAll>>), [true, false, false]);
+    assert_eq!(on(hosts::<PlayerResources>), [false, true, false]);
+    assert_eq!(on(hosts::<Life>), [false, false, true]);
+    assert_eq!(on(hosts::<Team>), [false, true, true]);
     // The relations and the match's end, on the match's entity, of the mode's teams.
     let mut relations = Relations::default();
     relations.set(Team::new(0), Team::new(2), Relation::Friendly, true);
-    assert!(relations.check(world, match_entity) && !relations.check(world, grunt));
+    assert!(relations.check(world, match_entity));
     relations.set(Team::new(0), Team::new(3), Relation::Friendly, true);
     assert!(!relations.check(world, match_entity));
     let ended = |team| MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(team)));
     assert!(ended(1).check(world, match_entity) && !ended(3).check(world, match_entity));
-    assert!(!ended(1).check(world, grunt));
     // The mode's state, on the match's entity, each class its fields of their types in the order
     // of their names: `kind`, a text, and `seen`, an integer, kept on the server; the rest sent
     // to all, `count`, an integer, first.
     let none = world.get::<ModeState<SyncNone>>(match_entity).unwrap();
     let all = world.get::<ModeState<SyncAll>>(match_entity).unwrap();
     assert!(none.check(world, match_entity) && all.check(world, match_entity));
-    assert!(!none.check(world, grunt));
     let text = StateValue::Text(String::new());
     assert_eq!(none.values(), [text, StateValue::Int(0)]);
     let class = |values: &[StateValue]| {
@@ -155,7 +166,7 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     assert!(!class(&retyped));
     // A player's resources: one of each of the mode's resources, on the player's entity.
     let held = world.get::<PlayerResources>(first).unwrap();
-    assert!(held.check(world, first) && !held.check(world, grunt));
+    assert!(held.check(world, first));
     assert!(!PlayerResources::new(RESOURCES.len() + 1).check(world, first));
 }
 
@@ -180,48 +191,73 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
             .err()
     };
     assert_eq!(refused(|_| {}), None);
-    let invalid = |name| Some(SnapshotError::Invalid(name));
-    assert_eq!(
-        refused(|world| {
+    let cases: [(&str, fn(&mut World)); 12] = [
+        (Relations::NAME, |world| {
             let entity = MatchEntity::entity(world).unwrap();
             world.entity_mut(entity).remove::<Relations>();
         }),
-        invalid(Relations::NAME)
-    );
-    assert_eq!(
-        refused(|world| {
+        (ModeState::<SyncAll>::NAME, |world| {
             let entity = MatchEntity::entity(world).unwrap();
             world.entity_mut(entity).remove::<ModeState<SyncAll>>();
         }),
-        invalid(Player::NAME)
-    );
-    assert_eq!(
-        refused(|world| {
+        (Player::NAME, |world| {
             let entity = Player::entity(world, PlayerSlot::new(2)).unwrap();
             world.despawn(entity);
         }),
-        invalid(Player::NAME)
-    );
-    assert_eq!(
-        refused(|world| {
+        (PlayerResources::NAME, |world| {
             let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerResources>();
         }),
-        invalid(Player::NAME)
-    );
-    assert_eq!(
-        refused(|world| {
+        (PlayerModifiers::NAME, |world| {
             let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerModifiers>();
         }),
-        invalid(PlayerModifiers::NAME)
-    );
+        // A unit: one of a kind its kit gives a level loses it, a unit loses a class of the
+        // state its type declares, or its team; a living unit holds a respawn; a unit's life sits
+        // on the match's entity; slots come without their times.
+        (UnitType::NAME, |world| {
+            let unit = first::<Level>(world);
+            world.entity_mut(unit).remove::<Level>();
+        }),
+        (UnitType::NAME, |world| {
+            let unit = first::<UnitState<SyncOwner>>(world);
+            world.entity_mut(unit).remove::<UnitState<SyncOwner>>();
+        }),
+        (Team::NAME, |world| {
+            let unit = first::<UnitType>(world);
+            world.entity_mut(unit).remove::<Team>();
+        }),
+        (Dead::NAME, |world| {
+            let unit = first::<UnitType>(world);
+            world.entity_mut(unit).insert(Respawn { at: Tick::new(5) });
+        }),
+        (Life::NAME, |world| {
+            let unit = first::<Life>(world);
+            let life = world.entity_mut(unit).take::<Life>().unwrap();
+            let entity = MatchEntity::entity(world).unwrap();
+            world.entity_mut(entity).insert(life);
+        }),
+        (SlotTimes::NAME, |world| {
+            let strike = world.resource::<ActionBook>().named(0, "strike").unwrap();
+            let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
+            let unit = first::<UnitType>(world);
+            world.entity_mut(unit).insert(slots);
+        }),
+        // A player's entity takes a unit's kind and place.
+        (UnitEntity::NAME, |world| {
+            let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
+            let place = Position::new(Vec3::ZERO).unwrap();
+            world.entity_mut(entity).insert((UnitEntity, place));
+        }),
+    ];
+    for (name, strip) in cases {
+        assert_eq!(refused(strip), Some(SnapshotError::Invalid(name)), "{name}");
+    }
 }
 
 /// Each time a unit, the match's end and a route hold is at most `Tick::LIMIT`, which no match
 /// reaches, so no sum of two restored times overflows: each decodes at the limit, and fails to a
 /// tick past it.
-
 #[test]
 fn a_restore_keeps_each_time_within_the_limit() {
     let game = Game::new(SCRIPT, ScriptLimits::ROOMY);
@@ -335,7 +371,8 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     let player = Player::entity(world, PlayerSlot::new(0)).unwrap();
     let mut held = PlayerModifiers::default();
     held.add(ModifierId::new(0));
-    assert!(held.check(world, player) && !held.check(world, game.entity(0)));
+    let hosted = <PlayerModifiers as SimComponent>::Host::holds;
+    assert!(held.check(world, player) && hosted(world, player) && !hosted(world, game.entity(0)));
     held.add(ModifierId::new(u16::MAX));
     assert!(!held.check(world, player));
     let mut rallied = PlayerModifiers::default();
@@ -377,4 +414,15 @@ fn on_unit_died(ctx, unit, killer, assisters) {}
     registry.changes(world, &mut delta);
     let changed = registry.changed_types(world, &delta);
     assert_eq!(changed, ["mode.timers", "sim.tick"]);
+}
+
+/// Whether `entity` is of the kind `C` sits on.
+fn hosts<C: SimComponent>(world: &World, entity: Entity) -> bool {
+    C::Host::holds(world, entity)
+}
+
+/// The first entity that holds a `C`.
+fn first<C: Component>(world: &mut World) -> Entity {
+    let mut holders = world.query_filtered::<Entity, With<C>>();
+    holders.iter(world).next().unwrap()
 }

@@ -556,6 +556,7 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
             "units.state_team",
             "units.status_tags",
             "units.team",
+            "units.unit",
             "units.unit_type",
         ],
     ),

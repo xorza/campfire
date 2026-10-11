@@ -13,6 +13,7 @@ use crate::navigation::progress::Progress;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
+use crate::units::unit_entity::UnitEntity;
 
 /// A walker's long route to its destination: the goal it serves, with its ask while it waits for
 /// the planner, and the waypoints of the route planned last, the next one first among those left.
@@ -161,6 +162,7 @@ impl Route {
 
 impl SimComponent for Route {
     const NAME: &'static str = "navigation.route";
+    type Host = UnitEntity;
 
     // Its decode keeps the next waypoint within the route; a route is planned over the cells of
     // its unit's kind of walker, which must be one the mode has.

@@ -23,6 +23,7 @@ use crate::units::block::Block;
 use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
+use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
@@ -75,9 +76,8 @@ impl Walk {
 
     /// A unit at `at` walking a meter a tick to `to`.
     fn unit(&mut self, at: Position, to: Option<Position>) -> StableId {
-        let id = self
-            .sim
-            .spawn(at, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
+        let walker = Navigation::walker(MoveStep::new(Num::ONE).unwrap());
+        let id = self.sim.spawn(at, (Team::new(0), walker));
         *self.sim.get_mut::<Destination>(id) = Destination::to(to);
         id
     }
@@ -103,7 +103,7 @@ impl Walk {
         step: Option<Num>,
         body: Body,
     ) -> StableId {
-        let id = self.sim.spawn(at, body);
+        let id = self.sim.spawn(at, (Team::new(0), body));
         if let Some(step) = step {
             self.sim
                 .insert(id, Navigation::walker(MoveStep::new(step).unwrap()));

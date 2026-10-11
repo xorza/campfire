@@ -1,6 +1,7 @@
 use std::any::Any;
 
 use bevy_ecs::change_detection::{CheckChangeTicks, DetectChanges, Ref, Tick as ChangeTick};
+use bevy_ecs::component::Component;
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
@@ -13,6 +14,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::entity_index::EntityIndex;
+use crate::host_rule::HostRule;
 use crate::id_allocator::IdAllocator;
 use crate::position::Position;
 use crate::sim_state::{SimComponent, SimResource};
@@ -82,6 +84,9 @@ struct Entry {
     watch: fn(&mut World, u16),
     #[cfg(any(test, feature = "internals"))]
     scramble: fn(&mut internals::Draws, &mut World) -> bool,
+    /// Changes where a value of the type sits, as a mutation says.
+    #[cfg(any(test, feature = "internals"))]
+    mutate: fn(&mut internals::Draws, &mut World, internals::Mutation) -> bool,
     /// Writes into the buffer the encodings of values of the type the draws make: what its
     /// layout fingerprint digests.
     #[cfg(any(test, feature = "internals"))]
@@ -147,7 +152,7 @@ impl StateRegistry {
     /// release changes their format, a type's layout included, as Minecraft's `DataVersion` is:
     /// a snapshot of another is refused, naming both, and the converter from the version before,
     /// which design 02's Saves plans, comes with the first release that raises it.
-    pub const DATA_VERSION: u32 = 5;
+    pub const DATA_VERSION: u32 = 6;
 
     /// A registry with the sim's own state: the entity list, the id allocator, the tick and
     /// positions.
@@ -168,11 +173,13 @@ impl StateRegistry {
             #[cfg(any(test, feature = "internals"))]
             scramble: |_, _| false,
             #[cfg(any(test, feature = "internals"))]
+            mutate: |_, _, _| false,
+            #[cfg(any(test, feature = "internals"))]
             layout: |_, _| {},
         };
         registry.register(entities);
-        registry.require_resource::<IdAllocator>();
-        registry.require_resource::<SimTick>();
+        registry.register_resource::<IdAllocator>();
+        registry.register_resource::<SimTick>();
         registry.register_component::<Position>();
         registry
     }
@@ -190,8 +197,23 @@ impl StateRegistry {
             #[cfg(any(test, feature = "internals"))]
             scramble: internals::Draws::scramble_component::<C>,
             #[cfg(any(test, feature = "internals"))]
+            mutate: internals::Draws::mutate_component::<C>,
+            #[cfg(any(test, feature = "internals"))]
             layout: internals::Draws::layout_of::<C>,
         });
+    }
+
+    /// Requires that every entity holding `H` holds `C`, a registered type, as a restore checks:
+    /// a part a kind's entities all hold, or one another part of an entity always comes with.
+    /// A snapshot that breaks it fails as `C`'s.
+    pub fn require<H: Component, C: SimComponent>(&mut self) {
+        self.add_check::<C>(holders_hold::<H, C>);
+    }
+
+    /// Requires that `C`, a registered type of a crate that knows no kinds, sits on the entities
+    /// of `H` alone, as its own `Host` cannot say.
+    pub fn host<C: SimComponent, H: HostRule>(&mut self) {
+        self.add_check::<C>(holders_hosted::<C, H>);
     }
 
     /// Adds `check` to the restore checks of `C`, a registered type: a rule of it that a
@@ -208,31 +230,14 @@ impl StateRegistry {
         });
     }
 
+    /// Registers `R` as a resource every state holds, as the sim's own are: the match's install
+    /// inserts it, and a snapshot that records it absent does not restore, so no system finds it
+    /// missing.
     pub fn register_resource<R: SimResource>(&mut self) {
-        self.register_resource_decoded::<R>(decode_resource::<R>);
-    }
-
-    /// Whether `C` is registered.
-    pub fn holds<C: SimComponent>(&self) -> bool {
-        self.entries
-            .binary_search_by(|held| held.name.cmp(C::NAME))
-            .is_ok()
-    }
-
-    /// Registers `R` as a resource every state holds, as the sim's own do: a snapshot that
-    /// records it absent does not restore.
-    fn require_resource<R: SimResource>(&mut self) {
-        self.register_resource_decoded::<R>(decode_required_resource::<R>);
-    }
-
-    fn register_resource_decoded<R: SimResource>(
-        &mut self,
-        decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
-    ) {
         self.register(Entry {
             name: R::NAME,
             encode: encode_resource::<R>,
-            decode,
+            decode: decode_resource::<R>,
             check: check_resource::<R>,
             copy: copy_resource::<R>,
             copy_query: None,
@@ -241,8 +246,17 @@ impl StateRegistry {
             #[cfg(any(test, feature = "internals"))]
             scramble: internals::Draws::scramble_resource::<R>,
             #[cfg(any(test, feature = "internals"))]
+            mutate: internals::Draws::mutate_resource::<R>,
+            #[cfg(any(test, feature = "internals"))]
             layout: internals::Draws::layout_of::<R>,
         });
+    }
+
+    /// Whether `C` is registered.
+    pub fn holds<C: SimComponent>(&self) -> bool {
+        self.entries
+            .binary_search_by(|held| held.name.cmp(C::NAME))
+            .is_ok()
     }
 
     /// The hash of `bytes` under a domain of its own: a digest of values that a test or a check
@@ -290,9 +304,9 @@ impl StateRegistry {
 
     /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
     /// are not the canonical encoding of what they restore, or a value that breaks its type's
-    /// rules, each type checked once all are decoded. A resource the snapshot records as absent
-    /// is removed, and one every state holds, the sim's own, recorded absent is refused. On an
-    /// error the world is left partly restored and should be discarded.
+    /// rules, each type checked once all are decoded. Every state holds each resource, so one
+    /// the snapshot records as absent is refused. On an error the world is left partly restored
+    /// and should be discarded.
     pub fn restore(&self, snapshot: &[u8], world: &mut World) -> Result<(), SnapshotError> {
         assert!(
             world
@@ -612,21 +626,6 @@ fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(),
     if !rest.is_empty() {
         return Err(SnapshotError::Trailing);
     }
-    match value {
-        Some(value) => world.insert_resource(value),
-        None => drop(world.remove_resource::<R>()),
-    }
-    Ok(())
-}
-
-fn decode_required_resource<R: SimResource>(
-    world: &mut World,
-    body: &[u8],
-) -> Result<(), SnapshotError> {
-    let Taken { value, rest } = take::<Option<R>>(body)?;
-    if !rest.is_empty() {
-        return Err(SnapshotError::Trailing);
-    }
     world.insert_resource(value.ok_or(SnapshotError::Missing(R::NAME))?);
     Ok(())
 }
@@ -742,7 +741,23 @@ fn check_component<C: SimComponent>(world: &World) -> bool {
     world.resource::<EntityIndex>().iter().all(|(_, entity)| {
         world
             .get::<C>(entity)
-            .is_none_or(|component| component.check(world, entity))
+            .is_none_or(|component| C::Host::holds(world, entity) && component.check(world, entity))
+    })
+}
+
+/// Whether every entity that holds `C` is of `H`.
+fn holders_hosted<C: SimComponent, H: HostRule>(world: &World) -> bool {
+    world
+        .resource::<EntityIndex>()
+        .iter()
+        .all(|(_, entity)| world.get::<C>(entity).is_none() || H::holds(world, entity))
+}
+
+/// Whether every entity that holds `H` holds `C`.
+fn holders_hold<H: Component, C: SimComponent>(world: &World) -> bool {
+    world.resource::<EntityIndex>().iter().all(|(_, entity)| {
+        let held = world.entity(entity);
+        !held.contains::<H>() || held.contains::<C>()
     })
 }
 

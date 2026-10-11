@@ -83,15 +83,16 @@ pub(super) struct FoundNode {
 }
 
 impl GatherView<'_, '_> {
-    /// The gather in `slot` of `slots`; `None` for a slot that holds none.
+    /// The gather in `slot` of `slots`; `None` for a slot that holds none, or holds one not yet
+    /// learned.
     pub(super) fn gather(&self, slots: &ActionSlots, slot: u8) -> Option<Gather> {
         let held = slots.slot(slot)?;
         let action = self.book.get(held.action?)?;
         let (KindSpec::Gather(spec), Aim::Unit(filter)) = (action.kind, action.aim) else {
             return None;
         };
+        let rank = held.rank?;
         let range = self.book.meters(slots, slot);
-        let rank = held.rank.expect("a gather's slot is learned");
         let ticks = action.values(rank).windup.get().max(1);
         Some(Gather {
             spec,

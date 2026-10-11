@@ -2,6 +2,7 @@ use std::fmt;
 use std::iter;
 
 use bevy_ecs::bundle::Bundle;
+use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
 
@@ -10,6 +11,7 @@ use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
@@ -25,7 +27,7 @@ pub(crate) struct DeliverySpawner<'w, 's> {
     states: Option<Res<'w, UnitStateBook>>,
     new_states: Option<ResMut<'w, NewUnitStates>>,
     sights: Option<Res<'w, ByType<Sight>>>,
-    sources: Query<'w, 's, (&'static Team, Option<&'static Owner>)>,
+    sources: Query<'w, 's, (&'static Team, Option<&'static Owner>), With<UnitEntity>>,
 }
 
 /// `Commands` prints nothing, so a spawner prints only what it is.

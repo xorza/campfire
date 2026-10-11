@@ -5,11 +5,12 @@ use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::{EntityIndex, Position, SimSet, StateRegistry, TickRate};
+use campfire_sim::{EntityIndex, Position, SimEdge, SimSet, StateRegistry, TickRate};
 
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
 use crate::players::match_entity::MatchEntity;
+use crate::players::player::Player;
 use crate::players::player_parts::PlayerParts;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -18,6 +19,7 @@ use crate::scripts::scripts_call::ScriptsCall;
 use crate::state_types::StateTypes;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::facing::Facing;
 use crate::units::forced_move::ForcedMove;
 use crate::units::lifespan::Lifespan;
@@ -28,6 +30,7 @@ use crate::units::relations::Relations;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
@@ -46,6 +49,7 @@ pub(crate) mod body_grid;
 pub(crate) mod by_type;
 pub(crate) mod collision_data;
 pub(crate) mod dead;
+pub(crate) mod delivery_entity;
 pub(crate) mod engine_tag;
 pub(crate) mod facing;
 pub(crate) mod filter;
@@ -87,6 +91,7 @@ pub(crate) mod track_id;
 pub(crate) mod type_origins;
 pub(crate) mod type_scope;
 pub(crate) mod unit;
+pub(crate) mod unit_entity;
 pub(crate) mod unit_row;
 pub(crate) mod unit_rows;
 pub(crate) mod unit_state;
@@ -134,11 +139,13 @@ impl Units {
         types.component::<SpawnPoint>();
         types.component::<StatusTags>();
         types.component::<Team>();
+        types.component::<UnitEntity>();
         types.component::<UnitType>();
         types.component::<UnitState<SyncNone>>();
         types.component::<UnitState<SyncOwner>>();
         types.component::<UnitState<SyncTeam>>();
         types.component::<UnitState<SyncAll>>();
+        types.derived::<DeliveryEntity>();
         types.derived::<UnitTags>();
         types.component::<Relations>();
     }
@@ -156,7 +163,12 @@ impl Units {
         let view = View::new(rate);
         Self::state_types(registry);
         registry.add_check::<Position>(Units::within_bounds);
-        registry.add_check::<Relations>(Units::relations_held);
+        registry.host::<Position, UnitEntity>();
+        registry.require::<UnitEntity, Position>();
+        registry.require::<UnitEntity, Team>();
+        registry.require::<Player, Team>();
+        registry.require::<MatchEntity, Relations>();
+        registry.add_check::<MatchEntity>(Units::match_spawned);
         world.insert_resource(UnitStateBook::default());
         world.insert_resource(NewUnitStates::default());
         view.add_column(UnitsColumn::default());
@@ -168,6 +180,8 @@ impl Units {
         world.add_observer(|_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>| {
             view.refill_next();
         });
+        // A client holds its deliveries unpredicted, so the system finds none there.
+        schedule.add_systems(UnitTags::give_delivery_tags.in_set(SimEdge::Start));
         let Some(budgets) = budgets else {
             world.insert_non_send(view);
             return;
@@ -202,10 +216,10 @@ impl Units {
         })
     }
 
-    /// Whether the match's entity holds the relations, as every match that started does, so no
-    /// system finds them missing.
-    fn relations_held(world: &World) -> bool {
-        MatchEntity::entity(world).is_some_and(|entity| world.get::<Relations>(entity).is_some())
+    /// Whether the match's entity stands, as every match that started spawns it, so no system
+    /// finds it missing.
+    fn match_spawned(world: &World) -> bool {
+        MatchEntity::entity(world).is_some()
     }
 
     /// Compiles `source` in the match's script host, once for every capability that runs it.

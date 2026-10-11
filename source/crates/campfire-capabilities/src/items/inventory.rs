@@ -16,6 +16,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
 use crate::units::block::Block;
+use crate::units::unit_entity::UnitEntity;
 
 /// What a carrier carries: its inventory's slots, in order, each empty or holding a stack of one
 /// item type, and the slot kind whose action slots they fill, one each. State of `items`.
@@ -250,6 +251,7 @@ impl Inventory {
 
 impl SimComponent for Inventory {
     const NAME: &'static str = "items.inventory";
+    type Host = UnitEntity;
 
     // Each stack is of an item type the book holds, no larger than its type's, and with uses left
     // only for a consumable, no more than its type's.

@@ -14,6 +14,7 @@ use crate::state_types::sending::SentPredicted;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
 use crate::units::modifier_id::ModifierId;
+use crate::units::unit_entity::UnitEntity;
 
 /// What each modifier a unit carries counts and spends besides its stats, in the order of its
 /// `Modifiers`: its interval, its shield and its script state. A change here derives nothing
@@ -175,6 +176,7 @@ impl ModifierClocks {
 
 impl SimComponent for ModifierClocks {
     const NAME: &'static str = "stats.modifier_clocks";
+    type Host = UnitEntity;
 
     // A clock for an instance its unit lacks, or state of other fields than its modifier's,
     // would be read past the instance's or the modifier's places; and an interval or a shield its

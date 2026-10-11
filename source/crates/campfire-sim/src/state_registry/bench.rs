@@ -12,6 +12,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use serde::{Deserialize, Serialize};
 
 use crate::entity_index::EntityIndex;
+use crate::host_rule::OnAny;
 use crate::id_allocator::IdAllocator;
 use crate::sim_state::SimComponent;
 use crate::sim_update::SimUpdate;
@@ -51,6 +52,7 @@ struct Stats([Num; 12]);
 
 impl SimComponent for Position {
     const NAME: &'static str = "bench.position";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -59,6 +61,7 @@ impl SimComponent for Position {
 
 impl SimComponent for Velocity {
     const NAME: &'static str = "bench.velocity";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -67,6 +70,7 @@ impl SimComponent for Velocity {
 
 impl SimComponent for Health {
     const NAME: &'static str = "bench.health";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -75,6 +79,7 @@ impl SimComponent for Health {
 
 impl SimComponent for Mana {
     const NAME: &'static str = "bench.mana";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -83,6 +88,7 @@ impl SimComponent for Mana {
 
 impl SimComponent for Team {
     const NAME: &'static str = "bench.team";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -91,6 +97,7 @@ impl SimComponent for Team {
 
 impl SimComponent for Target {
     const NAME: &'static str = "bench.target";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -99,6 +106,7 @@ impl SimComponent for Target {
 
 impl SimComponent for Cooldowns {
     const NAME: &'static str = "bench.cooldowns";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -107,6 +115,7 @@ impl SimComponent for Cooldowns {
 
 impl SimComponent for Stats {
     const NAME: &'static str = "bench.stats";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true

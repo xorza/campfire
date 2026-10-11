@@ -1,6 +1,7 @@
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -26,6 +27,7 @@ impl NextThink {
 
 impl SimComponent for NextThink {
     const NAME: &'static str = "orders.next_think";
+    type Host = UnitEntity;
 
     // Its decode keeps its tick within the limit.
     fn check(&self, _: &World, _: Entity) -> bool {

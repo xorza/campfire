@@ -314,7 +314,7 @@ mod tests {
 
     use bevy_ecs::world::World;
     use campfire_capabilities::SentOnChange;
-    use campfire_sim::{Capability, SimComponent};
+    use campfire_sim::{Capability, OnAny, SimComponent};
     use serde::{Deserialize, Serialize};
 
     use super::*;
@@ -325,6 +325,7 @@ mod tests {
 
     impl SimComponent for Stray {
         const NAME: &'static str = "test.stray";
+        type Host = OnAny;
 
         fn check(&self, _: &World, _: Entity) -> bool {
             true

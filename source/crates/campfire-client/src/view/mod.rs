@@ -24,11 +24,11 @@ use bevy::transform::components::Transform;
 use bevy::window::Window;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_capabilities::{
-    ActionSlots, Area, AreaReach, Body, Dead, Facing, MatchEnd, MatchResult, MoveStep, Owner,
-    Projectile, Team, UnitType,
+    ActionSlots, Area, AreaReach, Body, Dead, DeliveryEntity, Facing, MatchEnd, MatchResult,
+    MoveStep, Owner, Projectile, Team, UnitEntity, UnitType,
 };
 use campfire_net::JoinState;
-use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
+use campfire_sim::{EntityIndex, Position, Unpredicted};
 use lightyear::prelude::Predicted;
 
 use crate::view::client_data::ClientData;
@@ -122,10 +122,9 @@ type NewUnits<'w, 's> = Query<
         Option<&'static Facing>,
     ),
     (
-        With<StableId>,
+        With<UnitEntity>,
         Without<Drawing>,
-        Without<Projectile>,
-        Without<Area>,
+        Without<DeliveryEntity>,
         Allow<Unpredicted>,
     ),
 >;

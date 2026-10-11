@@ -4,13 +4,12 @@ use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{EntityRef, World};
 use campfire_common::PlayerSlot;
 use campfire_math::Num;
+use campfire_sim::Position;
 
 use crate::actions::action_slots::ActionSlots;
-use crate::combat::recent_attackers::RecentAttackers;
-use crate::items::inventory::Inventory;
 use crate::mode::choice_book::ChoiceBook;
 use crate::mode::game_map::GameMap;
 use crate::mode::group_unit::GroupUnit;
@@ -21,27 +20,20 @@ use crate::mode::placed_unit::PlacedUnit;
 use crate::mode::roster::Roster;
 use crate::mode::slot_action::SlotAction;
 use crate::mode::unit_kit::UnitKit;
+use crate::mode::unit_kit::kit_part::{KitPart, KitSpawn};
 use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
-use crate::production::builder::Builder;
-use crate::production::gatherer::Gatherer;
-use crate::production::node::Node;
-use crate::production::train_queue::TrainQueue;
-use crate::progression::experience::Experience;
-use crate::progression::points::Points;
 use crate::progression::track_book::TrackBook;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::applier::Applier;
-use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
-use crate::stats::modifier_clocks::ModifierClocks;
-use crate::stats::modifiers::Modifiers;
 use crate::stats::stats_effect::StatsEffect;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::facing::Facing;
 use crate::units::modifier_id::ModifierId;
@@ -49,10 +41,10 @@ use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
 use crate::units::spawn_at::SpawnAt;
-use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
+use crate::units::track_id::TrackId;
 use crate::units::unit_state::{SyncAll, SyncNone};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
@@ -80,6 +72,8 @@ pub(crate) struct ModeBook {
     pub(crate) state_all: ModeState<SyncAll>,
     /// `ctx.map`, as scripts read it, and where avatars spawn.
     map: GameMap,
+    /// The parts a unit's kit may give it that the match's state holds.
+    kit_parts: Vec<KitPart>,
 }
 
 /// What a unit type of the mode spawns with: its kit, its passive, if it holds one, and its run of
@@ -110,7 +104,8 @@ impl ModeBook {
 
     /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
     /// seat, with the units its map places, the `relations` its teams start with, `map` as
-    /// scripts read it, and `loadout_ranks`, the ranks of every loadout entry.
+    /// scripts read it, `loadout_ranks`, the ranks of every loadout entry, and `kit_parts`, the
+    /// parts a kit may give that the match's state holds.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
         scripts: &ScriptBook,
@@ -118,6 +113,7 @@ impl ModeBook {
         relations: Relations,
         map: GameMap,
         loadout_ranks: u8,
+        kit_parts: Vec<KitPart>,
     ) -> ModeBook {
         let teams = setup
             .teams
@@ -150,6 +146,7 @@ impl ModeBook {
             state_none: ModeState::initial(setup.data),
             state_all: ModeState::initial(setup.data),
             map,
+            kit_parts,
         }
     }
 
@@ -165,11 +162,11 @@ impl ModeBook {
     /// with neither.
     pub(crate) fn spawn_slots(&self, unit_type: UnitType) -> Option<ActionSlots> {
         let inventory = self.kit(unit_type)?.inventory;
-        let actions = self.actions(unit_type);
-        if actions.is_empty() && inventory.is_none() {
+        if !self.has_slots(unit_type) {
             return None;
         }
-        let actions = actions
+        let actions = self
+            .actions(unit_type)
             .iter()
             .map(|action| (action.ability, action.kind, action.rank));
         let slots = ActionSlots::new(actions);
@@ -181,6 +178,39 @@ impl ModeBook {
 
     pub(super) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
         self.types.get(unit_type).map(|held| held.kit)
+    }
+
+    /// Whether a unit of `unit_type` spawns with slots: actions, or an inventory.
+    fn has_slots(&self, unit_type: UnitType) -> bool {
+        let inventory = self
+            .kit(unit_type)
+            .is_some_and(|kit| kit.inventory.is_some());
+        inventory || !self.actions(unit_type).is_empty()
+    }
+
+    /// Whether `unit` holds every part a unit of its type spawns with, of a match whose `level`
+    /// track is `level_track`: its slots when its type gives any, and each part of `kit_parts`
+    /// its kit gives.
+    pub(crate) fn holds_kit(&self, unit: EntityRef<'_>, level_track: Option<TrackId>) -> bool {
+        let Some((&unit_type, kit)) = unit
+            .get::<UnitType>()
+            .and_then(|unit_type| Some((unit_type, self.kit(*unit_type)?)))
+        else {
+            return false;
+        };
+        let Some(&pos) = unit.get::<Position>() else {
+            return false;
+        };
+        let at = KitSpawn {
+            kit: &kit,
+            level_track,
+            pos,
+            angle: unit
+                .get::<Facing>()
+                .map_or(Num::ZERO, |facing| facing.degrees()),
+        };
+        let slots = !self.has_slots(unit_type) || unit.contains::<ActionSlots>();
+        slots && self.kit_parts.iter().all(|part| part.held_by(unit, &at))
     }
 
     pub(crate) fn map(&self) -> GameMap {
@@ -221,64 +251,21 @@ impl ModeBook {
             .get_resource::<TrackBook>()
             .and_then(TrackBook::level_track);
         let state = world.resource::<UnitStateBook>().initial(unit_type);
-        let mut unit = world.spawn((
-            id,
-            pos,
-            Facing::of(angle),
-            SpawnPoint::new(pos),
-            unit_type,
-            team,
-            Level::default(),
-            UnitStats::default(),
-            tags,
-            Modifiers::default(),
-            ModifierClocks::default(),
-            parts,
-        ));
+        let mut unit = world.spawn((id, pos, unit_type, team, UnitStats::default(), tags, parts));
         state.insert_into(&mut unit);
-        if let Some(life) = kit.life {
-            unit.insert(life);
-        }
-        if let Some(pools) = kit.pools {
-            unit.insert(pools);
-        }
-        if let Some(on_death) = kit.on_death {
-            unit.insert((on_death, RecentAttackers::default()));
-        }
-        if let Some(sight) = kit.sight {
-            unit.insert(sight);
-        }
-        let body = kit.body.map(|form| form.at(angle));
-        if let Some(body) = body {
-            unit.insert(body);
-        }
-        if let Some(step) = kit.step {
-            unit.insert(Navigation::walker(step));
-        }
-        if !kit.tracks.is_empty() {
-            unit.insert(Experience::new(kit.tracks, level_track));
-        }
-        if let Some(points) = Points::at_spawn(kit.tracks, level_track) {
-            unit.insert(points);
-        }
-        if kit.queue.is_some() {
-            unit.insert(TrainQueue::default());
-        }
-        if kit.builds {
-            unit.insert(Builder::default());
-        }
-        if let Some(amount) = kit.node {
-            unit.insert(Node::new(amount.get()));
-        }
-        if kit.gathers {
-            unit.insert(Gatherer::default());
-        }
+        let at = KitSpawn {
+            kit: &kit,
+            level_track,
+            pos,
+            angle,
+        };
+        KitPart::give_every(&at, &mut unit);
         if let Some(slots) = self.spawn_slots(unit_type) {
             unit.insert(slots.timed());
         }
-        if let Some(inventory) = kit.inventory {
-            unit.insert(Inventory::new(inventory.slots, inventory.kind));
-        }
+        let boxed = unit
+            .get::<Body>()
+            .is_some_and(|body| body.half_edges().is_some());
         let entity = unit.id();
         if let Some(passive) = self.types.get(unit_type).and_then(|held| held.passive) {
             let applier = Applier {
@@ -294,7 +281,7 @@ impl ModeBook {
             };
             add.apply_by(world, applier);
         }
-        if body.is_some_and(|body| body.half_edges().is_some()) {
+        if boxed {
             Navigation::make_room(world, entity);
         }
         entity

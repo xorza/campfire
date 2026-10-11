@@ -5,6 +5,7 @@ use campfire_math::{Num, Vec3};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::host_rule::OnAny;
 use crate::sim_state::SimComponent;
 
 /// Where an entity is. Every coordinate stays within ±`BOUND`, so exact squared distances fit a
@@ -51,6 +52,7 @@ impl Position {
 
 impl SimComponent for Position {
     const NAME: &'static str = "sim.position";
+    type Host = OnAny;
 
     // Its decode keeps it within the world's bound; the capability that knows the map's adds
     // that check.

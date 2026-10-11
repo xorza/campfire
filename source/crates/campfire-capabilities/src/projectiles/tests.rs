@@ -1,7 +1,8 @@
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::With;
 use campfire_common::{Binary, SegmentSeed, Tick, Toml};
 use campfire_math::RngSource;
-use campfire_sim::{Capability, EntityIndex, SimComponent};
+use campfire_sim::{Capability, EntityIndex, SimComponent, SnapshotError};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -236,16 +237,6 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     source.begin_tick(12);
     let roll = source.open(ROLL_STREAM, shooter_id.get()).fraction();
     assert_eq!(volley.rolls(), [roll]);
-    // It holds its flight state, or it never flies.
-    let world = &mut volley.sim.world;
-    let (bolt, projectile) = world
-        .query::<(Entity, &Projectile)>()
-        .single(world)
-        .map(|(bolt, projectile)| (bolt, projectile.clone()))
-        .unwrap();
-    assert!(projectile.check(world, bolt));
-    world.entity_mut(bolt).remove::<FlightState>();
-    assert!(!projectile.check(world, bolt));
 }
 
 #[test]
@@ -275,19 +266,33 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     assert!(hits.iter().all(|&hit| struck.contains(hit)));
     volley.sim.world.insert_resource(struck);
     // A restore loads the match's books first: the same weapons, in the same order.
-    let mut restored = Volley::new();
-    for armed in [
-        shooter(restored.bolt),
-        shooter(restored.bolt),
-        target(),
-        target(),
-    ] {
-        let _weapon = armed.bundle(&mut restored.sim.world, Team::new(0));
-    }
+    let fresh = || {
+        let mut restored = Volley::new();
+        for armed in [
+            shooter(restored.bolt),
+            shooter(restored.bolt),
+            target(),
+            target(),
+        ] {
+            let _weapon = armed.bundle(&mut restored.sim.world, Team::new(0));
+        }
+        restored
+    };
+    let mut restored = fresh();
     volley.sim.restore_into(&mut restored.sim);
     assert_eq!(restored.projectiles(), volley.projectiles());
     let struck = |volley: &Volley| volley.sim.world.resource::<StruckUnits>().clone();
     assert_eq!(struck(&restored), struck(&volley));
+    // A projectile without its flight state never flies, so a snapshot of one is refused.
+    let world = &mut restored.sim.world;
+    let bolt = world
+        .query_filtered::<Entity, With<Projectile>>()
+        .iter(world)
+        .next()
+        .unwrap();
+    world.entity_mut(bolt).remove::<FlightState>();
+    let refusal = restored.sim.refusal_into(&mut fresh().sim);
+    assert_eq!(refusal, Some(SnapshotError::Invalid(FlightState::NAME)));
     // The struck units decode only in order, each once: the ids were allocated in order.
     let decode = |hits: &[(StableId, StableId)]| {
         let hits: Vec<Struck> = hits.iter().map(|&(by, unit)| Struck { by, unit }).collect();

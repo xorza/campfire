@@ -9,6 +9,7 @@ use crate::areas::area::Area;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::delivery_entity::DeliveryEntity;
 
 /// The tick an area triggers, which it holds until it does. No client reads it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +28,7 @@ impl AreaTrigger {
 
 impl SimComponent for AreaTrigger {
     const NAME: &'static str = "areas.area_trigger";
+    type Host = DeliveryEntity;
 
     // An area's, which it triggers before it ends.
     fn check(&self, world: &World, entity: Entity) -> bool {

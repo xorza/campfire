@@ -473,6 +473,12 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     };
     game.tick(&[(0, &at_unit(other))]);
     assert_eq!(ordered(&game), Some(train_order));
+    // A player's entity of the hero's team holds a team and no `SeenBy`, and is no unit: an order
+    // at it changes nothing either.
+    let own = PlayerSlot::new(0);
+    MatchEntity::spawn_player(&mut game.sim.world, own, Team::new(0), 0);
+    game.tick(&[(0, &at_unit(StableId::of_player(own)))]);
+    assert_eq!(ordered(&game), Some(train_order));
     game.tick(&[(0, &at_unit(hero))]);
     assert_eq!(ordered(&game), Some(aimed(hero)));
     game.sim

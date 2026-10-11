@@ -10,6 +10,7 @@ use crate::projectiles::projectile::{Flight, Projectile};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::delivery_entity::DeliveryEntity;
 
 /// What changes of a projectile in flight: the meters it flew, and whether a teleport of the unit
 /// it homes on disjointed it, which ends it in its next step. No client reads it.
@@ -48,6 +49,7 @@ impl FlightState {
 
 impl SimComponent for FlightState {
     const NAME: &'static str = "projectiles.flight_state";
+    type Host = DeliveryEntity;
 
     // Its projectile's: a line's flown within its range, and lost only when it homes.
     fn check(&self, world: &World, entity: Entity) -> bool {

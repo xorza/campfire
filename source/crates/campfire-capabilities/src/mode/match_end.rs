@@ -80,17 +80,16 @@ impl MatchEnd {
 
 impl SimComponent for MatchEnd {
     const NAME: &'static str = "mode.match_end";
+    type Host = MatchEntity;
 
-    // An end on another entity is no match's, and a winner that is not one of the mode's teams
-    // has no name to report.
-    fn check(&self, world: &World, entity: Entity) -> bool {
-        let won = match self.result {
+    // A winner that is not one of the mode's teams has no name to report.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        match self.result {
             MatchResult::Won(team) => world
                 .get_non_send::<View>()
                 .is_none_or(|view| view.has_team(team)),
             MatchResult::Draw => true,
-        };
-        won && world.get::<MatchEntity>(entity).is_some()
+        }
     }
 }
 

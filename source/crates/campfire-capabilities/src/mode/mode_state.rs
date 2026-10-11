@@ -91,13 +91,13 @@ impl<S: ModeSync> ModeState<S> {
 
 impl<S: ModeSync> SimComponent for ModeState<S> {
     const NAME: &'static str = S::MODE_NAME;
+    type Host = MatchEntity;
 
     // A field the class does not declare, or of another type, reaches its script as a value it
-    // never wrote; on another entity, no mode reads it.
-    fn check(&self, world: &World, entity: Entity) -> bool {
+    // never wrote.
+    fn check(&self, world: &World, _: Entity) -> bool {
         let book = world.get_non_send::<Ctx>().and_then(ModeBook::of);
-        world.get::<MatchEntity>(entity).is_some()
-            && book.is_none_or(|book| book.schema.fits_state(S::SYNC, &self.values))
+        book.is_none_or(|book| book.schema.fits_state(S::SYNC, &self.values))
     }
 }
 

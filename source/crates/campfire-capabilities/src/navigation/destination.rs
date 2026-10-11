@@ -10,6 +10,7 @@ use crate::navigation::route::Route;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
+use crate::units::unit_entity::UnitEntity;
 
 /// Where a unit walks to; none once it arrives.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +66,7 @@ impl Destination {
 
 impl SimComponent for Destination {
     const NAME: &'static str = "navigation.destination";
+    type Host = UnitEntity;
 
     // Its decode keeps the point within the bound; a unit that walks to it steers over the cells
     // of its kind of walker, which must be one the mode has.

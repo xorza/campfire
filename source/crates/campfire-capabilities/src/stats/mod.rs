@@ -3,7 +3,7 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::world::World;
-use campfire_common::{PlayerSlot, Ticks};
+use campfire_common::Ticks;
 use campfire_sim::{EntityIndex, SimEdge, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::players::player::Player;
@@ -135,7 +135,7 @@ impl Stats {
         world.insert_resource(HeldModifiers::default());
         world.insert_resource(LiveCarriers::default());
         Self::state_types(registry);
-        registry.add_check::<PlayerModifiers>(Stats::player_modifiers_held);
+        registry.require::<Player, PlayerModifiers>();
         schedule.add_systems((
             (
                 ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
@@ -157,15 +157,6 @@ impl Stats {
                     .in_set(SimEdge::After(stage)),
             );
         }
-    }
-
-    /// Whether each player's entity holds its modifiers, as stats puts them on it as it spawns,
-    /// so no system finds them missing.
-    fn player_modifiers_held(world: &World) -> bool {
-        (0..)
-            .map(PlayerSlot::new)
-            .map_while(|slot| Player::entity(world, slot))
-            .all(|entity| world.get::<PlayerModifiers>(entity).is_some())
     }
 
     /// Gives the match the mode's stat book and pool book, whose names its scripts read.

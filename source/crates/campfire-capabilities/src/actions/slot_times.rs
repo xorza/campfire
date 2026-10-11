@@ -21,6 +21,7 @@ use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
 use crate::stats::unit_pools::PoolMetersMut;
 use crate::units::action_id::ActionId;
+use crate::units::unit_entity::UnitEntity;
 
 /// The times of a unit's action slots, one for each slot of its `ActionSlots`, in their order:
 /// what only its owner receives of them, where every client that sees the unit receives the
@@ -313,6 +314,7 @@ impl<'de> Deserialize<'de> for SlotTimes {
 
 impl SimComponent for SlotTimes {
     const NAME: &'static str = "actions.slot_times";
+    type Host = UnitEntity;
 
     // Times of no slot, or slots with no times, would be read past one or the other. A toggle on
     // of an action with none, or charges past the action's most or of one with none, have no

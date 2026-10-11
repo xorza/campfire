@@ -12,6 +12,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
 use crate::units::layer::Layer;
+use crate::units::unit_entity::UnitEntity;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
 /// that does not walk on a planar map may have. Living bodies of one layer do not overlap, and
@@ -93,6 +94,7 @@ impl Body {
 
 impl SimComponent for Body {
     const NAME: &'static str = "units.body";
+    type Host = UnitEntity;
 
     // Its decode bounds its radius or its box; a layer only compares with another.
     fn check(&self, _: &World, _: Entity) -> bool {

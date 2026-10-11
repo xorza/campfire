@@ -26,6 +26,8 @@ use crate::stats::StatsSet;
 use crate::stats::life::Life;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_id::PoolId;
+use crate::units::dead::Dead;
+use crate::units::spawn_point::SpawnPoint;
 use crate::units::view::View;
 
 pub(crate) mod assist_window;
@@ -159,6 +161,8 @@ impl Combat {
             Dying::despawn_dead.in_set(SimSet::Vision),
         ));
         Self::state_types(registry);
+        registry.require::<Respawn, Dead>();
+        registry.require::<Respawn, SpawnPoint>();
     }
 
     /// The match's life pool; `None` when its mode names none.

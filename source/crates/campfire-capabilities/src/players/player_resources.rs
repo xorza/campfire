@@ -103,14 +103,13 @@ impl PlayerResources {
 
 impl SimComponent for PlayerResources {
     const NAME: &'static str = "players.resources";
+    type Host = Player;
 
-    // Resources on no player's entity belong to no player, and a row of another width would
-    // place an amount under another resource.
-    fn check(&self, world: &World, entity: Entity) -> bool {
-        world.get::<Player>(entity).is_some()
-            && world
-                .get_non_send::<View>()
-                .is_none_or(|view| view.fits_resources(self.0.len()))
+    // A row of another width would place an amount under another resource.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        world
+            .get_non_send::<View>()
+            .is_none_or(|view| view.fits_resources(self.0.len()))
     }
 }
 

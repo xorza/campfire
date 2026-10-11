@@ -9,6 +9,7 @@
 mod capability;
 mod command;
 mod entity_index;
+mod host_rule;
 mod id_allocator;
 mod ordered;
 mod position;
@@ -28,6 +29,7 @@ mod unpredicted;
 pub use crate::capability::Capability;
 pub use crate::command::Command;
 pub use crate::entity_index::EntityIndex;
+pub use crate::host_rule::{Either, HostRule, OnAny};
 pub use crate::id_allocator::IdAllocator;
 pub use crate::ordered::{Keyed, Ordered};
 pub use crate::position::Position;
@@ -48,7 +50,7 @@ pub use crate::unpredicted::Unpredicted;
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::sim_update::stage_clock::StageClock;
-    pub use crate::state_registry::internals::Draws;
+    pub use crate::state_registry::internals::{Draws, Mutation};
 }
 
 #[cfg(feature = "bench")]

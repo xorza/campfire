@@ -1,4 +1,4 @@
-data_version 5
+data_version 6
 actions.slot_times 776040a47152d129
 actions.slots 6986814051c8249c
 areas.area 6e7395840db07855
@@ -61,6 +61,7 @@ units.state_owner 4d8020ccfc90f5b5
 units.state_team b32af9519da4d6b9
 units.status_tags f68cb69ffc7e8715
 units.team 8d8b815537ab99f3
+units.unit 6f07fc05a6a4e4ce
 units.unit_type 64f5ae9d41de84f2
 vision.reveals 5a54af18758f98e8
 vision.seen_by fecb7b7c61fe94ba

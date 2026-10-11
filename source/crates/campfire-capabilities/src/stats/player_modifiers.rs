@@ -46,13 +46,13 @@ impl PlayerModifiers {
 
 impl SimComponent for PlayerModifiers {
     const NAME: &'static str = "stats.player_modifiers";
+    type Host = Player;
 
-    // Modifiers on no player's entity belong to no player; a modifier the book lacks would be
-    // read past its place, and one that reads a param no action gives would fail as its units
-    // take it; `add` and `holds` find a modifier only in order, each once.
-    fn check(&self, world: &World, entity: Entity) -> bool {
-        world.get::<Player>(entity).is_some()
-            && self.0.is_sorted_by(|a, b| a < b)
+    // A modifier the book lacks would be read past its place, and one that reads a param no
+    // action gives would fail as its units take it; `add` and `holds` find a modifier only in
+    // order, each once.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        self.0.is_sorted_by(|a, b| a < b)
             && self
                 .0
                 .iter()

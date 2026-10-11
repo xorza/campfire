@@ -67,6 +67,7 @@ impl Projectiles {
             Launching::launch.in_set(CombatSet::Launch),
         ));
         Self::state_types(registry);
+        registry.require::<Projectile, FlightState>();
     }
 
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing

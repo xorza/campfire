@@ -11,6 +11,7 @@ use crate::state_types::sending::SentOnChange;
 use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
 use crate::stats::pool_id::PoolId;
+use crate::units::unit_entity::UnitEntity;
 
 /// A unit's pools but its life, by pool id: each an amount from 0 to its maximum, none where its
 /// type lists no such pool, and none in the mode's life pool, which `Life` holds, as only its
@@ -68,6 +69,7 @@ impl Pools {
 
 impl SimComponent for Pools {
     const NAME: &'static str = "stats.pools";
+    type Host = UnitEntity;
 
     // A fixed array of every pool place, whose meters' decode keeps each amount within its maximum;
     // a place the mode does not declare is never read, and the life pool's would hide from the

@@ -15,7 +15,7 @@ use campfire_capabilities::{
     Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
     Life, ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner, PackagePath,
     Param, PoolMeters, Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers, Scalar,
-    Scaling, SeenBy, SlotKind, SlotTimes, Stat, Targeting, Team,
+    Scaling, SeenBy, SlotKind, SlotTimes, Stat, Targeting, Team, UnitEntity,
 };
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
@@ -83,7 +83,7 @@ fn spawn_at(
         OnDeath::Stay,
         RecentAttackers::default(),
     );
-    let mut unit = world.spawn((id, at, Team::new(team), combat, parts));
+    let mut unit = world.spawn((id, UnitEntity, at, Team::new(team), combat, parts));
     if !pools.is_empty() {
         unit.insert(Pools::new(pools).unwrap());
     }

@@ -8,7 +8,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_script::rhai::ImmutableString;
-use campfire_sim::{IdAllocator, SimSet, SimTick, StateRegistry, TickRate};
+use campfire_sim::{EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickRate};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
@@ -32,6 +32,7 @@ use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
+use crate::mode::unit_kit::kit_part::KitPart;
 use crate::navigation::NavigationSet;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
@@ -41,6 +42,7 @@ use crate::players::player::Player;
 use crate::players::player_parts::PlayerParts;
 use crate::players::player_resources::PlayerResources;
 use crate::production::ProductionSet;
+use crate::progression::track_book::TrackBook;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
@@ -50,10 +52,13 @@ use crate::scripts::state_value::StateValue;
 use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
 use crate::units::team::Team;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncAll, SyncNone};
+use crate::units::unit_type::UnitType;
 use crate::units::view::View;
 use crate::vision::Vision;
 
@@ -158,6 +163,7 @@ impl Mode {
             relations,
             GameMap::new(paths.names().map(ImmutableString::from), &markers),
             loadout_ranks,
+            KitPart::of_state(registry),
         );
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, &brush, book.teams.count());
@@ -218,7 +224,11 @@ impl Mode {
                 .after(ProductionSet::Finish),
         ));
         Self::state_types(registry);
-        registry.add_check::<Player>(Mode::entities_held);
+        registry.add_check::<Player>(Mode::players_seated);
+        registry.require::<Player, PlayerResources>();
+        registry.require::<MatchEntity, ModeState<SyncNone>>();
+        registry.require::<MatchEntity, ModeState<SyncAll>>();
+        registry.add_check::<UnitType>(Mode::kits_held);
     }
 
     /// The boundary the mode in `world` last asked for a save at, by `ctx.save()`, by the tick
@@ -242,23 +252,31 @@ impl Mode {
         state
     }
 
-    /// Whether the match's entity holds the mode's state, each class, and each slot of the session
-    /// has its entity, holding its resources, as the mode's start spawns them, so no call finds
-    /// one missing.
-    fn entities_held(world: &World) -> bool {
-        let ctx = world.get_non_send::<Ctx>();
-        let Some(players) = ctx.and_then(ModeBook::of).map(|book| book.teams.players()) else {
-            return true;
-        };
-        let state = MatchEntity::entity(world).is_some_and(|entity| {
-            let entity = world.entity(entity);
-            entity.contains::<ModeState<SyncNone>>() && entity.contains::<ModeState<SyncAll>>()
-        });
-        state
-            && (0..players).map(PlayerSlot::new).all(|slot| {
-                Player::entity(world, slot)
-                    .is_some_and(|entity| world.get::<PlayerResources>(entity).is_some())
-            })
+    /// Whether each slot of the session has its entity, as the mode's start spawns them, so no
+    /// call finds one missing.
+    fn players_seated(world: &World) -> bool {
+        let ctx = world.non_send::<Ctx>();
+        let players = ModeBook::of_match(ctx).teams.players();
+        (0..players)
+            .map(PlayerSlot::new)
+            .all(|slot| Player::entity(world, slot).is_some())
+    }
+
+    /// Whether each unit but a delivery holds every part its type's kit gives it as it spawns,
+    /// none of which a unit loses while it stands, so no system finds one missing. A match with
+    /// no progression has no level track, as `ModeBook::spawn` reads it.
+    fn kits_held(world: &World) -> bool {
+        let ctx = world.non_send::<Ctx>();
+        let book = ModeBook::of_match(ctx);
+        let level_track = world
+            .get_resource::<TrackBook>()
+            .and_then(TrackBook::level_track);
+        world.resource::<EntityIndex>().iter().all(|(_, entity)| {
+            let unit = world.entity(entity);
+            !unit.contains::<UnitEntity>()
+                || unit.contains::<DeliveryEntity>()
+                || book.holds_kit(unit, level_track)
+        })
     }
 
     /// The team of player `slot` in the match in `world`; `None` before the mode installs, or for

@@ -14,6 +14,7 @@ use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
 use crate::stats::modifier_book::ModifierBook;
 use crate::units::by_type::ByType;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::unit_type::UnitType;
 
 /// An area unit on the ground: the delivery it is, whose lists and hooks it runs, the unit
@@ -21,6 +22,7 @@ use crate::units::unit_type::UnitType;
 /// it triggers, holds the tick it triggers.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
+#[require(DeliveryEntity)]
 pub struct Area {
     by: Delivering,
     aimed: Option<StableId>,
@@ -47,6 +49,7 @@ impl Area {
 
 impl SimComponent for Area {
     const NAME: &'static str = "areas.area";
+    type Host = DeliveryEntity;
 
     // An area of a type with no area section, or of an action the book lacks or at a rank past
     // its ranks, or of a launch the match did not load, has no rules for its trigger or its

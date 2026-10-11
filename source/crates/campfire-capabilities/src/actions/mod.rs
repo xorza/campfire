@@ -109,6 +109,7 @@ impl Actions {
             world.insert_resource(EffectLists::default());
         }
         Self::state_types(registry);
+        registry.require::<ActionSlots, SlotTimes>();
     }
 
     /// Adds to `schedule` the holds of every action: its charges as each tick starts, and its

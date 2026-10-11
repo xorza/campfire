@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::view::View;
 
 /// The player who controls a unit, by slot: design 04's control relation, which `orders` and,
@@ -28,6 +29,7 @@ impl Owner {
 
 impl SimComponent for Owner {
     const NAME: &'static str = "units.owner";
+    type Host = UnitEntity;
 
     // The script pools and the players' tables hold a place for each player only.
     fn check(&self, world: &World, _: Entity) -> bool {

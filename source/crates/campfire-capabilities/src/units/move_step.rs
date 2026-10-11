@@ -10,6 +10,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
 use crate::units::body::Body;
+use crate::units::unit_entity::UnitEntity;
 
 /// How far a unit walks in one tick, never negative: the effect of its move speed, which its
 /// stats give.
@@ -33,6 +34,7 @@ impl MoveStep {
 
 impl SimComponent for MoveStep {
     const NAME: &'static str = "units.move_step";
+    type Host = UnitEntity;
 
     // Its decode keeps it at 0 or more; a unit that walks has a circle for a body, or none, as
     // a box never walks.

@@ -78,7 +78,12 @@ impl Mine {
     /// A worker of player `owner` at `at`, of a half meter, walking a meter a tick, with the
     /// gather in its slot 0.
     fn worker(&mut self, at: Position, owner: u32) -> StableId {
-        let slots = ActionSlots::new([(self.gather, SlotKind::new(0), Rank::new(1))]).timed();
+        self.worker_ranked(at, owner, Rank::new(1))
+    }
+
+    /// A worker as `worker` gives, its gather at `rank`, or not learned with none.
+    fn worker_ranked(&mut self, at: Position, owner: u32, rank: Option<Rank>) -> StableId {
+        let slots = ActionSlots::new([(self.gather, SlotKind::new(0), rank)]).timed();
         let parts = (
             Team::new(0),
             Owner::new(PlayerSlot::new(owner)),
@@ -168,11 +173,17 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     mine.hall(half(0, 0));
     let node = mine.mineral(half(0, 12), 12);
     let worker = mine.worker(half(1, 6), 0);
-    mine.gather_at(&[worker], node);
+    // A worker far off whose gather it has not learned holds no gather: its order stops in the
+    // tick it applies.
+    let unlearned = mine.worker_ranked(half(-20, 6), 0, None);
+    mine.gather_at(&[worker, unlearned], node);
     let mut seen = Vec::new();
-    for _ in 1..=21 {
+    for tick in 1..=21 {
         mine.shop.tick();
         seen.push((mine.gold(), mine.amount(node)));
+        if tick == 1 {
+            assert_eq!(mine.step(unlearned), None);
+        }
     }
     let at = |tick: usize| seen[tick - 1];
     assert_eq!(at(1), (0, Some(12)));

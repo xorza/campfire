@@ -1,13 +1,15 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::SimComponent;
+use campfire_sim::{Either, SimComponent};
 use serde::{Deserialize, Serialize};
 
+use crate::players::player::Player;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
 use crate::units::bits256::Bits256;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::view::View;
 
 /// A unit's team: its index in the mode's list of teams. How two teams regard each other is
@@ -39,6 +41,7 @@ impl Team {
 
 impl SimComponent for Team {
     const NAME: &'static str = "units.team";
+    type Host = Either<UnitEntity, Player>;
 
     // The vision groups and the mode's tables hold a place for each of the mode's teams only.
     fn check(&self, world: &World, _: Entity) -> bool {

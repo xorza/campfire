@@ -5,10 +5,14 @@ use bevy_ecs::world::World;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::host_rule::HostRule;
+
 /// A component that is part of the simulated state: hashed, snapshotted and restored. `NAME` fixes
 /// its place in the hash, so it never changes while the component keeps its meaning.
 pub trait SimComponent: Component + Serialize + DeserializeOwned {
     const NAME: &'static str;
+    /// The kind of entity it sits on, which a restore checks before `check`.
+    type Host: HostRule;
 
     /// Whether the value, restored on `entity`, keeps its type's rules in `world`, with every
     /// other type restored and the match's books in place: each id it holds names what the books

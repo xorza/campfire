@@ -20,9 +20,11 @@ use crate::values::stat::{EngineStat, Stat};
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
 
+pub(crate) mod kit_part;
+
 /// What a new unit of a type starts with, in ticks at the match's rate: its life and its other
-/// pools, full at their maxima at level 1, whether it stays when it dies, when it has a `combat` section, how far it
-/// walks a tick, how far it sees, its body, the tracks it gains experience on, the most trains
+/// pools, full at their maxima at level 1, whether it stays when it dies, when it has a `combat`
+/// section, how far it walks a tick, how far it sees, its body, the tracks it gains experience on, the most trains
 /// its queue holds, when it has a `production` section, whether its slots hold a build, what it
 /// holds as a node, whether its slots hold a gather, and its inventory's slots and slot kind,
 /// when it has one.

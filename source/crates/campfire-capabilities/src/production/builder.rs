@@ -8,6 +8,7 @@ use crate::production::build_target::BuildTarget;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::unit_entity::UnitEntity;
 
 /// A unit that builds, as one whose slots hold a build: its build order, none while it has none.
 /// Any other order ends it.
@@ -35,6 +36,7 @@ impl Builder {
 
 impl SimComponent for Builder {
     const NAME: &'static str = "production.builder";
+    type Host = UnitEntity;
 
     // A slot past its unit's ends the order as its build starts, and a point or a site any
     // value names is checked as the order is.

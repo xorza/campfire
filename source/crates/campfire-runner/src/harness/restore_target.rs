@@ -74,7 +74,7 @@ impl RestoreTarget {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_sim::SimUpdate;
-    use campfire_sim::internals::Draws;
+    use campfire_sim::internals::{Draws, Mutation};
 
     use crate::harness::restore_target::RestoreTarget;
 
@@ -100,6 +100,12 @@ pub(crate) mod internals {
         /// holds; false when nothing holds one, or no draw decodes.
         pub fn scramble(&mut self, name: &str, draws: &mut Draws) -> bool {
             self.registry.scramble(&mut self.world, name, draws)
+        }
+
+        /// Changes where the state type `name` sits in what it holds, as `mutation` says; false
+        /// when the type has nothing to change so.
+        pub fn mutate(&mut self, name: &str, draws: &mut Draws, mutation: Mutation) -> bool {
+            self.registry.mutate(&mut self.world, name, draws, mutation)
         }
     }
 }

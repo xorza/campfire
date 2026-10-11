@@ -24,6 +24,7 @@ use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::slot_times::{SlotTimes, TimedSlots};
 use crate::units::action_id::ActionId;
+use crate::units::unit_entity::UnitEntity;
 use crate::values::action_start::ActionStart;
 use crate::values::rank::Rank;
 
@@ -542,15 +543,13 @@ impl<'de> Deserialize<'de> for ActionSlots {
 
 impl SimComponent for ActionSlots {
     const NAME: &'static str = "actions.slots";
+    type Host = UnitEntity;
 
     // An action the book lacks, a rank past its ranks, or what is under way of a slot it does
     // not have, an attack of no weapon or an order of one, has no rules for a cast to follow; a
     // slot of a kind the mode lacks, or of an action with ranks its kind has no level for, would
-    // be read past the mode's kinds; slots with no times have no cooldowns to follow.
-    fn check(&self, world: &World, entity: Entity) -> bool {
-        if !world.entity(entity).contains::<SlotTimes>() {
-            return false;
-        }
+    // be read past the mode's kinds.
+    fn check(&self, world: &World, _: Entity) -> bool {
         let (Some(book), Some(kinds)) = (
             world.get_resource::<ActionBook>(),
             world.get_resource::<SlotKinds>(),

@@ -27,6 +27,7 @@ use crate::stats::stats_data::{StatValue, StatsData};
 use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::move_step::MoveStep;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_properties::TagProperties;
@@ -141,6 +142,8 @@ fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
     let mut unit = game.world.spawn((
         id,
         UnitType::new(unit_type),
+        Position::new(Vec3::ZERO).unwrap(),
+        Team::new(0),
         Level::default(),
         UnitStats::default(),
         UnitTags::default(),
@@ -731,7 +734,11 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
             TagProperties::default().with_block(Block::Move),
             TagSet::default(),
         )];
-        let book = TagBook::new(effects, [(UnitType::new(0), TagSet::default())]);
+        let own = [
+            (UnitType::new(0), TagSet::default()),
+            (UnitType::new(1), TagSet::of([stunned])),
+        ];
+        let book = TagBook::new(effects, own);
         game.world.insert_resource(book);
         // The type of the unit, 0, and the modifiers the shares below are instances of, 0 and 1.
         Units::load_type(
@@ -782,6 +789,32 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         game.registry.hash(&game.world),
         game.registry.hash(&restored.world)
     );
+
+    // A delivery, of type 1 whose own tag is the stun's, keeps the tags it spawned with, as it
+    // has no level to derive them from; one that lost them, as a restore leaves it, takes its
+    // type's again as the next tick starts.
+    let id = game.world.resource_mut::<IdAllocator>().allocate();
+    let spawned = UnitTags {
+        tags: TagSet::of([stunned]),
+        ..UnitTags::default()
+    };
+    let at = Position::new(Vec3::ZERO).unwrap();
+    let delivery = (
+        id,
+        UnitType::new(1),
+        at,
+        Team::new(0),
+        DeliveryEntity,
+        spawned,
+    );
+    let bolt = game.world.spawn(delivery).id();
+    game.step();
+    let tags = |game: &TestMatch| game.world.get::<UnitTags>(bolt).map(|tags| tags.tags);
+    assert_eq!(tags(&game), Some(TagSet::of([stunned])));
+    assert!(game.world.get::<UnitStats>(bolt).is_none());
+    game.world.entity_mut(bolt).remove::<UnitTags>();
+    game.step();
+    assert_eq!(tags(&game), Some(TagSet::of([stunned])));
 }
 
 #[test]

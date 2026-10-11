@@ -13,6 +13,7 @@ use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
+use crate::units::unit_entity::UnitEntity;
 
 /// A unit's experience on each of its tracks, in the order of their ids, and its level on each but
 /// the `level` track, whose level is the unit's `Level`. A level is state, not derived from
@@ -91,6 +92,7 @@ impl Experience {
 
 impl SimComponent for Experience {
     const NAME: &'static str = "progression.experience";
+    type Host = UnitEntity;
 
     // A track the mode lacks has no thresholds to count levels by; the `level` track's level is
     // the unit's, so it holds one of its own exactly on every other track.

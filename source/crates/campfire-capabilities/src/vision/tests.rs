@@ -19,6 +19,7 @@ use crate::units::tag_properties::TagProperties;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation::Relation;
 
@@ -61,7 +62,10 @@ impl Scene {
     fn spawn(&mut self, team: u8, x: i64, z: i64, sight: Option<i64>) -> StableId {
         let id = self.sim.world.resource_mut::<IdAllocator>().allocate();
         let life = Life::full(Num::int(100));
-        let mut unit = self.sim.world.spawn((id, at(x, z), Team::new(team), life));
+        let mut unit = self
+            .sim
+            .world
+            .spawn((id, UnitEntity, at(x, z), Team::new(team), life));
         if let Some(range) = sight {
             unit.insert(Sight::new(Num::int(range)).unwrap());
         }

@@ -23,6 +23,7 @@ use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::param_book::ParamBook;
 use crate::units::modifier_id::ModifierId;
+use crate::units::unit_entity::UnitEntity;
 
 /// The modifiers a unit carries, by id, then source, one instance of an id from each source,
 /// and what each adds to its stats: a change here derives the unit's stats again. Each
@@ -533,6 +534,7 @@ impl Carried<'_> {
 
 impl SimComponent for Modifiers {
     const NAME: &'static str = "stats.modifiers";
+    type Host = UnitEntity;
 
     // A modifier, a param the books lack, or another count of shares than its modifier's changes,
     // would be read past the books' places, and a way that lacks a param would fail the next

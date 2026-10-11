@@ -247,6 +247,66 @@ impl Draws {
         true
     }
 
+    /// Changes where `C` sits, as `mutation` says, on one entity of those that hold one, and one
+    /// of those that hold none; false when no entity holds one, or none lacks it for a move or a
+    /// copy.
+    pub(crate) fn mutate_component<C: SimComponent>(
+        &mut self,
+        world: &mut World,
+        mutation: Mutation,
+    ) -> bool {
+        let entities: Vec<_> = world
+            .resource::<EntityIndex>()
+            .iter()
+            .map(|(_, entity)| entity)
+            .collect();
+        let (holders, others): (Vec<_>, Vec<_>) = entities
+            .into_iter()
+            .partition(|&entity| world.get::<C>(entity).is_some());
+        let Some(&holder) = self.pick(&holders) else {
+            return false;
+        };
+        if mutation == Mutation::Remove {
+            world.entity_mut(holder).remove::<C>();
+            return true;
+        }
+        let Some(&other) = self.pick(&others) else {
+            return false;
+        };
+        let value = match mutation {
+            Mutation::Move => world.entity_mut(holder).take::<C>(),
+            Mutation::Copy => {
+                let held = world.get::<C>(holder).expect("a holder holds its value");
+                Binary::decode::<C>(&Binary::encode(held)).ok()
+            }
+            Mutation::Remove => unreachable!("a removal returned above"),
+        };
+        world
+            .entity_mut(other)
+            .insert(value.expect("a held value takes and copies"));
+        true
+    }
+
+    /// Removes `R` from the match, as `mutation` says, which a resource can only lose; false
+    /// when it has none, or for another mutation.
+    #[expect(
+        clippy::unused_self,
+        reason = "an entry calls it through the pointer it shares with `mutate_component`"
+    )]
+    pub(crate) fn mutate_resource<R: SimResource>(
+        &mut self,
+        world: &mut World,
+        mutation: Mutation,
+    ) -> bool {
+        mutation == Mutation::Remove && world.remove_resource::<R>().is_some()
+    }
+
+    /// One of `items`, drawn; none when it is empty.
+    fn pick<'a, T>(&mut self, items: &'a [T]) -> Option<&'a T> {
+        let count = u64::try_from(items.len()).expect("a count fits u64");
+        (count > 0).then(|| &items[usize::try_from(self.below(count)).expect("a place")])
+    }
+
     /// Writes into `out` the encodings of values of `T` the draws make, a byte that says none
     /// for each draw no value decodes from, then the trace of what the decodes read: at least
     /// `LAYOUT_DRAWS` values, and more until each variant of each enum met had a draw.
@@ -291,6 +351,21 @@ impl Draws {
         world.insert_resource(value);
         true
     }
+}
+
+/// A change of where a state type's value sits, which a snapshot could hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mutation {
+    /// One holder loses its value.
+    Remove,
+    /// One holder's value moves to an entity that holds none.
+    Move,
+    /// One holder's value is copied to an entity that holds none.
+    Copy,
+}
+
+impl Mutation {
+    pub const ALL: [Mutation; 3] = [Mutation::Remove, Mutation::Move, Mutation::Copy];
 }
 
 /// Why a draw does not make a value: a type the state does not hold, or a refusal of its decode.
@@ -636,6 +711,23 @@ impl StateRegistry {
     /// The name of each registered type, in their order.
     pub fn names(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.entries.iter().map(|entry| entry.name)
+    }
+
+    /// Changes where the state type `name` sits in `world`, as `mutation` says, by `draws`;
+    /// false when the type has nothing to change so.
+    pub fn mutate(
+        &self,
+        world: &mut World,
+        name: &str,
+        draws: &mut Draws,
+        mutation: Mutation,
+    ) -> bool {
+        let entry = self
+            .entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .expect("a registered type");
+        (entry.mutate)(draws, world, mutation)
     }
 
     /// Puts a drawn value of the type `name` in place of one holder's in `world`; false when

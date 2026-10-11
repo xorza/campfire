@@ -11,6 +11,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
 use crate::units::track_id::TrackId;
+use crate::units::unit_entity::UnitEntity;
 
 /// The points a unit with the `level` track has to spend on ranks: one for each level it has
 /// there, less those it spent. State, not derived from the level, as `ctx.learn` spends none.
@@ -47,6 +48,7 @@ impl Points {
 
 impl SimComponent for Points {
     const NAME: &'static str = "progression.points";
+    type Host = UnitEntity;
 
     // Points come from the levels of the `level` track, so only a unit that has it holds them.
     fn check(&self, world: &World, entity: Entity) -> bool {

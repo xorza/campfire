@@ -9,6 +9,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
 use crate::units::path_id::PathId;
+use crate::units::unit_entity::UnitEntity;
 
 /// The path a unit belongs to: the one a structure guards, or the one a `PathWalker` walks.
 /// `unit.path` reads it.
@@ -28,6 +29,7 @@ impl OnPath {
 
 impl SimComponent for OnPath {
     const NAME: &'static str = "navigation.on_path";
+    type Host = UnitEntity;
 
     // A path the map lacks has no name for `unit.path` to read.
     fn check(&self, world: &World, _: Entity) -> bool {

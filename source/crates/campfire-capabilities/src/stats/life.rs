@@ -10,6 +10,7 @@ use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
 use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
+use crate::units::unit_entity::UnitEntity;
 
 /// A unit's life: its meter of the mode's life pool, which every client that sees the unit
 /// receives, where its other pools are `Pools`, of another kind. A unit holds it exactly when it
@@ -62,6 +63,7 @@ impl Life {
 
 impl SimComponent for Life {
     const NAME: &'static str = "stats.life";
+    type Host = UnitEntity;
 
     // A life in a match whose mode names no life pool has no pool's stats to follow; what its
     // meter carries, regen adds, as `Pools` holds.

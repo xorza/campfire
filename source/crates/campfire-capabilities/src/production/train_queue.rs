@@ -18,6 +18,7 @@ use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_type::UnitType;
 use crate::values::rank::Rank;
 
@@ -99,6 +100,7 @@ impl TrainQueue {
 
 impl SimComponent for TrainQueue {
     const NAME: &'static str = "production.train_queue";
+    type Host = UnitEntity;
 
     // A train the book lacks, or of a rank past its ranks, has no unit to make; a queue of a
     // type that produces nothing, or past what its type holds, breaks the rule of its room; a

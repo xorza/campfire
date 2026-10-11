@@ -12,6 +12,7 @@ use crate::scripts::state_value::StateValue;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::{NotSent, Sending, SentOnChange};
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 
@@ -103,6 +104,7 @@ impl<S: StateSync> UnitState<S> {
 
 impl<S: StateSync> SimComponent for UnitState<S> {
     const NAME: &'static str = S::NAME;
+    type Host = UnitEntity;
 
     // A field its type does not declare in the class, or a value of another type, reaches a
     // script as a value it never wrote, or is read past the type's fields.

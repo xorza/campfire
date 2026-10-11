@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::unit_entity::UnitEntity;
 use crate::values::engine_enum::EngineEnum;
 use crate::values::script_enum::ScriptEnum;
 
@@ -91,6 +92,7 @@ impl PathWalker {
 
 impl SimComponent for PathWalker {
     const NAME: &'static str = "navigation.path_walker";
+    type Host = UnitEntity;
 
     // Its path's waypoints are read with a check, and one past the last ends the walk.
     fn check(&self, _: &World, _: Entity) -> bool {

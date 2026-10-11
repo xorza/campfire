@@ -1,6 +1,7 @@
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
+use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -16,6 +17,7 @@ pub struct Respawn {
 
 impl SimComponent for Respawn {
     const NAME: &'static str = "combat.respawn";
+    type Host = UnitEntity;
 
     // Its decode keeps its tick within the limit.
     fn check(&self, _: &World, _: Entity) -> bool {

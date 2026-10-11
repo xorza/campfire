@@ -10,6 +10,7 @@ use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
+use crate::units::unit_entity::UnitEntity;
 use crate::values::action_start::ActionStart;
 use crate::values::rank::Rank;
 
@@ -140,6 +141,7 @@ impl ForcedMove {
 
 impl SimComponent for ForcedMove {
     const NAME: &'static str = "units.forced_move";
+    type Host = UnitEntity;
 
     // A dash of no step, or a knock back with no tick left, never ends. A knock back's end lies
     // within twice the world's bound, a distance within it from a place within it, so its way

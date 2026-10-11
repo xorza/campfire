@@ -150,16 +150,15 @@ impl Relations {
 
 impl SimComponent for Relations {
     const NAME: &'static str = "units.relations";
+    type Host = MatchEntity;
 
-    // Relations on another entity are no match's, and a relation of a team the mode lacks would
-    // join it to a vision group of the mode's teams.
-    fn check(&self, world: &World, entity: Entity) -> bool {
-        world.get::<MatchEntity>(entity).is_some()
-            && world.get_non_send::<View>().is_none_or(|view| {
-                self.pairs
-                    .iter()
-                    .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
-            })
+    // A relation of a team the mode lacks would join it to a vision group of the mode's teams.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        world.get_non_send::<View>().is_none_or(|view| {
+            self.pairs
+                .iter()
+                .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
+        })
     }
 }
 

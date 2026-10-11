@@ -10,6 +10,7 @@ use crate::combat::recent_attack::RecentAttack;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::unit_entity::UnitEntity;
 
 /// Who struck a unit, and the last tick each did, by stable id. An attacker that no longer exists
 /// is forgotten as a new one comes, so the list never holds more than the units that lived since
@@ -59,6 +60,7 @@ impl<'de> Deserialize<'de> for RecentAttackers {
 
 impl SimComponent for RecentAttackers {
     const NAME: &'static str = "combat.recent_attackers";
+    type Host = UnitEntity;
 
     // Each attacker may be gone, which every reader allows, and its decode keeps each tick
     // within the limit.

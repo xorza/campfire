@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_sim::{EntityIndex, SimComponent, StableId};
+use campfire_sim::{EntityIndex, HostRule, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
@@ -34,8 +34,15 @@ impl Player {
     }
 }
 
+impl HostRule for Player {
+    fn holds(world: &World, entity: Entity) -> bool {
+        world.get::<Player>(entity).is_some()
+    }
+}
+
 impl SimComponent for Player {
     const NAME: &'static str = "players.player";
+    type Host = Player;
 
     // A slot the session lacks has no place in the players' tables, and an id not the slot's
     // would hide the player's state from where it is looked for.

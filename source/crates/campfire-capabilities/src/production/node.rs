@@ -3,6 +3,7 @@ use std::num::NonZeroU32;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -46,6 +47,7 @@ impl Node {
 
 impl SimComponent for Node {
     const NAME: &'static str = "production.node";
+    type Host = UnitEntity;
 
     // An amount of any size, and a holder by any stable id, which the loop finds or not.
     fn check(&self, _: &World, _: Entity) -> bool {

@@ -1,10 +1,10 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, QueryState, With};
+use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Res};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_capabilities::{Area, Mode, Owner, Projectile};
+use campfire_capabilities::{DeliveryEntity, Mode, Owner, UnitEntity};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
@@ -214,17 +214,13 @@ impl Door {
                 chain,
                 loaded,
             });
-        let mut units = world.query_filtered::<(
-            Entity,
-            Option<&Owner>,
-            Has<Projectile>,
-            Has<Area>,
-        ), With<Replicate>>();
+        let mut units = world.query_filtered::<
+            (Entity, &Owner),
+            (With<Replicate>, With<UnitEntity>, Without<DeliveryEntity>),
+        >();
         let owned: Vec<Entity> = units
             .iter(world)
-            .filter(|&(_, owner, projectile, area)| {
-                owner.is_some_and(|owner| owner.slot() == slot) && !projectile && !area
-            })
+            .filter(|&(_, owner)| owner.slot() == slot)
             .map(|(unit, ..)| unit)
             .collect();
         let mut commands = world.commands();

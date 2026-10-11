@@ -8,12 +8,14 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::*;
+use crate::host_rule::OnAny;
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
 struct Health(Num);
 
 impl SimComponent for Health {
     const NAME: &'static str = "test.health";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -25,6 +27,7 @@ struct Position(Vec3);
 
 impl SimComponent for Position {
     const NAME: &'static str = "test.position";
+    type Host = OnAny;
 
     /// The tests' rule, which reads another type: a unit that stands somewhere has health.
     fn check(&self, world: &World, entity: Entity) -> bool {
@@ -404,10 +407,89 @@ fn flawed_snapshots_are_refused() {
     }
 }
 
+/// The kind of entity in the host tests: one with health.
+#[derive(Debug)]
+struct Healthy;
+
+impl HostRule for Healthy {
+    fn holds(world: &World, entity: Entity) -> bool {
+        world.get::<Health>(entity).is_some()
+    }
+}
+
+#[derive(Component, Debug, Serialize, Deserialize)]
+struct Armor;
+
+impl SimComponent for Armor {
+    const NAME: &'static str = "test.armor";
+    type Host = Healthy;
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
+}
+
+#[derive(Component, Debug, Serialize, Deserialize)]
+struct Mark;
+
+impl SimComponent for Mark {
+    const NAME: &'static str = "test.mark";
+    type Host = OnAny;
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
+}
+
 #[test]
-fn a_resource_the_snapshot_lacks_is_removed() {
-    // A world without `Extra` snapshots it as absent; a world that holds one loses it on restore,
-    // so its hash is the snapshot's.
+fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
+    // Armor sits on an entity with health alone, its own `Host`; a mark too, as `host` says of a
+    // type whose own host is any; and armor needs a position beside it.
+    let mut hosts = registry();
+    hosts.register_component::<Armor>();
+    hosts.register_component::<Mark>();
+    hosts.host::<Mark, Healthy>();
+    hosts.require::<Armor, Position>();
+    let restores = |build: fn(&mut World, StableId)| {
+        let mut world = new_world();
+        world.init_resource::<SimTick>();
+        let id = allocate(&mut world);
+        build(&mut world, id);
+        let mut bytes = Vec::new();
+        hosts.snapshot(&world, &mut bytes);
+        hosts.restore(&bytes, &mut World::new()).err()
+    };
+    let invalid = |name| Some(SnapshotError::Invalid(name));
+    assert_eq!(
+        restores(|world, id| {
+            world.spawn((id, health(1), position(0), Armor, Mark));
+        }),
+        None
+    );
+    assert_eq!(
+        restores(|world, id| {
+            world.spawn((id, Armor));
+        }),
+        invalid(Armor::NAME)
+    );
+    assert_eq!(
+        restores(|world, id| {
+            world.spawn((id, health(1), Armor));
+        }),
+        invalid(Position::NAME)
+    );
+    assert_eq!(
+        restores(|world, id| {
+            world.spawn((id, Mark));
+        }),
+        invalid(Mark::NAME)
+    );
+}
+
+#[test]
+fn a_resource_the_snapshot_lacks_is_refused() {
+    // A world without `Extra` snapshots it as absent, and every state holds each resource, so no
+    // world restores it: no system meets the resource missing.
     let mut with_extra = registry();
     Extra::register(&mut with_extra);
     let mut plain = plain_world();
@@ -416,9 +498,8 @@ fn a_resource_the_snapshot_lacks_is_removed() {
     with_extra.snapshot(&plain, &mut bytes);
     let mut world = World::new();
     world.insert_resource(Extra);
-    with_extra.restore(&bytes, &mut world).unwrap();
-    assert!(world.get_resource::<Extra>().is_none());
-    assert_eq!(with_extra.hash(&world), with_extra.hash(&plain));
+    let refused = with_extra.restore(&bytes, &mut world).err();
+    assert_eq!(refused, Some(SnapshotError::Missing(Extra::NAME)));
 }
 
 #[derive(Resource, Debug, Serialize, Deserialize)]
@@ -727,6 +808,7 @@ struct Clock(u32);
 
 impl SimComponent for Timed {
     const NAME: &'static str = "test.timed";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -735,6 +817,7 @@ impl SimComponent for Timed {
 
 impl SimComponent for Clock {
     const NAME: &'static str = "test.clock";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -773,6 +856,7 @@ struct Held<T: Send + Sync + 'static>(T);
 
 impl<T: Serialize + DeserializeOwned + Send + Sync + 'static> SimComponent for Held<T> {
     const NAME: &'static str = "test.layout";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true

@@ -266,7 +266,7 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
         let mut scene = Scene::new();
         scene.sim.world.insert_resource(bounds);
         let at = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-        scene.sim.spawn(at, ());
+        scene.sim.spawn(at, Team::new(0));
         let mut snapshot = Vec::new();
         scene.sim.registry.snapshot(&scene.sim.world, &mut snapshot);
         let mut fresh = Scene::new();

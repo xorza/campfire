@@ -7,13 +7,13 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
-use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::unit_type::UnitType;
 use crate::units::view::View;
 use crate::values::action_start::ActionStart;
@@ -24,6 +24,7 @@ use crate::values::rank::Rank;
 /// carries. None of it changes as it flies; its `FlightState` does.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
 #[component(immutable)]
+#[require(DeliveryEntity)]
 pub struct Projectile {
     source: StableId,
     flight: Flight,
@@ -121,16 +122,15 @@ impl Projectile {
 
 impl SimComponent for Projectile {
     const NAME: &'static str = "projectiles.projectile";
+    type Host = DeliveryEntity;
 
     // A projectile of a type with no flight, of an action the book lacks or at a rank past its
-    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit; one with
-    // no flight state never flies.
+    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let flies = world
             .get::<UnitType>(entity)
             .zip(world.get_resource::<ByType<ProjectileSpec>>())
-            .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some())
-            && world.get::<FlightState>(entity).is_some();
+            .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some());
         let book = world.get_resource::<ActionBook>();
         let carries = match self.payload {
             Payload::Attack {

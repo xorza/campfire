@@ -20,7 +20,7 @@ use campfire_common::SegmentSeed;
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, RngSource, RngStream, Vec3};
 use campfire_sim::{
-    EntityIndex, IdAllocator, SimComponent, SimRng, SimSet, SimTick, SimUpdate, StableId,
+    EntityIndex, IdAllocator, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate, StableId,
     StateRegistry, TickRate,
 };
 use serde::{Deserialize, Serialize};
@@ -171,6 +171,7 @@ struct Place(Vec3);
 
 impl SimComponent for Place {
     const NAME: &'static str = "golden.place";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -182,6 +183,7 @@ struct Life(Num);
 
 impl SimComponent for Life {
     const NAME: &'static str = "golden.life";
+    type Host = OnAny;
 
     fn check(&self, _: &World, _: Entity) -> bool {
         true
@@ -320,7 +322,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "41e0501c31bbeee713402f432f2fedf337bfb3572eb31d0618082960f50410c4",
+            digest: "0dd4d60c102c6da40c8d4c0bd1832f2b3997ec83b8a7fbb9ff45c79c56735b6b",
         },
         Section {
             name: "tick",

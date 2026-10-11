@@ -68,11 +68,11 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     let team = Team::new(0);
     let predicted = app
         .world_mut()
-        .spawn((ids.allocate(), place(2, 3), team))
+        .spawn((ids.allocate(), UnitEntity, place(2, 3), team))
         .id();
     let received = app
         .world_mut()
-        .spawn((ids.allocate(), place(0, 0), team, Unpredicted))
+        .spawn((ids.allocate(), UnitEntity, place(0, 0), team, Unpredicted))
         .id();
     app.update();
     let world = app.world();
@@ -141,7 +141,12 @@ fn a_drawing_shows_its_unit_as_it_stands_after_a_rollback() {
     let mut app = view();
     let unit = app
         .world_mut()
-        .spawn((IdAllocator::default().allocate(), place(0, 0), Team::new(1)))
+        .spawn((
+            IdAllocator::default().allocate(),
+            UnitEntity,
+            place(0, 0),
+            Team::new(1),
+        ))
         .id();
     app.update();
     let (alive, standing) = figure(app.world(), unit);
