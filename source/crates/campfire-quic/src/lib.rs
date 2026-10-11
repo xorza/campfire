@@ -37,8 +37,6 @@ pub use crate::link_end::LinkEnd;
 pub use crate::link_times::LinkTimes;
 pub use crate::quic_endpoint::QuicEndpoint;
 pub use crate::quic_plugin::QuicPlugin;
-pub use crate::reset_key::ResetKey;
-pub use crate::server_key::ServerKey;
 
 /// The minimum MTU of every Campfire link, which both its ends' fragments take: the largest
 /// DATAGRAM frame on QUIC's minimum path of 1,200 bytes, `1200 − (1 + 8 + 4 + 16) − 9`, a short

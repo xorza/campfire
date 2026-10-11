@@ -11,15 +11,15 @@ use crate::derived_secret::DerivedSecret;
 /// server's is derived from its key, so a server started again resets the connections its last
 /// run held at their next packet (design 15, D8); a client's is drawn at random.
 #[derive(Debug)]
-pub struct ResetKey(hmac::Key);
+pub(crate) struct ResetKey(hmac::Key);
 
 impl ResetKey {
     /// The reset key of the server whose own key's secret is `secret`.
-    pub fn derive(secret: &Zeroizing<[u8; 32]>) -> ResetKey {
+    pub(crate) fn derive(secret: &Zeroizing<[u8; 32]>) -> ResetKey {
         ResetKey::new(&DerivedSecret::ResetKey.of(secret))
     }
 
-    pub(crate) fn new(secret: &Zeroizing<[u8; 32]>) -> ResetKey {
+    fn new(secret: &Zeroizing<[u8; 32]>) -> ResetKey {
         ResetKey(hmac::Key::new(hmac::HMAC_SHA256, secret.as_slice()))
     }
 

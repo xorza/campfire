@@ -37,7 +37,7 @@ use campfire_net::{
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::Keypair;
-use campfire_quic::{LinkTimes, QuicEndpoint, ResetKey, ServerKey};
+use campfire_quic::{LinkTimes, QuicEndpoint};
 use campfire_sim::TickRate;
 use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
@@ -103,13 +103,7 @@ fn main() -> ExitCode {
     // The socket binds before any session opens, so a port in use ends the start and leaves the
     // data as it was.
     let secret = Zeroizing::new(key.secret_bytes());
-    let tls = ServerKey::derive(&secret);
-    let endpoint = match QuicEndpoint::server(
-        address,
-        &tls,
-        ResetKey::derive(&secret),
-        LinkTimes::CAMPFIRE,
-    ) {
+    let endpoint = match QuicEndpoint::server(address, &secret, LinkTimes::CAMPFIRE) {
         Ok(endpoint) => endpoint,
         Err(error) => {
             error!(%address, error = %ErrorReport::of(&error), "the server's socket does not open");
@@ -117,7 +111,7 @@ fn main() -> ExitCode {
         }
     };
     drop(secret);
-    let tls_key = tls.public();
+    let tls_key = endpoint.tls_key();
     // A waiting session names its own map, which its restore, or its end, replays.
     let waiting = Opening::waiting(&data).and_then(|waiting| {
         let journal = waiting.as_ref().map(|session| &session.private.terms.map);

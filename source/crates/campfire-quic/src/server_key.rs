@@ -28,14 +28,14 @@ const PKCS8_LEN: usize = PKCS8_PREFIX.len() + 32;
 /// The server's TLS identity: an Ed25519 key with no certificate, whose seed derives from the
 /// server's own key (design 15, D6).
 #[derive(Debug)]
-pub struct ServerKey {
+pub(crate) struct ServerKey {
     signing: Arc<dyn SigningKey>,
     public: TlsKey,
 }
 
 impl ServerKey {
     /// The TLS key of the server whose own key's secret is `secret`.
-    pub fn derive(secret: &Zeroizing<[u8; 32]>) -> ServerKey {
+    pub(crate) fn derive(secret: &Zeroizing<[u8; 32]>) -> ServerKey {
         ServerKey::from_seed(&DerivedSecret::TlsSeed.of(secret))
     }
 
@@ -55,7 +55,7 @@ impl ServerKey {
     }
 
     /// The public key, which a listing names and a client pins.
-    pub const fn public(&self) -> TlsKey {
+    pub(crate) const fn public(&self) -> TlsKey {
         self.public
     }
 

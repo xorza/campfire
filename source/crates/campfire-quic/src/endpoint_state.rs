@@ -120,7 +120,7 @@ impl EndpointState {
     /// one costs no state, and the connection for one whose Retry token holds (D8).
     fn admit(&mut self, now: Instant, incoming: Incoming, outbox: &mut Outbox) {
         self.scratch.clear();
-        if self.closing || !self.accepting {
+        if !self.accepting {
             let transmit = self.endpoint.refuse(incoming, &mut self.scratch);
             outbox.push(&transmit, &self.scratch);
             return;
@@ -272,9 +272,11 @@ impl EndpointState {
             .filter_map(|peer| peer.entity.map(|entity| (entity, peer)))
     }
 
-    /// Closes every connection with `AppCode::STOPPED`; the thread writes the closes, then ends.
+    /// Closes every connection with `AppCode::STOPPED`, and takes no new one; the thread writes the
+    /// closes, then ends.
     pub(crate) fn close_all(&mut self, now: Instant) {
         self.closing = true;
+        self.accepting = false;
         for peer in self.peers.iter_mut().flatten() {
             peer.entity = None;
             peer.connection

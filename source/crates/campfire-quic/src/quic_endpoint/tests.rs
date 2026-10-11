@@ -44,8 +44,13 @@ fn pattern(len: usize) -> Vec<u8> {
         .collect()
 }
 
+/// The secret of the test server's own key, from which its TLS key and reset key derive.
+fn server_secret() -> Zeroizing<[u8; 32]> {
+    Zeroizing::new([7; 32])
+}
+
 fn server_key() -> ServerKey {
-    ServerKey::from_seed(&Zeroizing::new([7; 32]))
+    ServerKey::derive(&server_secret())
 }
 
 /// A server's app on loopback with its endpoint linked, which clients join.
@@ -79,15 +84,9 @@ impl Loopback {
     /// The server's endpoint on `address`, bound and not started, its key and its reset key the
     /// same at each bind.
     fn bind_at(address: SocketAddr, times: LinkTimes) -> Loopback {
-        let key = server_key();
-        let quic = QuicEndpoint::server(
-            address,
-            &key,
-            ResetKey::new(&Zeroizing::new([9; 32])),
-            times,
-        )
-        .unwrap();
+        let quic = QuicEndpoint::server(address, &server_secret(), times).unwrap();
         let address = quic.local_address();
+        let key = quic.tls_key();
         let mut server = App::new();
         server.add_plugins(QuicPlugin);
         let endpoint = server.world_mut().spawn(quic).id();
@@ -95,7 +94,7 @@ impl Loopback {
             server,
             endpoint,
             address,
-            key: key.public(),
+            key,
         }
     }
 
@@ -197,6 +196,9 @@ fn a_link_carries_datagrams_of_its_minimum_mtu_both_ways_at_once() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
     let mut client = loopback.client(LinkTimes::CAMPFIRE);
     let link = loopback.join(&mut client);
+    // The server presents the key its secret derives, and the client pinned that key (D6).
+    assert_eq!(loopback.quic().tls_key(), server_key().public());
+    assert_eq!(client.quic().tls_key(), loopback.quic().tls_key());
     // The connection took one Retry before it was accepted (D8), and its entity names its peer (D9).
     assert_eq!(loopback.quic().state().retries(), 1);
     assert_eq!(
@@ -360,8 +362,9 @@ fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
         PinnedKeyVerifier::new(&loopback.key).client_config(),
         LinkTimes::CAMPFIRE,
     );
-    let mut client =
-        ClientApp::start(QuicEndpoint::client_of(loopback.address, config, 20).unwrap());
+    let mut client = ClientApp::start(
+        QuicEndpoint::client_of(loopback.address, loopback.key, config, 20).unwrap(),
+    );
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
     assert!(Loopback::links(loopback.server.world_mut()).is_empty());
     assert_eq!(
@@ -376,13 +379,7 @@ fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
 fn a_port_in_use_is_an_error_that_names_its_address() {
     let first = Loopback::bind(LinkTimes::CAMPFIRE);
     let taken = first.address;
-    let refused = QuicEndpoint::server(
-        taken,
-        &server_key(),
-        ResetKey::new(&Zeroizing::new([9; 32])),
-        LinkTimes::CAMPFIRE,
-    )
-    .unwrap_err();
+    let refused = QuicEndpoint::server(taken, &server_secret(), LinkTimes::CAMPFIRE).unwrap_err();
     assert_eq!(refused.address, taken);
     assert_eq!(refused.error.kind(), ErrorKind::AddrInUse);
 }
@@ -494,8 +491,9 @@ fn a_wrong_pin_fails_by_access_denied_and_each_connect_checks_the_key() {
         PinnedKeyVerifier::new(&loopback.key).counting(&checks),
         LinkTimes::CAMPFIRE,
     );
-    let mut client =
-        ClientApp::start(QuicEndpoint::client_of(loopback.address, config, CID_LEN).unwrap());
+    let mut client = ClientApp::start(
+        QuicEndpoint::client_of(loopback.address, loopback.key, config, CID_LEN).unwrap(),
+    );
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Linked>());
     client.restart();
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Linked>());
@@ -727,15 +725,14 @@ impl Blob {
 #[test]
 fn a_message_of_three_fragments_crosses_lightyear_whole() {
     let tick = Duration::from_millis(16);
-    let key = server_key();
     let quic = QuicEndpoint::server(
         SocketAddr::from(([127, 0, 0, 1], 0)),
-        &key,
-        ResetKey::new(&Zeroizing::new([9; 32])),
+        &server_secret(),
         LinkTimes::CAMPFIRE,
     )
     .unwrap();
     let address = quic.local_address();
+    let key = quic.tls_key();
     let mut server = App::new();
     server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
     server.add_plugins(ServerPlugins {
@@ -760,7 +757,7 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
     Blob::register(&mut client);
     client.finish();
     client.cleanup();
-    let quic = QuicEndpoint::client(address, &key.public(), LinkTimes::CAMPFIRE).unwrap();
+    let quic = QuicEndpoint::client(address, &key, LinkTimes::CAMPFIRE).unwrap();
     let entity = client
         .world_mut()
         .spawn((

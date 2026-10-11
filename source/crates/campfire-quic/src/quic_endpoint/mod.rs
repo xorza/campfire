@@ -60,31 +60,36 @@ pub struct QuicEndpoint {
     _worker: Worker,
 }
 
-/// Whether the endpoint takes connections, or opens one to its server.
+/// Whether the endpoint takes connections, presenting its TLS key, or opens one to its server,
+/// whose key it pinned.
 #[derive(Debug)]
 enum Side {
-    Server,
+    Server {
+        key: TlsKey,
+    },
     Client {
         server: SocketAddr,
+        pin: TlsKey,
         config: ClientConfig,
     },
 }
 
 impl QuicEndpoint {
-    /// A server's endpoint on `address`, presenting `key`, its resets keyed by `reset`. It binds
-    /// now, before its app runs, so a port in use is this error, not a server with no link (D2).
+    /// A server's endpoint on `address`, whose TLS key and reset key both derive from `secret`,
+    /// the secret of the server's own key (D6, D8). It binds now, before its app runs, so a port
+    /// in use is this error, not a server with no link (D2).
     pub fn server(
         address: SocketAddr,
-        key: &ServerKey,
-        reset: ResetKey,
+        secret: &Zeroizing<[u8; 32]>,
         times: LinkTimes,
     ) -> Result<QuicEndpoint, BindError> {
-        let config = QuicEndpoint::server_config(key, times);
+        let key = ServerKey::derive(secret);
+        let config = QuicEndpoint::server_config(&key, times);
         QuicEndpoint::open(
             address,
             Some(Arc::new(config)),
-            QuicEndpoint::endpoint_config(reset, CID_LEN),
-            Side::Server,
+            QuicEndpoint::endpoint_config(ResetKey::derive(secret), CID_LEN),
+            Side::Server { key: key.public() },
         )
     }
 
@@ -96,11 +101,12 @@ impl QuicEndpoint {
     ) -> Result<QuicEndpoint, BindError> {
         let config =
             QuicEndpoint::client_config(PinnedKeyVerifier::new(pin).client_config(), times);
-        QuicEndpoint::client_of(server, config, CID_LEN)
+        QuicEndpoint::client_of(server, *pin, config, CID_LEN)
     }
 
     fn client_of(
         server: SocketAddr,
+        pin: TlsKey,
         config: ClientConfig,
         cid_len: usize,
     ) -> Result<QuicEndpoint, BindError> {
@@ -109,7 +115,11 @@ impl QuicEndpoint {
         } else {
             Ipv6Addr::UNSPECIFIED.into()
         };
-        let side = Side::Client { server, config };
+        let side = Side::Client {
+            server,
+            pin,
+            config,
+        };
         QuicEndpoint::open(
             SocketAddr::new(unspecified, 0),
             None,
@@ -165,6 +175,15 @@ impl QuicEndpoint {
         self.local
     }
 
+    /// The TLS key of the endpoint's connections: the one a server presents, which its listing
+    /// names, or the one a client pinned.
+    pub const fn tls_key(&self) -> TlsKey {
+        match &self.side {
+            Side::Server { key } => *key,
+            Side::Client { pin, .. } => *pin,
+        }
+    }
+
     /// The key of the Retry tokens, new at each start: a token outlives no server.
     fn token_key() -> Arc<dyn HandshakeTokenKey> {
         let mut secret = Zeroizing::new([0; 32]);
@@ -182,7 +201,7 @@ impl QuicEndpoint {
         link: Option<&Link>,
         commands: &mut Commands<'_, '_>,
     ) {
-        let Side::Client { server, config } = &self.side else {
+        let Side::Client { server, config, .. } = &self.side else {
             self.shared.lock().accept(true);
             commands
                 .entity(entity)
@@ -219,7 +238,7 @@ impl QuicEndpoint {
     /// Ends a server's endpoint's taking of connections, as its `Unlink` ends the server, whose
     /// links Lightyear despawns, which closes them. A client's endpoint takes none.
     pub(crate) fn stop(&self) {
-        if let Side::Server = self.side {
+        if let Side::Server { .. } = self.side {
             self.shared.lock().accept(false);
         }
     }
@@ -320,7 +339,7 @@ impl QuicEndpoint {
                     .insert((PeerAddr(remote), binding, Linked));
                 client
             }
-            Side::Server => {
+            Side::Server { .. } => {
                 let link = commands
                     .spawn((
                         LinkOf { server: endpoint },
