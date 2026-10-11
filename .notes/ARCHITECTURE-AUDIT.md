@@ -1,262 +1,262 @@
 # Architecture audit: recommendations
 
-An audit of the workspace at `source/` after slice 3's A4: the entities and how each is spawned and replicated, how capabilities declare and register their parts, the crate and module graph, the call graph and argument counts, restore robustness, and code quality. Four read-only audits ran in parallel; each main claim below was checked against the code. Line numbers are those of the working tree when the audit ran.
+An audit of the workspace at `source/` after slice 3's A4: the entities and how each is spawned and replicated, how capabilities declare and register their parts, the crate and module graph, the call graph and argument counts, restore robustness, and code quality. Four read-only audits ran in parallel; each main claim was checked against the code. Line numbers are those of the working tree when the audit ran. The bugs it found are in the issue log; this file holds the structural recommendations.
 
-The bugs the audit found are in the issue log; this file holds the structural recommendations.
+## Findings
 
-## Summary
+- **Registration.** Two of fourteen registration channels are declared by a type and enforced by the compiler; twelve are calls in `install` bodies, held together by install order and runtime `expect`s. Some fail silently: `Books::replace` (`books/mod.rs:53`) drops a book whose resource the install did not insert.
+- **Entities.** No entity has a declared kind: five subsystems each decide "is this a unit" by a different component test, and two spawn paths give units different parts. The delivery tags bug and the seen-targets bug of the issue log follow from it.
+- **Ownership.** Almost every pass reaches through `&mut World` to `!Send` shared handles (`View`, `Ctx`, boxed hooks): 152 production functions take `&mut World` and 96 `&World`, against 13 `SystemParam` derives. No pass is testable without a whole `TestMatch`; `deliveries` and `players` have no tests, `actions` 6 for 53 files.
+- **Arguments.** 59 `now: Tick` parameters sit beside worlds that hold the tick; 57 `ctx: &Ctx` and 57 `view: &View`; 24 systems group parameters in tuples to pass Bevy's limit of 16.
+- **Restore.** A check looks at one value on one entity. That a component sits on the right kind of entity, and that a holder carries the parts later systems `expect`, is hand-written where it is checked at all, which leaves four snapshot shapes that restore and then panic or stay wrong. The snapshot fuzz tests replace values only (`sim/src/state_registry/internals.rs:231`), so none of the four is found by them.
 
-Two of fourteen registration channels are declared by a type and enforced by the compiler; the other twelve are calls in `install` bodies, held together by install order and runtime `expect`s. No entity has a declared kind: five subsystems each decide "is this a unit" by a different component test. Almost every pass reaches through `&mut World` to `!Send` shared handles (`View`, `Ctx`, boxed hooks), so no pass is testable without a whole `TestMatch`, and `now`, `ctx`, `view` and the life pool travel through many call levels. Restore checks look at one value on one entity; cross-entity invariants ("every unit of type T holds state class S", "every player entity holds its resources") are hand-written where they exist at all.
+The recommendations consolidate into five systems. Each is one declaration that every consumer reads, enforced by the compiler where it can be, else by one generic test or a clippy rule, never by memory.
 
-The recommendations, in the order that gives the most for the least:
+| System | Replaces | Enforced by |
+| --- | --- | --- |
+| 1. One declaration per capability (§1) | the twelve install-body channels, API side-lists, needs probes | the compiler (visitor with no defaults), one declaration audit test |
+| 2. One entity model (§2) | five unit tests, two spawn paths, host checks, player parts, pair checks, net's prediction rule | required components, the compiler (`Host` with no default), a clippy rule on spawning |
+| 3. Explicit dependencies (§3) | `!Send` reach-through, threaded `now`, tuple parameters, five match-world builders | typed params, a clippy rule on `non_send` |
+| 4. Restore as a checked boundary (§4) | silent checks, wrong-type errors, value-only fuzzing | the registry, a mutation fuzz test |
+| 5. One session host (§5) | three server compositions, two replay loops, two restore glues | one type |
 
-| # | Recommendation | Makes impossible | Cost |
-| --- | --- | --- | --- |
-| 1 | One `CapabilityModule` trait and a type visitor; installs take one `InstallCx` (§2.1, §2.2) | an install that skips its state list, a capability missing from a dispatch, drifting install signatures, probes of other capabilities' resources | medium |
-| 2 | Entity kind markers `Unit`, `Delivery` beside `MatchEntity`, `Player`, required by their state, and typed filters (§3.1) | a player or match entity taken for a unit, a typeless unit reaching net or the view | low |
-| 3 | `SimComponent::Host` and `StateRegistry::require::<H, C>()` (§6.1) | a state type on the wrong entity, a holder missing a part a later system `expect`s | about a day |
-| 4 | Move books and hooks out of `View` and `Ctx` into `Send` resources (§4.1) | the `Rc<dyn Any>` downcast of the mode book, restore checks that pass when a handle is missing | medium |
-| 5 | `TickClock`, `PoolQuery`, book bundles and a `ScriptPass` param (§5) | `now` passed beside a world that holds it, tuples that dodge Bevy's 16 parameters | low to medium |
-| 6 | One unit core and one spawn function (§3.2) | spawn paths that drift in which parts a unit gets | medium |
-| 7 | Typed player parts, column-declared sources, owned books (§2.3 to §2.5) | a player part without its check, a column without its source, a silently dropped book | low each |
-| 8 | An entity kind registry that net reads for rooms and prediction (§3.3) | a duplicated prediction rule, a stale prediction target after an owner change, a kind with no replication rule | medium |
-| 9 | Single sources: `DataKind::audience()`, a `Release` newtype, owned API members (§7) | audiences, releases and section owners kept twice | low each |
-| 10 | Shared test builders and probes (§8) | test units no production path makes | half a day |
+Two policies hold across all five:
 
-## 1. Bugs found
+- **No default methods in a visitor trait.** `StateTypes` has two (`component`, `sim_component`); its consumers must each say what they do with every category, so a new category stops every consumer at compile time until it decides.
+- **What can be forgotten is a type, a trait method with no default, or a disallowed method.** The project already bans `std::fs` and randomly seeded maps through `clippy.toml`; the same list bans the calls the five systems own, outside the one module that owns each.
 
-Each is in `.notes/ISSUES.md`.
+## 1. One declaration per capability
 
-- **Stats.** `Refresh::give_parts` (`stats/refresh.rs:39`) gives `UnitTags::default()` to every `With<UnitType>, Without<UnitStats>` entity at each `SimEdge::After`. A projectile or an area spawns with its type's tags and no `UnitStats`, so its tags are emptied at the next edge, and `Refresh::run` derives none again, as its query needs `Level`, which a delivery lacks. The `projectile` and `area` tags, which filters read to leave deliveries out, and a delivery type's `hidden` and `detects`, are lost on a server with a stat book. §3.1 and §3.2 make the class impossible.
-- **Orders.** `SeenTargets` (`orders/seen_targets.rs:20`) takes any entity with a `Team` as a unit: an ally's player entity has a `Team` and no `SeenBy`, so a Cast, Train or Gather order aimed at its named id passes the seen check (`orders/order_inputs.rs:131`). `DeliverySpawner.sources` (`&Team`) would take a player entity as a source. §3.1 makes it impossible.
-- **Units.** A restored unit whose type declares fields of a `sync` class may lack that class's `UnitState<S>`: `UnitState::check` (`units/unit_state.rs:105`) checks a value that is present only. The next view read panics (`units/units_column.rs:107`), and a script write too (`units/unit_states.rs:92`).
-- **Production.** `TrainQueue::check` (`production/train_queue.rs:106`) needs only a type and a capacity, but `finish_trains` `expect`s a team and a position on every producer (`production/trains.rs:228`, `:292`, `:317`). A gather order may name a slot of no rank, as `ActionSlots::check` and `Gatherer::check` allow, and `GatherView::gather` (`production/gather_loop/gather_view.rs:94`) `expect`s a rank every tick.
-- **Combat.** A restored `Respawn` needs nothing beside it, while the respawn system (`combat/dying.rs:75`) needs `Dead` and a `SpawnPoint`: a unit stays dead.
-
-## 2. Declaring and registering a capability
-
-### Channels today
+### Today
 
 | Channel | Declared | Enforced by |
 | --- | --- | --- |
 | Install fn | `CAPABILITIES` row; core hard-coded; `Mode::install` in runner, 5 args | compiler (table length), order test |
-| Needs | `row.needs` | `CapabilitySet::new`, tests |
-| State types | `fn state_types` per module, called by each install **and** by the match in `CapabilitySet::state_types` | compiler (`Replication`), registry test without Mode, hand-kept `STATE` table |
+| Needs | `row.needs`; installs also probe other capabilities' resources (`orders/mod.rs:102`, `:120`, `production/mod.rs:107`) | `CapabilitySet::new`; probes by table order alone |
+| State types | `fn state_types`, called by each install **and** by the match in `CapabilitySet::state_types`, where `Abilities` sits in the no-list arm (`capability_set/mod.rs:246`) | compiler (`Replication`), registry test without Mode, hand-kept `STATE` table |
 | Restore checks | `registry.add_check` in 3 installs | nothing checks completeness |
-| View columns | `add_column` + `add_source` pair, ×8 | runtime `expect` (`units/unit_rows.rs:281`) |
+| View columns | `add_column` + `add_source`, ×8 | runtime `expect` (`units/unit_rows.rs:281`) |
 | Call parts | `ctx.frame().add_part` | readers `expect` |
 | Player parts | `PlayerParts::add` closures | a hand-written check beside each |
-| Effect queues | `EffectQueues::register` | runtime `expect` at first use |
-| Deliverers, cast spends | `register_*` | runtime asserts |
+| Effect queues, deliverers, cast spends | `register*` calls | runtime `expect`s |
 | Script API | three lists: core in `ScriptApi::bind`, `apis()`, rows' `registering` | naming test |
 | Member gating | `.capability(..)` on each member | nothing |
 | Data section owner | hand map in `package/src/load_check.rs:1279` | nothing |
-| Books | `Books::install`, `ModeBooks::install` | nothing: `Books::replace` (`books/mod.rs:53`) drops a book whose resource is absent |
-| Ordering | a `*Set` per module, `.after` chains restated across modules | Bevy ambiguity detection for combinations a test builds |
+| Books | `Books::install`, `ModeBooks::install`; `params`, `tracks`, `supply_rules` inserted unconditionally | nothing |
+| Ordering | a `*Set` per module; `.after(StatsSet::Regenerate).after(CombatSet::Respawn)` restated in four modules; orders configures four other modules' sets | ambiguity detection, for combinations a test builds |
 
-Evidence of drift: `Abilities` sits in the "no list" arm of the state dispatch (`capability_set/mod.rs:246`) against the doc claim above it; `Abilities::install` takes an unused registry and `Progression::install` an unused schedule; orders and production probe `BuildSpecs`, `ItemBook` and `BodyIndex` to learn whether another capability is installed, which only table order makes true; `Deliveries` is a pseudo-capability installed idempotently by three others.
+### 1.1 A capability declares through one visitor
 
-### 2.1 One trait per capability, installed by a visitor
+`StateTypes` already shows the pattern that works: a capability lists its types once, and the registry, the replication protocol and the kind filters each read the list. Every other channel becomes a category of the same visitor, which `StateTypes` grows into:
 
 ```rust
 pub(crate) trait CapabilityModule {
     const CAPABILITY: Capability;
     const NEEDS: &'static [Capability];
-    fn state_types<T: StateTypes>(types: &mut T);
-    fn register_api(api: &mut ApiBuilder<'_>);
-    fn install(cx: &mut InstallCx<'_>);
+    /// Everything the capability adds, but its systems.
+    fn declare<D: Declarations>(d: &mut D);
+    /// Its systems, in the phases of §1.4.
+    fn schedule(s: &mut ScheduleCx<'_>);
 }
 
-trait ModuleVisitor {
-    fn visit<M: CapabilityModule>(&mut self);
-}
-```
-
-`CapabilitySet::each(self, visitor)` visits the core first (`Units`, `Actions`, `Deliveries`), then each declared capability in table order. Installing, listing state types and binding the API become three visitors; the installer calls `M::state_types(registry)` itself, so no install takes `&mut StateRegistry`. `Mode` implements the trait too, so the registry test covers its list. No defaults: a capability with no state writes an empty list.
-
-Makes impossible: an install that forgets its list, a capability in the table and missing from a dispatch, the API side-lists, drifting signatures. Cost: about fifteen modules move code; monomorphized, no runtime cost.
-
-### 2.2 `InstallCx` carries what installs probe for
-
-`InstallCx { world, schedule, set: CapabilitySet, scripts: Option<&ScriptBudgets> }`. `cx.set.contains(Capability::Production)` replaces the probes at `orders/mod.rs:102`, `:111`, `:120`, `production/mod.rs:107`, `abilities/mod.rs:89`, `actions/mod.rs:108`, `stats/mod.rs:129` and `combat/mod.rs:117`. Table order then matters for `needs` alone, and a test installs one capability with a made-up set.
-
-### 2.3 Checks and player parts are declared in the state list
-
-`StateTypes` gains `fn check<C: SimComponent>(&mut self, check: fn(&World) -> bool) {}` and `fn player_part<C: Replication + Default>(&mut self) {}`. The registry's impl adds the check; the installer collects player parts into `PlayerParts` and registers one generic check that every player entity holds every listed part. `player_modifiers_held`, the player half of `Mode::entities_held` and the closures go. A part that needs data, `PlayerResources::new(count)`, takes it from the books at spawn. Makes impossible: a player part with no restore check.
-
-### 2.4 A view column declares its source
-
-`ViewColumn` gains `type Parts: RowParts` and `fn fill(parts: ROQueryItem<'_, '_, Self::Parts>, fill: &mut RowFill<'_, Self>)`; `View::add_column::<C>(world)` registers both. The paired calls, the runtime `expect` and eight copies of three lines go.
-
-### 2.5 A book knows its owner and its copies
-
-```rust
-pub(crate) trait Book: Resource {
-    const OWNER: Option<Capability>;
-    fn share(&self, view: &View, frame: Option<&mut Frame>) {}
+pub(crate) trait Declarations {
+    fn state<C: Replication>(&mut self);
+    fn derived<C: Component>(&mut self);
+    fn resource<R: SimResource>(&mut self);
+    fn kind<K: EntityKind>(&mut self);
+    fn part<K: EntityKind, C: Replication>(&mut self, start: PartStart<C>);
+    fn pair<H: SimComponent, C: SimComponent>(&mut self);
+    fn check<C: SimComponent>(&mut self, check: fn(&World) -> bool);
+    fn book<B: Book>(&mut self);
+    fn column<V: ViewColumn>(&mut self);
+    fn call_part<P: CallPart>(&mut self);
+    fn queue<Q: EffectQueue>(&mut self);
+    fn api(&mut self, register: fn(&mut ApiBuilder<'_>));
 }
 ```
 
-`Books::install(self, world, set)` inserts by `set.contains(OWNER)`, asserts the default resource the install put there, and calls `share` in the same step; the test loaders reuse it. A book in the world but not in its column, a dropped book, and the unconditional `params`, `tracks` and `supply_rules` inserts become impossible. The server-only books (`EffectLists`, `ByType<Ai>`) say so in their impl, not by the presence of `Ctx`.
+No method has a default. `CapabilitySet::each(self, visitor)` visits the core (`Units`, `Actions`, `Deliveries`) and then each declared capability in table order, `Mode` included, so its list is tested like any other.
 
-### 2.6 API members are owned by their capability
+The consumers, each one `impl Declarations`:
 
-The visitor passes `api.owned_by(M::CAPABILITY)`, which sets each member's capability and each data field's owner. About 25 manual `.capability(..)` tags go, and `load_check`'s section map is derived from `ScriptApi::data()`. Cost: a change across `capabilities` and `package`. Makes impossible: an ungated member, and two owners of one section.
+| Consumer | Reads | Ignores, explicitly |
+| --- | --- | --- |
+| `StateRegistry` | state, derived, resources, parts and pairs as checks, checks | the rest |
+| `Installer` | kinds, parts (into the spawn of their kind), books (defaults), columns, call parts, queues | state |
+| `NetProtocol` | sent state, kinds (rooms, prediction) | the rest |
+| `KindFilters` | state by kind | the rest |
+| `ScriptApi` binder | api, each member owned by the visiting capability | the rest |
+| `campfire-package` load check | api data fields and their owner | the rest |
+| `DeclarationAudit` (test) | everything | nothing |
 
-### 2.7 Effect queues as trait data
+What this makes impossible: an install that skips its list; a capability in the table and missing from a dispatch; an API side-list; an ungated member, as the binder sets each member's owner (about 25 manual `.capability(..)` tags go); two owners of one data section, as `load_check`'s map derives from the API's owners; a column without its source; a call part a reader `expect`s and nobody added; a book in the world and not in its column. Cost: about fifteen modules move their install bodies; the visitor is monomorphized.
 
-`const QUEUE: Option<QueueListed>` on the trait, filled by the installer, and a test that every `CapabilityDoes` variant's owner has one (an `ALL` list). Deliverers and cast spends follow.
+### 1.2 The declaration audit
 
-### 2.8 Phase sets per stage
+One test runs `DeclarationAudit` over `CapabilitySet::each` for every capability and checks what no single declaration can:
 
-`InputsPhase::{Begin, Refill, ModeInputs, Toggles, Orders, Holds, Checks}` and the like, chained once in `CapabilitySet::install`; each capability puts its systems `.in_set(phase)`. The restated `.after(StatsSet::Regenerate).after(CombatSet::Respawn)` (orders, abilities, mode, production) and orders configuring four other modules' sets go. Cost: edges between phases that some pairs did not need, and so some parallelism; ambiguity detection still checks order within a phase. Take this last.
+- every state type's `Host` (§2.2) is a declared kind;
+- every `part::<K, C>` names a declared kind and a declared state type `C` whose host is `K`;
+- every column's `Parts` are declared state or derived types;
+- every book's owner is a declared capability, and no two capabilities declare one book;
+- every `CapabilityDoes` variant's owner declares a queue;
+- every capability's imports lie within its `NEEDS` and the lower layers (§3.6).
 
-## 3. Entities
+It replaces the hand-kept `STATE` table in `capability_set/tests.rs:533`, which then derives from the declarations.
 
-### Kinds today
+### 1.3 Installs read the set, not each other's resources
+
+`ScheduleCx { world, schedule, set: CapabilitySet, scripts: Option<&ScriptBudgets> }`: `s.set.contains(Capability::Production)` replaces the probes at `orders/mod.rs:102`, `:111`, `:120`, `production/mod.rs:107`, `abilities/mod.rs:89`, `actions/mod.rs:108`, `stats/mod.rs:129` and `combat/mod.rs:117`. Table order matters for `NEEDS` alone, and a test schedules one capability with a made-up set. No install takes `&mut StateRegistry`: three arguments become one.
+
+A book knows its owner, `trait Book: Resource { const OWNER: Option<Capability>; fn share(&self, view: &View, frame: Option<&mut Frame>); }`, and `Books::install(self, world, set)` inserts by `set.contains(B::OWNER)`, asserts the default the installer put, and shares in the same step. Server-only books (`EffectLists`, `ByType<Ai>`) say so in their impl instead of by the presence of `Ctx`.
+
+### 1.4 Phases per stage, ordered once
+
+`InputsPhase::{Begin, Refill, ModeInputs, Toggles, Orders, Holds, Checks}` and the like, chained once in the installer; a capability's `schedule` puts each system `.in_set(phase)`. The restated `.after` chains, and orders configuring other modules' sets, go. Cost: edges between phases that some pairs did not need, so some parallelism; ambiguity detection still checks order within a phase. Take this last.
+
+## 2. One entity model
+
+### Today
 
 | Kind | Spawn path | Identity | Replication |
 | --- | --- | --- | --- |
-| Mode unit (hero, creep, tower, building, node, site, trained unit) | `ModeBook::spawn` via `Spawner`, `spawn_owned`, `Mode::start`, mode effects, `ActionsEffect`, trains, construction | `IdAllocator`, called by each caller, or the script's `Frame::take_id` | `show_units`; predicted by its owner unless a delivery |
+| Mode unit (hero, creep, tower, building, node, site, trained unit) | `ModeBook::spawn` via `Spawner`, `spawn_owned`, `Mode::start`, mode effects, `ActionsEffect`, trains, construction | `IdAllocator`, called by each caller, or the script's `Frame::take_id` | `show_units`; predicted by its owner |
 | Projectile, area | `DeliverySpawner::spawn` | id the script took, else allocated | `show_units`; never predicted |
 | Match | `MatchEntity::spawn` | `StableId::MATCH` | `show_match`, every room |
 | Player | `MatchEntity::spawn_player_of` with `PlayerParts` | `StableId::of_player` | `show_match`; `Player` is its filter's owner |
 
-Five tests of "unit": `With<UnitType>` (`give_parts`), `With<Team>, Without<Player>` (`show_units`), `StableId + Position + Team` less deliveries (client `NewUnits`), `Position + Team` (`UnitRows::row`), `&Team` alone (`SeenTargets`). Two spawn paths share a core and differ: `ModeBook::spawn` gives `Facing`, `SpawnPoint`, `Level`, `Modifiers`; `DeliverySpawner` gives none of them, takes sight from another book, and consumes `NewUnitStates`, which `ModeBook::spawn` does not. Despawn happens in five places. Test spawners build units no production path makes (`TestMatch::spawn`, three test `Spawner`s, `production/bench.rs:149`), which is how the delivery tags bug stayed unseen.
+- Five tests of "unit": `With<UnitType>` (`give_parts`), `With<Team>, Without<Player>` (`show_units`), `StableId + Position + Team` less deliveries (client `NewUnits`), `Position + Team` (`UnitRows::row`), `&Team` alone (`SeenTargets`).
+- `ModeBook::spawn` gives `Facing`, `SpawnPoint`, `Level`, `Modifiers` and the type's derived tags; `DeliverySpawner` gives none of them, takes sight from another book, and consumes `NewUnitStates`, which `ModeBook::spawn` does not.
+- Despawn happens in five places.
+- Net writes the prediction rule twice (`sim_server/mod.rs:731`, `door.rs:218`) and sets it only for a new unit or a seat, though `Owner` changes.
+- Test spawners build units no production path makes (`TestMatch::spawn`, three test `Spawner`s, `production/bench.rs:149`), which is how the delivery tags bug stayed unseen.
 
-### 3.1 Kind markers and typed filters
-
-```rust
-#[derive(Component, Debug)] #[component(immutable)] pub struct Unit;
-#[derive(Component, Debug)] #[component(immutable)] pub struct Delivery;
-```
-
-`#[require(Unit)]` on `UnitType`, `#[require(Delivery)]` on `Projectile` and `Area`; required components come back on restore and on clients by themselves, as their holders are state. Listed with `types.derived::<..>()`. Aliases in `units`: `UnitFilter = With<Unit>`, `LivingUnit = (With<Unit>, Without<Dead>)`, `BodyUnit = (With<Unit>, Without<Delivery>)`, which replace all five tests. The proving match checks that every entity with a `StableId` holds exactly one of `Unit`, `MatchEntity`, `Player` (a delivery holds `Unit` and `Delivery`). Makes impossible: a non-unit taken for a unit, and a new entity kind nobody gave a kind. Cost: two components, about ten queries, and a `UnitType` on every test unit.
-
-### 3.2 One unit core, one spawn function
-
-A `UnitCore { id, pos, unit_type, team, tags }` bundle with one constructor that takes the tag book and the state book and consumes `NewUnitStates`; `Units::spawn(world, UnitSpawn { id: Option<StableId>, unit_type, team, pos, angle, owner })` allocates when `id` is `None`. `ModeBook::spawn` is core plus kit, `DeliverySpawner` core plus spec, and the test spawners call the core. Sight comes from one book. Derived parts are left out of the spawn bundle, so the one derivation after a restore also covers a spawn: `units` derives `UnitTags` for every `Unit` from type, modifiers and `StatusTags`, on a client too, and `stats` derives `UnitStats` for `(With<Unit>, With<Level>)`. This last part overlaps PLAN A6, which must give a client tags as well as stats.
-
-### 3.3 An entity kind registry for net
+### 2.1 A kind is a type that declares everything about its entities
 
 ```rust
-pub trait EntityKind: Component {
-    const ROOMS: Rooming; // Vision or EverySeat
+pub trait EntityKind: Component<Mutability = Immutable> + HostRule {
+    /// How its entities' stable ids come: allocated, or named by the kind.
+    type Id: KindId;
+    /// Who holds its entities: the vision rooms of the teams that see one, or every seat.
+    const ROOMS: Rooming;
+    /// Whether the client of an entity's owner predicts it.
     const OWNER_PREDICTS: bool;
 }
 ```
 
-Implemented by `Unit` (vision, predicted), `Delivery` (vision, not predicted), `MatchEntity` and `Player` (every seat, not predicted); `CapabilitySet::entity_kinds` lists them, and net registers one `show::<K>` system per kind, a delivery taking precedence over a unit. One `prediction_target` serves `show_units` and the door (today `sim_server/mod.rs:731` and `door.rs:218`), and an observer on `Owner` inserts the prediction target again, as `KindFilter` follows the owner today; a change of owner leaves a stale target now. Design 14 D10 gains a line naming the list.
+Four kinds: `Unit` (allocated, vision, predicted), `Delivery` (allocated, vision, not predicted), `MatchEntity` (named, every seat), `Player` (named by slot, every seat). The markers `Unit` and `Delivery` are added by `#[require(Unit)]` on `UnitType` and `#[require(Delivery)]` on `Projectile` and `Area`, so a restore and a client's replication bring them back with their state, and no spawn path can leave one out. A delivery holds `Unit` and `Delivery`; filters name the narrower kind. Typed aliases replace the five tests: `UnitFilter = With<Unit>`, `LivingUnit = (With<Unit>, Without<Dead>)`, `BodyUnit = (With<Unit>, Without<Delivery>)`.
 
-## 4. Ownership graph
+### 2.2 Every state type names its host
 
-### Crates
+`SimComponent` gains `type Host: HostRule`, `trait HostRule { fn holds(world: &World, entity: Entity) -> bool; }`, implemented by `OnAny` in `sim` and by each kind. `check_component` runs `C::Host::holds` before the value's own check, so a state type on the wrong kind of entity fails the restore by construction. No default: each of about sixty types chooses, and the hand-written host tests in `PlayerModifiers`, `PlayerResources`, `Relations`, `MatchEnd`, `ModeState` and `MatchEntity` go, as does the `TrainQueue` bug.
 
-The graph follows design 02's map with these exceptions:
+### 2.3 Parts and pairs, declared once
 
-- **runner → log.** `Session::run_tick` logs `ScriptCallFailed` (`runner/src/session/mod.rs:319`), while design 02 lets only the binaries, net and the verifier log. `run_tick` should return the failures for its caller to log.
-- **server → capabilities, server → sim, client → runner**, each for one pass-through or one check. Each goes once `SimServer::app` takes the packages (§5.6) and the client's rate check moves into `SimClient`'s setup.
-- **The server crate is a binary of 933 lines**, while design 02 gives it host config, lifecycle, saves and the local server; those live in `net::sim_server` and `net::local`. The design or the split must change: an item under Decide in the issue log.
+- `d.part::<K, C>(start)`: every entity of kind `K` holds `C`, put on it at spawn from `start` (a default, or a function of the books, as `PlayerResources::new(count)` needs). One declaration gives the spawn, the restore check and the audit; `PlayerParts`, `player_modifiers_held`, `relations_held` and `Mode::entities_held` go.
+- `d.pair::<H, C>()`: every holder of `H` holds `C`. It replaces the hand-written pairs `ActionSlots`/`SlotTimes`, `Projectile`/`FlightState`, `AreaTrigger`/`Area`, `Points`/`Experience`, and covers what nobody checks: `Respawn` ⇒ `Dead` and `SpawnPoint`. A unit's state classes are a pair per class its type declares, a custom check beside the pairs, as the classes depend on the type.
 
-### Owners inside `capabilities`
+### 2.4 One spawn per kind
 
-The world, plus four `!Send` handles: `View(Rc<ViewParts>)` with `RefCell`s, `Ctx { Rc<RefCell<Frame>>, View, Rc<OnceCell<Rc<dyn Any>>> }`, `ScriptHost`, and boxed closures (`CombatEvents`, `DamageWeigher`, `HealWeigher`, `Spawner`).
+- `Units::spawn(world, UnitSpawn { id: Option<StableId>, unit_type, team, pos, angle, owner }) -> StableId` allocates when `id` is `None`, inserts the core (`id`, `pos`, `unit_type`, `team`, owner, state from the books, consuming `NewUnitStates`) and the kind's parts; `ModeBook::spawn` adds the kit, `DeliverySpawner` the spec, and the test spawners call it. Sight comes from one book.
+- Derived parts are left out of every spawn bundle, so the one derivation after a restore covers a spawn too: `units` derives `UnitTags` for every `Unit`, on a client as well, and `stats` derives `UnitStats` for `(With<Unit>, With<Level>)`. This part belongs to PLAN A6, which must give a client tags as well as stats.
+- `MatchEntity::spawn` stays the match's and the players' one spawn, reading the declared parts.
+- `clippy.toml` disallows `World::spawn`, `Commands::spawn` and `IdAllocator::allocate` in `campfire-capabilities` outside the kinds' spawn functions and the registry's restore, so a new spawn path cannot skip the model.
 
-- `View` owns book data: `UnitTypes` changes through `view.types_mut()` (`units/view.rs:312`).
-- Facts with two owners: `View.rate` and the `TickRate` resource; the rows' `now`, `bounds` and `metric` and the `SimTick`, `Bounds` and `Metric` resources.
-- `ModeBook` is reachable only as `Rc<dyn Any>` in `Ctx` (`scripts/ctx.rs:25`), downcast by every reader; a client, with no `Ctx`, has no mode book, so `Mode::team_of` is `None` there.
-- Restore checks pass when a handle is missing: `get_non_send::<View>().is_none_or(..)` in `Team`, `Owner`, `UnitType`, `Player`, `MatchEnd`, `Relations`; `Mode::entities_held` passes with no mode book.
+### 2.5 Net reads the kinds
 
-### 4.1 Books and hooks as `Send` resources
+Net registers one `show::<K>` system per declared kind, by `K::ROOMS`, and one `prediction_target` for `show_units` and the door, by `K::OWNER_PREDICTS`; an observer on `Owner` sets the target again as `KindFilter` already follows the owner. The duplicated rule, a stale target after an owner change, and a future kind (the team entity of design 14 D7) with no replication rule become impossible. Design 14 D10 names the list.
 
-`UnitTypes` becomes a `UnitTypeBook` resource, `ModeBook` a resource holding an `Arc<ModeBook>` that `Ctx` clones for script calls, and `View` keeps only the per-phase snapshot (`UnitRows`, `TargetIndex`, script names) and no rate. The downcasts go, systems name what they read, and the restore checks read resources that must exist (§6.2). Cost: about forty call sites in `units`, `mode`, `stats` and `actions`.
+## 3. Explicit dependencies
 
-### 4.2 Module layering
+### 3.1 Books and hooks are `Send` resources
 
-The layer test rejects imports from a higher layer only; within a layer, modules import each other freely, and some do in both directions: `units ↔ scripts`, `units ↔ players`, `abilities ↔ items` (`items/mod.rs:6` imports `CastSpends`; four `abilities` files import `Inventory`). The `CAPABILITIES` needs table disagrees with the imports: production uses navigation and vision types and needs none; abilities uses items and navigation and needs only combat; orders uses production and items. Recommendations: the layer test forbids cycles within a layer, and checks that each capability's imports are within its `needs` and the lower layers; `CastSpends` or `Inventory` moves down into `actions`; `View` and its API users meet in one layer-1 module.
+- `View` owns book data (`UnitTypes` changes through `view.types_mut()`, `units/view.rs:312`), duplicates `TickRate` (`View.rate`), `SimTick`, `Bounds` and `Metric` (the rows' copies), and `ModeBook` is reachable only as `Rc<dyn Any>` in `Ctx` (`scripts/ctx.rs:25`), downcast by every reader; a client, with no `Ctx`, has no mode book.
+- Recommendation: `UnitTypes` becomes a `UnitTypeBook` resource; `ModeBook` a resource holding an `Arc<ModeBook>` that `Ctx` clones for script calls; `View` keeps only the per-phase snapshot (`UnitRows`, `TargetIndex`, script names) and no copy of a resource. Cost: about forty call sites in `units`, `mode`, `stats`, `actions`.
 
-## 5. Call graph and argument counts
+### 3.2 `!Send` access lives in one place
 
-152 production functions take `&mut World` and 96 `&World`, against 13 `SystemParam` derives. About sixty `world.non_send::<View | Ctx>().clone()` calls and `remove_non_send`/`insert_non_send` pairs around passes (`combat/damage_pass.rs:97`, `combat/attacks.rs:150`, `scripts/script_batch.rs:33`) hide every dependency from the signature. 24 systems group parameters in tuples to pass Bevy's limit of 16: `HeldPass::run` 15, `Trains::start_trains` 13, `Refresh::run` 12, then `apply_production_orders`, `force_units`, `strike`, `fly`, `check_player_orders`, `progress_sites`.
+The script host, `Ctx` and `View` are reached through one exclusive context, `ScriptPass { host, ctx, view, failures, budgets, clock }`, built once per pass; `ScriptBatch` holds `ctx` and `now`, so `hook_call(start, hook, unit, body)` loses two parameters, and the `remove_non_send`/`insert_non_send` pairs around passes (`combat/damage_pass.rs:97`, `combat/attacks.rs:150`, `scripts/script_batch.rs:33`) go. `clippy.toml` disallows `World::non_send`, `get_non_send`, `non_send_mut`, `remove_non_send` and `insert_non_send` outside `scripts`, so a pass that reaches for a `!Send` handle stops at the lint.
 
-### 5.1 `TickClock`
+### 3.3 Typed params for what travels together
 
-`#[derive(SystemParam)] struct TickClock { tick: Res<SimTick>, rate: Res<TickRate> }` with `start()`, `end()`, `ticks(ms)`, `window(ms)`. It replaces the `(tick, rate)` tuples and about twenty `Res<SimTick>`. `Effect::apply(self, world, frame)` reads the tick once in `Frame::apply`, which drops `now` from about fifteen effect impls (59 `now: Tick` parameters today, beside worlds that hold it).
+| Param | Members | Removes |
+| --- | --- | --- |
+| `TickClock` | `Res<SimTick>`, `Res<TickRate>`; `start()`, `end()`, `ticks(ms)`, `window(ms)` | the `(tick, rate)` tuples, about twenty `Res<SimTick>`, and `now` from about fifteen effect impls, as `Frame::apply` reads the tick once |
+| `PoolQuery<F>` | `Option<Res<LifePool>>`, `Query<UnitPools, F>`; `get_mut(entity) -> PoolMetersMut` | the life pool from nine signatures |
+| `ActionBooks` | action, param books, `ParamSources` | |
+| `StatBooks` | stat, pool, modifier, tag books | with `ActionBooks`, `HeldPass::run` (15), `Refresh::run` (12) and `start_trains` (13) fall under eight parameters, with no tuple |
+| `PlayerRows<C>`, `OnMatch<C>` | already written in A4 | |
+| `OwnPlayer` (client) | `Option<Res<JoinState>>`, `PlayerUnits`; `slot()`, `team()`, `avatar()` | three HUD and view systems that re-read the own player |
 
-### 5.2 `PoolQuery`
+Each param is a unit-test seam: a pass that takes `TickClock`, `PoolQuery` and `StatBooks` runs in a bare `World` holding those resources.
 
-`PoolQuery<F> { life: Option<Res<LifePool>>, units: Query<UnitPools, F> }` with `get_mut(entity) -> PoolMetersMut`; the life pool leaves nine signatures.
+### 3.4 One match-world builder
 
-### 5.3 Book bundles
+The prepare, schedule, registry and install sequence appears five times (`Session::build`, `Session::snapshot_hash`, `SimClient::build`, `TestMatch::unstarted`, the match build bench). `MatchWorld::new(seed, rate).install(set, budgets).finish()` holds it, built on §1's visitors.
 
-`ActionBooks { actions, params, sources }` and `StatBooks { stats, pools, modifiers, tags }` bring `HeldPass::run`, `Refresh::run` and `start_trains` under eight parameters with no tuples.
+### 3.5 The log stays out of the core
 
-### 5.4 `ScriptPass`
+`Session::run_tick` logs `ScriptCallFailed` (`runner/src/session/mod.rs:319`), while design 02 lets only the binaries, net and the verifier log. `run_tick` returns the failures, and its callers log them.
 
-An exclusive pass context `{ host, ctx, view, failures, budgets, clock }`, with `ScriptBatch` holding `ctx` and `now`: `hook_call(start, hook, unit, body)` loses two parameters, and the remove-and-insert dance in `ScriptBatch::run` goes.
+### 3.6 Layers without cycles
 
-### 5.5 `MatchWorld` builder
+The layer test rejects imports from a higher layer only. Within a layer, modules import each other in both directions: `units ↔ scripts`, `units ↔ players`, `abilities ↔ items` (`items/mod.rs:6` imports `CastSpends`; four `abilities` files import `Inventory`). The needs table disagrees with the imports: production uses navigation and vision and needs neither; abilities uses items and navigation; orders uses production and items. The declaration audit (§1.2) adds both checks: no cycle within a layer, and imports within `NEEDS` and the lower layers. `CastSpends` or `Inventory` moves down into `actions`, and `View` and its API users meet in one layer-1 module.
 
-The prepare, schedule, registry and install sequence appears five times (`Session::build`, `Session::snapshot_hash`, `SimClient::build`, `TestMatch::unstarted`, the match build bench). `MatchWorld::new(seed, rate).install(set, budgets).finish()` collapses them, and with §2.1 an install takes one `InstallCx`.
+## 4. Restore as a checked boundary
 
-### 5.6 Server orchestration in net
+### 4.1 Checks run with every book in place
 
-`SimServer::app(tick, &ModePackages) -> App` for the three server compositions (`server/src/main.rs:234`, `net/src/local/local_server/mod.rs:327`, `net/src/harness/in_process_match/mod.rs:332`); one pending restore and system for the identical `Restore` (server) and `PendingRestore` (net); `Session::replay_to(world, tick, on_boundary)` for the two replay loops (`sim_server/mod.rs:351`, `session_dir/mod.rs:232`).
+`SimComponent::check` runs with the match's books in place, as its doc says and `Session::build` does. Today a missing book panics (`ModifierBook`, `ItemBook`, `ParamBook`), passes (`View` in six checks, and `Mode::entities_held` with no mode book), or fails unless the value is empty (`action_slots.rs:554`, `slot_times.rs:327`, `experience.rs:98`, branches no install reaches). Every check reads its books with `resource` or `non_send`, and the dead branches go: a wiring mistake then crashes the test that makes it.
 
-### 5.7 Smaller ones
+### 4.2 Errors name the entity and the rule
 
-- `send_orders` (10 parameters, two jobs) splits into `feed_bot_script` and `stamp_orders`.
-- The client's HUD and view re-read the own player from `Option<Res<JoinState>>` and `PlayerUnits` in three systems: an `OwnPlayer` param with `slot()`, `team()`, `avatar()`.
-- `Session` is a resource inside the world it runs, so its methods take `&self` and that world, and `Runner` is twenty forwarders. Either `Session` splits into a `SessionRecord` outside the world and match state inside it, or the design says why it is one.
+`SnapshotError::Invalid(&'static str)` names a type, and a foreign check names the type it is registered on: `Mode::entities_held`, on `Player`, fails for a missing mode state. With §2: `Invalid { ty, id: Option<StableId> }`, `WrongHost { ty, id }`, `Missing { holder, needs, id }`.
 
-## 6. Restore robustness
+### 4.3 Fuzz by mutation, and play on
 
-### 6.1 Declared hosts and required parts
+The fuzz tests restore a flawed snapshot and, when it restores, play on (`runner/tests/proving_match.rs:369`, `:410`), but their mutations replace a value on a holder only. Each of these joins them:
 
-- `SimComponent` gains `type Host: HostRule`, with `trait HostRule { fn holds(world: &World, entity: Entity) -> bool; }`: `OnAny` in `sim`, `OnMatch`, `OnPlayer` and `OnUnit` in `capabilities`. `check_component` runs it before the value's check. No default, so each of about sixty types chooses. The hand-written host tests in `PlayerModifiers`, `PlayerResources`, `Relations`, `MatchEnd`, `ModeState` and `MatchEntity` go, and the `TrainQueue` bug cannot exist.
-- `StateRegistry::require::<H, C>()`: every holder of `H` holds `C`. It replaces `relations_held`, `player_modifiers_held` and most of `entities_held`, the hand-written pairs `ActionSlots`/`SlotTimes`, `Projectile`/`FlightState`, `AreaTrigger`/`Area`, `Points`/`Experience`, and covers `Respawn` ⇒ `Dead` + `SpawnPoint`.
-- `add_check` stays for rules that are truly custom: `within_bounds`, and "a unit holds each state class its type declares".
+- remove one holder's component of a type;
+- move one value to an entity of another kind;
+- duplicate one value onto a second entity;
+- replace a value of a nested option with `None` where its type allows, as a slot's rank.
 
-### 6.2 One convention for an absent book
+Each mutation either fails the restore or plays a hundred ticks with no panic. The four snapshot bugs of the issue log are each one mutation, so the test would have found them, and it keeps the class found.
 
-`SimComponent::check` runs with the match's books in place, as its doc says and `Session::build` does. Today a missing book panics (`ModifierBook`, `ItemBook`, `ParamBook`), passes (`View` in six checks), or fails unless the value is empty (`action_slots.rs:554`, `slot_times.rs:327`, `experience.rs:98`, branches no install can reach). Recommendation: read every book with `resource` or `non_send`, and delete the dead branches.
+### 4.4 Load, then trust
 
-### 6.3 Errors name the entity
+51 builder sites `expect("the load checked …")` what `load_check.rs` (2,275 lines) checked; the two copies can drift. Builders that take checked types would remove them. This is a larger change, for the issue log.
 
-`SnapshotError::Invalid(&'static str)` names a type, and a foreign check names the type it is registered on: `Mode::entities_held`, on `Player`, fails for a missing mode state. `Invalid { ty, id: Option<StableId> }`, and with §6.1 `Missing { holder, needs, id }`.
+## 5. One session host
 
-### 6.4 Load, then trust
+- **Server compositions.** The task pool, time, states and `SimServer` setup appears three times (`server/src/main.rs:234`, `net/src/local/local_server/mod.rs:327`, `net/src/harness/in_process_match/mod.rs:332`): `SimServer::app(tick, &ModePackages) -> App` holds it, and the server's edges to `capabilities` and `sim`, each used once, go.
+- **Restore glue.** The server's `Restore` and net's `PendingRestore` have the same fields and body: one type in net.
+- **Replay.** The loop of "take the checkpoint again, stop at a tick, run alone" is in `SimServer::restore_match` (`sim_server/mod.rs:351`) and `SessionDir::abort` (`session_dir/mod.rs:232`): `Session::replay_to(world, tick, on_boundary)`.
+- **Tick input.** "Fill `TickInputs`, then run `SimUpdate`" is in `Session::run_tick` and `run_predicted_tick`: one function in `sim`.
+- **`Session` and `Runner`.** `Session` is a resource inside the world it runs, so its methods take `&self` and that world, and `Runner` is twenty forwarders. `Session` splits into a `SessionRecord` outside the world (log, seeds, segment) and match state inside it, or design 02 says why it is one.
+- **Crate split.** The server crate is a binary of 933 lines, while design 02 gives it the lifecycle, saves and the local server, which live in `net`: an item under Decide in the issue log.
+- **Client edge.** `client` depends on `runner` for one rate check, which moves into `SimClient`'s setup.
 
-51 builder sites `expect("the load checked …")` what `load_check.rs` (2,275 lines) checked; the two copies can drift. Builders that take checked types would remove them: a larger change for the issue log.
+## Single sources, outside the five systems
 
-## 7. Single sources of truth
+- **Audiences.** A kind's audience is in `DataKind`'s doc comments, its enforcement in `FilteredKind::ALLIES` and a match in `net/src/sim_server/kind_filter.rs:278`. `const fn DataKind::audience() -> Audience` in `capabilities`, from which net derives `ALLIES`; the scope tuples stay, guarded by their test, as replicon needs the types.
+- **Release.** `SessionTerms.release: String` is compared as text in runner and net and carried as text in two errors: a checked `Release` newtype in `protocol`, with `Release::CURRENT` and one comparison.
+- **Log events.** The match's end is logged ad hoc with other fields on the server (`sim_server/mod.rs:663`) and the client (`sim_client/mod.rs:474`), and the client logs a death ad hoc (`sim_client/mod.rs:494`) though `UnitDied` exists: a `MatchEnded` event and `UnitDied` on both ends.
 
-- **Audiences.** A kind's audience is in `DataKind`'s doc comments, and its enforcement in `FilteredKind::ALLIES` and a match in `net/src/sim_server/kind_filter.rs:278`. `const fn DataKind::audience() -> Audience` in `capabilities`, from which net derives `ALLIES`. The scope tuples stay, guarded by their test, as replicon needs the types.
-- **Release.** `SessionTerms.release: String` is compared as text in runner and net, and carried as text in two errors. A checked `Release` newtype in `protocol` with `Release::CURRENT` and one comparison.
-- **Section owners** (§2.6) and **effect queues** (§2.7).
+## Tests
 
-## 8. Test infrastructure
+`TestMatch` is the shared base; the duplication is in leaf helpers: about fifteen copies of `fn at(x, z) -> Position`, 22 of `NonZeroU32::new(30)`, 35 of `resource::<EntityIndex>().get(id).unwrap()`, three near-identical hero probes (`net/tests/scenario.rs:25`, `net/tests/prototype.rs:40`, `verifier/tests/headless.rs:99`), and one sequence of budgets, server, names and players in fourteen harness constructors. `Position::ground(x, z)` and `EntityIndex::entity_of(world, id)` in `sim`'s internals; a `UnitProbe` beside `MatchUnits`; `TestMatch::server_with(declared, players, kinds)`. Test units spawn through §2.4's `Units::spawn`, which the clippy rule then requires.
 
-`TestMatch` is the shared base, and the duplication is in leaf helpers: about fifteen copies of `fn at(x, z) -> Position`, 22 of `NonZeroU32::new(30)`, 35 of `resource::<EntityIndex>().get(id).unwrap()` in integration tests, three near-identical hero probes (`net/tests/scenario.rs:25`, `net/tests/prototype.rs:40`, `verifier/tests/headless.rs:99`), and the same budgets, server, names and players sequence in fourteen harness constructors. Recommendations: `Position::ground(x, z)` and `EntityIndex::entity_of(world, id)` in `sim`'s internals; a `UnitProbe` beside `MatchUnits`; `TestMatch::server_with(declared, players, kinds)`; test units spawned through §3.2's core.
+## Hot paths
 
-## 9. Hot paths
+- `NavigationEffect::put` (`navigation/navigation_effect.rs:212`) builds a `QueryState` to read one entity, and `make_room` (`navigation/mod.rs:191`) calls it once per overlapped walker after building its own query and a fresh `Vec`; `teleport` (`:238`) builds one and scans every projectile. `get_components_mut` in `put`, as `abilities/casts.rs:394` does; cached query states in a resource, as `CopyQueries` holds them; a scratch `Vec`.
+- `Frame::begin` copies every player's resources and the id allocator, and readies every call part, for every script call: player resources read on the first write instead.
 
-The tick systems use scratch buffers and `clone_from`; the exceptions are effects that build a `QueryState` per call:
+## Order
 
-- `NavigationEffect::put` (`navigation/navigation_effect.rs:212`) builds a query to read one entity, and `make_room` (`navigation/mod.rs:191`) calls it once per overlapped walker after building its own query and a fresh `Vec`; `teleport` (`:238`) builds one and scans every projectile.
-- `Frame::begin` copies every player's resources and the id allocator, and readies every call part, for every script call, whether or not the call reads them.
-
-Recommendations: `get_components_mut` in `put`, as `abilities/casts.rs:394` does; cached query states in a resource, as `CopyQueries` holds them, with a scratch `Vec`; and a frame that reads player resources on the first write.
-
-## 10. Logging
-
-Net logs through 31 typed `LogEvent`s, and logs some facts ad hoc beside them: the match's end, with other fields on the server (`sim_server/mod.rs:663`) and the client (`sim_client/mod.rs:474`), and a unit's death on the client (`sim_client/mod.rs:494`) though `UnitDied` exists. A `MatchEnded` event and `UnitDied` on both ends.
-
-## Suggested order
-
-1. §3.1 kind markers, with the delivery tags and seen-targets fixes.
-2. §2.1, §2.2 and §2.3 together: one declaration per capability, no registry in installs, checks and player parts in the list.
-3. §6.1 and §6.2: declared hosts, required parts, one book convention; the restore bugs of §1 go with them.
-4. §5.1 to §5.3: the low-cost params.
-5. §4.1, then §3.2 within PLAN A6, then §3.3 before A3's spectators need a kind rule.
-6. §2.4 to §2.8, §5.4 to §5.7, §7 to §10 as slices touch them.
+1. §2.1 to §2.3 with §4.3: kind markers, hosts, parts and pairs, and the mutation fuzz that proves them; the four restore bugs and the seen-targets bug go with them, and the delivery tags bug with §2.4's derivation.
+2. §1.1 to §1.3: one declaration per capability, its audit, installs that read the set. Parts and pairs move into the declaration here.
+3. §3.3 and §4.1, §4.2: the typed params, one book convention, errors that name the entity.
+4. §3.1, §3.2: books out of `View` and `Ctx`, `!Send` access in `ScriptPass`, and its clippy rule.
+5. §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule.
+6. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.
