@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::component::{Component, Immutable, Mutable};
-use campfire_capabilities::{CapabilitySet, Declared, Replication, StateTypes};
+use campfire_capabilities::{CapabilitySet, Declared, Release, Replication, StateTypes};
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
 use lightyear::prelude::{
@@ -98,7 +98,7 @@ impl Plugin for NetProtocol {
         // A unit's identity, which no state type holds: the entity list holds it.
         app.component::<StableId>()
             .replicate_once_with(WireCodec::component());
-        self.capabilities.state_types(&mut Replicated(app));
+        Release::state_types(self.capabilities, &mut Replicated(app));
     }
 }
 
@@ -135,6 +135,10 @@ impl StateTypes for Replicated<'_> {
     fn derived<C: Component>(&mut self) {}
 
     fn resource<R: SimResource>(&mut self) {}
+
+    fn sim_component<C: Replication>(&mut self) {
+        self.component::<C>();
+    }
 }
 
 #[cfg(test)]

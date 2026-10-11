@@ -17,6 +17,7 @@ use crate::actions::checked_action::CheckedAction;
 use crate::actions::purse::Purse;
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_times::SlotTimes;
+use crate::declare::book::Book;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
@@ -24,6 +25,7 @@ use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::values::relation::Relation;
+use campfire_sim::Capability;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the actions, as the
@@ -188,6 +190,11 @@ impl ActionBook {
         };
         range
     }
+}
+
+impl Book for ActionBook {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(any(test, feature = "internals"))]

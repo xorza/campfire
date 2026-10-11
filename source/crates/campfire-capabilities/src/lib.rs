@@ -1,11 +1,12 @@
 //! Capabilities: the mechanisms a mode combines, a module each, on the core, and the mode above
 //! them. A module imports only from its own layer and the layers below, lowest first: `values`
 //! (data value types); the core, `units`, `scripts` and `players` (unit types, teams, owners,
-//! paths, the script view and runtime, and the players' resources); `stats`; `actions`; `combat`;
-//! `deliveries`, `projectiles`, `areas`, `abilities`, `navigation`, `vision`, `progression`,
-//! `production` and `items`; `orders`; the `mode`; and `capability_set`, which installs them, and
-//! `books`, which builds a match's books. The layer test in `capability_set` holds this list, and
-//! fails on any import from a higher layer. A capability gives the script view its fields of a
+//! paths, the script view and runtime, and the players' resources), and `declare`, how each
+//! module declares what it adds; `stats`; `actions`; `combat`; `deliveries`, `projectiles`,
+//! `areas`, `abilities`, `navigation`, `vision`, `progression`, `production` and `items`;
+//! `orders`; the `mode`; and `release`, which installs them, and `books`, which builds a match's
+//! books. The layer test in `release` holds this list, and fails on any import from a higher
+//! layer. A capability gives the script view its fields of a
 //! unit through its column, and the call frame what a call reads besides the core's through its
 //! part.
 
@@ -24,8 +25,8 @@ mod abilities;
 mod actions;
 mod areas;
 mod books;
-mod capability_set;
 mod combat;
+mod declare;
 mod deliveries;
 mod geometry;
 mod items;
@@ -36,6 +37,7 @@ mod players;
 mod production;
 mod progression;
 mod projectiles;
+mod release;
 mod scripts;
 mod state_types;
 mod stats;
@@ -83,8 +85,6 @@ pub use crate::books::mode_inputs::ModeInputs;
 pub use crate::books::package_content::PackageContent;
 pub use crate::books::type_place::TypePlace;
 pub use crate::books::unit_type_file::UnitTypeFile;
-pub use crate::capability_set::CapabilitySet;
-pub use crate::capability_set::error::CapabilityError;
 pub use crate::combat::Combat;
 pub use crate::combat::combat_data::CombatData;
 pub use crate::combat::combat_rules::{CombatRules, Leech};
@@ -93,6 +93,8 @@ pub use crate::combat::on_death::OnDeath;
 pub use crate::combat::recent_attack::RecentAttack;
 pub use crate::combat::recent_attackers::RecentAttackers;
 pub use crate::combat::respawn::Respawn;
+pub use crate::declare::capability_set::CapabilitySet;
+pub use crate::declare::error::CapabilityError;
 pub use crate::geometry::bounds::Bounds;
 pub use crate::geometry::grid::Grid;
 pub use crate::geometry::metric::Metric;
@@ -167,6 +169,7 @@ pub use crate::progression::track_set::TrackSet;
 pub use crate::projectiles::Projectiles;
 pub use crate::projectiles::projectile::Projectile;
 pub use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
+pub use crate::release::Release;
 pub use crate::scripts::api_version::ApiVersion;
 pub use crate::scripts::applies::Applies;
 pub use crate::scripts::error::{ApiError, CallError, ParamProblem};

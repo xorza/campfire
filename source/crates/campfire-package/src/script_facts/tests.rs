@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use campfire_capabilities::CapabilitySet;
+use campfire_capabilities::Release;
 use campfire_script::ScriptHost;
 
 use super::*;
@@ -30,7 +30,7 @@ fn on_resolve(ctx, caster, target) {
 fn helper(ctx, gold) {}
 "#;
     let mut host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
-    let api = CapabilitySet::bind_script_api(&mut host);
+    let api = Release::bind_script_api(&mut host);
     let ast = host.parse(source).unwrap();
     let facts = ScriptFacts::read(&ast, &api);
     let function = |name: &str, params| Function {
@@ -117,7 +117,7 @@ fn on_x(ctx, unit) {
 }
 "#;
     let mut host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
-    let api = CapabilitySet::bind_script_api(&mut host);
+    let api = Release::bind_script_api(&mut host);
     let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
     let string = EnumString {
         call: "spawn_group".to_owned(),
@@ -141,7 +141,7 @@ fn on_x(ctx, unit) {
 #[test]
 fn a_closure_an_anonymous_function_and_fn_make_a_function_pointer() {
     let host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
-    let api = CapabilitySet::script_api();
+    let api = Release::script_api();
     for (source, pointer) in [
         ("fn on_x(ctx) { let x = 1; let f = || x; }", true),
         ("fn on_x(ctx) { let f = |c| c + 1; }", true),
@@ -192,7 +192,7 @@ fn every_use_of_ctx_but_a_name_on_it_or_a_call_argument_breaks_the_convention() 
         ),
     ];
     let host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
-    let api = CapabilitySet::script_api();
+    let api = Release::script_api();
     for (source, misuse) in cases {
         let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
         assert_eq!(facts.ctx_misuse, misuse, "{source}");

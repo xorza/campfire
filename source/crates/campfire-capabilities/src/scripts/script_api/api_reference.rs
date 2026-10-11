@@ -38,8 +38,7 @@ impl ApiReference<'_> {
                 names.join(", ")
             }
         };
-        let capability =
-            |capability: Option<Capability>| capability.map_or("core", Capability::name);
+        let capability = ApiReference::capability;
         for owner in ApiOwner::ALL {
             let members = self
                 .0
@@ -116,17 +115,33 @@ impl ApiReference<'_> {
         for status in &self.0.tag_properties {
             writeln!(out, "| `{}` | {} |", status.property, status.status)?;
         }
+        self.write_data(out)
+    }
+
+    /// The data fields, table by table.
+    fn write_data(&self, out: &mut String) -> fmt::Result {
         out.push_str("\n## Data fields\n");
         for table in DataTable::ALL {
             writeln!(
                 out,
-                "\n### {}\n\n| Field | Status |\n| --- | --- |",
+                "\n### {}\n\n| Field | Capability | Status |\n| --- | --- | --- |",
                 table.title()
             )?;
             for field in self.0.data.iter().filter(|field| field.table == table) {
-                writeln!(out, "| `{}` | {} |", field.name, field.status)?;
+                writeln!(
+                    out,
+                    "| `{}` | {} | {} |",
+                    field.name,
+                    ApiReference::capability(field.capability),
+                    field.status
+                )?;
             }
         }
         Ok(())
+    }
+
+    /// The name of `capability`, or `core` for none.
+    fn capability(capability: Option<Capability>) -> &'static str {
+        capability.map_or("core", Capability::name)
     }
 }

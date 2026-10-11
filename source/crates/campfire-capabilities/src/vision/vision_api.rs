@@ -1,6 +1,6 @@
 use campfire_math::Num;
 use campfire_script::rhai::INT;
-use campfire_sim::{Capability, Position};
+use campfire_sim::Position;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -30,8 +30,7 @@ impl VisionApi {
             &[&["pos", "radius", "ms"]],
             "shows the acting unit's vision group the cells within `radius` of `pos` for `ms`, from this tick's Vision stage; no hidden unit",
         )
-        .roles(RoleSet::ACTING)
-        .capability(Capability::Vision);
+        .roles(RoleSet::ACTING);
         api.bind_for(
             reveal,
             |ctx: &mut Ctx, pos: Position, radius: Num, ms: INT| {
@@ -72,8 +71,7 @@ impl VisionApi {
             "can_see",
             &[&["unit"]],
             "whether its team sees the other unit",
-        )
-        .capability(Capability::Vision);
+        );
         api.bind(can_see, |unit: Unit, other: Unit| {
             VisionColumn::can_see(&unit, &other)
         });
@@ -82,8 +80,7 @@ impl VisionApi {
             &[&["of", "pos", "radius", "filter"]],
             "as `find`, of the units `of`'s team sees",
         )
-        .name(3, NameKind::Filter)
-        .capability(Capability::Vision);
+        .name(3, NameKind::Filter);
         api.bind(
             visible,
             |_: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
@@ -101,8 +98,7 @@ impl VisionApi {
             &[&["of", "radius", "filter"]],
             "the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",
         )
-        .name(2, NameKind::Filter)
-        .capability(Capability::Vision);
+        .name(2, NameKind::Filter);
         api.bind(
             nearest,
             |_: &mut Ctx, of: Unit, radius: Num, filter: &str| {

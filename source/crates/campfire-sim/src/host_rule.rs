@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -9,6 +10,10 @@ use bevy_ecs::world::World;
 pub trait HostRule: Debug + Send + Sync + 'static {
     /// Whether `entity` is of the kind, in `world`, with every state type restored.
     fn holds(world: &World, entity: Entity) -> bool;
+
+    /// Adds to `kinds` the kinds it takes, each by the type of its marker; false when it takes
+    /// any entity.
+    fn kinds(kinds: &mut Vec<TypeId>) -> bool;
 }
 
 /// Any entity: a type of `sim`, which knows no kinds, or of a test.
@@ -19,6 +24,10 @@ impl HostRule for OnAny {
     fn holds(_: &World, _: Entity) -> bool {
         true
     }
+
+    fn kinds(_: &mut Vec<TypeId>) -> bool {
+        false
+    }
 }
 
 /// An entity of kind `A` or of kind `B`.
@@ -28,5 +37,11 @@ pub struct Either<A: HostRule, B: HostRule>(PhantomData<(A, B)>);
 impl<A: HostRule, B: HostRule> HostRule for Either<A, B> {
     fn holds(world: &World, entity: Entity) -> bool {
         A::holds(world, entity) || B::holds(world, entity)
+    }
+
+    fn kinds(kinds: &mut Vec<TypeId>) -> bool {
+        let a = A::kinds(kinds);
+        let b = B::kinds(kinds);
+        a && b
     }
 }

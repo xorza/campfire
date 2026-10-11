@@ -1,17 +1,20 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::{Mut, World};
-use campfire_sim::{SimSet, StateRegistry};
+use campfire_sim::{Capability, SimSet};
 
 use crate::abilities::cast_spends::CastSpends;
 use crate::actions::ActionsSet;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_times::SlotTimes;
 use crate::combat::CombatSet;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
 use crate::items::item_holds::ItemHolds;
-use crate::state_types::StateTypes;
+use crate::items::items_api::ItemsApi;
 
 pub(crate) mod inventory;
 pub(crate) mod inventory_data;
@@ -35,21 +38,25 @@ pub(crate) enum ItemsSet {
     HoldAtInputs,
 }
 
-impl Items {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<Inventory>();
-    }
+impl Declares for Items {
+    const MODULE: Option<Capability> = Some(Capability::Items);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<Inventory>();
+        d.book::<ItemBook>();
+        d.api(ItemsApi::register);
+    }
+}
+
+impl Items {
     /// Adds items to a match, on stats: an empty item book until the mode's books fill it, the
     /// inventories its units carry, as state, and the modifiers their items hold, as each tick
     /// starts once the trades are in, and in Resolve once a use may have spent an item.
-    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        world.insert_resource(ItemBook::default());
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world
             .get_resource_or_init::<CastSpends>()
             .register(Items::spend_use);
-        Self::state_types(registry);
         schedule.add_systems((
             ItemHolds::hold_items
                 .in_set(SimSet::Inputs)

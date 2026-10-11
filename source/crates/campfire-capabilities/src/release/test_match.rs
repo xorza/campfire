@@ -13,7 +13,7 @@ use campfire_script::rhai::Dynamic;
 use campfire_script::{Budget, ScriptHost};
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimSet, SimTick, SimUpdate, SnapshotError,
-    StableId, StateCopy, StateRegistry, TickRate, TypeHash,
+    StableId, StateCopy, StateRegistry, TickRate,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -21,9 +21,10 @@ use serde::de::DeserializeOwned;
 use crate::actions::slot_kinds::SlotKinds;
 
 use crate::actions::slot_kind_data::SlotKindData;
-use crate::capability_set::CapabilitySet;
 use crate::combat::internals;
+use crate::declare::capability_set::CapabilitySet;
 use crate::players::match_entity::MatchEntity;
+use crate::release::Release;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::script_book::ScriptBook;
@@ -75,7 +76,7 @@ impl TestMatch {
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
         let set = CapabilitySet::new(declared).expect("a test declares a valid set");
-        set.install(&mut world, &mut schedule, &mut registry, budgets);
+        Release::install(set, &mut world, &mut schedule, &mut registry, budgets);
         // A match installs the book its package load read; a test fills one as it compiles.
         world.insert_resource(ScriptBook::default());
         // A mode declares the kinds its units' slots are of: here one, whose one rank comes with
@@ -188,13 +189,6 @@ impl TestMatch {
     /// The life unit `id` has left, a whole amount.
     pub(crate) fn health(&self, id: StableId) -> i64 {
         self.life(id).to_int().expect("a whole amount of life")
-    }
-
-    /// The names of its state types, in the order the state hash reads them.
-    pub(crate) fn state_names(&self) -> Vec<&'static str> {
-        let mut per_type = Vec::new();
-        self.registry.hash_by_type(&self.world, &mut per_type);
-        per_type.iter().map(|TypeHash { name, .. }| *name).collect()
     }
 
     /// Despawns the match's entity it started with, as a restore takes a world of no entity.

@@ -13,10 +13,7 @@ use crate::actions::action_book::internals;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::slot_kind::SlotKind;
-use crate::capability_set::CapabilitySet;
-use crate::geometry::bounds::Bounds;
-use crate::geometry::shape::Shape;
-use crate::navigation::body_index::BodyIndex;
+use crate::declare::capability_set::CapabilitySet;
 use crate::navigation::destination::Destination;
 use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
@@ -25,6 +22,7 @@ use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production::node::Node;
 use crate::production::node_book::NodeBook;
 use crate::production::resource_set::ResourceSet;
+use crate::release::Release;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
@@ -63,12 +61,16 @@ fn two_fields() -> World {
     let mut world = World::new();
     let rate = TickRate::new(NonZeroU32::new(30).unwrap());
     SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
-    // A match without navigation runs no gather; its install inserts these two.
-    world.insert_resource(Bounds::WORLD);
-    world.insert_resource(BodyIndex::new(Shape::MAX_BOUND));
+    // A match without navigation runs no gather, as only navigation tests a box for room.
     let mut schedule = SimUpdate::schedule();
-    let set = CapabilitySet::new(&[Capability::Production]).unwrap();
-    set.install(&mut world, &mut schedule, &mut StateRegistry::new(), None);
+    let set = CapabilitySet::new(&[Capability::Production, Capability::Navigation]).unwrap();
+    Release::install(
+        set,
+        &mut world,
+        &mut schedule,
+        &mut StateRegistry::new(),
+        None,
+    );
     world.add_schedule(schedule);
 
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();

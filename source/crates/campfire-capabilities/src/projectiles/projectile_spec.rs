@@ -1,9 +1,11 @@
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
+use crate::declare::per_type::PerType;
 use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
 use crate::units::filter::Filter;
 use crate::units::unit_types::UnitTypes;
+use campfire_sim::Capability;
 
 /// A projectile type as a match runs it: its speed a tick, its width, its range if it has its
 /// own, whether it homes, stops at its first hit, or hits a unit once a cast, and the units it
@@ -42,4 +44,9 @@ impl ProjectileSpec {
             hits,
         }
     }
+}
+
+impl PerType for ProjectileSpec {
+    const OWNER: Option<Capability> = Some(Capability::Projectiles);
+    const SCRIPTS_ONLY: bool = false;
 }

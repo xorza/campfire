@@ -4,13 +4,14 @@ use campfire_sim::{Position, SimComponent};
 use serde::Serialize;
 
 use super::*;
-use crate::capability_set::test_match::TestMatch;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
+use crate::release::test_match::TestMatch;
 use crate::stats::level::Level;
 use crate::units::team::Team;
 use crate::units::track_id::TrackId;
+use crate::units::view::View;
 use crate::values::declared_name::DeclaredName;
 
 fn track(at: u8) -> TrackId {

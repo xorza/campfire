@@ -1,15 +1,14 @@
 //! The `stats` capability: a unit type's stats and how they grow by level, the rules the mode
 //! declares for them, and each unit's stats derived from its type and level.
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_sim::{EntityIndex, SimEdge, SimSet, SimTick, StableId, StateRegistry, TickRate};
+use campfire_sim::{Capability, EntityIndex, SimEdge, SimSet, SimTick, StableId, TickRate};
 
-use crate::players::player::Player;
-use crate::players::player_parts::PlayerParts;
-use crate::scripts::ctx::Ctx;
-use crate::state_types::StateTypes;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::HeldModifiers;
@@ -29,6 +28,7 @@ use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh::Refresh;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stats_api::StatsApi;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::RowParts;
 use crate::stats::stats_column::StatsColumn;
@@ -104,38 +104,34 @@ pub(crate) enum StatsSet {
     Hold,
 }
 
-impl Stats {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<PlayerModifiers>();
-        types.component::<Level>();
-        types.component::<Modifiers>();
-        types.component::<ModifierClocks>();
-        types.component::<Pools>();
-        types.derived::<UnitStats>();
-    }
+impl Declares for Stats {
+    const MODULE: Option<Capability> = Some(Capability::Stats);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<PlayerModifiers>();
+        d.component::<Level>();
+        d.component::<Modifiers>();
+        d.component::<ModifierClocks>();
+        d.component::<Pools>();
+        d.derived::<UnitStats>();
+        d.player_part(|_| PlayerModifiers::default());
+        d.book::<ModifierBook>();
+        d.column::<StatsColumn, RowParts>(StatsColumn::fill_row);
+        d.call_part::<StatsCall>();
+        d.api(StatsApi::register);
+    }
+}
+
+impl Stats {
     /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,
     /// every unit whose level or modifiers changed, or that is new, has its stats and states
     /// derived again, and the components that hold their effect follow them; as each tick
     /// starts, the living units' pools regenerate. With no stat book, as before a mode loads one
     /// or on a client, which loads none, nothing changes.
-    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>().clone();
-        view.add_column(StatsColumn::default());
-        view.add_source::<RowParts, _>(world, StatsColumn::fill_row);
-        world.insert_resource(ModifierBook::default());
-        world.insert_resource(ParamBook::default());
-        if let Some(ctx) = world.get_non_send::<Ctx>() {
-            ctx.frame().add_part(StatsCall::default());
-        }
-        world.resource_mut::<PlayerParts>().add(|player| {
-            player.insert(PlayerModifiers::default());
-        });
-        world.insert_resource(HeldModifiers::default());
-        world.insert_resource(LiveCarriers::default());
-        Self::state_types(registry);
-        registry.require::<Player, PlayerModifiers>();
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        cx.world.insert_resource(HeldModifiers::default());
+        cx.world.insert_resource(LiveCarriers::default());
+        let schedule = &mut *cx.schedule;
         schedule.add_systems((
             (
                 ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),

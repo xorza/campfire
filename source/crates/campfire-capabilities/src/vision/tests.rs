@@ -1,11 +1,11 @@
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost};
-use campfire_sim::{Capability, IdAllocator, Position, StableId};
+use campfire_sim::{IdAllocator, Position, StableId};
 
 use super::*;
-use crate::capability_set::test_match::TestMatch;
 use crate::geometry::body_box::BodyBox;
 use crate::geometry::bounds::Bounds;
+use crate::release::test_match::TestMatch;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError};

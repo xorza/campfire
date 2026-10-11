@@ -1,6 +1,6 @@
 use campfire_math::Num;
 use campfire_script::rhai::INT;
-use campfire_sim::{Capability, Position};
+use campfire_sim::Position;
 
 use crate::navigation::navigation_column::NavigationColumn;
 use crate::navigation::navigation_effect::NavigationEffect;
@@ -8,6 +8,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::forced_move::DashTo;
 use crate::units::unit::Unit;
@@ -23,8 +24,7 @@ impl NavigationApi {
             ApiOwner::Unit,
             "path",
             "the name of the path it walks, `()` with none",
-        )
-        .capability(Capability::Navigation);
+        );
         api.bind(path, |unit: &mut Unit| NavigationColumn::path(unit));
         NavigationApi::register_forced(api);
     }
@@ -35,20 +35,17 @@ impl NavigationApi {
             "dash",
             &[&["unit", "to", "speed"]],
             "moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch",
-        )
-        .capability(Capability::Navigation);
+        );
         let knock_back = MemberSpec::call(
             "knock_back",
             &[&["unit", "from", "distance", "ms"]],
             "moves `unit` `distance` straight away from `from` over `ms`",
-        )
-        .capability(Capability::Navigation);
+        );
         let teleport = MemberSpec::call(
             "teleport",
             &[&["unit", "pos"]],
             "puts `unit` at `pos` at once, or at the nearest place it may stand",
-        )
-        .capability(Capability::Navigation);
+        );
         let point = DashTo::Point;
         let unit = |to: Unit| DashTo::Unit(to.id);
         api.bind(
@@ -90,7 +87,9 @@ impl NavigationApi {
         .bind(teleport, |ctx: &mut Ctx, of: Unit, to: Position| {
             let teleport = NavigationEffect::teleport(ctx.view(), of.id, to);
             ctx.queue(teleport.map_err(ApiError::fail)?)
-        });
+        })
+        .data(DataTable::Mode, &["navigation"], &[])
+        .data(DataTable::ModeNavigation, &["layers"], &[]);
     }
 
     fn dash(ctx: &Ctx, unit: &Unit, to: DashTo, speed: Num) -> Checked<()> {

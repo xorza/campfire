@@ -1,4 +1,8 @@
 use bevy_ecs::resource::Resource;
+use campfire_sim::Capability;
+
+use crate::declare::book::Book;
+use crate::declare::per_type::PerType;
 
 use crate::units::unit_type::UnitType;
 
@@ -36,6 +40,11 @@ impl<T: Send + Sync + 'static> Default for ByType<T> {
             entries: Vec::new(),
         }
     }
+}
+
+impl<T: PerType> Book for ByType<T> {
+    const OWNER: Option<Capability> = T::OWNER;
+    const SCRIPTS_ONLY: bool = T::SCRIPTS_ONLY;
 }
 
 #[cfg(test)]

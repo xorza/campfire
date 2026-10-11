@@ -2,11 +2,13 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::resource::Resource;
 
+use crate::declare::book::Book;
 use crate::items::item_id::ItemId;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use campfire_sim::Capability;
 
 /// The mode's item types, by id, as its package load checked them: package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
@@ -59,4 +61,9 @@ impl ItemSpec {
             .find(|cost| cost.resource == resource)
             .map_or(0, |cost| cost.amount)
     }
+}
+
+impl Book for ItemBook {
+    const OWNER: Option<Capability> = Some(Capability::Items);
+    const SCRIPTS_ONLY: bool = false;
 }

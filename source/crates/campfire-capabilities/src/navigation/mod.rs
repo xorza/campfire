@@ -3,19 +3,21 @@ use std::cmp::Ordering;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{
-    Capability, Keyed, Position, SimEdge, SimSet, SimTick, StableId, StateRegistry,
-};
+use campfire_sim::{Capability, Keyed, Position, SimEdge, SimSet, SimTick, StableId};
 
 use crate::actions::effect_queues::EffectQueues;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::geometry::grid::Grid;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::forced_moves::ForcedMoves;
+use crate::navigation::navigation_api::NavigationApi;
 use crate::navigation::navigation_column::{NavigationColumn, RowParts};
 use crate::navigation::navigation_effect::NavigationEffect;
 use crate::navigation::on_path::OnPath;
@@ -34,12 +36,10 @@ use crate::navigation::walker::Walker;
 use crate::navigation::walking::Walking;
 use crate::navigation::wall::Wall;
 use crate::navigation::walls::Walls;
-use crate::state_types::StateTypes;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
-use crate::units::view::View;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -89,16 +89,22 @@ pub(crate) enum NavigationSet {
 #[derive(Debug)]
 pub struct Navigation;
 
-impl Navigation {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<Destination>();
-        types.component::<PathWalker>();
-        types.component::<OnPath>();
-        types.component::<Route>();
-        types.component::<Progress>();
-    }
+impl Declares for Navigation {
+    const MODULE: Option<Capability> = Some(Capability::Navigation);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<Destination>();
+        d.component::<PathWalker>();
+        d.component::<OnPath>();
+        d.component::<Route>();
+        d.component::<Progress>();
+        d.book::<ByType<Walker>>();
+        d.column::<NavigationColumn, RowParts>(NavigationColumn::fill_row);
+        d.api(NavigationApi::register);
+    }
+}
+
+impl Navigation {
     /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
     pub fn walker(step: MoveStep) -> impl Bundle {
         (
@@ -114,15 +120,12 @@ impl Navigation {
     /// routes to their destinations, straight lines until the map gives a pathing grid, then the
     /// forced moves move theirs; in Collide, overlapping living bodies part; after Collide, each
     /// unit that walks stands within the bounds again.
-    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>().clone();
-        view.add_column(NavigationColumn::default());
-        view.add_source::<RowParts, _>(world, NavigationColumn::fill_row);
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.insert_resource(Paths::default());
         world.insert_resource(BodyIndex::new(Shape::MAX_BOUND));
         world.insert_resource(StaticChanges::default());
         StaticsDirty::install(world);
-        world.insert_resource(ByType::<Walker>::default());
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Navigation, NavigationEffect::queue_listed);
@@ -145,7 +148,6 @@ impl Navigation {
                 .in_set(SimSet::Collide),
             Walking::keep_in_bounds.in_set(SimEdge::After(SimSet::Collide)),
         ));
-        Self::state_types(registry);
     }
 
     /// Gives the match the map's pathing grid over `cells`, with the cells `walls` block, for the

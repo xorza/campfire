@@ -85,8 +85,6 @@ impl ModeApi {
                 DataTable::Mode,
                 &[
                     "script",
-                    "combat",
-                    "navigation",
                     "slots",
                     "choices",
                     "inputs",
@@ -94,7 +92,6 @@ impl ModeApi {
                     "params",
                     "modifiers",
                     "actions",
-                    "stats",
                     "pools",
                     "resources",
                     "relations",

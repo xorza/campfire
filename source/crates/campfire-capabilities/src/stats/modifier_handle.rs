@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_script::rhai::{Dynamic, INT};
-use campfire_sim::{Capability, StableId};
+use campfire_sim::StableId;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
@@ -123,9 +123,7 @@ impl ModifierHandle {
 
     /// The `Modifier` handle's fields, and `m.state`.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let field = |name, description| {
-            MemberSpec::field(ApiOwner::Modifier, name, description).capability(Capability::Stats)
-        };
+        let field = |name, description| MemberSpec::field(ApiOwner::Modifier, name, description);
         let stacks = field("stacks", "its stacks, which a call may write and read back");
         api.ty::<ModifierHandle>("Modifier")
             .bind(

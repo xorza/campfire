@@ -4,8 +4,8 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionData, BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag,
-    MapData, ModeData, PackageContent, PackagePath, Param, ScriptBook, StatGraph, StatId,
+    ActionData, BookInput, BookKind, BookPackage, Books, DeclaredName, EngineTag, MapData,
+    ModeData, PackageContent, PackagePath, Param, Release, ScriptBook, StatGraph, StatId,
     UnitTypeFile,
 };
 use campfire_common::{Fingerprint, MapName};
@@ -419,7 +419,7 @@ impl ModePackages {
         dependencies: &[(PackageName, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
         let mut parser = ScriptHost::new(manifest.script_limits.per_call);
-        let api = CapabilitySet::bind_script_api(&mut parser);
+        let api = Release::bind_script_api(&mut parser);
         let name = manifest.header.name.clone();
         let fail = |problem| LoadError::of(&name, problem);
         if PackageIndex::dependency(dependencies.len()).is_none() {

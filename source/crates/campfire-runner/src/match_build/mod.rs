@@ -1,6 +1,6 @@
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
-use campfire_capabilities::{Mode, ModeInputs, ModeSetup, ScriptBudgets, Units};
+use campfire_capabilities::{ModeInputs, ModeSetup, Release, ScriptBudgets, Units};
 use campfire_package::ModePackages;
 use campfire_sim::{StateRegistry, TickRate};
 
@@ -29,7 +29,8 @@ impl MatchBuild {
             players,
             units,
         };
-        Mode::install(world, schedule, registry, setup, books);
+        let set = packages.manifest().capabilities;
+        Release::install_mode(set, world, schedule, registry, setup, books);
     }
 
     /// The first part of `run`: the core and the declared capabilities, every package's scripts,
@@ -43,13 +44,12 @@ impl MatchBuild {
     ) -> ModeInputs {
         let manifest = packages.manifest();
         let budgets = ScriptBudgets::new(manifest.script_limits, players);
-        manifest
-            .capabilities
-            .install(world, schedule, registry, Some(budgets));
+        let set = manifest.capabilities;
+        Release::install(set, world, schedule, registry, Some(budgets));
         packages.compile_scripts(|source| Units::compile(world, source));
         world.insert_resource(packages.script_book().clone());
         let rate = *world.resource::<TickRate>();
-        packages.books(rate).install(world)
+        packages.books(rate).install(world, set, true)
     }
 }
 

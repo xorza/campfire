@@ -7,8 +7,10 @@ use campfire_math::{Num, Vec3};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use std::any::TypeId;
+
 use super::*;
-use crate::host_rule::OnAny;
+use crate::host_rule::{Either, OnAny};
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
 struct Health(Num);
@@ -415,6 +417,11 @@ impl HostRule for Healthy {
     fn holds(world: &World, entity: Entity) -> bool {
         world.get::<Health>(entity).is_some()
     }
+
+    fn kinds(kinds: &mut Vec<TypeId>) -> bool {
+        kinds.push(TypeId::of::<Healthy>());
+        true
+    }
 }
 
 #[derive(Component, Debug, Serialize, Deserialize)]
@@ -450,6 +457,12 @@ fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
     hosts.register_component::<Mark>();
     hosts.host::<Mark, Healthy>();
     hosts.require::<Armor, Position>();
+    // A kind's rule names its kind; one of two kinds names both; any entity names none.
+    let mut kinds = Vec::new();
+    assert!(!OnAny::kinds(&mut kinds) && kinds.is_empty());
+    assert!(Either::<Healthy, Healthy>::kinds(&mut kinds));
+    assert_eq!(kinds, [TypeId::of::<Healthy>(); 2]);
+    assert!(!Either::<Healthy, OnAny>::kinds(&mut Vec::new()));
     let restores = |build: fn(&mut World, StableId)| {
         let mut world = new_world();
         world.init_resource::<SimTick>();

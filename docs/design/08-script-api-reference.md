@@ -235,319 +235,319 @@ Each enum's module holds its members, and the function `named`, which gives the 
 
 ### `data/mode.toml`
 
-| Field | Status |
-| --- | --- |
-| `tracks` | since 1.0 |
-| `supply` | since 1.0 |
-| `items` | since 1.0 |
-| `shop` | since 1.0 |
-| `script` | since 1.0 |
-| `combat` | since 1.0 |
-| `navigation` | since 1.0 |
-| `slots` | since 1.0 |
-| `choices` | since 1.0 |
-| `inputs` | since 1.0 |
-| `state` | since 1.0 |
-| `params` | since 1.0 |
-| `modifiers` | since 1.0 |
-| `actions` | since 1.0 |
-| `stats` | since 1.0 |
-| `pools` | since 1.0 |
-| `resources` | since 1.0 |
-| `relations` | since 1.0 |
-| `tags` | since 1.0 |
-| `players` | since 1.0 |
-| `saves` | since 1.0 |
-| `state_version` | planned |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `stats` | stats | since 1.0 |
+| `tracks` | progression | since 1.0 |
+| `combat` | combat | since 1.0 |
+| `navigation` | navigation | since 1.0 |
+| `supply` | production | since 1.0 |
+| `items` | items | since 1.0 |
+| `shop` | items | since 1.0 |
+| `script` | core | since 1.0 |
+| `slots` | core | since 1.0 |
+| `choices` | core | since 1.0 |
+| `inputs` | core | since 1.0 |
+| `state` | core | since 1.0 |
+| `params` | core | since 1.0 |
+| `modifiers` | core | since 1.0 |
+| `actions` | core | since 1.0 |
+| `pools` | core | since 1.0 |
+| `resources` | core | since 1.0 |
+| `relations` | core | since 1.0 |
+| `tags` | core | since 1.0 |
+| `players` | core | since 1.0 |
+| `saves` | core | since 1.0 |
+| `state_version` | core | planned |
 
 ### The mode's `[combat]`
 
-| Field | Status |
-| --- | --- |
-| `damage_kinds` | since 1.0 |
-| `assist_window_ms` | since 1.0 |
-| `life` | since 1.0 |
-| `leech` | since 1.0 |
-| `heal_scale` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `damage_kinds` | combat | since 1.0 |
+| `assist_window_ms` | combat | since 1.0 |
+| `life` | combat | since 1.0 |
+| `leech` | combat | since 1.0 |
+| `heal_scale` | combat | since 1.0 |
 
 ### The mode's `[navigation]`
 
-| Field | Status |
-| --- | --- |
-| `layers` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `layers` | navigation | since 1.0 |
 
 ### A slot kind, `[[slots]]`
 
-| Field | Status |
-| --- | --- |
-| `name` | since 1.0 |
-| `ranks` | since 1.0 |
-| `levels` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `name` | core | since 1.0 |
+| `ranks` | core | since 1.0 |
+| `levels` | core | since 1.0 |
 
 ### A choice, `[choices.<name>]`
 
-| Field | Status |
-| --- | --- |
-| `offers` | since 1.0 |
-| `unique` | since 1.0 |
-| `count` | since 1.0 |
-| `slot` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `offers` | core | since 1.0 |
+| `unique` | core | since 1.0 |
+| `count` | core | since 1.0 |
+| `slot` | core | since 1.0 |
 
 ### The mode's `[combat] leech`
 
-| Field | Status |
-| --- | --- |
-| `attack` | since 1.0 |
-| `other` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `attack` | combat | since 1.0 |
+| `other` | combat | since 1.0 |
 
 ### A pair of teams, `[[relations]]`
 
-| Field | Status |
-| --- | --- |
-| `teams` | since 1.0 |
-| `relation` | since 1.0 |
-| `vision` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `teams` | core | since 1.0 |
+| `relation` | core | since 1.0 |
+| `vision` | core | since 1.0 |
 
 ### The mode's `[players]`
 
-| Field | Status |
-| --- | --- |
-| `late_join` | since 1.0 |
-| `bot_takeover` | since 1.0 |
-| `leaver` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `late_join` | core | since 1.0 |
+| `bot_takeover` | core | since 1.0 |
+| `leaver` | core | since 1.0 |
 
 ### The mode's `[saves]`
 
-| Field | Status |
-| --- | --- |
-| `by` | since 1.0 |
-| `autosave_ms` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `by` | core | since 1.0 |
+| `autosave_ms` | core | since 1.0 |
 
 ### An action, `[actions.<id>]`
 
-| Field | Status |
-| --- | --- |
-| `kind` | since 1.0 |
-| `targeting` | since 1.0 |
-| `range` | since 1.0 |
-| `cost` | since 1.0 |
-| `windup_ms` | since 1.0 |
-| `passive_modifier` | since 1.0 |
-| `passive_while_ready` | since 1.0 |
-| `params` | since 1.0 |
-| `on_resolve` | since 1.0 |
-| `on_hit` | since 1.0 |
-| `on_end` | since 1.0 |
-| `rate` | since 1.0 |
-| `damage` | since 1.0 |
-| `damage_kind` | since 1.0 |
-| `delivery` | since 1.0 |
-| `script` | since 1.0 |
-| `cooldown_ms` | since 1.0 |
-| `clamp_to_range` | since 1.0 |
-| `toggle` | since 1.0 |
-| `channel` | since 1.0 |
-| `hold` | since 1.0 |
-| `charges` | since 1.0 |
-| `charge` | since 1.0 |
-| `unit_type` | since 1.0 |
-| `requires` | since 1.0 |
-| `construct` | since 1.0 |
-| `start_life` | since 1.0 |
-| `cancel_refund` | since 1.0 |
-| `placement` | since 1.0 |
-| `resource` | since 1.0 |
-| `take` | since 1.0 |
-| `bounce` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `kind` | core | since 1.0 |
+| `targeting` | core | since 1.0 |
+| `range` | core | since 1.0 |
+| `cost` | core | since 1.0 |
+| `windup_ms` | core | since 1.0 |
+| `passive_modifier` | core | since 1.0 |
+| `passive_while_ready` | core | since 1.0 |
+| `params` | core | since 1.0 |
+| `on_resolve` | core | since 1.0 |
+| `on_hit` | core | since 1.0 |
+| `on_end` | core | since 1.0 |
+| `rate` | combat | since 1.0 |
+| `damage` | combat | since 1.0 |
+| `damage_kind` | combat | since 1.0 |
+| `delivery` | projectiles | since 1.0 |
+| `script` | abilities | since 1.0 |
+| `cooldown_ms` | abilities | since 1.0 |
+| `clamp_to_range` | abilities | since 1.0 |
+| `toggle` | abilities | since 1.0 |
+| `channel` | abilities | since 1.0 |
+| `hold` | abilities | since 1.0 |
+| `charges` | abilities | since 1.0 |
+| `charge` | abilities | since 1.0 |
+| `unit_type` | production | since 1.0 |
+| `requires` | production | since 1.0 |
+| `construct` | production | since 1.0 |
+| `start_life` | production | since 1.0 |
+| `cancel_refund` | production | since 1.0 |
+| `placement` | production | since 1.0 |
+| `resource` | production | since 1.0 |
+| `take` | production | since 1.0 |
+| `bounce` | production | since 1.0 |
 
 ### An effect of an action's `on_resolve`, `on_hit` or `on_end`
 
-| Field | Status |
-| --- | --- |
-| `damage` | since 1.0 |
-| `heal` | since 1.0 |
-| `restore` | since 1.0 |
-| `modifier` | since 1.0 |
-| `xp` | since 1.0 |
-| `purge` | since 1.0 |
-| `launch` | since 1.0 |
-| `move` | since 1.0 |
-| `spawn` | since 1.0 |
-| `to` | since 1.0 |
-| `loot` | planned |
-| `noise` | planned |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `damage` | core | since 1.0 |
+| `heal` | core | since 1.0 |
+| `restore` | core | since 1.0 |
+| `modifier` | core | since 1.0 |
+| `xp` | core | since 1.0 |
+| `purge` | core | since 1.0 |
+| `launch` | core | since 1.0 |
+| `move` | core | since 1.0 |
+| `spawn` | core | since 1.0 |
+| `to` | core | since 1.0 |
+| `loot` | core | planned |
+| `noise` | core | planned |
 
 ### An action's `delivery`
 
-| Field | Status |
-| --- | --- |
-| `projectile` | since 1.0 |
-| `count` | since 1.0 |
-| `spread_deg` | since 1.0 |
-| `area` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `projectile` | projectiles | since 1.0 |
+| `count` | projectiles | since 1.0 |
+| `spread_deg` | projectiles | since 1.0 |
+| `area` | areas | since 1.0 |
 
 ### A unit type's `projectile`
 
-| Field | Status |
-| --- | --- |
-| `speed` | since 1.0 |
-| `width` | since 1.0 |
-| `range` | since 1.0 |
-| `homing` | since 1.0 |
-| `stop_on_hit` | since 1.0 |
-| `once_per_cast` | since 1.0 |
-| `hits` | since 1.0 |
-| `gravity` | planned |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `speed` | projectiles | since 1.0 |
+| `width` | projectiles | since 1.0 |
+| `range` | projectiles | since 1.0 |
+| `homing` | projectiles | since 1.0 |
+| `stop_on_hit` | projectiles | since 1.0 |
+| `once_per_cast` | projectiles | since 1.0 |
+| `hits` | projectiles | since 1.0 |
+| `gravity` | projectiles | planned |
 
 ### A unit type's `area`
 
-| Field | Status |
-| --- | --- |
-| `radius` | since 1.0 |
-| `delay_ms` | since 1.0 |
-| `duration_ms` | since 1.0 |
-| `affects` | since 1.0 |
-| `inside` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `radius` | areas | since 1.0 |
+| `delay_ms` | areas | since 1.0 |
+| `duration_ms` | areas | since 1.0 |
+| `affects` | areas | since 1.0 |
+| `inside` | areas | since 1.0 |
 
 ### An area's `inside`
 
-| Field | Status |
-| --- | --- |
-| `self` | since 1.0 |
-| `allies` | since 1.0 |
-| `enemies` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `self` | areas | since 1.0 |
+| `allies` | areas | since 1.0 |
+| `enemies` | areas | since 1.0 |
 
 ### A track, `[tracks.<name>]`
 
-| Field | Status |
-| --- | --- |
-| `levels` | since 1.0 |
-| `level` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `levels` | progression | since 1.0 |
+| `level` | progression | since 1.0 |
 
 ### A modifier, `[modifiers.<id>]`
 
-| Field | Status |
-| --- | --- |
-| `script` | since 1.0 |
-| `duration_ms` | since 1.0 |
-| `interval_ms` | since 1.0 |
-| `stacks_expire_ms` | since 1.0 |
-| `reapply` | since 1.0 |
-| `max_stacks` | since 1.0 |
-| `stats` | since 1.0 |
-| `shield` | since 1.0 |
-| `aura` | since 1.0 |
-| `affects` | since 1.0 |
-| `params` | since 1.0 |
-| `state` | since 1.0 |
-| `tags` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `script` | stats | since 1.0 |
+| `duration_ms` | stats | since 1.0 |
+| `interval_ms` | stats | since 1.0 |
+| `stacks_expire_ms` | stats | since 1.0 |
+| `reapply` | stats | since 1.0 |
+| `max_stacks` | stats | since 1.0 |
+| `stats` | stats | since 1.0 |
+| `shield` | stats | since 1.0 |
+| `aura` | stats | since 1.0 |
+| `affects` | stats | since 1.0 |
+| `params` | stats | since 1.0 |
+| `state` | stats | since 1.0 |
+| `tags` | stats | since 1.0 |
 
 ### A modifier's `aura`
 
-| Field | Status |
-| --- | --- |
-| `radius` | since 1.0 |
-| `affects` | since 1.0 |
-| `modifier` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `radius` | stats | since 1.0 |
+| `affects` | stats | since 1.0 |
+| `modifier` | stats | since 1.0 |
 
 ### A unit type's `combat`
 
-| Field | Status |
-| --- | --- |
-| `on_death` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `on_death` | combat | since 1.0 |
 
 ### A unit type's `production`
 
-| Field | Status |
-| --- | --- |
-| `queue` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `queue` | production | since 1.0 |
 
 ### A unit type's `supply`
 
-| Field | Status |
-| --- | --- |
-| `cost` | since 1.0 |
-| `provides` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `cost` | production | since 1.0 |
+| `provides` | production | since 1.0 |
 
 ### The mode's `[supply]`
 
-| Field | Status |
-| --- | --- |
-| `max` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `max` | production | since 1.0 |
 
 ### A train's `requires`
 
-| Field | Status |
-| --- | --- |
-| `units` | since 1.0 |
-| `modifiers` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `units` | production | since 1.0 |
+| `modifiers` | production | since 1.0 |
 
 ### A unit type's `node`
 
-| Field | Status |
-| --- | --- |
-| `resource` | since 1.0 |
-| `amount` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `resource` | production | since 1.0 |
+| `amount` | production | since 1.0 |
 
 ### A unit type's `drop_off`
 
-| Field | Status |
-| --- | --- |
-| `resources` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `resources` | production | since 1.0 |
 
 ### A unit type's `vision`
 
-| Field | Status |
-| --- | --- |
-| `sight_range` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `sight_range` | vision | since 1.0 |
 
 ### A unit type's `collision`
 
-| Field | Status |
-| --- | --- |
-| `radius` | since 1.0 |
-| `box` | since 1.0 |
-| `layer` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `radius` | core | since 1.0 |
+| `box` | core | since 1.0 |
+| `layer` | core | since 1.0 |
 
 ### A unit type's `orders`
 
-| Field | Status |
-| --- | --- |
-| `ai` | since 1.0 |
-| `think_ms` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `ai` | orders | since 1.0 |
+| `think_ms` | orders | since 1.0 |
 
 ### A tag's properties, `[tags.<name>]`
 
-| Field | Status |
-| --- | --- |
-| `blocks` | since 1.0 |
-| `hidden` | since 1.0 |
-| `detects` | since 1.0 |
-| `immune` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `blocks` | core | since 1.0 |
+| `hidden` | core | since 1.0 |
+| `detects` | core | since 1.0 |
+| `immune` | core | since 1.0 |
 
 ### An item type, `[items.<id>]`
 
-| Field | Status |
-| --- | --- |
-| `cost` | since 1.0 |
-| `components` | since 1.0 |
-| `stack` | since 1.0 |
-| `uses` | since 1.0 |
-| `modifiers` | since 1.0 |
-| `action` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `cost` | items | since 1.0 |
+| `components` | items | since 1.0 |
+| `stack` | items | since 1.0 |
+| `uses` | items | since 1.0 |
+| `modifiers` | items | since 1.0 |
+| `action` | items | since 1.0 |
 
 ### A unit type's `inventory`
 
-| Field | Status |
-| --- | --- |
-| `slots` | since 1.0 |
-| `kind` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `slots` | items | since 1.0 |
+| `kind` | items | since 1.0 |
 
 ### The mode's `[shop]`
 
-| Field | Status |
-| --- | --- |
-| `items` | since 1.0 |
-| `resource` | since 1.0 |
-| `at` | since 1.0 |
-| `sell_share` | since 1.0 |
+| Field | Capability | Status |
+| --- | --- | --- |
+| `items` | items | since 1.0 |
+| `resource` | items | since 1.0 |
+| `at` | items | since 1.0 |
+| `sell_share` | items | since 1.0 |

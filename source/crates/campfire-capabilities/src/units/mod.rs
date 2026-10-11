@@ -1,22 +1,25 @@
 use bevy_ecs::change_detection::CheckChangeTicks;
 use bevy_ecs::observer::On;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::{EntityIndex, Position, SimEdge, SimSet, StateRegistry, TickRate};
+use campfire_sim::{Capability, EntityIndex, Position, SimEdge, SimSet, TickRate};
 
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
 use crate::players::match_entity::MatchEntity;
 use crate::players::player::Player;
 use crate::players::player_parts::PlayerParts;
+use crate::scripts::core_api::CoreApi;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
-use crate::state_types::StateTypes;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::delivery_entity::DeliveryEntity;
@@ -24,18 +27,22 @@ use crate::units::facing::Facing;
 use crate::units::forced_move::ForcedMove;
 use crate::units::lifespan::Lifespan;
 use crate::units::move_step::MoveStep;
+use crate::units::new_unit::NewUnit;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
+use crate::units::type_origins::TypeOrigins;
+use crate::units::unit::Unit;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_ticks::UnitTicks;
 use crate::units::unit_type::UnitType;
+use crate::units::units_api::UnitsApi;
 use crate::units::units_call::UnitsCall;
 use crate::units::units_column::{StateRowParts, UnitsColumn};
 use crate::units::view::View;
@@ -124,56 +131,81 @@ pub(crate) enum UnitsSet {
 #[derive(Debug)]
 pub struct Units;
 
-impl Units {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<Body>();
-        types.component::<Dead>();
-        types.component::<Facing>();
-        types.component::<ForcedMove>();
-        types.component::<Lifespan>();
-        types.component::<MatchEntity>();
-        types.component::<MoveStep>();
-        types.sim_component::<Position>();
-        types.component::<Owner>();
-        types.component::<SpawnPoint>();
-        types.component::<StatusTags>();
-        types.component::<Team>();
-        types.component::<UnitEntity>();
-        types.component::<UnitType>();
-        types.component::<UnitState<SyncNone>>();
-        types.component::<UnitState<SyncOwner>>();
-        types.component::<UnitState<SyncTeam>>();
-        types.component::<UnitState<SyncAll>>();
-        types.derived::<DeliveryEntity>();
-        types.derived::<UnitTags>();
-        types.component::<Relations>();
-    }
+impl Declares for Units {
+    const MODULE: Option<Capability> = None;
 
-    /// Adds the core to a match, on a planar map until the mode sets its own. With `budgets`,
-    /// scripts run within them: in Inputs, every pool starts full and the last tick's failures
-    /// clear. A client runs no scripts.
-    pub fn install(
-        world: &mut World,
-        schedule: &mut Schedule,
-        registry: &mut StateRegistry,
-        budgets: Option<ScriptBudgets>,
-    ) {
+    fn declare<D: Declarations>(d: &mut D) {
+        d.kind::<UnitEntity>();
+        d.kind::<DeliveryEntity>();
+        d.kind::<MatchEntity>();
+        d.kind::<Player>();
+        d.component::<Body>();
+        d.component::<Dead>();
+        d.component::<Facing>();
+        d.component::<ForcedMove>();
+        d.component::<Lifespan>();
+        d.component::<MatchEntity>();
+        d.component::<MoveStep>();
+        d.sim_component::<Position>();
+        d.component::<Owner>();
+        d.component::<SpawnPoint>();
+        d.component::<StatusTags>();
+        d.component::<Team>();
+        d.component::<UnitEntity>();
+        d.component::<UnitType>();
+        d.component::<UnitState<SyncNone>>();
+        d.component::<UnitState<SyncOwner>>();
+        d.component::<UnitState<SyncTeam>>();
+        d.component::<UnitState<SyncAll>>();
+        d.derived::<DeliveryEntity>();
+        d.derived::<UnitTags>();
+        d.component::<Relations>();
+        d.check::<Position>(Units::within_bounds);
+        d.host::<Position, UnitEntity>();
+        d.require::<UnitEntity, Position>();
+        d.require::<UnitEntity, Team>();
+        d.require::<Player, Team>();
+        d.require::<MatchEntity, Relations>();
+        d.check::<MatchEntity>(Units::match_spawned);
+        d.book::<UnitStateBook>();
+        d.book::<TypeOrigins>();
+        d.column::<UnitsColumn, StateRowParts>(UnitsColumn::fill_state);
+        d.call_part::<UnitsCall>();
+        d.call_part::<ScriptsCall>();
+        d.api(CoreApi::register);
+        d.api(Unit::register);
+        d.api(NewUnit::register);
+        d.api(UnitsApi::register);
+        d.api(View::register_queries);
+    }
+}
+
+impl Units {
+    /// Opens a match for the modules' installs: the script view, and with `budgets`, the script
+    /// host the scripts run in within them, and the context of their calls. A client runs no
+    /// scripts.
+    pub(crate) fn open(world: &mut World, budgets: Option<ScriptBudgets>) {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate);
-        Self::state_types(registry);
-        registry.add_check::<Position>(Units::within_bounds);
-        registry.host::<Position, UnitEntity>();
-        registry.require::<UnitEntity, Position>();
-        registry.require::<UnitEntity, Team>();
-        registry.require::<Player, Team>();
-        registry.require::<MatchEntity, Relations>();
-        registry.add_check::<MatchEntity>(Units::match_spawned);
-        world.insert_resource(UnitStateBook::default());
-        world.insert_resource(NewUnitStates::default());
-        view.add_column(UnitsColumn::default());
-        view.add_source::<StateRowParts, _>(world, UnitsColumn::fill_state);
         world.init_resource::<PlayerParts>();
+        if let Some(budgets) = budgets {
+            let ctx = Ctx::new(view.clone());
+            let mut host = ScriptHost::new(budgets.limits().per_call);
+            host.engine_mut()
+                .set_default_tag(Dynamic::from(ctx.clone()));
+            world.insert_non_send(ctx);
+            world.insert_non_send(host);
+            world.insert_non_send(ScriptFailures::default());
+            world.insert_resource(budgets);
+        }
+        world.insert_non_send(view);
+    }
+
+    /// Adds the core to a match, on a planar map until the mode sets its own. With scripts, in
+    /// Inputs, every pool starts full and the last tick's failures clear.
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let world = &mut *cx.world;
+        world.insert_resource(NewUnitStates::default());
         world.insert_resource(Metric::default());
         // The world's bounds until a map's take their place.
         world.insert_resource(Bounds::WORLD);
@@ -181,28 +213,16 @@ impl Units {
             view.refill_next();
         });
         // A client holds its deliveries unpredicted, so the system finds none there.
-        schedule.add_systems(UnitTags::give_delivery_tags.in_set(SimEdge::Start));
-        let Some(budgets) = budgets else {
-            world.insert_non_send(view);
-            return;
-        };
-        let ctx = Ctx::new(view.clone());
-        ctx.frame().add_part(UnitsCall::default());
-        ctx.frame().add_part(ScriptsCall::default());
-        let mut host = ScriptHost::new(budgets.limits().per_call);
-        host.engine_mut()
-            .set_default_tag(Dynamic::from(ctx.clone()));
-        world.insert_non_send(ctx);
-        world.insert_non_send(view);
-        world.insert_non_send(host);
-        world.insert_non_send(ScriptFailures::default());
-        world.insert_resource(budgets);
-        schedule.add_systems((
-            UnitTicks::begin_tick
-                .in_set(SimSet::Inputs)
-                .in_set(UnitsSet::BeginTick),
-            UnitTicks::end_lifespans.in_set(SimSet::Vision),
-        ));
+        cx.schedule
+            .add_systems(UnitTags::give_delivery_tags.in_set(SimEdge::Start));
+        if cx.scripts() {
+            cx.schedule.add_systems((
+                UnitTicks::begin_tick
+                    .in_set(SimSet::Inputs)
+                    .in_set(UnitsSet::BeginTick),
+                UnitTicks::end_lifespans.in_set(SimSet::Vision),
+            ));
+        }
     }
 
     /// Whether every unit stands within the match's bounds, as every system keeps it, and as

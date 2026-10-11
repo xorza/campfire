@@ -4,7 +4,6 @@ use campfire_math::Vec3;
 use campfire_sim::Unpredicted;
 
 use super::*;
-use crate::capability_set::test_match::TestMatch;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::polygon::Polygon;
 use crate::geometry::polygon::error::PolygonError;
@@ -19,6 +18,7 @@ use crate::navigation::error::MapProblem;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::wall::Wall;
+use crate::release::test_match::TestMatch;
 use crate::units::block::Block;
 use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;

@@ -136,7 +136,7 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
-    use crate::capability_set::test_match::TestMatch;
+    use crate::release::test_match::TestMatch;
     use crate::scripts::state_value::StateValue;
     use crate::stats::modifier_handle::HandleOf;
     use crate::units::view::View;

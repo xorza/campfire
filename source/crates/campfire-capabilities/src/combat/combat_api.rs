@@ -34,9 +34,7 @@ impl CombatApi {
         DamageHandle::register(api);
         HealHandle::register(api);
         CombatApi::register_unit(api);
-        let call = |name, signature, description| {
-            MemberSpec::call(name, signature, description).capability(Capability::Combat)
-        };
+        let call = |name, signature, description| MemberSpec::call(name, signature, description);
         let damage = call(
             "damage",
             &[&["target", "amount", "kind"]],
@@ -125,6 +123,7 @@ impl CombatApi {
         )
         .data(DataTable::Leech, &["attack", "other"], &[])
         .data(DataTable::Combat, &["on_death"], &[])
+        .data(DataTable::Mode, &["combat"], &[])
         .action_fields(ActionDataField::of(Some(Capability::Combat)))
         .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))
@@ -140,8 +139,7 @@ impl CombatApi {
             "recent_attackers",
             &[&["ms"]],
             "the living units that struck it within the last `ms`, rounded up to whole ticks",
-        )
-        .capability(Capability::Combat);
+        );
         api.bind(recent_attackers, |unit: Unit, ms: INT| {
             CombatColumn::recent_attackers(&unit, ms)
         });

@@ -1,6 +1,6 @@
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, Position, SimSet, StableId, StateRegistry};
+use campfire_sim::{Capability, Position, SimSet, StableId};
 
 use crate::actions::action_target::ActionTarget;
 use crate::actions::delivery::Delivery;
@@ -11,12 +11,15 @@ use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_life::AreaLife;
 use crate::areas::area_spec::AreaSpec;
 use crate::areas::area_trigger::AreaTrigger;
+use crate::areas::areas_api::AreasApi;
 use crate::areas::areas_effect::AreasEffect;
 use crate::combat::CombatSet;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
+use crate::deliveries::DeliverySet;
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::delivering::Delivering;
-use crate::deliveries::{Deliveries, DeliverySet};
-use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
@@ -37,25 +40,29 @@ pub(crate) mod areas_effect;
 #[derive(Debug)]
 pub struct Areas;
 
-impl Areas {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<Area>();
-        types.component::<AreaTrigger>();
-    }
+impl Declares for Areas {
+    const MODULE: Option<Capability> = Some(Capability::Areas);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<Area>();
+        d.component::<AreaTrigger>();
+        d.book::<ByType<AreaSpec>>();
+        d.api(AreasApi::register);
+    }
+}
+
+impl Areas {
     /// Adds areas to a match. In Hit, after projectiles fly, each area due triggers, and its
     /// reaches and its end run their action's `on_hit` and `on_end`, or its launch's; after the
     /// tick's projectiles launch, its areas land. In Resolve, the areas the damage pass launched
     /// land, and then, before stats hold their modifiers, each area lists those it holds on the
     /// units inside. A launch queues as an effect of `areas`.
-    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        Deliveries::install(world, schedule);
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world
             .resource_mut::<Deliverers>()
             .register_area(Areas::deliver);
         world.insert_resource(AreaLaunches::default());
-        world.insert_resource(ByType::<AreaSpec>::default());
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Areas, AreasEffect::queue_listed);
@@ -74,7 +81,6 @@ impl Areas {
                 .after(CombatSet::Die)
                 .before(StatsSet::Hold),
         ));
-        Self::state_types(registry);
     }
 
     /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it

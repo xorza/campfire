@@ -1,3 +1,5 @@
+use std::any::TypeId;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -18,6 +20,11 @@ pub struct UnitEntity;
 impl HostRule for UnitEntity {
     fn holds(world: &World, entity: Entity) -> bool {
         world.get::<UnitEntity>(entity).is_some()
+    }
+
+    fn kinds(kinds: &mut Vec<TypeId>) -> bool {
+        kinds.push(TypeId::of::<UnitEntity>());
+        true
     }
 }
 

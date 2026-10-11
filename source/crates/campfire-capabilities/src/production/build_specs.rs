@@ -3,10 +3,12 @@ use std::ops::Range;
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
+use crate::declare::book::Book;
 use crate::units::action_id::ActionId;
 use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
 use crate::values::share::Share;
+use campfire_sim::Capability;
 
 /// What each build places and how its site grows, by action, its rates and its placement's
 /// rules one run after another: package data, not state.
@@ -144,6 +146,11 @@ impl BuildSpec<'_> {
             (Style::Builders(rates), count) => rates[(count - 1).min(rates.len() - 1)],
         }
     }
+}
+
+impl Book for BuildSpecs {
+    const OWNER: Option<Capability> = Some(Capability::Production);
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(test)]

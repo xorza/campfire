@@ -3,7 +3,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::world::World;
-use campfire_capabilities::CapabilitySet;
+use campfire_capabilities::Release;
 use campfire_common::SegmentSeed;
 use campfire_package::ModePackages;
 use campfire_script::ScriptHost;
@@ -65,7 +65,7 @@ pub(crate) fn build(c: &mut Criterion) {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {
                 let mut host = ScriptHost::new(per_call);
-                CapabilitySet::bind_script_api(&mut host);
+                Release::bind_script_api(&mut host);
                 let start = Instant::now();
                 packages.compile_scripts(|source| host.compile(source));
                 spent += start.elapsed();
@@ -84,7 +84,7 @@ pub(crate) fn build(c: &mut Criterion) {
             for _ in 0..builds {
                 let mut host = ScriptHost::new(per_call);
                 let start = Instant::now();
-                black_box(CapabilitySet::bind_script_api(&mut host));
+                black_box(Release::bind_script_api(&mut host));
                 spent += start.elapsed();
                 black_box(host);
             }

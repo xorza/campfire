@@ -1,6 +1,5 @@
 use campfire_math::Num;
 use campfire_script::rhai::INT;
-use campfire_sim::Capability;
 
 use crate::progression::progression_column::ProgressionColumn;
 use crate::progression::progression_effect::ProgressionEffect;
@@ -23,15 +22,10 @@ pub(crate) struct ProgressionApi;
 
 impl ProgressionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let call = |name, signature, description| {
-            MemberSpec::call(name, signature, description).capability(Capability::Progression)
-        };
-        let unit = |name, description| {
-            MemberSpec::field(ApiOwner::Unit, name, description).capability(Capability::Progression)
-        };
+        let call = |name, signature, description| MemberSpec::call(name, signature, description);
+        let unit = |name, description| MemberSpec::field(ApiOwner::Unit, name, description);
         let method = |name, signature, description| {
             MemberSpec::method(ApiOwner::Unit, name, signature, description)
-                .capability(Capability::Progression)
         };
         let add_xp = call(
             "add_xp",

@@ -32,3 +32,17 @@ impl EffectQueues {
             .expect("the load refuses an effect of a capability the match does not have")
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_sim::Capability;
+
+    use crate::actions::effect_queues::EffectQueues;
+
+    impl EffectQueues {
+        /// Whether `capability` registered how its listed effects queue.
+        pub(crate) const fn holds(&self, capability: Capability) -> bool {
+            self.0[capability as usize].is_some()
+        }
+    }
+}

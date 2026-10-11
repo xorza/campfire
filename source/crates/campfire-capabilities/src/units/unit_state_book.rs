@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 
+use crate::declare::book::Book;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_value::StateValue;
 use crate::units::unit_states::UnitStates;
 use crate::units::unit_type::UnitType;
 use crate::values::name_table::NameTable;
+use campfire_sim::Capability;
 
 /// The script state each unit type declares, one run per type in the order of the types: each
 /// field's name, type, first value and the clients it goes to. Package data, not state: a
@@ -90,6 +92,11 @@ impl UnitStateBook {
             }
         }
     }
+}
+
+impl Book for UnitStateBook {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(test)]

@@ -1,6 +1,5 @@
 use campfire_common::Ticks;
 use campfire_script::rhai::{INT, NativeCallContext};
-use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -31,12 +30,9 @@ impl StatsApi {
     /// What a unit's stats give it: its level, its stats, its pools and the modifiers it
     /// carries.
     fn register_unit(api: &mut ApiBuilder<'_>) {
-        let field = |name, description| {
-            MemberSpec::field(ApiOwner::Unit, name, description).capability(Capability::Stats)
-        };
+        let field = |name, description| MemberSpec::field(ApiOwner::Unit, name, description);
         let method = |name, signature, description| {
             MemberSpec::method(ApiOwner::Unit, name, signature, description)
-                .capability(Capability::Stats)
         };
         api.bind(
             field("level", "its level"),
@@ -89,9 +85,7 @@ impl StatsApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         ModifierHandle::register(api);
         StatsApi::register_unit(api);
-        let call = |name, signature, description| {
-            MemberSpec::call(name, signature, description).capability(Capability::Stats)
-        };
+        let call = |name, signature, description| MemberSpec::call(name, signature, description);
         let add = call(
             "add_modifier",
             &[&["unit", "id"], &["unit", "id", "duration_ms"]],
@@ -149,7 +143,8 @@ impl StatsApi {
             ],
             &[],
         )
-        .data(DataTable::Aura, &["radius", "affects", "modifier"], &[]);
+        .data(DataTable::Aura, &["radius", "affects", "modifier"], &[])
+        .data(DataTable::Mode, &["stats"], &[]);
     }
 
     /// Queues modifier `id` of the call's package for `player`, one of the session's; an error

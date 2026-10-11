@@ -244,7 +244,7 @@ mod tests {
     use std::num::NonZeroU32;
     use std::sync::Arc;
 
-    use crate::capability_set::test_match::TestMatch;
+    use crate::release::test_match::TestMatch;
     use campfire_common::Ticks;
     use campfire_math::Num;
 

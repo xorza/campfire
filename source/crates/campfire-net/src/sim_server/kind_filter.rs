@@ -11,8 +11,8 @@ use bevy_ecs::system::{Commands, Query};
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
 use campfire_capabilities::{
     CapabilitySet, DataKind, Declared, Experience, Inventory, ModifierClocks, Owner, Player,
-    PlayerResources, Points, Pools, Progress, Replication, Respawn, Route, SlotTimes, SpawnPoint,
-    StateTypes, SyncOwner, SyncTeam, Team, UnitState,
+    PlayerResources, Points, Pools, Progress, Release, Replication, Respawn, Route, SlotTimes,
+    SpawnPoint, StateTypes, SyncOwner, SyncTeam, Team, UnitState,
 };
 use campfire_common::PlayerSlot;
 use campfire_sim::SimResource;
@@ -252,7 +252,7 @@ impl KindFilters {
         KindFilter::<ResourcesKind>::register_kind(app);
         KindFilter::<UnitStateOwnerKind>::register_kind(app);
         KindFilter::<UnitStateTeamKind>::register_kind(app);
-        capabilities.state_types(&mut FilterObservers(app));
+        Release::state_types(capabilities, &mut FilterObservers(app));
     }
 }
 
@@ -305,6 +305,10 @@ impl StateTypes for FilterObservers<'_> {
     fn derived<C: Component>(&mut self) {}
 
     fn resource<R: SimResource>(&mut self) {}
+
+    fn sim_component<C: Replication>(&mut self) {
+        self.component::<C>();
+    }
 }
 
 #[cfg(test)]
@@ -379,9 +383,7 @@ mod tests {
                 .filter(|&capability| capability != Capability::Mode)
                 .collect();
             let mut kinds = Kinds::default();
-            CapabilitySet::new(&declared)
-                .unwrap()
-                .state_types(&mut kinds);
+            Release::state_types(CapabilitySet::new(&declared).unwrap(), &mut kinds);
             kinds
         }
 
@@ -427,6 +429,10 @@ mod tests {
         fn derived<C: Component>(&mut self) {}
 
         fn resource<R: SimResource>(&mut self) {}
+
+        fn sim_component<C: Replication>(&mut self) {
+            self.component::<C>();
+        }
     }
 
     /// The listed types of `K`'s kind its scope lacks, and the types of its scope no list gives

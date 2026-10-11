@@ -1,9 +1,9 @@
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::world::World;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::Ticks;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{SimSet, StateRegistry, TickRate};
+use campfire_sim::{Capability, SimSet, TickRate};
 
+use crate::abilities::abilities_api::AbilitiesApi;
 use crate::abilities::cast_spends::CastSpends;
 use crate::abilities::casts::Casts;
 use crate::abilities::channels::Channels;
@@ -12,9 +12,10 @@ use crate::actions::ActionsSet;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::combat::CombatSet;
-use crate::deliveries::Deliveries;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::items::inventory::Inventory;
-use crate::scripts::ctx::Ctx;
 use crate::stats::StatsSet;
 use crate::units::block::Block;
 use crate::units::unit_tags::UnitTags;
@@ -37,6 +38,14 @@ pub struct Abilities;
 pub(crate) enum AbilitiesSet {
     /// In `SimSet::Inputs`, before the holds follow: toggles pay their seconds or turn off.
     Toggles,
+}
+
+impl Declares for Abilities {
+    const MODULE: Option<Capability> = Some(Capability::Abilities);
+
+    fn declare<D: Declarations>(d: &mut D) {
+        d.api(AbilitiesApi::register);
+    }
 }
 
 impl Abilities {
@@ -78,15 +87,16 @@ impl Abilities {
     /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
     /// only cools down, as the server's does.
-    pub fn install(world: &mut World, schedule: &mut Schedule, _: &mut StateRegistry) {
-        Deliveries::install(world, schedule);
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let scripts = cx.scripts();
+        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.init_resource::<CastSpends>();
         schedule.add_systems(
             Casts::start_casts
                 .in_set(SimSet::Act)
                 .in_set(ActionsSet::Start),
         );
-        if !world.contains_non_send::<Ctx>() {
+        if !scripts {
             schedule.add_systems(
                 (Casts::predict_casts, Channels::predict_channels)
                     .chain()

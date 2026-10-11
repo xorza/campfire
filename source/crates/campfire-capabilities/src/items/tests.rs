@@ -3,7 +3,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, Position, SimComponent, StableId, TickInput, TickInputs};
+use campfire_sim::{Position, SimComponent, StableId, TickInput, TickInputs};
 use serde::Deserialize;
 
 use super::*;
@@ -14,7 +14,6 @@ use crate::actions::effect_data::{EffectData, EffectTo, Effecting, HealFields};
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::targeting::Targeting;
-use crate::capability_set::test_match::TestMatch;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::geometry::bounds::Bounds;
@@ -27,6 +26,7 @@ use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
+use crate::release::test_match::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;

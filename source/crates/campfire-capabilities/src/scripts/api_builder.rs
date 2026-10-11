@@ -2,6 +2,7 @@ use campfire_script::ScriptHost;
 use campfire_script::rhai::{
     Dynamic, ImmutableString, Module, NativeCallContext, RhaiNativeFunc, Variant,
 };
+use campfire_sim::Capability;
 
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx_fn::CtxFn;
@@ -26,16 +27,40 @@ const INDEX_GETTER: &str = "index$get$";
 const INDEX_SETTER: &str = "index$set$";
 
 /// Binds the script API to Rhai and records it, in one step, so no name is bound and not
-/// recorded, or recorded and not bound.
+/// recorded, or recorded and not bound. Each name it binds is of the capability of the module that
+/// binds it, unless its spec names another.
 #[derive(Debug)]
 pub(crate) struct ApiBuilder<'a> {
     host: &'a mut ScriptHost,
     api: &'a mut ScriptApi,
+    /// The capability whose module binds, none for the core's and the mode's.
+    owner: Option<Capability>,
 }
 
 impl<'a> ApiBuilder<'a> {
     pub(crate) const fn new(host: &'a mut ScriptHost, api: &'a mut ScriptApi) -> ApiBuilder<'a> {
-        ApiBuilder { host, api }
+        ApiBuilder {
+            host,
+            api,
+            owner: None,
+        }
+    }
+
+    /// Starts the API of `module`: the core's, `None`, or a capability's. The mode's names are
+    /// the core's, as every match has a mode.
+    pub(crate) fn module(&mut self, module: Option<Capability>) {
+        self.owner = module.filter(|&capability| capability != Capability::Mode);
+    }
+
+    /// `spec`, of the binding module's capability unless it names another.
+    fn owned(&self, mut spec: MemberSpec) -> MemberSpec {
+        assert!(
+            self.owner.is_none() || spec.capability != self.owner,
+            "`{}` names the capability of the module that binds it",
+            spec.name
+        );
+        spec.capability = spec.capability.or(self.owner);
+        spec
     }
 
     /// Registers `T` as scripts name its type.
@@ -87,6 +112,7 @@ impl<'a> ApiBuilder<'a> {
         spec: MemberSpec,
         f: impl RhaiNativeFunc<A, N, X, R, F> + 'static,
     ) -> &mut Self {
+        let spec = self.owned(spec);
         assert_eq!(
             spec.roles,
             RoleSet::ALL,
@@ -108,6 +134,7 @@ impl<'a> ApiBuilder<'a> {
         spec: MemberSpec,
         f: impl CtxFn<Args, R>,
     ) -> &mut Self {
+        let spec = self.owned(spec);
         assert_ne!(
             spec.roles,
             RoleSet::ALL,
@@ -138,6 +165,7 @@ impl<'a> ApiBuilder<'a> {
         spec: MemberSpec,
         f: impl RhaiNativeFunc<A, 2, X, (), F> + 'static,
     ) -> &mut Self {
+        let spec = self.owned(spec);
         debug_assert_eq!(spec.kind, MemberKind::Field, "only a field is written");
         self.host
             .engine_mut()
@@ -148,6 +176,7 @@ impl<'a> ApiBuilder<'a> {
 
     /// Records `spec` as planned: design 08 gives it, and no code runs it yet.
     pub(crate) fn plan(&mut self, spec: MemberSpec) -> &mut Self {
+        let spec = self.owned(spec);
         self.api.record(spec, false, Status::Planned);
         self
     }
@@ -171,7 +200,7 @@ impl<'a> ApiBuilder<'a> {
         runs: &[&'static str],
         planned: &[&'static str],
     ) -> &mut Self {
-        self.api.record_data(table, runs, planned);
+        self.api.record_data(table, runs, planned, self.owner);
         self
     }
 
@@ -181,7 +210,8 @@ impl<'a> ApiBuilder<'a> {
         fields: impl IntoIterator<Item = (&'static str, Status)>,
     ) -> &mut Self {
         for (name, status) in fields {
-            self.api.record_field(DataTable::Action, name, status);
+            self.api
+                .record_field(DataTable::Action, name, status, self.owner);
         }
         self
     }

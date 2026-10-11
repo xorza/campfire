@@ -1,11 +1,12 @@
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_math::RngStream;
-use campfire_sim::{Capability, SimSet, StateRegistry};
+use campfire_sim::{Capability, SimSet};
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::{Actions, ActionsSet};
 use crate::combat::attacks::Attacks;
+use crate::combat::combat_api::CombatApi;
 use crate::combat::combat_column::{CombatColumn, RowParts};
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvents;
@@ -20,15 +21,16 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::shots::Shots;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::scripts::ctx::Ctx;
-use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::stats::life::Life;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_id::PoolId;
 use crate::units::dead::Dead;
 use crate::units::spawn_point::SpawnPoint;
-use crate::units::view::View;
 
 pub(crate) mod assist_window;
 pub(crate) mod attacks;
@@ -91,33 +93,39 @@ pub(crate) enum CombatSet {
     Die,
 }
 
-impl Combat {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<Kept>();
-        types.component::<Life>();
-        types.component::<OnDeath>();
-        types.component::<RecentAttackers>();
-        types.component::<Respawn>();
-    }
+impl Declares for Combat {
+    const MODULE: Option<Capability> = Some(Capability::Combat);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<Kept>();
+        d.component::<Life>();
+        d.component::<OnDeath>();
+        d.component::<RecentAttackers>();
+        d.component::<Respawn>();
+        d.require::<Respawn, Dead>();
+        d.require::<Respawn, SpawnPoint>();
+        d.column::<CombatColumn, RowParts>(CombatColumn::fill_row);
+        d.api(CombatApi::register);
+    }
+}
+
+impl Combat {
     /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act,
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
     /// go, after the Mode stage saw them.
-    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>().clone();
-        view.add_column(CombatColumn::default());
-        view.add_source::<RowParts, _>(world, CombatColumn::fill_row);
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let scripts = cx.scripts();
+        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.insert_resource(PassQueue::default());
         world.insert_resource(Shots::default());
         world.insert_resource(Deaths::default());
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Combat, CombatEffect::queue_listed);
-        if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
-            let hooks = ModifierHooks::new(ctx);
+        if scripts {
+            let hooks = ModifierHooks::new(world.non_send::<Ctx>().clone());
             world.insert_non_send(CombatEvents::new(move |batch, event| {
                 hooks.hear(batch, event);
             }));
@@ -160,9 +168,6 @@ impl Combat {
                 .in_set(CombatSet::Respawn),
             Dying::despawn_dead.in_set(SimSet::Vision),
         ));
-        Self::state_types(registry);
-        registry.require::<Respawn, Dead>();
-        registry.require::<Respawn, SpawnPoint>();
     }
 
     /// The match's life pool; `None` when its mode names none.

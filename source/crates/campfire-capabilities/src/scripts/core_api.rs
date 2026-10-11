@@ -45,7 +45,6 @@ impl CoreApi {
                 ),
                 |ctx: &mut Ctx, list: Array| CoreApi::pick(ctx, &list),
             )
-            .data(DataTable::ModeNavigation, &["layers"], &[])
             .data(DataTable::Collision, &["radius", "box", "layer"], &[])
             .data(DataTable::Tag, &["blocks", "hidden", "detects", "immune"], &[]);
         api.tag_property(

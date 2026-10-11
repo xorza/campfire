@@ -98,7 +98,7 @@ impl SimResource for Timers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capability_set::test_match::TestMatch;
+    use crate::release::test_match::TestMatch;
 
     #[test]
     fn a_restore_check_needs_the_timers_in_order_and_numbered_below_the_next() {

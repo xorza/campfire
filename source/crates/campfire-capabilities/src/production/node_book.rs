@@ -1,9 +1,11 @@
 use bevy_ecs::resource::Resource;
 
+use crate::declare::book::Book;
 use crate::players::resource_id::ResourceId;
 use crate::production::resource_set::ResourceSet;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
+use campfire_sim::Capability;
 
 /// What each node type holds, and what each drop-off type takes: package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
@@ -24,4 +26,9 @@ impl NodeBook {
             .get(unit_type)
             .is_some_and(|taken| taken.contains(resource))
     }
+}
+
+impl Book for NodeBook {
+    const OWNER: Option<Capability> = Some(Capability::Production);
+    const SCRIPTS_ONLY: bool = false;
 }

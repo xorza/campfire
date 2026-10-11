@@ -2,11 +2,13 @@ use campfire_common::Ticks;
 use campfire_script::ScriptId;
 use campfire_sim::TickRate;
 
+use crate::declare::per_type::PerType;
 use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_role::ScriptRole;
+use campfire_sim::Capability;
 
 /// A unit type's AI: its compiled script, and its period in whole ticks, at least one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,4 +36,9 @@ impl Ai {
         }
         Ok(Ai { script, period })
     }
+}
+
+impl PerType for Ai {
+    const OWNER: Option<Capability> = Some(Capability::Orders);
+    const SCRIPTS_ONLY: bool = true;
 }

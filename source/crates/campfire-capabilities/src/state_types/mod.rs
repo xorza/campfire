@@ -1,7 +1,7 @@
-//! The state types each capability adds, named once in its `state_types` list, which every
-//! consumer reads: the state registry, for the hash, the snapshot and the copy, and the network
-//! layer, for what replicates, how and to whom (design 14, D9). Each type declares its kind and
-//! how it is sent; the list names it and nothing more.
+//! The state types each module adds, named once in its declarations, which every consumer reads:
+//! the state registry, for the hash, the snapshot and the copy, and the network layer, for what
+//! replicates, how and to whom (design 14, D9). Each type declares its kind and how it is sent;
+//! the list names it and nothing more.
 
 use std::fmt::Debug;
 
@@ -20,8 +20,9 @@ pub(crate) mod sending;
 #[derive(Debug)]
 pub struct Declared(());
 
-/// What reads the capabilities' lists of state types. A list calls `component`, `sim_component`,
-/// `derived` and `resource`; each component reaches the method of the way its type is sent.
+/// What reads the modules' lists of state types. A list calls `component`, `sim_component`,
+/// `derived` and `resource`; each component reaches the method of the way its type is sent, by
+/// `component`, the one provided method, which only dispatches.
 pub trait StateTypes: Sized {
     /// `C`, sent once, as it never changes after its entity spawns.
     fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, declared: Declared);
@@ -50,11 +51,8 @@ pub trait StateTypes: Sized {
         <C::Sending as Sending<C>>::visit(self);
     }
 
-    /// `C`, one of `sim`'s own types, which the state registry holds from its start, as its type
-    /// sends it.
-    fn sim_component<C: Replication>(&mut self) {
-        self.component::<C>();
-    }
+    /// `C`, one of `sim`'s own types, which the state registry holds from its start.
+    fn sim_component<C: Replication>(&mut self);
 }
 
 impl StateTypes for StateRegistry {

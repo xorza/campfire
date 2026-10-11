@@ -8,6 +8,7 @@ use campfire_math::Num;
 use campfire_script::ScriptId;
 use campfire_sim::TickRate;
 
+use crate::declare::book::Book;
 use crate::scripts::error::ParamProblem;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
@@ -30,6 +31,7 @@ use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;
 use crate::values::stat::Stat;
+use campfire_sim::Capability;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the
@@ -318,6 +320,11 @@ impl ModifierEntry {
     }
 }
 
+impl Book for ModifierBook {
+    const OWNER: Option<Capability> = Some(Capability::Stats);
+    const SCRIPTS_ONLY: bool = false;
+}
+
 #[cfg(test)]
 pub(crate) mod internals {
     use std::sync::Arc;
@@ -392,7 +399,7 @@ mod tests {
 
     use campfire_math::Num;
 
-    use crate::capability_set::test_match::TestMatch;
+    use crate::release::test_match::TestMatch;
     use crate::scripts::error::ParamProblem;
     use crate::scripts::error::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
     use crate::scripts::script_book::ScriptBook;

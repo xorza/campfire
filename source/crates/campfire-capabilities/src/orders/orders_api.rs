@@ -1,4 +1,4 @@
-use campfire_sim::{Capability, Position};
+use campfire_sim::Position;
 
 use crate::actions::actions_column::ActionsColumn;
 use crate::orders::unit_order::UnitOrder;
@@ -20,9 +20,7 @@ pub(crate) struct OrdersApi;
 impl OrdersApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let order = |name, signature, description| {
-            MemberSpec::call(name, signature, description)
-                .roles(RoleSet::AI)
-                .capability(Capability::Orders)
+            MemberSpec::call(name, signature, description).roles(RoleSet::AI)
         };
         api.bind_for(
             order(

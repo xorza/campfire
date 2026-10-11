@@ -2,11 +2,13 @@ use bevy_ecs::resource::Resource;
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::kind_spec::KindSpec;
+use crate::declare::book::Book;
 use crate::production::supply_data::SupplyData;
 use crate::production::train_queue::TrainQueue;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
+use campfire_sim::Capability;
 
 /// What each unit type uses and gives of supply, and what the unit each train makes uses, by
 /// the train's action: the one rule by which every count of supply reads a unit. Package data,
@@ -71,4 +73,9 @@ impl SupplyCosts {
             given: u64::from(given),
         }
     }
+}
+
+impl Book for SupplyCosts {
+    const OWNER: Option<Capability> = Some(Capability::Production);
+    const SCRIPTS_ONLY: bool = false;
 }

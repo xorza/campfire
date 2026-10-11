@@ -60,3 +60,65 @@ impl CapabilityDoes {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_math::Num;
+
+    use crate::actions::amount::Amount;
+    use crate::actions::capability_does::CapabilityDoes;
+    use crate::actions::effect_data::EffectTo;
+    use crate::actions::launch_id::LaunchId;
+    use crate::stats::pool_id::PoolId;
+    use crate::units::track_id::TrackId;
+    use crate::units::unit_type::UnitType;
+    use crate::values::damage_kind::DamageKind;
+
+    impl CapabilityDoes {
+        /// One effect of each kind: a new kind fails to compile here until it joins.
+        pub(crate) fn one_of_each() -> Vec<CapabilityDoes> {
+            let amount = Amount::Value(Num::ONE);
+            let all = vec![
+                CapabilityDoes::Damage {
+                    amount,
+                    kind: DamageKind::new(0),
+                },
+                CapabilityDoes::Heal { amount },
+                CapabilityDoes::Restore {
+                    pool: PoolId::new(0).unwrap(),
+                    amount,
+                },
+                CapabilityDoes::Xp {
+                    track: TrackId::new(0),
+                    amount,
+                },
+                CapabilityDoes::Launch {
+                    area: UnitType::new(0),
+                    launch: LaunchId(0),
+                },
+                CapabilityDoes::Dash {
+                    to: EffectTo::Reached,
+                    speed: amount,
+                },
+                CapabilityDoes::KnockBack {
+                    from: EffectTo::Source,
+                    distance: amount,
+                    ms: amount,
+                },
+            ];
+            for (at, does) in all.iter().enumerate() {
+                let place = match does {
+                    CapabilityDoes::Damage { .. } => 0,
+                    CapabilityDoes::Heal { .. } => 1,
+                    CapabilityDoes::Restore { .. } => 2,
+                    CapabilityDoes::Xp { .. } => 3,
+                    CapabilityDoes::Launch { .. } => 4,
+                    CapabilityDoes::Dash { .. } => 5,
+                    CapabilityDoes::KnockBack { .. } => 6,
+                };
+                assert_eq!(place, at, "one of each kind, in order");
+            }
+            all
+        }
+    }
+}

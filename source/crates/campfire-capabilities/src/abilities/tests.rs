@@ -7,7 +7,7 @@ use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_script::NumError;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimRng, SimTick, StableId, StateCopy, TickInput, TickInputs,
+    EntityIndex, Position, SimRng, SimTick, StableId, StateCopy, TickInput, TickInputs,
 };
 
 use super::*;
@@ -38,7 +38,6 @@ use crate::actions::targeting::Targeting;
 use crate::areas::Areas;
 use crate::areas::area::Area;
 use crate::areas::area_data::{AreaData, AreaInside};
-use crate::capability_set::test_match::TestMatch;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::internals::Armed;
@@ -62,6 +61,7 @@ use crate::progression::track_set::TrackSet;
 use crate::projectiles::Projectiles;
 use crate::projectiles::projectile::Projectile;
 use crate::projectiles::projectile_data::ProjectileData;
+use crate::release::test_match::TestMatch;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::hook::Hook;

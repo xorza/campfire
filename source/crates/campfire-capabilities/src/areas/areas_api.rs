@@ -1,4 +1,4 @@
-use campfire_sim::{Capability, Position};
+use campfire_sim::Position;
 
 use crate::actions::delivery::DeliveryShape;
 use crate::areas::areas_effect::AreasEffect;
@@ -22,8 +22,7 @@ impl AreasApi {
             &[&["pos"]],
             "lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick",
         )
-        .roles(RoleSet::ACTION)
-        .capability(Capability::Areas);
+        .roles(RoleSet::ACTION);
         api.bind_for(area, |ctx: &mut Ctx, at: Position| AreasApi::land(ctx, at))
             .data(DataTable::Delivery, &["area"], &[])
             .data(

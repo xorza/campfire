@@ -1,20 +1,23 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::{SimSet, StateRegistry};
+use campfire_sim::{Capability, SimSet};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
 use crate::combat::CombatSet;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::geometry::bounds::Bounds;
 use crate::items::ItemsSet;
-use crate::items::item_book::ItemBook;
 use crate::orders::ai::Ai;
 use crate::orders::destinations::Destinations;
 use crate::orders::learn_orders::LearnOrders;
 use crate::orders::next_think::NextThink;
 use crate::orders::order_inputs::{OrderInputs, PlayerOrders};
+use crate::orders::orders_api::OrdersApi;
 use crate::orders::production_orders::ProductionOrders;
 use crate::orders::resetting::Resetting;
 use crate::orders::thinking::Thinking;
@@ -22,9 +25,6 @@ use crate::orders::tick_orders::TickOrders;
 use crate::orders::trade_orders::TradeOrders;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::production::ProductionSet;
-use crate::production::build_specs::BuildSpecs;
-use crate::scripts::ctx::Ctx;
-use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 
@@ -58,13 +58,18 @@ pub(crate) enum OrdersSet {
 #[derive(Debug)]
 pub struct Orders;
 
-impl Orders {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<NextThink>();
-        types.component::<Resetting>();
-    }
+impl Declares for Orders {
+    const MODULE: Option<Capability> = Some(Capability::Orders);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<NextThink>();
+        d.component::<Resetting>();
+        d.book::<ByType<Ai>>();
+        d.api(OrdersApi::register);
+    }
+}
+
+impl Orders {
     /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
     /// are learned, and, with production, trains are cancelled and rally points set, and, with
     /// items, on the server, items trade; in Think, the resets whose units arrived end, then the
@@ -72,7 +77,11 @@ impl Orders {
     /// chase their targets. It builds on the core `Units` installs, on combat and on navigation,
     /// and installs after production and items, whose actions it applies only when they are
     /// installed. Without the core's scripts, as on a client, no unit thinks and no item trades.
-    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let production = cx.has(Capability::Production);
+        let items = cx.has(Capability::Items);
+        let scripts = cx.scripts();
+        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.init_resource::<PlayerOrders>();
         world.init_resource::<TickOrders>();
         schedule.add_systems((
@@ -98,8 +107,6 @@ impl Orders {
             ProductionSet::CheckBuilds.after(OrdersSet::Orders),
             OrdersSet::Orders.after(AbilitiesSet::Toggles),
         ));
-        Self::state_types(registry);
-        let production = world.contains_resource::<BuildSpecs>();
         if production {
             schedule.add_systems(
                 ProductionOrders::apply_production_orders
@@ -108,16 +115,15 @@ impl Orders {
                     .after(LearnOrders::learn_ranks),
             );
         }
-        if !world.contains_non_send::<Ctx>() {
+        if !scripts {
             return;
         }
-        world.insert_resource(ByType::<Ai>::default());
         schedule.add_systems(
             (Thinking::end_dead_resets, Thinking::think)
                 .chain()
                 .in_set(SimSet::Think),
         );
-        if world.contains_resource::<ItemBook>() {
+        if items {
             let trade = TradeOrders::trade_items
                 .in_set(SimSet::Inputs)
                 .in_set(OrdersSet::Orders)

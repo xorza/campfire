@@ -1,6 +1,8 @@
 use bevy_ecs::resource::Resource;
 
+use crate::declare::book::Book;
 use crate::units::unit_type::UnitType;
+use campfire_sim::Capability;
 
 /// Where each unit type of the match comes from, by type: the package that declares it, by its
 /// place in the mode's packages, the mode's first, and its name there, as its client data names
@@ -43,4 +45,9 @@ impl TypeOrigins {
             (UnitType::new(index), origin)
         })
     }
+}
+
+impl Book for TypeOrigins {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
 }

@@ -1,17 +1,19 @@
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
-use campfire_sim::{SimSet, StateRegistry};
+use campfire_sim::{Capability, SimSet};
 
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::geometry::grid::Grid;
 use crate::geometry::polygon::Polygon;
-use crate::state_types::StateTypes;
 use crate::units::by_type::ByType;
-use crate::units::view::View;
 use crate::vision::brush_map::BrushMap;
 use crate::vision::reveals::Reveals;
 use crate::vision::seeing::Seeing;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
+use crate::vision::vision_api::VisionApi;
 use crate::vision::vision_column::{RowParts, VisionColumn};
 use crate::vision::vision_grid::VisionGrid;
 
@@ -38,26 +40,27 @@ pub(crate) mod vision_groups;
 #[derive(Debug)]
 pub struct Vision;
 
-impl Vision {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.resource::<Reveals>();
-        types.component::<SeenBy>();
-        types.component::<Sight>();
-    }
+impl Declares for Vision {
+    const MODULE: Option<Capability> = Some(Capability::Vision);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.resource::<Reveals>();
+        d.component::<SeenBy>();
+        d.component::<Sight>();
+        d.book::<ByType<Sight>>();
+        d.column::<VisionColumn, RowParts>(VisionColumn::fill_row);
+        d.api(VisionApi::register);
+    }
+}
+
+impl Vision {
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
     /// teams that see it, with the reveals under way. A match sees nothing until its mode gives
     /// the grid. The sights of the delivery types, which no kit holds, are a book of their own.
-    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>().clone();
-        view.add_column(VisionColumn::default());
-        view.add_source::<RowParts, _>(world, VisionColumn::fill_row);
-        schedule.add_systems(Seeing::see.in_set(SimSet::Vision));
-        world.insert_resource(ByType::<Sight>::default());
-        world.insert_resource(Reveals::default());
-        Self::state_types(registry);
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        cx.schedule.add_systems(Seeing::see.in_set(SimSet::Vision));
+        cx.world.insert_resource(Reveals::default());
     }
 
     /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's order,

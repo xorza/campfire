@@ -28,8 +28,7 @@ impl ProductionApi {
             .data(DataTable::Node, &["resource", "amount"], &[])
             .data(DataTable::DropOff, &["resources"], &[])
             .bind(
-                MemberSpec::field(ApiOwner::Unit, "load", "the amount it carries, 0 with none")
-                    .capability(Capability::Production),
+                MemberSpec::field(ApiOwner::Unit, "load", "the amount it carries, 0 with none"),
                 |unit: &mut Unit| ProductionColumn::load(unit),
             )
             .bind(
@@ -37,8 +36,7 @@ impl ProductionApi {
                     "supply_used",
                     &[&["player"]],
                     "what `player`'s living units and queued trains use of its supply",
-                )
-                .capability(Capability::Production),
+                ),
                 |ctx: &mut Ctx, player: INT| ProductionApi::supply(ctx, player, false),
             )
             .bind(
@@ -46,8 +44,7 @@ impl ProductionApi {
                     "supply_cap",
                     &[&["player"]],
                     "what `player`'s living, complete units give of supply, at most the mode's `max`",
-                )
-                .capability(Capability::Production),
+                ),
                 |ctx: &mut Ctx, player: INT| ProductionApi::supply(ctx, player, true),
             );
     }

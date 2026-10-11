@@ -1,16 +1,16 @@
-use bevy_ecs::schedule::Schedule;
-use bevy_ecs::world::World;
-use campfire_sim::{Capability, StateRegistry};
+use campfire_sim::Capability;
 
 use crate::actions::effect_queues::EffectQueues;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::LevelUps;
 use crate::progression::points::Points;
+use crate::progression::progression_api::ProgressionApi;
 use crate::progression::progression_column::{ProgressionColumn, RowParts};
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
-use crate::state_types::StateTypes;
-use crate::units::view::View;
 
 pub(crate) mod experience;
 pub(crate) mod level_ups;
@@ -26,25 +26,27 @@ pub(crate) mod track_set;
 #[derive(Debug)]
 pub struct Progression;
 
-impl Progression {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<Experience>();
-        types.component::<Points>();
-        types.resource::<LevelUps>();
-    }
+impl Declares for Progression {
+    const MODULE: Option<Capability> = Some(Capability::Progression);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<Experience>();
+        d.component::<Points>();
+        d.resource::<LevelUps>();
+        d.book::<TrackBook>();
+        d.column::<ProgressionColumn, RowParts>(ProgressionColumn::fill_row);
+        d.api(ProgressionApi::register);
+    }
+}
+
+impl Progression {
     /// Adds progression to a match, with no track until the mode loads its own.
-    pub fn install(world: &mut World, _: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>().clone();
-        view.add_column(ProgressionColumn::default());
-        view.add_source::<RowParts, _>(world, ProgressionColumn::fill_row);
-        world.insert_resource(TrackBook::default());
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let world = &mut *cx.world;
         world.insert_resource(LevelUps::default());
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Progression, ProgressionEffect::queue_listed);
-        Self::state_types(registry);
     }
 }
 

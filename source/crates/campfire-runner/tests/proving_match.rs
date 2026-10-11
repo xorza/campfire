@@ -6,7 +6,8 @@ use bevy_ecs::world::{EntityRef, World};
 use campfire_capabilities::internals::{reaches, reaches_bound, sinks_into};
 use campfire_capabilities::{
     ActionSlots, Area, Body, CapabilitySet, Dead, Experience, Level, Lifespan, Mode, Modifiers,
-    MoveStep, Owner, Projectile, ScriptFailures, SeenBy, StateValue, Team, TeamSet, TrainQueue,
+    MoveStep, Owner, Projectile, Release, ScriptFailures, SeenBy, StateValue, Team, TeamSet,
+    TrainQueue,
 };
 use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, ProvingMatch, RestoreTarget};
@@ -93,7 +94,7 @@ fn assert_sound(fixed: &FixedMatch, tick: u64, capabilities: CapabilitySet) {
         "tick {tick}: {:?}",
         failures.get()
     );
-    let unlisted = capabilities.unlisted_components(world);
+    let unlisted = Release::unlisted_components(capabilities, world);
     assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
 }
 

@@ -2,9 +2,11 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 
+use crate::declare::book::Book;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_type::UnitType;
+use campfire_sim::Capability;
 
 /// What each train and build with a `requires` needs its player to hold, by action: unit types of
 /// which it owns a living, complete unit, and player modifiers, one run of each after another.
@@ -65,6 +67,11 @@ impl Requirements {
             modifiers: &self.modifiers[range(&needs.modifiers)],
         })
     }
+}
+
+impl Book for Requirements {
+    const OWNER: Option<Capability> = Some(Capability::Production);
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(test)]

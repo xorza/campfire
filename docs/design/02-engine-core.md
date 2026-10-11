@@ -102,7 +102,8 @@ Each rule has a test that fails when it breaks, as a rule only a review checks d
 
 | Rule | Enforced by |
 | --- | --- |
-| One owner for each fact: a package fact in one immutable book, a match fact in state, a call's fact in its frame. Nothing else holds a copy. | The state table test; the behaviour golden |
+| One owner for each fact: a package fact in one immutable book, a match fact in state, a call's fact in its frame. Nothing else holds a copy. | The declaration audit; the behaviour golden |
+| Each module, the core's and each capability's, declares once all it adds to a match but its systems: its state types, kinds, parts and pairs, restore checks, books, script view columns, call parts, players' parts and script API. Every consumer reads that one list: the install, the script API's binding, the network layer's lists and the declaration audit. An install asks the declared capabilities what the match has, never another module's resources. | `Declarations` has no default method; the declaration audit test; `Books::install`, which refuses a book its installed owner did not declare |
 | A name becomes an id where it enters. After the load no system looks up a name; a script call resolves its name once, with no allocation. Every lookup of an id by name is a method ending in `named`. | The book builder's tests; the allowlist test of name lookups |
 | The load refuses everything a match can refuse. A match start fails only on its terms (players, tick rate, seed, the packages they name) and on `on_match_start`'s runtime failure. | `StartError` has no case of a package's data |
 | A layer calls a higher one only through a hook the higher one registers: a column of the script view, a part of a call's frame, an effect type, a row of the capability table. | The layer test |

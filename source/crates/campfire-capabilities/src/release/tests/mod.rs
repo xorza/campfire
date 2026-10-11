@@ -2,18 +2,16 @@ use std::any::type_name;
 use std::fmt::Debug;
 use std::path::Path;
 
-use bevy_ecs::component::{Component, Immutable, Mutable};
-use campfire_sim::{Position, SimResource};
+use bevy_ecs::component::Component;
+use campfire_sim::Position;
 use campfire_store::{InputFile, SourceFiles};
 
 use super::*;
 use crate::actions::action_book::ActionBook;
-use crate::capability_set::test_match::TestMatch;
-use crate::mode;
+use crate::declare::error::CapabilityError;
 use crate::orders::ai::Ai;
+use crate::release::test_match::TestMatch;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::state_types::Declared;
-use crate::state_types::replication::Replication;
 use crate::units::by_type::ByType;
 use crate::units::team::Team;
 use crate::units::view::View;
@@ -106,7 +104,7 @@ fn the_table_holds_every_capability_once_after_what_it_builds_on() {
             .filter(|&at| CAPABILITIES[at].capability == capability)
             .collect();
         assert_eq!(rows.len(), 1, "{capability:?}");
-        for &needed in CAPABILITIES[rows[0]].needs {
+        for &needed in CapabilitySet::needs(capability) {
             let before = CAPABILITIES[..rows[0]]
                 .iter()
                 .any(|row| row.capability == needed);
@@ -165,10 +163,11 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 
 /// The layer of each module of the crate, lowest first: a module imports from its own layer
 /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-const LAYERS: [(&str, u8); 22] = [
+const LAYERS: [(&str, u8); 23] = [
     ("values", 0),
     ("geometry", 0),
     ("state_types", 0),
+    ("declare", 1),
     ("units", 1),
     ("scripts", 1),
     ("players", 1),
@@ -186,7 +185,7 @@ const LAYERS: [(&str, u8); 22] = [
     ("items", 5),
     ("orders", 6),
     ("mode", 7),
-    ("capability_set", 8),
+    ("release", 8),
     ("books", 8),
 ];
 
@@ -224,7 +223,7 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
     let mut installed = Vec::new();
     for row in CAPABILITIES.iter().filter(|row| row.install.is_some()) {
         let own = layer(row.capability).expect("an installed capability is a module");
-        for &need in row.needs {
+        for &need in CapabilitySet::needs(row.capability) {
             assert!(
                 installed.contains(&need),
                 "{need:?} before {:?}",
@@ -528,196 +527,26 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
     assert_eq!(found, known, "lookups by name");
 }
 
-/// The state types of the core, then those each capability adds to the ones it builds on, in
-/// name order: each its own.
-const STATE: [(Option<Capability>, &[&str]); 12] = [
-    (
-        None,
-        &[
-            "actions.slot_times",
-            "actions.slots",
-            "players.match",
-            "sim.entities",
-            "sim.id_allocator",
-            "sim.position",
-            "sim.tick",
-            "units.body",
-            "units.dead",
-            "units.facing",
-            "units.forced_move",
-            "units.lifespan",
-            "units.move_step",
-            "units.owner",
-            "units.relations",
-            "units.spawn_point",
-            "units.state",
-            "units.state_all",
-            "units.state_owner",
-            "units.state_team",
-            "units.status_tags",
-            "units.team",
-            "units.unit",
-            "units.unit_type",
-        ],
-    ),
-    (
-        Some(Stats),
-        &[
-            "stats.level",
-            "stats.modifier_clocks",
-            "stats.modifiers",
-            "stats.player_modifiers",
-            "stats.pools",
-        ],
-    ),
-    (
-        Some(Capability::Progression),
-        &[
-            "progression.experience",
-            "progression.level_ups",
-            "progression.points",
-        ],
-    ),
-    (
-        Some(Combat),
-        &[
-            "combat.kept",
-            "combat.on_death",
-            "combat.recent_attackers",
-            "combat.respawn",
-            "stats.life",
-        ],
-    ),
-    (
-        Some(Navigation),
-        &[
-            "navigation.destination",
-            "navigation.on_path",
-            "navigation.path_walker",
-            "navigation.progress",
-            "navigation.route",
-        ],
-    ),
-    (
-        Some(Vision),
-        &["vision.reveals", "vision.seen_by", "vision.sight"],
-    ),
-    (
-        Some(Projectiles),
-        &[
-            "projectiles.flight_state",
-            "projectiles.projectile",
-            "projectiles.struck_units",
-        ],
-    ),
-    (
-        Some(Capability::Areas),
-        &["areas.area", "areas.area_trigger"],
-    ),
-    (Some(Abilities), &[]),
-    (Some(Orders), &["orders.next_think", "orders.resetting"]),
-    (
-        Some(Capability::Production),
-        &[
-            "production.builder",
-            "production.gatherer",
-            "production.node",
-            "production.rally",
-            "production.site",
-            "production.train_queue",
-        ],
-    ),
-    (Some(Capability::Items), &["items.inventory"]),
-];
-
 #[test]
-fn each_capability_adds_exactly_its_own_state_types() {
-    fn with_needs(capability: Capability, into: &mut Vec<Capability>) {
-        for &need in needs(capability) {
-            with_needs(need, into);
-        }
-        if !into.contains(&capability) {
-            into.push(capability);
-        }
-    }
-    for (capability, own) in STATE {
-        let mut declared = Vec::new();
-        for &need in capability.map_or(&[][..], needs) {
-            with_needs(need, &mut declared);
-        }
-        let below = TestMatch::client(&declared).state_names();
-        declared.extend(capability);
-        let names = TestMatch::client(&declared).state_names();
-        let added: Vec<_> = names
-            .iter()
-            .copied()
-            .filter(|name| !below.contains(name) || capability.is_none())
-            .collect();
-        assert_eq!(added, own, "{capability:?}");
-    }
-    // The table holds every capability the release runs.
-    let runs = CAPABILITIES.iter().filter(|row| row.install.is_some());
-    assert_eq!(runs.count(), STATE.len() - 1);
-}
-
-#[test]
-fn a_match_registers_exactly_the_types_its_capabilities_list() {
-    // A match of every capability the release runs: its registry holds what the lists name but
-    // the mode's, which a test match does not install, and `sim`'s own types besides, so no
-    // install registers a type its list lacks, and `net`, which reads the lists, misses none.
-    #[derive(Debug, Default)]
-    struct Names(Vec<&'static str>);
-    /// A part of a unit that no list declares.
+fn a_unit_holds_only_parts_the_declarations_list() {
+    // A match of every capability the release runs: a unit holds only parts the declarations
+    // list, as state or derived; one more is named.
+    /// A part of a unit that no declaration lists.
     #[derive(Component, Debug)]
     struct Unlisted;
-    impl StateTypes for Names {
-        fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-            self.0.push(C::NAME);
-        }
-        fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-            self.0.push(C::NAME);
-        }
-        fn predicted<
-            C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
-        >(
-            &mut self,
-            _: Declared,
-        ) {
-            self.0.push(C::NAME);
-        }
-        fn server<C: Replication>(&mut self, _: Declared) {
-            self.0.push(C::NAME);
-        }
-        fn derived<C: Component>(&mut self) {}
-        fn resource<R: SimResource>(&mut self) {
-            self.0.push(R::NAME);
-        }
-    }
-    let declared: Vec<Capability> = CAPABILITIES
-        .iter()
-        .filter(|row| row.install.is_some())
-        .map(|row| row.capability)
-        .collect();
-    let mut listed = Names::default();
-    CapabilitySet::new(&declared)
-        .unwrap()
-        .state_types(&mut listed);
-    let mut modes = Names::default();
-    mode::Mode::state_types(&mut modes);
-    listed.0.retain(|name| !modes.0.contains(name));
-    listed
-        .0
-        .extend(["sim.entities", "sim.id_allocator", "sim.tick"]);
-    listed.0.sort_unstable();
+    let set = Release::capabilities();
+    let declared: Vec<Capability> = set.iter().collect();
     let mut sim = TestMatch::client(&declared);
-    assert_eq!(listed.0, sim.state_names());
-    // A unit holds only parts the lists declare, as state or derived; one more is named.
-    let set = CapabilitySet::new(&declared).unwrap();
     let unit = sim.spawn(Position::ORIGIN, Team::new(0));
-    assert_eq!(set.unlisted_components(&sim.world), Vec::<String>::new());
+    assert_eq!(
+        Release::unlisted_components(set, &sim.world),
+        Vec::<String>::new()
+    );
     sim.insert(unit, Unlisted);
     assert_eq!(
-        set.unlisted_components(&sim.world),
+        Release::unlisted_components(set, &sim.world),
         [type_name::<Unlisted>()]
     );
 }
+
+mod declaration_audit;

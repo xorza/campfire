@@ -2,8 +2,10 @@ use campfire_math::Num;
 
 use crate::units::body::Body;
 
+use crate::declare::per_type::PerType;
 use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
+use campfire_sim::Capability;
 
 /// A kind of unit that walks, as routes see it: the layer it moves on and its body's radius, 0
 /// for one with no body. The pathing grid keeps the cells each kind may stand in.
@@ -48,4 +50,9 @@ impl Walker {
             radius: form.circle_radius()?,
         })
     }
+}
+
+impl PerType for Walker {
+    const OWNER: Option<Capability> = Some(Capability::Navigation);
+    const SCRIPTS_ONLY: bool = false;
 }

@@ -1,9 +1,9 @@
 //! What a match is built from: each package's content, as the load reads it, and the books a
 //! match reads, built from it with no world.
 
+use std::any::type_name;
 use std::mem;
 
-use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 
 use crate::actions::actions_column::ActionsColumn;
@@ -12,6 +12,8 @@ use crate::books::book_input::BookInput;
 use crate::books::book_parts::BookParts;
 use crate::books::error::BookError;
 use crate::books::mode_inputs::ModeInputs;
+use crate::declare::book::Book;
+use crate::declare::capability_set::CapabilitySet;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
 use crate::navigation::error::MapProblem;
@@ -47,13 +49,20 @@ pub struct Books {
 }
 
 impl Books {
-    /// Puts `book` in place of the resource of its type in `world`, which the capability that
-    /// reads it installed; none when the match does not have that capability, whose book is then
-    /// empty.
-    fn replace<T: Resource>(world: &mut World, book: T) {
-        if world.contains_resource::<T>() {
-            world.insert_resource(book);
+    /// Puts `book` in place of its empty default in `world`, which its owner's declaration put
+    /// there, when the match declares its owner, `set` says, and runs the scripts it needs. Else
+    /// the book stays out: the load leaves a capability the mode does not declare no data, and a
+    /// client runs no scripts.
+    fn put<B: Book>(world: &mut World, set: CapabilitySet, scripts: bool, book: B) {
+        if !B::held(set, scripts) {
+            return;
         }
+        assert!(
+            world.contains_resource::<B>(),
+            "{} is declared by its owner",
+            type_name::<B>()
+        );
+        world.insert_resource(book);
     }
 
     /// The books of `input`, which the package load checked; an error for what the check does
@@ -84,47 +93,48 @@ impl Books {
         self.mode.map.check_walkable(walkers, body_of, name_of)
     }
 
-    /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are
-    /// compiled, each in the resource of the capability that reads it, and the view's and, with
-    /// scripts, the frame's copies; what the mode's book takes stays.
-    pub fn install(self, world: &mut World) -> ModeInputs {
+    /// Puts the books in `world`, a match of the capabilities `set` that runs scripts when
+    /// `scripts` says, whose capabilities are installed and whose scripts are compiled, each in
+    /// the resource of the module that declares it, and the view's and, with scripts, the frame's
+    /// copies; what the mode's book takes stays.
+    pub fn install(self, world: &mut World, set: CapabilitySet, scripts: bool) -> ModeInputs {
         let Books { parts, mode } = self;
         let view = world.non_send::<View>().clone();
         let states = parts.types.state_book();
         UnitsColumn::share(&view, states.clone());
-        world.insert_resource(states);
-        world.insert_resource(parts.types.origins());
+        Books::put(world, set, scripts, states);
+        Books::put(world, set, scripts, parts.types.origins());
         view.set_types(parts.types);
         StatsColumn::share_modifiers(&view, parts.modifiers.clone());
         let params = ParamBook::new(parts.params);
         if let Some(ctx) = world.get_non_send::<Ctx>() {
             StatsCall::share_params(&mut ctx.frame(), params.clone());
         }
-        world.insert_resource(params);
+        Books::put(world, set, scripts, params);
         if let Some(tracks) = parts.tracks {
             ProgressionColumn::share(&view, tracks.clone());
-            world.insert_resource(tracks);
+            Books::put(world, set, scripts, tracks);
         }
         ActionsColumn::share(&view, parts.actions.clone());
         let costs = SupplyCosts::new(parts.supplies, &parts.actions);
-        Books::replace(world, parts.modifiers);
-        Books::replace(world, parts.actions);
-        Books::replace(world, parts.effects);
-        Books::replace(world, parts.ais);
-        Books::replace(world, parts.projectiles);
-        Books::replace(world, parts.areas);
-        Books::replace(world, parts.sights);
-        Books::replace(world, parts.producers);
-        Books::replace(world, parts.requirements);
-        Books::replace(world, parts.builds);
-        Books::replace(world, parts.nodes);
-        Books::replace(world, parts.walkers);
+        Books::put(world, set, scripts, parts.modifiers);
+        Books::put(world, set, scripts, parts.actions);
+        Books::put(world, set, scripts, parts.effects);
+        Books::put(world, set, scripts, parts.ais);
+        Books::put(world, set, scripts, parts.projectiles);
+        Books::put(world, set, scripts, parts.areas);
+        Books::put(world, set, scripts, parts.sights);
+        Books::put(world, set, scripts, parts.producers);
+        Books::put(world, set, scripts, parts.requirements);
+        Books::put(world, set, scripts, parts.builds);
+        Books::put(world, set, scripts, parts.nodes);
+        Books::put(world, set, scripts, parts.walkers);
         ProductionColumn::share(&view, parts.supply_rules, costs.clone());
-        Books::replace(world, costs);
+        Books::put(world, set, scripts, costs);
         if let Some(rules) = parts.supply_rules {
             world.insert_resource(rules);
         }
-        Books::replace(world, parts.items);
+        Books::put(world, set, scripts, parts.items);
         ModeInputs {
             units: parts.units,
             books: mode,
@@ -136,11 +146,60 @@ impl Books {
     /// of its own rules, and its map's ground, its pathing grid for the kinds of its walkers. The
     /// client then predicts its units by the rules the server runs: it starts their actions, and
     /// runs none of their effects.
-    pub fn install_prediction(self, world: &mut World) {
-        let ModeInputs { mut books, .. } = self.install(world);
+    pub fn install_prediction(self, world: &mut World, set: CapabilitySet) {
+        let ModeInputs { mut books, .. } = self.install(world, set, false);
         let walkers = mem::take(&mut books.walkers);
         let ModeMap { ground, .. } = books.install(world);
         ground.install(world, walkers);
         world.insert_resource(Predicting);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::panic::{self, AssertUnwindSafe};
+
+    use campfire_sim::Capability;
+
+    use super::*;
+    use crate::orders::ai::Ai;
+    use crate::stats::modifier_book::ModifierBook;
+    use crate::units::by_type::ByType;
+
+    #[test]
+    fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
+        let stats = CapabilitySet::new(&[Capability::Stats]).unwrap();
+        let none = CapabilitySet::new(&[]).unwrap();
+        let orders = CapabilitySet::new(&[
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Navigation,
+            Capability::Orders,
+        ])
+        .unwrap();
+        // A capability's book is held with its owner; an AI's with orders and scripts both; a
+        // core book in every match.
+        assert!(ModifierBook::held(stats, false) && !ModifierBook::held(none, true));
+        assert!(ByType::<Ai>::held(orders, true) && !ByType::<Ai>::held(orders, false));
+        assert!(!ByType::<Ai>::held(stats, true));
+        assert!(ParamBook::held(none, false));
+        // A book of an owner the match lacks stays out; one its owner holds goes in, in place of
+        // the empty one its declaration put; one its installed owner did not declare is a logic
+        // error.
+        let mut world = World::new();
+        Books::put(&mut world, none, true, ModifierBook::default());
+        assert!(!world.contains_resource::<ModifierBook>());
+        world.insert_resource(ParamBook::default());
+        Books::put(&mut world, none, false, ParamBook::default());
+        assert!(world.contains_resource::<ParamBook>());
+        let undeclared = panic::catch_unwind(AssertUnwindSafe(|| {
+            Books::put(&mut world, stats, false, ModifierBook::default());
+        }));
+        let said = undeclared
+            .unwrap_err()
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap();
+        assert!(said.ends_with("is declared by its owner"), "{said}");
     }
 }

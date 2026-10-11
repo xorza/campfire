@@ -1275,41 +1275,60 @@ impl<'a> LoadCheck<'a> {
 
     /// Each section of the mode's data and of its map that it holds belongs to a capability the
     /// mode declares, as each of a unit type's does: a match builds a section's grids, books and
-    /// rules only for the capability that runs them.
+    /// rules only for the capability that runs them. A section of the mode's data belongs to the
+    /// capability the script API records as its reader; one of the map, to the capability that
+    /// builds from it.
     fn sections_owned(&self) -> Result<(), LoadProblem> {
         let (data, map) = (&self.packages.data, &self.packages.map);
         let combat = &data.combat;
+        let owner = |table, field| self.api.data_owner(table, field);
         let sections = [
             (
                 !combat.damage_kinds.is_empty()
                     || combat.stats().next().is_some()
                     || combat.life.is_some(),
-                Capability::Combat,
+                owner(DataTable::Mode, "combat"),
                 Place::Combat,
             ),
-            (!data.stats.is_empty(), Capability::Stats, Place::Stats),
+            (
+                !data.stats.is_empty(),
+                owner(DataTable::Mode, "stats"),
+                Place::Stats,
+            ),
             (
                 !data.tracks.is_empty(),
-                Capability::Progression,
+                owner(DataTable::Mode, "tracks"),
                 Place::Tracks,
             ),
             (
                 !data.navigation.layers.is_empty(),
-                Capability::Navigation,
+                owner(DataTable::ModeNavigation, "layers"),
                 Place::Navigation,
             ),
-            (data.supply.is_some(), Capability::Production, Place::Supply),
-            (data.shop.is_some(), Capability::Items, Place::Shop),
+            (
+                data.supply.is_some(),
+                owner(DataTable::Mode, "supply"),
+                Place::Supply,
+            ),
+            (
+                data.shop.is_some(),
+                owner(DataTable::Mode, "shop"),
+                Place::Shop,
+            ),
             (
                 map.navigation.is_some(),
-                Capability::Navigation,
+                Some(Capability::Navigation),
                 Place::MapNavigation,
             ),
-            (!map.paths.is_empty(), Capability::Navigation, Place::Paths),
-            (map.grid.is_some(), Capability::Vision, Place::MapGrid),
+            (
+                !map.paths.is_empty(),
+                Some(Capability::Navigation),
+                Place::Paths,
+            ),
+            (map.grid.is_some(), Some(Capability::Vision), Place::MapGrid),
         ];
         for (held, capability, at) in sections {
-            if held {
+            if let Some(capability) = capability.filter(|_| held) {
                 self.require(capability, &at)?;
             }
         }

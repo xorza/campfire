@@ -4,8 +4,8 @@ An audit of the workspace at `source/` after slice 3's A4: the entities and how 
 
 ## Findings
 
-- **Registration.** Two of fourteen registration channels are declared by a type and enforced by the compiler; twelve are calls in `install` bodies, held together by install order and runtime `expect`s. Some fail silently: `Books::replace` (`books/mod.rs:53`) drops a book whose resource the install did not insert.
-- **Entities.** Each entity has a declared kind, and each state type names the kind it sits on. Two spawn paths still give units different parts, and each spawn puts a kind's parts on by hand.
+- **Registration.** Each module declares once what it adds; effect queues, deliverers and cast spends still register in install bodies, and systems order against each other's sets in each install.
+- **Entities.** Two spawn paths give units different parts, the match's and the players' entities get their parts by hand, and net writes its prediction rule twice.
 - **Ownership.** Almost every pass reaches through `&mut World` to `!Send` shared handles (`View`, `Ctx`, boxed hooks): 152 production functions take `&mut World` and 96 `&World`, against 13 `SystemParam` derives. No pass is testable without a whole `TestMatch`; `deliveries` and `players` have no tests, `actions` 6 for 53 files.
 - **Arguments.** 59 `now: Tick` parameters sit beside worlds that hold the tick; 57 `ctx: &Ctx` and 57 `view: &View`; 24 systems group parameters in tuples to pass Bevy's limit of 16.
 - **Restore.** A check runs with books that may be absent, and an error names the type alone (§4.1, §4.2).
@@ -14,105 +14,26 @@ The recommendations consolidate into five systems. Each is one declaration that 
 
 | System | Replaces | Enforced by |
 | --- | --- | --- |
-| 1. One declaration per capability (§1) | the twelve install-body channels, API side-lists, needs probes | the compiler (visitor with no defaults), one declaration audit test |
+| 1. One declaration per capability (§1) | the registrations left in install bodies, restated orderings | the compiler (visitor with no defaults), the declaration audit test |
 | 2. One entity model (§2) | two spawn paths, parts put on by hand, net's prediction rule | required components, the compiler (`Host` with no default), a clippy rule on spawning |
 | 3. Explicit dependencies (§3) | `!Send` reach-through, threaded `now`, tuple parameters, five match-world builders | typed params, a clippy rule on `non_send` |
 | 4. Restore as a checked boundary (§4) | silent checks, wrong-type errors | the registry, a mutation fuzz test |
 | 5. One session host (§5) | three server compositions, two replay loops, two restore glues | one type |
 
-Two policies hold across all five:
-
-- **No default methods in a visitor trait.** `StateTypes` has two (`component`, `sim_component`); its consumers must each say what they do with every category, so a new category stops every consumer at compile time until it decides.
-- **What can be forgotten is a type, a trait method with no default, or a disallowed method.** The project already bans `std::fs` and randomly seeded maps through `clippy.toml`; the same list bans the calls the five systems own, outside the one module that owns each.
+One policy holds across all five: **what can be forgotten is a type, a trait method with no default, or a disallowed method.** The project already bans `std::fs` and randomly seeded maps through `clippy.toml`; the same list bans the calls the five systems own, outside the one module that owns each.
 
 ## 1. One declaration per capability
 
-### Today
+Each module implements `Declares`, and `Release` visits the core's, each declared capability's and the mode's declarations with one consumer at a time: `Installer` (registry and world), `ApiBinder`, `StateOnly` (net's lists) and the declaration audit test. Installs take `InstallCx` and ask it for the declared capabilities and for scripts. Books name their owner, and `Books::install` refuses one its installed owner did not declare. What stays:
 
-| Channel | Declared | Enforced by |
-| --- | --- | --- |
-| Install fn | `CAPABILITIES` row; core hard-coded; `Mode::install` in runner, 5 args | compiler (table length), order test |
-| Needs | `row.needs`; installs also probe other capabilities' resources (`orders/mod.rs:102`, `:120`, `production/mod.rs:107`) | `CapabilitySet::new`; probes by table order alone |
-| State types | `fn state_types`, called by each install **and** by the match in `CapabilitySet::state_types`, where `Abilities` sits in the no-list arm (`capability_set/mod.rs:246`) | compiler (`Replication`), registry test without Mode, hand-kept `STATE` table |
-| Restore checks | `registry.add_check` in 3 installs | nothing checks completeness |
-| View columns | `add_column` + `add_source`, ×8 | runtime `expect` (`units/unit_rows.rs:281`) |
-| Call parts | `ctx.frame().add_part` | readers `expect` |
-| Player parts | `PlayerParts::add` closures | a hand-written check beside each |
-| Effect queues, deliverers, cast spends | `register*` calls | runtime `expect`s |
-| Script API | three lists: core in `ScriptApi::bind`, `apis()`, rows' `registering` | naming test |
-| Member gating | `.capability(..)` on each member | nothing |
-| Data section owner | hand map in `package/src/load_check.rs:1279` | nothing |
-| Books | `Books::install`, `ModeBooks::install`; `params`, `tracks`, `supply_rules` inserted unconditionally | nothing |
-| Ordering | a `*Set` per module; `.after(StatsSet::Regenerate).after(CombatSet::Respawn)` restated in four modules; orders configures four other modules' sets | ambiguity detection, for combinations a test builds |
-
-### 1.1 A capability declares through one visitor
-
-`StateTypes` already shows the pattern that works: a capability lists its types once, and the registry, the replication protocol and the kind filters each read the list. Every other channel becomes a category of the same visitor, which `StateTypes` grows into:
-
-```rust
-pub(crate) trait CapabilityModule {
-    const CAPABILITY: Capability;
-    const NEEDS: &'static [Capability];
-    /// Everything the capability adds, but its systems.
-    fn declare<D: Declarations>(d: &mut D);
-    /// Its systems, in the phases of §1.4.
-    fn schedule(s: &mut ScheduleCx<'_>);
-}
-
-pub(crate) trait Declarations {
-    fn state<C: Replication>(&mut self);
-    fn derived<C: Component>(&mut self);
-    fn resource<R: SimResource>(&mut self);
-    fn kind<K: EntityKind>(&mut self);
-    fn part<K: EntityKind, C: Replication>(&mut self, start: PartStart<C>);
-    fn pair<H: SimComponent, C: SimComponent>(&mut self);
-    fn check<C: SimComponent>(&mut self, check: fn(&World) -> bool);
-    fn book<B: Book>(&mut self);
-    fn column<V: ViewColumn>(&mut self);
-    fn call_part<P: CallPart>(&mut self);
-    fn queue<Q: EffectQueue>(&mut self);
-    fn api(&mut self, register: fn(&mut ApiBuilder<'_>));
-}
-```
-
-No method has a default. `CapabilitySet::each(self, visitor)` visits the core (`Units`, `Actions`, `Deliveries`) and then each declared capability in table order, `Mode` included, so its list is tested like any other.
-
-The consumers, each one `impl Declarations`:
-
-| Consumer | Reads | Ignores, explicitly |
-| --- | --- | --- |
-| `StateRegistry` | state, derived, resources, parts and pairs as checks, checks | the rest |
-| `Installer` | kinds, parts (into the spawn of their kind), books (defaults), columns, call parts, queues | state |
-| `NetProtocol` | sent state, kinds (rooms, prediction) | the rest |
-| `KindFilters` | state by kind | the rest |
-| `ScriptApi` binder | api, each member owned by the visiting capability | the rest |
-| `campfire-package` load check | api data fields and their owner | the rest |
-| `DeclarationAudit` (test) | everything | nothing |
-
-What this makes impossible: an install that skips its list; a capability in the table and missing from a dispatch; an API side-list; an ungated member, as the binder sets each member's owner (about 25 manual `.capability(..)` tags go); two owners of one data section, as `load_check`'s map derives from the API's owners; a column without its source; a call part a reader `expect`s and nobody added; a book in the world and not in its column. Cost: about fifteen modules move their install bodies; the visitor is monomorphized.
-
-### 1.2 The declaration audit
-
-One test runs `DeclarationAudit` over `CapabilitySet::each` for every capability and checks what no single declaration can:
-
-- every state type's `Host` (§2.2) is a declared kind;
-- every `part::<K, C>` names a declared kind and a declared state type `C` whose host is `K`;
-- every column's `Parts` are declared state or derived types;
-- every book's owner is a declared capability, and no two capabilities declare one book;
-- every `CapabilityDoes` variant's owner declares a queue;
-- every capability's imports lie within its `NEEDS` and the lower layers (§3.6).
-
-It replaces the hand-kept `STATE` table in `capability_set/tests.rs:533`, which then derives from the declarations.
-
-### 1.3 Installs read the set, not each other's resources
-
-`ScheduleCx { world, schedule, set: CapabilitySet, scripts: Option<&ScriptBudgets> }`: `s.set.contains(Capability::Production)` replaces the probes at `orders/mod.rs:102`, `:111`, `:120`, `production/mod.rs:107`, `abilities/mod.rs:89`, `actions/mod.rs:108`, `stats/mod.rs:129` and `combat/mod.rs:117`. Table order matters for `NEEDS` alone, and a test schedules one capability with a made-up set. No install takes `&mut StateRegistry`: three arguments become one.
-
-A book knows its owner, `trait Book: Resource { const OWNER: Option<Capability>; fn share(&self, view: &View, frame: Option<&mut Frame>); }`, and `Books::install(self, world, set)` inserts by `set.contains(B::OWNER)`, asserts the default the installer put, and shares in the same step. Server-only books (`EffectLists`, `ByType<Ai>`) say so in their impl instead of by the presence of `Ctx`.
+- **Registrations a declaration cannot name yet.** Effect queues, deliverers and cast spends register in install bodies: their function types name `actions`' and `abilities`' types, above `declare`'s layer. The declaration audit checks the queues from a match instead.
+- **Audit rules not built.** A column's row parts are declared types; a capability's imports lie within its needs and the lower layers (with §3.6).
+- **The map's sections.** The load check takes the owners of the mode's data sections from the script API's records, and names the map's three sections' owners by hand, as no data table records them.
+- **Two lists of capabilities.** The install order is `CAPABILITIES` in `release`, and the needs `CapabilitySet::needs` in `declare`; a test holds every capability after what it needs.
 
 ### 1.4 Phases per stage, ordered once
 
-`InputsPhase::{Begin, Refill, ModeInputs, Toggles, Orders, Holds, Checks}` and the like, chained once in the installer; a capability's `schedule` puts each system `.in_set(phase)`. The restated `.after` chains, and orders configuring other modules' sets, go. Cost: edges between phases that some pairs did not need, so some parallelism; ambiguity detection still checks order within a phase. Take this last.
+`InputsPhase::{Begin, Refill, ModeInputs, Toggles, Orders, Holds, Checks}` and the like, chained once in the installer; a capability's `install` puts each system `.in_set(phase)`. The restated `.after` chains, and orders configuring other modules' sets, go. Cost: edges between phases that some pairs did not need, so some parallelism; ambiguity detection still checks order within a phase. Take this last.
 
 ## 2. One entity model
 
@@ -131,16 +52,11 @@ A book knows its owner, `trait Book: Resource { const OWNER: Option<Capability>;
 - Net writes the prediction rule twice (`sim_server/mod.rs:731`, `door.rs:218`) and sets it only for a new unit or a seat, though `Owner` changes.
 - Test spawners build units no production path makes (`TestMatch::spawn`, three test `Spawner`s, `production/bench.rs:149`), which is how the delivery tags bug stayed unseen.
 
-### 2.1 Kinds, hosts, parts and pairs: built
+### 2.1 Kinds for net, parts with their start, typed filters
 
-`UnitEntity` (state, required by `UnitType`), `DeliveryEntity` (derived, required by `Projectile` and `Area`), `MatchEntity` and `Player` are the kinds, each a `HostRule`. `SimComponent::Host` names each state type's kind, and `StateRegistry::host` and `require` declare a kind and a pair beside a type's own check. A registered resource is required in every snapshot. The mutation fuzz removes, moves and copies each state type's value.
-
-What stays of the model:
-
-- `EntityKind`, with `ROOMS` and `OWNER_PREDICTS`, for §2.5.
-- Parts declared with their start, `d.part::<K, C>(start)`, so one declaration gives the spawn as well as the check; today `require` gives the check, and the spawns of the match's and the players' entities put their parts on by hand.
+- `EntityKind: HostRule`, with `ROOMS` and `OWNER_PREDICTS`, for §2.5.
+- Parts declared with their start, `d.part::<K, C>(start)`, so one declaration gives the spawn as well as the check, as `KitPart::ALL` does for a unit's kit; today `require` gives the check, and the spawns of the match's and the players' entities put their parts on by hand.
 - Typed filter aliases, `UnitFilter`, `LivingUnit`, `BodyUnit`; today the filters name `With<UnitEntity>` and `Without<DeliveryEntity>` themselves.
-- A unit's kit parts are one table, `KitPart::ALL`: each row makes its part from the spawn's inputs, or none, and `ModeBook::spawn` and the restore check `Mode::kits_held` both read it. `DeliverySpawner` and the test spawners give parts outside it (§2.4).
 
 ### 2.4 One spawn per kind
 
@@ -187,21 +103,21 @@ The prepare, schedule, registry and install sequence appears five times (`Sessio
 
 ### 3.6 Layers without cycles
 
-The layer test rejects imports from a higher layer only. Within a layer, modules import each other in both directions: `units ↔ scripts`, `units ↔ players`, `abilities ↔ items` (`items/mod.rs:6` imports `CastSpends`; four `abilities` files import `Inventory`). The needs table disagrees with the imports: production uses navigation and vision and needs neither; abilities uses items and navigation; orders uses production and items. The declaration audit (§1.2) adds both checks: no cycle within a layer, and imports within `NEEDS` and the lower layers. `CastSpends` or `Inventory` moves down into `actions`, and `View` and its API users meet in one layer-1 module.
+The layer test rejects imports from a higher layer only. Within a layer, modules import each other in both directions: `units ↔ scripts`, `units ↔ players`, `abilities ↔ items` (`items/mod.rs:6` imports `CastSpends`; four `abilities` files import `Inventory`). The needs table disagrees with the imports: production uses navigation and vision and needs neither; abilities uses items and navigation; orders uses production and items. The declaration audit adds both checks: no cycle within a layer, and imports within the capability's needs and the lower layers. `CastSpends` or `Inventory` moves down into `actions`, and `View` and its API users meet in one layer-1 module.
 
 ## 4. Restore as a checked boundary
 
 ### 4.1 Checks run with every book in place
 
-`SimComponent::check` runs with the match's books in place, as its doc says and `Session::build` does. Today a missing book panics (`ModifierBook`, `ItemBook`, `ParamBook`), passes (`View` in six checks, and `Mode::entities_held` with no mode book), or fails unless the value is empty (`action_slots.rs:554`, `slot_times.rs:327`, `experience.rs:98`, branches no install reaches). Every check reads its books with `resource` or `non_send`, and the dead branches go: a wiring mistake then crashes the test that makes it.
+`SimComponent::check` runs with the match's books in place, as its doc says and `Session::build` does. Today a missing book panics (`ModifierBook`, `ItemBook`, `ParamBook`), passes (`View` in six checks), or fails unless the value is empty (`action_slots.rs:554`, `slot_times.rs:327`, `experience.rs:98`, branches no install reaches). Every check reads its books with `resource` or `non_send`, and the dead branches go: a wiring mistake then crashes the test that makes it.
 
 ### 4.2 Errors name the entity and the rule
 
-`SnapshotError::Invalid(&'static str)` names a type, and a foreign check names the type it is registered on: `Mode::entities_held`, on `Player`, fails for a missing mode state. With §2: `Invalid { ty, id: Option<StableId> }`, `WrongHost { ty, id }`, `Missing { holder, needs, id }`.
+`SnapshotError::Invalid(&'static str)` names a type, and a foreign check names the type it is registered on: `Mode::kits_held`, on `UnitType`, fails for a missing kit part, and a `require` fails as the part it requires, not its holder. The errors become `Invalid { ty, id: Option<StableId> }`, `WrongHost { ty, id }`, `Missing { holder, needs, id }`.
 
-### 4.3 Fuzz by mutation, and play on
+### 4.3 Two more mutations
 
-The mutation fuzz removes, moves and copies each state type's value, and plays five ticks on what restores. Two mutations stay: a nested option replaced with `None` where its type allows, as a slot's rank, and a hundred ticks on what restores, within the bound of 1 s for a test.
+The mutation fuzz gains a nested option replaced with `None` where its type allows, as a slot's rank, and plays a hundred ticks, not five, on what restores, within the bound of 1 s for a test.
 
 ### 4.4 Load, then trust
 
@@ -234,8 +150,7 @@ The mutation fuzz removes, moves and copies each state type's value, and plays f
 
 ## Order
 
-1. §1.1 to §1.3: one declaration per capability, its audit, installs that read the set. Parts and pairs move into the declaration here.
-2. §3.3 and §4.1, §4.2: the typed params, one book convention, errors that name the entity.
-3. §3.1, §3.2: books out of `View` and `Ctx`, `!Send` access in `ScriptPass`, and its clippy rule.
-4. §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule.
-5. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.
+1. §3.3 and §4.1, §4.2: the typed params, one book convention, errors that name the entity.
+2. §3.1, §3.2: books out of `View` and `Ctx`, `!Send` access in `ScriptPass`, and its clippy rule.
+3. §2.1, §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule; §4.3.
+4. §5, §3.4 to §3.6, §1 and the rest as slices touch them.

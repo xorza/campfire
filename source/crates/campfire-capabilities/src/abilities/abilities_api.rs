@@ -28,14 +28,8 @@ pub(crate) struct AbilitiesApi;
 
 impl AbilitiesApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let cast = |name, description| {
-            MemberSpec::value(name, description)
-                .roles(RoleSet::ACTION)
-                .capability(Capability::Abilities)
-        };
-        let call = |name, signature, description| {
-            MemberSpec::call(name, signature, description).capability(Capability::Abilities)
-        };
+        let cast = |name, description| MemberSpec::value(name, description).roles(RoleSet::ACTION);
+        let call = |name, signature, description| MemberSpec::call(name, signature, description);
         let cut = call(
             "reduce_cooldowns",
             &[&["unit", "kind", "fraction"]],

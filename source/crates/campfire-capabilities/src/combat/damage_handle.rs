@@ -1,5 +1,4 @@
 use campfire_script::rhai::Dynamic;
-use campfire_sim::Capability;
 
 use crate::combat::damage::{Damage, DamageCause};
 use crate::scripts::api_builder::ApiBuilder;
@@ -22,9 +21,7 @@ impl DamageHandle {
 
     /// The `Damage` handle's fields.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let field = |name, description| {
-            MemberSpec::field(ApiOwner::Damage, name, description).capability(Capability::Combat)
-        };
+        let field = |name, description| MemberSpec::field(ApiOwner::Damage, name, description);
         api.ty::<DamageHandle>("Damage")
             .bind(
                 field("source", "the unit that dealt it, `()` when gone or none"),

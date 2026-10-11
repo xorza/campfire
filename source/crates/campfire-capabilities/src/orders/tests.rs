@@ -5,9 +5,7 @@ use bevy_ecs::change_detection::DetectChanges;
 use campfire_common::{Binary, PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptError;
-use campfire_sim::{
-    Capability, Command, IdAllocator, Position, SimUpdate, StableId, TickInput, TickInputs,
-};
+use campfire_sim::{Command, IdAllocator, Position, SimUpdate, StableId, TickInput, TickInputs};
 use serde::Deserialize;
 
 use super::*;
@@ -19,12 +17,12 @@ use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
-use crate::capability_set::CapabilitySet;
-use crate::capability_set::test_match::TestMatch;
 use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
+use crate::declare::capability_set::CapabilitySet;
 use crate::geometry::grid::Grid;
 use crate::items::inventory::{Inventory, ItemStack};
+use crate::items::item_book::ItemBook;
 use crate::items::item_book::ItemSpec;
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
@@ -43,6 +41,8 @@ use crate::players::match_entity::MatchEntity;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
+use crate::release::Release;
+use crate::release::test_match::TestMatch;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -70,6 +70,7 @@ use crate::values::scalar::Scalar;
 use crate::values::share::Share;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::vision_grid::VisionGrid;
+use campfire_sim::StateRegistry;
 
 const ONE: i64 = 1 << 24;
 /// The MOBA 3v3's creep and tower AI as they were when these tests were written: the
@@ -1601,7 +1602,8 @@ fn production_and_items_add_their_order_actions_only_where_they_are_declared() {
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), TestMatch::RATE);
         let mut schedule = SimUpdate::schedule();
         let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
-        CapabilitySet::new(declared).unwrap().install(
+        Release::install(
+            CapabilitySet::new(declared).unwrap(),
             &mut world,
             &mut schedule,
             &mut StateRegistry::new(),

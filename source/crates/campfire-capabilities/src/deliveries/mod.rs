@@ -1,13 +1,16 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::world::World;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_math::Vec3;
-use campfire_sim::{Position, SimSet, StableId};
+use campfire_sim::{Capability, Position, SimSet, StableId};
 
 use crate::combat::CombatSet;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::deliverers::Deliverers;
+use crate::deliveries::deliveries_api::DeliveriesApi;
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_hooks::DeliveryHooks;
 use crate::units::forced_move::DashDelivery;
@@ -37,6 +40,14 @@ pub(crate) enum DeliverySet {
     Fly,
     /// Areas trigger and end.
     Trigger,
+}
+
+impl Declares for Deliveries {
+    const MODULE: Option<Capability> = None;
+
+    fn declare<D: Declarations>(d: &mut D) {
+        d.api(DeliveriesApi::register);
+    }
 }
 
 impl Deliveries {
@@ -71,21 +82,26 @@ impl Deliveries {
         });
     }
 
-    /// Adds the deliveries' hooks to a match, once for the capabilities that deliver: after the
+    /// Adds the deliveries' hooks to a match of a capability that delivers: after the
     /// `DeliverySet`s, before attacks pay their toggles and strike.
-    pub(crate) fn install(world: &mut World, schedule: &mut Schedule) {
-        if world.contains_resource::<Deliveries>() {
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let delivers = [
+            Capability::Projectiles,
+            Capability::Areas,
+            Capability::Abilities,
+        ];
+        if !delivers.into_iter().any(|capability| cx.has(capability)) {
             return;
         }
-        world.insert_resource(Deliveries::default());
-        world.insert_resource(Deliverers::default());
-        schedule.configure_sets(
+        cx.world.insert_resource(Deliveries::default());
+        cx.world.insert_resource(Deliverers::default());
+        cx.schedule.configure_sets(
             (DeliverySet::Fly, DeliverySet::Trigger)
                 .chain()
                 .in_set(SimSet::Hit)
                 .before(CombatSet::Pay),
         );
-        schedule.add_systems(
+        cx.schedule.add_systems(
             DeliveryHooks::deliver
                 .in_set(SimSet::Hit)
                 .after(DeliverySet::Trigger)

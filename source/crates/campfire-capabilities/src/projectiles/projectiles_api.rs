@@ -25,8 +25,7 @@ impl ProjectilesApi {
             &[&["from", "direction"], &["from", "unit"]],
             "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick",
         )
-        .roles(RoleSet::ACTION)
-        .capability(Capability::Projectiles);
+        .roles(RoleSet::ACTION);
         api.bind_for(
             projectile,
             |ctx: &mut Ctx, from: Position, direction: Vec3| {

@@ -1,3 +1,5 @@
+use std::any::TypeId;
+
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -53,6 +55,11 @@ impl MatchEntity {
 impl HostRule for MatchEntity {
     fn holds(world: &World, entity: Entity) -> bool {
         world.get::<MatchEntity>(entity).is_some()
+    }
+
+    fn kinds(kinds: &mut Vec<TypeId>) -> bool {
+        kinds.push(TypeId::of::<MatchEntity>());
+        true
     }
 }
 

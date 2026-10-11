@@ -8,7 +8,9 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_script::rhai::ImmutableString;
-use campfire_sim::{EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickRate};
+use campfire_sim::{
+    Capability, EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickRate,
+};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
@@ -16,10 +18,13 @@ use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::damage::DamageWeigher;
 use crate::combat::heal::HealWeigher;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
 use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
 use crate::mode::game_map::GameMap;
 use crate::mode::match_end::MatchEnd;
+use crate::mode::mode_api::ModeApi;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_call::ModeCall;
@@ -39,7 +44,6 @@ use crate::navigation::path_walker::PathWalker;
 use crate::orders::OrdersSet;
 use crate::players::match_entity::MatchEntity;
 use crate::players::player::Player;
-use crate::players::player_parts::PlayerParts;
 use crate::players::player_resources::PlayerResources;
 use crate::production::ProductionSet;
 use crate::progression::track_book::TrackBook;
@@ -49,7 +53,6 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::state_value::StateValue;
-use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
 use crate::units::delivery_entity::DeliveryEntity;
@@ -111,20 +114,29 @@ pub(crate) mod unit_type_setup;
 #[derive(Debug)]
 pub struct Mode;
 
-impl Mode {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<MatchEnd>();
-        types.component::<ModeState<SyncNone>>();
-        types.component::<ModeState<SyncAll>>();
-        types.resource::<Choices>();
-        types.component::<PlayerResources>();
-        types.component::<Player>();
-        types.resource::<Timers>();
-        types.resource::<UnansweredDeaths>();
-        types.resource::<UnansweredSlotEvents>();
-    }
+impl Declares for Mode {
+    const MODULE: Option<Capability> = Some(Capability::Mode);
 
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<MatchEnd>();
+        d.component::<ModeState<SyncNone>>();
+        d.component::<ModeState<SyncAll>>();
+        d.resource::<Choices>();
+        d.component::<PlayerResources>();
+        d.component::<Player>();
+        d.resource::<Timers>();
+        d.resource::<UnansweredDeaths>();
+        d.resource::<UnansweredSlotEvents>();
+        d.check::<Player>(Mode::players_seated);
+        d.player_part(|world| PlayerResources::new(world.non_send::<View>().resource_count()));
+        d.require::<MatchEntity, ModeState<SyncNone>>();
+        d.require::<MatchEntity, ModeState<SyncAll>>();
+        d.check::<UnitType>(Mode::kits_held);
+        d.api(ModeApi::register);
+    }
+}
+
+impl Mode {
     /// Adds the mode of `setup`, whose books the book builder built, to a match whose capabilities
     /// are installed and whose unit types, abilities and AI are loaded: in Inputs, the players'
     /// mode inputs run `on_mode_input`; in Mode, the tick's joins and leaves run `on_player_join`
@@ -132,10 +144,10 @@ impl Mode {
     /// the levels reached run `on_level_up`.
     /// The map's ground, paths and grid become the match's, and the mode's `[combat]` and
     /// `calc_damage` combat's.
-    pub fn install(
+    pub(crate) fn install(
         world: &mut World,
         schedule: &mut Schedule,
-        registry: &mut StateRegistry,
+        registry: &StateRegistry,
         setup: ModeSetup<'_>,
         mut books: ModeBooks,
     ) {
@@ -145,7 +157,6 @@ impl Mode {
         let loadout_ranks = books.loadout_ranks;
         // A window past what ticks can count covers the whole match.
         let assist_window = setup.data.combat.assist_window_ms.map(|ms| rate.window(ms));
-        let resource_count = books.resources.len();
         let ModeMap {
             ground,
             relations,
@@ -175,9 +186,6 @@ impl Mode {
         world.insert_resource(paths);
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
-        world.resource_mut::<PlayerParts>().add(move |player| {
-            player.insert(PlayerResources::new(resource_count));
-        });
         world.insert_resource(Timers::default());
         world.insert_resource(UnansweredDeaths::default());
         world.insert_resource(UnansweredSlotEvents::default());
@@ -223,12 +231,6 @@ impl Mode {
                 .in_set(SimSet::Mode)
                 .after(ProductionSet::Finish),
         ));
-        Self::state_types(registry);
-        registry.add_check::<Player>(Mode::players_seated);
-        registry.require::<Player, PlayerResources>();
-        registry.require::<MatchEntity, ModeState<SyncNone>>();
-        registry.require::<MatchEntity, ModeState<SyncAll>>();
-        registry.add_check::<UnitType>(Mode::kits_held);
     }
 
     /// The boundary the mode in `world` last asked for a save at, by `ctx.save()`, by the tick

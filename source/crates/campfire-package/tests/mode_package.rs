@@ -5,10 +5,10 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionDataField, ActionField, ActionKind, AiError, CapabilitySet, DeclaredName, EffectData,
-    EffectTo, Effecting, EngineEnum, EngineTag, HealFields, Hook, LaunchFields, MapProblem, Metric,
-    ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields, Scalar,
-    Status, SyncTo, TimeTooLarge, UnitKitError,
+    ActionDataField, ActionField, ActionKind, AiError, DeclaredName, EffectData, EffectTo,
+    Effecting, EngineEnum, EngineTag, HealFields, Hook, LaunchFields, MapProblem, Metric,
+    ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields,
+    Release, Scalar, Status, SyncTo, TimeTooLarge, UnitKitError,
 };
 use campfire_common::{MapName, Toml};
 use campfire_package::{
@@ -2868,7 +2868,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
 
     // The flaws hold each data field and tag property the release plans: `loot` and `noise` as
     // an action's effects, the others as fields.
-    let api = CapabilitySet::script_api();
+    let api = Release::script_api();
     let mut planned: Vec<_> = api
         .data()
         .iter()

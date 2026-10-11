@@ -3,11 +3,13 @@ use campfire_math::Num;
 use campfire_sim::TickRate;
 
 use crate::areas::area_data::AreaData;
+use crate::declare::per_type::PerType;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::error::TimeTooLarge;
+use campfire_sim::Capability;
 
 /// An area type as a match runs it: its radius, its delay and its duration in ticks, what it
 /// reaches, and the modifiers it holds inside.
@@ -63,4 +65,9 @@ impl Inside {
             .into_iter()
             .flatten()
     }
+}
+
+impl PerType for AreaSpec {
+    const OWNER: Option<Capability> = Some(Capability::Areas);
+    const SCRIPTS_ONLY: bool = false;
 }

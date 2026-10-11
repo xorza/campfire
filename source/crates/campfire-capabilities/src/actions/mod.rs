@@ -1,19 +1,20 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::world::World;
-use campfire_sim::{SimSet, StateRegistry};
+use campfire_sim::{Capability, SimSet};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::actions_api::ActionsApi;
 use crate::actions::actions_column::{ActionsColumn, RowParts};
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::holds::Holds;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::slot_times::SlotTimes;
-use crate::scripts::ctx::Ctx;
-use crate::state_types::StateTypes;
+use crate::declare::declarations::Declarations;
+use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
 use crate::stats::StatsSet;
-use crate::units::view::View;
+use crate::stats::param_book::ParamBook;
 
 pub(crate) mod action;
 pub(crate) mod action_book;
@@ -89,27 +90,26 @@ pub(crate) enum ActionsSet {
     HoldAtStrike,
 }
 
-impl Actions {
-    /// Lists the state types it adds (design 14, D9).
-    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
-        types.component::<ActionSlots>();
-        types.component::<SlotTimes>();
-    }
+impl Declares for Actions {
+    const MODULE: Option<Capability> = None;
 
-    /// Adds the actions to a match whose core is installed, with none loaded yet, and its column
-    /// to the script view.
-    pub(crate) fn install(world: &mut World, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>().clone();
-        view.add_column(ActionsColumn::default());
-        view.add_source::<RowParts, _>(world, ActionsColumn::fill_row);
-        world.insert_resource(ActionBook::default());
-        world.insert_resource(SlotKinds::default());
-        world.insert_resource(EffectQueues::default());
-        if world.contains_non_send::<Ctx>() {
-            world.insert_resource(EffectLists::default());
-        }
-        Self::state_types(registry);
-        registry.require::<ActionSlots, SlotTimes>();
+    fn declare<D: Declarations>(d: &mut D) {
+        d.component::<ActionSlots>();
+        d.component::<SlotTimes>();
+        d.require::<ActionSlots, SlotTimes>();
+        d.book::<ActionBook>();
+        d.book::<ParamBook>();
+        d.book::<EffectLists>();
+        d.column::<ActionsColumn, RowParts>(ActionsColumn::fill_row);
+        d.api(ActionsApi::register);
+    }
+}
+
+impl Actions {
+    /// Adds the actions to a match whose core is installed, with none loaded yet.
+    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        cx.world.insert_resource(SlotKinds::default());
+        cx.world.insert_resource(EffectQueues::default());
     }
 
     /// Adds to `schedule` the holds of every action: its charges as each tick starts, and its

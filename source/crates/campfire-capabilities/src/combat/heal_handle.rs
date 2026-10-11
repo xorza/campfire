@@ -1,5 +1,3 @@
-use campfire_sim::Capability;
-
 use crate::combat::heal::{Heal, HealCause};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_owner::ApiOwner;
@@ -20,9 +18,7 @@ impl HealHandle {
 
     /// The `Heal` handle's fields.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let field = |name, description| {
-            MemberSpec::field(ApiOwner::Heal, name, description).capability(Capability::Combat)
-        };
+        let field = |name, description| MemberSpec::field(ApiOwner::Heal, name, description);
         api.ty::<HealHandle>("Heal")
             .bind(
                 field("source", "the unit that gave it, `()` when gone or none"),

@@ -6,7 +6,7 @@ use super::*;
 use crate::actions::action_book;
 use crate::actions::launch_id::LaunchId;
 use crate::areas::area_data::{AreaData, AreaInside};
-use crate::capability_set::test_match::TestMatch;
+use crate::release::test_match::TestMatch;
 use crate::stats::Stats;
 use crate::stats::modifier_data::ModifierData;
 use crate::units::Units;

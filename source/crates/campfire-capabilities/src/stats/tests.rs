@@ -4,10 +4,10 @@ use std::slice;
 use bevy_ecs::entity::Entity;
 use campfire_common::{Tick, Toml};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, IdAllocator, Position, SimComponent, SimUpdate, Unpredicted};
+use campfire_sim::{IdAllocator, Position, SimComponent, SimUpdate, Unpredicted};
 
 use super::*;
-use crate::capability_set::test_match::TestMatch;
+use crate::release::test_match::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::application::{Application, NewInstance};

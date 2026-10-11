@@ -5,6 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
+use crate::declare::book::Book;
 use crate::scripts::error::ParamProblem;
 use crate::stats::live_param::{LiveParam, ParamOwner};
 use crate::stats::modifier_data::ModifierData;
@@ -19,6 +20,7 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::param::Param;
 use crate::values::rank::Rank;
 use crate::values::stat::Stat;
+use campfire_sim::Capability;
 
 /// The params of every action and every modifier of a match, one run each, by id: package data
 /// that the stat engine and the script frame both read, shared, never copied.
@@ -174,6 +176,11 @@ impl ParamTables {
     ) -> usize {
         self.modifiers.push(params, stat)
     }
+}
+
+impl Book for ParamBook {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(test)]

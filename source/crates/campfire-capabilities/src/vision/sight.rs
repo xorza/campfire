@@ -1,3 +1,4 @@
+use crate::declare::per_type::PerType;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
@@ -6,6 +7,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Num;
+use campfire_sim::Capability;
 use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -51,4 +53,9 @@ impl<'de> Deserialize<'de> for Sight {
         Sight::new(Num::deserialize(deserializer)?)
             .ok_or_else(|| D::Error::custom("a negative sight range"))
     }
+}
+
+impl PerType for Sight {
+    const OWNER: Option<Capability> = Some(Capability::Vision);
+    const SCRIPTS_ONLY: bool = false;
 }

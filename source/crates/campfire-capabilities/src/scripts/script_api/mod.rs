@@ -1,9 +1,9 @@
 use campfire_script::ScriptHost;
 use campfire_script::rhai::Engine;
+use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
-use crate::scripts::core_api::CoreApi;
 use crate::scripts::script_api::api_member::ApiMember;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::api_reference::ApiReference;
@@ -15,11 +15,7 @@ use crate::scripts::script_api::member_kind::MemberKind;
 use crate::scripts::script_api::member_spec::{MemberSpec, NameArgs};
 use crate::scripts::script_api::status::Status;
 use crate::scripts::script_api::tag_property_status::TagPropertyStatus;
-use crate::units::new_unit::NewUnit;
 use crate::units::tag_property::TagProperty;
-use crate::units::unit::Unit;
-use crate::units::units_api::UnitsApi;
-use crate::units::view::View;
 use crate::values::engine_enum::EngineEnum;
 use crate::values::name_list::NameList;
 
@@ -54,14 +50,14 @@ pub struct ScriptApi {
 }
 
 impl ScriptApi {
-    /// The script API of the release, with each capability's API `apis` registers, bound into
-    /// `host` as a match's engine binds it, and recorded with the names the engine has before.
+    /// The script API of the release, which `bind` binds into `host` as a match's engine binds
+    /// it, recorded with the names the engine has before.
     pub(crate) fn release(
         host: &mut ScriptHost,
-        apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>,
+        bind: impl FnOnce(&mut ApiBuilder<'_>),
     ) -> ScriptApi {
         let builtins = ScriptApi::functions(host.engine_mut());
-        let mut api = ScriptApi::bind(host, apis);
+        let mut api = ScriptApi::bind(host, bind);
         api.builtins = builtins;
         api
     }
@@ -75,12 +71,8 @@ impl ScriptApi {
         names.iter().map(String::as_str).collect()
     }
 
-    /// Binds the core's script API into `host`, then each capability's API `apis` registers,
-    /// and records it.
-    pub(crate) fn bind(
-        host: &mut ScriptHost,
-        apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>,
-    ) -> ScriptApi {
+    /// Binds into `host` the script API that `bind` binds, and records it.
+    pub(crate) fn bind(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> ScriptApi {
         let mut api = ScriptApi {
             members: Vec::new(),
             hooks: Vec::new(),
@@ -89,15 +81,7 @@ impl ScriptApi {
             enums: Vec::new(),
             builtins: NameList::default(),
         };
-        let mut builder = ApiBuilder::new(host, &mut api);
-        CoreApi::register(&mut builder);
-        Unit::register(&mut builder);
-        NewUnit::register(&mut builder);
-        UnitsApi::register(&mut builder);
-        View::register_queries(&mut builder);
-        for register in apis {
-            register(&mut builder);
-        }
+        bind(&mut ApiBuilder::new(host, &mut api));
         api
     }
 
@@ -176,19 +160,26 @@ impl ScriptApi {
         table: DataTable,
         runs: &[&'static str],
         planned: &[&'static str],
+        capability: Option<Capability>,
     ) {
         for (names, status) in [
             (runs, Status::Runs(ApiVersion::FIRST)),
             (planned, Status::Planned),
         ] {
             for &name in names {
-                self.record_field(table, name, status);
+                self.record_field(table, name, status, capability);
             }
         }
     }
 
     /// Records the field `name` of `table`, of `status`.
-    pub(crate) fn record_field(&mut self, table: DataTable, name: &'static str, status: Status) {
+    pub(crate) fn record_field(
+        &mut self,
+        table: DataTable,
+        name: &'static str,
+        status: Status,
+        capability: Option<Capability>,
+    ) {
         assert!(
             self.data
                 .iter()
@@ -199,7 +190,18 @@ impl ScriptApi {
             table,
             name,
             status,
+            capability,
         });
+    }
+
+    /// The capability that reads the field `name` of `table`, which the API records; none for
+    /// the core's.
+    pub fn data_owner(&self, table: DataTable, name: &str) -> Option<Capability> {
+        self.data
+            .iter()
+            .find(|held| (held.table, held.name) == (table, name))
+            .unwrap_or_else(|| panic!("{table:?}.{name} is recorded"))
+            .capability
     }
 
     /// The member `name` of `owner`.

@@ -4,10 +4,12 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
+use crate::declare::book::Book;
 use crate::progression::track_data::TrackData;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
 use crate::values::declared_name::DeclaredName;
+use campfire_sim::Capability;
 
 /// The tracks a match loaded, by id, each with the experience of its levels. Package data, not
 /// state: a restore loads it from the packages, as a new match does. A clone shares the tracks,
@@ -100,4 +102,9 @@ impl Default for TrackBook {
     fn default() -> TrackBook {
         TrackBook::new(&BTreeMap::new())
     }
+}
+
+impl Book for TrackBook {
+    const OWNER: Option<Capability> = Some(Capability::Progression);
+    const SCRIPTS_ONLY: bool = false;
 }

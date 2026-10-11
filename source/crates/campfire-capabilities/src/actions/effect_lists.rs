@@ -19,6 +19,7 @@ use crate::actions::effect_names::EffectNames;
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::launch_id::LaunchId;
 use crate::actions::lists_of::ListsOf;
+use crate::declare::book::Book;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
@@ -26,6 +27,7 @@ use crate::stats::stats_effect::StatsEffect;
 use crate::units::action_id::ActionId;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::view::View;
+use campfire_sim::Capability;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, by
 /// action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`, and by launch id
@@ -279,6 +281,11 @@ impl EffectLists {
 /// A position in the buffer, which a match's data keeps within `u32`.
 fn position(len: usize) -> u32 {
     u32::try_from(len).expect("a match's effects fit u32")
+}
+
+impl Book for EffectLists {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = true;
 }
 
 #[cfg(test)]
