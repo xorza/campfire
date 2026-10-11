@@ -103,8 +103,22 @@ impl EndpointState {
             .min()
     }
 
+    /// The thread's work under the mutex for one read: each datagram to the endpoint, then each
+    /// connection served (design 15, D3).
+    pub(crate) fn pass(
+        &mut self,
+        now: Instant,
+        datagrams: impl Iterator<Item = Datagram>,
+        outbox: &mut Outbox,
+    ) {
+        for datagram in datagrams {
+            self.take(now, datagram, outbox);
+        }
+        self.serve(now, outbox);
+    }
+
     /// Gives a datagram of the socket to the endpoint, and what it makes of it to its connection.
-    pub(crate) fn take(&mut self, now: Instant, datagram: Datagram, outbox: &mut Outbox) {
+    fn take(&mut self, now: Instant, datagram: Datagram, outbox: &mut Outbox) {
         self.scratch.clear();
         match self.endpoint.handle(
             now,
@@ -198,7 +212,7 @@ impl EndpointState {
     /// datagrams cannot carry `LINK_MIN_MTU` once its handshake completed is closed in the pass
     /// that finds it, so every connection the frame sees between two passes carries its link
     /// (D5). A drained connection leaves the table.
-    pub(crate) fn serve(&mut self, now: Instant, outbox: &mut Outbox) {
+    fn serve(&mut self, now: Instant, outbox: &mut Outbox) {
         let EndpointState {
             endpoint,
             peers,
@@ -317,10 +331,28 @@ impl EndpointState {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use super::*;
+    #[cfg(test)]
+    use bevy_ecs::entity::Entity;
 
+    use crate::endpoint_state::EndpointState;
+
+    #[cfg(feature = "internals")]
+    impl EndpointState {
+        /// Drops the datagrams each connection received, linked or not: how many.
+        pub(crate) fn take_datagrams(&mut self) -> usize {
+            let mut taken = 0;
+            for peer in self.peers.iter_mut().flatten() {
+                while peer.connection.datagrams().recv().is_some() {
+                    taken += 1;
+                }
+            }
+            taken
+        }
+    }
+
+    #[cfg(test)]
     impl EndpointState {
         pub(crate) const fn retries(&self) -> usize {
             self.retries

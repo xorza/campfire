@@ -11,25 +11,40 @@ fn read(path: &str) -> String {
 }
 
 #[test]
-fn the_crate_depends_on_its_values_crates_and_the_codecs_alone() {
+fn the_crate_depends_on_its_values_crates_the_codecs_and_the_audit_alone() {
     // Read by hand, as the crate has no TOML parser. Only the listed sections may appear, so
     // a dependency in any other form, such as `[dependencies.name]`, a target's section or
     // a dotted key before the first section, fails the test instead of passing it unseen.
     let manifest = read(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
     let mut section = "";
     let mut names = Vec::new();
+    let mut optional = Vec::new();
+    let mut features = Vec::new();
     for line in manifest.lines().map(str::trim) {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         if let Some(header) = line.strip_prefix('[') {
             section = header.strip_suffix(']').unwrap();
-            let known = ["package", "dependencies", "dev-dependencies", "lints"];
+            let known = [
+                "package",
+                "features",
+                "dependencies",
+                "dev-dependencies",
+                "[test]",
+                "lints",
+            ];
             assert!(known.contains(&section), "section [{section}]");
         } else {
             assert!(!section.is_empty(), "{line:?} before the first section");
             if section == "dependencies" {
-                names.push(line.split(['.', ' ', '=']).next().unwrap());
+                let name = line.split(['.', ' ', '=']).next().unwrap();
+                names.push(name);
+                if line.contains("optional = true") {
+                    optional.push(name);
+                }
+            } else if section == "features" {
+                features.push(line);
             }
         }
     }
@@ -37,6 +52,7 @@ fn the_crate_depends_on_its_values_crates_and_the_codecs_alone() {
         names,
         [
             "arrayvec",
+            "backtrace",
             "derive_more",
             "postcard",
             "serde",
@@ -45,6 +61,9 @@ fn the_crate_depends_on_its_values_crates_and_the_codecs_alone() {
             "toml"
         ]
     );
+    // The allocation audit's, which only a test build turns on.
+    assert_eq!(optional, ["backtrace"]);
+    assert_eq!(features, [r#"internals = ["dep:backtrace"]"#]);
 }
 
 #[test]

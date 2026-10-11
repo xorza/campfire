@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+internals = []
+
 [dependencies]
 campfire-common.workspace = true
 campfire-log.workspace = true
@@ -24,9 +27,15 @@ tracing.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+campfire-common = { workspace = true, features = ["internals"] }
 bevy_state.workspace = true
 bevy_time.workspace = true
 lightyear_serde.workspace = true
+
+[[test]]
+name = "alloc"
+path = "tests/alloc/main.rs"
+required-features = ["internals"]
 
 [lints]
 workspace = true

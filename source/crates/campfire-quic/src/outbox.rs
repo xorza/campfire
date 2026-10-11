@@ -71,3 +71,27 @@ impl Outbox {
         }
     }
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::net::SocketAddr;
+
+    use crate::outbox::Outbox;
+
+    impl Outbox {
+        /// Empties the outbox into `deliver`, one transmit at a time, as the socket would send
+        /// it: its destination, its bytes, and the length of its datagrams, which GSO splits it
+        /// into.
+        pub(crate) fn drain(&mut self, mut deliver: impl FnMut(SocketAddr, &[u8], usize)) {
+            for send in self.sends.drain(..) {
+                let bytes = &self.bytes[send.bytes];
+                deliver(
+                    send.destination,
+                    bytes,
+                    send.segment_size.unwrap_or(bytes.len()),
+                );
+            }
+            self.bytes.clear();
+        }
+    }
+}

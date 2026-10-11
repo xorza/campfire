@@ -30,7 +30,10 @@ pub(crate) struct Datagram {
 impl RecvBatch {
     /// A batch for `port`, whose datagrams are at most `max_payload` bytes.
     pub(crate) fn new(port: &UdpPort, max_payload: usize) -> RecvBatch {
-        let slot = max_payload * port.gro_segments();
+        RecvBatch::with_slot(max_payload * port.gro_segments())
+    }
+
+    fn with_slot(slot: usize) -> RecvBatch {
         RecvBatch {
             buffer: vec![0; slot * BATCH_SIZE].into_boxed_slice(),
             meta: [RecvMeta::default(); BATCH_SIZE],
@@ -71,6 +74,39 @@ impl RecvBatch {
             quinn_udp::EcnCodepoint::Ect0 => EcnCodepoint::Ect0,
             quinn_udp::EcnCodepoint::Ect1 => EcnCodepoint::Ect1,
             quinn_udp::EcnCodepoint::Ce => EcnCodepoint::Ce,
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::net::SocketAddr;
+
+    use crate::recv_batch::RecvBatch;
+
+    impl RecvBatch {
+        /// A batch that reads no socket, for a fixture that fills it, each slot `slot` bytes.
+        pub(crate) fn detached(slot: usize) -> RecvBatch {
+            RecvBatch::with_slot(slot)
+        }
+
+        /// Fills slot `index` as a read does: `bytes` from `remote`, datagrams of `stride` bytes
+        /// that GRO joined, the last one shorter at times.
+        pub(crate) fn load(
+            &mut self,
+            index: usize,
+            remote: SocketAddr,
+            bytes: &[u8],
+            stride: usize,
+        ) {
+            self.buffer[index * self.slot..(index + 1) * self.slot][..bytes.len()]
+                .copy_from_slice(bytes);
+            let meta = &mut self.meta[index];
+            meta.addr = remote;
+            meta.len = bytes.len();
+            meta.stride = stride;
+            meta.ecn = None;
+            meta.dst_ip = None;
         }
     }
 }

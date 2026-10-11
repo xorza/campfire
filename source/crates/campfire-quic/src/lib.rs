@@ -48,3 +48,8 @@ const CID_LEN: usize = 8;
 /// connection id and a packet number of at most 4 bytes, an AEAD tag of 16, and the frame's type
 /// and largest length varint (design 15, D5).
 pub const LINK_MIN_MTU: usize = 1200 - (1 + CID_LEN + 4 + 16) - (1 + 8);
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::quic_endpoint::thread_fixture::ThreadFixture;
+}

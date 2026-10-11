@@ -389,5 +389,8 @@ pub(crate) mod internals {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod thread_fixture;
+
 #[cfg(test)]
 mod tests;

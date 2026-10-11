@@ -56,10 +56,7 @@ impl IoThread {
             let now = Instant::now();
             let closing = {
                 let mut state = self.shared.lock();
-                for datagram in self.batch.datagrams(filled) {
-                    state.take(now, datagram, &mut self.outbox);
-                }
-                state.serve(now, &mut self.outbox);
+                state.pass(now, self.batch.datagrams(filled), &mut self.outbox);
                 state.closing()
             };
             self.outbox.send(self.shared.port());

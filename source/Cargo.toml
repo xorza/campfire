@@ -26,6 +26,7 @@ campfire-store = { path = "crates/campfire-store" }
 campfire-verifier = { path = "crates/campfire-verifier" }
 
 arrayvec = { version = "=0.7.8", default-features = false }
+backtrace = "=0.3.76"
 bevy = { version = "=0.19.1", default-features = false, features = [
     "std",
     "multi_threaded",
