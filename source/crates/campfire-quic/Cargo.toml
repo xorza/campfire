@@ -1,0 +1,30 @@
+[package]
+name = "campfire-quic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+campfire-log.workspace = true
+campfire-store.workspace = true
+
+bevy_app.workspace = true
+bevy_ecs.workspace = true
+bytes.workspace = true
+lightyear.workspace = true
+polling.workspace = true
+quinn-proto.workspace = true
+quinn-udp.workspace = true
+ring.workspace = true
+rustls.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+bevy_state.workspace = true
+bevy_time.workspace = true
+lightyear_serde.workspace = true
+
+[lints]
+workspace = true

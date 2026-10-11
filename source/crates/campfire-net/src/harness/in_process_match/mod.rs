@@ -22,12 +22,13 @@ use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{CertificateHash, SeedChain, ServerInput, SessionPrivate};
+use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{
-    Connect, Connected, Link, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
+    Connect, Connected, Link, LinkMtu, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
     PredictionManager, PredictionMetrics, RollbackMode, SyncSystems, Unlink, UnlinkReason,
 };
 use lightyear::transport::plugin::TransportSystems;
@@ -388,7 +389,7 @@ impl InProcessMatch {
                 LinkOf {
                     server: self.server_entity,
                 },
-                Link::default(),
+                Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
                 PeerAddr(address),
                 Linked,
                 server_io,

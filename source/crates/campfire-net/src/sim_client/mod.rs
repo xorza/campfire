@@ -17,6 +17,7 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{PlayerInput, SignedReceipt};
+use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
@@ -25,8 +26,8 @@ use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
 };
 use lightyear::prelude::{
-    Client, Connect, Disconnect, LocalTimeline, MessageReceiver, MessageSender, Predicted,
-    PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
+    Client, Connect, Disconnect, Link, LinkMtu, LocalTimeline, MessageReceiver, MessageSender,
+    Predicted, PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
     UnlinkReason, Unlinked, is_in_rollback,
 };
 use lightyear::webtransport::client::WebTransportClientPlugin;
@@ -153,9 +154,18 @@ impl PendingOrders {
 }
 
 impl SimClient {
-    /// Spawns the client's entity in `world`, which its link and its connect name.
+    /// Spawns the client's entity in `world`, which its link and its connect name. Its link takes
+    /// `LINK_MIN_MTU` now, as its transport fixes its fragment size at the spawn, before any IO
+    /// links it (design 15, D5).
     pub fn spawn_client(world: &mut World) -> Entity {
-        world.spawn((Client, RawClient, ReplicationReceiver)).id()
+        world
+            .spawn((
+                Client,
+                RawClient,
+                ReplicationReceiver,
+                Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
+            ))
+            .id()
     }
 }
 

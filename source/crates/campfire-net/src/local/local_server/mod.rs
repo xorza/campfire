@@ -18,12 +18,13 @@ use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
+use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::InputRules;
 use campfire_sim::TickRate;
 use campfire_store::Worker;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
-use lightyear::prelude::{Link, LinkOf, Linked, PeerAddr};
+use lightyear::prelude::{Link, LinkMtu, LinkOf, Linked, PeerAddr};
 use lightyear::webtransport::server::WebTransportServerPlugin;
 use tracing::error;
 
@@ -363,7 +364,7 @@ impl Runs {
         let address = SocketAddr::from(([127, 0, 0, 1], 1));
         app.world_mut().spawn((
             LinkOf { server },
-            Link::default(),
+            Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
             PeerAddr(address),
             Linked,
             link,

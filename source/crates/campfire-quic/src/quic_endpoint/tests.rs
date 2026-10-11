@@ -1,0 +1,702 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
+use std::time::Duration;
+
+use bevy_app::{App, PluginGroup, TaskPoolPlugin, Update};
+use bevy_ecs::resource::Resource;
+use bevy_ecs::system::ResMut;
+use bevy_ecs::world::{Mut, World};
+use bevy_state::app::StatesPlugin;
+use bevy_time::TimePlugin;
+use bytes::BytesMut;
+use lightyear::link::{LinkStart, Unlink};
+use lightyear::prelude::client::{ClientPlugins, RawClient};
+use lightyear::prelude::server::{RawServer, ServerPlugins, Start};
+use lightyear::prelude::{
+    AppChannelExt, AppMessageExt, ChannelMode, ChannelSettings, Client, Connect, Connected,
+    MessageReceiver, MessageSender, NetworkDirection, PredictionManager, ReliableSettings,
+};
+use lightyear::transport::packet::fragment_size_for_min_mtu;
+use lightyear::webtransport::client::WebTransportClientPlugin;
+use lightyear::webtransport::server::WebTransportServerPlugin;
+use lightyear_serde::SerializationError;
+use lightyear_serde::reader::Reader;
+use lightyear_serde::registry::SerializeFns;
+use lightyear_serde::writer::Writer;
+use quinn_proto::{Connection, ConnectionError, DatagramEvent, Dir, Event, TransportErrorCode};
+
+use super::*;
+use crate::QuicPlugin;
+
+/// The longest a test waits for the network on loopback, inside a test's bound of 1 s.
+const PATIENCE: Duration = Duration::from_millis(800);
+/// TLS's `access_denied` alert, which QUIC carries as the crypto error 0x100 + 49 (RFC 9001 §4.8).
+const ACCESS_DENIED: u8 = 49;
+/// Times short enough that an idle timeout passes inside a test: 4 keep-alives to it.
+const SHORT: LinkTimes = LinkTimes {
+    keep_alive: Duration::from_millis(50),
+    idle_timeout: Duration::from_millis(200),
+};
+
+/// `len` bytes counting modulo 251, a prime, so no shift by a power of two, as a fragment put in
+/// the wrong place, leaves them the same.
+fn pattern(len: usize) -> Vec<u8> {
+    (0..len)
+        .map(|index| u8::try_from(index % 251).unwrap())
+        .collect()
+}
+
+fn server_key() -> ServerKey {
+    ServerKey::from_seed(&Zeroizing::new([7; 32]))
+}
+
+/// A server's app on loopback with its endpoint linked, which clients join.
+#[derive(Debug)]
+struct Loopback {
+    server: App,
+    endpoint: Entity,
+    address: SocketAddr,
+    key: ServerPublicKey,
+}
+
+/// A client's app and the entity of its link and endpoint.
+#[derive(Debug)]
+struct ClientApp {
+    app: App,
+    entity: Entity,
+}
+
+impl Loopback {
+    fn new(times: LinkTimes) -> Loopback {
+        let mut loopback = Loopback::bind(times);
+        loopback.start();
+        loopback
+    }
+
+    /// The server's endpoint, bound and not started.
+    fn bind(times: LinkTimes) -> Loopback {
+        let key = server_key();
+        let quic = QuicEndpoint::server(
+            SocketAddr::from(([127, 0, 0, 1], 0)),
+            &key,
+            ResetKey::new(&Zeroizing::new([9; 32])),
+            times,
+        )
+        .unwrap();
+        let address = quic.local_address();
+        let mut server = App::new();
+        server.add_plugins(QuicPlugin);
+        let endpoint = server.world_mut().spawn(quic).id();
+        Loopback {
+            server,
+            endpoint,
+            address,
+            key: key.public(),
+        }
+    }
+
+    fn start(&mut self) {
+        let entity = self.endpoint;
+        self.server.world_mut().trigger(LinkStart { entity });
+        self.server.update();
+    }
+
+    fn client(&self, times: LinkTimes) -> ClientApp {
+        ClientApp::start(QuicEndpoint::client(self.address, self.key, times).unwrap())
+    }
+
+    /// Updates the server and `clients` until `done`, a frame each millisecond: how long it took.
+    fn pump(
+        &mut self,
+        clients: &mut [&mut ClientApp],
+        done: impl Fn(&World, &[&mut ClientApp]) -> bool,
+    ) -> Duration {
+        let start = Instant::now();
+        loop {
+            self.server.update();
+            for client in clients.iter_mut() {
+                client.app.update();
+            }
+            if done(self.server.world(), clients) {
+                return start.elapsed();
+            }
+            assert!(start.elapsed() < PATIENCE, "the network did not answer");
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    /// Updates until `client` and the server are both linked: the server's link.
+    fn join(&mut self, client: &mut ClientApp) -> Entity {
+        self.pump(&mut [client], |server, clients| {
+            clients[0].is::<Linked>()
+                && server
+                    .iter_entities()
+                    .any(|link| link.contains::<LinkOf>() && link.contains::<Linked>())
+        });
+        Loopback::links(self.server.world_mut())[0]
+    }
+
+    /// The server's linked links.
+    fn links(world: &mut World) -> Vec<Entity> {
+        world
+            .query_filtered::<Entity, (With<LinkOf>, With<Linked>)>()
+            .iter(world)
+            .collect()
+    }
+
+    fn quic(&self) -> &QuicEndpoint {
+        self.server
+            .world()
+            .get::<QuicEndpoint>(self.endpoint)
+            .unwrap()
+    }
+}
+
+impl ClientApp {
+    fn start(quic: QuicEndpoint) -> ClientApp {
+        let mut app = App::new();
+        app.add_plugins(QuicPlugin);
+        let entity = app
+            .world_mut()
+            .spawn((Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)), quic))
+            .id();
+        app.world_mut().trigger(LinkStart { entity });
+        ClientApp { app, entity }
+    }
+
+    fn is<C: Component>(&self) -> bool {
+        self.app.world().get::<C>(self.entity).is_some()
+    }
+
+    fn link(&mut self) -> Mut<'_, Link> {
+        self.app.world_mut().get_mut::<Link>(self.entity).unwrap()
+    }
+
+    fn quic(&self) -> &QuicEndpoint {
+        self.app.world().get::<QuicEndpoint>(self.entity).unwrap()
+    }
+
+    /// Ends the link and opens a new one from the same socket.
+    fn restart(&mut self) {
+        let entity = self.entity;
+        self.app.world_mut().trigger(Unlink {
+            entity,
+            reason: UnlinkReason::UserRequested(None),
+        });
+        self.app.update();
+        self.app.world_mut().trigger(LinkStart { entity });
+    }
+}
+
+#[test]
+fn a_link_carries_datagrams_of_its_minimum_mtu_both_ways_at_once() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    let link = loopback.join(&mut client);
+    // The connection took one Retry before it was accepted (D8), and its entity names its peer (D9).
+    assert_eq!(loopback.quic().state().retries(), 1);
+    assert_eq!(
+        loopback.server.world().get::<RemoteId>(link),
+        Some(&RemoteId(PeerId::Entity(link.to_bits())))
+    );
+    // Neither end may open a stream: each gave the other a limit of none (D4).
+    for quic in [loopback.quic(), client.quic()] {
+        let mut state = quic.state();
+        let (_, peer) = state.linked().next().unwrap();
+        assert!(peer.connection.streams().open(Dir::Bi).is_none());
+        assert!(peer.connection.streams().open(Dir::Uni).is_none());
+    }
+
+    // Once the handshake's acknowledgments settle, no deadline falls before the keep-alive of 1 s,
+    // so a datagram that arrives well before it went out on the frame's wake (D3).
+    thread::sleep(Duration::from_millis(50));
+    loopback.pump(&mut [&mut client], |_, _| true);
+    let up = pattern(LINK_MIN_MTU);
+    client.link().send(Bytes::from(up.clone()));
+    let took = loopback.pump(&mut [&mut client], |server, _| {
+        server.get::<Link>(link).unwrap().recv.len() == 1
+    });
+    assert!(
+        took < Duration::from_millis(250),
+        "the thread waited {took:?}"
+    );
+    let mut server_link = loopback.server.world_mut().get_mut::<Link>(link).unwrap();
+    assert_eq!(server_link.recv.pop().unwrap(), BytesMut::from(&up[..]));
+    let down = vec![0xa5; LINK_MIN_MTU];
+    server_link.send(Bytes::from(down.clone()));
+    loopback.pump(&mut [&mut client], |_, clients| {
+        clients[0]
+            .app
+            .world()
+            .get::<Link>(clients[0].entity)
+            .unwrap()
+            .recv
+            .len()
+            == 1
+    });
+    assert_eq!(client.link().recv.pop().unwrap(), BytesMut::from(&down[..]));
+}
+
+/// Drives a handshake between a client whose connection ids are `client_cid` bytes long and a
+/// server, in memory, until the server's completes: before either end raised its MTU by discovery,
+/// as a probe goes out only once a handshake completed and counts once its acknowledgment returns.
+/// The client's connection, then the server's.
+fn handshake(client_cid: usize) -> (Connection, Connection) {
+    let key = server_key();
+    let now = Instant::now();
+    let mut server = Endpoint::new(
+        Arc::new(QuicEndpoint::endpoint_config(ResetKey::random(), CID_LEN)),
+        Some(Arc::new(QuicEndpoint::server_config(
+            &key,
+            LinkTimes::CAMPFIRE,
+        ))),
+        true,
+        None,
+    );
+    let mut client = Endpoint::new(
+        Arc::new(QuicEndpoint::endpoint_config(
+            ResetKey::random(),
+            client_cid,
+        )),
+        None,
+        true,
+        None,
+    );
+    let server_address = SocketAddr::from(([10, 0, 0, 1], 4433));
+    let client_address = SocketAddr::from(([10, 0, 0, 2], 50_000));
+    let config = QuicEndpoint::client_config(
+        PinnedKeyVerifier::new(key.public()).client_config(),
+        LinkTimes::CAMPFIRE,
+    );
+    let (_, mut client_connection) = client
+        .connect(now, config, server_address, "campfire")
+        .unwrap();
+    let mut server_connection: Option<Connection> = None;
+    let mut sent = Vec::new();
+    let mut response = Vec::new();
+    for _ in 0..8 {
+        loop {
+            sent.clear();
+            let Some(transmit) = client_connection.poll_transmit(now, 1, &mut sent) else {
+                break;
+            };
+            response.clear();
+            let datagram = BytesMut::from(&sent[..transmit.size]);
+            match server.handle(now, client_address, None, None, datagram, &mut response) {
+                Some(DatagramEvent::NewConnection(incoming))
+                    if incoming.remote_address_validated() =>
+                {
+                    let (_, connection) =
+                        server.accept(incoming, now, &mut response, None).unwrap();
+                    server_connection = Some(connection);
+                }
+                Some(DatagramEvent::NewConnection(incoming)) => {
+                    let retry = server.retry(incoming, &mut response).unwrap();
+                    let datagram = BytesMut::from(&response[..retry.size]);
+                    let mut ignored = Vec::new();
+                    if let Some(DatagramEvent::ConnectionEvent(_, event)) =
+                        client.handle(now, server_address, None, None, datagram, &mut ignored)
+                    {
+                        client_connection.handle_event(event);
+                    }
+                }
+                Some(DatagramEvent::ConnectionEvent(_, event)) => {
+                    server_connection.as_mut().unwrap().handle_event(event);
+                }
+                Some(DatagramEvent::Response(_)) | None => {}
+            }
+        }
+        if let Some(connection) = &mut server_connection {
+            while let Some(event) = connection.poll() {
+                if matches!(event, Event::Connected) {
+                    return (client_connection, server_connection.unwrap());
+                }
+            }
+            loop {
+                sent.clear();
+                let Some(transmit) = connection.poll_transmit(now, 1, &mut sent) else {
+                    break;
+                };
+                let datagram = BytesMut::from(&sent[..transmit.size]);
+                if let Some(DatagramEvent::ConnectionEvent(_, event)) =
+                    client.handle(now, server_address, None, None, datagram, &mut response)
+                {
+                    client_connection.handle_event(event);
+                }
+            }
+        }
+        while client_connection.poll().is_some() {}
+    }
+    panic!("the handshake did not complete");
+}
+
+#[test]
+fn the_link_minimum_is_quics_datagram_on_its_minimum_path() {
+    // Each end's largest datagram counts the ids the other end gives: 1200 − (1 + 8 + 4 + 16) − 9
+    // = 1162 with Campfire's 8 bytes, and 12 fewer, 1150, for a client that gives 20, QUIC's
+    // longest, which a server then cannot link (D5).
+    for (client_cid, server_max) in [(CID_LEN, LINK_MIN_MTU), (20, 1150)] {
+        let (mut client, mut server) = handshake(client_cid);
+        assert_eq!(client.datagrams().max_size(), Some(LINK_MIN_MTU));
+        assert_eq!(server.datagrams().max_size(), Some(server_max));
+    }
+}
+
+#[test]
+fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let config = QuicEndpoint::client_config(
+        PinnedKeyVerifier::new(loopback.key).client_config(),
+        LinkTimes::CAMPFIRE,
+    );
+    let mut client =
+        ClientApp::start(QuicEndpoint::client_of(loopback.address, config, 20).unwrap());
+    loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
+    assert!(Loopback::links(loopback.server.world_mut()).is_empty());
+    assert!(matches!(
+        client.quic().state().lost(),
+        [ConnectionError::ApplicationClosed(close)] if close.error_code == UNFIT
+    ));
+    // The client's handshake completed before the server closed it: it spawned no link either.
+    assert!(Loopback::links(client.app.world_mut()).is_empty());
+}
+
+#[test]
+fn a_server_takes_connections_only_while_started() {
+    let refused = |client: &ClientApp| {
+        matches!(
+            client.quic().state().lost().last(),
+            Some(ConnectionError::ConnectionClosed(close))
+                if close.error_code == TransportErrorCode::CONNECTION_REFUSED
+        )
+    };
+    // Bound, not started: a client is refused.
+    let mut loopback = Loopback::bind(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
+    assert!(refused(&client));
+    // Started: it links.
+    loopback.start();
+    client.restart();
+    loopback.join(&mut client);
+    // Ended: its links end, and a new client is refused.
+    let entity = loopback.endpoint;
+    loopback.server.world_mut().trigger(Unlink {
+        entity,
+        reason: UnlinkReason::ServerStopped,
+    });
+    let mut late = loopback.client(LinkTimes::CAMPFIRE);
+    loopback.pump(&mut [&mut client, &mut late], |_, clients| {
+        clients[0].is::<Unlinked>() && clients[1].is::<Unlinked>()
+    });
+    assert!(refused(&late));
+    assert!(Loopback::links(loopback.server.world_mut()).is_empty());
+}
+
+#[test]
+fn a_connection_lost_before_its_frame_is_never_linked() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    // The server's thread completes the handshake while its app runs no frame, then the
+    // connection closes before the frame that would link it.
+    let start = Instant::now();
+    while !client.is::<Linked>() {
+        assert!(start.elapsed() < PATIENCE, "the handshake did not complete");
+        client.app.update();
+        thread::sleep(Duration::from_millis(1));
+    }
+    loopback.quic().state().close_unlinked();
+    loopback.quic().shared.wake();
+    loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
+    assert!(Loopback::links(loopback.server.world_mut()).is_empty());
+}
+
+#[test]
+fn two_connections_from_one_socket_are_two_peers_and_each_takes_a_retry() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    loopback.join(&mut client);
+    // The client drops its connection with no close, as one that lost its state, and connects
+    // again from its socket while the server still holds the first.
+    client.quic().state().forget(client.entity);
+    client.restart();
+    loopback.pump(&mut [&mut client], |server, clients| {
+        clients[0].is::<Linked>()
+            && server
+                .iter_entities()
+                .filter(|link| link.contains::<LinkOf>() && link.contains::<Linked>())
+                .count()
+                == 2
+    });
+    let links = Loopback::links(loopback.server.world_mut());
+    let world = loopback.server.world();
+    let [first, second] = [links[0], links[1]].map(|link| world.get::<PeerAddr>(link).unwrap().0);
+    assert_eq!(first, second);
+    let [first, second] = [links[0], links[1]].map(|link| *world.get::<RemoteId>(link).unwrap());
+    assert_ne!(first, second);
+    assert_eq!(loopback.quic().state().retries(), 2);
+}
+
+#[test]
+fn a_wrong_pin_fails_by_access_denied_and_each_connect_checks_the_key() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let wrong = ServerKey::from_seed(&Zeroizing::new([8; 32])).public();
+    let mut impostor = ClientApp::start(
+        QuicEndpoint::client(loopback.address, wrong, LinkTimes::CAMPFIRE).unwrap(),
+    );
+    loopback.pump(&mut [&mut impostor], |_, clients| {
+        clients[0].is::<Unlinked>()
+    });
+    assert!(matches!(
+        impostor.quic().state().lost(),
+        [ConnectionError::TransportError(error)]
+            if error.code == TransportErrorCode::crypto(ACCESS_DENIED)
+    ));
+    // The server's handshake failed by the client's alert: it spawned no link.
+    loopback.pump(&mut [], |_, _| true);
+    assert!(Loopback::links(loopback.server.world_mut()).is_empty());
+
+    // With no session ticket, a second connect presents the key again, and the verifier reads it.
+    let checks = Arc::new(AtomicUsize::new(0));
+    let config = QuicEndpoint::client_config(
+        PinnedKeyVerifier::new(loopback.key).counting(&checks),
+        LinkTimes::CAMPFIRE,
+    );
+    let mut client =
+        ClientApp::start(QuicEndpoint::client_of(loopback.address, config, CID_LEN).unwrap());
+    loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Linked>());
+    client.restart();
+    loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Linked>());
+    assert_eq!(checks.load(Ordering::Relaxed), 2);
+}
+
+#[test]
+fn each_end_of_a_link_ends_the_others_at_once() {
+    // Each end below reaches the other inside a test's second, where the idle timeout is 5 s: by
+    // the close the ending side sends (D10). The ends: the client unlinks, the server despawns
+    // its link, the server ends, the client's endpoint drops.
+    let ends: [fn(&mut Loopback, &mut ClientApp); 4] = [
+        |_, client| {
+            let entity = client.entity;
+            client.app.world_mut().trigger(Unlink {
+                entity,
+                reason: UnlinkReason::UserRequested(None),
+            });
+        },
+        |loopback, _| {
+            let link = Loopback::links(loopback.server.world_mut())[0];
+            loopback.server.world_mut().despawn(link);
+        },
+        |loopback, _| {
+            let entity = loopback.endpoint;
+            loopback.server.world_mut().trigger(Unlink {
+                entity,
+                reason: UnlinkReason::ServerStopped,
+            });
+        },
+        |_, client| {
+            client
+                .app
+                .world_mut()
+                .entity_mut(client.entity)
+                .remove::<QuicEndpoint>();
+        },
+    ];
+    for end in ends {
+        let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+        let mut client = loopback.client(LinkTimes::CAMPFIRE);
+        let link = loopback.join(&mut client);
+        end(&mut loopback, &mut client);
+        loopback.pump(&mut [&mut client], |server, clients| {
+            let server_ended =
+                server.get_entity(link).is_err() || server.get::<Unlinked>(link).is_some();
+            let client_ended = clients[0].is::<Unlinked>() || !clients[0].is::<QuicEndpoint>();
+            server_ended && client_ended
+        });
+    }
+}
+
+#[test]
+fn a_silent_peer_is_lost_by_the_idle_timeout_and_a_stalled_app_is_not() {
+    let mut loopback = Loopback::new(SHORT);
+    let mut client = loopback.client(SHORT);
+    let link = loopback.join(&mut client);
+    // Neither app runs a frame for twice the idle timeout; their threads keep the link (D3).
+    thread::sleep(SHORT.idle_timeout * 2);
+    client.link().send(Bytes::from_static(b"after the stall"));
+    loopback.pump(&mut [&mut client], |server, _| {
+        server.get::<Link>(link).unwrap().recv.len() == 1
+    });
+    assert!(client.is::<Linked>());
+
+    // A client that drops its connection sends nothing more: the server loses it by the idle
+    // timeout, and not before its last keep-alive's.
+    client.quic().state().forget(client.entity);
+    let took = loopback.pump(&mut [], |server, _| server.get::<Unlinked>(link).is_some());
+    assert!(
+        took >= SHORT.idle_timeout.checked_sub(SHORT.keep_alive).unwrap(),
+        "lost after {took:?}"
+    );
+    assert!(matches!(
+        loopback.quic().state().lost(),
+        [ConnectionError::TimedOut]
+    ));
+}
+
+/// The bytes of one message a test's link carries, behind their length.
+#[derive(Debug, PartialEq, Eq)]
+struct Blob(Vec<u8>);
+
+#[derive(Debug)]
+struct BlobChannel;
+
+/// The blobs the server's links received, which Lightyear would clear at the frame's end.
+#[derive(Resource, Debug, Default)]
+struct Received(Vec<Blob>);
+
+impl Blob {
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "Lightyear's function type returns a Result"
+    )]
+    fn write(blob: &Blob, writer: &mut Writer) -> Result<(), SerializationError> {
+        let len = u32::try_from(blob.0.len()).unwrap();
+        writer.extend_from_slice(&len.to_le_bytes());
+        writer.extend_from_slice(&blob.0);
+        Ok(())
+    }
+
+    fn read(reader: &mut Reader) -> Result<Blob, SerializationError> {
+        let (len, rest) = reader
+            .remaining_slice()
+            .split_first_chunk::<4>()
+            .ok_or(SerializationError::InvalidValue)?;
+        let len = usize::try_from(u32::from_le_bytes(*len)).unwrap();
+        let blob = Blob(
+            rest.get(..len)
+                .ok_or(SerializationError::InvalidValue)?
+                .to_vec(),
+        );
+        reader.set_position(reader.position() + 4 + u64::try_from(len).unwrap());
+        Ok(blob)
+    }
+
+    fn register(app: &mut App) {
+        app.add_channel::<BlobChannel>(ChannelSettings {
+            mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
+            ..ChannelSettings::default()
+        })
+        .add_direction(NetworkDirection::ClientToServer);
+        app.register_message_custom_serde::<Blob>(SerializeFns {
+            serialize: Blob::write,
+            deserialize: Blob::read,
+        })
+        .add_direction(NetworkDirection::ClientToServer);
+    }
+
+    fn receive(
+        mut links: Query<'_, '_, &mut MessageReceiver<Blob>>,
+        mut received: ResMut<'_, Received>,
+    ) {
+        for mut link in &mut links {
+            received.0.extend(link.receive());
+        }
+    }
+}
+
+#[test]
+fn a_message_of_three_fragments_crosses_lightyear_whole() {
+    let tick = Duration::from_millis(16);
+    let key = server_key();
+    let quic = QuicEndpoint::server(
+        SocketAddr::from(([127, 0, 0, 1], 0)),
+        &key,
+        ResetKey::new(&Zeroizing::new([9; 32])),
+        LinkTimes::CAMPFIRE,
+    )
+    .unwrap();
+    let address = quic.local_address();
+    let mut server = App::new();
+    server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+    server.add_plugins(
+        ServerPlugins {
+            tick_duration: tick,
+        }
+        .build()
+        .disable::<WebTransportServerPlugin>(),
+    );
+    server.add_plugins(QuicPlugin);
+    Blob::register(&mut server);
+    server.init_resource::<Received>();
+    server.add_systems(Update, Blob::receive);
+    server.finish();
+    server.cleanup();
+    let endpoint = server.world_mut().spawn((RawServer, quic)).id();
+    server.world_mut().trigger(Start { entity: endpoint });
+
+    let mut client = App::new();
+    client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+    client.add_plugins(
+        ClientPlugins {
+            tick_duration: tick,
+        }
+        .build()
+        .disable::<WebTransportClientPlugin>(),
+    );
+    client.add_plugins(QuicPlugin);
+    client.insert_resource(PredictionManager::default());
+    Blob::register(&mut client);
+    client.finish();
+    client.cleanup();
+    let quic = QuicEndpoint::client(address, key.public(), LinkTimes::CAMPFIRE).unwrap();
+    let entity = client
+        .world_mut()
+        .spawn((
+            Client,
+            RawClient,
+            Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
+            quic,
+        ))
+        .id();
+    client.world_mut().trigger(Connect { entity });
+
+    let start = Instant::now();
+    let link = loop {
+        server.update();
+        client.update();
+        let mut links = server
+            .world_mut()
+            .query_filtered::<Entity, (With<LinkOf>, With<Connected>)>();
+        if let Some(link) = links.iter(server.world()).next()
+            && client.world().get::<Connected>(entity).is_some()
+        {
+            break link;
+        }
+        assert!(start.elapsed() < PATIENCE, "the link did not connect");
+        thread::sleep(Duration::from_millis(1));
+    };
+    // Lightyear's raw server kept the peer id the IO gave the link (D9).
+    assert_eq!(
+        server.world().get::<RemoteId>(link),
+        Some(&RemoteId(PeerId::Entity(link.to_bits())))
+    );
+    // One byte past two fragments of the link's minimum MTU: three fragments.
+    let fragment = fragment_size_for_min_mtu(LINK_MIN_MTU).unwrap();
+    let message = pattern(2 * fragment + 1);
+    client
+        .world_mut()
+        .get_mut::<MessageSender<Blob>>(entity)
+        .unwrap()
+        .send::<BlobChannel>(Blob(message.clone()));
+    let start = Instant::now();
+    let received = loop {
+        server.update();
+        client.update();
+        if let Some(received) = server.world_mut().resource_mut::<Received>().0.pop() {
+            break received;
+        }
+        assert!(start.elapsed() < PATIENCE, "the message did not arrive");
+        thread::sleep(Duration::from_millis(1));
+    };
+    assert_eq!(received, Blob(message));
+}
