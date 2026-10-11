@@ -66,7 +66,8 @@ impl NearestRoot for u128 {
     reason = "the f64 root is only an estimate; the integer steps fix the result exactly"
 )]
 fn narrow_root(value: u64) -> u64 {
-    let mut root = (value as f64).sqrt() as u64;
+    // The root is below 2³² + 1, which the signed cast takes in one instruction on x86-64.
+    let mut root = (value as f64).sqrt() as i64 as u64;
     // A root of 2³² squares past `u64`, which `checked_mul` counts as above the value.
     while root.checked_mul(root).is_none_or(|square| square > value) {
         root -= 1;
