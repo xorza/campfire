@@ -6,7 +6,6 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query};
-use bytes::Bytes;
 use campfire_common::{ChannelBinding, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_store::Worker;
@@ -21,31 +20,28 @@ use quinn_proto::crypto::HandshakeTokenKey;
 use quinn_proto::crypto::rustls::QuicClientConfig;
 use quinn_proto::{
     ClientConfig, Endpoint, EndpointConfig, RandomConnectionIdGenerator, SendDatagramError,
-    ServerConfig,
+    ServerConfig, ValidationTokenConfig,
 };
 use ring::hkdf;
 use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{trace, warn};
 use zeroize::Zeroizing;
 
-use crate::LINK_MIN_MTU;
 use crate::app_code::AppCode;
-use crate::endpoint_state::{EndpointState, News, Peer};
+use crate::endpoint_state::{EndpointState, News};
 use crate::error::BindError;
 use crate::io_thread::IoThread;
 use crate::link_binding::LinkBinding;
 use crate::link_end::LinkEnd;
 use crate::link_times::LinkTimes;
+use crate::peer::Peer;
 use crate::pinned_key_verifier::PinnedKeyVerifier;
 use crate::quic_link::QuicLink;
 use crate::reset_key::ResetKey;
 use crate::server_key::ServerKey;
 use crate::shared_endpoint::SharedEndpoint;
 use crate::udp_port::UdpPort;
-
-/// The length of every connection id Campfire's endpoints give, which `LINK_MIN_MTU` counts
-/// (design 15, D5).
-const CID_LEN: usize = 8;
+use crate::{CID_LEN, LINK_MIN_MTU};
 
 /// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the
 /// thread that drives them (design 15, D3, D9). A `LinkStart` opens it: a server takes
@@ -128,9 +124,14 @@ impl QuicEndpoint {
         )
     }
 
+    /// The server's QUIC: a Retry for each new address and no `NEW_TOKEN`, which `quinn-proto`
+    /// sends by default with its `bloom` feature (D8).
     fn server_config(key: &ServerKey, times: LinkTimes) -> ServerConfig {
         let mut config = ServerConfig::new(key.server_config(), QuicEndpoint::token_key());
         config.transport_config(Arc::new(times.transport()));
+        let mut tokens = ValidationTokenConfig::default();
+        tokens.sent(0);
+        config.validation_token_config(tokens);
         config
     }
 
@@ -219,9 +220,9 @@ impl QuicEndpoint {
             .lock()
             .connect(Instant::now(), config.clone(), *server, entity);
         match connected {
-            Ok((handle, id)) => {
+            Ok(key) => {
                 commands.entity(entity).insert((
-                    QuicLink::new(Arc::downgrade(&self.shared), handle, id),
+                    QuicLink::new(Arc::downgrade(&self.shared), key),
                     LocalAddr(self.local),
                     PeerAddr(*server),
                     Linking,
@@ -258,12 +259,8 @@ impl QuicEndpoint {
         state.take_news(news);
         for item in news.drain(..) {
             match item {
-                News::Connected {
-                    handle,
-                    id,
-                    max_size,
-                } => {
-                    let Some(peer) = state.peer(handle, id) else {
+                News::Connected { key, max_size } => {
+                    let Some(peer) = state.peer(key) else {
                         continue;
                     };
                     let fit = max_size.is_some_and(|max| max >= LINK_MIN_MTU);
@@ -280,7 +277,7 @@ impl QuicEndpoint {
                 continue;
             };
             let Some(max) = QuicEndpoint::fit(peer) else {
-                peer.close(now, entity, AppCode::UNFIT);
+                peer.close(now, AppCode::UNFIT);
                 QuicEndpoint::unlink(entity, LinkEnd::Unfit, commands);
                 closed = true;
                 continue;
@@ -319,12 +316,9 @@ impl QuicEndpoint {
         }
         if !fit {
             if let Some(client) = peer.entity() {
-                peer.close(now, client, AppCode::UNFIT);
                 QuicEndpoint::unlink(client, LinkEnd::Unfit, commands);
-            } else {
-                peer.connection
-                    .close(now, AppCode::UNFIT.varint(), Bytes::new());
             }
+            peer.close(now, AppCode::UNFIT);
             return true;
         }
         let remote = peer.remote();
@@ -346,7 +340,7 @@ impl QuicEndpoint {
                         Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
                         PeerAddr(remote),
                         binding,
-                        QuicLink::new(Arc::downgrade(&self.shared), peer.handle(), peer.id()),
+                        QuicLink::new(Arc::downgrade(&self.shared), peer.key()),
                     ))
                     .id();
                 commands

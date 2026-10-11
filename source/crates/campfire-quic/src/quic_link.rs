@@ -2,12 +2,11 @@ use std::sync::Weak;
 use std::time::Instant;
 
 use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::DeferredWorld;
-use quinn_proto::ConnectionHandle;
 
 use crate::app_code::AppCode;
+use crate::peer::PeerKey;
 use crate::shared_endpoint::SharedEndpoint;
 
 /// The connection a link's entity carries: a `LinkOf` of a server, or a client's entity (design
@@ -18,31 +17,21 @@ use crate::shared_endpoint::SharedEndpoint;
 #[component(on_discard = QuicLink::on_discard)]
 pub(crate) struct QuicLink {
     endpoint: Weak<SharedEndpoint>,
-    handle: ConnectionHandle,
-    id: u64,
+    key: PeerKey,
 }
 
 impl QuicLink {
-    pub(crate) const fn new(
-        endpoint: Weak<SharedEndpoint>,
-        handle: ConnectionHandle,
-        id: u64,
-    ) -> QuicLink {
-        QuicLink {
-            endpoint,
-            handle,
-            id,
-        }
+    pub(crate) const fn new(endpoint: Weak<SharedEndpoint>, key: PeerKey) -> QuicLink {
+        QuicLink { endpoint, key }
     }
 
-    /// Closes the connection, which the link entity `entity` carries, with `code`, if it still
-    /// does.
-    pub(crate) fn close(&self, entity: Entity, code: AppCode) {
+    /// Closes the connection with `code`, while its endpoint holds it.
+    pub(crate) fn close(&self, code: AppCode) {
         let Some(endpoint) = self.endpoint.upgrade() else {
             return;
         };
-        if let Some(peer) = endpoint.lock().peer(self.handle, self.id) {
-            peer.close(Instant::now(), entity, code);
+        if let Some(peer) = endpoint.lock().peer(self.key) {
+            peer.close(Instant::now(), code);
         }
         endpoint.wake();
     }
@@ -51,6 +40,6 @@ impl QuicLink {
         world
             .get::<QuicLink>(context.entity)
             .expect("a hook of QuicLink runs on an entity that holds one")
-            .close(context.entity, AppCode::ENDED);
+            .close(AppCode::ENDED);
     }
 }

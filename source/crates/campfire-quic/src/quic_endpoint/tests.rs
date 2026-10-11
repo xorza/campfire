@@ -1,4 +1,5 @@
 use std::io::ErrorKind;
+use std::net::UdpSocket;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
@@ -9,7 +10,7 @@ use bevy_ecs::system::ResMut;
 use bevy_ecs::world::{Mut, World};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use lightyear::link::{LinkStart, Unlink};
 use lightyear::prelude::client::{ClientPlugins, RawClient};
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start};
@@ -194,6 +195,10 @@ impl ClientApp {
 #[test]
 fn a_link_carries_datagrams_of_its_minimum_mtu_both_ways_at_once() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    // An empty UDP datagram, which any host may send, is no QUIC packet, and the server's thread
+    // reads past it.
+    let stranger = UdpSocket::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
+    stranger.send_to(&[], loopback.address).unwrap();
     let mut client = loopback.client(LinkTimes::CAMPFIRE);
     let link = loopback.join(&mut client);
     // The server presents the key its secret derives, and the client pinned that key (D6).
@@ -248,6 +253,11 @@ fn a_link_carries_datagrams_of_its_minimum_mtu_both_ways_at_once() {
             == 1
     });
     assert_eq!(client.link().recv.pop().unwrap(), BytesMut::from(&down[..]));
+
+    // The server sent no NEW_TOKEN, so the client's next connect takes a Retry again (D8).
+    let mut state = loopback.quic().state();
+    let (_, peer) = state.linked().next().unwrap();
+    assert_eq!(peer.connection.stats().frame_tx.new_token, 0);
 }
 
 /// Drives a handshake between a client whose connection ids are `client_cid` bytes long and a

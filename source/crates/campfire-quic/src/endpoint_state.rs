@@ -2,7 +2,6 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use bevy_ecs::entity::Entity;
-use bytes::Bytes;
 use quinn_proto::{
     ClientConfig, ConnectError, Connection, ConnectionError, ConnectionHandle, DatagramEvent,
     Endpoint, Event, Incoming,
@@ -10,6 +9,7 @@ use quinn_proto::{
 
 use crate::app_code::AppCode;
 use crate::outbox::Outbox;
+use crate::peer::{Peer, PeerKey};
 use crate::recv_batch::Datagram;
 
 /// The name every client sends: its verifier reads the key alone (design 15, D7).
@@ -35,24 +35,12 @@ pub(crate) struct EndpointState {
     retries: usize,
 }
 
-/// A connection, its slot, its id, which no later connection in its slot shares, and its link
-/// entity.
-#[derive(Debug)]
-pub(crate) struct Peer {
-    pub(crate) connection: Connection,
-    handle: ConnectionHandle,
-    id: u64,
-    entity: Option<Entity>,
-    linked: bool,
-}
-
 /// What the thread tells the frame: a handshake completed, with the connection's largest datagram
 /// then, before path MTU discovery sent its first probe; or a link's connection was lost.
 #[derive(Debug)]
 pub(crate) enum News {
     Connected {
-        handle: ConnectionHandle,
-        id: u64,
+        key: PeerKey,
         max_size: Option<usize>,
     },
     Lost {
@@ -157,17 +145,17 @@ impl EndpointState {
         config: ClientConfig,
         server: SocketAddr,
         entity: Entity,
-    ) -> Result<(ConnectionHandle, u64), ConnectError> {
+    ) -> Result<PeerKey, ConnectError> {
         let (handle, connection) = self.endpoint.connect(now, config, server, SERVER_NAME)?;
-        Ok((handle, self.insert(handle, connection, Some(entity))))
+        Ok(self.insert(handle, connection, Some(entity)))
     }
 
     fn insert(
         &mut self,
         handle: ConnectionHandle,
         connection: Connection,
-        entity: Option<Entity>,
-    ) -> u64 {
+        client: Option<Entity>,
+    ) -> PeerKey {
         if self.peers.len() <= handle.0 {
             self.peers.resize_with(handle.0 + 1, || None);
         }
@@ -175,16 +163,13 @@ impl EndpointState {
             self.peers[handle.0].is_none(),
             "quinn-proto gives a free handle"
         );
-        let id = self.next_id;
-        self.next_id += 1;
-        self.peers[handle.0] = Some(Peer {
-            connection,
+        let key = PeerKey {
             handle,
-            id,
-            entity,
-            linked: false,
-        });
-        id
+            id: self.next_id,
+        };
+        self.next_id += 1;
+        self.peers[handle.0] = Some(Peer::new(connection, key, client));
+        key
     }
 
     /// One pass of the thread over each connection: its due deadline, its events for the
@@ -199,34 +184,33 @@ impl EndpointState {
             scratch,
             ..
         } = self;
-        for (index, slot) in peers.iter_mut().enumerate() {
+        for slot in peers.iter_mut() {
             let Some(peer) = slot else {
                 continue;
             };
-            let handle = ConnectionHandle(index);
-            let connection = &mut peer.connection;
-            if connection
+            let key = peer.key();
+            if peer
+                .connection
                 .poll_timeout()
                 .is_some_and(|deadline| deadline <= now)
             {
-                connection.handle_timeout(now);
+                peer.connection.handle_timeout(now);
             }
             let mut drained = false;
-            while let Some(event) = connection.poll_endpoint_events() {
+            while let Some(event) = peer.connection.poll_endpoint_events() {
                 drained |= event.is_drained();
-                if let Some(event) = endpoint.handle_event(handle, event) {
-                    connection.handle_event(event);
+                if let Some(event) = endpoint.handle_event(key.handle, event) {
+                    peer.connection.handle_event(event);
                 }
             }
-            while let Some(event) = connection.poll() {
+            while let Some(event) = peer.connection.poll() {
                 match event {
                     Event::Connected => news.push(News::Connected {
-                        handle,
-                        id: peer.id,
-                        max_size: connection.datagrams().max_size(),
+                        key,
+                        max_size: peer.connection.datagrams().max_size(),
                     }),
                     Event::ConnectionLost { reason } => {
-                        if let Some(entity) = peer.entity.take() {
+                        if let Some(entity) = peer.lose() {
                             news.push(News::Lost { entity, reason });
                         }
                     }
@@ -238,7 +222,8 @@ impl EndpointState {
             }
             loop {
                 scratch.clear();
-                let Some(transmit) = connection.poll_transmit(now, *max_segments, scratch) else {
+                let Some(transmit) = peer.connection.poll_transmit(now, *max_segments, scratch)
+                else {
                     break;
                 };
                 outbox.push(&transmit, scratch);
@@ -254,9 +239,9 @@ impl EndpointState {
         into.append(&mut self.news);
     }
 
-    /// The connection `id` in the slot `handle`, while it lives.
-    pub(crate) fn peer(&mut self, handle: ConnectionHandle, id: u64) -> Option<&mut Peer> {
-        self.peer_at(handle).filter(|peer| peer.id == id)
+    /// The connection `key` names, while it lives.
+    pub(crate) fn peer(&mut self, key: PeerKey) -> Option<&mut Peer> {
+        self.peer_at(key.handle).filter(|peer| peer.key() == key)
     }
 
     fn peer_at(&mut self, handle: ConnectionHandle) -> Option<&mut Peer> {
@@ -268,8 +253,7 @@ impl EndpointState {
         self.peers
             .iter_mut()
             .flatten()
-            .filter(|peer| peer.linked)
-            .filter_map(|peer| peer.entity.map(|entity| (entity, peer)))
+            .filter_map(|peer| peer.linked().map(|entity| (entity, peer)))
     }
 
     /// Closes every connection with `AppCode::STOPPED`, and takes no new one; the thread writes the
@@ -278,44 +262,8 @@ impl EndpointState {
         self.closing = true;
         self.accepting = false;
         for peer in self.peers.iter_mut().flatten() {
-            peer.entity = None;
-            peer.connection
-                .close(now, AppCode::STOPPED.varint(), Bytes::new());
+            peer.close(now, AppCode::STOPPED);
         }
-    }
-}
-
-impl Peer {
-    /// The connection's handshake completed and its entity `entity` carries it.
-    pub(crate) const fn link(&mut self, entity: Entity) {
-        self.entity = Some(entity);
-        self.linked = true;
-    }
-
-    pub(crate) const fn entity(&self) -> Option<Entity> {
-        self.entity
-    }
-
-    pub(crate) const fn handle(&self) -> ConnectionHandle {
-        self.handle
-    }
-
-    pub(crate) const fn id(&self) -> u64 {
-        self.id
-    }
-
-    pub(crate) fn remote(&self) -> SocketAddr {
-        self.connection.remote_address()
-    }
-
-    /// Closes the connection with `code` if the entity `entity` still carries it, and parts it
-    /// from its entity.
-    pub(crate) fn close(&mut self, now: Instant, entity: Entity, code: AppCode) {
-        if self.entity != Some(entity) {
-            return;
-        }
-        self.entity = None;
-        self.connection.close(now, code.varint(), Bytes::new());
     }
 }
 
@@ -332,9 +280,8 @@ pub(crate) mod internals {
         /// the frame that would link it.
         pub(crate) fn close_unlinked(&mut self) {
             for peer in self.peers.iter_mut().flatten() {
-                if peer.entity.is_none() {
-                    peer.connection
-                        .close(Instant::now(), AppCode::ENDED.varint(), Bytes::new());
+                if peer.entity().is_none() {
+                    peer.close(Instant::now(), AppCode::ENDED);
                 }
             }
         }
@@ -345,7 +292,7 @@ pub(crate) mod internals {
             for slot in &mut self.peers {
                 if slot
                     .as_ref()
-                    .is_some_and(|peer| peer.entity == Some(entity))
+                    .is_some_and(|peer| peer.entity() == Some(entity))
                 {
                     *slot = None;
                 }

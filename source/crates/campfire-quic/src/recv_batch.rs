@@ -1,6 +1,6 @@
-use std::array;
 use std::io::{self, IoSliceMut};
 use std::net::{IpAddr, SocketAddr};
+use std::{array, iter};
 
 use bytes::BytesMut;
 use quinn_proto::EcnCodepoint;
@@ -17,7 +17,7 @@ pub(crate) struct RecvBatch {
     slot: usize,
 }
 
-/// One UDP datagram the socket read, in a buffer of its own, which `quinn-proto` takes and a
+/// One UDP datagram the socket read, in the buffer of its slot, which `quinn-proto` takes and a
 /// DATAGRAM frame of it then keeps with no copy.
 #[derive(Debug)]
 pub(crate) struct Datagram {
@@ -47,20 +47,22 @@ impl RecvBatch {
     }
 
     /// The datagrams of the `filled` slots the last read filled, each split from the ones GRO
-    /// joined in its slot.
+    /// joined in its slot, which share one buffer. An empty datagram, whose stride is 0, gives
+    /// none.
     pub(crate) fn datagrams(&self, filled: usize) -> impl Iterator<Item = Datagram> + '_ {
         self.meta[..filled]
             .iter()
             .zip(self.buffer.chunks(self.slot))
             .flat_map(|(meta, slot)| {
-                slot[..meta.len]
-                    .chunks(meta.stride)
-                    .map(move |datagram| Datagram {
+                let mut data = BytesMut::from(&slot[..meta.len]);
+                iter::from_fn(move || {
+                    (!data.is_empty()).then(|| Datagram {
                         remote: meta.addr,
                         local_ip: meta.dst_ip,
                         ecn: meta.ecn.map(RecvBatch::proto_ecn),
-                        data: BytesMut::from(datagram),
+                        data: data.split_to(meta.stride.min(data.len())),
                     })
+                })
             })
     }
 

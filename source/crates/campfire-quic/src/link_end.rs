@@ -45,7 +45,6 @@ impl LinkEnd {
             ConnectionError::TimedOut => LinkEnd::TimedOut,
             ConnectionError::Reset => LinkEnd::Reset,
             ConnectionError::VersionMismatch => LinkEnd::VersionMismatch,
-            ConnectionError::CidsExhausted => LinkEnd::NotOpened,
             ConnectionError::ApplicationClosed(close) => match AppCode::of(close.error_code) {
                 AppCode::ENDED => LinkEnd::Ended,
                 AppCode::STOPPED => LinkEnd::PeerStopped,
@@ -70,6 +69,9 @@ impl LinkEnd {
             },
             ConnectionError::LocallyClosed => {
                 unreachable!("a connection its own end closed has no entity left to tell")
+            }
+            ConnectionError::CidsExhausted => {
+                unreachable!("quinn-proto refuses an accept by it, and loses no connection by it")
             }
         }
     }

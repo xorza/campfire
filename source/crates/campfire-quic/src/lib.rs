@@ -18,6 +18,7 @@ mod link_binding;
 mod link_end;
 mod link_times;
 mod outbox;
+mod peer;
 mod pinned_key_verifier;
 mod quic_endpoint;
 mod quic_link;
@@ -38,8 +39,12 @@ pub use crate::link_times::LinkTimes;
 pub use crate::quic_endpoint::QuicEndpoint;
 pub use crate::quic_plugin::QuicPlugin;
 
+/// The length of every connection id Campfire's endpoints give, which `LINK_MIN_MTU` counts
+/// (design 15, D5).
+const CID_LEN: usize = 8;
+
 /// The minimum MTU of every Campfire link, which both its ends' fragments take: the largest
-/// DATAGRAM frame on QUIC's minimum path of 1,200 bytes, `1200 − (1 + 8 + 4 + 16) − 9`, a short
-/// header with connection ids of 8 bytes, a packet number of at most 4 and an AEAD tag of 16, and
-/// the frame's type and largest length (design 15, D5).
-pub const LINK_MIN_MTU: usize = 1162;
+/// DATAGRAM frame on QUIC's minimum path of 1,200 bytes, less a short header of one byte, the
+/// connection id and a packet number of at most 4 bytes, an AEAD tag of 16, and the frame's type
+/// and largest length varint (design 15, D5).
+pub const LINK_MIN_MTU: usize = 1200 - (1 + CID_LEN + 4 + 16) - (1 + 8);

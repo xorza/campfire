@@ -48,11 +48,6 @@ impl IoThread {
             let filled = match self.batch.read(self.shared.port()) {
                 Ok(filled) => filled,
                 Err(error) if error.kind() == ErrorKind::WouldBlock => 0,
-                // A peer's ICMP refusal, which Windows reports on the next read: harmless to UDP.
-                Err(error) if error.kind() == ErrorKind::ConnectionReset => {
-                    idle = false;
-                    continue;
-                }
                 Err(error) => {
                     warn!(error = %ErrorReport::of(&error), "the QUIC socket's read failed");
                     0

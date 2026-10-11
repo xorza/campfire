@@ -79,15 +79,16 @@ impl ServerCertVerifier for PinnedKeyVerifier {
         unreachable!("the client offers TLS 1.3 alone")
     }
 
+    /// Checks the signature by the pinned key, which `verify_server_cert` found the server's.
     fn verify_tls13_signature(
         &self,
         message: &[u8],
-        cert: &CertificateDer<'_>,
+        _cert: &CertificateDer<'_>,
         dss: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, Error> {
         verify_tls13_signature_with_raw_key(
             message,
-            &SubjectPublicKeyInfoDer::from(cert.as_ref()),
+            &SubjectPublicKeyInfoDer::from(self.spki.as_bytes().as_slice()),
             dss,
             &self.algorithms,
         )

@@ -1,4 +1,4 @@
-use std::io::{self, IoSliceMut};
+use std::io::{self, ErrorKind, IoSliceMut};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
@@ -76,13 +76,19 @@ impl UdpPort {
         }
     }
 
-    /// Reads one batch; `WouldBlock` when none waits.
+    /// Reads one batch; `WouldBlock` when none waits. A peer's ICMP refusal, which Windows
+    /// reports on a later read, is no datagram, and the read goes on.
     pub(crate) fn recv(
         &self,
         buffers: &mut [IoSliceMut<'_>],
         meta: &mut [RecvMeta],
     ) -> io::Result<usize> {
-        self.state.recv((&self.socket).into(), buffers, meta)
+        loop {
+            match self.state.recv((&self.socket).into(), buffers, meta) {
+                Err(error) if error.kind() == ErrorKind::ConnectionReset => {}
+                read => return read,
+            }
+        }
     }
 
     pub(crate) fn send(&self, transmit: &Transmit<'_>) -> io::Result<()> {

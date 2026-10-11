@@ -48,7 +48,7 @@ impl QuicPlugin {
     ) {
         let CloseLink { entity, code } = *close;
         if let Ok(link) = links.get(entity) {
-            link.close(entity, code);
+            link.close(code);
             commands.entity(entity).remove::<QuicLink>();
         }
         commands.entity(entity).insert(LinkEnd::Closed(code));
