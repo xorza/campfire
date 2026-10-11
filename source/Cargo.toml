@@ -183,35 +183,37 @@ todo = "warn"
 unused_result_ok = "warn"
 
 # Lightyear 0.30.1 with its confirmed history never pruned past the latest completed checkpoint,
-# and its raw server keeping a `RemoteId` its link holds (design 15, D9), until upstream releases
-# the fixes (branch campfire-quic of the fork).
+# its raw server keeping a `RemoteId` its link holds (design 15, D9), its aeronet link's MTU kept
+# within the session's, and a received payload kept in the form its IO backend holds, so a QUIC
+# datagram reaches the link with no copy, until upstream releases the fixes (branch main of the
+# fork, which merges the branch of each fix).
 [patch.crates-io]
-lightyear = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_aeronet = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_connection = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_core = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_crossbeam = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_deterministic_replication = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_frame_interpolation = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_inputs = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_inputs_bei = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_inputs_leafwing = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_inputs_native = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_interpolation = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_link = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_messages = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_metrics = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_netcode = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_prediction = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_raw_connection = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_replication = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_serde = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_steam = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_sync = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_tools = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_transport = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_udp = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_utils = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_web = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_websocket = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
-lightyear_webtransport = { git = "https://github.com/xorza/lightyear", rev = "291c25c8c1d41c6b4612f2332fab41c17000fa3e" }
+lightyear = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_aeronet = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_connection = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_core = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_crossbeam = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_deterministic_replication = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_frame_interpolation = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_inputs = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_inputs_bei = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_inputs_leafwing = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_inputs_native = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_interpolation = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_link = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_messages = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_metrics = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_netcode = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_prediction = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_raw_connection = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_replication = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_serde = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_steam = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_sync = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_tools = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_transport = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_udp = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_utils = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_web = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_websocket = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_webtransport = { git = "https://github.com/xorza/lightyear", branch = "main" }

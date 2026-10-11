@@ -12,9 +12,7 @@ use campfire_store::Worker;
 use lightyear::core::id::{PeerId, RemoteId};
 use lightyear::core::time::Instant as LinkInstant;
 use lightyear::link::server::LinkOf;
-use lightyear::link::{
-    Link, LinkMtu, Linked, Linking, UnlinkReason, Unlinked, recv_payload_from_bytes,
-};
+use lightyear::link::{Link, LinkMtu, Linked, Linking, UnlinkReason, Unlinked};
 use lightyear::prelude::{LocalAddr, PeerAddr};
 use quinn_proto::crypto::HandshakeTokenKey;
 use quinn_proto::crypto::rustls::{QuicClientConfig, QuicServerConfig};
@@ -274,7 +272,7 @@ impl QuicEndpoint {
             link.set_mtu(mtu)
                 .expect("a QUIC link's minimum is LINK_MIN_MTU");
             while let Some(datagram) = peer.connection.datagrams().recv() {
-                link.recv.push(recv_payload_from_bytes(datagram), arrived);
+                link.recv.push(datagram, arrived);
             }
             let remote = peer.remote();
             if address.0 != remote {

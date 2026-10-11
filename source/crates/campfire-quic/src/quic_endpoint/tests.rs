@@ -11,7 +11,7 @@ use bevy_ecs::world::{Mut, World};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use bytes::{Bytes, BytesMut};
-use lightyear::link::{LinkStart, Unlink};
+use lightyear::link::{LinkStart, RecvPayload, Unlink};
 use lightyear::prelude::client::{ClientPlugins, RawClient};
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start};
 use lightyear::prelude::{
@@ -241,7 +241,11 @@ fn a_link_carries_datagrams_of_its_minimum_mtu_both_ways_at_once() {
         "the thread waited {took:?}"
     );
     let mut server_link = loopback.server.world_mut().get_mut::<Link>(link).unwrap();
-    assert_eq!(server_link.recv.pop().unwrap(), BytesMut::from(&up[..]));
+    // The link holds the slice of the packet `quinn-proto` gives, so no datagram is copied.
+    let RecvPayload::Frozen(payload) = server_link.recv.pop().unwrap() else {
+        panic!("the server's link copied its datagram");
+    };
+    assert_eq!(payload, up);
     let down = vec![0xa5; LINK_MIN_MTU];
     server_link.send(Bytes::from(down.clone()));
     loopback.pump(&mut [&mut client], |_, clients| {
@@ -254,7 +258,10 @@ fn a_link_carries_datagrams_of_its_minimum_mtu_both_ways_at_once() {
             .len()
             == 1
     });
-    assert_eq!(client.link().recv.pop().unwrap(), BytesMut::from(&down[..]));
+    let RecvPayload::Frozen(payload) = client.link().recv.pop().unwrap() else {
+        panic!("the client's link copied its datagram");
+    };
+    assert_eq!(payload, down);
 
     // The server sent no NEW_TOKEN, so the client's next connect takes a Retry again (D8).
     let mut state = loopback.quic().state();
