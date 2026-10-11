@@ -19,6 +19,7 @@ use crate::combat::combat_api::CombatApi;
 use crate::deliveries::deliveries_api::DeliveriesApi;
 use crate::items::Items;
 use crate::items::items_api::ItemsApi;
+use crate::mode::Mode;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_api::ModeApi;
 use crate::navigation::Navigation;
@@ -34,6 +35,7 @@ use crate::projectiles::projectiles_api::ProjectilesApi;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_budgets::ScriptBudgets;
+use crate::state_types::StateTypes;
 use crate::stats::Stats;
 use crate::stats::stats_api::StatsApi;
 use crate::units::Units;
@@ -218,6 +220,37 @@ impl CapabilitySet {
                 && self.contains(row.capability)
             {
                 install(world, schedule, registry);
+            }
+        }
+    }
+
+    /// Lists, into `types`, the state types of a match of these capabilities: the core's, the
+    /// mode's and each declared capability's, as each one's `install` registers them. The match is
+    /// exhaustive, so a capability with no list does not compile.
+    pub fn state_types<T: StateTypes>(self, types: &mut T) {
+        Units::state_types(types);
+        Actions::state_types(types);
+        Mode::state_types(types);
+        for capability in self.iter() {
+            match capability {
+                Capability::Stats => Stats::state_types(types),
+                Capability::Progression => Progression::state_types(types),
+                Capability::Combat => Combat::state_types(types),
+                Capability::Navigation => Navigation::state_types(types),
+                Capability::Vision => Vision::state_types(types),
+                Capability::Projectiles => Projectiles::state_types(types),
+                Capability::Areas => Areas::state_types(types),
+                Capability::Production => Production::state_types(types),
+                Capability::Items => Items::state_types(types),
+                Capability::Orders => Orders::state_types(types),
+                Capability::Abilities
+                | Capability::Character
+                | Capability::Hitboxes
+                | Capability::Physics
+                | Capability::World
+                | Capability::Quests
+                | Capability::Interaction
+                | Capability::Mode => {}
             }
         }
     }

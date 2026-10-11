@@ -33,3 +33,4 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Actions.** **Plan: G1.** The projectile section's `gravity` is planned: no projectile falls, so no grenade arcs and no bullet drops.
 - **Client.** **Plan: S2.** The client has no shop and no item keys: a player cannot buy, sell or use an item, which design 04's items give as orders.
 - **Interaction.** **Plan: U1.** `interaction` is planned: no action of the `use` kind runs.
+- **Net.** **Plan: Q2.** A WebTransport link packs Lightyear packets of up to 1,200 bytes, its `DEFAULT_MTU`, while the largest datagram the connection carries on QUIC's minimum path of 1,200 bytes is 1,161: `aeronet_webtransport` drops a larger packet with a debug log, until path MTU discovery raises the MTU, and on every packet over a path that stays near the minimum; Lightyear sends a reliable message in it again at the same size ([QUIC](../docs/research/quic.md#a-datagram-on-the-minimum-path)).

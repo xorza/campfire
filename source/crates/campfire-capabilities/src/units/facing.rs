@@ -1,3 +1,5 @@
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -33,6 +35,10 @@ impl SimComponent for Facing {
     fn check(&self, _: &World, _: Entity) -> bool {
         (0..FULL).contains(&self.0.to_bits())
     }
+}
+
+impl Kinded for Facing {
+    const KIND: DataKind = DataKind::Unit;
 }
 
 #[cfg(test)]

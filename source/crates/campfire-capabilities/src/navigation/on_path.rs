@@ -5,6 +5,8 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::navigation::paths::Paths;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::path_id::PathId;
 
 /// The path a unit belongs to: the one a structure guards, or the one a `PathWalker` walks.
@@ -32,4 +34,8 @@ impl SimComponent for OnPath {
             .get_resource::<Paths>()
             .is_some_and(|paths| self.0.index() < paths.count() as usize)
     }
+}
+
+impl Kinded for OnPath {
+    const KIND: DataKind = DataKind::Server;
 }

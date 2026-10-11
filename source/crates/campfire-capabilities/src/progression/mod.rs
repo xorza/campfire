@@ -9,6 +9,7 @@ use crate::progression::points::Points;
 use crate::progression::progression_column::{ProgressionColumn, RowParts};
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
+use crate::state_types::StateTypes;
 use crate::units::view::View;
 
 pub(crate) mod experience;
@@ -26,6 +27,13 @@ pub(crate) mod track_set;
 pub struct Progression;
 
 impl Progression {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.component::<Experience>();
+        types.predicted::<Points>();
+        types.resource::<LevelUps>();
+    }
+
     /// Adds progression to a match, with no track until the mode loads its own.
     pub fn install(world: &mut World, _: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
@@ -36,9 +44,7 @@ impl Progression {
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Progression, ProgressionEffect::queue_listed);
-        registry.register_component::<Experience>();
-        registry.register_component::<Points>();
-        registry.register_resource::<LevelUps>();
+        Self::state_types(registry);
     }
 }
 

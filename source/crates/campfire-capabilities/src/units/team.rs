@@ -4,6 +4,8 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::bits256::Bits256;
 use crate::units::view::View;
 
@@ -42,4 +44,8 @@ impl SimComponent for Team {
             .get_non_send::<View>()
             .is_none_or(|view| view.has_team(*self))
     }
+}
+
+impl Kinded for Team {
+    const KIND: DataKind = DataKind::Unit;
 }

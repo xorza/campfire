@@ -4,6 +4,8 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::team_set::TeamSet;
 
 /// The teams that see a unit, as the Vision stage of the last tick found them: those of its own
@@ -29,6 +31,10 @@ impl SimComponent for SeenBy {
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }
+}
+
+impl Kinded for SeenBy {
+    const KIND: DataKind = DataKind::Server;
 }
 
 #[cfg(any(test, feature = "internals"))]

@@ -10,6 +10,7 @@ use crate::actions::effect_queues::EffectQueues;
 use crate::actions::holds::Holds;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::scripts::ctx::Ctx;
+use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::view::View;
 
@@ -87,6 +88,11 @@ pub(crate) enum ActionsSet {
 }
 
 impl Actions {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.predicted::<ActionSlots>();
+    }
+
     /// Adds the actions to a match whose core is installed, with none loaded yet, and its column
     /// to the script view.
     pub(crate) fn install(world: &mut World, registry: &mut StateRegistry) {
@@ -99,7 +105,7 @@ impl Actions {
         if world.contains_non_send::<Ctx>() {
             world.insert_resource(EffectLists::default());
         }
-        registry.register_component::<ActionSlots>();
+        Self::state_types(registry);
     }
 
     /// Adds to `schedule` the holds of every action: its charges as each tick starts, and its

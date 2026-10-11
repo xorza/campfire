@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::progression::experience::Experience;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::track_id::TrackId;
 
 /// The points a unit with the `level` track has to spend on ranks: one for each level it has
@@ -55,4 +57,8 @@ impl SimComponent for Points {
             .zip(experience)
             .is_some_and(|(track, experience)| experience.get(track).is_some())
     }
+}
+
+impl Kinded for Points {
+    const KIND: DataKind = DataKind::Progression;
 }

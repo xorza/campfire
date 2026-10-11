@@ -34,6 +34,7 @@ use crate::navigation::walker::Walker;
 use crate::navigation::walking::Walking;
 use crate::navigation::wall::Wall;
 use crate::navigation::walls::Walls;
+use crate::state_types::StateTypes;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
@@ -89,6 +90,15 @@ pub(crate) enum NavigationSet {
 pub struct Navigation;
 
 impl Navigation {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.predicted::<Destination>();
+        types.component::<PathWalker>();
+        types.component::<OnPath>();
+        types.predicted::<Route>();
+        types.predicted::<Progress>();
+    }
+
     /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
     pub fn walker(step: MoveStep) -> impl Bundle {
         (
@@ -135,11 +145,7 @@ impl Navigation {
                 .in_set(SimSet::Collide),
             Walking::keep_in_bounds.in_set(SimEdge::After(SimSet::Collide)),
         ));
-        registry.register_component::<Destination>();
-        registry.register_component::<PathWalker>();
-        registry.register_component::<OnPath>();
-        registry.register_component::<Route>();
-        registry.register_component::<Progress>();
+        Self::state_types(registry);
     }
 
     /// Gives the match the map's pathing grid over `cells`, with the cells `walls` block, for the

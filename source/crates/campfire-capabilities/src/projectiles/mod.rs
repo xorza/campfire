@@ -20,6 +20,7 @@ use crate::projectiles::launching::Launching;
 use crate::projectiles::projectile::{Flight, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::struck_units::StruckUnits;
+use crate::state_types::StateTypes;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
 
@@ -40,6 +41,12 @@ pub(crate) mod struck_units;
 pub struct Projectiles;
 
 impl Projectiles {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.component_once::<Projectile>();
+        types.resource::<StruckUnits>();
+    }
+
     /// Adds projectiles to a match. In Hit, before attacks strike, each projectile flies a step,
     /// and its hits and its end run their action's `on_hit` and `on_end`; after attacks strike
     /// and casts resolve, the tick's launches take off, and fly from the next tick.
@@ -56,8 +63,7 @@ impl Projectiles {
             Launching::take_shots.in_set(CombatSet::Fire),
             Launching::launch.in_set(CombatSet::Launch),
         ));
-        registry.register_component::<Projectile>();
-        registry.register_resource::<StruckUnits>();
+        Self::state_types(registry);
     }
 
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing

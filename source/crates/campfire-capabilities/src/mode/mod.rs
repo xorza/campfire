@@ -43,6 +43,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
+use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
 use crate::units::spawn_at::SpawnAt;
@@ -101,6 +102,17 @@ pub(crate) mod unit_type_setup;
 pub struct Mode;
 
 impl Mode {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.resource::<MatchEnd>();
+        types.resource::<ModeState>();
+        types.resource::<Choices>();
+        types.resource::<PlayerResources>();
+        types.resource::<Timers>();
+        types.resource::<UnansweredDeaths>();
+        types.resource::<UnansweredSlotEvents>();
+    }
+
     /// Adds the mode of `setup`, whose books the book builder built, to a match whose capabilities
     /// are installed and whose unit types, abilities and AI are loaded: in Inputs, the players'
     /// mode inputs run `on_mode_input`; in Mode, the tick's joins and leaves run `on_player_join`
@@ -196,13 +208,7 @@ impl Mode {
                 .in_set(SimSet::Mode)
                 .after(ProductionSet::Finish),
         ));
-        registry.register_resource::<MatchEnd>();
-        registry.register_resource::<ModeState>();
-        registry.register_resource::<Choices>();
-        registry.register_resource::<PlayerResources>();
-        registry.register_resource::<Timers>();
-        registry.register_resource::<UnansweredDeaths>();
-        registry.register_resource::<UnansweredSlotEvents>();
+        Self::state_types(registry);
     }
 
     /// The boundary the mode in `world` last asked for a save at, by `ctx.save()`, by the tick

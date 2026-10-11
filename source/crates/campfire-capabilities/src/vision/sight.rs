@@ -1,3 +1,5 @@
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -33,6 +35,10 @@ impl SimComponent for Sight {
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }
+}
+
+impl Kinded for Sight {
+    const KIND: DataKind = DataKind::Server;
 }
 
 /// A snapshot is untrusted, so a negative range fails to decode.

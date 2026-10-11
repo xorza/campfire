@@ -11,6 +11,8 @@ use crate::actions::slot_kind::SlotKind;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
 use crate::players::resource_id::ResourceId;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::block::Block;
 
 /// What a carrier carries: its inventory's slots, in order, each empty or holding a stack of one
@@ -250,4 +252,8 @@ impl SimComponent for Inventory {
             })
         })
     }
+}
+
+impl Kinded for Inventory {
+    const KIND: DataKind = DataKind::Inventory;
 }

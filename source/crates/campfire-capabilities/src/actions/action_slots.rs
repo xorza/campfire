@@ -8,6 +8,8 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 
 use crate::actions::action_call::{ActionCall, ResolvedCast, Started};
 use crate::actions::action_kind::ActionKind;
@@ -788,4 +790,8 @@ impl SimComponent for ActionSlots {
         });
         self.slots.iter().all(held) && underway && charges && toggles && channel && interrupted
     }
+}
+
+impl Kinded for ActionSlots {
+    const KIND: DataKind = DataKind::Unit;
 }

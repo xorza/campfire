@@ -8,6 +8,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::geometry::body_box::BodyBox;
 use crate::geometry::shape::Shape;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::layer::Layer;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
@@ -94,6 +96,10 @@ impl SimComponent for Body {
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }
+}
+
+impl Kinded for Body {
+    const KIND: DataKind = DataKind::Unit;
 }
 
 /// A snapshot is untrusted, so a radius `new` refuses fails to decode, and a box its own decode

@@ -15,7 +15,6 @@ use bevy_ecs::schedule::common_conditions::{
 };
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
-use bevy_replicon::prelude::AppVisibilityExt;
 use bevy_time::{Real, Time, Virtual};
 use campfire_capabilities::{
     Area, CapabilitySet, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy,
@@ -61,9 +60,9 @@ use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
 use crate::sim_server::error::RestoreMatchError;
 use crate::sim_server::journal_watch::JournalWatch;
+use crate::sim_server::kind_filter::OwnedFilters;
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::offering::{Offering, Superseding};
-use crate::sim_server::owned_by::OwnedBy;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
@@ -84,9 +83,9 @@ pub(crate) mod door;
 pub(crate) mod error;
 pub(crate) mod journal_watch;
 pub(crate) mod key_file;
+pub(crate) mod kind_filter;
 pub(crate) mod lobby;
 pub(crate) mod offering;
-pub(crate) mod owned_by;
 pub(crate) mod player_link;
 pub(crate) mod receipts;
 pub(crate) mod seats;
@@ -132,7 +131,7 @@ impl Plugin for SimServer {
             },
             RoomPlugin,
         ));
-        app.add_visibility_filter::<OwnedBy>();
+        OwnedFilters::register(app, self.capabilities);
         let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
         app.insert_resource(rooms);
         app.add_observer(
@@ -700,10 +699,6 @@ type NewUnits<'w, 's> = Query<
     (With<Team>, Without<Replicate>),
 >;
 
-/// The replicated units whose owner changed this tick.
-type OwnersChanged<'w, 's> =
-    Query<'w, 's, (Entity, &'static Owner), (Changed<Owner>, With<OwnedBy>)>;
-
 /// The replicated units whose seers changed this tick.
 type SeersChanged<'w, 's> =
     Query<'w, 's, (Entity, &'static StableId, &'static SeenBy), (Changed<SeenBy>, With<Replicate>)>;
@@ -714,14 +709,13 @@ type SeersChanged<'w, 's> =
 /// units its team sees, and a link with no seat none. A unit stands in its rooms from the tick it
 /// replicates in, so a client never receives a unit its team did not see: a projectile shows
 /// where it flies, not where its source stands. Without vision no unit has `SeenBy`, and every
-/// seated client receives every unit. The state only the owner's prediction reads goes to the
-/// owner's link alone, through `OwnedBy`, again as the owner changes.
+/// seated client receives every unit. What its owner alone receives, a kind's filter keeps from
+/// every other link ([`OwnedFilters`]).
 fn show_units(
     rooms: Res<'_, TeamRooms>,
     links: Query<'_, '_, (Entity, &PlayerLink)>,
     new: NewUnits<'_, '_>,
     changed: SeersChanged<'_, '_>,
-    owners: OwnersChanged<'_, '_>,
     mut commands: Commands<'_, '_>,
 ) {
     for (unit, owner, projectile, area, seen) in &new {
@@ -729,7 +723,6 @@ fn show_units(
         replicated.insert((
             Replicate::to_clients(NetworkTarget::All),
             rooms.seeing(seen),
-            OwnedBy(owner.map(|owner| owner.slot())),
         ));
         let owner = owner
             .filter(|_| !projectile && !area)
@@ -741,8 +734,5 @@ fn show_units(
     for (unit, &id, seen) in &changed {
         debug!(unit = id.get(), "the teams that see a unit changed");
         commands.entity(unit).insert(rooms.seeing(Some(seen)));
-    }
-    for (unit, owner) in &owners {
-        commands.entity(unit).insert(OwnedBy(Some(owner.slot())));
     }
 }

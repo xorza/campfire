@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::route::Route;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 
 /// Where a unit walks to; none once it arrives.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,4 +70,8 @@ impl SimComponent for Destination {
     fn check(&self, world: &World, entity: Entity) -> bool {
         PathingGrid::serves(world, entity)
     }
+}
+
+impl Kinded for Destination {
+    const KIND: DataKind = DataKind::Unit;
 }

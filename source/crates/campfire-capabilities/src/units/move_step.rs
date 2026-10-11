@@ -6,6 +6,8 @@ use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::body::Body;
 
 /// How far a unit walks in one tick, never negative: the effect of its move speed, which its
@@ -38,6 +40,10 @@ impl SimComponent for MoveStep {
             .get::<Body>(entity)
             .is_none_or(|body| body.radius().is_some())
     }
+}
+
+impl Kinded for MoveStep {
+    const KIND: DataKind = DataKind::Unit;
 }
 
 /// A snapshot is untrusted, so a negative step fails to decode.

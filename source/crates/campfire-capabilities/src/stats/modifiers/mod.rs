@@ -9,6 +9,8 @@ use campfire_sim::{SimComponent, StableId, TickRate};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::stats::application::Application;
 use crate::stats::application::NewInstance;
 use crate::stats::instance::Instance;
@@ -548,6 +550,10 @@ impl SimComponent for Modifiers {
                 .iter()
                 .all(|carried| carried.fits(modifiers, params, rate))
     }
+}
+
+impl Kinded for Modifiers {
+    const KIND: DataKind = DataKind::Modifiers;
 }
 
 /// A snapshot is untrusted, so instances out of order or twice, runs that do not cover the

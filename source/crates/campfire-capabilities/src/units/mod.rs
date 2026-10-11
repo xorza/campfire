@@ -13,6 +13,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
+use crate::state_types::StateTypes;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::facing::Facing;
@@ -115,6 +116,24 @@ pub(crate) enum UnitsSet {
 pub struct Units;
 
 impl Units {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.component_once::<Body>();
+        types.predicted::<Dead>();
+        types.component_once::<Facing>();
+        types.predicted::<ForcedMove>();
+        types.component::<Lifespan>();
+        types.component_once::<MoveStep>();
+        types.sim_predicted::<Position>();
+        types.component::<Owner>();
+        types.component_once::<SpawnPoint>();
+        types.component::<StatusTags>();
+        types.component_once::<Team>();
+        types.component_once::<UnitType>();
+        types.component::<UnitState>();
+        types.resource::<Relations>();
+    }
+
     /// Adds the core to a match, on a planar map until the mode sets its own. With `budgets`,
     /// scripts run within them: in Inputs, every pool starts full and the last tick's failures
     /// clear. A client runs no scripts.
@@ -126,25 +145,13 @@ impl Units {
     ) {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate);
-        registry.register_component::<Body>();
-        registry.register_component::<Dead>();
-        registry.register_component::<Facing>();
-        registry.register_component::<ForcedMove>();
-        registry.register_component::<Lifespan>();
-        registry.register_component::<MoveStep>();
+        Self::state_types(registry);
         registry.add_check::<Position>(Units::within_bounds);
-        registry.register_component::<Owner>();
-        registry.register_component::<SpawnPoint>();
-        registry.register_component::<StatusTags>();
-        registry.register_component::<Team>();
-        registry.register_component::<UnitType>();
-        registry.register_component::<UnitState>();
         world.insert_resource(UnitStateBook::default());
         world.insert_resource(NewUnitStates::default());
         view.add_column(UnitsColumn::default());
         view.add_source::<Option<&'static UnitState>, _>(world, UnitsColumn::fill_state);
         world.insert_resource(Relations::default());
-        registry.register_resource::<Relations>();
         world.insert_resource(Metric::default());
         // The world's bounds until a map's take their place.
         world.insert_resource(Bounds::WORLD);

@@ -10,6 +10,8 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::effect_lists::EffectLists;
 use crate::areas::area_spec::AreaSpec;
 use crate::deliveries::delivering::Delivering;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::stats::modifier_book::ModifierBook;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
@@ -94,6 +96,10 @@ impl SimComponent for Area {
         let holds = |spec: &AreaSpec| spec.inside.modifiers().all(applies);
         by && launched && spec.is_some_and(holds)
     }
+}
+
+impl Kinded for Area {
+    const KIND: DataKind = DataKind::Unit;
 }
 
 /// A snapshot is untrusted, so an area that would trigger after it ends fails to decode.

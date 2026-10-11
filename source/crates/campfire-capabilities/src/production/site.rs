@@ -10,6 +10,8 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::action_id::ActionId;
 use crate::values::rank::Rank;
 
@@ -133,6 +135,10 @@ impl SimComponent for Site {
             .all(|paid| paid.resource.index() < resources && paid.amount >= 0);
         build && paid
     }
+}
+
+impl Kinded for Site {
+    const KIND: DataKind = DataKind::Server;
 }
 
 /// A snapshot is untrusted, so a progress or a gain below 0 fails to decode.

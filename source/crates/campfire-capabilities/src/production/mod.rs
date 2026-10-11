@@ -20,6 +20,7 @@ use crate::production::site::Site;
 use crate::production::supply_costs::SupplyCosts;
 use crate::production::train_queue::TrainQueue;
 use crate::production::trains::Trains;
+use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 use crate::units::view::View;
@@ -69,6 +70,16 @@ pub(crate) enum ProductionSet {
 }
 
 impl Production {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.component::<TrainQueue>();
+        types.component::<Rally>();
+        types.component::<Builder>();
+        types.component::<Site>();
+        types.component::<Node>();
+        types.component::<Gatherer>();
+    }
+
     /// Adds production to a match: in Act, after the other orders start, ordered trains pass their
     /// checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains
     /// whose time ended spawn. With navigation, which tests a box for room and walks a worker,
@@ -117,12 +128,7 @@ impl Production {
                 GatherLoop::despawn_empty_nodes.in_set(SimSet::Vision),
             ));
         }
-        registry.register_component::<TrainQueue>();
-        registry.register_component::<Rally>();
-        registry.register_component::<Builder>();
-        registry.register_component::<Site>();
-        registry.register_component::<Node>();
-        registry.register_component::<Gatherer>();
+        Self::state_types(registry);
     }
 }
 

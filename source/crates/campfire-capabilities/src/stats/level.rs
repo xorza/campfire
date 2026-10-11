@@ -1,3 +1,5 @@
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -37,6 +39,10 @@ impl SimComponent for Level {
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }
+}
+
+impl Kinded for Level {
+    const KIND: DataKind = DataKind::Unit;
 }
 
 /// A snapshot is untrusted, so level 0 fails to decode.

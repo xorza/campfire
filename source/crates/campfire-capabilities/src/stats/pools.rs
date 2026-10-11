@@ -5,6 +5,8 @@ use campfire_math::Num;
 use campfire_sim::{SimComponent, TickRate};
 use serde::{Deserialize, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::stats::meter::Meter;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
@@ -120,6 +122,10 @@ impl SimComponent for Pools {
         let hz = world.resource::<TickRate>().hz().get();
         self.0.iter().flatten().all(|meter| meter.settled(hz))
     }
+}
+
+impl Kinded for Pools {
+    const KIND: DataKind = DataKind::Life;
 }
 
 #[cfg(any(test, feature = "internals"))]

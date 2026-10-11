@@ -5,6 +5,8 @@ use campfire_common::PlayerSlot;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::view::View;
 
 /// The player who controls a unit, by slot: design 04's control relation, which `orders` and,
@@ -32,4 +34,8 @@ impl SimComponent for Owner {
             .get_non_send::<View>()
             .is_none_or(|view| view.has_player(self.0))
     }
+}
+
+impl Kinded for Owner {
+    const KIND: DataKind = DataKind::Unit;
 }

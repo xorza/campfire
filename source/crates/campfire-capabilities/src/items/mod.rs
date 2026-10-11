@@ -10,6 +10,7 @@ use crate::combat::CombatSet;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
 use crate::items::item_holds::ItemHolds;
+use crate::state_types::StateTypes;
 
 pub(crate) mod inventory;
 pub(crate) mod inventory_data;
@@ -34,6 +35,11 @@ pub(crate) enum ItemsSet {
 }
 
 impl Items {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.component::<Inventory>();
+    }
+
     /// Adds items to a match, on stats: an empty item book until the mode's books fill it, the
     /// inventories its units carry, as state, and the modifiers their items hold, as each tick
     /// starts once the trades are in, and in Resolve once a use may have spent an item.
@@ -42,7 +48,7 @@ impl Items {
         world
             .get_resource_or_init::<CastSpends>()
             .register(Items::spend_use);
-        registry.register_component::<Inventory>();
+        Self::state_types(registry);
         schedule.add_systems((
             ItemHolds::hold_items
                 .in_set(SimSet::Inputs)

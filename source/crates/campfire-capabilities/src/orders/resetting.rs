@@ -1,3 +1,5 @@
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -16,4 +18,8 @@ impl SimComponent for Resetting {
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }
+}
+
+impl Kinded for Resetting {
+    const KIND: DataKind = DataKind::Server;
 }

@@ -4,6 +4,8 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::view::View;
 
 /// A unit's type, by its place in the match's unit types.
@@ -31,4 +33,8 @@ impl SimComponent for UnitType {
             .get_non_send::<View>()
             .is_none_or(|view| view.has_type(*self))
     }
+}
+
+impl Kinded for UnitType {
+    const KIND: DataKind = DataKind::Unit;
 }

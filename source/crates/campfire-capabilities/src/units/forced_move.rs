@@ -5,6 +5,8 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
 use crate::values::action_start::ActionStart;
@@ -157,4 +159,8 @@ impl SimComponent for ForcedMove {
                 }
             }
     }
+}
+
+impl Kinded for ForcedMove {
+    const KIND: DataKind = DataKind::Unit;
 }

@@ -7,6 +7,7 @@ use campfire_common::Ticks;
 use campfire_sim::{EntityIndex, SimEdge, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::scripts::ctx::Ctx;
+use crate::state_types::StateTypes;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::HeldModifiers;
@@ -99,6 +100,15 @@ pub(crate) enum StatsSet {
 }
 
 impl Stats {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.resource::<PlayerModifiers>();
+        types.predicted::<Level>();
+        types.predicted::<Modifiers>();
+        types.predicted::<ModifierClocks>();
+        types.component::<Pools>();
+    }
+
     /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,
     /// every unit whose level or modifiers changed, or that is new, has its stats and states
     /// derived again, and the components that hold their effect follow them; as each tick
@@ -116,11 +126,7 @@ impl Stats {
         world.insert_resource(PlayerModifiers::default());
         world.insert_resource(HeldModifiers::default());
         world.insert_resource(LiveCarriers::default());
-        registry.register_resource::<PlayerModifiers>();
-        registry.register_component::<Level>();
-        registry.register_component::<Modifiers>();
-        registry.register_component::<ModifierClocks>();
-        registry.register_component::<Pools>();
+        Self::state_types(registry);
         schedule.add_systems((
             (
                 ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),

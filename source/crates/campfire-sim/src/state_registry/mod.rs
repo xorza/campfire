@@ -204,6 +204,13 @@ impl StateRegistry {
         self.register_resource_decoded::<R>(decode_resource::<R>);
     }
 
+    /// Whether `C` is registered.
+    pub fn holds<C: SimComponent>(&self) -> bool {
+        self.entries
+            .binary_search_by(|held| held.name.cmp(C::NAME))
+            .is_ok()
+    }
+
     /// Registers `R` as a resource every state holds, as the sim's own do: a snapshot that
     /// records it absent does not restore.
     fn require_resource<R: SimResource>(&mut self) {

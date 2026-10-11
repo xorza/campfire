@@ -1,13 +1,11 @@
+use std::fmt::Debug;
 use std::time::Duration;
 
 use bevy_app::{App, Plugin};
-use campfire_capabilities::{
-    ActionSlots, Area, Body, CapabilitySet, Dead, Destination, Facing, ForcedMove, Inventory,
-    Level, MatchEnd, ModifierClocks, Modifiers, MoveStep, Owner, Points, Pools, Progress,
-    Projectile, Relations, Respawn, Route, SpawnPoint, Team, UnitType,
-};
+use bevy_ecs::component::{Component, Mutable};
+use campfire_capabilities::{CapabilitySet, DataKind, Kinded, MatchEnd, Relations, StateTypes};
 use campfire_protocol::SignedReceipt;
-use campfire_sim::{Capability, Position, StableId};
+use campfire_sim::{SimResource, StableId};
 use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings, NetworkDirection,
     PredictionBuilderExt, ReliableSettings,
@@ -38,8 +36,8 @@ pub(crate) struct MatchChannel;
 pub(crate) struct JoinChannel;
 
 /// What the server and the client must register alike, in the same order: the messages, their
-/// channels, and the sim components that replicate, the core's and those of the mode's declared
-/// capabilities alone, so a capability the mode lacks costs no prediction history and no
+/// channels, and the sim components that replicate, as the capabilities' lists name them, the
+/// core's and those of the mode's declared capabilities alone, so a capability the mode lacks costs no prediction history and no
 /// replication rule. The client predicts where its own units are, where they walk to and by which
 /// route, which it plans on its own pathing grid, the forced moves it learns of, which it continues
 /// as the server does, and their death and respawn, which it learns from the server: its sim stops
@@ -58,79 +56,6 @@ impl NetProtocol {
     /// How often a headless app's loop runs, a server's or a bot's: often enough that no fixed
     /// tick waits long for its frame.
     pub const FRAME: Duration = Duration::from_millis(2);
-
-    /// Registers the sim components `capability` replicates.
-    fn register_components(app: &mut App, capability: Capability) {
-        match capability {
-            Capability::Stats => {
-                app.component::<Level>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-                app.component::<Pools>()
-                    .replicate_with(WireCodec::component());
-                app.component::<Modifiers>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-                app.component::<ModifierClocks>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-            }
-            Capability::Combat => {
-                app.component::<Dead>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-                app.component::<Respawn>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-            }
-            Capability::Projectiles => {
-                app.component::<Projectile>()
-                    .replicate_once_with(WireCodec::component());
-            }
-            Capability::Areas => {
-                app.component::<Area>()
-                    .replicate_once_with(WireCodec::component());
-            }
-            Capability::Navigation => {
-                app.component::<MoveStep>()
-                    .replicate_once_with(WireCodec::component());
-                app.component::<Destination>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-                app.component::<Route>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-                app.component::<Progress>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-                app.component::<ForcedMove>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-            }
-            Capability::Progression => {
-                app.component::<Points>()
-                    .replicate_with(WireCodec::component())
-                    .predict();
-            }
-            // A unit's inventory goes to its owner alone, as `OwnedBy`'s scope holds it, and no
-            // client predicts it: its slots come from the server (design 04's items).
-            Capability::Items => {
-                app.component::<Inventory>()
-                    .replicate_with(WireCodec::component());
-            }
-            Capability::Abilities
-            | Capability::Orders
-            | Capability::Character
-            | Capability::Hitboxes
-            | Capability::Vision
-            | Capability::Physics
-            | Capability::World
-            | Capability::Mode
-            | Capability::Production
-            | Capability::Quests
-            | Capability::Interaction => {}
-        }
-    }
 }
 
 impl Plugin for NetProtocol {
@@ -174,30 +99,57 @@ impl Plugin for NetProtocol {
         app.register_message_custom_serde::<LeaveMatch>(WireCodec::message())
             .add_direction(NetworkDirection::ClientToServer);
 
+        // A unit's identity, which no state type holds: the entity list holds it.
         app.component::<StableId>()
             .replicate_once_with(WireCodec::component());
-        app.component::<UnitType>()
-            .replicate_once_with(WireCodec::component());
-        app.component::<Owner>()
-            .replicate_with(WireCodec::component());
-        app.component::<Team>()
-            .replicate_once_with(WireCodec::component());
-        app.component::<SpawnPoint>()
-            .replicate_once_with(WireCodec::component());
-        app.component::<Facing>()
-            .replicate_once_with(WireCodec::component());
-        app.component::<Body>()
-            .replicate_once_with(WireCodec::component());
-        app.component::<Position>()
-            .replicate_with(WireCodec::component())
-            .predict();
-        app.component::<ActionSlots>()
-            .replicate_with(WireCodec::component())
-            .predict();
-        for capability in self.capabilities.iter() {
-            NetProtocol::register_components(app, capability);
+        self.capabilities.state_types(&mut Replicated(app));
+    }
+}
+
+/// Reads the capabilities' lists for `NetProtocol`: registers each type of a kind a client
+/// receives for replication, as its list says it is sent.
+#[derive(Debug)]
+struct Replicated<'a>(&'a mut App);
+
+impl StateTypes for Replicated<'_> {
+    fn component<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+        if C::KIND != DataKind::Server {
+            self.0
+                .component::<C>()
+                .replicate_with(WireCodec::component());
         }
     }
+
+    fn component_once<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+        if C::KIND != DataKind::Server {
+            self.0
+                .component::<C>()
+                .replicate_once_with(WireCodec::component());
+        }
+    }
+
+    fn predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
+        &mut self,
+    ) {
+        assert_ne!(
+            C::KIND,
+            DataKind::Server,
+            "{} is predicted, so it replicates",
+            C::NAME
+        );
+        self.0
+            .component::<C>()
+            .replicate_with(WireCodec::component())
+            .predict();
+    }
+
+    fn sim_predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
+        &mut self,
+    ) {
+        self.predicted::<C>();
+    }
+
+    fn resource<R: SimResource>(&mut self) {}
 }
 
 #[cfg(test)]
@@ -208,12 +160,15 @@ mod tests {
     use lightyear::prelude::ComponentRegistry;
     use lightyear::prelude::server::ServerPlugins;
 
+    use campfire_capabilities::{Dead, Destination, Inventory, Level, Points, Projectile};
+    use campfire_sim::{Capability, Position};
+
     use super::*;
 
     #[test]
     fn a_capability_the_mode_lacks_registers_no_component() {
-        // Of each kind: the core's, stats', combat's, navigation's, progression's, projectiles',
-        // items'.
+        // Of each list: the core's, a unit's place and its death, stats', navigation's,
+        // progression's, projectiles', items'.
         let registered = |declared: &[Capability]| {
             let mut app = App::new();
             app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
@@ -236,7 +191,7 @@ mod tests {
         };
         assert_eq!(
             registered(&[]),
-            [true, false, false, false, false, false, false]
+            [true, false, true, false, false, false, false]
         );
         let declared = [
             Capability::Stats,

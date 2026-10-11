@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_id::ResourceId;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 
 /// A unit that gathers, as one whose slots hold a gather: its gather loop, none while it has
 /// none, the load it carries, which it keeps when its loop ends, and the node it gathered last,
@@ -103,6 +105,10 @@ impl SimComponent for Gatherer {
             .is_none_or(|order| order.step == GatherStep::Ordered || self.last == Some(order.node));
         load && order
     }
+}
+
+impl Kinded for Gatherer {
+    const KIND: DataKind = DataKind::Server;
 }
 
 #[cfg(test)]

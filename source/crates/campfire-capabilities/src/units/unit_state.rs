@@ -5,6 +5,8 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::scripts::state_value::StateValue;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 
@@ -45,4 +47,8 @@ impl SimComponent for UnitState {
         book.zip(unit_type)
             .is_some_and(|(book, &unit_type)| book.holds(unit_type, &self.0))
     }
+}
+
+impl Kinded for UnitState {
+    const KIND: DataKind = DataKind::Server;
 }

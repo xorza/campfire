@@ -4,6 +4,7 @@ use campfire_sim::{SimSet, StateRegistry};
 
 use crate::geometry::grid::Grid;
 use crate::geometry::polygon::Polygon;
+use crate::state_types::StateTypes;
 use crate::units::by_type::ByType;
 use crate::units::view::View;
 use crate::vision::brush_map::BrushMap;
@@ -38,6 +39,13 @@ pub(crate) mod vision_groups;
 pub struct Vision;
 
 impl Vision {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.resource::<Reveals>();
+        types.component::<SeenBy>();
+        types.component::<Sight>();
+    }
+
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
     /// teams that see it, with the reveals under way. A match sees nothing until its mode gives
@@ -49,9 +57,7 @@ impl Vision {
         schedule.add_systems(Seeing::see.in_set(SimSet::Vision));
         world.insert_resource(ByType::<Sight>::default());
         world.insert_resource(Reveals::default());
-        registry.register_resource::<Reveals>();
-        registry.register_component::<SeenBy>();
-        registry.register_component::<Sight>();
+        Self::state_types(registry);
     }
 
     /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's order,

@@ -1,0 +1,51 @@
+# Campfire — QUIC transport
+
+Proposal: the server and the client link over QUIC alone, through an IO layer of `net` on `quinn-proto`, in place of Lightyear's WebTransport. WebTransport is HTTP/3 over QUIC, and its one gain over QUIC alone is that a browser reaches it, which Campfire dropped ([Code](../../AGENTS.md#code)). What it costs, from [the research](../research/quic.md):
+
+| Today | What it does |
+| --- | --- |
+| A tokio runtime for each app that adds the plugin, one worker for each core, leaked | The server's network threads compete with Bevy's task pools; a process adds the plugin once, and the harness and the local server assert that they add none ([Networking](02-engine-core.md#networking)) |
+| Two unbounded channels for each packet, to and from a tokio task | A new `Bytes` and a wakeup on another thread for each packet; when congestion control holds packets back, the queue and the delay grow with no bound |
+| Lightyear's link packs packets of up to 1,200 bytes; the largest datagram QUIC carries on its minimum path is 1,161 | A larger packet is dropped with a debug log until path MTU discovery raises the MTU, and always on a path that stays near QUIC's minimum, as a tunnel's; a reliable message in it is sent again at the same size |
+| An HTTP/3 `CONNECT` after the QUIC handshake | One more round trip at each connect |
+| The connect answer binds to the certificate's hash | A party that holds the server's TLS key can relay a player's answer to the real server and take the player's seat ([Connection](05-protocol-spec.md#connection), step 3) |
+| A self-signed certificate of 14 days, made again at a start that restores no session | The renewal and the expiry in the `tls` file exist for a browser's rule ([Sessions](10-sessions.md#decisions), Start) |
+| `LinkLost` holds the transport's text | The LAN check's impostor must fail, but no code can tell why it failed |
+
+## Decisions
+
+### The stack
+
+- **D1. QUIC alone, on `quinn-proto`.** `quinn-proto` is QUIC with no IO: state machines that take datagrams and the time, and give datagrams and the next deadline. It is the core of `quinn`, the most used QUIC in Rust, over `rustls` and `ring`, which the build holds already; it carries RFC 9221's datagrams and gives TLS's exporter. Not `quinn`, whose API needs an async runtime; not `noq`, a younger fork of `quinn` whose multipath and NAT traversal no slice needs yet (What waits); not `quiche`, a C library to build, with no exporter in its API; not `s2n-quic` or `neqo`, which bring their own async IO or NSS. Not Lightyear's UDP, which has no encryption, no handshake and no congestion control; not Lightyear's netcode on it, whose connect tokens need an issuer that knows the server's key, a second protocol.
+- **D2. The socket is `quinn-udp`'s.** One non-blocking `std::net::UdpSocket` for each endpoint, which `quinn-udp` reads and writes in batches. It turns on ECN, which lets congestion control slow down before a loss, and gives each datagram's destination address, so a server bound to `0.0.0.0`, as design 10's unit is, replies from the address the client reached; GSO and GRO where Linux has them. It keeps its OS files behind one API, as std does, so Campfire names no OS ([Platform](02-engine-core.md#platform)).
+- **D3. The app's frame drives it.** In `PreUpdate`, in Lightyear's `BufferToLink`, the IO reads the socket until it would block, gives each datagram to the endpoint, each event to its connection, and each due deadline to `handle_timeout`, then moves each connection's datagrams to its link's receive queue. In `PostUpdate`, in Lightyear's `Send`, it moves each link's send queue to its connection, and writes what each connection has to send into one scratch buffer, then to the socket. No thread, no channel, no runtime: the IO's work is the frame's, measured with it. A deadline waits for the next frame: the server's frame is `NetProtocol::FRAME`, 2 ms, and a client's is its render frame, both below QUIC's acknowledgment delay of 25 ms; a frame longer than that makes the peer's round-trip estimate longer, and Lightyear's clock sync, which keeps its own pings, does not read it.
+- **D4. Datagrams, not streams.** One Lightyear packet is one QUIC DATAGRAM frame. Lightyear keeps what it does over any link, its channels' reliability, order and fragments; QUIC keeps encryption, congestion control, pacing and the path MTU. A connection opens no stream. When congestion control holds datagrams back, a connection keeps at most `datagram_send_buffer_size` bytes of them, and a new datagram pushes the oldest out: the newest state matters most, and Lightyear sends a lost reliable message again. Memory and delay are bounded.
+- **D5. The link's MTU is QUIC's datagram.** A link's minimum MTU, which Lightyear's fragments take on both peers when the link is made, is the largest datagram on QUIC's minimum path of 1,200 bytes: `1200 − (1 + 8 + 4 + 16) − 9 = 1,162` bytes, from a short header with the endpoint's connection ids of 8 bytes, a packet number of at most 4 and an AEAD tag of 16, and a DATAGRAM frame's type and largest length. Both ends set the id length, so the number holds on every link, and a test checks it against `quinn-proto`'s `max_size` on a connection before discovery. The link's current MTU follows `max_size` each frame, as path MTU discovery raises it and black hole detection lowers it, never below the minimum.
+
+### The server's key
+
+- **D6. The server presents a raw key.** The server's TLS identity is an Ed25519 key with no certificate ([RFC 7250](https://www.rfc-editor.org/rfc/rfc7250)): a self-signed certificate's names and dates are checked by no one, as the client trusts the key its listing pins. The `tls` file holds the key's 32-byte seed, a secret file made at the server's first start and kept until the host removes it, with no expiry and no renewal: the 14 days were WebTransport's rule for a browser. The listing names the public key, 32 bytes as 64 hex digits, `TlsKey` in `protocol`, in place of the certificate's hash. The client's verifier takes only the pinned key, and refuses any other with `rustls`'s `ApplicationVerificationFailure`, which TLS sends as the `access_denied` alert. A host who removes the file gets a new key at the next start and announces it in a new listing; a session that restores keeps the file, so its clients' pins stay true.
+- **D7. TLS 1.3, one protocol name, no client key.** QUIC runs only TLS 1.3; the ALPN is `campfire`, which RFC 9001 requires, and the engine release stays the offer's check. The client presents no key to TLS: a player proves its main key by the connect answer, as before. The name a client sends is fixed, and its verifier does not read it.
+
+### Connections
+
+- **D8. Each new address proves itself, and a link outlives a new port.** The server answers each first packet from an address that has not proved itself with QUIC's stateless Retry ([RFC 9000](https://www.rfc-editor.org/rfc/rfc9000) §8.1), so a spoofed address costs it no state, as design 05's step 5 asks: one round trip at connect, as WebTransport's `CONNECT` costs today. Keep-alive is 1 s and the idle timeout 5 s, as today ([Sessions](10-sessions.md#decisions), Clients). A client whose NAT gives it a new port keeps its link, as QUIC migrates the connection, and its `PeerAddr` follows. Each connection lives on its link's entity: the client's entity, or a `LinkOf` of the server; the endpoint and the socket live on the server's entity, or on the client's.
+- **D9. A link's end is a type.** The IO puts `LinkEnd` on a link's entity before it unlinks it: `TimedOut`, `ClosedByPeer`, `WrongServerKey`, `Refused`, `Reset` and `Transport` with QUIC's error code, from the connection's error and the alert of D6. `LinkLost` carries it, and the client's own end, `ChainRewritten`, joins it; the LAN check's impostor must end by `WrongServerKey`. Lightyear's `UnlinkReason`, which holds text, stays Lightyear's own for its logs. An `Unlink` and an app's exit close the connection with a code, and the IO keeps a closed connection until it drains, so the close reaches the peer, which ends at once, not 5 s later.
+
+### The connect answer
+
+- **D10. The answer binds to the TLS session.** Each end reads, once the connection is established, the `tls-exporter` channel binding of [RFC 9266](https://www.rfc-editor.org/rfc/rfc9266): 32 bytes of TLS's exporter, label `EXPORTER-Channel-Binding`, empty context, which the IO puts on the link's entity as `ChannelBinding`. The answer is a signature over `"campfire/connect/v2" ‖ challenge ‖ binding`, and the server checks it with its own link's binding. A party that holds the server's TLS key and stands between a client and the server holds two TLS sessions, whose bindings differ, so an answer it relays fails; with the certificate's hash, it passes. An in-process link has no TLS: the harness and the local server put one fixed binding on both its ends, as they share one certificate hash today. The challenge stays: it keeps an answer fresh on a link with no TLS.
+
+## What changes elsewhere
+
+- **Design 02.** `net`'s row and the Networking paragraph: QUIC through `net`'s IO, with no plugin rule and no runtime; the LAN check's row and its impostor; the libraries table gains `quinn-proto`, `quinn-udp` and `rustls`.
+- **Design 05.** The Connection's steps 1, 2, 3 and 5, and the listing's TLS key in place of the certificate's hash.
+- **Design 10.** Start: the `tls` file holds the key's seed, made once; Clients: the keep-alive and the idle timeout are `net`'s.
+- **The build.** `wtransport`, `aeronet_webtransport`, `rcgen` and tokio leave it; Lightyear's `webtransport` feature goes.
+
+## What waits
+
+- **Limits for each address.** Design 05's limits on connections and packets for each address: players behind one NAT share an address, so a count of connections from one address refuses them; a limit is set against a measured flood.
+- **NAT traversal.** A home host forwards a port or uses UPnP, as design 05's step 4 says; `noq`'s NAT traversal and multipath are its options.
+- **The IO's cost.** A bench case of the IO's frame, and what `quinn-proto` allocates for each packet, measured in an optimization session.
+- **0-RTT.** A reconnect that sends data in its first flight risks a replay of it; a reconnect takes one round trip and the Retry's.

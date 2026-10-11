@@ -24,6 +24,7 @@ use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::production::ProductionSet;
 use crate::production::build_specs::BuildSpecs;
 use crate::scripts::ctx::Ctx;
+use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 
@@ -58,6 +59,12 @@ pub(crate) enum OrdersSet {
 pub struct Orders;
 
 impl Orders {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.component::<NextThink>();
+        types.component::<Resetting>();
+    }
+
     /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
     /// are learned, and, with production, trains are cancelled and rally points set, and, with
     /// items, on the server, items trade; in Think, the resets whose units arrived end, then the
@@ -91,8 +98,7 @@ impl Orders {
             ProductionSet::CheckBuilds.after(OrdersSet::Orders),
             OrdersSet::Orders.after(AbilitiesSet::Toggles),
         ));
-        registry.register_component::<NextThink>();
-        registry.register_component::<Resetting>();
+        Self::state_types(registry);
         let production = world.contains_resource::<BuildSpecs>();
         if production {
             schedule.add_systems(

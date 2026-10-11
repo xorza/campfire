@@ -8,6 +8,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
 use crate::projectiles::projectile_spec::ProjectileSpec;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
@@ -173,6 +175,10 @@ impl SimComponent for Projectile {
         };
         flies && carries
     }
+}
+
+impl Kinded for Projectile {
+    const KIND: DataKind = DataKind::Unit;
 }
 
 /// A snapshot is untrusted, so a projectile that `new` refuses fails to decode.

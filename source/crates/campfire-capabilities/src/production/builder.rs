@@ -5,6 +5,8 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::production::build_target::BuildTarget;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 
 /// A unit that builds, as one whose slots hold a build: its build order, none while it has none.
 /// Any other order ends it.
@@ -38,4 +40,8 @@ impl SimComponent for Builder {
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }
+}
+
+impl Kinded for Builder {
+    const KIND: DataKind = DataKind::Server;
 }

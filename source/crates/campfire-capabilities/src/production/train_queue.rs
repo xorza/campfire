@@ -13,6 +13,8 @@ use crate::actions::action_kind::ActionKind;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::production::production_data::ProductionData;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
@@ -123,6 +125,10 @@ impl SimComponent for TrainQueue {
             .all(|paid| paid.resource.index() < resources && paid.amount >= 0);
         trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity) && paid
     }
+}
+
+impl Kinded for TrainQueue {
+    const KIND: DataKind = DataKind::Server;
 }
 
 /// A snapshot is untrusted, so a head time without a head or without one, or paid amounts that

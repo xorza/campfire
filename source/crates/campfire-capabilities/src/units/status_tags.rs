@@ -4,6 +4,8 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::units::engine_tag::EngineTag;
 use crate::units::tag_set::TagSet;
 
@@ -43,6 +45,10 @@ impl SimComponent for StatusTags {
     fn check(&self, _: &World, _: Entity) -> bool {
         self.0.iter().all(|tag| tag.index() < EngineTag::ALL.len())
     }
+}
+
+impl Kinded for StatusTags {
+    const KIND: DataKind = DataKind::Server;
 }
 
 #[cfg(test)]

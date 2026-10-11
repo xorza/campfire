@@ -7,6 +7,8 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::combat::recent_attack::RecentAttack;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 
 /// Who struck a unit, and the last tick each did, by stable id. An attacker that no longer exists
 /// is forgotten as a new one comes, so the list never holds more than the units that lived since
@@ -62,6 +64,10 @@ impl SimComponent for RecentAttackers {
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }
+}
+
+impl Kinded for RecentAttackers {
+    const KIND: DataKind = DataKind::Server;
 }
 
 #[cfg(test)]

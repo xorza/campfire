@@ -15,6 +15,7 @@ use crate::combat::CombatSet;
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::{Deliveries, DeliverySet};
+use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
@@ -35,6 +36,11 @@ pub(crate) mod areas_effect;
 pub struct Areas;
 
 impl Areas {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.component_once::<Area>();
+    }
+
     /// Adds areas to a match. In Hit, after projectiles fly, each area due triggers, and its
     /// reaches and its end run their action's `on_hit` and `on_end`, or its launch's; after the
     /// tick's projectiles launch, its areas land. In Resolve, the areas the damage pass launched
@@ -65,7 +71,7 @@ impl Areas {
                 .after(CombatSet::Die)
                 .before(StatsSet::Hold),
         ));
-        registry.register_component::<Area>();
+        Self::state_types(registry);
     }
 
     /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it

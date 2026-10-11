@@ -8,6 +8,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::kinded::Kinded;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
 
@@ -100,6 +102,10 @@ impl SimComponent for Experience {
             book.has(track.track) && own != (book.level_track() == Some(track.track))
         })
     }
+}
+
+impl Kinded for Experience {
+    const KIND: DataKind = DataKind::Progression;
 }
 
 /// A snapshot is untrusted, so tracks out of order or twice, or negative experience, fail to

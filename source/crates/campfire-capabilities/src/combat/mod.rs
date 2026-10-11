@@ -21,6 +21,7 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::shots::Shots;
 use crate::scripts::ctx::Ctx;
+use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_id::PoolId;
@@ -88,6 +89,14 @@ pub(crate) enum CombatSet {
 }
 
 impl Combat {
+    /// Lists the state types it adds (design 14, D9).
+    pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
+        types.component::<Kept>();
+        types.component::<OnDeath>();
+        types.component::<RecentAttackers>();
+        types.predicted::<Respawn>();
+    }
+
     /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act,
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
@@ -147,10 +156,7 @@ impl Combat {
                 .in_set(CombatSet::Respawn),
             Dying::despawn_dead.in_set(SimSet::Vision),
         ));
-        registry.register_component::<Kept>();
-        registry.register_component::<OnDeath>();
-        registry.register_component::<RecentAttackers>();
-        registry.register_component::<Respawn>();
+        Self::state_types(registry);
     }
 
     /// The match's life pool; `None` when its mode names none.

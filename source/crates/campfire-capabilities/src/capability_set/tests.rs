@@ -1,12 +1,17 @@
+use std::fmt::Debug;
 use std::path::Path;
 
+use bevy_ecs::component::{Component, Mutable};
+use campfire_sim::SimResource;
 use campfire_store::{InputFile, SourceFiles};
 
 use super::*;
 use crate::actions::action_book::ActionBook;
 use crate::capability_set::test_match::TestMatch;
+use crate::mode;
 use crate::orders::ai::Ai;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::state_types::kinded::Kinded;
 use crate::units::by_type::ByType;
 use crate::units::view::View;
 
@@ -157,9 +162,10 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 
 /// The layer of each module of the crate, lowest first: a module imports from its own layer
 /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-const LAYERS: [(&str, u8); 21] = [
+const LAYERS: [(&str, u8); 22] = [
     ("values", 0),
     ("geometry", 0),
+    ("state_types", 0),
     ("units", 1),
     ("scripts", 1),
     ("players", 1),
@@ -635,4 +641,53 @@ fn each_capability_adds_exactly_its_own_state_types() {
     // The table holds every capability the release runs.
     let runs = CAPABILITIES.iter().filter(|row| row.install.is_some());
     assert_eq!(runs.count(), STATE.len() - 1);
+}
+
+#[test]
+fn a_match_registers_exactly_the_types_its_capabilities_list() {
+    // A match of every capability the release runs: its registry holds what the lists name but
+    // the mode's, which a test match does not install, and `sim`'s own types besides, so no
+    // install registers a type its list lacks, and `net`, which reads the lists, misses none.
+    #[derive(Debug, Default)]
+    struct Names(Vec<&'static str>);
+    impl StateTypes for Names {
+        fn component<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+            self.0.push(C::NAME);
+        }
+        fn component_once<C: Kinded + Component<Mutability = Mutable>>(&mut self) {
+            self.0.push(C::NAME);
+        }
+        fn predicted<C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
+            &mut self,
+        ) {
+            self.0.push(C::NAME);
+        }
+        fn sim_predicted<
+            C: Kinded + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
+        >(
+            &mut self,
+        ) {
+            self.0.push(C::NAME);
+        }
+        fn resource<R: SimResource>(&mut self) {
+            self.0.push(R::NAME);
+        }
+    }
+    let declared: Vec<Capability> = CAPABILITIES
+        .iter()
+        .filter(|row| row.install.is_some())
+        .map(|row| row.capability)
+        .collect();
+    let mut listed = Names::default();
+    CapabilitySet::new(&declared)
+        .unwrap()
+        .state_types(&mut listed);
+    let mut modes = Names::default();
+    mode::Mode::state_types(&mut modes);
+    listed.0.retain(|name| !modes.0.contains(name));
+    listed
+        .0
+        .extend(["sim.entities", "sim.id_allocator", "sim.tick"]);
+    listed.0.sort_unstable();
+    assert_eq!(listed.0, TestMatch::client(&declared).state_names());
 }
