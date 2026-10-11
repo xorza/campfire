@@ -4,6 +4,7 @@ use campfire_sim::StableId;
 
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_times::SlotTimes;
 use crate::combat::respawn::Respawn;
 use crate::mode::group_unit::GroupUnit;
 use crate::mode::match_end::MatchEnd;
@@ -109,11 +110,13 @@ impl Effect for ModeEffect {
                     return;
                 };
                 let mut unit = world.entity_mut(entity);
-                if let Some(mut slots) = unit.get_mut::<ActionSlots>() {
-                    slots.grant(kind, &abilities, rank);
+                if let Ok((mut slots, mut times)) =
+                    unit.get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
+                {
+                    slots.grant(&mut times, kind, &abilities, rank);
                 } else {
                     let slots = abilities.iter().map(|&ability| (ability, kind, rank));
-                    unit.insert(ActionSlots::new(slots));
+                    unit.insert(ActionSlots::new(slots).timed());
                 }
             }
             ModeEffect::Respawn { unit, ticks } => {

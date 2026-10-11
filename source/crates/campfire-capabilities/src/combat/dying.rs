@@ -9,8 +9,8 @@ use crate::combat::kept::Kept;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
-use crate::stats::life_pool::LifePool;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
+use crate::stats::unit_pools::UnitPools;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::spawn_point::SpawnPoint;
@@ -26,7 +26,6 @@ impl Dying {
     /// strike took there died with no killer.
     pub(super) fn die(
         mut commands: Commands<'_, '_>,
-        life: Res<'_, LifePool>,
         mut deaths: ResMut<'_, Deaths>,
         mut units: Query<
             '_,
@@ -34,7 +33,7 @@ impl Dying {
             (
                 Entity,
                 &StableId,
-                &Pools,
+                &Life,
                 Option<&mut ActionSlots>,
                 Option<&Team>,
                 Option<&Owner>,
@@ -43,8 +42,8 @@ impl Dying {
         >,
     ) {
         deaths.index_killed();
-        for (entity, &id, pools, slots, team, owner) in &mut units {
-            if pools.above_zero(life.0) {
+        for (entity, &id, life, slots, team, owner) in &mut units {
+            if life.above_zero() {
                 continue;
             }
             if let Some(mut slots) = slots {
@@ -83,7 +82,7 @@ impl Dying {
                 Entity,
                 &Respawn,
                 &SpawnPoint,
-                &mut Pools,
+                UnitPools,
                 &mut Position,
                 Option<&mut RecentAttackers>,
             ),

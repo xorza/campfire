@@ -18,19 +18,19 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::channel_call::{ChannelCall, ChannelStep};
 use crate::actions::checked_action::CheckedAction;
 use crate::actions::in_progress::{InProgress, OrderPhase};
-use crate::actions::rank_fields::TogglePer;
-use crate::actions::rank_values::{ChannelRule, ChargeRule, RankValues};
+use crate::actions::rank_values::{ChannelRule, RankValues};
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
-use crate::stats::pools::Pools;
+use crate::actions::slot_times::{SlotTimes, TimedSlots};
 use crate::units::action_id::ActionId;
 use crate::values::action_start::ActionStart;
 use crate::values::rank::Rank;
 
-/// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank
-/// with its cooldown; the action it was ordered or has under way, one at a time; and the unit its
-/// attacks aim at, which it attacks again each time a weapon is ready, until another order.
+/// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank,
+/// whose times its `SlotTimes` holds; the action it was ordered or has under way, one at a time;
+/// and the unit its attacks aim at, which it attacks again each time a weapon is ready, until
+/// another order.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ActionSlots {
     slots: Vec<ActionSlot>,
@@ -40,68 +40,20 @@ pub struct ActionSlots {
     interrupted: Option<ChannelCall>,
 }
 
-/// One slot: the action, none in an inventory slot whose item has none, its kind, its rank, none
-/// while not learned, the first tick it may start again, and its charges, for an action with
-/// charges once it has a rank.
+/// One slot: the action, none in an inventory slot whose item has none, its kind, and its rank,
+/// none while not learned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionSlot {
     pub action: Option<ActionId>,
     pub kind: SlotKind,
     pub rank: Option<Rank>,
-    pub ready_at: Tick,
-    pub charges: Option<SlotCharges>,
-    /// While its toggle is on, the tick it pays its cost each second next.
-    pub toggle: Option<Tick>,
-}
-
-/// A slot's charges: how many it holds, and the tick the next comes back while it holds fewer
-/// than its action's most.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SlotCharges {
-    pub count: u8,
-    pub next: Tick,
 }
 
 impl ActionSlot {
-    /// A slot of `action`, or none, of `kind` at `rank`, ready at once, with no charges and no
-    /// toggle on.
-    const fn ready(action: Option<ActionId>, kind: SlotKind, rank: Option<Rank>) -> ActionSlot {
-        ActionSlot {
-            action,
-            kind,
-            rank,
-            ready_at: Tick::ZERO,
-            charges: None,
-            toggle: None,
-        }
-    }
-
     /// Its action's values at its rank, as `book` gives them; none for a slot with no action, one
     /// not learned, or at a rank its action lacks.
     pub(crate) fn values_in(self, book: &ActionBook) -> Option<&RankValues> {
         book.get(self.action?)?.values_at(self.rank?)
-    }
-
-    /// Its charges at `now` under `rule`, its action's at its rank: none without a rule; full at
-    /// first; then each charge that came back by `now`, and no more than the most.
-    fn charges_at(&self, rule: Option<ChargeRule>, now: Tick) -> Option<SlotCharges> {
-        let rule = rule?;
-        let max = rule.max.get();
-        let Some(mut charges) = self.charges else {
-            return Some(SlotCharges {
-                count: max,
-                next: now,
-            });
-        };
-        charges.count = charges.count.min(max);
-        if rule.recharge == Ticks::ZERO {
-            charges.count = max;
-        }
-        while charges.count < max && charges.next <= now {
-            charges.count += 1;
-            charges.next = charges.next.after(rule.recharge);
-        }
-        Some(charges)
     }
 }
 
@@ -130,12 +82,16 @@ impl ActionSlots {
     /// The most slots a unit holds: every index a `u8` holds.
     pub const LIMIT: usize = 256;
 
-    /// Slots of `(action, kind, rank)`, in the order of their kinds, each ready at once, at its
-    /// rank, none before it is learned.
+    /// Slots of `(action, kind, rank)`, in the order of their kinds, each at its rank, none before
+    /// it is learned.
     pub fn new(slots: impl IntoIterator<Item = (ActionId, SlotKind, Option<Rank>)>) -> ActionSlots {
         let slots: Vec<ActionSlot> = slots
             .into_iter()
-            .map(|(action, kind, rank)| ActionSlot::ready(Some(action), kind, rank))
+            .map(|(action, kind, rank)| ActionSlot {
+                action: Some(action),
+                kind,
+                rank,
+            })
             .collect();
         assert!(
             slots.is_sorted_by_key(|slot| slot.kind),
@@ -149,30 +105,50 @@ impl ActionSlots {
         }
     }
 
-    /// Puts `actions` in `kind` at `rank`, each ready at once, after the slots of that kind it
-    /// has: the slots of later kinds, and an action under way or cut from one, move along.
-    pub(crate) fn grant(&mut self, kind: SlotKind, actions: &[ActionId], rank: Option<Rank>) {
-        self.insert(
-            kind,
-            actions
-                .iter()
-                .map(|&action| ActionSlot::ready(Some(action), kind, rank)),
-        );
+    /// The slots with their times, each ready at once, as a unit gains them.
+    pub fn timed(self) -> TimedSlots {
+        TimedSlots::new(self)
     }
 
-    /// Puts `count` empty slots of `kind`, an inventory's, of one rank, after the slots of that
-    /// kind it has, as `grant` puts actions.
-    pub(crate) fn add_empty(&mut self, kind: SlotKind, count: u8) {
-        let rank = Some(Rank::FIRST);
-        self.insert(
+    /// Puts `actions` in `kind` at `rank`, each ready at once in `times`, after the slots of that
+    /// kind it has: the slots of later kinds, and an action under way or cut from one, move
+    /// along.
+    pub(crate) fn grant(
+        &mut self,
+        times: &mut SlotTimes,
+        kind: SlotKind,
+        actions: &[ActionId],
+        rank: Option<Rank>,
+    ) {
+        let added = actions.iter().map(|&action| ActionSlot {
+            action: Some(action),
             kind,
-            (0..count).map(|_| ActionSlot::ready(None, kind, rank)),
-        );
+            rank,
+        });
+        let at = self.insert(kind, added);
+        times.insert(at, actions.len());
+    }
+
+    /// The same slots with `count` empty slots of `kind`, an inventory's, of one rank, after the
+    /// slots of that kind, as a new unit's are, before it has times.
+    pub(crate) fn with_empty(mut self, kind: SlotKind, count: u8) -> ActionSlots {
+        let rank = Some(Rank::FIRST);
+        let added = (0..count).map(|_| ActionSlot {
+            action: None,
+            kind,
+            rank,
+        });
+        self.insert(kind, added);
+        self
     }
 
     /// Puts `added`, slots of `kind`, after the slots of that kind it has; the slots of later
-    /// kinds, and an action under way or cut from one, move along.
-    fn insert(&mut self, kind: SlotKind, added: impl ExactSizeIterator<Item = ActionSlot>) {
+    /// kinds, and an action under way or cut from one, move along. Where it put them.
+    fn insert(
+        &mut self,
+        kind: SlotKind,
+        added: impl ExactSizeIterator<Item = ActionSlot>,
+    ) -> usize {
         let at = self.slots.partition_point(|slot| slot.kind <= kind);
         let count = added.len();
         self.slots.splice(at..at, added);
@@ -187,6 +163,7 @@ impl ActionSlots {
         if let Some(cut) = &mut self.interrupted {
             moved(&mut cut.call.aim.slot);
         }
+        at
     }
 
     /// The first slot of `kind`, where its slots begin, or would.
@@ -195,23 +172,25 @@ impl ActionSlots {
         u8::try_from(at).expect("a unit's slots fit u8")
     }
 
-    /// Puts `action`, or none, in `slot` afresh: ready at once, with no charges and no toggle on,
-    /// as a slot an item fills or leaves; what is under way from the slot stops, a channel cut.
-    pub(crate) fn fill(&mut self, slot: u8, action: Option<ActionId>) {
+    /// Puts `action`, or none, in `slot` afresh: ready at once in `times`, with no charges and no
+    /// toggle on, as a slot an item fills or leaves; what is under way from the slot stops, a
+    /// channel cut.
+    pub(crate) fn fill(&mut self, times: &mut SlotTimes, slot: u8, action: Option<ActionId>) {
         if self
             .underway
             .is_some_and(|underway| underway.slot() == slot)
         {
             self.stop();
         }
-        let held = &mut self.slots[usize::from(slot)];
-        *held = ActionSlot::ready(action, held.kind, held.rank);
+        self.slots[usize::from(slot)].action = action;
+        times.reset(slot);
     }
 
-    /// Swaps slots `a` and `b`, each keeping its cooldown, charges and toggle; what is under way
-    /// or cut from either follows it.
-    pub(crate) fn swap(&mut self, a: u8, b: u8) {
+    /// Swaps slots `a` and `b`, each keeping its times in `times`; what is under way or cut from
+    /// either follows it.
+    pub(crate) fn swap(&mut self, times: &mut SlotTimes, a: u8, b: u8) {
         self.slots.swap(usize::from(a), usize::from(b));
+        times.swap(a, b);
         let follow = |slot: &mut u8| {
             if *slot == a {
                 *slot = b;
@@ -434,23 +413,13 @@ impl ActionSlots {
     }
 
     /// Ends the cast under way, due in `now`, as the server resolves it and a client predicts
-    /// it: one that `resolved` spends its slot, turns its toggle on to pay a `second` from now,
-    /// and channels from the next tick; one that did not only stops.
-    pub(crate) fn finish_cast(
-        &mut self,
-        now: Tick,
-        second: Ticks,
-        resolved: Option<&ResolvedCast>,
-    ) {
+    /// it: one that `resolved` channels from the next tick, its slot's times spent by
+    /// `SlotTimes::spend_cast`; one that did not only stops.
+    pub(crate) fn finish_cast(&mut self, now: Tick, resolved: Option<&ResolvedCast>) {
         self.stop();
         let Some(&ResolvedCast { call, values }) = resolved else {
             return;
         };
-        let slot = call.aim.slot;
-        self.spend(slot, now, values.cooldown, values.charges);
-        if values.toggle.is_some() {
-            self.toggle_on(slot, now.after(second));
-        }
         if let Some(rule) = values.channel {
             self.channel(call.aim, now.after(Ticks::new(1)), rule, call.start);
         }
@@ -538,143 +507,6 @@ impl ActionSlots {
         }
         self.attack_target = target;
     }
-
-    /// Puts `slot` on cooldown until `ready_at`.
-    pub(crate) fn cool_down(&mut self, slot: u8, ready_at: Tick) {
-        self.slots[usize::from(slot)].ready_at = ready_at;
-    }
-
-    /// Spends what starting the action in `slot` at `now` costs of its slot: its cooldown, and
-    /// under `rule`, its action's charges at its rank, a charge, the timer of the next starting
-    /// as the slot falls below its most.
-    pub(crate) fn spend(&mut self, slot: u8, now: Tick, cooldown: Ticks, rule: Option<ChargeRule>) {
-        let slot = &mut self.slots[usize::from(slot)];
-        slot.ready_at = now.after(cooldown);
-        let Some(rule) = rule else {
-            return;
-        };
-        let charges = slot
-            .charges
-            .as_mut()
-            .expect("an action with charges filled them");
-        if charges.count == rule.max.get() {
-            charges.next = now.after(rule.recharge);
-        }
-        charges.count = charges
-            .count
-            .checked_sub(1)
-            .expect("an action starts only with a charge");
-    }
-
-    /// Gives each slot of `action` that holds charges one more, up to the most `book` gives the
-    /// action at the slot's rank, its timer kept.
-    pub(crate) fn add_charge(&mut self, action: ActionId, book: &ActionBook) {
-        let rules = book.get(action).expect("an action of the match");
-        for slot in self
-            .slots
-            .iter_mut()
-            .filter(|slot| slot.action == Some(action))
-        {
-            let rule = slot.rank.and_then(|rank| rules.values_at(rank)?.charges);
-            if let (Some(charges), Some(rule)) = (&mut slot.charges, rule) {
-                charges.count = (charges.count + 1).min(rule.max.get());
-            }
-        }
-    }
-
-    /// The charges each slot holds at `now`, as `book` gives its action's rule at its rank, for
-    /// each slot whose charges differ from what it holds: a slot learned since, or a charge that
-    /// came back.
-    pub(crate) fn charges_due<'a>(
-        &'a self,
-        book: &'a ActionBook,
-        now: Tick,
-    ) -> impl Iterator<Item = (u8, Option<SlotCharges>)> + 'a {
-        self.indexed().filter_map(move |(at, slot)| {
-            let rule = slot.action.and_then(|action| {
-                let action = book.get(action).expect("a slot's action is in the book");
-                action.values_at(slot.rank?)?.charges
-            });
-            let charges = slot.charges_at(rule, now);
-            (charges != slot.charges).then_some((at, charges))
-        })
-    }
-
-    /// Turns the toggle of `slot` on, to pay its cost each second from `next`.
-    pub(crate) fn toggle_on(&mut self, slot: u8, next: Tick) {
-        self.slots[usize::from(slot)].toggle = Some(next);
-    }
-
-    /// Turns the toggle of `slot` off.
-    pub(crate) fn toggle_off(&mut self, slot: u8) {
-        self.slots[usize::from(slot)].toggle = None;
-    }
-
-    /// Pays the cost of each toggle that is on and pays as each attack goes off, from `pools`, as
-    /// `book` gives it at the slot's rank; one that `pools` cannot pay turns off instead.
-    pub(crate) fn pay_attack_toggles(&mut self, book: &ActionBook, pools: &mut Pools) {
-        for slot in self.slots.iter_mut().filter(|slot| slot.toggle.is_some()) {
-            let toggle = slot
-                .values_in(book)
-                .and_then(|values| values.toggle)
-                .expect("a toggle that is on has its rule");
-            if toggle.per != TogglePer::Attack {
-                continue;
-            }
-            if pools.affords(&toggle.cost) {
-                pools.pay(&toggle.cost);
-            } else {
-                slot.toggle = None;
-            }
-        }
-    }
-
-    /// Sets the charges of `slot`.
-    pub(crate) fn set_charges(&mut self, slot: u8, charges: Option<SlotCharges>) {
-        self.slots[usize::from(slot)].charges = charges;
-    }
-
-    /// Takes `cut` off the cooldown of each slot of `action`, and off the time to its next
-    /// charge, to no earlier than `now`.
-    pub(crate) fn cut_cooldown(&mut self, action: ActionId, cut: Ticks, now: Tick) {
-        let cut = |at: Tick| {
-            let left = at.since(now).unwrap_or(Ticks::ZERO);
-            now.after(Ticks::new(left.get().saturating_sub(cut.get())))
-        };
-        for slot in self
-            .slots
-            .iter_mut()
-            .filter(|slot| slot.action == Some(action))
-        {
-            slot.ready_at = cut(slot.ready_at);
-            if let Some(charges) = &mut slot.charges {
-                charges.next = cut(charges.next);
-            }
-        }
-    }
-
-    /// Takes `fraction`, from 0 to 1, of what is left of the cooldown of each slot of `kind` at
-    /// `now`, and of the time to its next charge; what stays rounds up to a whole tick, as every
-    /// time does.
-    pub(crate) fn cut_cooldowns(&mut self, kind: SlotKind, fraction: Num, now: Tick) {
-        debug_assert!((Num::ZERO..=Num::ONE).contains(&fraction));
-        let keep = Num::ONE - fraction;
-        let cut = |at: Tick| {
-            let left = at.since(now).unwrap_or(Ticks::ZERO);
-            let kept = Num::from_int(i64::try_from(left.get()).expect("a cooldown fits i64"))
-                .and_then(|left| left.checked_mul(keep))
-                .expect("a cooldown within the tick limit scales within a number");
-            now.after(Ticks::new(
-                u64::try_from(kept.ceil()).expect("what is kept is not negative"),
-            ))
-        };
-        for slot in self.slots.iter_mut().filter(|slot| slot.kind == kind) {
-            slot.ready_at = cut(slot.ready_at);
-            if let Some(charges) = &mut slot.charges {
-                charges.next = cut(charges.next);
-            }
-        }
-    }
 }
 
 /// A snapshot is untrusted, so slots past the most a unit holds, or not kind after kind, which a
@@ -714,8 +546,11 @@ impl SimComponent for ActionSlots {
     // An action the book lacks, a rank past its ranks, or what is under way of a slot it does
     // not have, an attack of no weapon or an order of one, has no rules for a cast to follow; a
     // slot of a kind the mode lacks, or of an action with ranks its kind has no level for, would
-    // be read past the mode's kinds.
-    fn check(&self, world: &World, _: Entity) -> bool {
+    // be read past the mode's kinds; slots with no times have no cooldowns to follow.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        if !world.entity(entity).contains::<SlotTimes>() {
+            return false;
+        }
         let (Some(book), Some(kinds)) = (
             world.get_resource::<ActionBook>(),
             world.get_resource::<SlotKinds>(),
@@ -775,21 +610,7 @@ impl SimComponent for ActionSlots {
                 .and_then(|action| action.values_at(cut.rank)?.channel);
             usize::from(cut.call.aim.slot) < self.slots.len() && rule.is_some()
         });
-        // A toggle on only for an action with one, at a rank it has.
-        let toggles = self.slots.iter().all(|slot| {
-            slot.toggle.is_none()
-                || slot
-                    .values_in(book)
-                    .is_some_and(|values| values.toggle.is_some())
-        });
-        // Charges no more than the action holds at its rank, and only for an action with them.
-        let charges = self.slots.iter().all(|slot| {
-            slot.charges.is_none_or(|charges| {
-                let rule = slot.values_in(book).and_then(|values| values.charges);
-                rule.is_some_and(|rule| charges.count <= rule.max.get())
-            })
-        });
-        self.slots.iter().all(held) && underway && charges && toggles && channel && interrupted
+        self.slots.iter().all(held) && underway && channel && interrupted
     }
 }
 

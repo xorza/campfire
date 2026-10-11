@@ -9,6 +9,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::lists_of::ListsOf;
+use crate::combat::Combat;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_event::{CombatEvent, CombatEvents};
@@ -23,12 +24,12 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::carried_mut::CarriedMut;
-use crate::stats::life_pool::LifePool;
+use crate::stats::life::Life;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
 use crate::stats::stat_id::StatId;
+use crate::stats::unit_pools::UnitPools;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::tag_book::TagBook;
@@ -191,11 +192,7 @@ impl DamagePass {
     /// heals and restores reach.
     fn living(world: &World, unit: StableId) -> Option<Entity> {
         let entity = world.resource::<EntityIndex>().get(unit)?;
-        let LifePool(life) = *world.resource::<LifePool>();
-        world
-            .get::<Pools>(entity)?
-            .above_zero(life)
-            .then_some(entity)
+        world.get::<Life>(entity)?.above_zero().then_some(entity)
     }
 
     /// The entity of `unit`, when it is living and its tags let damage reach it.
@@ -309,17 +306,16 @@ impl DamagePass {
                 left = carried.absorb(left, |id| takes_effect(book.tags(id)));
             }
         }
-        let LifePool(life) = *world.resource::<LifePool>();
         let living = |world: &World| {
-            let pools = world.get::<Pools>(entity);
-            pools.expect("a unit that takes damage").above_zero(life)
+            let life = world.get::<Life>(entity);
+            life.expect("a unit that takes damage").above_zero()
         };
-        // A write marks the pools changed, so damage that takes nothing writes nothing.
+        // A write marks the life changed, so damage that takes nothing writes nothing.
         let taken = if left > Num::ZERO && living(world) {
-            let mut pools = world
-                .get_mut::<Pools>(entity)
+            let mut life = world
+                .get_mut::<Life>(entity)
                 .expect("a unit that takes damage");
-            pools.take(life, left)
+            life.take(left)
         } else {
             Num::ZERO
         };
@@ -379,13 +375,12 @@ impl DamagePass {
     /// `heal_scale` stat.
     fn heal(world: &mut World, entity: Entity, amount: Num) {
         let bindings = *world.resource::<CombatBindings>();
-        let LifePool(life) = *world.resource::<LifePool>();
         let scale = DamagePass::stat(world, entity, bindings.heal_scale);
         let received = Num::ONE.checked_add(scale).unwrap_or(Num::MAX);
         let amount = scaled(amount, received);
         if amount > Num::ZERO {
-            let mut pools = world.get_mut::<Pools>(entity).expect("a living unit");
-            pools.add(life, amount);
+            let mut life = world.get_mut::<Life>(entity).expect("a living unit");
+            life.add(amount);
         }
     }
 
@@ -396,8 +391,10 @@ impl DamagePass {
             return;
         };
         if amount > Num::ZERO {
-            let mut pools = world.get_mut::<Pools>(entity).expect("a living unit");
-            pools.add(pool, amount);
+            let life = Combat::life(world);
+            let mut unit = world.entity_mut(entity);
+            let pools = unit.get_components_mut::<UnitPools>();
+            pools.expect("a unit's pools").of(life).add(pool, amount);
         }
     }
 

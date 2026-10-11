@@ -79,7 +79,7 @@ impl UnitStateAccess {
         let value = StateValue::from_dynamic(field.kind, value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
         let mut frame = ctx.write()?;
-        UnitsCall::of_mut(&mut frame).write(self.unit, field.at, value);
+        UnitsCall::of_mut(&mut frame).write(self.unit, field, value);
         Ok(())
     }
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::actions::slot_times::SlotTimes;
 
 #[test]
 fn a_script_cuts_cooldowns_by_time_and_by_share_down_to_now() {
@@ -29,14 +30,14 @@ fn on_input(ctx, player, name, value) {
     let x = game.pick(0, "hero-x");
     game.pick(2, "hero-y");
     let ready = |game: &Game| {
-        let slots = game.sim.world.get::<ActionSlots>(x).unwrap();
-        slots.slot(0).unwrap().ready_at.get()
+        let times = game.sim.world.get::<SlotTimes>(x).unwrap();
+        times.slot(0).unwrap().ready_at.get()
     };
     // Ready 50 ticks from the call's tick; 1000 ms is 10 ticks at 10 a second: 40 from then.
     let start = game.sim.now().get();
     game.sim
         .world
-        .get_mut::<ActionSlots>(x)
+        .get_mut::<SlotTimes>(x)
         .unwrap()
         .cool_down(0, Tick::new(start + 50));
     game.tick(&[(0, input("probe", "cut"))]);

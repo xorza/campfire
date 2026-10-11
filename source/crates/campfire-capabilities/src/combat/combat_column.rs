@@ -9,9 +9,7 @@ use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::scripts::error::{ApiError, Checked};
-use crate::stats::life_pool::LifePool;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
 use crate::units::dead::Dead;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::row_fill::RowFill;
@@ -19,23 +17,21 @@ use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 use crate::units::view_column::ViewColumn;
 
-/// The parts of a unit combat reads into its row: whether it is dead, its pools and tags, what
+/// The parts of a unit combat reads into its row: whether it is dead, its life and tags, what
 /// it does when it dies, and who struck it recently.
 pub(super) type RowParts = (
     Has<Dead>,
-    Option<&'static Pools>,
+    Option<&'static Life>,
     Option<&'static UnitTags>,
     Option<&'static OnDeath>,
     Option<&'static RecentAttackers>,
 );
 
 /// What combat adds to the script view: whether each unit stays when it dies, and the recent
-/// attacks on it, a run for each row, in one buffer; and the mode's life pool, as the read
-/// found it, which whether a unit may be a target derives from.
+/// attacks on it, a run for each row, in one buffer.
 #[derive(Debug, Default)]
 pub(crate) struct CombatColumn {
     rows: KeptRows<CombatRows>,
-    life: Option<PoolId>,
 }
 
 /// The rows of one read of the combat column.
@@ -48,12 +44,9 @@ struct CombatRows {
 }
 
 impl ViewColumn for CombatColumn {
-    fn begin(&mut self, world: &World) -> bool {
+    fn begin(&mut self, _: &World) -> bool {
         self.rows.begin();
-        let life = world.get_resource::<LifePool>().map(|life| life.0);
-        let changed = life != self.life;
-        self.life = life;
-        changed
+        false
     }
 
     fn keep(&mut self, rows: Range<usize>) {
@@ -119,11 +112,6 @@ impl CombatColumn {
         self.rows.now_mut().push(stays, attacks);
     }
 
-    /// The mode's life pool, as the read found it.
-    pub(crate) const fn life(&self) -> Option<PoolId> {
-        self.life
-    }
-
     /// Whether `unit` stays when it dies, for the mode to bring back; none does in a view with no
     /// combat.
     pub(crate) fn stays(unit: &Unit) -> bool {
@@ -163,14 +151,10 @@ impl CombatColumn {
         parts: ROQueryItem<'_, '_, RowParts>,
         fill: &mut RowFill<'_, CombatColumn>,
     ) {
-        let (dead, pools, tags, on_death, recent) = parts;
+        let (dead, life, tags, on_death, recent) = parts;
         let alive = !dead;
         fill.row.alive = alive;
-        fill.row.targetable = alive
-            && fill
-                .column
-                .life()
-                .is_some_and(|life| Targets::targetable(pools, tags, life));
+        fill.row.targetable = alive && Targets::targetable(life, tags);
         let stays = on_death == Some(&OnDeath::Stay);
         fill.column
             .push(stays, recent.into_iter().flat_map(RecentAttackers::iter));

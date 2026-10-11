@@ -15,7 +15,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::stats::pools::Pools;
+use crate::stats::unit_pools::UnitPools;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::unit_type::UnitType;
@@ -100,9 +100,10 @@ impl Thinking {
         for &entity in &*reset {
             let mut unit = world.entity_mut(entity);
             unit.remove::<Resetting>();
-            if let Some(mut pools) = unit.get_mut::<Pools>() {
-                pools.fill();
-            }
+            let mut pools = unit
+                .get_components_mut::<UnitPools>()
+                .expect("a unit's pools");
+            pools.fill();
         }
         if due.is_empty() {
             return;

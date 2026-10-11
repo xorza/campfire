@@ -23,6 +23,7 @@ use crate::combat::shots::Shots;
 use crate::scripts::ctx::Ctx;
 use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
+use crate::stats::life::Life;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_id::PoolId;
 use crate::units::view::View;
@@ -92,6 +93,7 @@ impl Combat {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
         types.component::<Kept>();
+        types.component::<Life>();
         types.component::<OnDeath>();
         types.component::<RecentAttackers>();
         types.component::<Respawn>();
@@ -179,7 +181,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::combat::recent_attackers::RecentAttackers;
     #[cfg(test)]
-    use crate::stats::pools::Pools;
+    use crate::stats::life::Life;
     #[cfg(test)]
     use crate::units::team::Team;
     use crate::values::rank::Rank;
@@ -190,6 +192,7 @@ pub(crate) mod internals {
     use crate::actions::action_range::ActionRange;
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::slot_kind::SlotKind;
+    use crate::actions::slot_times::TimedSlots;
     #[cfg(test)]
     use crate::combat::combat_bindings::CombatBindings;
     use crate::combat::damage::{Damage, DamageCause};
@@ -246,7 +249,7 @@ pub(crate) mod internals {
     /// A unit's slots and stats: its weapon's slot, if it has one, and the stats it reads.
     #[derive(Debug, Bundle)]
     pub struct ArmsParts {
-        slots: ActionSlots,
+        slots: TimedSlots,
         stats: UnitStats,
     }
 
@@ -254,7 +257,7 @@ pub(crate) mod internals {
         /// The parts of a unit with no weapon: no slot, and no stats.
         pub fn unarmed() -> ArmsParts {
             ArmsParts {
-                slots: ActionSlots::new([]),
+                slots: ActionSlots::new([]).timed(),
                 stats: UnitStats::default(),
             }
         }
@@ -310,7 +313,7 @@ pub(crate) mod internals {
             values.extend([rate, self.damage]);
             values.resize(count.max(2), Num::ZERO);
             ArmsParts {
-                slots: ActionSlots::new([(id, SlotKind::new(0), Some(Rank::FIRST))]),
+                slots: ActionSlots::new([(id, SlotKind::new(0), Some(Rank::FIRST))]).timed(),
                 stats,
             }
         }
@@ -380,7 +383,7 @@ pub(crate) mod internals {
                 .map_or_else(ArmsParts::unarmed, |arms| arms.parts(world));
             (
                 team,
-                Pools::life(self.life),
+                Life::full(self.life),
                 self.on_death,
                 RecentAttackers::default(),
                 parts,

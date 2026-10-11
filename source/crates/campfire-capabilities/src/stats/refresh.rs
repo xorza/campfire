@@ -6,6 +6,8 @@ use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId, TickRate};
 
 use crate::stats::level::Level;
+use crate::stats::life::Life;
+use crate::stats::life_pool::LifePool;
 use crate::stats::live_carriers::LiveCarriers;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
@@ -15,6 +17,7 @@ use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
+use crate::stats::unit_pools::UnitPools;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
@@ -56,9 +59,10 @@ impl Refresh {
     /// change whose source is gone keeps the value it last had. An effect whose stat the mode does
     /// not declare keeps what the unit's kit gave it.
     pub(crate) fn run(
-        (book, pool_book, tag_book, modifier_book, index): (
+        (book, pool_book, life, tag_book, modifier_book, index): (
             Option<Res<'_, StatBook>>,
             Option<Res<'_, PoolBook>>,
+            Option<Res<'_, LifePool>>,
             Option<Res<'_, TagBook>>,
             Res<'_, ModifierBook>,
             Res<'_, EntityIndex>,
@@ -97,7 +101,7 @@ impl Refresh {
                     With<UnitStats>,
                 >,
                 Query<'_, '_, (&UnitType, &Level, &UnitStats)>,
-                Query<'_, '_, (&mut UnitStats, Option<&mut MoveStep>, Option<&mut Pools>)>,
+                Query<'_, '_, (&mut UnitStats, Option<&mut MoveStep>, UnitPools)>,
                 Query<'_, '_, &mut Modifiers>,
             ),
         >,
@@ -161,6 +165,7 @@ impl Refresh {
         };
         scratch.compute(&book, &params, other);
         let count = usize::from(book.len());
+        let life = life.map(|life| life.0);
         let mut writes = units.p3();
         for (unit, refreshing) in scratch.units.iter().enumerate() {
             let Ok((mut stats, step, pools)) = writes.get_mut(refreshing.entity) else {
@@ -174,13 +179,10 @@ impl Refresh {
             if let (Some(mut step), Some(value)) = (step, book.step(values, *rate)) {
                 step.set_if_neq(MoveStep::new(value).expect("a step is at least 0"));
             }
-            if let Some(mut pools) = pools {
-                let mut changed = *pools;
-                for (pool, stats) in pool_book.iter() {
-                    let max = values[stats.max.index()].max(Num::EPSILON);
-                    changed.set_max(pool, max);
-                }
-                pools.set_if_neq(changed);
+            let mut pools = pools.of(life);
+            for (pool, stats) in pool_book.iter() {
+                let max = values[stats.max.index()].max(Num::EPSILON);
+                pools.set_max(pool, max);
             }
         }
         // The value a live change last had is state, so a replay keeps it; a unit that carries
@@ -200,26 +202,32 @@ impl Refresh {
     /// Adds each living unit's regen to its pools: each pool's `regen` stat a second, the tick
     /// rate's share a tick, the remainder carried so a second gains exactly the regen.
     pub(crate) fn regenerate(
-        (book, pool_book, rate): (
+        (book, pool_book, life, rate): (
             Option<Res<'_, StatBook>>,
             Option<Res<'_, PoolBook>>,
+            Option<Res<'_, LifePool>>,
             Res<'_, TickRate>,
         ),
-        mut units: Query<'_, '_, (&UnitStats, &mut Pools), Without<Dead>>,
+        mut units: Query<
+            '_,
+            '_,
+            (&UnitStats, UnitPools),
+            (Or<(With<Life>, With<Pools>)>, Without<Dead>),
+        >,
     ) {
         let (Some(_), Some(pool_book)) = (book, pool_book) else {
             return;
         };
         let hz = rate.hz().get();
-        for (stats, mut pools) in &mut units {
+        let life = life.map(|life| life.0);
+        for (stats, pools) in &mut units {
             let values = stats.values();
-            let mut changed = *pools;
+            let mut pools = pools.of(life);
             for (pool, stats) in pool_book.iter() {
                 if let Some(regen) = stats.regen {
-                    changed.regen(pool, values[regen.index()], hz);
+                    pools.regen(pool, values[regen.index()], hz);
                 }
             }
-            pools.set_if_neq(changed);
         }
     }
 }

@@ -9,6 +9,9 @@ use campfire_sim::StableId;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
 use crate::stats::level::Level;
+use crate::stats::life::Life;
+use crate::stats::life_pool::LifePool;
+use crate::stats::meter::Meter;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_handle::{HandleOf, ModifierHandle};
@@ -16,6 +19,7 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stats_call::StatsCall;
+use crate::stats::unit_pools::PoolMeters;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::action_id::ActionId;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
@@ -30,6 +34,7 @@ use crate::values::stat::Stat;
 /// The parts of a unit the stats read into its row.
 pub(super) type RowParts = (
     Option<&'static Level>,
+    Option<&'static Life>,
     Option<&'static Pools>,
     Option<&'static UnitStats>,
     Option<&'static Modifiers>,
@@ -45,6 +50,8 @@ pub(crate) struct StatsColumn {
     stat_names: Arc<[Stat]>,
     /// The pools the mode declares, by pool id.
     pool_names: Arc<[DeclaredName]>,
+    /// The mode's life pool, as the read found it.
+    life_pool: Option<PoolId>,
     modifier_book: ModifierBook,
     rows: KeptRows<StatsRows>,
 }
@@ -58,11 +65,12 @@ struct StatsRows {
     modifier_state: Vec<StateValue>,
 }
 
-/// A unit's stats as the view read them: its level and pools, none for a unit with no stats, and
-/// its runs of stat values and of modifiers.
+/// A unit's stats as the view read them: its level, life and other pools, none for a unit with no
+/// stats, and its runs of stat values and of modifiers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StatsRow {
     level: Option<u32>,
+    life: Option<Life>,
     pools: Option<Pools>,
     stats: Range<u32>,
     modifiers: Range<u32>,
@@ -79,8 +87,9 @@ struct ModifierRow {
 }
 
 impl ViewColumn for StatsColumn {
-    fn begin(&mut self, _: &World) -> bool {
+    fn begin(&mut self, world: &World) -> bool {
         self.rows.begin();
+        self.life_pool = world.get_resource::<LifePool>().map(|life| life.0);
         false
     }
 
@@ -111,6 +120,7 @@ impl ColumnRows for StatsRows {
         let carried = RunMove::new(first.modifiers.start, self.modifiers.len());
         self.rows.extend(from.rows[rows].iter().map(|row| StatsRow {
             level: row.level,
+            life: row.life,
             pools: row.pools,
             stats: values.of(&row.stats),
             modifiers: carried.of(&row.modifiers),
@@ -138,12 +148,12 @@ impl ColumnRows for StatsRows {
 }
 
 impl StatsRows {
-    /// Adds the row of a unit at `level`, with `pools`, the values `stats` of the stats it
-    /// carries, and `modifiers` with their `clocks`.
+    /// Adds the row of a unit at `level`, with `life` and `pools`, the values `stats` of the stats
+    /// it carries, and `modifiers` with their `clocks`.
     fn push(
         &mut self,
         level: Option<u32>,
-        pools: Option<Pools>,
+        (life, pools): (Option<&Life>, Option<&Pools>),
         stats: &[Num],
         modifiers: Option<&Modifiers>,
         clocks: Option<&ModifierClocks>,
@@ -168,7 +178,8 @@ impl StatsRows {
         }
         self.rows.push(StatsRow {
             level,
-            pools,
+            life: life.copied(),
+            pools: pools.copied(),
             stats: stats_start..len(self.stats.len()),
             modifiers: modifiers_start..len(self.modifiers.len()),
         });
@@ -193,12 +204,12 @@ impl StatsRows {
 }
 
 impl StatsColumn {
-    /// Adds the row of a unit at `level`, with `pools`, the values `stats` of the stats it
-    /// carries, and `modifiers` with their `clocks`.
+    /// Adds the row of a unit at `level`, with `life` and `pools`, the values `stats` of the stats
+    /// it carries, and `modifiers` with their `clocks`.
     pub(crate) fn push(
         &mut self,
         level: Option<u32>,
-        pools: Option<Pools>,
+        pools: (Option<&Life>, Option<&Pools>),
         stats: &[Num],
         modifiers: Option<&Modifiers>,
         clocks: Option<&ModifierClocks>,
@@ -263,13 +274,15 @@ impl StatsColumn {
         view: &View,
         row: usize,
         name: &str,
-        read: fn(&Pools, PoolId) -> Option<Num>,
+        read: fn(Meter) -> Num,
     ) -> Checked<Num> {
         let pool = StatsColumn::pool_named(view, name)?;
         StatsColumn::read(view, |column| {
-            column.rows.now().rows[row]
-                .pools
-                .and_then(|pools| read(&pools, pool))
+            let row = &column.rows.now().rows[row];
+            let pools = PoolMeters::new(column.life_pool, row.life.as_ref(), row.pools.as_ref());
+            pools
+                .meter(pool)
+                .map(read)
                 .ok_or_else(|| ApiError::NoPool.fail().into())
         })
     }
@@ -418,11 +431,11 @@ impl StatsColumn {
         parts: ROQueryItem<'_, '_, RowParts>,
         fill: &mut RowFill<'_, StatsColumn>,
     ) {
-        let (level, pools, stats, modifiers, clocks) = parts;
+        let (level, life, pools, stats, modifiers, clocks) = parts;
         let stats = stats.map_or(&[][..], UnitStats::values);
         fill.column.push(
             level.map(|level| level.get()),
-            pools.copied(),
+            (life, pools),
             stats,
             modifiers,
             clocks,

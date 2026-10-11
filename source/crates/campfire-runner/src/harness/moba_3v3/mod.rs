@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    Action, ActionSlots, Combat, Dead, InputValue, Inventory, ItemId, ModeInput, Order, PathWalker,
-    Pools, Team,
+    Action, ActionSlots, Dead, InputValue, Inventory, ItemId, Life, ModeInput, Order, PathWalker,
+    Team,
 };
 use campfire_common::{MapName, PlayerSlot, Tick};
 use campfire_math::Num;
@@ -450,8 +450,6 @@ fn carried_at(units: MatchUnits<'_>, hero: StableId, item: ItemId) -> u8 {
 /// The living creep of `hero`'s enemies, a unit that walks a lane, of least life within
 /// `FARM_REACH` of it, by stable id on a tie.
 fn weakest_creep(units: MatchUnits<'_>, hero: StableId) -> Option<StableId> {
-    let world = units.world();
-    let life = Combat::life(world).expect("the 3v3 has a life pool");
     let at = units.position(hero).get();
     let team = units
         .all()
@@ -468,7 +466,7 @@ fn weakest_creep(units: MatchUnits<'_>, hero: StableId) -> Option<StableId> {
                     .get::<Position>()
                     .is_some_and(|pos| pos.get().distance(at) <= Num::int(FARM_REACH))
         })
-        .filter_map(|(id, unit)| Some((unit.get::<Pools>()?.current(life)?, id)))
+        .filter_map(|(id, unit)| Some((unit.get::<Life>()?.current(), id)))
         .min()
         .map(|(_, id)| id)
 }

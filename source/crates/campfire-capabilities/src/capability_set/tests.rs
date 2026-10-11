@@ -534,6 +534,7 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
     (
         None,
         &[
+            "actions.slot_times",
             "actions.slots",
             "sim.entities",
             "sim.id_allocator",
@@ -549,6 +550,9 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
             "units.relations",
             "units.spawn_point",
             "units.state",
+            "units.state_all",
+            "units.state_owner",
+            "units.state_team",
             "units.status_tags",
             "units.team",
             "units.unit_type",
@@ -579,6 +583,7 @@ const STATE: [(Option<Capability>, &[&str]); 12] = [
             "combat.on_death",
             "combat.recent_attackers",
             "combat.respawn",
+            "stats.life",
         ],
     ),
     (

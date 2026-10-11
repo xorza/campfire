@@ -3,7 +3,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::world::World;
-use campfire_capabilities::Pools;
+use campfire_capabilities::{Life, Pools};
 use campfire_protocol::SessionLog;
 use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, StateDelta};
@@ -188,14 +188,17 @@ fn session_log(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
     group.finish();
 }
 
-/// Whether a unit of `world` holds a pool below its maximum, as one that took damage does.
+/// Whether a unit of `world` holds its life or a pool below its maximum, as one that took damage
+/// does.
 fn hurt(world: &mut World) -> bool {
+    let mut lives = world.query::<&Life>();
     let mut pools = world.query::<&Pools>();
-    pools.iter(world).any(|pools| {
-        pools
-            .ids()
-            .any(|pool| pools.current(pool) < pools.max(pool))
-    })
+    lives.iter(world).any(|life| life.current() < life.max())
+        || pools.iter(world).any(|pools| {
+            pools
+                .ids()
+                .any(|pool| pools.current(pool) < pools.max(pool))
+        })
 }
 
 /// What a match of `TICKS` ticks cost, by the time `tick` gives for each of its ticks: in all,

@@ -84,6 +84,7 @@ use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::instance::StatShare;
 use crate::stats::level::Level;
+use crate::stats::life::Life;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
@@ -113,6 +114,7 @@ use crate::units::relations::Relations;
 use crate::units::tag_set::TagSet;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
+use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
@@ -320,17 +322,18 @@ fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
     StateDecl::new(kind, default).unwrap()
 }
 
-/// The grunt's core fields: its tag, and its script state, `hits` of 2 and `mark`, a text of
-/// none, which only its owner receives.
+/// The grunt's core fields: its tag, and its script state, `hits` of 2, which only its owner
+/// receives, and `mark`, a text of none, which every client that sees it receives.
 fn grunt_data() -> UnitTypeData {
-    let decl = |kind, default| SyncedStateDecl {
+    let decl = |kind, default, sync| SyncedStateDecl {
         decl: field(kind, default),
-        sync: SyncTo::Owner,
+        sync,
     };
+    let hits = decl(StateType::Int, Some(StateDefault::Int(2)), SyncTo::Owner);
     UnitTypeData {
         state: [
-            ("hits", decl(StateType::Int, Some(StateDefault::Int(2)))),
-            ("mark", decl(StateType::String, None)),
+            ("hits", hits),
+            ("mark", decl(StateType::String, None, SyncTo::All)),
         ]
         .map(|(name, decl)| (DeclaredName::new(name).unwrap(), decl))
         .into(),
@@ -341,7 +344,8 @@ fn grunt_data() -> UnitTypeData {
 /// The unit kit of a grunt: 10 health, combat that keeps it when it dies, and a step of 1 m.
 fn grunt() -> UnitKit {
     UnitKit {
-        pools: Some(Pools::life(Num::int(10))),
+        life: Some(Life::full(Num::int(10))),
+        pools: None,
         on_death: Some(OnDeath::Stay),
         step: Some(MoveStep::new(Num::ONE).unwrap()),
         sight: None,
@@ -975,16 +979,18 @@ impl Game {
             .unit_type_named("grunt")
             .unwrap();
         let id = self.sim.world.resource_mut::<IdAllocator>().allocate();
-        self.sim.world.spawn((
+        let defaults = self.sim.world.resource::<UnitStateBook>().initial(grunt);
+        let mut unit = self.sim.world.spawn((
             id,
             at(0, 0),
             Team::new(team),
-            Pools::life(Num::int(1000)),
+            Life::full(Num::int(1000)),
             grunt,
             Level::default(),
             UnitStats::default(),
             modifiers,
         ));
+        defaults.insert_into(&mut unit);
         id
     }
 

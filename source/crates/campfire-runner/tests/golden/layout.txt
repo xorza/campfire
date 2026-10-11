@@ -1,5 +1,6 @@
-data_version 3
-actions.slots 58047d0a58c98c62
+data_version 4
+actions.slot_times 776040a47152d129
+actions.slots 6986814051c8249c
 areas.area 6e7395840db07855
 areas.area_trigger 5b5d033e67c80f93
 combat.kept 6f07fc05a6a4e4ce
@@ -37,6 +38,7 @@ sim.id_allocator b6efbc7ed70c398e
 sim.position a699e3b06afefaae
 sim.tick 075d9754eb8ef856
 stats.level 63056ba8b2f524d9
+stats.life e7180879287ab77b
 stats.modifier_clocks ec5229286fb45706
 stats.modifiers 0020272f68b44a9a
 stats.player_modifiers ef54cbcb70396757
@@ -51,6 +53,9 @@ units.owner 2ee569390c477063
 units.relations 67037a35ee547308
 units.spawn_point 4b13733a8e0e9017
 units.state ef81a81ce2ddad3e
+units.state_all 13fb8bed66009544
+units.state_owner 4d8020ccfc90f5b5
+units.state_team b32af9519da4d6b9
 units.status_tags f68cb69ffc7e8715
 units.team 8d8b815537ab99f3
 units.unit_type 64f5ae9d41de84f2

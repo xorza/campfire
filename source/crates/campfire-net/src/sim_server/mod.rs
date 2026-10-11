@@ -60,7 +60,7 @@ use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
 use crate::sim_server::error::RestoreMatchError;
 use crate::sim_server::journal_watch::JournalWatch;
-use crate::sim_server::kind_filter::OwnedFilters;
+use crate::sim_server::kind_filter::KindFilters;
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::offering::{Offering, Superseding};
 use crate::sim_server::player_link::PlayerLink;
@@ -131,7 +131,7 @@ impl Plugin for SimServer {
             },
             RoomPlugin,
         ));
-        OwnedFilters::register(app, self.capabilities);
+        KindFilters::register(app, self.capabilities);
         let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
         app.insert_resource(rooms);
         app.add_observer(
@@ -710,7 +710,7 @@ type SeersChanged<'w, 's> =
 /// replicates in, so a client never receives a unit its team did not see: a projectile shows
 /// where it flies, not where its source stands. Without vision no unit has `SeenBy`, and every
 /// seated client receives every unit. What its owner alone receives, a kind's filter keeps from
-/// every other link ([`OwnedFilters`]).
+/// every other link ([`KindFilters`]).
 fn show_units(
     rooms: Res<'_, TeamRooms>,
     links: Query<'_, '_, (Entity, &PlayerLink)>,

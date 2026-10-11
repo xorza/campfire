@@ -30,7 +30,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut owned = world.query_filtered::<Entity, With<Owner>>();
     let producer = owned.single(world).unwrap();
     let pools = Pools::new([(PoolId::FIRST, Num::int(10)), (MANA, Num::int(100))]).unwrap();
-    let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]);
+    let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]).timed();
     let hero_type = *world.get::<UnitType>(producer).unwrap();
     let production = ProductionData {
         queue: NonZeroU8::new(2).unwrap(),
@@ -169,6 +169,7 @@ fn on_mode_input(ctx, player, name, value) {
     {
         let id = world.resource_mut::<IdAllocator>().allocate();
         let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+        let states = world.resource::<UnitStateBook>().initial(grunt);
         let mut unit = world.spawn((
             id,
             at,
@@ -176,6 +177,7 @@ fn on_mode_input(ctx, player, name, value) {
             Team::new(0),
             Owner::new(PlayerSlot::new(slot)),
         ));
+        states.insert_into(&mut unit);
         if dead {
             unit.insert(Dead);
         }

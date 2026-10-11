@@ -1,12 +1,12 @@
 use campfire_sim::StateDelta;
 
 use super::*;
-use crate::actions::action_slots::SlotCharges;
+use crate::actions::slot_times::{SlotCharges, SlotTimes};
 use crate::orders::next_think::NextThink;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::stats::instance::StackEnd;
 use crate::stats::lifetime::{Ends, Lifetime};
-use crate::units::unit_state::UnitState;
+use crate::units::unit_state::{SyncAll, SyncOwner, SyncTeam, UnitState};
 
 /// Each state type's restore check lets the match's own values through, and refuses one that
 /// names what the match lacks or has another shape than the mode's.
@@ -14,6 +14,10 @@ use crate::units::unit_state::UnitState;
 fn a_restore_check_refuses_what_the_match_lacks() {
     let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     let grunt = game.entity(2);
+    // The grunt holds strike, as a unit holds the times of the slots it holds.
+    let strike = game.sim.world.resource::<ActionBook>().named(0, "strike");
+    let strike = ActionSlots::new([(strike.unwrap(), SlotKind::new(0), Rank::new(1))]);
+    game.sim.world.entity_mut(grunt).insert(strike.timed());
     let world = &game.sim.world;
     // Teams a, b and neutral are 0 to 2, players 0 to 2.
     assert!(Team::new(2).check(world, grunt) && !Team::new(3).check(world, grunt));
@@ -46,13 +50,18 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut retyped = state.clone();
     retyped.0[0] = StateValue::Bool(true);
     assert!(!retyped.check(world));
-    // A grunt's state: `hits`, an integer, then `mark`, a text, in the order of their names; not
-    // one field short, nor a value of another type.
-    let unit_state = world.get::<UnitState>(grunt).unwrap().clone();
-    assert!(unit_state.check(world, grunt));
-    assert!(!UnitState::new(unit_state.values()[1..].to_vec()).check(world, grunt));
-    let retyped = vec![StateValue::Bool(true), StateValue::Text(String::new())];
-    assert!(!UnitState::new(retyped).check(world, grunt));
+    // A grunt's state: `hits`, an integer, its owner's, and `mark`, a text, of all; neither class
+    // a field short, nor a value of another type, and no class it declares no field of.
+    let owner_state = world.get::<UnitState<SyncOwner>>(grunt).unwrap();
+    let all_state = world.get::<UnitState<SyncAll>>(grunt).unwrap();
+    assert!(owner_state.check(world, grunt) && all_state.check(world, grunt));
+    let int = || vec![StateValue::Int(0)];
+    let text = || vec![StateValue::Text(String::new())];
+    assert!(!UnitState::<SyncOwner>::new(vec![]).check(world, grunt));
+    assert!(!UnitState::<SyncOwner>::new(text()).check(world, grunt));
+    assert!(!UnitState::<SyncOwner>::new([int(), text()].concat()).check(world, grunt));
+    assert!(!UnitState::<SyncAll>::new(int()).check(world, grunt));
+    assert!(!UnitState::<SyncTeam>::new(int()).check(world, grunt));
     // The players' resources: a row of each of the mode's resources for each player.
     assert!(world.resource::<PlayerResources>().check(world));
     let rows = |players, resources| PlayerResources::new(players, resources).check(world);
@@ -68,14 +77,19 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut ordered = slots(strike, 1);
     ordered.order(1, ActionTarget::None);
     assert!(!ordered.check(world, grunt));
-    // Charges only on an action with them, which strike is not.
-    let mut charged = slots(strike, 1);
+    // Times of each slot the grunt has, one; a charge only on an action with them, which strike
+    // is not.
+    let times = world.get::<SlotTimes>(grunt).unwrap();
+    assert!(times.check(world, grunt));
+    let mut charged = times.clone();
     let one = SlotCharges {
         count: 1,
         next: Tick::ZERO,
     };
     charged.set_charges(0, Some(one));
     assert!(!charged.check(world, grunt));
+    let none = SlotTimes::ready(&ActionSlots::new([]));
+    assert!(!none.check(world, grunt));
     let mut queue = TrainQueue::default();
     let queued = Queued {
         action: strike,

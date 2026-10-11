@@ -3,7 +3,7 @@
 
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Dead, Experience, PlayerResources, PoolId, Pools, ResourceId, Respawn, ScriptFailures, TrackId,
+    Dead, Experience, Life, PlayerResources, ResourceId, Respawn, ScriptFailures, TrackId,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
@@ -51,11 +51,10 @@ pub(crate) fn dead(world: &World, unit: StableId) -> bool {
     world.entity(entity).contains::<Dead>()
 }
 
-/// The life `unit` has, of the mode's pool `health`.
-pub(crate) fn life(world: &World, moba: &Moba3v3, unit: StableId) -> Num {
-    let health = PoolId::named(&moba.packages().data().pools, "health").unwrap();
+/// The life `unit` has.
+pub(crate) fn life(world: &World, unit: StableId) -> Num {
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
-    world.get::<Pools>(entity).unwrap().current(health).unwrap()
+    world.get::<Life>(entity).unwrap().current()
 }
 
 /// The experience `unit` has on the mode's `level` track.

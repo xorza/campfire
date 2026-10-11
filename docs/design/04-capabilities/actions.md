@@ -156,7 +156,7 @@ An order names an action and a target ([Orders](control.md#orders)); a button of
 
 ## Network
 
-Cooldowns and charges go to the owner, or the team, as the mode sets. Projectiles and areas replicate as units, to the clients whose group sees them. A client predicts the start of its own actions; their effects appear when the server confirms them.
+A unit's slots, their actions and ranks, and the action under way go to everyone who sees the unit; each slot's cooldown, charges and toggle, its `SlotTimes`, to the owner, or the team, as the mode sets ([Replication audiences](../14-replication-audiences.md), the kind `cooldowns`). Projectiles and areas replicate as units, to the clients whose group sees them. A client predicts the start of its own actions; their effects appear when the server confirms them.
 
 ## Cost
 

@@ -5,9 +5,7 @@ use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
-use crate::stats::life_pool::LifePool;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::body_grid::Placed;
@@ -19,7 +17,7 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation::Relation;
 
-/// The units an attack may target: living units with the life pool whose tags let them be
+/// The units an attack may target: living units with a life whose tags let them be
 /// targets, those a client holds and does not predict among them, where the server last had
 /// them. Every capability that chooses or checks a target goes through it, so all agree on what a
 /// valid target is.
@@ -27,7 +25,6 @@ use crate::values::relation::Relation;
 pub(crate) struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
     relations: Res<'w, Relations>,
-    life: Res<'w, LifePool>,
     metric: Res<'w, Metric>,
     units: Query<
         'w,
@@ -36,7 +33,7 @@ pub(crate) struct Targets<'w, 's> {
             &'static StableId,
             &'static Position,
             &'static Team,
-            &'static Pools,
+            &'static Life,
             Option<&'static Body>,
             Option<&'static UnitTags>,
         ),
@@ -58,7 +55,7 @@ type TargetRow<'a> = (
     &'a StableId,
     &'a Position,
     &'a Team,
-    &'a Pools,
+    &'a Life,
     Option<&'a Body>,
     Option<&'a UnitTags>,
 );
@@ -112,16 +109,15 @@ impl Targets<'_, '_> {
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
         let row = self.units.get(self.index.get(target)?).ok()?;
-        let (_, _, _, pools, _, tags) = row;
-        Targets::targetable(Some(pools), tags, self.life.0).then(|| self.body(row))?
+        let (_, _, _, life, _, tags) = row;
+        Targets::targetable(Some(life), tags).then(|| Targets::body(row))
     }
 
-    /// Whether a unit that has not died, with `pools` and `tags`, may be a target: it has the
-    /// life pool `life`, and its tags let it be one. This is the one rule of a target, which the
-    /// script view reads too.
-    pub(crate) fn targetable(pools: Option<&Pools>, tags: Option<&UnitTags>, life: PoolId) -> bool {
-        pools.is_some_and(|pools| pools.max(life).is_some())
-            && !UnitTags::properties_of(tags).blocks(Block::Target)
+    /// Whether a unit that has not died, with `life` and `tags`, may be a target: it has a life,
+    /// and its tags let it be one. This is the one rule of a target, which the script view reads
+    /// too.
+    pub(crate) fn targetable(life: Option<&Life>, tags: Option<&UnitTags>) -> bool {
+        life.is_some() && !UnitTags::properties_of(tags).blocks(Block::Target)
     }
 
     /// Every living unit with the life pool, those whose tags block it as a target among them,
@@ -129,18 +125,15 @@ impl Targets<'_, '_> {
     pub(crate) fn placed(&self) -> impl Iterator<Item = Placed<TargetKey>> + '_ {
         self.units
             .iter()
-            .filter_map(|(&id, &at, &team, pools, body, tags)| {
-                pools.max(self.life.0)?;
-                Some(Placed {
-                    id,
-                    key: TargetKey {
-                        team,
-                        tags: tags.map_or(TagSet::default(), |tags| tags.tags),
-                        targetable: Targets::targetable(Some(pools), tags, self.life.0),
-                    },
-                    at,
-                    shape: Body::shape_of(body),
-                })
+            .map(|(&id, &at, &team, life, body, tags)| Placed {
+                id,
+                key: TargetKey {
+                    team,
+                    tags: tags.map_or(TagSet::default(), |tags| tags.tags),
+                    targetable: Targets::targetable(Some(life), tags),
+                },
+                at,
+                shape: Body::shape_of(body),
             })
     }
 
@@ -155,15 +148,14 @@ impl Targets<'_, '_> {
         }
     }
 
-    /// The unit of `row`, when it has the life pool.
-    fn body(&self, (&id, &pos, &team, pools, body, tags): TargetRow<'_>) -> Option<LivingUnit> {
-        pools.max(self.life.0)?;
-        Some(LivingUnit {
+    /// The unit of `row`.
+    fn body((&id, &pos, &team, _, body, tags): TargetRow<'_>) -> LivingUnit {
+        LivingUnit {
             id,
             pos,
             team,
             shape: Body::shape_of(body),
             tags: tags.map_or(TagSet::default(), |tags| tags.tags),
-        })
+        }
     }
 }

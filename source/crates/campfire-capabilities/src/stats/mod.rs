@@ -44,6 +44,7 @@ pub(crate) mod held_modifiers;
 pub(crate) mod held_pass;
 pub(crate) mod instance;
 pub(crate) mod level;
+pub(crate) mod life;
 pub(crate) mod life_pool;
 pub(crate) mod lifetime;
 pub(crate) mod live_carriers;
@@ -82,6 +83,7 @@ pub(crate) mod stats_call;
 pub(crate) mod stats_column;
 pub(crate) mod stats_data;
 pub(crate) mod stats_effect;
+pub(crate) mod unit_pools;
 pub(crate) mod unit_stats;
 
 /// The `stats` capability.

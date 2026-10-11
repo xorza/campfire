@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_times::SlotTimes;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
 use crate::players::resource_id::ResourceId;
@@ -172,11 +173,11 @@ impl Inventory {
     }
 
     /// Fills each action slot of a slot whose item type differs from `before`'s with its item's
-    /// action, or none, afresh, in `slots`, the carrier's.
+    /// action, or none, afresh, in `slots`, the carrier's, and their `times`.
     pub(crate) fn follow(
         &self,
         book: &ItemBook,
-        slots: &mut ActionSlots,
+        (slots, times): (&mut ActionSlots, &mut SlotTimes),
         before: &[Option<ItemId>],
     ) {
         let first = slots.first_of(self.kind);
@@ -186,15 +187,21 @@ impl Inventory {
                 let action =
                     item.and_then(|item| book.get(item).expect("an item of the book").action);
                 let at = u8::try_from(at).expect("a slot index fits u8");
-                slots.fill(first + at, action);
+                slots.fill(times, first + at, action);
             }
         }
     }
 
     /// Spends a use of the consumable in the item's slot whose action slot is `slot` of `slots`,
     /// the carrier's, when `slot` is one of its inventory's: the item on top goes with its last
-    /// use, the next fresh, and the inventory slot with the last item, its action slot then empty.
-    pub(crate) fn spend_use(&mut self, book: &ItemBook, slots: &mut ActionSlots, slot: u8) {
+    /// use, the next fresh, and the inventory slot with the last item, its action slot then empty
+    /// and ready in `times`.
+    pub(crate) fn spend_use(
+        &mut self,
+        book: &ItemBook,
+        (slots, times): (&mut ActionSlots, &mut SlotTimes),
+        slot: u8,
+    ) {
         let first = slots.first_of(self.kind);
         let Some(at) = slot
             .checked_sub(first)
@@ -218,20 +225,25 @@ impl Inventory {
             carried.uses = book.get(carried.item).expect("an item of the book").uses;
         } else {
             *held = None;
-            slots.fill(slot, None);
+            slots.fill(times, slot, None);
         }
     }
 
     /// Swaps slots `from` and `to`, empty or not, and their action slots in `slots`, the
-    /// carrier's, each keeping its cooldown; nothing when either is no slot.
-    pub(crate) fn swap_with(&mut self, from: u8, to: u8, slots: Option<&mut ActionSlots>) {
+    /// carrier's, each keeping its times; nothing when either is no slot.
+    pub(crate) fn swap_with(
+        &mut self,
+        from: u8,
+        to: u8,
+        slots: Option<(&mut ActionSlots, &mut SlotTimes)>,
+    ) {
         if usize::from(from.max(to)) >= self.slots.len() {
             return;
         }
         self.slots.swap(usize::from(from), usize::from(to));
-        if let Some(slots) = slots {
+        if let Some((slots, times)) = slots {
             let first = slots.first_of(self.kind);
-            slots.swap(first + from, first + to);
+            slots.swap(times, first + from, first + to);
         }
     }
 }

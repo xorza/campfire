@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{Keyed, Ordered, Position, SimRng, SimTick, StableId, TickRate};
 
@@ -12,17 +12,19 @@ use crate::actions::in_progress::InProgress;
 use crate::actions::payer::Payer;
 use crate::actions::purse::Purse;
 use crate::actions::slot_aim::SlotAim;
+use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
-use crate::combat::ROLL_STREAM;
 use crate::combat::combat_event::{CombatEvent, CombatEvents};
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::going_off::GoingOff;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::shots::{Shot, Shots};
 use crate::combat::wielded::Wielded;
+use crate::combat::{Combat, ROLL_STREAM};
 use crate::players::player_resources::PlayerResources;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::stats::pools::Pools;
+use crate::stats::life_pool::LifePool;
+use crate::stats::unit_pools::{UnitPools, UnitPoolsReadOnly};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -41,7 +43,7 @@ type Attacker<'a> = (
     &'a ActionSlots,
     Option<&'a UnitTags>,
     Has<ForcedMove>,
-    Option<&'a Pools>,
+    UnitPoolsReadOnly,
     Option<&'a Owner>,
 );
 
@@ -59,7 +61,7 @@ impl Attacks {
     pub(super) fn start_attacks(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
-        resources: Option<Res<'_, PlayerResources>>,
+        (resources, life): (Option<Res<'_, PlayerResources>>, Option<Res<'_, LifePool>>),
         targets: Targets<'_, '_>,
         mut units: Query<
             '_,
@@ -68,7 +70,8 @@ impl Attacks {
                 &Position,
                 &Team,
                 &mut ActionSlots,
-                Option<&Pools>,
+                &SlotTimes,
+                UnitPoolsReadOnly,
                 Option<&Owner>,
                 Option<&Body>,
                 Option<&UnitTags>,
@@ -78,7 +81,8 @@ impl Attacks {
         >,
     ) {
         let now = tick.start();
-        for (&position, &team, mut slots, pools, owner, body, tags, forced) in &mut units {
+        let life = life.map(|life| life.0);
+        for (&position, &team, mut slots, times, pools, owner, body, tags, forced) in &mut units {
             let blocked = UnitTags::blocks(tags, forced, Block::Attack);
             match slots.in_progress() {
                 Some(
@@ -115,11 +119,13 @@ impl Attacks {
                         slot,
                         target: ActionTarget::Unit(target),
                     };
-                    let purse = Purse::of(pools, resources.as_deref(), owner);
+                    let purse = Purse::of(pools.of(life), resources.as_deref(), owner);
                     let relation = |other| targets.relation(team, other);
                     let shape = Body::shape_of(body);
                     let started = book
-                        .check(now, &slots, purse, aim, relation, |id| targets.living(id))
+                        .check(now, (&slots, times), purse, aim, relation, |id| {
+                            targets.living(id)
+                        })
                         .filter(|checked| checked.in_range(position, shape, &targets))
                         .map(|checked| now.after(checked.values.windup));
                     if let Some(resolves_at) = started {
@@ -143,9 +149,10 @@ impl Attacks {
         let now = world.resource::<SimTick>().start();
         let book = world.resource::<ActionBook>();
         let resources = world.get_resource::<PlayerResources>();
+        let life = Combat::life(world);
         going.clear();
         for (&attacker, slots, tags, forced, pools, owner) in attackers.iter(world) {
-            let purse = Purse::of(pools, resources, owner);
+            let purse = Purse::of(pools.of(life), resources, owner);
             if let Some(target) = Self::going_off(slots, now)
                 && Self::wielded(book, slots).strikes(tags, forced, purse)
             {
@@ -168,20 +175,22 @@ impl Attacks {
     /// its pools cannot pay turns off, before the attack's events. A client that predicts the
     /// attack pays nothing, as its pools come from the server.
     pub(super) fn pay_attack_toggles(
-        (tick, book, predicting): (
+        (tick, book, life, predicting): (
             Res<'_, SimTick>,
             Res<'_, ActionBook>,
+            Option<Res<'_, LifePool>>,
             Option<Res<'_, Predicting>>,
         ),
-        mut attackers: Query<'_, '_, (&mut ActionSlots, &mut Pools), Without<Dead>>,
+        mut attackers: Query<'_, '_, (&ActionSlots, &mut SlotTimes, UnitPools), Without<Dead>>,
     ) {
         if predicting.is_some() {
             return;
         }
         let now = tick.start();
-        for (mut slots, mut pools) in &mut attackers {
-            if Self::going_off(&slots, now).is_some() {
-                slots.pay_attack_toggles(&book, &mut pools);
+        let life = life.map(|life| life.0);
+        for (slots, mut times, pools) in &mut attackers {
+            if Self::going_off(slots, now).is_some() {
+                times.pay_attack_toggles(slots, &book, &mut pools.of(life));
             }
         }
     }
@@ -196,11 +205,12 @@ impl Attacks {
     /// instead, and spends nothing. A client that predicts the attack only makes the weapon ready
     /// again, as the damage, the launch and the cost come from the server.
     pub(super) fn strike(
-        (tick, rate, rng, book): (
+        (tick, rate, rng, book, life): (
             Res<'_, SimTick>,
             Res<'_, TickRate>,
             Res<'_, SimRng>,
             Res<'_, ActionBook>,
+            Option<Res<'_, LifePool>>,
         ),
         (mut queue, mut fired, mut resources, predicting): (
             ResMut<'_, PassQueue>,
@@ -216,8 +226,9 @@ impl Attacks {
                 &StableId,
                 &Position,
                 &mut ActionSlots,
+                &mut SlotTimes,
                 Option<&UnitStats>,
-                Option<&mut Pools>,
+                UnitPools,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
                 Option<&Owner>,
@@ -227,14 +238,16 @@ impl Attacks {
         mut order: Local<'_, Ordered>,
     ) {
         let now = tick.start();
+        let life = life.map(|life| life.0);
         let going = attackers.iter().filter_map(|(entity, &id, _, slots, ..)| {
             Self::going_off(slots, now).map(|_| Keyed { id, entity })
         });
         for &Keyed { entity, .. } in order.sort(going) {
-            let (_, &source, &from, mut slots, stats, pools, tags, forced, owner) =
+            let (_, &source, &from, mut slots, mut times, stats, pools, tags, forced, owner) =
                 attackers.get_mut(entity).expect("an attacker in the order");
             let target = Self::going_off(&slots, now).expect("an attack going off");
-            let purse = Purse::of(pools.as_deref(), resources.as_deref(), owner);
+            let pools = pools.of(life);
+            let purse = Purse::of(pools.read(), resources.as_deref(), owner);
             let wielded = Self::wielded(&book, &slots);
             if !wielded.strikes(tags, forced, purse) {
                 slots.interrupt();
@@ -255,7 +268,7 @@ impl Attacks {
                 .expect("an attack going off started");
             let started = Tick::new(resolves_at.get() - values.windup.get());
             let period = weapon.period(stats, rate.hz().get(), values.windup);
-            slots.cool_down(wielded.slot, started.after(period));
+            times.cool_down(wielded.slot, started.after(period));
             slots.stop();
             if predicting.is_some() {
                 continue;
@@ -285,7 +298,7 @@ impl Attacks {
                     hit: None,
                 }),
             }
-            let payer = Payer::of(pools.map(Mut::into_inner), resources.as_deref_mut(), owner);
+            let payer = Payer::of(pools, resources.as_deref_mut(), owner);
             payer.pay(&values.cost, resource_cost);
         }
     }

@@ -3,7 +3,7 @@ use std::fmt::{self, Write as _};
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    Dead, Deaths, Owner, PlayerResources, Pools, ResourceId, ScriptFailures, Team,
+    Dead, Deaths, Owner, PlayerResources, PoolId, PoolMeters, ResourceId, ScriptFailures, Team,
 };
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::ErrorReport;
@@ -60,7 +60,8 @@ impl Golden {
     }
 
     /// The digest of what the tick `runner` just ran did, in no type's layout:
-    /// - each unit by stable id: its position, team, owner, pools and whether it is dead;
+    /// - each unit by stable id: its position, team, owner, pools by id, its life among them, and
+    ///   whether it is dead;
     /// - each death of the tick, with its killer and assisters;
     /// - each failed script call, with its unit, hook and error;
     /// - each player's resources.
@@ -82,9 +83,9 @@ impl Golden {
                 .get::<Owner>()
                 .map_or(u32::MAX, |owner| owner.slot().get());
             bytes.extend_from_slice(&owner.to_le_bytes());
-            if let Some(pools) = unit.get::<Pools>() {
-                for pool in pools.ids() {
-                    let current = pools.current(pool).expect("a pool it has");
+            let meters = PoolMeters::of(world, entity);
+            for pool in (0..).map_while(PoolId::new) {
+                if let Some(current) = meters.current(pool) {
                     bytes.push(u8::try_from(pool.index()).expect("a pool index fits u8"));
                     bytes.extend_from_slice(&current.to_bits().to_le_bytes());
                 }

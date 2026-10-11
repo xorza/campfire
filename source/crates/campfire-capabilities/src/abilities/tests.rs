@@ -33,6 +33,7 @@ use crate::actions::range_field::RangeField;
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::slot_times::{SlotTime, SlotTimes, TimedSlots};
 use crate::actions::targeting::Targeting;
 use crate::areas::Areas;
 use crate::areas::area::Area;
@@ -73,6 +74,7 @@ use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
 use crate::stats::Stats;
 use crate::stats::level::Level;
+use crate::stats::life::Life;
 use crate::stats::lifetime::Hold;
 use crate::stats::live_carriers::LiveCarriers;
 use crate::stats::modifier_book::ModifierBook;
@@ -99,7 +101,7 @@ use crate::units::tag_data::TagData;
 use crate::units::team::Team;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_state::UnitState;
+use crate::units::unit_state::{SyncNone, UnitState};
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::action_start::ActionStart;
@@ -360,7 +362,7 @@ impl Match {
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
         let combat = (
             Team::new(team),
-            Pools::life(Num::int(500)),
+            Life::full(Num::int(500)),
             OnDeath::Stay,
             RecentAttackers::default(),
         );
@@ -369,7 +371,7 @@ impl Match {
         self.sim
             .world
             .entity_mut(unit)
-            .insert_if_new(ActionSlots::new([]));
+            .insert_if_new(ActionSlots::new([]).timed());
         id
     }
 
@@ -390,7 +392,7 @@ impl Match {
             ground(Num::ZERO, Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
-                ActionSlots::new([(ability, SlotKind::new(0), Rank::new(rank))]),
+                ActionSlots::new([(ability, SlotKind::new(0), Rank::new(rank))]).timed(),
             ),
         );
         self.give_pools(caster, 100, 20);
@@ -399,9 +401,9 @@ impl Match {
 
     /// Gives unit `id` full pools: its 500 health, `mana` and `rage`.
     fn give_pools(&mut self, id: StableId, mana: i64, rage: i64) {
-        let pools = [(PoolId::FIRST, 500), (MANA, mana), (RAGE, rage)];
+        let pools = [(MANA, mana), (RAGE, rage)];
         let pools = Pools::new(pools.map(|(pool, max)| (pool, Num::int(max)))).unwrap();
-        self.sim.insert(id, pools);
+        self.sim.insert(id, (Life::full(Num::int(500)), pools));
     }
 
     fn cast(&mut self, unit: StableId, target: ActionTarget) {
@@ -432,14 +434,11 @@ impl Match {
     }
 
     fn slot(&self, id: StableId) -> ActionSlot {
-        let entity = self.sim.entity(id);
-        self.sim
-            .world
-            .entity(entity)
-            .get::<ActionSlots>()
-            .unwrap()
-            .slot(0)
-            .unwrap()
+        self.sim.get::<ActionSlots>(id).slot(0).unwrap()
+    }
+
+    fn time(&self, id: StableId) -> SlotTime {
+        self.sim.get::<SlotTimes>(id).slot(0).unwrap()
     }
 
     fn casting(&self, id: StableId) -> Option<InProgress> {
@@ -503,7 +502,7 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
         |game: &Match| [near, edge, beyond, high, ally, dead].map(|unit| game.sim.health(unit));
     assert_eq!(healths(&game), [400, 400, 500, 400, 500, 500]);
     assert_eq!(game.pool(husk), 65);
-    assert_eq!(game.slot(husk).ready_at, Tick::new(270));
+    assert_eq!(game.time(husk).ready_at, Tick::new(270));
     assert_eq!(game.failed_calls(), []);
 
     // On cooldown until tick 270: a cast in tick 1 does nothing.
@@ -555,7 +554,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     let caster = game.caster(aim, 1);
     game.sim
         .insert(caster, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
-    let slots = ActionSlots::new([(shove, SlotKind::new(0), Rank::new(1))]);
+    let slots = ActionSlots::new([(shove, SlotKind::new(0), Rank::new(1))]).timed();
     let shover = game.spawn(1, ground(Num::int(5), Num::ZERO), slots);
 
     // Aim starts in tick 0, to resolve in tick 9. Shove resolves in tick 2's Hit stage, after
@@ -785,7 +784,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
             ground(Num::int(x), Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
-                ActionSlots::new([(strike, SlotKind::new(0), Rank::new(rank))]),
+                ActionSlots::new([(strike, SlotKind::new(0), Rank::new(rank))]).timed(),
             ),
         );
         game.give_pools(unit, mana, rage);
@@ -815,7 +814,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
         (
             game.pool(unit),
             game.pool_of(unit, RAGE),
-            game.slot(unit).ready_at,
+            game.time(unit).ready_at,
         )
     };
     for (unit, target) in [
@@ -843,7 +842,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     game.cast(caster, ActionTarget::Unit(enemy));
     assert_eq!(game.sim.health(enemy), 450);
     assert_eq!((game.pool(caster), game.pool_of(caster, RAGE)), (90, 16));
-    assert_eq!(game.slot(caster).ready_at, Tick::new(39));
+    assert_eq!(game.time(caster).ready_at, Tick::new(39));
     // A cost of exactly what is left is paid: 10 mana and 4 rage of 10 and 4, in tick 9.
     game.cast(exact, ActionTarget::Unit(enemy));
     assert_eq!(game.sim.health(enemy), 400);
@@ -869,7 +868,7 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let ownerless = game.spawn(
         0,
         ground(Num::ZERO, Num::int(1)),
-        ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]),
+        ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]).timed(),
     );
     game.give_pools(ownerless, 100, 20);
     let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
@@ -898,7 +897,7 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     game.cast(caster, ActionTarget::Unit(enemy));
     assert_eq!(game.sim.health(enemy), 450);
     assert_eq!(held(&game, caster), (90, 10));
-    assert_eq!(game.slot(caster).ready_at, Tick::new(32));
+    assert_eq!(game.time(caster).ready_at, Tick::new(32));
 }
 
 #[test]
@@ -956,14 +955,14 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     game.sim.run_until(8);
     assert_eq!(game.casting(caster), ordered);
     assert_eq!((game.sim.health(enemy), game.pool(caster)), (500, 100));
-    assert_eq!(game.slot(caster).ready_at, Tick::new(0));
+    assert_eq!(game.time(caster).ready_at, Tick::new(0));
     // Free in tick 8: it starts and resolves in tick 11, for 50 and 10 of the pool; ready again
     // 31 ticks later, in tick 42.
     game.sim.set_blocks(caster, &[]);
     game.sim.run_until(12);
     assert_eq!(game.casting(caster), None);
     assert_eq!((game.sim.health(enemy), game.pool(caster)), (450, 90));
-    assert_eq!(game.slot(caster).ready_at, Tick::new(42));
+    assert_eq!(game.time(caster).ready_at, Tick::new(42));
 }
 
 #[test]
@@ -1012,7 +1011,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
             }
             assert_eq!(game.sim.health(enemy), 500);
             assert_eq!(game.pool(caster), 100);
-            assert_eq!(game.slot(caster).ready_at, Tick::new(0));
+            assert_eq!(game.time(caster).ready_at, Tick::new(0));
             hashes.push(game.sim.registry.hash(&game.sim.world));
         }
         assert_eq!(hashes[0], hashes[1], "{script}");
@@ -1294,12 +1293,13 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
                 (step, SlotKind::new(0), Rank::new(1)),
                 (refill, SlotKind::new(0), Rank::new(1)),
                 (dud, SlotKind::new(0), Rank::new(1)),
-            ]),
+            ])
+            .timed(),
         ),
     );
     game.give_pools(caster, 100, 20);
     let charges = |game: &Match| {
-        let charges = game.slot(caster).charges.unwrap();
+        let charges = game.time(caster).charges.unwrap();
         (charges.count, charges.next.get())
     };
     let order = |game: &mut Match, slot| {
@@ -1351,7 +1351,8 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
             ActionSlots::new([
                 (step, SlotKind::new(0), Rank::new(0)),
                 (refill, SlotKind::new(0), Rank::new(1)),
-            ]),
+            ])
+            .timed(),
         ),
     );
     game.give_pools(learner, 100, 20);
@@ -1360,7 +1361,8 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
         .order(1, ActionTarget::None);
     game.sim.step();
     let unlearned = game.sim.get::<ActionSlots>(learner).slot(0).unwrap();
-    assert_eq!((unlearned.rank, unlearned.charges), (None, None));
+    let time = game.sim.get::<SlotTimes>(learner).slot(0).unwrap();
+    assert_eq!((unlearned.rank, time.charges), (None, None));
     assert_eq!(game.failed_calls(), []);
 }
 
@@ -1399,7 +1401,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
         });
         sim.spawn(
             ground(Num::ZERO, Num::ZERO),
-            (Team::new(0), ActionSlots::new(slots)),
+            (Team::new(0), ActionSlots::new(slots).timed()),
         )
     };
     let mut server = TestMatch::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
@@ -1414,18 +1416,21 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
         }
         let slots = server.get::<ActionSlots>(on_server);
         assert_eq!(slots, client.get::<ActionSlots>(on_client), "slot {slot}");
+        let times = server.get::<SlotTimes>(on_server);
+        assert_eq!(times, client.get::<SlotTimes>(on_client), "slot {slot}");
     }
     // Step spent a charge in tick 0, its next back in tick 30, and is ready from tick 3; Aura,
     // cast in tick 1, pays from tick 31; Drain, cast in tick 2, channels from tick 3, ticking in
     // tick 6, to tick 12.
     let slots = server.get::<ActionSlots>(on_server);
-    let step = slots.slot(0).unwrap();
+    let times = server.get::<SlotTimes>(on_server);
+    let step = times.slot(0).unwrap();
     let charges = step.charges.unwrap();
     assert_eq!(
         (charges.count, charges.next, step.ready_at),
         (2, Tick::new(30), Tick::new(3))
     );
-    assert_eq!(slots.slot(1).unwrap().toggle, Some(Tick::new(31)));
+    assert_eq!(times.slot(1).unwrap().toggle, Some(Tick::new(31)));
     let Some(InProgress::Channel { next, ends, .. }) = slots.in_progress() else {
         panic!("Drain channels");
     };
@@ -1527,7 +1532,12 @@ fn on_interrupt(ctx, caster, target) {
     // A slot emptied in tick 5, as an item sold empties its own, cuts it as an order does: its
     // `on_interrupt` is the action it channeled, which the slot no longer holds.
     let emptied = run(&mut game, 80, &|game, caster| {
-        game.sim.get_mut::<ActionSlots>(caster).fill(0, None);
+        let entity = game.sim.entity(caster);
+        let mut unit = game.sim.world.entity_mut(entity);
+        let (mut slots, mut times) = unit
+            .get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
+            .unwrap();
+        slots.fill(&mut times, 0, None);
     });
     assert_eq!(health(&emptied), cut);
 }
@@ -1566,7 +1576,8 @@ fn on_resolve(ctx, caster, target) {
         let slots = ActionSlots::new([
             (draw, SlotKind::new(0), Rank::new(1)),
             (other, SlotKind::new(0), Rank::new(1)),
-        ]);
+        ])
+        .timed();
         let caster = game.spawn(0, at, (Owner::new(PlayerSlot::new(0)), slots));
         game.give_pools(caster, 100, 20);
         let target = game.spawn(1, ground(Num::int(x + 3), Num::ZERO), ());
@@ -1616,7 +1627,7 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!(game.failed_calls(), []);
     // The same script in an action that does not charge fails its call.
     let at = ground(Num::int(100), Num::ZERO);
-    let slots = ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]);
+    let slots = ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]).timed();
     let caster = game.spawn(0, at, (Owner::new(PlayerSlot::new(0)), slots));
     game.give_pools(caster, 100, 20);
     let target = game.spawn(1, ground(Num::int(103), Num::ZERO), ());
@@ -1675,7 +1686,7 @@ fn on_resolve(ctx, caster, target) {
         ground(Num::int(20), Num::ZERO),
         (
             Owner::new(PlayerSlot::new(0)),
-            ActionSlots::new([(ability, SlotKind::new(0), Rank::new(1))]),
+            ActionSlots::new([(ability, SlotKind::new(0), Rank::new(1))]).timed(),
         ),
     );
     game.give_pools(second, 100, 20);
@@ -1730,7 +1741,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             ground(Num::ZERO, Num::int(1)),
             (
                 Owner::new(PlayerSlot::new(1)),
-                ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]),
+                ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]).timed(),
             ),
         );
         game.give_pools(striker, 100, 20);
@@ -1838,7 +1849,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     game.cast(caster, ActionTarget::None);
     assert_eq!(game.failed_calls(), []);
     assert_eq!(game.pool(caster), 65);
-    assert_eq!(game.slot(caster).ready_at, Tick::new(300));
+    assert_eq!(game.time(caster).ready_at, Tick::new(300));
 }
 
 #[test]
@@ -1982,7 +1993,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
     claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game.sim.world, 0, "claws", &claws, None, 1).unwrap();
-    let slots = ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]);
+    let slots = ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]).timed();
     let beast = game.spawn(0, ground(Num::ZERO, Num::ZERO), slots);
     let entity = game.sim.entity(beast);
     game.sim.insert(beast, Modifiers::default());
@@ -2061,7 +2072,7 @@ fn on_resolve(ctx, caster, target) {
         Some(script),
         5,
     );
-    let slots = ActionSlots::new([(theirs.unwrap(), SlotKind::new(0), Rank::new(1))]);
+    let slots = ActionSlots::new([(theirs.unwrap(), SlotKind::new(0), Rank::new(1))]).timed();
     game.sim.world.entity_mut(entity).insert(slots);
     game.cast(caster, ActionTarget::None);
     assert_eq!(game.failed_calls(), []);
@@ -2254,9 +2265,8 @@ fn on_resolve(ctx, caster, target) {
 ";
     let ability = game.load("lash_out", &lash_out(), mender);
     let caster = game.caster(ability, 1);
-    let mut pools = game.sim.get_mut::<Pools>(caster);
-    pools.take(PoolId::FIRST, Num::int(460));
-    pools.take(MANA, Num::int(50));
+    game.sim.get_mut::<Life>(caster).take(Num::int(460));
+    game.sim.get_mut::<Pools>(caster).take(MANA, Num::int(50));
     // From 40 health and 50 mana: 30 healed and 20 restored as the effects apply, then the
     // cost of 35: 70 and 35.
     game.cast(caster, ActionTarget::None);
@@ -2360,7 +2370,7 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
     };
     assert_eq!(game.failed_calls(), [failed]);
     assert_eq!((game.sim.health(untracked), game.pool(second)), (500, 100));
-    assert_eq!(game.slot(second).ready_at, Tick::ZERO);
+    assert_eq!(game.time(second).ready_at, Tick::ZERO);
 }
 
 #[test]
@@ -2721,7 +2731,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     };
     send(&mut game, 0, &[cast, learn, learn]);
     assert_eq!(progress(&game), (2, 0, Some(100)));
-    assert_eq!(game.slot(caster).ready_at, Tick::new(3 + 270));
+    assert_eq!(game.time(caster).ready_at, Tick::new(3 + 270));
     // Rank 3 needs level 3: refused at level 1 with 4 points, learned at level 3 though dead.
     game.sim.get_mut::<Points>(caster).gain(4);
     send(&mut game, 0, &[learn]);
@@ -2870,7 +2880,7 @@ impl Match {
     }
 
     /// A `fighter` of team 0 at the origin, of level 1, with `slots`.
-    fn fighter(&mut self, fighter: UnitType, slots: ActionSlots) -> StableId {
+    fn fighter(&mut self, fighter: UnitType, slots: TimedSlots) -> StableId {
         let parts = (fighter, Level::new(1).unwrap(), UnitStats::default(), slots);
         self.spawn(0, ground(Num::ZERO, Num::ZERO), parts)
     }
@@ -2916,13 +2926,14 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
             let slots = ActionSlots::new([
                 (cast, SlotKind::new(0), Rank::new(1)),
                 (weapon, SlotKind::new(1), Rank::new(1)),
-            ]);
+            ])
+            .timed();
             let caster = game.fighter(fighter, slots);
             game.give_pools(caster, 100, 20);
             game.cast(caster, ActionTarget::Unit(target));
             caster
         } else {
-            let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
+            let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed();
             let attacker = game.fighter(fighter, slots);
             game.sim
                 .get_mut::<ActionSlots>(attacker)
@@ -3001,7 +3012,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     let weapon = game.load_weapon("cannon", &cannon);
     let attacker = game.fighter(
         fighter,
-        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]),
+        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
     );
     let [target, near, far] = [1, 2, 4].map(|x| {
         let at = ground(Num::int(x) + Num::HALF * i64::from(x == 2), Num::ZERO);
@@ -3042,7 +3053,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     let weapon = game.load_weapon("cannon", &cannon);
     let attacker = game.fighter(
         fighter,
-        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]),
+        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
     );
     let target = game.spawn(1, ground(Num::ONE, Num::ZERO), ());
     game.sim
@@ -3076,14 +3087,12 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
     let weapon = game.load_weapon("sapper", &sapper(false));
     let attacker = game.fighter(
         fighter,
-        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]),
+        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
     );
     let mut target = |x| game.spawn(1, ground(Num::int(x), Num::ZERO), Modifiers::default());
     let [living, blocked, spent, deep, deepest, warded] = [1, 2, 3, 4, 5, 6].map(&mut target);
     game.sim.set_blocks(blocked, &[Block::Damage]);
-    game.sim
-        .get_mut::<Pools>(spent)
-        .take(PoolId::FIRST, Num::int(500));
+    game.sim.get_mut::<Life>(spent).take(Num::int(500));
     game.give_from(warded, warded, "ward");
     let attack = |target, depth| Damage {
         source: Some(attacker),
@@ -3647,7 +3656,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
             game.cast(caster, ActionTarget::Unit(target));
             game.sim.run_until(1);
             let world = &mut game.sim.world;
-            let mut query = world.query::<(&StableId, &UnitType, &UnitState)>();
+            let mut query = world.query::<(&StableId, &UnitType, &UnitState<SyncNone>)>();
             let mut spawned: Vec<_> = query
                 .iter(world)
                 .filter(|&(_, &unit_type, _)| unit_type == bolt)
@@ -4010,9 +4019,9 @@ fn a_cast_under_way_ends_when_its_caster_dies() {
     let entity = game.sim.entity(caster);
     game.sim
         .world
-        .get_mut::<Pools>(entity)
+        .get_mut::<Life>(entity)
         .unwrap()
-        .take(PoolId::FIRST, Num::int(500));
+        .take(Num::int(500));
     game.sim.run_until(3);
     assert!(game.sim.world.entity(entity).contains::<Dead>());
     assert_eq!(game.casting(caster), None);

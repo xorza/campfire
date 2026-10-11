@@ -8,6 +8,8 @@ use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::payer::Payer;
+use crate::actions::slot_times::SlotTimes;
+use crate::combat::Combat;
 use crate::geometry::metric::Metric;
 use crate::navigation::destination::Destination;
 use crate::players::player_resources::PlayerResources;
@@ -20,8 +22,8 @@ use crate::production::construction::building_at::BuildingAt;
 use crate::production::construction::step::{Start, Step};
 use crate::production::held::Held;
 use crate::production::site::Site;
-use crate::stats::life_pool::LifePool;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
+use crate::stats::unit_pools::UnitPools;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
@@ -172,9 +174,12 @@ impl Construction {
         let book = world.resource::<ActionBook>();
         let cost = book.get(action).expect("a build in the book");
         paid.extend_from_slice(cost.resource_cost(start.rank));
+        let life = Combat::life(world);
         let pay = |world: &mut World, resources: Option<&mut PlayerResources>| {
-            let mut pools = world.get_mut::<Pools>(entity);
-            let payer = Payer::of(pools.as_deref_mut(), resources, owner.as_ref());
+            let mut unit = world.entity_mut(entity);
+            let pools = unit.get_components_mut::<UnitPools>();
+            let pools = pools.expect("a builder's pools").of(life);
+            let payer = Payer::of(pools, resources, owner.as_ref());
             payer.pay(&start.cost, paid);
         };
         if world.contains_resource::<PlayerResources>() {
@@ -184,10 +189,10 @@ impl Construction {
         } else {
             pay(world, None);
         }
-        let mut slots = world
-            .get_mut::<ActionSlots>(entity)
-            .expect("a builder has slots");
-        slots.cool_down(order.slot, now.after(start.cooldown));
+        let mut times = world
+            .get_mut::<SlotTimes>(entity)
+            .expect("a builder has slot times");
+        times.cool_down(order.slot, now.after(start.cooldown));
         let id = world.resource_mut::<IdAllocator>().allocate();
         let at = SpawnAt {
             id,
@@ -205,15 +210,13 @@ impl Construction {
         let start_life = spec.start_life;
         let one_holds = matches!(spec.style, Style::Builder);
         let stays = !matches!(spec.style, Style::Alone);
-        let life = world.get_resource::<LifePool>().map(|life| life.0);
         let mut gain = Num::ZERO;
-        if let (Some(life), Some(mut pools)) = (life, world.get_mut::<Pools>(site))
-            && let Some(max) = pools.max(life)
-        {
+        if let Some(mut life) = world.get_mut::<Life>(site) {
+            let max = life.max();
             let share = start_life.expect("the load checked a site's start life");
             let starts = share.of_num(max).max(Num::EPSILON).min(max);
             gain = max - starts;
-            pools.take(life, gain);
+            life.take(gain);
         }
         let builder = *world.get::<StableId>(entity).expect("a builder has an id");
         let holder = one_holds.then_some(builder);
@@ -239,12 +242,11 @@ impl Construction {
     /// group. A site that reaches its time completes: it loses
     /// its site and its `constructing` tag, and its builders' orders end.
     pub(crate) fn progress_sites(
-        (index, book, builds, metric, life): (
+        (index, book, builds, metric): (
             Res<'_, EntityIndex>,
             Res<'_, ActionBook>,
             Res<'_, BuildSpecs>,
             Res<'_, Metric>,
-            Option<Res<'_, LifePool>>,
         ),
         mut sites: Query<
             '_,
@@ -255,7 +257,7 @@ impl Construction {
                 &Position,
                 &Body,
                 &mut Site,
-                Option<&mut Pools>,
+                Option<&mut Life>,
                 &mut StatusTags,
             ),
             Without<Dead>,
@@ -310,7 +312,7 @@ impl Construction {
         done.clear();
         let ordered = sites.iter().map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(ordered) {
-            let (.., mut site, pools, mut status) =
+            let (.., mut site, life, mut status) =
                 sites.get_mut(entity).expect("a site in the order");
             let spec = builds
                 .of(site.action())
@@ -332,8 +334,8 @@ impl Construction {
                 .windup_ticks(site.rank())
                 .expect("a build's time fits a Num");
             let progressed = site.progress_by(spec.rate(count), time);
-            if let (Some(life), Some(mut pools)) = (life.as_deref(), pools) {
-                pools.add(life.0, progressed.life);
+            if let Some(mut life) = life {
+                life.add(progressed.life);
             }
             if progressed.complete {
                 commands.entity(entity).remove::<Site>();

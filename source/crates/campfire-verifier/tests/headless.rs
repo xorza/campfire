@@ -9,9 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use campfire_capabilities::{
-    Action, ActionSlots, Destination, Order, PoolId, Pools, Projectile, Rank,
-};
+use campfire_capabilities::{Action, ActionSlots, Destination, Life, Order, Projectile, Rank};
 use campfire_common::{Fingerprint, MapName, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_log::internals::LogCheck;
 use campfire_log::{ErrorReport, LogEvent};
@@ -31,9 +29,6 @@ use campfire_store::{AppendWriter, PathError, ReadError, Scratch};
 use campfire_verifier::{
     Replay, ReplayError, SnapshotCheckError, Verification, Verified, VerifyError,
 };
-
-/// The lane mode's life pool, `health`, the first of its pools by name.
-const LIFE: PoolId = PoolId::FIRST;
 
 /// Long enough for every order to apply, and for the hero to arrive.
 const TICKS: u64 = 40;
@@ -544,14 +539,14 @@ impl Seen {
             let slots = world.entity(entity(id)).get::<ActionSlots>().unwrap();
             slots.attack_target().map(StableId::get)
         });
-        let hero = world.entity(entity(2)).get::<Pools>().unwrap();
+        let hero = world.entity(entity(2)).get::<Life>().unwrap();
         let projectiles = index
             .iter()
             .filter(|&(_, entity)| world.entity(entity).contains::<Projectile>())
             .count();
         Seen {
             targets,
-            hero_health: hero.current(LIFE).unwrap().round(),
+            hero_health: hero.current().round(),
             projectiles,
         }
     }

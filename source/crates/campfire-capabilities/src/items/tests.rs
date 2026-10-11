@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 
-use campfire_common::PlayerSlot;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, SimComponent, StableId, TickInput, TickInputs};
 use serde::Deserialize;
@@ -29,13 +29,12 @@ use crate::players::resource_id::ResourceId;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
+use crate::stats::life::Life;
 use crate::stats::lifetime::Hold;
 use crate::stats::loads::load_stats;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
@@ -119,16 +118,15 @@ impl Carrier {
         let (drink, flash) = (load("drink", &drink), load("flash", &flash));
         Carrier::stock(&mut sim, gold, [drink, flash], might);
         let kind = SlotKind::new(0);
-        let mut slots = ActionSlots::new([]);
-        slots.add_empty(kind, 3);
-        let mut pools = Pools::life(Num::int(500));
-        pools.take(PoolId::FIRST, Num::int(200));
+        let slots = ActionSlots::new([]).with_empty(kind, 3).timed();
+        let mut life = Life::full(Num::int(500));
+        life.take(Num::int(200));
         let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
         let three = NonZeroU8::new(3).unwrap();
         let unit = sim.spawn(
             at,
             (
-                (Owner::new(PlayerSlot::new(0)), Team::new(0), pools),
+                (Owner::new(PlayerSlot::new(0)), Team::new(0), life),
                 (OnDeath::Stay, RecentAttackers::default()),
                 (Modifiers::default(), ModifierClocks::default()),
                 (slots, Inventory::new(three, kind)),
@@ -198,10 +196,7 @@ impl Carrier {
     }
 
     fn life(&self) -> Num {
-        self.sim
-            .get::<Pools>(self.unit)
-            .current(PoolId::FIRST)
-            .unwrap()
+        self.sim.get::<Life>(self.unit).current()
     }
 
     /// Each slot's item type and count, then its action and the tick it is ready.
@@ -313,7 +308,7 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
     carrier.order(&[cast(0)]);
     let ready = carrier
         .sim
-        .get::<ActionSlots>(carrier.unit)
+        .get::<SlotTimes>(carrier.unit)
         .slot(0)
         .unwrap()
         .ready_at;
@@ -321,14 +316,13 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
     // The flash moves to slot 2 with its cooldown; slot 0 is empty and ready.
     carrier.order(&[Action::Swap { from: 0, to: 2 }]);
     let slots = carrier.sim.get::<ActionSlots>(carrier.unit);
+    let times = carrier.sim.get::<SlotTimes>(carrier.unit);
     let held = |at: u8| {
-        slots
-            .slot(at)
-            .map(|slot| (slot.action, slot.ready_at))
-            .unwrap()
+        let time = times.slot(at).unwrap();
+        (slots.slot(at).unwrap().action, time.ready_at)
     };
     assert_eq!(held(2), (Some(carrier.flash), ready));
-    assert_eq!(held(0).0, None);
+    assert_eq!(held(0), (None, Tick::ZERO));
     // A charm holds Might from the carrier, as a passive; a second charm holds it no more often;
     // selling one keeps it, selling both lets it go.
     assert_eq!(carrier.mights(), 0);

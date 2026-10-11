@@ -11,7 +11,7 @@ use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::relations::Relations;
@@ -60,7 +60,7 @@ impl Scene {
     /// `sight` when given.
     fn spawn(&mut self, team: u8, x: i64, z: i64, sight: Option<i64>) -> StableId {
         let id = self.sim.world.resource_mut::<IdAllocator>().allocate();
-        let life = Pools::life(Num::int(100));
+        let life = Life::full(Num::int(100));
         let mut unit = self.sim.world.spawn((id, at(x, z), Team::new(team), life));
         if let Some(range) = sight {
             unit.insert(Sight::new(Num::int(range)).unwrap());
@@ -125,7 +125,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // An enemy with no life pool, as a projectile is, is no target: no query finds it.
     let shell = scene.spawn(1, 1, 0, None);
     let entity = scene.sim.entity(shell);
-    scene.sim.world.entity_mut(entity).remove::<Pools>();
+    scene.sim.world.entity_mut(entity).remove::<Life>();
     let team = |index| TeamSet::of(Team::new(index));
 
     // Before the first Vision stage each unit is seen by its vision group: here its team alone.

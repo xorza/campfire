@@ -91,8 +91,8 @@ fn on_mode_input(ctx, player, name, value) {
     game.tick(&[]);
     assert!(!game.sim.world.entity(victim).contains::<Dead>());
     assert_eq!(game.sim.world.get::<Position>(victim), Some(&at(0, 0)));
-    let pools = game.sim.world.get::<Pools>(victim).unwrap();
-    assert_eq!(pools.current(PoolId::FIRST), Some(Num::int(10)));
+    let life = game.sim.world.get::<Life>(victim).unwrap();
+    assert_eq!(life.current(), Num::int(10));
 
     // A living unit, and a dead one whose type despawns, cannot respawn.
     game.tick(&[(0, input("probe", "tower"))]);

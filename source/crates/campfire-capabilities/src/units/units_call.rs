@@ -9,7 +9,8 @@ use crate::scripts::frame::Frame;
 use crate::scripts::script_role::ScriptRole;
 use crate::scripts::state_value::StateValue;
 use crate::units::new_unit_states::NewUnitStates;
-use crate::units::unit_state::UnitState;
+use crate::units::unit_state_book::{StateField, StatePlace};
+use crate::units::unit_states::UnitStates;
 use crate::units::units_column::UnitsColumn;
 use crate::units::view::View;
 
@@ -20,11 +21,12 @@ pub(crate) struct UnitsCall {
     writes: Vec<StateWrite>,
 }
 
-/// A call's write of `value` to the field at `at` of unit `unit`.
+/// A call's write of `value` to the field at `at` of unit `unit`, held at `place`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StateWrite {
     pub(crate) unit: StableId,
     pub(crate) at: usize,
+    pub(crate) place: StatePlace,
     pub(crate) value: StateValue,
 }
 
@@ -46,9 +48,8 @@ impl CallPart for UnitsCall {
             if let Some(row) = view.row_index(write.unit) {
                 UnitsColumn::write(&view, row, write.at, write.value.clone());
             }
-            let entity = world.resource::<EntityIndex>().get(write.unit);
-            match entity.and_then(|entity| world.get_mut::<UnitState>(entity)) {
-                Some(mut state) => state.set(write.at, write.value),
+            match world.resource::<EntityIndex>().get(write.unit) {
+                Some(entity) => UnitStates::write(world, entity, write.place, write.value),
                 None => world.resource_mut::<NewUnitStates>().push(write),
             }
         }
@@ -77,8 +78,13 @@ impl UnitsCall {
         found.next().map(|write| &write.value)
     }
 
-    /// Records the call's write of `value` at `at` of `unit`.
-    pub(crate) fn write(&mut self, unit: StableId, at: usize, value: StateValue) {
-        self.writes.push(StateWrite { unit, at, value });
+    /// Records the call's write of `value` to `field` of `unit`.
+    pub(crate) fn write(&mut self, unit: StableId, field: StateField, value: StateValue) {
+        self.writes.push(StateWrite {
+            unit,
+            at: field.at,
+            place: field.place,
+            value,
+        });
     }
 }

@@ -119,7 +119,7 @@ fn two_fields() -> World {
                 Team::new(0),
                 player,
                 Body::new(Num::HALF).unwrap(),
-                ActionSlots::new([(action, SlotKind::new(0), Some(Rank::FIRST))]),
+                ActionSlots::new([(action, SlotKind::new(0), Some(Rank::FIRST))]).timed(),
                 gatherer,
                 Destination::default(),
             );

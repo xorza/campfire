@@ -4,7 +4,7 @@
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use campfire_capabilities::{Action, MoveStep, Owner, PoolId, Pools, Team};
+use campfire_capabilities::{Action, Life, MoveStep, Owner, Team};
 use campfire_math::Num;
 use campfire_net::internals::{End, InProcessMatch, MatchSetup};
 use campfire_sim::EntityIndex;
@@ -49,10 +49,9 @@ fn units(app: &App, team: u8, walks: bool) -> Vec<Entity> {
         .collect()
 }
 
-/// The life pool of `unit`: the lane mode's `health`, the first of its pools by name.
+/// The life of `unit`.
 fn health(app: &App, unit: Entity) -> Num {
-    let pools = app.world().get::<Pools>(unit).unwrap();
-    pools.current(PoolId::FIRST).unwrap()
+    app.world().get::<Life>(unit).unwrap().current()
 }
 
 /// 30 s between waves at 30 ticks a second.

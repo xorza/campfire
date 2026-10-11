@@ -10,6 +10,7 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::Purse;
 use crate::actions::slot_aim::SlotAim;
+use crate::actions::slot_times::SlotTimes;
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
 use crate::navigation::destination::Destination;
@@ -25,8 +26,9 @@ use crate::production::holdings::Holdings;
 use crate::production::placement::Placement;
 use crate::production::requirements::Requirements;
 use crate::production::site::Site;
+use crate::stats::life_pool::LifePool;
 use crate::stats::player_modifiers::PlayerModifiers;
-use crate::stats::pools::Pools;
+use crate::stats::unit_pools::UnitPoolsReadOnly;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
@@ -36,7 +38,8 @@ use crate::units::unit_type::UnitType;
 use crate::values::relation::Relation;
 
 /// What a build order reads of the match: the books, the players' resources and modifiers, the
-/// placement, the builders, the sites, and the living, complete units the players own.
+/// life pool, the placement, the builders, the sites, and the living, complete units the players
+/// own.
 #[derive(SystemParam, Debug)]
 pub(crate) struct BuildView<'w, 's> {
     pub(super) tick: Res<'w, SimTick>,
@@ -46,6 +49,7 @@ pub(crate) struct BuildView<'w, 's> {
     pub(super) requirements: Res<'w, Requirements>,
     pub(super) metric: Res<'w, Metric>,
     pub(super) resources: Option<Res<'w, PlayerResources>>,
+    pub(super) life: Option<Res<'w, LifePool>>,
     pub(super) modifiers: Option<Res<'w, PlayerModifiers>>,
     pub(super) placement: Placement<'w, 's>,
     pub(super) builders: Query<
@@ -59,7 +63,8 @@ pub(crate) struct BuildView<'w, 's> {
             &'static Team,
             Option<&'static Owner>,
             &'static ActionSlots,
-            Option<&'static Pools>,
+            &'static SlotTimes,
+            UnitPoolsReadOnly,
             &'static Builder,
             Option<&'static Destination>,
             Option<&'static Route>,
@@ -157,22 +162,29 @@ impl BuildView<'_, '_> {
     /// The start of the build at a point of the builder of `entity`'s `order`, when it passes
     /// its action's checks, its requirements, by `held`, and its placement.
     pub(super) fn start(&self, entity: Entity, order: BuildOrder, held: &[Held]) -> Option<Start> {
-        let (_, _, &from, _, &team, owner, slots, pools, ..) = self.builders.get(entity).ok()?;
+        let (_, _, &from, _, &team, owner, slots, times, pools, ..) =
+            self.builders.get(entity).ok()?;
         let BuildTarget::Point { angle, .. } = order.target else {
             return None;
         };
         let building = self.building(slots, order.slot)?;
         let placed = self.placed(building, from, owner, order.target)?;
-        let purse = Purse::of(pools, self.resources.as_deref(), owner);
+        let life = self.life.as_deref().map(|life| life.0);
+        let purse = Purse::of(pools.of(life), self.resources.as_deref(), owner);
         let owner = owner.map(|owner| owner.slot());
         let aim = SlotAim {
             slot: order.slot,
             target: ActionTarget::Point(placed.at),
         };
         let no_target = |_| Relation::Friendly;
-        let checked = self
-            .book
-            .check(self.tick.start(), slots, purse, aim, no_target, |_| None)?;
+        let checked = self.book.check(
+            self.tick.start(),
+            (slots, times),
+            purse,
+            aim,
+            no_target,
+            |_| None,
+        )?;
         let holdings = Holdings {
             units: held,
             modifiers: self.modifiers.as_deref(),
@@ -194,7 +206,7 @@ impl BuildView<'_, '_> {
     /// Whether the order of the builder of `entity` passes as it applies: a point's build its
     /// checks, by `held`, a site's the site.
     pub(super) fn applies(&self, entity: Entity, held: &[Held]) -> bool {
-        let Ok((_, _, &from, _, _, owner, slots, _, builder, ..)) = self.builders.get(entity)
+        let Ok((_, _, &from, _, _, owner, slots, _, _, builder, ..)) = self.builders.get(entity)
         else {
             return false;
         };
@@ -241,7 +253,7 @@ impl BuildView<'_, '_> {
     /// which ends the order; in range, a point's build starts when it passes its checks, by
     /// `held`, and ends else; a builder of a site builds when the site takes it.
     pub(super) fn step(&self, entity: Entity, held: &[Held]) -> Step {
-        let Ok((_, &id, &from, body, _, owner, slots, _, builder, destination, route, _)) =
+        let Ok((_, &id, &from, body, _, owner, slots, _, _, builder, destination, route, _)) =
             self.builders.get(entity)
         else {
             return Step::End;

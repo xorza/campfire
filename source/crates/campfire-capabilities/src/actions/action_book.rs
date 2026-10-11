@@ -16,6 +16,7 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::checked_action::CheckedAction;
 use crate::actions::purse::Purse;
 use crate::actions::slot_aim::SlotAim;
+use crate::actions::slot_times::SlotTimes;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
@@ -109,28 +110,28 @@ impl ActionBook {
             .then_with(|| (*action.name).cmp(name))
     }
 
-    /// The action `aim` names of a unit with `slots`, when it may go on: its slot holds a learned
-    /// action that is ready and, with charges, holds one, `purse` affords its cost in each pool
+    /// The action `aim` names of a unit with `slots` and their `times`, when it may go on: its
+    /// slot holds a learned action that is ready and, with charges, holds one, `purse` affords its cost in each pool
     /// and player resource, and its target is a living unit the action's filter selects, or the
     /// action takes none, which drops any target the order named. `relation` tells how the unit
     /// regards a team, and `living` finds a living unit.
     pub(crate) fn check(
         &self,
         now: Tick,
-        slots: &ActionSlots,
+        (slots, times): (&ActionSlots, &SlotTimes),
         purse: Purse<'_>,
         aim: SlotAim,
         relation: impl Fn(Team) -> Relation,
         living: impl Fn(StableId) -> Option<LivingUnit>,
     ) -> Option<CheckedAction<'_>> {
-        let slot = slots.slot(aim.slot)?;
+        let (slot, time) = (slots.slot(aim.slot)?, times.slot(aim.slot)?);
         let (id, rank) = (slot.action?, slot.rank?);
         let action = self.get(id)?;
         let values = *action.values(rank);
         let affords = purse.affords(&values.cost, action.resource_cost(rank));
         let charged =
-            values.charges.is_none() || slot.charges.is_some_and(|charges| charges.count > 0);
-        if now < slot.ready_at || !affords || !charged {
+            values.charges.is_none() || time.charges.is_some_and(|charges| charges.count > 0);
+        if now < time.ready_at || !affords || !charged {
             return None;
         }
         let target = match (action.aim, aim.target) {

@@ -240,11 +240,11 @@ impl Seen {
             self.hasted.push(carried.iter().any(|&(id, _)| id == haste));
         }
         if (1878..=1880).contains(&tick) {
-            self.gale.push(life(world, moba, gale));
+            self.gale.push(life(world, gale));
         }
         if (2190..2220).contains(&tick) {
             let tower = units.spawned_at(-42, 16);
-            self.tower.push((target(tower), life(world, moba, kensho)));
+            self.tower.push((target(tower), life(world, kensho)));
         }
         if tick == 2312 {
             self.xp_after_skirmish = xp();

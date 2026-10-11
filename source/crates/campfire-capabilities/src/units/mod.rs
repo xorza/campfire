@@ -26,13 +26,13 @@ use crate::units::relations::Relations;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
-use crate::units::unit_state::UnitState;
+use crate::units::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_ticks::UnitTicks;
 use crate::units::unit_type::UnitType;
 use crate::units::units_call::UnitsCall;
-use crate::units::units_column::UnitsColumn;
+use crate::units::units_column::{StateRowParts, UnitsColumn};
 use crate::units::view::View;
 
 pub(crate) mod action_id;
@@ -90,6 +90,7 @@ pub(crate) mod unit_rows;
 pub(crate) mod unit_state;
 pub(crate) mod unit_state_access;
 pub(crate) mod unit_state_book;
+pub(crate) mod unit_states;
 pub(crate) mod unit_tags;
 pub(crate) mod unit_ticks;
 pub(crate) mod unit_type;
@@ -131,7 +132,10 @@ impl Units {
         types.component::<StatusTags>();
         types.component::<Team>();
         types.component::<UnitType>();
-        types.component::<UnitState>();
+        types.component::<UnitState<SyncNone>>();
+        types.component::<UnitState<SyncOwner>>();
+        types.component::<UnitState<SyncTeam>>();
+        types.component::<UnitState<SyncAll>>();
         types.derived::<UnitTags>();
         types.resource::<Relations>();
     }
@@ -152,7 +156,7 @@ impl Units {
         world.insert_resource(UnitStateBook::default());
         world.insert_resource(NewUnitStates::default());
         view.add_column(UnitsColumn::default());
-        view.add_source::<Option<&'static UnitState>, _>(world, UnitsColumn::fill_state);
+        view.add_source::<StateRowParts, _>(world, UnitsColumn::fill_state);
         world.insert_resource(Relations::default());
         world.insert_resource(Metric::default());
         // The world's bounds until a map's take their place.

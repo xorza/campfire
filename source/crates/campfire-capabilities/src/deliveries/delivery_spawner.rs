@@ -69,15 +69,12 @@ impl DeliverySpawner<'_, '_> {
         if let Some(&sight) = self.sights.as_deref().and_then(|book| book.get(unit_type)) {
             unit.insert(sight);
         }
-        let state = self
-            .states
-            .as_deref()
-            .and_then(|book| book.initial(unit_type));
-        if let Some(mut state) = state {
+        if let Some(book) = self.states.as_deref() {
+            let mut states = book.initial(unit_type);
             if let Some(new_states) = self.new_states.as_deref_mut() {
-                new_states.take(id, &mut state);
+                new_states.take(id, &mut states);
             }
-            unit.insert(state);
+            states.insert_into(&mut unit);
         }
         Some(id)
     }

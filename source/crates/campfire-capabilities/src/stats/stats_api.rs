@@ -13,8 +13,8 @@ use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
+use crate::stats::meter::Meter;
 use crate::stats::modifier_handle::ModifierHandle;
-use crate::stats::pools::Pools;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::stats::stats_effect::StatsEffect;
@@ -62,14 +62,14 @@ impl StatsApi {
             )
             .name(0, NameKind::Pool),
             |unit: Unit, name: &str| {
-                StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::current)
+                StatsColumn::pool(unit.view(), unit.row_index(), name, Meter::current)
             },
         )
         .bind(
             method("pool_max", &[&["name"]], "the maximum of its pool `name`")
                 .name(0, NameKind::Pool),
             |unit: Unit, name: &str| {
-                StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::max)
+                StatsColumn::pool(unit.view(), unit.row_index(), name, Meter::max)
             },
         )
         .bind(

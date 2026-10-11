@@ -10,19 +10,22 @@ use bevy_ecs::query::{Has, With};
 use bevy_ecs::system::{Commands, Query};
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
 use campfire_capabilities::{
-    CapabilitySet, DataKind, Declared, Experience, Inventory, ModifierClocks, Owner, Points,
-    Progress, Replication, Respawn, Route, SpawnPoint, StateTypes,
+    CapabilitySet, DataKind, Declared, Experience, Inventory, ModifierClocks, Owner, Points, Pools,
+    Progress, Replication, Respawn, Route, SlotTimes, SpawnPoint, StateTypes, SyncOwner, SyncTeam,
+    Team, UnitState,
 };
 use campfire_common::PlayerSlot;
 use campfire_sim::SimResource;
 
 use crate::sim_server::player_link::PlayerLink;
 
-/// A kind of state its owner's client alone receives, and the types of the kind, which its
-/// filter hides from every other client. A test checks each scope holds exactly the types the
-/// capabilities' lists give the kind.
-pub(crate) trait OwnedKind: Send + Sync + Debug + 'static {
+/// A kind of state that only its owner's client, and with `ALLIES` its team's other clients,
+/// receive, and the types of the kind, which its filter hides from every other client. A test
+/// checks each scope holds exactly the types the capabilities' lists give the kind.
+pub(crate) trait FilteredKind: Send + Sync + Debug + 'static {
     const KIND: DataKind;
+    /// Whether the clients of the entity's team receive it, beside its owner's.
+    const ALLIES: bool;
     type Scope: FilterScope;
 }
 
@@ -30,17 +33,39 @@ pub(crate) trait OwnedKind: Send + Sync + Debug + 'static {
 #[derive(Debug)]
 pub(crate) struct PredictionKind;
 
-impl OwnedKind for PredictionKind {
+impl FilteredKind for PredictionKind {
     const KIND: DataKind = DataKind::Prediction;
+    const ALLIES: bool = false;
     type Scope = (SpawnPoint, Route, Progress, ModifierClocks, Respawn);
+}
+
+/// A unit's pools other than its life.
+#[derive(Debug)]
+pub(crate) struct PoolsKind;
+
+impl FilteredKind for PoolsKind {
+    const KIND: DataKind = DataKind::Pools;
+    const ALLIES: bool = false;
+    type Scope = SingleComponent<Pools>;
+}
+
+/// A unit's slots' ready ticks, charges and toggles.
+#[derive(Debug)]
+pub(crate) struct CooldownsKind;
+
+impl FilteredKind for CooldownsKind {
+    const KIND: DataKind = DataKind::Cooldowns;
+    const ALLIES: bool = false;
+    type Scope = SingleComponent<SlotTimes>;
 }
 
 /// A unit's inventory.
 #[derive(Debug)]
 pub(crate) struct InventoryKind;
 
-impl OwnedKind for InventoryKind {
+impl FilteredKind for InventoryKind {
     const KIND: DataKind = DataKind::Inventory;
+    const ALLIES: bool = false;
     type Scope = SingleComponent<Inventory>;
 }
 
@@ -48,59 +73,113 @@ impl OwnedKind for InventoryKind {
 #[derive(Debug)]
 pub(crate) struct ProgressionKind;
 
-impl OwnedKind for ProgressionKind {
+impl FilteredKind for ProgressionKind {
     const KIND: DataKind = DataKind::Progression;
+    const ALLIES: bool = false;
     type Scope = (Experience, Points);
 }
 
-/// On each entity that holds a type of kind `K`: the slot that owns it, if one does. Replicon
-/// reads it to send the kind's types to the owner's link alone. Immutable, as replicon requires:
-/// a change of owner inserts a new one.
+/// A unit's script state fields of `sync = "owner"`.
+#[derive(Debug)]
+pub(crate) struct UnitStateOwnerKind;
+
+impl FilteredKind for UnitStateOwnerKind {
+    const KIND: DataKind = DataKind::UnitStateOwner;
+    const ALLIES: bool = false;
+    type Scope = SingleComponent<UnitState<SyncOwner>>;
+}
+
+/// A unit's script state fields of `sync = "team"`.
+#[derive(Debug)]
+pub(crate) struct UnitStateTeamKind;
+
+impl FilteredKind for UnitStateTeamKind {
+    const KIND: DataKind = DataKind::UnitStateTeam;
+    const ALLIES: bool = true;
+    type Scope = SingleComponent<UnitState<SyncTeam>>;
+}
+
+/// Each entity's owner and team, and whether it holds the filter of `K`.
+type Owners<'w, 's, K> = Query<
+    'w,
+    's,
+    (
+        Option<&'static Owner>,
+        Option<&'static Team>,
+        Has<KindFilter<K>>,
+    ),
+>;
+
+/// On each entity that holds a type of kind `K`: the slot that owns it, if one does, and its
+/// team, if it has one. Replicon reads it to send the kind's types to the clients `K` names
+/// alone. Immutable, as replicon requires: a change of owner or team inserts a new one.
 #[derive(Component, Debug)]
 #[component(immutable)]
-pub(crate) struct KindFilter<K: OwnedKind> {
+pub(crate) struct KindFilter<K: FilteredKind> {
     owner: Option<PlayerSlot>,
+    team: Option<Team>,
     kind: PhantomData<K>,
 }
 
-impl<K: OwnedKind> KindFilter<K> {
-    const fn new(owner: Option<PlayerSlot>) -> KindFilter<K> {
+impl<K: FilteredKind> KindFilter<K> {
+    const fn new(owner: Option<&Owner>, team: Option<&Team>) -> KindFilter<K> {
         KindFilter {
-            owner,
+            owner: match owner {
+                Some(owner) => Some(owner.slot()),
+                None => None,
+            },
+            team: team.copied(),
             kind: PhantomData,
         }
     }
 
-    /// The filter of `K`, and the observers that follow its entity's owner.
+    /// The filter of `K`, and the observers that follow its entity's owner and team.
     fn register_kind(app: &mut App) {
         app.add_visibility_filter::<KindFilter<K>>();
-        KindFilter::<K>::follow_owner(app);
+        KindFilter::<K>::follow(app);
     }
 
-    /// Inserts the filter of `K` again as its entity's owner changes, or as it loses its owner,
-    /// on an entity that holds one. Each insert of a filter keeps to an entity that still lives:
-    /// it applies at the next flush, after a despawn queued before it, and a despawn removes the
-    /// owner too.
-    fn follow_owner(app: &mut App) {
+    /// Inserts the filter of `K` again as its entity's owner or team changes, or as the entity
+    /// loses either, on an entity that holds a filter. Each insert of a filter keeps to an entity
+    /// that still lives: it applies at the next flush, after a despawn queued before it, and a
+    /// despawn removes the owner and team too.
+    fn follow(app: &mut App) {
+        KindFilter::<K>::follow_insert::<Owner>(app);
+        KindFilter::<K>::follow_insert::<Team>(app);
         app.add_observer(
-            |inserted: On<'_, '_, Insert, Owner>,
-             owners: Query<'_, '_, (&Owner, Has<KindFilter<K>>)>,
+            |removed: On<'_, '_, Remove, Owner>,
+             units: Query<'_, '_, Option<&Team>, With<KindFilter<K>>>,
              mut commands: Commands<'_, '_>| {
-                if let Ok((owner, true)) = owners.get(inserted.entity) {
+                if let Ok(team) = units.get(removed.entity) {
                     commands
-                        .entity(inserted.entity)
-                        .try_insert(KindFilter::<K>::new(Some(owner.slot())));
+                        .entity(removed.entity)
+                        .try_insert(KindFilter::<K>::new(None, team));
                 }
             },
         );
         app.add_observer(
-            |removed: On<'_, '_, Remove, Owner>,
-             filtered: Query<'_, '_, (), With<KindFilter<K>>>,
+            |removed: On<'_, '_, Remove, Team>,
+             units: Query<'_, '_, Option<&Owner>, With<KindFilter<K>>>,
              mut commands: Commands<'_, '_>| {
-                if filtered.contains(removed.entity) {
+                if let Ok(owner) = units.get(removed.entity) {
                     commands
                         .entity(removed.entity)
-                        .try_insert(KindFilter::<K>::new(None));
+                        .try_insert(KindFilter::<K>::new(owner, None));
+                }
+            },
+        );
+    }
+
+    /// Inserts the filter of `K` again as its entity's `C`, its owner or its team, is inserted.
+    fn follow_insert<C: Component>(app: &mut App) {
+        app.add_observer(
+            |inserted: On<'_, '_, Insert, C>,
+             units: Owners<'_, '_, K>,
+             mut commands: Commands<'_, '_>| {
+                if let Ok((owner, team, true)) = units.get(inserted.entity) {
+                    commands
+                        .entity(inserted.entity)
+                        .try_insert(KindFilter::<K>::new(owner, team));
                 }
             },
         );
@@ -112,46 +191,52 @@ impl<K: OwnedKind> KindFilter<K> {
         assert_eq!(C::KIND, K::KIND, "{} is of its filter's kind", C::NAME);
         app.add_observer(
             |added: On<'_, '_, Add, C>,
-             units: Query<'_, '_, (Option<&Owner>, Has<KindFilter<K>>)>,
+             units: Owners<'_, '_, K>,
              mut commands: Commands<'_, '_>| {
-                if let Ok((owner, false)) = units.get(added.entity) {
-                    let owner = owner.map(|owner| owner.slot());
+                if let Ok((owner, team, false)) = units.get(added.entity) {
                     commands
                         .entity(added.entity)
-                        .try_insert(KindFilter::<K>::new(owner));
+                        .try_insert(KindFilter::<K>::new(owner, team));
                 }
             },
         );
     }
 }
 
-impl<K: OwnedKind> VisibilityFilter for KindFilter<K> {
+impl<K: FilteredKind> VisibilityFilter for KindFilter<K> {
     type ClientComponent = PlayerLink;
     type Scope = K::Scope;
 
     fn is_visible(&self, _client: Entity, link: Option<&PlayerLink>) -> bool {
-        link.is_some_and(|link| Some(link.slot()) == self.owner)
+        link.is_some_and(|link| {
+            let owns = Some(link.slot()) == self.owner;
+            owns || (K::ALLIES && Some(link.team()) == self.team)
+        })
     }
 }
 
-/// The filters of the kinds the owner alone receives.
+/// The filters of the kinds that not every client that sees an entity receives.
 #[derive(Debug)]
-pub(crate) struct OwnedFilters;
+pub(crate) struct KindFilters;
 
-impl OwnedFilters {
-    /// Registers the filter of every kind the owner alone receives, and, from the lists of
-    /// `capabilities`, the observers that put a kind's filter on each entity that gains one of
-    /// its types: no system adds a filter, so none can forget one.
+impl KindFilters {
+    /// Registers the filter of every kind that not every client that sees an entity receives,
+    /// and, from the lists of `capabilities`, the observers that put a kind's filter on each
+    /// entity that gains one of its types: no system adds a filter, so none can forget one.
     pub(crate) fn register(app: &mut App, capabilities: CapabilitySet) {
         KindFilter::<PredictionKind>::register_kind(app);
+        KindFilter::<PoolsKind>::register_kind(app);
+        KindFilter::<CooldownsKind>::register_kind(app);
         KindFilter::<InventoryKind>::register_kind(app);
         KindFilter::<ProgressionKind>::register_kind(app);
+        KindFilter::<UnitStateOwnerKind>::register_kind(app);
+        KindFilter::<UnitStateTeamKind>::register_kind(app);
         capabilities.state_types(&mut FilterObservers(app));
     }
 }
 
-/// Reads the capabilities' lists for `OwnedFilters::register`: each type of a kind its owner alone
-/// receives gets the observer that puts its kind's filter on it.
+/// Reads the capabilities' lists for `KindFilters::register`: each type of a kind with a filter
+/// gets the observer that puts its kind's filter on it.
 #[derive(Debug)]
 struct FilterObservers<'a>(&'a mut App);
 
@@ -159,9 +244,17 @@ impl FilterObservers<'_> {
     fn filter<C: Replication>(&mut self) {
         match C::KIND {
             DataKind::Prediction => KindFilter::<PredictionKind>::observe::<C>(self.0),
+            DataKind::Pools => KindFilter::<PoolsKind>::observe::<C>(self.0),
+            DataKind::Cooldowns => KindFilter::<CooldownsKind>::observe::<C>(self.0),
             DataKind::Inventory => KindFilter::<InventoryKind>::observe::<C>(self.0),
             DataKind::Progression => KindFilter::<ProgressionKind>::observe::<C>(self.0),
-            DataKind::Unit | DataKind::Life | DataKind::Modifiers | DataKind::Server => {}
+            DataKind::UnitStateOwner => KindFilter::<UnitStateOwnerKind>::observe::<C>(self.0),
+            DataKind::UnitStateTeam => KindFilter::<UnitStateTeamKind>::observe::<C>(self.0),
+            DataKind::Unit
+            | DataKind::Life
+            | DataKind::Modifiers
+            | DataKind::UnitStateAll
+            | DataKind::Server => {}
         }
     }
 }
@@ -195,7 +288,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use bevy_ecs::world::World;
-    use campfire_capabilities::{SentOnChange, Team};
+    use campfire_capabilities::SentOnChange;
     use campfire_sim::{Capability, SimComponent};
     use serde::{Deserialize, Serialize};
 
@@ -312,7 +405,7 @@ mod tests {
 
     /// The listed types of `K`'s kind its scope lacks, and the types of its scope no list gives
     /// that kind, by the names of the first and the count of the second: both empty.
-    fn scope_of<K: OwnedKind>(kinds: &Kinds) -> (Vec<&'static str>, usize)
+    fn scope_of<K: FilteredKind>(kinds: &Kinds) -> (Vec<&'static str>, usize)
     where
         K::Scope: TypeList,
     {
@@ -323,13 +416,18 @@ mod tests {
     }
 
     #[test]
-    fn each_owned_kinds_scope_holds_exactly_the_types_the_lists_give_it() {
+    fn each_filtered_kinds_scope_holds_exactly_the_types_the_lists_give_it() {
         // A type a list gives a kind its scope lacks would go to every client, and one its scope
-        // holds of another kind would go to the owner alone: each fails here by its name.
+        // holds of another kind would go to the kind's clients alone: each fails here by its
+        // name.
         let kinds = Kinds::of_every_capability();
         assert_eq!(scope_of::<PredictionKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<PoolsKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<CooldownsKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<InventoryKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<ProgressionKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<UnitStateOwnerKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<UnitStateTeamKind>(&kinds), (vec![], 0));
         // The check itself: `Stray`, of the kind, which the scope lacks, fails by its name, and
         // `Points`, of the scope, which this list does not give, counts once.
         let mut stray = Kinds::default();
@@ -339,34 +437,42 @@ mod tests {
     }
 
     #[test]
-    fn an_owned_kinds_filter_follows_its_entitys_owner() {
-        // `Stray`, of `progression`: its filter holds the owner the entity has as it gains it,
-        // the owner it changes to, and none once it loses it; a despawn changes nothing.
+    fn a_kinds_filter_follows_its_entitys_owner_and_team() {
+        // `Stray`, of `progression`: its filter holds the owner and team the entity has as it
+        // gains it, each it changes to, and none of one once it loses it; a despawn changes
+        // nothing.
         let mut app = App::new();
-        KindFilter::<ProgressionKind>::follow_owner(&mut app);
+        KindFilter::<ProgressionKind>::follow(&mut app);
         KindFilter::<ProgressionKind>::observe::<Stray>(&mut app);
         let world = app.world_mut();
-        let owner = |world: &World, entity| {
+        let held = |world: &World, entity| {
             world
                 .get::<KindFilter<ProgressionKind>>(entity)
-                .map(|filter| filter.owner)
+                .map(|filter| (filter.owner, filter.team))
         };
-        let slot = PlayerSlot::new;
-        let hero = world.spawn((Owner::new(slot(1)), Stray)).id();
+        let (slot, team) = (PlayerSlot::new, Team::new);
+        let hero = world.spawn((Owner::new(slot(1)), team(0), Stray)).id();
         world.flush();
-        assert_eq!(owner(world, hero), Some(Some(slot(1))));
+        assert_eq!(held(world, hero), Some((Some(slot(1)), Some(team(0)))));
         world.entity_mut(hero).insert(Owner::new(slot(2)));
         world.flush();
-        assert_eq!(owner(world, hero), Some(Some(slot(2))));
+        assert_eq!(held(world, hero), Some((Some(slot(2)), Some(team(0)))));
+        world.entity_mut(hero).insert(team(1));
+        world.flush();
+        assert_eq!(held(world, hero), Some((Some(slot(2)), Some(team(1)))));
         world.entity_mut(hero).remove::<Owner>();
         world.flush();
-        assert_eq!(owner(world, hero), Some(None));
-        // A unit no player owns, as a creep; and one that holds no type of the kind.
-        let creep = world.spawn(Stray).id();
-        let tower = world.spawn(Owner::new(slot(1))).id();
+        assert_eq!(held(world, hero), Some((None, Some(team(1)))));
+        world.entity_mut(hero).insert(Owner::new(slot(2)));
+        world.entity_mut(hero).remove::<Team>();
         world.flush();
-        assert_eq!(owner(world, creep), Some(None));
-        assert_eq!(owner(world, tower), None);
+        assert_eq!(held(world, hero), Some((Some(slot(2)), None)));
+        // A unit no player owns, as a creep; and one that holds no type of the kind.
+        let creep = world.spawn((team(1), Stray)).id();
+        let tower = world.spawn((Owner::new(slot(1)), team(0))).id();
+        world.flush();
+        assert_eq!(held(world, creep), Some((None, Some(team(1)))));
+        assert_eq!(held(world, tower), None);
         world.entity_mut(hero).insert(Owner::new(slot(1)));
         world.flush();
         world.despawn(hero);
@@ -375,14 +481,31 @@ mod tests {
     }
 
     #[test]
-    fn only_the_owners_seated_link_holds_an_owned_kind() {
-        let link = |slot| PlayerLink::new(PlayerSlot::new(slot), Team::new(0));
+    fn only_the_owners_seated_link_and_for_a_team_kind_its_teams_hold_a_filtered_kind() {
+        let link = |slot, team| PlayerLink::new(PlayerSlot::new(slot), Team::new(team));
         let client = Entity::PLACEHOLDER;
-        let owned = KindFilter::<PredictionKind>::new(Some(PlayerSlot::new(1)));
-        assert!(owned.is_visible(client, Some(&link(1))));
-        assert!(!owned.is_visible(client, Some(&link(0))));
-        // A link with no seat, and a unit no player owns, as a creep: none holds it.
-        assert!(!owned.is_visible(client, None));
-        assert!(!KindFilter::<PredictionKind>::new(None).is_visible(client, Some(&link(1))));
+        let (player, team) = (Owner::new(PlayerSlot::new(1)), Team::new(0));
+        let prediction = KindFilter::<PredictionKind>::new(Some(&player), Some(&team));
+        let team_state = KindFilter::<UnitStateTeamKind>::new(Some(&player), Some(&team));
+        // The owner holds both; an ally the team's kind alone; an enemy neither.
+        for (link, holds) in [
+            (link(1, 0), (true, true)),
+            (link(0, 0), (false, true)),
+            (link(2, 1), (false, false)),
+        ] {
+            let held = (
+                prediction.is_visible(client, Some(&link)),
+                team_state.is_visible(client, Some(&link)),
+            );
+            assert_eq!(held, holds, "{link:?}");
+        }
+        // A link with no seat, and a unit no player owns, as a creep: no link holds an owned
+        // kind, and the creep's team holds its team's kind.
+        assert!(!prediction.is_visible(client, None) && !team_state.is_visible(client, None));
+        let creep = KindFilter::<PredictionKind>::new(None, Some(&team));
+        assert!(!creep.is_visible(client, Some(&link(1, 0))));
+        let creep = KindFilter::<UnitStateTeamKind>::new(None, Some(&team));
+        assert!(creep.is_visible(client, Some(&link(1, 0))));
+        assert!(!creep.is_visible(client, Some(&link(2, 1))));
     }
 }

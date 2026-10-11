@@ -3,11 +3,13 @@
 //! abilities once, each cast paying its cost and starting its cooldown at its rank, as the
 //! heroes' and the mode's data give them.
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_capabilities::internals;
 use campfire_capabilities::{
     ActionData, ActionSlot, ActionSlots, DeclaredName, Inventory, ItemId, ItemStack, Level,
-    Lifespan, ModifierId, Number, Points, PoolId, Pools, Rank, Ranked, Scalar, Stats, Team, Toggle,
+    Lifespan, ModifierId, Number, Points, PoolId, PoolMeters, Rank, Ranked, Scalar, SlotTime,
+    SlotTimes, Stats, Team, Toggle,
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
@@ -54,10 +56,22 @@ struct HeroState {
     level: u32,
     points: u32,
     slots: Vec<ActionSlot>,
-    pools: Pools,
+    times: Vec<SlotTime>,
+    /// The current amount of each pool, by pool id, its life among them.
+    pools: [Option<Num>; PoolId::LIMIT],
     carried: Vec<Option<ItemStack>>,
     modifiers: Vec<ModifierId>,
     gold: i64,
+}
+
+/// The current amount of each pool of the unit of `entity`, by pool id, its life among them.
+fn pools_of(world: &World, entity: Entity) -> [Option<Num>; PoolId::LIMIT] {
+    let meters = PoolMeters::of(world, entity);
+    let mut held = [None; PoolId::LIMIT];
+    for pool in (0..).map_while(PoolId::new) {
+        held[pool.index()] = meters.current(pool);
+    }
+    held
 }
 
 /// What the match left after each tick from the one before the shop: each hero, by player slot.
@@ -84,7 +98,8 @@ impl Showcase {
                 level: unit.get::<Level>().unwrap().get(),
                 points: unit.get::<Points>().unwrap().get(),
                 slots: unit.get::<ActionSlots>().unwrap().iter().collect(),
-                pools: *unit.get::<Pools>().unwrap(),
+                times: unit.get::<SlotTimes>().unwrap().iter().collect(),
+                pools: pools_of(world, entity),
                 carried: unit.get::<Inventory>().unwrap().slots().to_vec(),
                 modifiers: internals::carried(world, hero)
                     .into_iter()
@@ -214,11 +229,11 @@ fn toggles_paid(
     at: u64,
     name: &DeclaredName,
 ) -> Num {
-    let slots = &showcase.at(at - 1, player).slots[..4];
+    let hero = showcase.at(at - 1, player);
     let due = (0..)
-        .zip(slots)
-        .filter(|(_, slot)| slot.toggle == Some(Tick::new(at)));
-    due.filter_map(|(index, slot)| {
+        .zip(hero.slots[..4].iter().zip(&hero.times))
+        .filter(|(_, (_, time))| time.toggle == Some(Tick::new(at)));
+    due.filter_map(|(index, (slot, _))| {
         let Some(Toggle::CostPerSecond(costs)) = &action(moba, player, index).toggle else {
             return None;
         };
@@ -243,8 +258,8 @@ impl Showcase {
         let mut starts = Vec::new();
         for tick in Moba3v3::SHOWCASE..end {
             for player in 0..Moba3v3::PLAYERS {
-                let before = &self.at(tick - 1, player).slots;
-                let after = &self.at(tick, player).slots;
+                let before = &self.at(tick - 1, player).times;
+                let after = &self.at(tick, player).times;
                 for (slot, (was, is)) in (0..).zip(before.iter().zip(after)) {
                     if slot == WEAPON {
                         continue;
@@ -322,8 +337,9 @@ pub(crate) fn assert_casts(moba: &Moba3v3, showcase: &Showcase, world: &World, e
     for (start, &(index, .., walks)) in starts.iter().zip(&expected) {
         let Start { tick, player, slot } = *start;
         let data = action(moba, player, slot);
-        let is = &showcase.at(tick, player).slots[usize::from(slot)];
-        let rank = is.rank;
+        let hero = showcase.at(tick, player);
+        let rank = hero.slots[usize::from(slot)].rank;
+        let is = &hero.times[usize::from(slot)];
         let windup = data
             .windup_ms
             .as_ref()
@@ -361,7 +377,7 @@ pub(crate) fn assert_casts(moba: &Moba3v3, showcase: &Showcase, world: &World, e
         let pools = moba.packages().data();
         for (name, cost) in &data.cost {
             let pool = PoolId::named(&pools.pools, name.as_str()).unwrap();
-            let left = |at| showcase.at(at, player).pools.current(pool).unwrap();
+            let left = |at| showcase.at(at, player).pools[pool.index()].unwrap();
             let paid = |at| toggles_paid(moba, showcase, player, at, name);
             let regen = left(tick - 1) - left(tick - 2) + paid(tick - 1);
             let spent = left(tick - 1) + regen - left(tick) - paid(tick);
@@ -371,7 +387,7 @@ pub(crate) fn assert_casts(moba: &Moba3v3, showcase: &Showcase, world: &World, e
     }
 
     // The toggles turn off as Husk and Rime cast them again, in casts 28 and 29.
-    let toggle = |tick, player, slot: usize| showcase.at(tick, player).slots[slot].toggle;
+    let toggle = |tick, player, slot: usize| showcase.at(tick, player).times[slot].toggle;
     assert!(toggle(stamp(28) - 1, 2, 1).is_some() && toggle(stamp(28), 2, 1).is_none());
     assert!(toggle(stamp(29) - 1, 4, 0).is_some() && toggle(stamp(29), 4, 0).is_none());
 

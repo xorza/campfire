@@ -18,10 +18,11 @@ fn probe(ctx, unit) {
     let actor = game.fighter(0, &[]);
     let target = game.fighter(1, &[]);
     let entity = game.sim.entity(target);
-    let mut pools = Pools::new([(PoolId::FIRST, Num::int(1000)), (MANA, Num::int(100))]).unwrap();
-    pools.take(PoolId::FIRST, Num::int(20));
+    let mut life = Life::full(Num::int(1000));
+    life.take(Num::int(20));
+    let mut pools = Pools::new([(MANA, Num::int(100))]).unwrap();
     pools.take(MANA, Num::int(50));
-    game.sim.insert(target, pools);
+    game.sim.insert(target, (life, pools));
     // Each role in turn: 3 restored and 5 gold given as its effects apply, then 10 dealt and 4
     // healed in the tick's pass, in the order queued: from 980 to 974, and so on; the pool from
     // 50, 3 a call.

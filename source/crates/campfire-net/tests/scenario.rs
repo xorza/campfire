@@ -2,7 +2,7 @@
 //! delayed ones, checked on the server, on both clients and in the replayed log.
 
 use bevy_app::App;
-use campfire_capabilities::{Action, ActionSlots, Body, Dead, PoolId, Pools, SeenBy, Team};
+use campfire_capabilities::{Action, Body, Dead, Life, PoolId, Pools, SeenBy, SlotTimes, Team};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
@@ -42,12 +42,12 @@ fn signed(tick: u64) -> i64 {
 
 /// When a hero died and came back in one app, by that app's ticks.
 #[derive(Debug, Default, Clone, Copy)]
-struct Life {
+struct Downtime {
     died: Option<u64>,
     back: Option<u64>,
 }
 
-impl Life {
+impl Downtime {
     /// Notes the hero's state after `tick`; `true` when it just died.
     const fn note(&mut self, dead: bool, tick: u64) -> bool {
         if dead && self.died.is_none() {
@@ -67,8 +67,8 @@ fn play(link: LinkModel) -> [u32; 2] {
     local.start_match();
     let heroes = [local.avatar(0), local.avatar(1)];
     let teams = local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
-    let mut on_server = [Life::default(); 2];
-    let mut on_client = [Life::default(); 2];
+    let mut on_server = [Downtime::default(); 2];
+    let mut on_client = [Downtime::default(); 2];
     // Each client's lead on the server, in ticks, when it learned its hero died; below 0 when it
     // runs behind.
     let mut lead = [0_i64; 2];
@@ -205,7 +205,8 @@ fn cast_scripts(walker: StableId, runner: StableId) -> [String; 2] {
 const CAST_TICKS: u64 = 360;
 
 /// Where a unit stands, its health and mana, the lane mode's pools in the order of their names,
-/// and the first tick its first ability may be cast again, as an app holds them.
+/// and the first tick its first ability may be cast again, as an app holds them: the mana and
+/// the tick none but its owner's client and the server hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Caster {
     pos: Position,
@@ -217,15 +218,15 @@ struct Caster {
 fn caster(app: &App, id: StableId) -> Caster {
     let world = app.world();
     let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
-    let pools = unit.get::<Pools>().unwrap();
+    let mana = PoolId::new(1).unwrap();
     Caster {
         pos: *unit.get::<Position>().unwrap(),
-        health: pools.current(PoolId::FIRST).unwrap(),
-        mana: pools.current(PoolId::new(1).unwrap()),
+        health: unit.get::<Life>().unwrap().current(),
+        mana: unit.get::<Pools>().and_then(|pools| pools.current(mana)),
         ready_at: unit
-            .get::<ActionSlots>()
-            .and_then(|slots| slots.slot(0))
-            .map(|slot| slot.ready_at),
+            .get::<SlotTimes>()
+            .and_then(|times| times.slot(0))
+            .map(|time| time.ready_at),
     }
 }
 
@@ -263,7 +264,8 @@ fn cast(link: LinkModel) -> [u32; 2] {
     // lost 80 health to the runner's cast;
     // the runner 100 to each of the walker's two casts that paid, and 60 to each of its three
     // strikes. The walker spent 40 mana twice, the runner 30 once, and each ability is ready
-    // again after its last cast's cooldown: on the server and on both clients.
+    // again after its last cast's cooldown: on the server and on both clients, the mana and the
+    // cooldown on its owner's client alone.
     assert_eq!(hits, [vec![140], vec![100, 190, 308, 328, 348]]);
     let edge = |x| Position::new(Vec3::new(x, Num::ZERO, Num::int(8))).unwrap();
     let expected = [
@@ -286,12 +288,21 @@ fn cast(link: LinkModel) -> [u32; 2] {
             },
         ),
     ];
-    for (id, expected) in expected {
+    for ((id, expected), owner) in expected.into_iter().zip(clients) {
         assert_eq!(caster(local.server(), id), expected, "{id:?} on the server");
         for client in 0..2 {
+            let held = if client == owner {
+                expected
+            } else {
+                Caster {
+                    mana: None,
+                    ready_at: None,
+                    ..expected
+                }
+            };
             assert_eq!(
                 caster(local.client(client), id),
-                expected,
+                held,
                 "{id:?} on client {client}"
             );
         }

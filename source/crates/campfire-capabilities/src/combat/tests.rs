@@ -14,6 +14,7 @@ use crate::actions::action_slots::{ActionSlot, ActionSlots};
 use crate::actions::channel_call::ChannelCall;
 use crate::actions::in_progress::InProgress;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::assist_window::AssistWindow;
@@ -143,6 +144,7 @@ impl Fight {
     fn state(&self, id: StableId) -> Attack {
         let slots = self.sim.try_get::<ActionSlots>(id).unwrap();
         let slot = slots.slot(0).unwrap();
+        let time = self.sim.try_get::<SlotTimes>(id).unwrap().slot(0).unwrap();
         let book = self.sim.world.resource::<ActionBook>();
         let windup = book.get(slot.action.unwrap()).unwrap().ranks[0].windup;
         let started = slots.attacking().and(slots.in_progress());
@@ -150,7 +152,7 @@ impl Fight {
         Attack {
             target: slots.attack_target(),
             started: started.map(|at| Tick::new(at.get() - windup.get())),
-            ready_at: slot.ready_at,
+            ready_at: time.ready_at,
         }
     }
 }
@@ -185,7 +187,7 @@ fn an_attack_winds_up_and_strikes_each_period() {
     fight.sim.run_until(17);
     assert_eq!(fight.sim.health(dummy), 10);
     fight.sim.run_until(18);
-    assert!(fight.sim.try_get::<Pools>(dummy).is_none());
+    assert!(fight.sim.try_get::<Life>(dummy).is_none());
     assert_eq!(fight.state(fighter).target(), Some(dummy));
     // The next tick finds the target gone and drops it.
     fight.sim.run_until(19);
@@ -284,7 +286,8 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
         .refill()
         .extend([Num::int(6), Num::int(10), Num::int(25)]);
     let slots =
-        ActionSlots::new([ground, air].map(|weapon| (weapon, SlotKind::new(0), Rank::new(1))));
+        ActionSlots::new([ground, air].map(|weapon| (weapon, SlotKind::new(0), Rank::new(1))))
+            .timed();
     let unit = fight.unit(Team::new(0), at(0, 0, 0), dummy());
     fight.sim.insert(unit, (slots, stats));
     let [ground_at, air_at, structure_at, hover_at] = [1, 4, 1, 1];
@@ -315,16 +318,16 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     assert_eq!(underway(&fight), Some(1));
     fight.sim.run_until(2);
     assert_eq!(healths(&fight), [100, 75, 100, 100]);
-    let slots = fight.sim.try_get::<ActionSlots>(unit).unwrap();
-    assert_eq!(slots.slot(1).unwrap().ready_at, Tick::new(5));
+    let times = fight.sim.try_get::<SlotTimes>(unit).unwrap();
+    assert_eq!(times.slot(1).unwrap().ready_at, Tick::new(5));
 
     // The ground unit, 1 m off: the ground weapon, ready, strikes in tick 2 itself, for 10, while
     // the air weapon cools down.
     fight.attack(unit, ground_unit);
     fight.sim.run_until(3);
     assert_eq!(healths(&fight), [90, 75, 100, 100]);
-    let slots = fight.sim.try_get::<ActionSlots>(unit).unwrap();
-    assert_eq!(slots.slot(0).unwrap().ready_at, Tick::new(7));
+    let times = fight.sim.try_get::<SlotTimes>(unit).unwrap();
+    assert_eq!(times.slot(0).unwrap().ready_at, Tick::new(7));
 
     // No weapon selects the structure: nothing starts while it is the target.
     fight.attack(unit, structure);
@@ -349,7 +352,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
         .refill()
         .extend([Num::int(6), Num::int(10), Num::int(25)]);
     let kind = SlotKind::new(0);
-    let slots = ActionSlots::new([(ground, kind, None), (air, kind, Some(Rank::FIRST))]);
+    let slots = ActionSlots::new([(ground, kind, None), (air, kind, Some(Rank::FIRST))]).timed();
     fight.sim.insert(second, (slots, stats));
     fight.attack(second, hovering);
     fight.sim.run_until(11);
@@ -422,8 +425,8 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     stats.refill().extend([Num::int(6), Num::int(10)]);
     let unit = fight.unit(Team::new(0), at(0, 0, 0), dummy());
     let dummy = fight.unit(Team::new(1), at(1, 0, 0), dummy());
-    let pools = Pools::new([(PoolId::FIRST, Num::int(100)), (mana, Num::int(100))]).unwrap();
-    let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
+    let pools = Pools::new([(mana, Num::int(100))]).unwrap();
+    let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed();
     let owner = Owner::new(PlayerSlot::new(0));
     fight.sim.insert(unit, (slots, stats, pools, owner));
     fight.attack(unit, dummy);
@@ -481,7 +484,7 @@ fn a_windup_on_a_target_that_dies_spends_nothing() {
     // Both start in tick 0; the quick one strikes in tick 1 and kills the prey, before the slow
     // one's strike in tick 2. The slow one drops its target in tick 2 and is ready at once.
     fight.sim.run_until(2);
-    assert!(fight.sim.try_get::<Pools>(prey).is_none());
+    assert!(fight.sim.try_get::<Life>(prey).is_none());
     assert_eq!(fight.state(slow).started(), Some(Tick::new(0)));
     fight.sim.run_until(3);
     assert_eq!(fight.state(slow), Attack::default());
@@ -598,6 +601,10 @@ fn every_combat_type_is_state_and_restores() {
         restored.sim.try_get::<ActionSlots>(fighter),
         fight.sim.try_get::<ActionSlots>(fighter)
     );
+    assert_eq!(
+        restored.sim.try_get::<SlotTimes>(fighter),
+        fight.sim.try_get::<SlotTimes>(fighter)
+    );
 
     // The fighter's attack winds up 2 ticks: under way, it resolves in tick 2 at the soonest,
     // where it started in tick 0, and at the limit at the latest, as its weapon is ready at the
@@ -608,8 +615,10 @@ fn every_combat_type_is_state_and_restores() {
         let mut slots = restored.sim.get::<ActionSlots>(fighter).clone();
         slots.set_attack_target(Some(doomed));
         slots.start_attack(0, Tick::new(resolves_at));
-        slots.cool_down(0, Tick::new(ready_at));
-        TestMatch::decodes(&slots) && slots.check(&restored.sim.world, entity)
+        let mut times = restored.sim.get::<SlotTimes>(fighter).clone();
+        times.cool_down(0, Tick::new(ready_at));
+        let checked = slots.check(&restored.sim.world, entity);
+        TestMatch::decodes(&slots) && checked && TestMatch::decodes(&times)
     };
     assert!(slots(2, 0) && slots(Tick::LIMIT.get(), Tick::LIMIT.get()));
     assert!(!slots(1, 0));
@@ -656,35 +665,60 @@ fn slot_of_kind(weapon: ActionId, kind: u8) -> ActionSlot {
 
 #[test]
 fn stats_out_of_their_limits_are_refused() {
-    let life = |max| Pools::new([(PoolId::FIRST, max)]);
-    assert_eq!(life(Num::ZERO), None);
+    let mana = PoolId::new(1).unwrap();
+    let pools = |max| Pools::new([(mana, max)]);
+    assert_eq!(pools(Num::ZERO), None);
     assert_eq!(
-        life(Num::EPSILON).and_then(|pools| pools.current(PoolId::FIRST)),
+        pools(Num::EPSILON).and_then(|pools| pools.current(mana)),
         Some(Num::EPSILON)
     );
 
     // A snapshot's values pass the same limits, and carry less than a bit, at 30 ticks a second
-    // fewer than 30 parts, between its ends alone.
-    let carrying = |current: i64, max: i64, carry: u32| {
+    // fewer than 30 parts, between its ends alone; a life the same.
+    let meter = |current: i64, max: i64, carry: u32| (Num::int(current), Num::int(max), carry);
+    let carrying = |place: usize, current, max, carry| {
         let mut meters = [None; PoolId::LIMIT];
-        meters[0] = Some((Num::int(current), Num::int(max), carry));
+        meters[place] = Some(meter(current, max, carry));
         let bytes = Binary::encode(&meters);
         Binary::decode::<Pools>(&bytes).ok()
     };
-    let health = |current, max| carrying(current, max, 0);
-    assert!(health(0, 1).is_some() && health(1, 1).is_some());
-    for (current, max) in [(-1, 1), (2, 1), (0, 0)] {
-        assert_eq!(health(current, max), None, "{current} of {max}");
+    let living = |current, max, carry| {
+        let bytes = Binary::encode(&meter(current, max, carry));
+        Binary::decode::<Life>(&bytes).ok()
+    };
+    for (current, max, reads) in [(0, 1, true), (1, 1, true), (-1, 1, false), (2, 1, false)] {
+        assert_eq!(
+            carrying(1, current, max, 0).is_some(),
+            reads,
+            "{current} of {max}"
+        );
+        assert_eq!(
+            living(current, max, 0).is_some(),
+            reads,
+            "{current} of {max}"
+        );
     }
+    assert_eq!((carrying(1, 0, 0, 0), living(0, 0, 0)), (None, None));
     let mut fight = Fight::new();
     let unit = fight.unit(Team::new(0), at(0, 0, 0), fighter());
     let entity = fight.sim.entity(unit);
     let restores = |current, carry| {
-        let pools = carrying(current, 2, carry).unwrap();
-        pools.check(&fight.sim.world, entity)
+        let pools = carrying(1, current, 2, carry).unwrap();
+        let life = living(current, 2, carry).unwrap();
+        let world = &fight.sim.world;
+        let checks = pools.check(world, entity);
+        assert_eq!(
+            life.check(world, entity),
+            checks,
+            "{current} carrying {carry}"
+        );
+        checks
     };
     assert!(restores(1, 29) && restores(2, 0));
     assert!(!restores(1, 30) && !restores(2, 1) && !restores(0, 1));
+    // The life pool's place, 0, holds no meter of the pools, as the life holds it.
+    let at_life = carrying(0, 1, 2, 0).unwrap();
+    assert!(!at_life.check(&fight.sim.world, entity));
 }
 
 #[test]
@@ -759,7 +793,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         );
         // The hero stays, dead; the creep is gone by the tick's end.
         assert!(fight.sim.try_get::<Dead>(hero).is_some());
-        assert!(fight.sim.try_get::<Pools>(creep).is_none());
+        assert!(fight.sim.try_get::<Life>(creep).is_none());
     }
 
     // The hero comes back at the start of its respawn tick, 10, at its spawn point with full
@@ -930,8 +964,8 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     // Heals halved, life steal 0.5 and spell vamp 0.25; at 40 of 100.
     fight.stats(source, [-half, half, Num::ONE / 4]);
     let entity = fight.sim.entity(source);
-    let mut pools = fight.sim.world.get_mut::<Pools>(entity).unwrap();
-    pools.take(PoolId::FIRST, Num::int(60));
+    let mut life = fight.sim.world.get_mut::<Life>(entity).unwrap();
+    life.take(Num::int(60));
     let shield = |id: u16, until: Option<u64>, amount: i64| NewInstance {
         lifetime: Lifetime::new(
             None,
@@ -962,18 +996,18 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
 
     // 35: the shield that ends in tick 30 spends its 10, the one of tick 50 its 20, and the one
     // with no end 5 of its 100; health takes nothing, and the source heals nothing. The target's
-    // pools, which nothing took from, are not written.
-    let pools_changed = |fight: &Fight| {
+    // life, which nothing took from, is not written.
+    let life_changed = |fight: &Fight| {
         let unit = fight.sim.world.entity(fight.sim.entity(target));
-        unit.get_ref::<Pools>().unwrap().last_changed()
+        unit.get_ref::<Life>().unwrap().last_changed()
     };
-    let before = pools_changed(&fight);
+    let before = life_changed(&fight);
     fight.damage(Some(source), target, 35, ATTACK);
     fight.sim.run_until(1);
     assert_eq!(shields(&fight), [Num::int(95)]);
     assert_eq!(fight.sim.life(target), Num::int(100));
     assert_eq!(fight.sim.life(source), Num::int(40));
-    assert_eq!(pools_changed(&fight), before);
+    assert_eq!(life_changed(&fight), before);
     // An attack of 100: the last shield's 95, then 5 off health, which life steals 5 × 0.5,
     // halved: 1.25. Then a spell of 40, all off health: 40 × 0.25, halved, 5. 40 + 1.25 + 5.
     fight.damage(Some(source), target, 100, ATTACK);
@@ -990,10 +1024,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     // A heal scale at the largest number, one past which no number holds, scales as the largest:
     // a heal of 1 from 40 fills the pool.
     fight.stats(source, [Num::MAX, half, Num::ONE / 4]);
-    fight
-        .sim
-        .get_mut::<Pools>(source)
-        .take(PoolId::FIRST, Num::int(60));
+    fight.sim.get_mut::<Life>(source).take(Num::int(60));
     DamagePass::heal_unit(&mut fight.sim.world, source, Num::ONE);
     assert_eq!(fight.sim.life(source), Num::int(100));
     fight.stats(source, [-half, half, Num::ONE / 4]);
@@ -1002,10 +1033,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     // the end of the queue, it would come after the 12, which kills.
     let foe = fight.unit(Team::new(1), at(2, 0, 0), dummy());
     assert!(source < foe);
-    fight
-        .sim
-        .get_mut::<Pools>(source)
-        .take(PoolId::FIRST, Num::int(90));
+    fight.sim.get_mut::<Life>(source).take(Num::int(90));
     fight.damage(Some(foe), source, 12, DamageCause::Effect);
     fight.damage(Some(source), target, 20, ATTACK);
     fight.sim.run_until(3);
@@ -1015,8 +1043,8 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     // nothing, and a heal of 10 is whole.
     super::internals::bind_life(&mut fight.sim.world, PoolId::FIRST);
     let entity = fight.sim.entity(source);
-    let mut pools = fight.sim.world.get_mut::<Pools>(entity).unwrap();
-    pools.add(PoolId::FIRST, Num::int(47));
+    let mut life = fight.sim.world.get_mut::<Life>(entity).unwrap();
+    life.add(Num::int(47));
     fight.damage(Some(source), target, 10, ATTACK);
     fight.sim.run_until(4);
     assert_eq!(fight.sim.life(target), Num::int(25));
@@ -1024,18 +1052,20 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     DamagePass::heal_unit(&mut fight.sim.world, source, Num::int(10));
     assert_eq!(fight.sim.life(source), Num::int(60));
     // A restore reaches the pool it names, unscaled: a second pool at 50 of 100 takes 20 more,
-    // and the life pool keeps its 60.
+    // and the life pool keeps its 60; one of the life pool's id reaches the life, which takes 15
+    // more, unscaled, to 75, and the second pool keeps its 70.
     let mana = PoolId::new(1).unwrap();
-    let mut pools = fight.sim.get_mut::<Pools>(source);
-    *pools = Pools::new([(PoolId::FIRST, Num::int(100)), (mana, Num::int(100))]).unwrap();
-    pools.take(PoolId::FIRST, Num::int(40));
+    let mut pools = Pools::new([(mana, Num::int(100))]).unwrap();
     pools.take(mana, Num::int(50));
+    fight.sim.insert(source, pools);
     DamagePass::restore(&mut fight.sim.world, source, mana, Num::int(20));
-    let pools = fight.sim.try_get::<Pools>(source).copied().unwrap();
-    assert_eq!(
-        (pools.current(PoolId::FIRST), pools.current(mana)),
-        (Some(Num::int(60)), Some(Num::int(70)))
-    );
+    let held = |fight: &Fight| {
+        let mana = fight.sim.try_get::<Pools>(source).unwrap().current(mana);
+        (fight.sim.life(source), mana)
+    };
+    assert_eq!(held(&fight), (Num::int(60), Some(Num::int(70))));
+    DamagePass::restore(&mut fight.sim.world, source, PoolId::FIRST, Num::int(15));
+    assert_eq!(held(&fight), (Num::int(75), Some(Num::int(70))));
 }
 
 #[test]

@@ -22,8 +22,7 @@ use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
@@ -371,8 +370,8 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
         let shooters = [0, 10].map(|x| volley.unit(0, at(x, 0), shooter(volley.bolt)));
         let victim = volley.unit(1, at(5, 0), target());
         let victim_entity = volley.sim.entity(victim);
-        let mut pools = volley.sim.world.get_mut::<Pools>(victim_entity).unwrap();
-        pools.take(PoolId::FIRST, Num::int(40));
+        let mut life = volley.sim.world.get_mut::<Life>(victim_entity).unwrap();
+        life.take(Num::int(40));
         for shooter in shooters {
             volley.attack(shooter, victim);
         }

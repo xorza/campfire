@@ -1,18 +1,33 @@
 use std::ops::Range;
+use std::slice::Iter;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::state_decl::synced_state_decl::SyncTo;
 use crate::scripts::state_value::StateValue;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::row_fill::RowFill;
-use crate::units::unit_state::UnitState;
+use crate::units::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::{StateField, UnitStateBook};
 use crate::units::unit_type::UnitType;
 use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
+
+/// The parts of a unit the core reads into its row of script state: its type, which names the
+/// class of each field, and its state of each class.
+pub(super) type StateRowParts = (
+    Option<&'static UnitType>,
+    Option<&'static UnitState<SyncNone>>,
+    Option<&'static UnitState<SyncOwner>>,
+    Option<&'static UnitState<SyncTeam>>,
+    Option<&'static UnitState<SyncAll>>,
+);
+
+/// A row's parts of `StateRowParts`, as the view reads them.
+type StateParts<'w, 's> = ROQueryItem<'w, 's, StateRowParts>;
 
 /// What the core adds to the script view for units' script state: the fields each unit type
 /// declares, and each unit's values, a run a row, as the view read them and as the calls of the
@@ -69,19 +84,35 @@ impl ColumnRows for StateRows {
     }
 }
 
-impl StateRows {
-    fn push(&mut self, values: &[StateValue]) {
-        let start = len(self.values.len());
-        self.values.extend_from_slice(values);
-        self.rows.push(start..len(self.values.len()));
-    }
-}
-
 impl UnitsColumn {
-    /// Adds the row of a unit with `state`, none for one whose type declares no field.
-    pub(crate) fn push(&mut self, state: Option<&UnitState>) {
-        let values = state.map_or(&[][..], UnitState::values);
-        self.rows.now_mut().push(values);
+    /// Adds the row of a unit of `unit_type` with `state`, its fields of each class, merged into
+    /// the order of their names as the book gives each field's class.
+    fn push(&mut self, unit_type: Option<UnitType>, state: StateParts<'_, '_>) {
+        fn class<S: StateSync>(state: Option<&UnitState<S>>) -> Iter<'_, StateValue> {
+            state.map_or(&[][..], UnitState::values).iter()
+        }
+        let (_, none, owner, team, all) = state;
+        let mut classes = [class(none), class(owner), class(team), class(all)];
+        let rows = self.rows.now_mut();
+        let start = len(rows.values.len());
+        let fields = unit_type.map_or(&[][..], |unit_type| self.book.fields(unit_type));
+        for field in fields {
+            let at = match field.sync {
+                SyncTo::None => 0,
+                SyncTo::Owner => 1,
+                SyncTo::Team => 2,
+                SyncTo::All => 3,
+            };
+            let value = classes[at]
+                .next()
+                .expect("a unit holds each field its type declares");
+            rows.values.push(value.clone());
+        }
+        debug_assert!(
+            classes.iter_mut().all(|class| class.next().is_none()),
+            "a unit holds only the fields its type declares"
+        );
+        rows.rows.push(start..len(rows.values.len()));
     }
 
     /// Shares the unit types' fields, as the load built them.
@@ -134,10 +165,10 @@ impl UnitsColumn {
 
     /// Adds a unit's script state to the view's column of it.
     pub(super) fn fill_state(
-        state: ROQueryItem<'_, '_, Option<&'static UnitState>>,
+        state: ROQueryItem<'_, '_, StateRowParts>,
         fill: &mut RowFill<'_, UnitsColumn>,
     ) {
-        fill.column.push(state);
+        fill.column.push(state.0.copied(), state);
     }
 }
 

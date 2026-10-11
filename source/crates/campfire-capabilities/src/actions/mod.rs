@@ -9,6 +9,7 @@ use crate::actions::effect_lists::EffectLists;
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::holds::Holds;
 use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::slot_times::SlotTimes;
 use crate::scripts::ctx::Ctx;
 use crate::state_types::StateTypes;
 use crate::stats::StatsSet;
@@ -62,6 +63,7 @@ pub(crate) mod slot_aim;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kind_data;
 pub(crate) mod slot_kinds;
+pub(crate) mod slot_times;
 pub(crate) mod targeting;
 pub(crate) mod targets;
 pub(crate) mod weapon;
@@ -91,6 +93,7 @@ impl Actions {
     /// Lists the state types it adds (design 14, D9).
     pub(crate) fn state_types<T: StateTypes>(types: &mut T) {
         types.component::<ActionSlots>();
+        types.component::<SlotTimes>();
     }
 
     /// Adds the actions to a match whose core is installed, with none loaded yet, and its column

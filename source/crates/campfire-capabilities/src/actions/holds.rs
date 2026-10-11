@@ -4,8 +4,9 @@ use bevy_ecs::system::{Local, Query, Res};
 use campfire_sim::{SimTick, StableId, TickRate};
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_slots::{ActionSlots, SlotCharges};
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::ready_waits::ReadyWaits;
+use crate::actions::slot_times::{SlotCharges, SlotTimes};
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::lifetime::Hold;
@@ -26,19 +27,20 @@ pub(super) struct Holds;
 impl Holds {
     /// Keeps each unit's charges as its slots stand, as each tick starts, after the orders that
     /// learn ranks: a slot that came to a rank of an action with charges fills, and each charge
-    /// whose time came comes back. A slot changes only when its charges do, as the slots replicate.
+    /// whose time came comes back. A slot's times change only when its charges do, as they
+    /// replicate.
     pub(super) fn hold_charges(
         actions: Res<'_, ActionBook>,
         tick: Res<'_, SimTick>,
-        mut units: Query<'_, '_, &mut ActionSlots>,
+        mut units: Query<'_, '_, (&ActionSlots, &mut SlotTimes)>,
         mut due: Local<'_, Vec<(u8, Option<SlotCharges>)>>,
     ) {
         let now = tick.start();
-        for mut slots in &mut units {
+        for (slots, mut times) in &mut units {
             due.clear();
-            due.extend(slots.charges_due(&actions, now));
+            due.extend(times.charges_due(slots, &actions, now));
             for &(slot, charges) in &*due {
-                slots.set_charges(slot, charges);
+                times.set_charges(slot, charges);
             }
         }
     }
@@ -65,6 +67,7 @@ impl Holds {
                 Entity,
                 &StableId,
                 Ref<'_, ActionSlots>,
+                Ref<'_, SlotTimes>,
                 &mut Modifiers,
                 &mut ModifierClocks,
             ),
@@ -80,13 +83,14 @@ impl Holds {
         let every =
             actions.is_changed() || book.is_changed() || stats.is_changed() || params.is_changed();
         let now = tick.start();
-        for (entity, &id, slots, modifiers, clocks) in &mut units {
-            if !(every || slots.is_changed() || modifiers.is_changed() || waiting.waits(entity)) {
+        for (entity, &id, slots, times, modifiers, clocks) in &mut units {
+            let changed = slots.is_changed() || times.is_changed() || modifiers.is_changed();
+            if !(every || changed || waiting.waits(entity)) {
                 continue;
             }
             let mut waits = false;
             let mut carried = CarriedMut::new(modifiers, clocks);
-            for (index, slot) in slots.indexed() {
+            for ((index, slot), time) in slots.indexed().zip(times.iter()) {
                 let Some(ability) = slot.action else {
                     continue;
                 };
@@ -123,7 +127,7 @@ impl Holds {
                     carried.apply(book.application(modifier, applier, None, now, *rate, param));
                 };
                 if let Some(passive) = action.passive {
-                    let cooling = passive.while_ready && slot.ready_at > now;
+                    let cooling = passive.while_ready && time.ready_at > now;
                     waits |= slot.rank.is_some() && cooling;
                     keep(
                         passive.modifier,
@@ -132,7 +136,7 @@ impl Holds {
                     );
                 }
                 if let Some(hold) = action.hold {
-                    let runs = slot.toggle.is_some() || slots.channeling() == Some(index);
+                    let runs = time.toggle.is_some() || slots.channeling() == Some(index);
                     keep(hold, Hold::Running, slot.rank.filter(|_| runs));
                 }
             }

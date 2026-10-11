@@ -19,8 +19,7 @@ use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
 use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
@@ -344,7 +343,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let near = scene.unit(at(3, 0, 4), 1, ());
     let recent = scene.unit(at(9, 0, 0), 1, ());
     let fallen = scene.unit(at(9, 0, 1), 1, Dead);
-    let health_only = (Team::new(1), Pools::life(Num::int(1)));
+    let health_only = (Team::new(1), Life::full(Num::int(1)));
     let bare = scene.sim.spawn(at(9, 0, 2), health_only);
     let entity = scene.sim.entity(of);
     scene
@@ -455,11 +454,11 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     let of = scene.unit(at(0, 0, 0), 0, Level::new(3).unwrap());
     let entity = scene.sim.entity(of);
     scene.sim.insert(of, stats);
-    let mut pools = scene.sim.world.get_mut::<Pools>(entity).unwrap();
-    pools.take(PoolId::FIRST, Num::int(4));
+    let mut life = scene.sim.world.get_mut::<Life>(entity).unwrap();
+    life.take(Num::int(4));
     let bare = scene
         .sim
-        .spawn(at(1, 0, 0), (Team::new(1), Pools::life(Num::int(1))));
+        .spawn(at(1, 0, 0), (Team::new(1), Life::full(Num::int(1))));
     let shell = scene.sim.spawn(at(2, 0, 0), Team::new(1));
 
     let read = |scene: &mut Scene, unit, expression: &str| scene.sim.read(expression, unit);

@@ -6,6 +6,7 @@ use campfire_sim::{EntityIndex, StableId};
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_times::SlotTimes;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::units::action_id::ActionId;
@@ -41,17 +42,20 @@ impl Effect for AbilitiesEffect {
             return;
         };
         world.resource_scope(|world, book: Mut<'_, ActionBook>| {
-            let mut slots = world
-                .get_mut::<ActionSlots>(entity)
+            let mut unit = world.entity_mut(entity);
+            let (slots, mut times) = unit
+                .get_components_mut::<(&ActionSlots, &mut SlotTimes)>()
                 .expect("a unit the view held with the ability has slots");
             match self {
                 AbilitiesEffect::ReduceCooldown { action, cut, .. } => {
-                    slots.cut_cooldown(action, cut, now);
+                    times.cut_cooldown(slots, action, cut, now);
                 }
                 AbilitiesEffect::ReduceCooldowns { kind, fraction, .. } => {
-                    slots.cut_cooldowns(kind, fraction, now);
+                    times.cut_cooldowns(slots, kind, fraction, now);
                 }
-                AbilitiesEffect::AddCharge { action, .. } => slots.add_charge(action, &book),
+                AbilitiesEffect::AddCharge { action, .. } => {
+                    times.add_charge(slots, action, &book);
+                }
             }
         });
     }

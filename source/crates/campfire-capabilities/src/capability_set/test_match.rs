@@ -22,14 +22,13 @@ use crate::actions::slot_kinds::SlotKinds;
 
 use crate::actions::slot_kind_data::SlotKindData;
 use crate::capability_set::CapabilitySet;
-use crate::combat::Combat;
 use crate::combat::internals;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
+use crate::stats::life::Life;
 use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::unit_tags::UnitTags;
 use crate::values::declared_name::DeclaredName;
@@ -160,9 +159,7 @@ impl TestMatch {
 
     /// The life unit `id` has left, exactly.
     pub(crate) fn life(&self, id: StableId) -> Num {
-        let life = Combat::life(&self.world).expect("a match with a life pool");
-        let pools = self.get::<Pools>(id);
-        pools.current(life).expect("a unit with the life pool")
+        self.get::<Life>(id).current()
     }
 
     /// The life unit `id` has left, a whole amount.

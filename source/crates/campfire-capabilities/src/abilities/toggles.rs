@@ -1,13 +1,15 @@
 use bevy_ecs::query::Has;
-use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::system::{Query, Res};
 use campfire_sim::{SimTick, TickRate};
 
 use crate::abilities::Abilities;
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_slots::{ActionSlot, ActionSlots};
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::rank_fields::TogglePer;
+use crate::actions::slot_times::SlotTimes;
 use crate::items::inventory::Inventory;
-use crate::stats::pools::Pools;
+use crate::stats::life_pool::LifePool;
+use crate::stats::unit_pools::UnitPools;
 use crate::units::dead::Dead;
 use crate::units::unit_tags::UnitTags;
 
@@ -21,32 +23,39 @@ impl Toggles {
     /// when it turned on, and one its pools cannot pay turns off. The server alone runs it, as a
     /// client's pools come from the server.
     pub(super) fn run_toggles(
-        (tick, rate, book): (Res<'_, SimTick>, Res<'_, TickRate>, Res<'_, ActionBook>),
+        (tick, rate, book, life): (
+            Res<'_, SimTick>,
+            Res<'_, TickRate>,
+            Res<'_, ActionBook>,
+            Option<Res<'_, LifePool>>,
+        ),
         mut units: Query<
             '_,
             '_,
             (
-                &mut ActionSlots,
-                Option<&mut Pools>,
+                &ActionSlots,
+                &mut SlotTimes,
+                UnitPools,
                 Option<&UnitTags>,
                 Option<&Inventory>,
                 Has<Dead>,
             ),
         >,
-        mut on: Local<'_, Vec<(u8, ActionSlot)>>,
     ) {
         let now = tick.start();
         let second = Abilities::second(*rate);
-        for (mut slots, mut pools, tags, inventory, dead) in &mut units {
-            on.clear();
-            on.extend(slots.indexed().filter(|(_, slot)| slot.toggle.is_some()));
-            for &(at, slot) in &*on {
+        let life = life.map(|life| life.0);
+        for (slots, mut times, pools, tags, inventory, dead) in &mut units {
+            let mut pools = pools.of(life);
+            for (at, slot) in slots.indexed() {
+                let Some(next) = times.slot(at).and_then(|time| time.toggle) else {
+                    continue;
+                };
                 let group = Inventory::group(inventory, slot.kind);
                 if dead || UnitTags::properties_of(tags).blocks(group) {
-                    slots.toggle_off(at);
+                    times.toggle_off(at);
                     continue;
                 }
-                let next = slot.toggle.expect("a toggle that is on");
                 let toggle = slot
                     .values_in(&book)
                     .and_then(|values| values.toggle)
@@ -54,12 +63,11 @@ impl Toggles {
                 if toggle.per != TogglePer::Second || next > now {
                     continue;
                 }
-                match pools.as_deref_mut() {
-                    Some(pools) if pools.affords(&toggle.cost) => {
-                        pools.pay(&toggle.cost);
-                        slots.toggle_on(at, next.after(second));
-                    }
-                    _ => slots.toggle_off(at),
+                if pools.read().affords(&toggle.cost) {
+                    pools.pay(&toggle.cost);
+                    times.toggle_on(at, next.after(second));
+                } else {
+                    times.toggle_off(at);
                 }
             }
         }

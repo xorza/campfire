@@ -1,5 +1,5 @@
 use super::*;
-use crate::units::unit_state::UnitState;
+use crate::units::unit_state::{SyncAll, SyncOwner, UnitState};
 
 #[test]
 fn a_call_reads_its_unit_state_writes_back_and_the_next_call_of_the_stage_reads_them() {
@@ -45,10 +45,18 @@ fn on_mode_input(ctx, player, name, value) {
             .iter()
             .filter(|&(_, entity)| world.get::<UnitType>(entity) == Some(&grunt_type));
         let (_, entity) = grunts.last().unwrap();
-        world.get::<UnitState>(entity).unwrap().values().to_vec()
+        let owner = world.get::<UnitState<SyncOwner>>(entity).unwrap().values();
+        let all = world.get::<UnitState<SyncAll>>(entity).unwrap().values();
+        (owner.to_vec(), all.to_vec())
     };
-    // It spawns at its type's defaults: 2, and an empty text.
-    let at = |hits: i64| vec![StateValue::Int(hits), StateValue::Text(String::new())];
+    // It spawns at its type's defaults: 2, which its owner's class holds, and an empty text,
+    // which the class of all holds.
+    let at = |hits: i64| {
+        (
+            vec![StateValue::Int(hits)],
+            vec![StateValue::Text(String::new())],
+        )
+    };
     assert_eq!(grunt(&game), at(2));
     // In one tick, the first call reads 2, writes 5 and then 6, and reads 6 back; the second
     // reads 6, as the first call's writes applied when it ended.
@@ -86,6 +94,9 @@ fn on_mode_input(ctx, player, name, value) {
     // defaults but what it wrote; the unit spawns with what it wrote.
     game.tick(&[(1, input("probe", "spawn_marked"))]);
     assert_eq!(game.failures(), []);
-    let marked = vec![StateValue::Int(2), StateValue::Text("new".to_owned())];
+    let marked = (
+        vec![StateValue::Int(2)],
+        vec![StateValue::Text("new".to_owned())],
+    );
     assert_eq!(grunt(&game), marked);
 }

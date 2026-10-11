@@ -13,6 +13,8 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::held_modifiers::Held;
 use crate::stats::instance::StatShare;
+use crate::stats::life::Life;
+use crate::stats::life_pool::LifePool;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::Clock;
 use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
@@ -132,20 +134,38 @@ fn stat_match(types: &[StatsData]) -> TestMatch {
 }
 
 /// A unit of `unit_type` at level 1 that walks and has a pool of health and of mana, its values
-/// before the stats derive them.
+/// before the stats derive them: health its life when the match's life pool is health.
 fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
     let id = game.world.resource_mut::<IdAllocator>().allocate();
-    game.world
-        .spawn((
-            id,
-            UnitType::new(unit_type),
-            Level::default(),
-            UnitStats::default(),
-            UnitTags::default(),
-            MoveStep::new(Num::ZERO).unwrap(),
-            Pools::new([(HEALTH, Num::ONE), (MANA, Num::ONE)]).unwrap(),
-        ))
-        .id()
+    let bound = game.world.get_resource::<LifePool>() == Some(&LifePool(HEALTH));
+    let mut unit = game.world.spawn((
+        id,
+        UnitType::new(unit_type),
+        Level::default(),
+        UnitStats::default(),
+        UnitTags::default(),
+        MoveStep::new(Num::ZERO).unwrap(),
+    ));
+    if bound {
+        unit.insert((
+            Life::full(Num::ONE),
+            Pools::new([(MANA, Num::ONE)]).unwrap(),
+        ));
+    } else {
+        unit.insert(Pools::new([(HEALTH, Num::ONE), (MANA, Num::ONE)]).unwrap());
+    }
+    unit.id()
+}
+
+/// The current amount and the maximum of `pool` of `unit`: its life's when the match's life pool
+/// is `pool`.
+fn amounts(world: &World, unit: Entity, pool: PoolId) -> (Num, Num) {
+    if world.get_resource::<LifePool>() == Some(&LifePool(pool)) {
+        let life = world.get::<Life>(unit).unwrap();
+        return (life.current(), life.max());
+    }
+    let pools = world.get::<Pools>(unit).unwrap();
+    (pools.current(pool).unwrap(), pools.max(pool).unwrap())
 }
 
 /// A modifier of no stats, tags, params or times that gives `aura`.
@@ -159,7 +179,9 @@ fn modifier_data(aura: Option<AuraData>) -> ModifierData {
 #[test]
 fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     // A hero of health 380 + 76 a level, regen 1.5, mana 250 + 45, attack damage 51 + 3,
-    // attack speed 0.625 + 0.0625 and move speed 4 + 0.25.
+    // attack speed 0.625 + 0.0625 and move speed 4 + 0.25. Its health is a pool as its mana is
+    // in a match with no life pool, and its life where health is the life pool: the amounts are
+    // the same.
     let hero = stats(&[
         (stat("health"), Num::int(380), Num::int(76)),
         (stat("health_regen"), sixteenths(24), Num::ZERO),
@@ -172,63 +194,67 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
             sixteenths(4),
         ),
     ]);
-    let mut game = stat_match(&[hero]);
-    let units = [unit(&mut game, 0)];
-    game.step();
-    let get = |game: &TestMatch| {
-        let world = &game.world;
-        let unit = world.entity(units[0]);
-        let book = world.resource::<StatBook>();
-        let values = unit.get::<UnitStats>().unwrap().values();
-        let value = |name| values[book.named(&stat(name)).unwrap().index()];
-        (
-            unit.get::<MoveStep>().unwrap().get(),
-            value("attack_speed"),
-            value("attack_damage"),
-            *unit.get::<Pools>().unwrap(),
-        )
-    };
-    let amounts = |pools: Pools, pool| (pools.current(pool).unwrap(), pools.max(pool).unwrap());
-    // At level 1: 4 m/s, 4 × 2²⁴ ÷ 30 = 2 236 962.13 bits a tick, to 2 236 962; 0.625 attacks a
-    // second; damage 51; full health of 380 and mana of 250.
-    let (step, rate, damage, pools) = get(&game);
-    assert_eq!(step, Num::from_bits(2_236_962));
-    assert_eq!((rate, damage), (sixteenths(10), Num::int(51)));
-    assert_eq!(amounts(pools, HEALTH), (Num::int(380), Num::int(380)));
-    assert_eq!(amounts(pools, MANA), (Num::int(250), Num::int(250)));
-
-    // Down 80 to 300 of 380, then at level 18: health 380 + 76 × 17 = 1672, the pool up by the
-    // 1292 the maximum rose, to 1592, plus the regen of the tick that runs, 1.5 ÷ 30 = 0.05,
-    // 838 860.8 bits, to 838 860 and its fifth carried; attack speed 0.625 + 17 × 0.0625 =
-    // 1.6875, 27 sixteenths; damage 51 + 51 = 102; move speed 4 + 4.25 = 8.25, past the limit of
-    // 5, 5 × 2²⁴ ÷ 30 = 2 796 202.67, to 2 796 203. Mana, full and with no regen, rises with its
-    // maximum, to 250 + 45 × 17 = 1015.
-    let mut pools = game.world.get_mut::<Pools>(units[0]).unwrap();
-    pools.take(HEALTH, Num::int(80));
-    *game.world.get_mut::<Level>(units[0]).unwrap() = Level::new(18).unwrap();
-    game.step();
-    let (step, rate, damage, pools) = get(&game);
-    assert_eq!(step, Num::from_bits(2_796_203));
-    assert_eq!((rate, damage), (sixteenths(27), Num::int(102)));
-    let regen = Num::from_bits(838_860);
-    assert_eq!(
-        amounts(pools, HEALTH),
-        (Num::int(1592) + regen, Num::int(1672))
-    );
-    assert_eq!(amounts(pools, MANA), (Num::int(1015), Num::int(1015)));
-
-    // Over the next 29 ticks the regen adds the rest of the second: 30 ticks gain exactly 1.5.
-    for _ in 0..29 {
+    for bound in [false, true] {
+        let mut game = stat_match(slice::from_ref(&hero));
+        if bound {
+            game.world.insert_resource(LifePool(HEALTH));
+        }
+        let unit = unit(&mut game, 0);
         game.step();
-    }
-    let pools = game.world.get::<Pools>(units[0]).unwrap();
-    assert_eq!(pools.current(HEALTH), Some(Num::int(1592) + sixteenths(24)));
+        let get = |game: &TestMatch| {
+            let world = &game.world;
+            let book = world.resource::<StatBook>();
+            let values = world.get::<UnitStats>(unit).unwrap().values();
+            let value = |name| values[book.named(&stat(name)).unwrap().index()];
+            (
+                world.get::<MoveStep>(unit).unwrap().get(),
+                value("attack_speed"),
+                value("attack_damage"),
+            )
+        };
+        let pools = |game: &TestMatch| [HEALTH, MANA].map(|pool| amounts(&game.world, unit, pool));
+        // At level 1: 4 m/s, 4 × 2²⁴ ÷ 30 = 2 236 962.13 bits a tick, to 2 236 962; 0.625
+        // attacks a second; damage 51; full health of 380 and mana of 250.
+        let (step, rate, damage) = get(&game);
+        assert_eq!(step, Num::from_bits(2_236_962));
+        assert_eq!((rate, damage), (sixteenths(10), Num::int(51)));
+        let full = |amount| (Num::int(amount), Num::int(amount));
+        assert_eq!(pools(&game), [full(380), full(250)], "{bound}");
 
-    // Back to level 1: the maximum falls to 380, and the current amount to it.
-    *game.world.get_mut::<Level>(units[0]).unwrap() = Level::default();
-    game.step();
-    let (_, _, _, pools) = get(&game);
-    assert_eq!(amounts(pools, HEALTH), (Num::int(380), Num::int(380)));
+        // Down 80 to 300 of 380, then at level 18: health 380 + 76 × 17 = 1672, the pool up by
+        // the 1292 the maximum rose, to 1592, plus the regen of the tick that runs, 1.5 ÷ 30 =
+        // 0.05, 838 860.8 bits, to 838 860 and its fifth carried; attack speed 0.625 + 17 ×
+        // 0.0625 = 1.6875, 27 sixteenths; damage 51 + 51 = 102; move speed 4 + 4.25 = 8.25, past
+        // the limit of 5, 5 × 2²⁴ ÷ 30 = 2 796 202.67, to 2 796 203. Mana, full and with no
+        // regen, rises with its maximum, to 250 + 45 × 17 = 1015.
+        if bound {
+            game.world.get_mut::<Life>(unit).unwrap().take(Num::int(80));
+        } else {
+            let mut held = game.world.get_mut::<Pools>(unit).unwrap();
+            held.take(HEALTH, Num::int(80));
+        }
+        *game.world.get_mut::<Level>(unit).unwrap() = Level::new(18).unwrap();
+        game.step();
+        let (step, rate, damage) = get(&game);
+        assert_eq!(step, Num::from_bits(2_796_203));
+        assert_eq!((rate, damage), (sixteenths(27), Num::int(102)));
+        let regen = Num::from_bits(838_860);
+        let health = (Num::int(1592) + regen, Num::int(1672));
+        assert_eq!(pools(&game), [health, full(1015)], "{bound}");
+
+        // Over the next 29 ticks the regen adds the rest of the second: 30 ticks gain exactly
+        // 1.5.
+        for _ in 0..29 {
+            game.step();
+        }
+        let health = (Num::int(1592) + sixteenths(24), Num::int(1672));
+        assert_eq!(pools(&game)[0], health, "{bound}");
+
+        // Back to level 1: the maximum falls to 380, and the current amount to it.
+        *game.world.get_mut::<Level>(unit).unwrap() = Level::default();
+        game.step();
+        assert_eq!(pools(&game)[0], full(380), "{bound}");
+    }
 }
 
 /// An application from `source` of modifier `id`, changing `stat` by `value` a stack with `op`,

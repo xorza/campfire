@@ -12,6 +12,7 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::payer::Payer;
 use crate::actions::purse::Purse;
+use crate::actions::slot_times::SlotTimes;
 use crate::geometry::bounds::Bounds;
 use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
@@ -30,8 +31,9 @@ use crate::production::supply::{CountedUnit, Supply};
 use crate::production::supply_costs::SupplyCosts;
 use crate::production::supply_rules::SupplyRules;
 use crate::production::train_queue::{Queued, TrainQueue};
+use crate::stats::life_pool::LifePool;
 use crate::stats::player_modifiers::PlayerModifiers;
-use crate::stats::pools::Pools;
+use crate::stats::unit_pools::UnitPools;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
@@ -57,8 +59,9 @@ type Training = (
     &'static StableId,
     &'static UnitType,
     &'static mut ActionSlots,
+    &'static mut SlotTimes,
     &'static mut TrainQueue,
-    Option<&'static mut Pools>,
+    UnitPools,
     Option<&'static Owner>,
 );
 
@@ -82,9 +85,10 @@ impl Trains {
             Res<'_, Requirements>,
             Res<'_, SupplyCosts>,
         ),
-        (rules, held_modifiers): (
+        (rules, held_modifiers, life): (
             Option<Res<'_, SupplyRules>>,
             Option<Res<'_, PlayerModifiers>>,
+            Option<Res<'_, LifePool>>,
         ),
         mut resources: Option<ResMut<'_, PlayerResources>>,
         mut units: ParamSet<
@@ -141,16 +145,18 @@ impl Trains {
         }
         let mut training = units.p1();
         for &Keyed { entity, .. } in trains {
-            let (_, _, &unit_type, mut slots, mut queue, mut pools, held_by) =
+            let (_, _, &unit_type, mut slots, mut times, mut queue, pools, held_by) =
                 training.get_mut(entity).expect("a unit in the order");
+            let pools = pools.of(life.as_deref().map(|life| life.0));
             let ordered = slots
                 .ordered(&book, ActionKind::Train)
                 .expect("an ordered train");
             slots.stop();
-            let purse = Purse::of(pools.as_deref(), resources.as_deref(), held_by);
+            let purse = Purse::of(pools.read(), resources.as_deref(), held_by);
             let owner = held_by.map(|owner| owner.slot());
             let no_target = |_| Relation::Friendly;
-            let Some(checked) = book.check(now, &slots, purse, ordered, no_target, |_| None) else {
+            let checked = book.check(now, (&slots, &times), purse, ordered, no_target, |_| None);
+            let Some(checked) = checked else {
                 continue;
             };
             let capacity = producers.get(unit_type).map(|production| production.queue);
@@ -174,7 +180,7 @@ impl Trains {
             }
             let values = checked.values;
             let paid = checked.action.resource_cost(checked.rank);
-            let payer = Payer::of(pools.as_deref_mut(), resources.as_deref_mut(), held_by);
+            let payer = Payer::of(pools, resources.as_deref_mut(), held_by);
             payer.pay(&values.cost, paid);
             let queued = Queued {
                 action: checked.id,
@@ -182,7 +188,7 @@ impl Trains {
                 time: values.windup,
                 paid: u8::try_from(paid.len()).expect("a cost names at most a mode's resources"),
             };
-            slots.cool_down(ordered.slot, now.after(values.cooldown));
+            times.cool_down(ordered.slot, now.after(values.cooldown));
             queue.push(queued, paid, now);
             if let Some(owner) = counts {
                 supply.reserve(owner, cost);

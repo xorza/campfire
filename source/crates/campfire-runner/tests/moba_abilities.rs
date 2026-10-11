@@ -13,9 +13,9 @@ use bevy_ecs::bundle::Bundle;
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
     Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
-    ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner, PackagePath, Param,
-    Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers, Scalar, Scaling, SeenBy,
-    SlotKind, Stat, Targeting, Team,
+    Life, ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner, PackagePath,
+    Param, PoolMeters, Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers, Scalar,
+    Scaling, SeenBy, SlotKind, SlotTimes, Stat, Targeting, Team,
 };
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
@@ -71,16 +71,23 @@ fn spawn_at(
     (mana, energy): (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
-    let pools = [("health", 500), ("mana", mana), ("energy", energy)]
+    let pools: Vec<_> = [("mana", mana), ("energy", energy)]
         .into_iter()
         .filter(|&(_, max)| max > 0)
-        .map(|(pool, max)| (arena.pool(pool), Num::int(max)));
-    let pools = Pools::new(pools).unwrap();
+        .map(|(pool, max)| (arena.pool(pool), Num::int(max)))
+        .collect();
     let world = arena.world_mut();
     let id = world.resource_mut::<IdAllocator>().allocate();
-    let combat = (OnDeath::Stay, RecentAttackers::default());
-    let mut unit = world.spawn((id, at, Team::new(team), pools, combat, parts));
-    unit.insert_if_new(ActionSlots::new([]));
+    let combat = (
+        Life::full(Num::int(500)),
+        OnDeath::Stay,
+        RecentAttackers::default(),
+    );
+    let mut unit = world.spawn((id, at, Team::new(team), combat, parts));
+    if !pools.is_empty() {
+        unit.insert(Pools::new(pools).unwrap());
+    }
+    unit.insert_if_new(ActionSlots::new([]).timed());
     id
 }
 
@@ -96,8 +103,8 @@ fn health(arena: &Arena, id: StableId) -> i64 {
 fn pool(arena: &Arena, id: StableId, name: &str) -> Num {
     let world = arena.world();
     let entity = world.resource::<EntityIndex>().get(id).unwrap();
-    let pools = world.get::<Pools>(entity).unwrap();
-    pools.current(arena.pool(name)).unwrap()
+    let meters = PoolMeters::of(world, entity);
+    meters.current(arena.pool(name)).unwrap()
 }
 
 /// Gives `unit` a weapon of `damage` within 2 m, its windup of no ticks, every `period` ticks.
@@ -126,7 +133,7 @@ fn caster(
     pools: (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
-    let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
+    let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed();
     let player = Owner::new(PlayerSlot::new(0));
     spawn_with(arena, 0, 0, pools, (player, slots, parts))
 }
@@ -277,15 +284,15 @@ fn arm_with(arena: &mut Arena, unit: StableId, ability: ActionId, damage: i64, p
         (ability, SlotKind::new(0), Some(Rank::FIRST)),
         (weapon.action.unwrap(), weapon.kind, weapon.rank),
     ]);
-    world.entity_mut(entity).insert(slots);
+    world.entity_mut(entity).insert(slots.timed());
 }
 
 /// Whether `unit` has the toggle of its slot 0 on.
 fn toggled(arena: &Arena, unit: StableId) -> bool {
     let world = arena.world();
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
-    let slots = world.get::<ActionSlots>(entity).unwrap();
-    slots.slot(0).unwrap().toggle.is_some()
+    let times = world.get::<SlotTimes>(entity).unwrap();
+    times.slot(0).unwrap().toggle.is_some()
 }
 
 #[test]
@@ -382,13 +389,12 @@ fn kenshos_still_mind_heals_each_half_second_of_its_channel_and_guards_him_while
     let guard = arena.modifier("hero-kensho", "still_mind");
     // Kensho with 100 mana, and 300 of his 500 health lost.
     let kensho = caster(&mut arena, still_mind, 1, (100, 0), Modifiers::default());
-    let health = arena.pool("health");
     let world = arena.world_mut();
     let entity = world.resource::<EntityIndex>().get(kensho).unwrap();
-    let pools = *world.get::<Pools>(entity).unwrap();
+    let life = *world.get::<Life>(entity).unwrap();
     world
         .entity_mut(entity)
-        .insert(internals::spent(pools, health, Num::int(300)));
+        .insert(internals::spent_life(life, Num::int(300)));
     let guarded = |arena: &Arena| carried(arena, kensho).contains(&(guard, Some(kensho)));
     // Cast in tick 0, for 50 mana. The channel runs from tick 1 for 5000 ms, 150 ticks, and
     // ticks each 500 ms, 15 ticks: in ticks 16 to 151, ten times, each 20 at rank 1 with no

@@ -1,56 +1,120 @@
+use std::fmt::Debug;
+use std::marker::PhantomData;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::scripts::state_decl::synced_state_decl::SyncTo;
 use crate::scripts::state_value::StateValue;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::{NotSent, Sending, SentOnChange};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 
-/// A unit's script state: a value for each field its type declares, in the order of their names.
-/// A unit whose type declares none has none.
+/// The fields of a unit's script state whose `sync` is `S`'s: a value for each such field its
+/// type declares, in the order of their names. A unit whose type declares none has none, so each
+/// class is a component of its own kind, which its own clients receive (design 14, D3).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct UnitState(Vec<StateValue>);
+pub struct UnitState<S: StateSync> {
+    values: Vec<StateValue>,
+    #[serde(skip)]
+    sync: PhantomData<S>,
+}
 
-impl UnitState {
-    pub(crate) const fn new(values: Vec<StateValue>) -> UnitState {
-        UnitState(values)
+/// A class of script state fields by their `sync`: the clients that receive them, as their kind.
+pub trait StateSync: Debug + Clone + PartialEq + Eq + Send + Sync + 'static {
+    const SYNC: SyncTo;
+    const NAME: &'static str;
+    const KIND: DataKind;
+    type Sending: Sending<UnitState<Self>>;
+}
+
+/// The fields of `sync = "none"`, the default, which no client receives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncNone;
+
+/// The fields of `sync = "owner"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncOwner;
+
+/// The fields of `sync = "team"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncTeam;
+
+/// The fields of `sync = "all"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncAll;
+
+impl StateSync for SyncNone {
+    const SYNC: SyncTo = SyncTo::None;
+    const NAME: &'static str = "units.state";
+    const KIND: DataKind = DataKind::Server;
+    type Sending = NotSent;
+}
+
+impl StateSync for SyncOwner {
+    const SYNC: SyncTo = SyncTo::Owner;
+    const NAME: &'static str = "units.state_owner";
+    const KIND: DataKind = DataKind::UnitStateOwner;
+    type Sending = SentOnChange;
+}
+
+impl StateSync for SyncTeam {
+    const SYNC: SyncTo = SyncTo::Team;
+    const NAME: &'static str = "units.state_team";
+    const KIND: DataKind = DataKind::UnitStateTeam;
+    type Sending = SentOnChange;
+}
+
+impl StateSync for SyncAll {
+    const SYNC: SyncTo = SyncTo::All;
+    const NAME: &'static str = "units.state_all";
+    const KIND: DataKind = DataKind::UnitStateAll;
+    type Sending = SentOnChange;
+}
+
+impl<S: StateSync> UnitState<S> {
+    pub(crate) const fn new(values: Vec<StateValue>) -> UnitState<S> {
+        UnitState {
+            values,
+            sync: PhantomData,
+        }
     }
 
     pub(crate) const fn values(&self) -> &[StateValue] {
-        self.0.as_slice()
+        self.values.as_slice()
     }
 
-    /// Sets the field at `at`, of a value of its type, as a call's write.
+    /// Sets the field at `at` among its class's, of a value of its type, as a call's write.
     pub(crate) fn set(&mut self, at: usize, value: StateValue) {
         debug_assert_eq!(
-            self.0[at].kind(),
+            self.values[at].kind(),
             value.kind(),
             "a value of the field's type"
         );
-        self.0[at] = value;
+        self.values[at] = value;
     }
 }
 
-impl SimComponent for UnitState {
-    const NAME: &'static str = "units.state";
+impl<S: StateSync> SimComponent for UnitState<S> {
+    const NAME: &'static str = S::NAME;
 
-    // A field its type does not declare, or a value of another type, reaches a script as a value
-    // it never wrote, or is read past the type's fields.
+    // A field its type does not declare in the class, or a value of another type, reaches a
+    // script as a value it never wrote, or is read past the type's fields.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.get_resource::<UnitStateBook>();
         let unit_type = world.get::<UnitType>(entity);
         book.zip(unit_type)
-            .is_some_and(|(book, &unit_type)| book.holds(unit_type, &self.0))
+            .is_some_and(|(book, &unit_type)| book.holds(unit_type, S::SYNC, &self.values))
     }
 }
 
-impl Replication for UnitState {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+impl<S: StateSync> Replication for UnitState<S> {
+    const KIND: DataKind = S::KIND;
+    type Sending = S::Sending;
 }

@@ -12,7 +12,7 @@ use crate::projectiles::flights::{Aloft, Flights};
 use crate::projectiles::projectile::{Flight, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::struck_units::StruckUnits;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
 use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
 use crate::units::team::Team;
@@ -47,7 +47,7 @@ impl Flying {
                 &UnitType,
                 &Team,
             ),
-            Without<Pools>,
+            Without<Life>,
         >,
         (mut order, mut met, mut flying): (
             Local<'_, Ordered>,

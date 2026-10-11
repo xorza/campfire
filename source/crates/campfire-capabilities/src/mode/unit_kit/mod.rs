@@ -1,6 +1,5 @@
 use std::num::{NonZeroU8, NonZeroU32};
 
-use campfire_math::Num;
 use campfire_sim::TickRate;
 
 use crate::actions::slot_kind::SlotKind;
@@ -9,6 +8,8 @@ use crate::combat::on_death::OnDeath;
 use crate::mode::error::UnitKitError;
 use crate::production::production_data::ProductionData;
 use crate::progression::track_set::TrackSet;
+use crate::stats::life::Life;
+use crate::stats::meter::Meter;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
@@ -19,14 +20,15 @@ use crate::values::stat::{EngineStat, Stat};
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
 
-/// What a new unit of a type starts with, in ticks at the match's rate: its pools, full at their
-/// maxima at level 1, whether it stays when it dies, when it has a `combat` section, how far it
+/// What a new unit of a type starts with, in ticks at the match's rate: its life and its other
+/// pools, full at their maxima at level 1, whether it stays when it dies, when it has a `combat` section, how far it
 /// walks a tick, how far it sees, its body, the tracks it gains experience on, the most trains
 /// its queue holds, when it has a `production` section, whether its slots hold a build, what it
 /// holds as a node, whether its slots hold a gather, and its inventory's slots and slot kind,
 /// when it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
+    pub life: Option<Life>,
     pub pools: Option<Pools>,
     pub on_death: Option<OnDeath>,
     pub step: Option<MoveStep>,
@@ -96,18 +98,20 @@ impl UnitKit {
             book.gives(unit_type, id).then_some(id)
         };
         let mut maxes = Vec::new();
+        let mut full_life = None;
         for (pool, max) in pools {
             let id = given(max).ok_or_else(|| UnitKitError::MissingStat(max.clone()))?;
             let value = values[id.index()];
-            if value <= Num::ZERO {
-                return Err(UnitKitError::NotPositive(max.clone()));
+            let meter = Meter::new(value).ok_or_else(|| UnitKitError::NotPositive(max.clone()))?;
+            if Some(pool) == life {
+                full_life = Some(Life::new(meter));
+            } else {
+                maxes.push((pool, value));
             }
-            maxes.push((pool, value));
         }
         let pools =
             (!maxes.is_empty()).then(|| Pools::new(maxes).expect("each maximum is positive"));
-        let has_life = life.and_then(|life| pools?.max(life)).is_some();
-        let on_death = match (combat, has_life) {
+        let on_death = match (combat, full_life.is_some()) {
             (Some(combat), true) => Some(combat.on_death),
             (Some(_), false) => return Err(UnitKitError::NoLifePool),
             (None, true) => return Err(UnitKitError::NoCombat),
@@ -124,6 +128,7 @@ impl UnitKit {
             MoveStep::new(step).expect("the book's step is never negative")
         });
         Ok(UnitKit {
+            life: full_life,
             pools,
             on_death,
             step,

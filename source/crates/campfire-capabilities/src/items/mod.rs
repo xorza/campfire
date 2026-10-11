@@ -6,6 +6,7 @@ use campfire_sim::{SimSet, StateRegistry};
 use crate::abilities::cast_spends::CastSpends;
 use crate::actions::ActionsSet;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::slot_times::SlotTimes;
 use crate::combat::CombatSet;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
@@ -68,9 +69,10 @@ impl Items {
     fn spend_use(world: &mut World, entity: Entity, slot: u8) {
         world.resource_scope(|world, book: Mut<'_, ItemBook>| {
             let mut caster = world.entity_mut(entity);
-            let carried = caster.get_components_mut::<(&mut Inventory, &mut ActionSlots)>();
-            if let Ok((mut inventory, mut slots)) = carried {
-                inventory.spend_use(&book, &mut slots, slot);
+            let carried =
+                caster.get_components_mut::<(&mut Inventory, &mut ActionSlots, &mut SlotTimes)>();
+            if let Ok((mut inventory, mut slots, mut times)) = carried {
+                inventory.spend_use(&book, (&mut *slots, &mut *times), slot);
             }
         });
     }

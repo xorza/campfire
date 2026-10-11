@@ -161,11 +161,11 @@ impl ModeBook {
         let actions = actions
             .iter()
             .map(|action| (action.ability, action.kind, action.rank));
-        let mut slots = ActionSlots::new(actions);
-        if let Some(inventory) = inventory {
-            slots.add_empty(inventory.kind, inventory.slots.get());
-        }
-        Some(slots)
+        let slots = ActionSlots::new(actions);
+        Some(match inventory {
+            Some(inventory) => slots.with_empty(inventory.kind, inventory.slots.get()),
+            None => slots,
+        })
     }
 
     pub(super) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
@@ -224,8 +224,9 @@ impl ModeBook {
             ModifierClocks::default(),
             parts,
         ));
-        if let Some(state) = state {
-            unit.insert(state);
+        state.insert_into(&mut unit);
+        if let Some(life) = kit.life {
+            unit.insert(life);
         }
         if let Some(pools) = kit.pools {
             unit.insert(pools);
@@ -262,7 +263,7 @@ impl ModeBook {
             unit.insert(Gatherer::default());
         }
         if let Some(slots) = self.spawn_slots(unit_type) {
-            unit.insert(slots);
+            unit.insert(slots.timed());
         }
         if let Some(inventory) = kit.inventory {
             unit.insert(Inventory::new(inventory.slots, inventory.kind));

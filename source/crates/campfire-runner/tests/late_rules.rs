@@ -81,7 +81,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
     let supers: Vec<_> = groups
         .iter()
         .flatten()
-        .filter(|&&unit| life(world, &moba, unit) == Num::int(1500))
+        .filter(|&&unit| life(world, unit) == Num::int(1500))
         .collect();
     assert_eq!(supers, [&groups[0][6]]);
     assert_eq!(

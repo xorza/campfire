@@ -7,9 +7,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_capabilities::internals::{give_modifier, set_relation};
 use campfire_capabilities::{
-    Action, ActionSlots, Bounds, Combat, DashTo, Dead, Destination, ForcedMove, MatchEnd,
-    MatchResult, Metric, Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Relation,
-    Relations, Respawn, Stats, Team,
+    Action, ActionSlots, Bounds, Combat, DashTo, Dead, Destination, ForcedMove, Life, MatchEnd,
+    MatchResult, Metric, Modifiers, MoveStep, Owner, PoolId, Projectile, Relation, Relations,
+    Respawn, Stats, Team,
 };
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
@@ -277,11 +277,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     assert_eq!(hero(local.server()), at(4, 0));
     assert_eq!(hero(local.client(0)), at(4, 0));
     assert!(dead(local.client(0)));
-    // The lane mode's life pool, `health`, is the first of its pools by name.
-    let health = |app: &App| {
-        let pools = app.world().get::<Pools>(hero_entity(app)).unwrap();
-        pools.current(PoolId::FIRST).unwrap()
-    };
+    let health = |app: &App| app.world().get::<Life>(hero_entity(app)).unwrap().current();
     assert_eq!(health(local.client(0)), Num::ZERO);
     assert_eq!(rollbacks(&local), 1);
 
@@ -317,7 +313,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     let world = local.server().world();
     let tower = local.tower(Team::new(1));
     let tower_entity = world.resource::<EntityIndex>().get(tower).unwrap();
-    let frail = Pools::new([(PoolId::FIRST, Num::EPSILON)]).unwrap();
+    let frail = Life::full(Num::EPSILON);
     local
         .server_mut()
         .world_mut()

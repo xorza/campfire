@@ -88,7 +88,7 @@ After one damage of the pass, its events run in this order: `on_attack_hit`, the
 
 ## Network
 
-The life pool, visible modifiers and the current animation go to everyone who sees the unit; other pools go to the owner or the team, as the mode sets. Damage and deaths appear on a client only when the server confirms them. A client predicts the start of its own attacks, not their damage.
+The life pool, a unit's `Life`, visible modifiers and the current animation go to everyone who sees the unit; other pools, its `Pools`, go to the owner or the team, as the mode sets ([Replication audiences](../14-replication-audiences.md), the kinds `life` and `pools`). Damage and deaths appear on a client only when the server confirms them. A client predicts the start of its own attacks, not their damage.
 
 ## Cost
 

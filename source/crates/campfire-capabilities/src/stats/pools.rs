@@ -8,13 +8,14 @@ use serde::{Deserialize, Serialize};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
+use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
-use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
 
-/// A unit's pools, by pool id: each an amount from 0 to its maximum, none where its type lists
-/// no such pool. A fixed array, so copying a unit's pools, as a rollback does every frame,
-/// allocates nothing.
+/// A unit's pools but its life, by pool id: each an amount from 0 to its maximum, none where its
+/// type lists no such pool, and none in the mode's life pool, which `Life` holds, as only its
+/// owner receives these. A fixed array, so copying a unit's pools, as a rollback does every
+/// frame, allocates nothing.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Pools([Option<Meter>; PoolId::LIMIT]);
@@ -49,53 +50,12 @@ impl Pools {
         self.0[pool.index()].map(Meter::max)
     }
 
-    /// Whether it has `pool`, and the pool is above 0.
-    pub fn above_zero(&self, pool: PoolId) -> bool {
-        self.0[pool.index()].is_some_and(|meter| !meter.is_empty())
+    pub(crate) const fn meter(&self, pool: PoolId) -> Option<Meter> {
+        self.0[pool.index()]
     }
 
-    /// Whether it has every pool `cost` names, each holding at least its amount.
-    pub(crate) fn affords(&self, cost: &PoolCost) -> bool {
-        cost.iter()
-            .all(|(pool, amount)| self.current(pool).is_some_and(|current| current >= amount))
-    }
-
-    /// Spends `cost`, which it affords.
-    pub(crate) fn pay(&mut self, cost: &PoolCost) {
-        debug_assert!(self.affords(cost), "an action pays what it affords");
-        for (pool, amount) in cost.iter() {
-            self.meter(pool).take(amount);
-        }
-    }
-
-    /// Takes `amount`, which is not negative, from `pool`, down to 0; what it took.
-    pub(crate) fn take(&mut self, pool: PoolId, amount: Num) -> Num {
-        let meter = self.meter(pool);
-        let before = meter.current();
-        meter.take(amount);
-        before - meter.current()
-    }
-
-    /// Adds `amount`, which is not negative, to `pool`, up to its maximum, when it has the pool.
-    pub(crate) fn add(&mut self, pool: PoolId, amount: Num) {
-        if let Some(meter) = &mut self.0[pool.index()] {
-            meter.add(amount);
-        }
-    }
-
-    /// Sets the maximum of `pool`, as `Meter::set_max` does, when it has the pool.
-    pub(crate) fn set_max(&mut self, pool: PoolId, max: Num) {
-        if let Some(meter) = &mut self.0[pool.index()] {
-            meter.set_max(max);
-        }
-    }
-
-    /// Adds a tick's share of `per_second` to `pool`, as `Meter::regen` does, when it has the
-    /// pool.
-    pub(crate) fn regen(&mut self, pool: PoolId, per_second: Num, hz: u32) {
-        if let Some(meter) = &mut self.0[pool.index()] {
-            meter.regen(per_second, hz);
-        }
+    pub(crate) const fn meter_mut(&mut self, pool: PoolId) -> Option<&mut Meter> {
+        self.0[pool.index()].as_mut()
     }
 
     /// Fills every pool it has.
@@ -104,29 +64,25 @@ impl Pools {
             meter.fill();
         }
     }
-
-    /// The meter of `pool`, which it has.
-    const fn meter(&mut self, pool: PoolId) -> &mut Meter {
-        self.0[pool.index()]
-            .as_mut()
-            .expect("a unit has the pool it pays from or takes from")
-    }
 }
 
 impl SimComponent for Pools {
     const NAME: &'static str = "stats.pools";
 
     // A fixed array of every pool place, whose meters' decode keeps each amount within its maximum;
-    // a place the mode does not declare is never read. What a meter carries, regen adds: more
-    // than the match's rate leaves would regenerate past a pool's rate.
+    // a place the mode does not declare is never read, and the life pool's would hide from the
+    // life its rules read. What a meter carries, regen adds: more than the match's rate leaves
+    // would regenerate past a pool's rate.
     fn check(&self, world: &World, _: Entity) -> bool {
         let hz = world.resource::<TickRate>().hz().get();
-        self.0.iter().flatten().all(|meter| meter.settled(hz))
+        let life = world.get_resource::<LifePool>();
+        let no_life = life.is_none_or(|life| self.0[life.0.index()].is_none());
+        no_life && self.0.iter().flatten().all(|meter| meter.settled(hz))
     }
 }
 
 impl Replication for Pools {
-    const KIND: DataKind = DataKind::Life;
+    const KIND: DataKind = DataKind::Pools;
     type Sending = SentOnChange;
 }
 
@@ -143,12 +99,13 @@ pub(crate) mod internals {
         pools
     }
 
-    #[cfg(test)]
     impl Pools {
-        /// A full life pool of `max` and no other pool, the life pool the first, as it is until a
-        /// mode binds one.
-        pub(crate) fn life(max: Num) -> Pools {
-            Pools::new([(PoolId::FIRST, max)]).expect("a positive maximum")
+        /// Takes `amount`, which is not negative, from `pool`, which it has, down to 0.
+        pub(crate) fn take(&mut self, pool: PoolId, amount: Num) {
+            let meter = self.meter_mut(pool);
+            meter
+                .expect("a unit spends from a pool it has")
+                .take(amount);
         }
     }
 }

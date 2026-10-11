@@ -3,6 +3,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::{EntityIndex, Position};
 
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::slot_times::SlotTimes;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
@@ -43,7 +44,7 @@ impl TradeOrders {
                 &Team,
                 &Position,
                 &mut Inventory,
-                Option<&mut ActionSlots>,
+                Option<(&mut ActionSlots, &mut SlotTimes)>,
                 Has<Dead>,
             ),
         >,
@@ -75,7 +76,10 @@ impl TradeOrders {
                     .filter(|shop| dead || shop.serves(team, pos));
                 match (action, shop) {
                     (Action::Swap { from, to }, _) => {
-                        inventory.swap_with(from, to, slots.as_deref_mut());
+                        let slots = slots
+                            .as_mut()
+                            .map(|(slots, times)| (&mut **slots, &mut **times));
+                        inventory.swap_with(from, to, slots);
                         continue;
                     }
                     (Action::Buy { item }, Some(shop)) if shop.sells(item) => {
@@ -107,8 +111,8 @@ impl TradeOrders {
                     }
                     _ => continue,
                 }
-                if let Some(slots) = slots.as_deref_mut() {
-                    inventory.follow(&book, slots, &before);
+                if let Some((slots, times)) = &mut slots {
+                    inventory.follow(&book, (&mut **slots, &mut **times), &before);
                 }
             }
         }

@@ -18,6 +18,7 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_times::SlotTimes;
 use crate::capability_set::CapabilitySet;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::internals::Armed;
@@ -46,8 +47,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
 use crate::units::Units;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
@@ -340,7 +340,7 @@ impl Match {
 
     /// When its weapon may attack again.
     fn ready_at(&self, id: StableId) -> Tick {
-        self.slots(id).slot(0).unwrap().ready_at
+        self.sim.get::<SlotTimes>(id).slot(0).unwrap().ready_at
     }
 
     fn dead(&self, id: StableId) -> bool {
@@ -419,8 +419,12 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     } = two_heroes();
     // Its weapon in slot 0, and a train in slot 1.
     let train = internals::train(&mut game.sim.world, UnitType::new(0), Ticks::ZERO, None);
-    let mut slots = game.sim.get_mut::<ActionSlots>(hero);
-    slots.grant(SlotKind::new(0), &[train], Some(Rank::FIRST));
+    let entity = game.sim.entity(hero);
+    let mut unit = game.sim.world.entity_mut(entity);
+    let (mut slots, mut times) = unit
+        .get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
+        .unwrap();
+    slots.grant(&mut times, SlotKind::new(0), &[train], Some(Rank::FIRST));
     let ordered = |game: &Match| game.slots(hero).in_progress();
     let slot = |slot| {
         Order::payload(&[Order::one(
@@ -565,7 +569,7 @@ fn an_attack_chases_winds_up_and_strikes_each_period() {
     game.run_until(21);
     assert_eq!(game.sim.health(dummy), 10);
     game.run_until(22);
-    assert!(game.sim.try_get::<Pools>(dummy).is_none());
+    assert!(game.sim.try_get::<Life>(dummy).is_none());
     // The next tick finds the target gone, drops it, and stays.
     game.run_until(23);
     assert_eq!(game.target(fighter), None);
@@ -620,7 +624,7 @@ fn attack_orders_need_a_living_enemy() {
     game.run_until(9);
     assert_eq!(game.sim.health(gone), 30);
     game.run_until(10);
-    assert!(game.sim.try_get::<Pools>(gone).is_none());
+    assert!(game.sim.try_get::<Life>(gone).is_none());
 
     for order in [
         attack(fighter, ally),
@@ -894,7 +898,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
             Ticks::new(2),
         );
         let weapon = internals::weapon(&mut game.sim.world, weapon);
-        let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
+        let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed();
         let stats = game.arm(standing(), Team::new(0));
         let unit = game.sim.spawn(at(0, 0, 0), (striker, stats));
         game.sim.insert(unit, slots);
@@ -1110,9 +1114,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     // One that dies while it resets stops resetting, and nothing fills its pools.
     let entity = game.sim.entity(monster);
     let mut unit = game.sim.world.entity_mut(entity);
-    unit.get_mut::<Pools>()
-        .unwrap()
-        .take(PoolId::FIRST, Num::int(60));
+    unit.get_mut::<Life>().unwrap().take(Num::int(60));
     unit.insert((Resetting, Dead));
     game.tick(&[]);
     assert!(!resets(&game));

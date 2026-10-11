@@ -19,7 +19,9 @@ use crate::actions::effect_lists::EffectLists;
 use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::lists_of::ListsOf;
 use crate::actions::purse::Purse;
+use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
+use crate::combat::Combat;
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::delivering::Delivering;
 use crate::items::inventory::Inventory;
@@ -32,7 +34,8 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::stats::pools::Pools;
+use crate::stats::life_pool::LifePool;
+use crate::stats::unit_pools::{UnitPools, UnitPoolsReadOnly};
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
@@ -73,7 +76,7 @@ impl Casts {
     pub(super) fn start_casts(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
-        resources: Option<Res<'_, PlayerResources>>,
+        (resources, life): (Option<Res<'_, PlayerResources>>, Option<Res<'_, LifePool>>),
         targets: Targets<'_, '_>,
         mut units: Query<
             '_,
@@ -82,7 +85,8 @@ impl Casts {
                 &Position,
                 &Team,
                 &mut ActionSlots,
-                Option<&Pools>,
+                &mut SlotTimes,
+                UnitPoolsReadOnly,
                 Option<&Owner>,
                 Option<&Body>,
                 Option<&UnitTags>,
@@ -95,10 +99,12 @@ impl Casts {
         >,
     ) {
         let now = tick.start();
+        let life = life.map(|life| life.0);
         for (
             &position,
             &team,
             mut slots,
+            mut times,
             pools,
             owner,
             body,
@@ -151,20 +157,23 @@ impl Casts {
             if let OrderPhase::Started(_) = phase {
                 continue;
             }
-            if slot.toggle.is_some() {
-                if now >= slot.ready_at {
-                    slots.toggle_off(aim.slot);
+            let time = times.slot(aim.slot).expect("a slot the unit has");
+            if time.toggle.is_some() {
+                if now >= time.ready_at {
+                    times.toggle_off(aim.slot);
                     let rank = slot.rank.expect("a slot whose toggle is on is learned");
-                    slots.cool_down(aim.slot, now.after(action.values(rank).cooldown));
+                    times.cool_down(aim.slot, now.after(action.values(rank).cooldown));
                 }
                 slots.stop();
                 continue;
             }
-            let purse = Purse::of(pools, resources.as_deref(), owner);
+            let purse = Purse::of(pools.of(life), resources.as_deref(), owner);
             let relation = |other| targets.relation(team, other);
             let shape = Body::shape_of(body);
             let checked = book
-                .check(now, &slots, purse, aim, relation, |id| targets.living(id))
+                .check(now, (&slots, &times), purse, aim, relation, |id| {
+                    targets.living(id)
+                })
                 .map(|mut checked| {
                     checked.clamp(position, shape, &targets);
                     checked
@@ -269,7 +278,7 @@ impl Casts {
     pub(super) fn predict_casts(
         (tick, rate): (Res<'_, SimTick>, Res<'_, TickRate>),
         book: Res<'_, ActionBook>,
-        resources: Option<Res<'_, PlayerResources>>,
+        (resources, life): (Option<Res<'_, PlayerResources>>, Option<Res<'_, LifePool>>),
         targets: Targets<'_, '_>,
         mut casters: Query<
             '_,
@@ -277,7 +286,8 @@ impl Casts {
             (
                 &Team,
                 &mut ActionSlots,
-                Option<&Pools>,
+                &mut SlotTimes,
+                UnitPoolsReadOnly,
                 Option<&Owner>,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
@@ -287,8 +297,9 @@ impl Casts {
         >,
     ) {
         let now = tick.start();
+        let life = life.map(|life| life.0);
         let second = Abilities::second(*rate);
-        for (&team, mut slots, pools, owner, tags, forced, inventory) in &mut casters {
+        for (&team, mut slots, mut times, pools, owner, tags, forced, inventory) in &mut casters {
             let Some(ActionCall {
                 aim: casting,
                 start,
@@ -303,18 +314,21 @@ impl Casts {
                 slots.interrupt();
                 continue;
             }
-            let purse = Purse::of(pools, resources.as_deref(), owner);
+            let purse = Purse::of(pools.of(life), resources.as_deref(), owner);
             let living = |id| targets.living(id);
             let relation = |other| targets.relation(team, other);
             let resolved = book
-                .check(now, &slots, purse, casting, relation, living)
+                .check(now, (&slots, &times), purse, casting, relation, living)
                 .map(|checked| {
                     checked.resolved(ActionCall {
                         aim: casting,
                         start,
                     })
                 });
-            slots.finish_cast(now, second, resolved.as_ref());
+            slots.finish_cast(now, resolved.as_ref());
+            if let Some(resolved) = &resolved {
+                times.spend_cast(resolved, now, second);
+            }
         }
     }
 
@@ -346,8 +360,12 @@ impl Casts {
         world
             .get_mut::<ActionSlots>(entity)
             .expect("a caster has slots")
-            .finish_cast(now, second, resolved.as_ref());
+            .finish_cast(now, resolved.as_ref());
         if let Some(resolved) = &resolved {
+            world
+                .get_mut::<SlotTimes>(entity)
+                .expect("a caster has slot times")
+                .spend_cast(resolved, now, second);
             CastSpends::spend(world, entity, resolved.call.aim.slot);
         }
     }
@@ -372,9 +390,11 @@ impl Casts {
         ctx.apply(world, now);
         // The player's resources were paid in the call's frame, before its script ran, so a failed
         // call pays nothing and the script cannot spend what the cost took.
-        if let Some(mut pools) = world.get_mut::<Pools>(entity) {
-            pools.pay(&prepared.resolved.values.cost);
-        }
+        let life = Combat::life(world);
+        let mut unit = world.entity_mut(entity);
+        let pools = unit.get_components_mut::<UnitPools>();
+        let mut pools = pools.expect("a caster's pools").of(life);
+        pools.pay(&prepared.resolved.values.cost);
     }
 
     /// The cast of `entity` checked again, and its params at its rank put in the frame, with its
@@ -393,6 +413,9 @@ impl Casts {
         };
         let unit = world.entity(entity);
         let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
+        let times = unit
+            .get::<SlotTimes>()
+            .expect("a due caster has slot times");
         let ActionCall {
             aim: casting,
             start,
@@ -403,14 +426,13 @@ impl Casts {
         let team = *unit.get::<Team>().expect("a caster has a team");
         let book = world.resource::<ActionBook>();
         let owner = unit.get::<Owner>();
-        let purse = Purse::of(
-            unit.get::<Pools>(),
-            world.get_resource::<PlayerResources>(),
-            owner,
-        );
+        let pools = unit.get_components::<UnitPoolsReadOnly>();
+        let pools = pools.expect("a caster's pools").of(Combat::life(world));
+        let purse = Purse::of(pools, world.get_resource::<PlayerResources>(), owner);
         let living = |id| view.living(id);
         let relation = |other| view.relation(team, other);
-        let Some(checked) = book.check(now, slots, purse, casting, relation, living) else {
+        let Some(checked) = book.check(now, (slots, times), purse, casting, relation, living)
+        else {
             return Ok(None);
         };
         let target = Abilities::target(view, casting.target);

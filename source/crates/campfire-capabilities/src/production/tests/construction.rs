@@ -14,8 +14,7 @@ use crate::production::build_specs::{BuildSpecs, NewBuild, PlacementCheck, Style
 use crate::production::build_target::BuildTarget;
 use crate::production::builder::Builder;
 use crate::production::site::Site;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
+use crate::stats::life::Life;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
 use crate::units::engine_tag::EngineTag;
@@ -110,7 +109,7 @@ impl Yard {
             }
             let entity = unit.id();
             if at.unit_type == depot {
-                unit.insert((form.at(at.angle), Pools::life(Num::int(100))));
+                unit.insert((form.at(at.angle), Life::full(Num::int(100))));
                 Navigation::make_room(world, entity);
             }
             entity
@@ -155,7 +154,7 @@ impl Yard {
     /// A builder of `team`, owned by player `owner`, at `at`, of a half meter, that walks a meter
     /// a tick, with the build in its slot 0.
     fn builder(&mut self, at: Position, team: u8, owner: u32) -> StableId {
-        let slots = ActionSlots::new([(self.build, SlotKind::new(0), Rank::new(1))]);
+        let slots = ActionSlots::new([(self.build, SlotKind::new(0), Rank::new(1))]).timed();
         let parts = (
             Team::new(team),
             Owner::new(PlayerSlot::new(owner)),
@@ -230,7 +229,7 @@ impl Yard {
     /// The depot `id`'s life, and its progress while a site.
     fn site(&self, id: StableId) -> (Num, Option<Num>) {
         let sim = &self.shop.sim;
-        let life = sim.get::<Pools>(id).current(PoolId::FIRST).unwrap();
+        let life = sim.get::<Life>(id).current();
         let progress = sim.try_get::<Site>(id).map(Site::progress);
         (life, progress)
     }
@@ -404,10 +403,7 @@ fn a_sites_life_ends_its_gain_above_its_start_less_the_damage_it_took() {
     let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
     yard.shop.tick();
     assert_eq!(yard.site(depot).0, Num::int(55));
-    yard.shop
-        .sim
-        .get_mut::<Pools>(depot)
-        .take(PoolId::FIRST, Num::int(30));
+    yard.shop.sim.get_mut::<Life>(depot).take(Num::int(30));
     yard.shop.tick();
     assert_eq!(yard.site(depot), (Num::HALF * 95, Some(Num::int(3))));
     yard.shop.tick();

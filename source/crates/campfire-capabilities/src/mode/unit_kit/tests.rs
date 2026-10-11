@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
+use campfire_math::Num;
+
 use super::*;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
@@ -87,11 +89,12 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
     let health = health();
     let despawn = combat(OnDeath::Despawn);
     let kit = kit(&caster(|_| ()), Some(&despawn), life(&health), 30).unwrap();
-    assert_eq!(kit.pools.unwrap().max(PoolId::FIRST), Some(decimal("280")));
+    let full = kit.life.unwrap();
     assert_eq!(
-        kit.pools.unwrap().current(PoolId::FIRST),
-        Some(decimal("280"))
+        (full.max(), full.current()),
+        (decimal("280"), decimal("280"))
     );
+    assert_eq!(kit.pools, None);
     assert_eq!(kit.on_death, Some(OnDeath::Despawn));
     // 3.25 m/s is 54525952 / 2²⁴: over 30 that is 1817531.73, to 1817532; over 20, 2726297.6,
     // to 2726298.
@@ -117,6 +120,7 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
     });
     let kit = self::kit(&still, None, [], 30).unwrap();
     assert_eq!((kit.on_death, kit.step, kit.pools), (None, None, None));
+    assert_eq!(kit.life, None);
     // Nor in a mode that declares no move speed among its stats, as a mode with no stats does.
     let rules = BTreeMap::from([(health.clone(), StatRule::default())]);
     let book = StatBook::new(&rules, [(TYPE, &still)], decimal("6.0"));
@@ -136,8 +140,9 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
     let kit = UnitKit::new(&book, TYPE, sections, Some(PoolId::FIRST), rate).unwrap();
     assert_eq!(kit.step, None);
 
-    // Two pools, each full at its maximum at level 1: health 280, and mana 100 + 20 × 0. A pool
-    // the type does not list stays none.
+    // Two pools, each full at its maximum at level 1: health 280, the life, and mana 100 + 20 ×
+    // 0, which the pools hold. A pool the type does not list stays none, and the pools hold
+    // none in the life pool's place.
     let mana = mana();
     let with_mana = caster(|stats| {
         let value = StatValue {
@@ -150,7 +155,8 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
     let kit = self::kit(&with_mana, Some(&stay), pools, 30).unwrap();
     let pools = kit.pools.unwrap();
     let maxes = [0, 1, 2].map(|at| pools.max(PoolId::new(at).unwrap()));
-    assert_eq!(maxes, [Some(decimal("280")), None, Some(decimal("100"))]);
+    assert_eq!(maxes, [None, None, Some(decimal("100"))]);
+    assert_eq!(kit.life.map(Life::max), Some(decimal("280")));
 
     // The mode's limit on health holds the pool's maximum, 280, at 200, as a refresh does.
     let rule = StatRule {
@@ -158,7 +164,7 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
         max: Some(decimal("200")),
     };
     let kit = kit_of(&caster(|_| ()), Some(&stay), life(&health), 30, rule).unwrap();
-    assert_eq!(kit.pools.unwrap().max(PoolId::FIRST), Some(decimal("200")));
+    assert_eq!(kit.life.map(Life::max), Some(decimal("200")));
 }
 
 #[test]

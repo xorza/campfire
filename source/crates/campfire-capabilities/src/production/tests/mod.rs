@@ -146,7 +146,7 @@ impl Shop {
         train: ActionId,
         queue: TrainQueue,
     ) {
-        let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]);
+        let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]).timed();
         let parts = (id, at(x), self.barracks, Team::new(team), slots, queue);
         let mut producer = self.sim.world.spawn(parts);
         if let Some(owner) = owner {
