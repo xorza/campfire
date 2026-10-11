@@ -608,28 +608,64 @@ fn touching(off: Flat, normal: Flat, out: i128, radius: Num) -> Flat {
         "a body that overlaps the box lies within its radius of the line"
     );
     let (off, normal) = (off.to_array(), normal.to_array());
+    let root = FineRoot::of(square.unsigned_abs());
     Flat::from_array([0, 1].map(|axis| {
-        off[axis] + outward(normal[axis].abs(), out, square, radius) * normal[axis].signum()
+        off[axis] + outward(normal[axis].abs(), out, square, radius, root) * normal[axis].signum()
     }))
 }
 
-/// The first `k` `outward` tries: the quotient, rounded up, with `square`'s root rounded down to
-/// as many bits of fraction as 128 bits leave beside it.
-fn first_outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
+/// `square`'s root, rounded down, with as many bits of fraction, `fine`, as 128 bits leave
+/// beside `square`: below 2⁶⁴, so a radius times it fits.
+#[derive(Debug, Clone, Copy)]
+struct FineRoot {
+    length: i128,
+    fine: u32,
+}
+
+impl FineRoot {
+    fn of(square: u128) -> FineRoot {
+        let fine = (127 - (128 - square.leading_zeros())) / 2;
+        FineRoot {
+            length: (square << (2 * fine)).floor_root().cast_signed(),
+            fine,
+        }
+    }
+}
+
+/// The first `k` `outward` tries: the quotient, rounded up, or one below it, with `square`'s
+/// `root` in place of its root.
+fn first_outward(along: i128, out: i128, square: i128, radius: i128, root: FineRoot) -> i128 {
     let square = square.unsigned_abs();
-    let fine = (127 - (128 - square.leading_zeros())) / 2;
-    // √square · 2^fine rounded down, below 2⁶⁴, so a radius times it fits.
-    let length = (square << (2 * fine)).floor_root().cast_signed();
+    let FineRoot { length, fine } = root;
     // Each term is below 2¹⁰⁰, whatever `square` is: `length` is about √square · 2^fine, and
     // `out` within √square · 2³⁶.
     let reach = radius * length - (out << fine);
     if reach <= 0 {
         return 0;
     }
-    U256::product(along.unsigned_abs(), reach.unsigned_abs())
-        .div_rounded(square << fine, Rounding::Ceiling)
-        .expect("a move within a box and a body fits")
-        .cast_signed()
+    first_estimate(along, reach, square << fine)
+}
+
+/// 2⁻⁴⁸, exact in f64.
+const TWO_POW_MINUS_48: f64 = 1.0 / 281_474_976_710_656.0;
+/// 2⁶⁴, exact in f64.
+const TWO_POW_64: f64 = 18_446_744_073_709_551_616.0;
+
+/// `along · reach ÷ divisor`, rounded up, or one below it: by floats, where the 256-bit division
+/// takes two 128-bit ones. `along`, below 2³⁶, converts exactly, `reach` and the divisor as two
+/// halves each with one rounding, and the product and the quotient round once each, so the float
+/// quotient lies within 5 · 2⁻⁵³ of the true one, and less 2⁻⁴⁸ of itself, below it, by at most
+/// 2⁻⁴⁷ of it, below 2⁻¹⁰ for a quotient below 2³⁷: its ceiling is the true one's or one below.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::float_arithmetic,
+    reason = "a float estimate that `outward`'s steps correct exactly"
+)]
+fn first_estimate(along: i128, reach: i128, divisor: u128) -> i128 {
+    let wide = |value: u128| ((value >> 64) as u64 as f64).mul_add(TWO_POW_64, value as u64 as f64);
+    let quotient = along as f64 * wide(reach.cast_unsigned()) / wide(divisor);
+    i128::from((quotient - quotient * TWO_POW_MINUS_48).ceil() as i64)
 }
 
 /// The least whole `k` with `k · square ≥ along · (radius·√square − out)`: the move of `touching`
@@ -639,8 +675,9 @@ fn first_outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
 /// root of `square` in place of its root: the root rounds down, so the first `k` is at most the
 /// least, and short of it by `along · radius · 2⁻ᶠ ÷ square ≤ radius · 2⁻ᶠ ÷ √square` before the
 /// rounding up, where `f` is the root's bits of fraction, as many as 128 bits leave beside
-/// `square`, so `2ᶠ · √square ≥ 2⁶²·⁵`: below 2⁻²⁷ for a radius within `Shape::MAX_BOUND`, so the
-/// first `k` is the least or one below it.
+/// `square`, so `2ᶠ · √square ≥ 2⁶²·⁵`: below 2⁻²⁷ for a radius within `Shape::MAX_BOUND`, so that
+/// quotient's ceiling is the least or one below it; `first_estimate` takes it by floats, which
+/// may give one below that, so the first `k` is the least, or one or two below it.
 ///
 /// A box's corners and a body's radius lie within `Shape::MAX_BOUND`, 2³⁵ bits, of their centres:
 /// `normal` is an edge, below its diagonal's 4,094 m, 2³⁶ bits, or the way off a corner, within
@@ -648,7 +685,7 @@ fn first_outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
 /// edge's corner, or within the radius of the edge, so `|out| < √square · 2³⁶`; so
 /// `k < along · (radius + |out| ÷ √square) ÷ √square + 1 < 2³⁷`, `k · square` and `along · out`
 /// are below 2¹⁰⁹, and `(along · radius)² · square` below 2²¹⁴.
-fn outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
+fn outward(along: i128, out: i128, square: i128, radius: i128, root: FineRoot) -> i128 {
     let bound = U256::product(
         (along * radius).unsigned_abs(),
         (along * radius).unsigned_abs(),
@@ -659,7 +696,7 @@ fn outward(along: i128, out: i128, square: i128, radius: i128) -> i128 {
         let side = k * square + along * out;
         side >= 0 && U256::product(side.unsigned_abs(), side.unsigned_abs()) >= bound
     };
-    let mut k = first_outward(along, out, square, radius);
+    let mut k = first_outward(along, out, square, radius, root);
     while !passes(k) {
         k += 1;
     }
