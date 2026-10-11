@@ -1,15 +1,12 @@
-use campfire_common::TlsKey;
 use campfire_protocol::secp256k1::Keypair;
 
 use crate::session_times::SessionTimes;
 
 /// What a server opens or restores a session with, beyond the session itself: its key, which
-/// signs what it logs, the TLS key its transport presents, how long it
-/// waits, and its clock and randomness.
+/// signs what it logs, how long it waits, and its clock and randomness.
 #[derive(Debug, Clone, Copy)]
 pub struct ServerSetup {
     pub key: Keypair,
-    pub tls_key: TlsKey,
     pub times: SessionTimes,
     /// Unix seconds, against which a delegation's expiry is checked.
     pub clock: fn() -> u64,

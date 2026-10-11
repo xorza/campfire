@@ -143,7 +143,7 @@ fn main() -> ExitCode {
     };
     let capabilities = packages.manifest().capabilities;
     let Started { opening, server } =
-        match Started::open(&data, waiting, packages, key, tls_key, times, bots) {
+        match Started::open(&data, waiting, packages, key, times, bots) {
             Ok(started) => started,
             Err(code) => return code,
         };
@@ -164,14 +164,13 @@ struct Started {
 
 impl Started {
     /// The session `waiting` in the data directory `data` to restore, or a new one of the mode
-    /// `packages` holds, with `bots`; and the server's setup of `key`, its TLS key `tls_key` and
-    /// `times`. The exit code when one fails.
+    /// `packages` holds, with `bots`; and the server's setup of `key` and `times`. The exit code
+    /// when one fails.
     fn open(
         data: &ServerDir,
         waiting: Option<RestoredSession>,
         packages: ModePackages,
         key: Keypair,
-        tls_key: TlsKey,
         times: SessionTimes,
         bots: ServerBots,
     ) -> Result<Started, ExitCode> {
@@ -190,7 +189,6 @@ impl Started {
         .map_err(no_session)?;
         let server = ServerSetup {
             key,
-            tls_key,
             times,
             clock: Os::unix_now,
             entropy: Os::fill,

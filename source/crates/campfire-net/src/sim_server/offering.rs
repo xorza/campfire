@@ -5,10 +5,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_time::{Real, Time};
-use campfire_common::TlsKey;
+use campfire_common::ChannelBinding;
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
 use campfire_protocol::{ConnectChallenge, Delegation, SessionTerms};
-use campfire_quic::CloseLink;
+use campfire_quic::{CloseLink, LinkBinding};
 use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlinked};
 use tracing::debug;
@@ -28,23 +28,24 @@ const RESEND_TICKS: u32 = 30;
 
 /// What the server offers each new link, and how it checks the answer: the session's terms, its
 /// grace period and restore window, and a fresh challenge, which the player's session key signs
-/// with the TLS key the client verified. The lobby offers it before the start,
-/// and the door after it.
+/// with the link's channel binding (design 15, D11). The lobby offers it before the start, and
+/// the door after it.
 #[derive(Debug)]
 pub(crate) struct Offering {
     pub(crate) terms: SessionTerms,
-    tls_key: TlsKey,
     pub(crate) times: SessionTimes,
     clock: fn() -> u64,
     entropy: fn(&mut [u8; 32]),
     secp: Secp256k1<VerifyOnly>,
 }
 
-/// The challenge a link was offered, and the tick the offer last went out in.
+/// The challenge a link was offered, the channel binding of its TLS session, which its answer
+/// signs, and the tick the offer last went out in.
 #[derive(Component, Debug, Clone, Copy)]
 pub(crate) struct Offered {
     pub(crate) challenge: ConnectChallenge,
-    sent: NetTick,
+    pub(crate) binding: ChannelBinding,
+    pub(crate) sent: NetTick,
 }
 
 /// A link whose player took a slot, before or after the start.
@@ -122,6 +123,7 @@ pub(crate) type OfferLinks<'w, 's> = Query<
     (
         Entity,
         Option<&'static mut Offered>,
+        Option<&'static LinkBinding>,
         &'static mut MessageSender<Offer>,
     ),
     (
@@ -155,7 +157,6 @@ impl Offering {
     pub(crate) fn new(terms: SessionTerms, setup: &ServerSetup) -> Offering {
         Offering {
             terms,
-            tls_key: setup.tls_key,
             times: setup.times,
             clock: setup.clock,
             entropy: setup.entropy,
@@ -172,7 +173,7 @@ impl Offering {
         links: &mut OfferLinks<'_, '_>,
         commands: &mut Commands<'_, '_>,
     ) {
-        for (link, offered, mut sender) in links {
+        for (link, offered, binding, mut sender) in links {
             let challenge = match offered {
                 Some(offered) if now.0.wrapping_sub(offered.sent.0) < RESEND_TICKS => continue,
                 Some(mut offered) => {
@@ -184,8 +185,11 @@ impl Offering {
                     let mut challenge = [0; 32];
                     (self.entropy)(&mut challenge);
                     let challenge = ConnectChallenge::new(challenge);
+                    let LinkBinding(binding) =
+                        *binding.expect("a connected link holds its session's binding");
                     commands.entity(link).insert(Offered {
                         challenge,
+                        binding,
                         sent: now,
                     });
                     debug!(?link, "offered the terms");
@@ -200,19 +204,16 @@ impl Offering {
         }
     }
 
-    /// The delegation of `join`, when its session key answered `challenge` over this server's
-    /// TLS key, and it grants this session, not expired by the server's clock.
-    pub(crate) fn check(
-        &self,
-        challenge: ConnectChallenge,
-        join: &Join,
-    ) -> Result<Delegation, JoinError> {
+    /// The delegation of `join`, when its session key answered the challenge `offered` over the
+    /// link's channel binding, and it grants this session, not expired by the server's clock.
+    pub(crate) fn check(&self, offered: &Offered, join: &Join) -> Result<Delegation, JoinError> {
         let delegation = Delegation::parse(&join.delegation).map_err(JoinError::Delegation)?;
-        challenge
+        offered
+            .challenge
             .check(
                 &self.secp,
                 &self.terms,
-                &self.tls_key,
+                &offered.binding,
                 &delegation,
                 &join.answer,
                 (self.clock)(),
@@ -221,17 +222,17 @@ impl Offering {
         Ok(delegation)
     }
 
-    /// Checks each of a frame's `joins`, each link's challenge and join, into `checked`. A query
+    /// Checks each of a frame's `joins`, each link's offer and join, into `checked`. A query
     /// gives the links in the order of its tables, which changes from run to run once Lightyear
     /// iterates them in parallel, so the answered ones go in an order of what they sent.
     pub(crate) fn check_all(
         &self,
-        joins: impl Iterator<Item = (Entity, ConnectChallenge, Join)>,
+        joins: impl Iterator<Item = (Entity, Offered, Join)>,
         checked: &mut CheckedJoins,
     ) {
         debug_assert!(checked.answered.is_empty() && checked.refused.is_empty());
-        for (link, challenge, join) in joins {
-            match self.check(challenge, &join) {
+        for (link, offered, join) in joins {
+            match self.check(&offered, &join) {
                 Ok(delegation) => checked.answered.push((link, delegation)),
                 Err(error) => checked.refused.push((link, error)),
             }

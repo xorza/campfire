@@ -7,7 +7,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query};
 use bytes::Bytes;
-use campfire_common::TlsKey;
+use campfire_common::{ChannelBinding, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_store::Worker;
 use lightyear::core::id::{PeerId, RemoteId};
@@ -33,6 +33,7 @@ use crate::app_code::AppCode;
 use crate::endpoint_state::{EndpointState, News, Peer};
 use crate::error::BindError;
 use crate::io_thread::IoThread;
+use crate::link_binding::LinkBinding;
 use crate::link_end::LinkEnd;
 use crate::link_times::LinkTimes;
 use crate::pinned_key_verifier::PinnedKeyVerifier;
@@ -308,12 +309,15 @@ impl QuicEndpoint {
             return true;
         }
         let remote = peer.remote();
+        let binding = QuicEndpoint::binding(peer);
         let entity = match self.side {
             Side::Client { .. } => {
                 let client = peer
                     .entity()
                     .expect("a client's open connection keeps its entity until it closes");
-                commands.entity(client).insert((PeerAddr(remote), Linked));
+                commands
+                    .entity(client)
+                    .insert((PeerAddr(remote), binding, Linked));
                 client
             }
             Side::Server => {
@@ -322,6 +326,7 @@ impl QuicEndpoint {
                         LinkOf { server: endpoint },
                         Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
                         PeerAddr(remote),
+                        binding,
                         QuicLink::new(Arc::downgrade(&self.shared), peer.handle(), peer.id()),
                     ))
                     .id();
@@ -333,6 +338,17 @@ impl QuicEndpoint {
         };
         peer.link(entity);
         false
+    }
+
+    /// The connection's `tls-exporter` channel binding of RFC 9266, which a completed handshake
+    /// gives both ends alike.
+    fn binding(peer: &Peer) -> LinkBinding {
+        let mut bytes = [0; 32];
+        peer.connection
+            .crypto_session()
+            .export_keying_material(&mut bytes, b"EXPORTER-Channel-Binding", b"")
+            .expect("TLS 1.3's exporter gives 32 bytes");
+        LinkBinding(ChannelBinding::new(bytes))
     }
 
     /// The connection's largest datagram now, while it carries `LINK_MIN_MTU`: a Campfire peer's

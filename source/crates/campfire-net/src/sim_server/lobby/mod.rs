@@ -163,7 +163,7 @@ impl Lobby {
             .iter_mut()
             .filter_map(|(link, offered, mut receiver)| {
                 let join = receiver.receive().next()?;
-                Some((link, offered.challenge, join))
+                Some((link, *offered, join))
             });
         lobby.offering.check_all(joins, &mut checked);
         for (link, error) in checked.refused.drain(..) {

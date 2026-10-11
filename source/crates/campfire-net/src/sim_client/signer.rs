@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_common::TlsKey;
+use campfire_common::ChannelBinding;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly, XOnlyPublicKey};
 use campfire_protocol::{
     ConnectChallenge, Delegation, DelegationTerms, InputChain, RandomKey, SessionId, Signature,
@@ -45,9 +45,13 @@ impl Signer {
         Delegation::sign(&self.secp, main_key, granted, now, &self.random())
     }
 
-    /// The session key's answer to `challenge`, over `tls_key`, the key the client verified.
-    pub(crate) fn answer(&self, challenge: ConnectChallenge, tls_key: &TlsKey) -> Signature {
-        challenge.answer(&self.secp, &self.key, tls_key, &self.random())
+    /// The session key's answer to `challenge`, over `binding`, its link's TLS session's.
+    pub(crate) fn answer(
+        &self,
+        challenge: ConnectChallenge,
+        binding: &ChannelBinding,
+    ) -> Signature {
+        challenge.answer(&self.secp, &self.key, binding, &self.random())
     }
 
     /// The session key's signature over the head of `chain` in the session `session`.

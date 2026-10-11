@@ -17,12 +17,12 @@ use campfire_capabilities::{
     Action, Body, CapabilitySet, Leaver, MoveStep, Order, Owner, PlayersData, SaveBy, SavesData,
     Team,
 };
-use campfire_common::{MapName, PlayerSlot, TlsKey};
+use campfire_common::{ChannelBinding, MapName, PlayerSlot, TlsKey};
 use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{SeedChain, ServerInput, SessionPrivate};
-use campfire_quic::LINK_MIN_MTU;
+use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
@@ -62,8 +62,10 @@ pub(crate) mod link_model;
 
 /// Frames a connection gets to link and sync its timeline, and a join to start the match.
 const CONNECT_FRAMES: usize = 300;
-/// In-process channels have no TLS; both ends take this as the server's TLS key.
+/// In-process channels have no TLS; each client pins this as the server's TLS key.
 const TLS_KEY: TlsKey = TlsKey::new([3; 32]);
+/// In-process channels have no TLS session; both ends of a link take this binding.
+const BINDING: LinkBinding = LinkBinding(ChannelBinding::new([3; 32]));
 /// Unix seconds, on every end, until a test sets the clock.
 const NOW: u64 = 1_700_000_000;
 
@@ -385,6 +387,7 @@ impl InProcessMatch {
                 },
                 Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
                 PeerAddr(address),
+                BINDING,
                 Linked,
                 server_io,
                 DelayLine::new(self.setup.link, self.setup.server_frames, stream, tick),
@@ -393,6 +396,7 @@ impl InProcessMatch {
         let entity = self.client_entities[client];
         self.clients[client].world_mut().entity_mut(entity).insert((
             client_io,
+            BINDING,
             DelayLine::new(self.setup.link, 1, stream + 1, tick),
         ));
     }
@@ -453,12 +457,11 @@ impl InProcessMatch {
             .expect("the test mode loads")
     }
 
-    /// What the server opens or restores its session with: its key, the TLS key both
-    /// ends take, the setup's times, a fixed clock and fixed random bytes.
+    /// What the server opens or restores its session with: its key, the setup's times, a fixed
+    /// clock and fixed random bytes.
     fn server_setup(&self) -> ServerSetup {
         ServerSetup {
             key: TestKey::server(),
-            tls_key: TLS_KEY,
             times: self.setup.times,
             clock: unix_now,
             entropy: |bytes| bytes.fill(5),

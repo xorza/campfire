@@ -1,6 +1,6 @@
 # Plan — current slice
 
-The steps of the current slice ([Workflow](AGENTS.md#workflow)), in order, open items only: remove a step when it is done. Each step ends with the check chain passing for the crates it touches, and a stop for review. The slice ends when the user plays it in the client. Slice 3 runs first; slice 2 goes on from S1 after it. The QUIC transport's slice has its own plan, [PLAN-QUIC.md](PLAN-QUIC.md).
+The steps of the current slice ([Workflow](AGENTS.md#workflow)), in order, open items only: remove a step when it is done. Each step ends with the check chain passing for the crates it touches, and a stop for review. The slice ends when the user plays it in the client. Slice 3 runs first; slice 2 goes on from S1 after it.
 
 ## Slice 3 — Replication audiences
 

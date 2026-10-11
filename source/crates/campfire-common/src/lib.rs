@@ -1,6 +1,7 @@
 //! The vocabulary that crates which do not depend on each other share: the player slot, ticks,
 //! segment seeds, secret bytes and 32-byte values of the session log and the sim, a package's
-//! fingerprint, a map's name, and the TLS key a server presents.
+//! fingerprint, a map's name, the TLS key a server presents, and a TLS session's channel
+//! binding.
 //!
 //! A type enters only when two crates that do not depend on each other both name it, and only
 //! as a plain value: construction, parsing, display and serde, no other logic. The one exception
@@ -11,6 +12,7 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod bytes32;
+mod channel_binding;
 mod codec;
 mod exit_status;
 mod fingerprint;
@@ -24,6 +26,7 @@ mod tls_key;
 
 pub use crate::bytes32::Bytes32;
 pub use crate::bytes32::error::NotHex;
+pub use crate::channel_binding::ChannelBinding;
 pub use crate::codec::binary::{Binary, Taken};
 pub use crate::codec::error::BinaryError;
 pub use crate::codec::json::Json;

@@ -7,8 +7,8 @@ use crate::bytes32::Bytes32;
 use crate::bytes32::error::NotHex;
 
 /// The Ed25519 public key a server presents to TLS with no certificate (design 15, D6): the
-/// client takes this key and no other, and signs it in its connect answer. It reads and writes as
-/// 64 lowercase hex digits, as a listing gives it.
+/// client takes this key and no other. It reads and writes as 64 lowercase hex digits, as a
+/// listing gives it.
 #[derive(
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]

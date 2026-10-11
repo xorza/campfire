@@ -67,7 +67,7 @@ pub use crate::input_message::InputMessage;
 pub use crate::local::local_pace::LocalPace;
 pub use crate::local::local_relink::LocalRelink;
 pub use crate::local::local_server::error::LocalServerError;
-pub use crate::local::local_server::{LocalServer, LocalServerSetup, Relinks};
+pub use crate::local::local_server::{LocalLink, LocalServer, LocalServerSetup, Relinks};
 pub use crate::match_clock::MatchClock;
 pub use crate::net_protocol::{InputChannel, NetProtocol};
 pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};

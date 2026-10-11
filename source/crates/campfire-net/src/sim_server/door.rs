@@ -7,7 +7,7 @@ use bevy_time::{Real, Time};
 use campfire_capabilities::{Area, Mode, Owner, Projectile};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
+use campfire_protocol::{Controller, Delegation, LeaveReason, ServerInput};
 use campfire_quic::CloseLink;
 use campfire_runner::{ServerInputRefused, Session, SlotRuleError};
 use lightyear::prelude::{
@@ -24,7 +24,7 @@ use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::offering::{
-    CheckedJoins, JoinLink, Joined, OfferLinks, Offering, Refused, Superseding, Unanswered,
+    CheckedJoins, JoinLink, Joined, OfferLinks, Offered, Offering, Refused, Superseding, Unanswered,
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
@@ -71,7 +71,7 @@ impl Door {
     pub(crate) fn take_joins(
         world: &mut World,
         mut links: Local<'_, QueryState<JoinLink, Unanswered>>,
-        mut joins: Local<'_, Vec<(Entity, ConnectChallenge, Join)>>,
+        mut joins: Local<'_, Vec<(Entity, Offered, Join)>>,
         mut checked: Local<'_, CheckedJoins>,
     ) {
         joins.extend(
@@ -79,7 +79,7 @@ impl Door {
                 .iter_mut(world)
                 .filter_map(|(link, offered, mut receiver)| {
                     let join = receiver.receive().next()?;
-                    Some((link, offered.challenge, join))
+                    Some((link, *offered, join))
                 }),
         );
         world

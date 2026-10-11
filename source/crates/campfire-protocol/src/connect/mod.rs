@@ -1,4 +1,4 @@
-use campfire_common::{Bytes32, TlsKey};
+use campfire_common::{Bytes32, ChannelBinding};
 use derive_more::Display;
 use secp256k1::{Keypair, Secp256k1, Signing, Verification};
 use serde::{Deserialize, Serialize};
@@ -11,12 +11,13 @@ use crate::signature::Signature;
 pub(crate) mod error;
 
 /// Starts every signed connect answer, so no other signature of the session key counts as one.
-const ANSWER_DOMAIN: &[u8] = b"campfire/connect/v1";
+const ANSWER_DOMAIN: &[u8] = b"campfire/connect/v2";
 const ANSWER_MESSAGE_LEN: usize = ANSWER_DOMAIN.len() + 32 + 32;
 
 /// The random bytes a server sends a connecting client. The client answers with its delegation
-/// and its session key's signature over the challenge and the TLS key it verified, which
-/// binds the answer to this connection to this server.
+/// and its session key's signature over the challenge and its TLS session's channel binding,
+/// which binds the answer to this one connection: a party that relays it holds two sessions,
+/// whose bindings differ (design 15, D11).
 #[derive(
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -32,26 +33,26 @@ impl ConnectChallenge {
         self.0.as_bytes()
     }
 
-    /// `session_key`'s answer to the challenge, over `tls_key`, the key the client verified,
+    /// `session_key`'s answer to the challenge, over `binding`, its TLS session's,
     /// with BIP-340's auxiliary randomness `aux`.
     pub fn answer<C: Signing>(
         &self,
         secp: &Secp256k1<C>,
         session_key: &Keypair,
-        tls_key: &TlsKey,
+        binding: &ChannelBinding,
         aux: &[u8; 32],
     ) -> Signature {
-        Signature::sign(secp, session_key, &self.answer_message(tls_key), aux)
+        Signature::sign(secp, session_key, &self.answer_message(binding), aux)
     }
 
     /// Checks a joining player's `answer` with `delegation`, at `now` in Unix seconds: the
     /// delegation names the server and the session of `terms` and has not expired, and its
-    /// session key signed the challenge over `tls_key`, the server's own key.
+    /// session key signed the challenge over `binding`, the server's own end of the TLS session.
     pub fn check<C: Verification>(
         &self,
         secp: &Secp256k1<C>,
         terms: &SessionTerms,
-        tls_key: &TlsKey,
+        binding: &ChannelBinding,
         delegation: &Delegation,
         answer: &Signature,
         now: u64,
@@ -63,20 +64,20 @@ impl ConnectChallenge {
         if now >= granted.expiration {
             return Err(ConnectError::Expired);
         }
-        if !answer.verifies(secp, &granted.session_key, &self.answer_message(tls_key)) {
+        if !answer.verifies(secp, &granted.session_key, &self.answer_message(binding)) {
             return Err(ConnectError::BadAnswer);
         }
         Ok(())
     }
 
-    /// `domain ‖ challenge ‖ TLS key`.
-    const fn answer_message(&self, tls_key: &TlsKey) -> [u8; ANSWER_MESSAGE_LEN] {
+    /// `domain ‖ challenge ‖ binding`.
+    const fn answer_message(&self, binding: &ChannelBinding) -> [u8; ANSWER_MESSAGE_LEN] {
         let mut message = [0; ANSWER_MESSAGE_LEN];
         let (domain, rest) = message.split_at_mut(ANSWER_DOMAIN.len());
-        let (challenge, hash) = rest.split_at_mut(32);
+        let (challenge, bound) = rest.split_at_mut(32);
         domain.copy_from_slice(ANSWER_DOMAIN);
         challenge.copy_from_slice(self.0.as_bytes());
-        hash.copy_from_slice(tls_key.as_bytes());
+        bound.copy_from_slice(binding.as_bytes());
         message
     }
 }

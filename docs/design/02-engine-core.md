@@ -62,7 +62,7 @@ Dashed: planned. `log` is left out: the binaries, `net` and `verifier` use it. E
 
 | Module | Status | Does |
 | --- | --- | --- |
-| `common` | built | The vocabulary of crates that do not depend on each other: the player slot, ticks, segment seed, 32-byte hex values, a package's fingerprint, the TLS key a server presents, exit statuses; and `codec`, the one gateway of serialization ([Serialization](#serialization)) |
+| `common` | built | The vocabulary of crates that do not depend on each other: the player slot, ticks, segment seed, 32-byte hex values, a package's fingerprint, the TLS key a server presents and a TLS session's channel binding, exit statuses; and `codec`, the one gateway of serialization ([Serialization](#serialization)) |
 | `math` | built | Fixed-point numbers, 3D vectors, exact ground-plane vectors, trig, exact integer roots, exact 256-bit products and sums, counter-based RNG, SIMD lanes |
 | `protocol` | built | Signatures, session key delegations, the handshake, input chains, the seed chain and the session log, with no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |

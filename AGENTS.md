@@ -21,14 +21,14 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
         - `12-zero-hour.md` — the first imported game: importer, rules package, parity oracle, presentation
         - `13-bodies-uses-shop-gravity.md` — bodies up to 2,048 m and the spatial indexes' levels, the `use` action kind, the client's shop and item keys, projectiles that fall
         - `14-replication-audiences.md` — proposal: who receives each part of the state, the kind on each state type, the audiences a mode and its host set for other teams, spectators and players out of play, the one list of state types, the player, team and match entities
-        - `15-quic-transport.md` — proposal: the link over QUIC alone, on `quinn-proto` under Lightyear, the server's raw TLS key, and the connect answer bound to the TLS session
+        - `15-quic-transport.md` — the link over QUIC alone, on `quinn-proto` under Lightyear: its thread, the server's raw TLS key, a link's end, and the connect answer bound to the TLS session
     - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import, `quic.md` for the transport, `spectating.md` for what spectators and players out of play see
 - `.notes/ISSUES.md` — the issue log: every open problem, under the step it waits for ([Issue log](#issue-log))
 - `.notes/FOUNDATIONS.md` — the open problems whose cause is in the architecture or a chosen format, each with the issue-log items it holds ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
 - `../GeneralsX/` — beside this repository, not in it: a checkout of [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS. It is the reference for Zero Hour's formats and rules, and the base of the parity oracle. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions), D2).
 
-`ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice, and `PLAN-QUIC.md` those of the QUIC transport's slice. All list open items only.
+`ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice. Both list open items only.
 
 When code and design disagree, fix one of them, and state which one.
 

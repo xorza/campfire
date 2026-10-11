@@ -203,6 +203,13 @@ fn a_link_carries_datagrams_of_its_minimum_mtu_both_ways_at_once() {
         loopback.server.world().get::<RemoteId>(link),
         Some(&RemoteId(PeerId::Entity(link.to_bits())))
     );
+    // Both ends read one TLS session's binding (D11).
+    let server_binding = loopback.server.world().get::<LinkBinding>(link);
+    assert!(server_binding.is_some());
+    assert_eq!(
+        server_binding,
+        client.app.world().get::<LinkBinding>(client.entity)
+    );
     // Neither end may open a stream: each gave the other a limit of none (D4).
     for quic in [loopback.quic(), client.quic()] {
         let mut state = quic.state();
@@ -450,6 +457,16 @@ fn two_connections_from_one_socket_are_two_peers_and_each_takes_a_retry() {
     assert_eq!(first, second);
     let [first, second] = [links[0], links[1]].map(|link| *world.get::<RemoteId>(link).unwrap());
     assert_ne!(first, second);
+    // Two TLS sessions, two bindings: the client's is its second session's.
+    let [first, second] = [links[0], links[1]].map(|link| *world.get::<LinkBinding>(link).unwrap());
+    assert_ne!(first, second);
+    let client_binding = *client
+        .app
+        .world()
+        .get::<LinkBinding>(client.entity)
+        .unwrap();
+    assert!(client_binding == first || client_binding == second);
+    assert_ne!(first == client_binding, second == client_binding);
     assert_eq!(loopback.quic().state().retries(), 2);
 }
 

@@ -17,7 +17,7 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{PlayerInput, SignedReceipt};
-use campfire_quic::{CloseLink, LINK_MIN_MTU, LinkEnd, QuicPlugin};
+use campfire_quic::{CloseLink, LINK_MIN_MTU, LinkBinding, LinkEnd, QuicPlugin};
 use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
@@ -251,20 +251,30 @@ impl Plugin for SimClient {
     }
 }
 
+/// The client's entity as it answers an offer: its sender of joins, and its link's channel
+/// binding, which the answer signs.
+type Answering = (
+    Entity,
+    &'static mut MessageSender<Join>,
+    Option<&'static LinkBinding>,
+);
+
 /// Answers the first offer, unless its terms do not fit: then the client ends its link, as it
 /// cannot play the session.
 fn answer_offer(
     mut receivers: Query<'_, '_, &mut MessageReceiver<Offer>, With<Client>>,
-    mut sender: Single<'_, '_, (Entity, &mut MessageSender<Join>), With<Client>>,
+    mut sender: Single<'_, '_, Answering, With<Client>>,
     mut signer: ResMut<'_, Signer>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
-    let (client, ref mut sender) = *sender;
+    let (client, ref mut sender, binding) = *sender;
     for mut receiver in &mut receivers {
         for offer in receiver.receive() {
             let session = offer.terms.session_id();
-            match state.answer(&offer, &mut signer) {
+            let LinkBinding(binding) =
+                binding.expect("a client that receives an offer holds its link's binding");
+            match state.answer(&offer, binding, &mut signer) {
                 None => {}
                 Some(Ok(join)) => {
                     sender.send::<JoinChannel>(join);
