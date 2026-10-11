@@ -3,7 +3,9 @@
 The `math` crate's atomic benches on the branch `math_opt`, in ns for each operation: the bench's
 time over its 4,096 inputs. Ryzen is a Ryzen 7 6800U (x86-64-v3), pinned to one core; M2 is an
 Apple M2. Each figure is the best of three runs, the base and the change run in turns. The base is
-`7873fd75`, before the branch; "now" is `f8648da5`.
+`7873fd75`, before the branch; "now" is `f8648da5`. Later commits: `7ddf9782`, the narrow root
+truncated through `i64`, `floor_root/narrow` −19 % on the Ryzen; `a88ac345`, a box's push with
+one fine root and a float first try, `collision/boxes` −6.5 % and −7.9 %.
 
 ## Current
 
@@ -91,3 +93,7 @@ its callers pass it, `num/div` is 29 % faster.
 | `ProductSum::add` with one product for a count within `i64` | `product_sum/sum` +5 % | +129 % | The branch keeps the 8-term loop rolled, each term waiting on the last one's carries |
 | Exact circle overlap in four lanes, 23-bit limbs | 4.5 × slower | 3.8 × slower | AVX2 and NEON have no 64 × 64 → 128 lane multiply |
 | BLAKE3 output blocks in parallel lanes | — | — | Not built: `blake3` has a many-block XOF for AVX-512 alone, and a stream draws few words, so its first block dominates |
+| `atan2`'s table index by an `f64` division, its floor exact | `num/atan2` +21 % | +23 % | A 64-bit integer division of 39 bits by 33 is faster on both |
+| `Frame::nearest_to` from sums of shared products, 9 products in place of 14 | `body_box/reach` +16 % | +7 % | Each sum is a checked `i128` addition; the edges' own `i64` subtractions and widening products cost less |
+| `U256::cmp_products` with no product for a factor of 1 | −10 % | +11 % | No gain in the box benches, whose compares it serves |
+| `Collider::reaching` by an `f64` estimate and two exact 256-bit checks | `collision/crowded` +3 % | 0 % | It runs too rarely beside the broadphase to show |
