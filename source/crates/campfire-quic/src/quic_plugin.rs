@@ -4,7 +4,7 @@ use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::system::{Commands, Local, Query};
+use bevy_ecs::system::{Commands, Query};
 use lightyear::link::server::ServerLinkPlugin;
 use lightyear::link::{
     Link, LinkReceiveSystems, LinkStart, LinkSystems, Linked, Linking, Unlink, UnlinkReason,
@@ -13,7 +13,6 @@ use lightyear::prelude::PeerAddr;
 
 use crate::app_code::AppCode;
 use crate::close_link::CloseLink;
-use crate::endpoint_state::News;
 use crate::link_end::LinkEnd;
 use crate::quic_endpoint::QuicEndpoint;
 use crate::quic_link::QuicLink;
@@ -84,10 +83,9 @@ impl QuicPlugin {
         endpoints: Query<'_, '_, (Entity, &QuicEndpoint)>,
         mut links: Query<'_, '_, (&mut Link, &mut PeerAddr)>,
         mut commands: Commands<'_, '_>,
-        mut news: Local<'_, Vec<News>>,
     ) {
         for (entity, endpoint) in &endpoints {
-            endpoint.receive(entity, &mut links, &mut commands, &mut news);
+            endpoint.receive(entity, &mut links, &mut commands);
         }
     }
 

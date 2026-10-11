@@ -27,7 +27,9 @@ use quinn_proto::{Connection, DatagramEvent, Dir, Event};
 
 use super::*;
 use crate::QuicPlugin;
+use crate::app_code::AppCode;
 use crate::close_link::CloseLink;
+use crate::link_binding::LinkBinding;
 
 /// The longest a test waits for the network on loopback, inside a test's bound of 1 s.
 const PATIENCE: Duration = Duration::from_millis(800);
@@ -270,7 +272,7 @@ fn handshake(client_cid: usize) -> (Connection, Connection) {
     let mut server = Endpoint::new(
         Arc::new(QuicEndpoint::endpoint_config(ResetKey::random(), CID_LEN)),
         Some(Arc::new(QuicEndpoint::server_config(
-            &key,
+            key.server_config(),
             LinkTimes::CAMPFIRE,
         ))),
         true,
@@ -424,21 +426,28 @@ fn a_server_takes_connections_only_while_started() {
 }
 
 #[test]
-fn a_connection_lost_before_its_frame_is_never_linked() {
+fn a_connection_a_server_ends_before_its_frame_is_never_linked() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
     let mut client = loopback.client(LinkTimes::CAMPFIRE);
-    // The server's thread completes the handshake while its app runs no frame, then the
-    // connection closes before the frame that would link it.
+    // The server's thread completes the handshake while its app runs no frame, then the server
+    // ends before the frame that would link it: the connection closes as its links would.
     let start = Instant::now();
     while !client.is::<Linked>() {
         assert!(start.elapsed() < PATIENCE, "the handshake did not complete");
         client.app.update();
         thread::sleep(Duration::from_millis(1));
     }
-    loopback.quic().state().close_unlinked();
-    loopback.quic().shared.wake();
+    let entity = loopback.endpoint;
+    loopback.server.world_mut().trigger(Unlink {
+        entity,
+        reason: UnlinkReason::ServerStopped,
+    });
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
     assert!(Loopback::links(loopback.server.world_mut()).is_empty());
+    assert_eq!(
+        client.app.world().get::<LinkEnd>(client.entity),
+        Some(&LinkEnd::Ended)
+    );
 }
 
 #[test]
@@ -475,6 +484,37 @@ fn two_connections_from_one_socket_are_two_peers_and_each_takes_a_retry() {
     assert!(client_binding == first || client_binding == second);
     assert_ne!(first == client_binding, second == client_binding);
     assert_eq!(loopback.quic().state().retries(), 2);
+}
+
+#[test]
+fn a_loss_the_frame_has_not_taken_ends_no_later_connection() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    let link = loopback.join(&mut client);
+    // The server closes the link, and the client's thread holds its loss while the client's app
+    // runs no frame.
+    let code = AppCode::new(17);
+    loopback
+        .server
+        .world_mut()
+        .trigger(CloseLink { entity: link, code });
+    loopback.server.update();
+    let start = Instant::now();
+    while !client.quic().state().has_news() {
+        assert!(start.elapsed() < PATIENCE, "the close did not arrive");
+        thread::sleep(Duration::from_millis(1));
+    }
+    // In one frame the client ends its link and opens another: the loss of the first is not the
+    // second's.
+    let entity = client.entity;
+    client.app.world_mut().trigger(Unlink {
+        entity,
+        reason: UnlinkReason::UserRequested(None),
+    });
+    client.app.world_mut().flush();
+    client.app.world_mut().trigger(LinkStart { entity });
+    loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Linked>());
+    assert!(!client.is::<LinkEnd>());
 }
 
 #[test]

@@ -1,13 +1,15 @@
+use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::time::Instant;
 
 use bevy_ecs::entity::Entity;
 use quinn_proto::{
-    ClientConfig, ConnectError, Connection, ConnectionError, ConnectionHandle, DatagramEvent,
-    Endpoint, Event, Incoming,
+    ClientConfig, ConnectError, Connection, ConnectionHandle, DatagramEvent, Endpoint, Event,
+    Incoming,
 };
 
 use crate::app_code::AppCode;
+use crate::link_end::LinkEnd;
 use crate::outbox::Outbox;
 use crate::peer::{Peer, PeerKey};
 use crate::recv_batch::Datagram;
@@ -22,7 +24,7 @@ const SERVER_NAME: &str = "campfire";
 pub(crate) struct EndpointState {
     endpoint: Endpoint,
     peers: Vec<Option<Peer>>,
-    news: Vec<News>,
+    news: VecDeque<News>,
     next_id: u64,
     /// Whether a server's endpoint takes new connections: from its `LinkStart` until its
     /// `Unlink`, so a server that has not started or that ended refuses them.
@@ -35,18 +37,26 @@ pub(crate) struct EndpointState {
     retries: usize,
 }
 
-/// What the thread tells the frame: a handshake completed, with the connection's largest datagram
-/// then, before path MTU discovery sent its first probe; or a link's connection was lost.
+/// What the thread tells the frame: a handshake completed on a connection whose datagrams carry a
+/// link; or the connection of a linking or linked entity ended, as `end` says.
 #[derive(Debug)]
 pub(crate) enum News {
     Connected {
         key: PeerKey,
-        max_size: Option<usize>,
     },
     Lost {
+        key: PeerKey,
         entity: Entity,
-        reason: ConnectionError,
+        end: LinkEnd,
     },
+}
+
+impl News {
+    const fn key(&self) -> PeerKey {
+        match self {
+            News::Connected { key } | News::Lost { key, .. } => *key,
+        }
+    }
 }
 
 impl EndpointState {
@@ -54,7 +64,7 @@ impl EndpointState {
         EndpointState {
             endpoint,
             peers: Vec::new(),
-            news: Vec::new(),
+            news: VecDeque::new(),
             next_id: 0,
             accepting: false,
             closing: false,
@@ -69,8 +79,19 @@ impl EndpointState {
         self.closing
     }
 
-    pub(crate) const fn accept(&mut self, accepting: bool) {
-        self.accepting = accepting;
+    pub(crate) const fn start_accepting(&mut self) {
+        self.accepting = true;
+    }
+
+    /// Takes no new connection, and closes with `AppCode::ENDED` each one no link carries yet, as
+    /// a server that ended links none of them.
+    pub(crate) fn stop_accepting(&mut self, now: Instant) {
+        self.accepting = false;
+        for peer in self.peers.iter_mut().flatten() {
+            if peer.entity().is_none() {
+                peer.close(now, AppCode::ENDED);
+            }
+        }
     }
 
     /// The earliest deadline of the connections; none when no connection waits on one.
@@ -173,8 +194,10 @@ impl EndpointState {
     }
 
     /// One pass of the thread over each connection: its due deadline, its events for the
-    /// endpoint and from it, its news for the frame, and what it has to send. A drained
-    /// connection leaves the table.
+    /// endpoint and from it, its news for the frame, and what it has to send. A connection whose
+    /// datagrams cannot carry `LINK_MIN_MTU` once its handshake completed is closed in the pass
+    /// that finds it, so every connection the frame sees between two passes carries its link
+    /// (D5). A drained connection leaves the table.
     pub(crate) fn serve(&mut self, now: Instant, outbox: &mut Outbox) {
         let EndpointState {
             endpoint,
@@ -205,13 +228,18 @@ impl EndpointState {
             }
             while let Some(event) = peer.connection.poll() {
                 match event {
-                    Event::Connected => news.push(News::Connected {
-                        key,
-                        max_size: peer.connection.datagrams().max_size(),
-                    }),
+                    Event::Connected => {
+                        if peer.link_mtu().is_some() {
+                            news.push_back(News::Connected { key });
+                        }
+                    }
                     Event::ConnectionLost { reason } => {
                         if let Some(entity) = peer.lose() {
-                            news.push(News::Lost { entity, reason });
+                            news.push_back(News::Lost {
+                                key,
+                                entity,
+                                end: LinkEnd::of(&reason),
+                            });
                         }
                     }
                     Event::HandshakeDataReady
@@ -219,6 +247,19 @@ impl EndpointState {
                     | Event::DatagramReceived
                     | Event::DatagramsUnblocked => {}
                 }
+            }
+            if !peer.connection.is_handshaking()
+                && !peer.connection.is_closed()
+                && peer.link_mtu().is_none()
+            {
+                if let Some(entity) = peer.entity() {
+                    news.push_back(News::Lost {
+                        key,
+                        entity,
+                        end: LinkEnd::Unfit,
+                    });
+                }
+                peer.close(now, AppCode::UNFIT);
             }
             loop {
                 scratch.clear();
@@ -234,9 +275,9 @@ impl EndpointState {
         }
     }
 
-    /// Hands the news since the last frame to `into`, which the frame clears.
-    pub(crate) fn take_news(&mut self, into: &mut Vec<News>) {
-        into.append(&mut self.news);
+    /// The oldest news the frame has not taken.
+    pub(crate) fn next_news(&mut self) -> Option<News> {
+        self.news.pop_front()
     }
 
     /// The connection `key` names, while it lives.
@@ -246,6 +287,15 @@ impl EndpointState {
 
     fn peer_at(&mut self, handle: ConnectionHandle) -> Option<&mut Peer> {
         self.peers.get_mut(handle.0).and_then(Option::as_mut)
+    }
+
+    /// Closes the connection `key` names with `code`, while it lives, and drops its news: a link
+    /// its own end closed has no loss to tell, which would end the entity's next connection.
+    pub(crate) fn close(&mut self, key: PeerKey, now: Instant, code: AppCode) {
+        if let Some(peer) = self.peer(key) {
+            peer.close(now, code);
+        }
+        self.news.retain(|news| news.key() != key);
     }
 
     /// The connections that carry a linked entity, with it.
@@ -276,14 +326,8 @@ pub(crate) mod internals {
             self.retries
         }
 
-        /// Closes each connection no entity carries yet, as one lost between its handshake and
-        /// the frame that would link it.
-        pub(crate) fn close_unlinked(&mut self) {
-            for peer in self.peers.iter_mut().flatten() {
-                if peer.entity().is_none() {
-                    peer.close(Instant::now(), AppCode::ENDED);
-                }
-            }
+        pub(crate) fn has_news(&self) -> bool {
+            !self.news.is_empty()
         }
 
         /// Drops the connection the entity `entity` carries with no close, as a peer that stops

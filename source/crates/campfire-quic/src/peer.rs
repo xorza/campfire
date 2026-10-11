@@ -3,9 +3,12 @@ use std::time::Instant;
 
 use bevy_ecs::entity::Entity;
 use bytes::Bytes;
+use campfire_common::ChannelBinding;
 use quinn_proto::{Connection, ConnectionHandle};
 
+use crate::LINK_MIN_MTU;
 use crate::app_code::AppCode;
+use crate::link_binding::LinkBinding;
 
 /// A connection in its endpoint's table, and the link entity that carries it (design 15, D9).
 #[derive(Debug)]
@@ -69,6 +72,27 @@ impl Peer {
 
     pub(crate) fn remote(&self) -> SocketAddr {
         self.connection.remote_address()
+    }
+
+    /// The connection's largest datagram now, while it carries `LINK_MIN_MTU`: a Campfire peer's
+    /// always does, and only a peer that gives longer connection ids or a smaller
+    /// `max_datagram_frame_size` makes it less (design 15, D5).
+    pub(crate) fn link_mtu(&mut self) -> Option<usize> {
+        self.connection
+            .datagrams()
+            .max_size()
+            .filter(|&max| max >= LINK_MIN_MTU)
+    }
+
+    /// The connection's `tls-exporter` channel binding of RFC 9266, which a completed handshake
+    /// gives both ends alike (D11).
+    pub(crate) fn binding(&self) -> LinkBinding {
+        let mut bytes = [0; 32];
+        self.connection
+            .crypto_session()
+            .export_keying_material(&mut bytes, b"EXPORTER-Channel-Binding", b"")
+            .expect("TLS 1.3's exporter gives 32 bytes");
+        LinkBinding(ChannelBinding::new(bytes))
     }
 
     /// The connection's handshake completed and its entity `entity` carries it.

@@ -6,7 +6,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query};
-use campfire_common::{ChannelBinding, TlsKey};
+use campfire_common::TlsKey;
 use campfire_log::ErrorReport;
 use campfire_store::Worker;
 use lightyear::core::id::{PeerId, RemoteId};
@@ -17,7 +17,7 @@ use lightyear::link::{
 };
 use lightyear::prelude::{LocalAddr, PeerAddr};
 use quinn_proto::crypto::HandshakeTokenKey;
-use quinn_proto::crypto::rustls::QuicClientConfig;
+use quinn_proto::crypto::rustls::{QuicClientConfig, QuicServerConfig};
 use quinn_proto::{
     ClientConfig, Endpoint, EndpointConfig, RandomConnectionIdGenerator, SendDatagramError,
     ServerConfig, ValidationTokenConfig,
@@ -27,11 +27,9 @@ use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{trace, warn};
 use zeroize::Zeroizing;
 
-use crate::app_code::AppCode;
 use crate::endpoint_state::{EndpointState, News};
 use crate::error::BindError;
 use crate::io_thread::IoThread;
-use crate::link_binding::LinkBinding;
 use crate::link_end::LinkEnd;
 use crate::link_times::LinkTimes;
 use crate::peer::Peer;
@@ -80,7 +78,7 @@ impl QuicEndpoint {
         times: LinkTimes,
     ) -> Result<QuicEndpoint, BindError> {
         let key = ServerKey::derive(secret);
-        let config = QuicEndpoint::server_config(&key, times);
+        let config = QuicEndpoint::server_config(key.server_config(), times);
         QuicEndpoint::open(
             address,
             Some(Arc::new(config)),
@@ -126,8 +124,8 @@ impl QuicEndpoint {
 
     /// The server's QUIC: a Retry for each new address and no `NEW_TOKEN`, which `quinn-proto`
     /// sends by default with its `bloom` feature (D8).
-    fn server_config(key: &ServerKey, times: LinkTimes) -> ServerConfig {
-        let mut config = ServerConfig::new(key.server_config(), QuicEndpoint::token_key());
+    fn server_config(crypto: Arc<QuicServerConfig>, times: LinkTimes) -> ServerConfig {
+        let mut config = ServerConfig::new(crypto, QuicEndpoint::token_key());
         config.transport_config(Arc::new(times.transport()));
         let mut tokens = ValidationTokenConfig::default();
         tokens.sent(0);
@@ -203,7 +201,7 @@ impl QuicEndpoint {
         commands: &mut Commands<'_, '_>,
     ) {
         let Side::Client { server, config, .. } = &self.side else {
-            self.shared.lock().accept(true);
+            self.shared.lock().start_accepting();
             commands
                 .entity(entity)
                 .insert((LocalAddr(self.local), Linked));
@@ -237,38 +235,32 @@ impl QuicEndpoint {
     }
 
     /// Ends a server's endpoint's taking of connections, as its `Unlink` ends the server, whose
-    /// links Lightyear despawns, which closes them. A client's endpoint takes none.
+    /// links Lightyear despawns, which closes them; a connection no link carries yet closes with
+    /// `AppCode::ENDED`. A client's endpoint takes none.
     pub(crate) fn stop(&self) {
         if let Side::Server { .. } = self.side {
-            self.shared.lock().accept(false);
+            self.shared.lock().stop_accepting(Instant::now());
+            self.shared.wake();
         }
     }
 
-    /// Takes the thread's news into the world, the endpoint on `entity`, and moves each linked
+    /// Takes the thread's news into the world, the endpoint on `endpoint`, and moves each linked
     /// connection's datagrams to its link's receive queue, its MTU and its address to its link.
     pub(crate) fn receive(
         &self,
-        entity: Entity,
+        endpoint: Entity,
         links: &mut Query<'_, '_, (&mut Link, &mut PeerAddr)>,
         commands: &mut Commands<'_, '_>,
-        news: &mut Vec<News>,
     ) {
-        let now = Instant::now();
-        let mut closed = false;
         let mut state = self.shared.lock();
-        state.take_news(news);
-        for item in news.drain(..) {
-            match item {
-                News::Connected { key, max_size } => {
-                    let Some(peer) = state.peer(key) else {
-                        continue;
-                    };
-                    let fit = max_size.is_some_and(|max| max >= LINK_MIN_MTU);
-                    closed |= self.link(entity, peer, fit, now, commands);
+        while let Some(news) = state.next_news() {
+            match news {
+                News::Connected { key } => {
+                    if let Some(peer) = state.peer(key) {
+                        self.link(endpoint, peer, commands);
+                    }
                 }
-                News::Lost { entity, reason } => {
-                    QuicEndpoint::unlink(entity, LinkEnd::of(&reason), commands);
-                }
+                News::Lost { entity, end, .. } => QuicEndpoint::unlink(entity, end, commands),
             }
         }
         let arrived = LinkInstant::now();
@@ -276,14 +268,11 @@ impl QuicEndpoint {
             let Ok((mut link, mut address)) = links.get_mut(entity) else {
                 continue;
             };
-            let Some(max) = QuicEndpoint::fit(peer) else {
-                peer.close(now, AppCode::UNFIT);
-                QuicEndpoint::unlink(entity, LinkEnd::Unfit, commands);
-                closed = true;
-                continue;
-            };
-            link.set_mtu(max)
-                .expect("a fit connection's datagram is at least the link's minimum");
+            let mtu = peer
+                .link_mtu()
+                .expect("the thread closes a connection whose datagrams cannot carry a link");
+            link.set_mtu(mtu)
+                .expect("a QUIC link's minimum is LINK_MIN_MTU");
             while let Some(datagram) = peer.connection.datagrams().recv() {
                 link.recv.push(recv_payload_from_bytes(datagram), arrived);
             }
@@ -292,37 +281,18 @@ impl QuicEndpoint {
                 address.0 = remote;
             }
         }
-        drop(state);
-        if closed {
-            self.shared.wake();
-        }
     }
 
     /// Links a connection whose handshake completed: the client's entity, or a new `LinkOf` of
-    /// the server on `endpoint`, spawned whole, its peer id its own entity (D9). A connection lost
-    /// since is not linked: a client's loss is in the news after it, and a server's had no entity
-    /// to tell. One that was not `fit`, whose datagrams on QUIC's minimum path cannot carry
-    /// `LINK_MIN_MTU`, is closed instead; whether it was.
-    fn link(
-        &self,
-        endpoint: Entity,
-        peer: &mut Peer,
-        fit: bool,
-        now: Instant,
-        commands: &mut Commands<'_, '_>,
-    ) -> bool {
+    /// the server on `endpoint`, spawned whole, its peer id its own entity (D9). A connection
+    /// closed since is not linked: a client's loss is in the news after it, and a server's has no
+    /// entity to tell.
+    fn link(&self, endpoint: Entity, peer: &mut Peer, commands: &mut Commands<'_, '_>) {
         if peer.connection.is_closed() {
-            return false;
-        }
-        if !fit {
-            if let Some(client) = peer.entity() {
-                QuicEndpoint::unlink(client, LinkEnd::Unfit, commands);
-            }
-            peer.close(now, AppCode::UNFIT);
-            return true;
+            return;
         }
         let remote = peer.remote();
-        let binding = QuicEndpoint::binding(peer);
+        let binding = peer.binding();
         let entity = match self.side {
             Side::Client { .. } => {
                 let client = peer
@@ -350,28 +320,6 @@ impl QuicEndpoint {
             }
         };
         peer.link(entity);
-        false
-    }
-
-    /// The connection's `tls-exporter` channel binding of RFC 9266, which a completed handshake
-    /// gives both ends alike.
-    fn binding(peer: &Peer) -> LinkBinding {
-        let mut bytes = [0; 32];
-        peer.connection
-            .crypto_session()
-            .export_keying_material(&mut bytes, b"EXPORTER-Channel-Binding", b"")
-            .expect("TLS 1.3's exporter gives 32 bytes");
-        LinkBinding(ChannelBinding::new(bytes))
-    }
-
-    /// The connection's largest datagram now, while it carries `LINK_MIN_MTU`: a Campfire peer's
-    /// always does, and only a peer that gives longer connection ids or a smaller
-    /// `max_datagram_frame_size` makes it less (D5).
-    fn fit(peer: &mut Peer) -> Option<usize> {
-        peer.connection
-            .datagrams()
-            .max_size()
-            .filter(|&max| max >= LINK_MIN_MTU)
     }
 
     /// Unlinks the link `entity`, which ended as `end` says, with it on the entity for the

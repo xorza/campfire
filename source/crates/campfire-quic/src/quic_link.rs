@@ -30,9 +30,7 @@ impl QuicLink {
         let Some(endpoint) = self.endpoint.upgrade() else {
             return;
         };
-        if let Some(peer) = endpoint.lock().peer(self.key) {
-            peer.close(Instant::now(), code);
-        }
+        endpoint.lock().close(self.key, Instant::now(), code);
         endpoint.wake();
     }
 

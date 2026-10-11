@@ -11,7 +11,7 @@ pub struct LinkTimes {
 }
 
 impl LinkTimes {
-    /// A keep-alive each second and a loss after 5 s, as WebTransport's were (design 15, D8).
+    /// A keep-alive each second and a loss after 5 s (design 15, D8).
     pub const CAMPFIRE: LinkTimes = LinkTimes {
         keep_alive: Duration::from_secs(1),
         idle_timeout: Duration::from_secs(5),
