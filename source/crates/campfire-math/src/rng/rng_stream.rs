@@ -6,7 +6,7 @@ pub struct RngStream(&'static str);
 
 impl RngStream {
     /// The longest name.
-    const MAX_LEN: usize = 64;
+    pub(crate) const MAX_LEN: usize = 64;
 
     /// The stream `name`: from 1 to 64 bytes of lowercase ASCII letters, digits, `_` and `.`.
     /// Another name is a bug of the code that names it, and fails to compile in a constant.

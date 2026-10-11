@@ -271,8 +271,49 @@ pub(super) fn bits() -> impl Strategy<Value = i64> {
     ]
 }
 
+/// `from_raw_products` by the exact shift and the range check.
+fn by_shift(sum: i128) -> Option<Num> {
+    let bits = Rounding::NearestEven.shift_right(sum, Num::FRAC_BITS);
+    i64::try_from(bits).ok().map(Num::from_bits)
+}
+
+#[test]
+fn a_raw_sum_rounds_as_the_shift_at_its_edges() {
+    // Ties either side of an odd and an even floor, the ends of `i64` in bits, and the ends of
+    // `i128`, where the added half wraps.
+    let half = 1_i128 << 23;
+    let edge = i128::from(i64::MAX) << 24;
+    let cases = [
+        0,
+        half,
+        3 * half,
+        -half,
+        -3 * half,
+        half + 1,
+        edge,
+        edge + half,
+        edge + half - 1,
+        -edge - (1 << 24),
+        -edge - (1 << 24) - half,
+        -edge - (1 << 24) - half - 1,
+        i128::MAX,
+        i128::MAX - half,
+        i128::MIN,
+        i128::MIN + half,
+    ];
+    for sum in cases {
+        assert_eq!(Num::from_raw_products(sum), by_shift(sum), "{sum}");
+    }
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(CASES))]
+
+    #[test]
+    fn a_raw_sum_rounds_as_the_shift(sum in any::<i128>(), shift in 0_u32..100) {
+        let sum = sum >> shift;
+        prop_assert_eq!(Num::from_raw_products(sum), by_shift(sum));
+    }
 
     #[test]
     fn add_sub_match_exact_sums(a in bits(), b in bits()) {

@@ -18,6 +18,9 @@ const DOMAIN: &[u8] = b"campfire/rng/v1";
 /// that for every partial read, so `Rng` reads whole blocks and serves words from them.
 const BLOCK_LEN: usize = 64;
 const WORD_LEN: usize = 8;
+/// The longest message: the domain, the stream's length and its longest name, the entity and the
+/// tick.
+const MAX_MESSAGE_LEN: usize = DOMAIN.len() + 4 + RngStream::MAX_LEN + 8 + 8;
 
 /// The random sequence of one (stream, entity, tick): keyed BLAKE3 extended output, so the draws
 /// a client sees do not reveal the seed.
@@ -34,13 +37,21 @@ impl Rng {
     pub(crate) fn new(seed: &SegmentSeed, stream: RngStream, entity: u64, tick: u64) -> Rng {
         let stream = stream.as_bytes();
         let stream_len = u32::try_from(stream.len()).expect("a stream's name has at most 64 bytes");
+        // The whole message in one update, as each update pays its own checks and copies.
+        let mut message = [0; MAX_MESSAGE_LEN];
+        let mut at = 0;
+        for part in [
+            DOMAIN,
+            &stream_len.to_le_bytes(),
+            stream,
+            &entity.to_le_bytes(),
+            &tick.to_le_bytes(),
+        ] {
+            message[at..at + part.len()].copy_from_slice(part);
+            at += part.len();
+        }
         let mut hasher = Hasher::new_keyed(seed.as_bytes());
-        hasher
-            .update(DOMAIN)
-            .update(&stream_len.to_le_bytes())
-            .update(stream)
-            .update(&entity.to_le_bytes())
-            .update(&tick.to_le_bytes());
+        hasher.update(&message[..at]);
         Rng {
             reader: hasher.finalize_xof(),
             block: [0; BLOCK_LEN],

@@ -404,4 +404,20 @@ fn a_division_and_a_product_order_by_hand_at_the_ends() {
     assert_eq!(top.cmp_products(1, two_128, 1 << 127), Ordering::Equal);
     assert_eq!(top.cmp_products(1, two_128, (1 << 127) + 1), Ordering::Less);
     assert_eq!(U256::ZERO.cmp_products(0, U256::ZERO, 1), Ordering::Equal);
+    // Both values within 128 bits, whose products fit 256: (2¹²⁸ − 1)² equals itself and passes
+    // (2¹²⁸ − 1)(2¹²⁸ − 2), which differs in the low half too; 2¹²⁷ · 2 is 2 · 2¹²⁷, and passes
+    // (2¹²⁸ − 1) · 1 in the high half alone; 2 · 7 = 14 lies below 3 · 5 = 15.
+    let max = U256::from_u128(u128::MAX);
+    assert_eq!(max.cmp_products(u128::MAX, max, u128::MAX), Ordering::Equal);
+    assert_eq!(
+        max.cmp_products(u128::MAX - 1, max, u128::MAX),
+        Ordering::Less
+    );
+    let half = U256::from_u128(1 << 127);
+    let two = U256::from_u128(2);
+    assert_eq!(half.cmp_products(2, two, 1 << 127), Ordering::Equal);
+    assert_eq!(half.cmp_products(2, max, 1), Ordering::Greater);
+    let seven = U256::from_u128(7);
+    assert_eq!(two.cmp_products(7, U256::from_u128(3), 5), Ordering::Less);
+    assert_eq!(seven.cmp_products(2, two, 7), Ordering::Equal);
 }

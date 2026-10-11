@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::floor_root::FloorRoot;
+use crate::floor_root::NearestRoot;
 use crate::num::decimal::Decimal;
 use crate::num::error::ParseNumError;
 use crate::rounding::Rounding;
@@ -141,47 +141,52 @@ impl Num {
     }
 
     /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once to
-    /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit.
+    /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit. Adding
+    /// `2²³ − 1` and the floor's last bit before the shift rounds a rest past half up, a rest of
+    /// half up from an odd floor only, and a smaller rest down. The addition wraps only for a sum
+    /// within 2²⁴ of `i128::MAX`, whose quotient, wrapped or not, does not fit an `i64` either.
     pub(crate) const fn from_raw_products(sum: i128) -> Option<Num> {
-        narrow(Rounding::NearestEven.shift_right(sum, Self::FRAC_BITS))
+        const HALF_LESS_ONE: i128 = (1 << (Num::FRAC_BITS - 1)) - 1;
+        let odd = (sum >> Self::FRAC_BITS) & 1;
+        narrow(sum.wrapping_add(HALF_LESS_ONE + odd) >> Self::FRAC_BITS)
     }
 
     /// The value whose bits are nearest to `numerator / denominator`, for a ratio of raw products;
     /// `None` when it does not fit.
-    pub(crate) const fn from_raw_ratio(numerator: i128, denominator: i128) -> Option<Num> {
+    pub(crate) fn from_raw_ratio(numerator: i128, denominator: i128) -> Option<Num> {
         narrow(Rounding::NearestEven.divide(numerator, denominator))
     }
 
-    pub const fn checked_div(self, rhs: Num) -> Option<Num> {
+    pub fn checked_div(self, rhs: Num) -> Option<Num> {
         self.checked_div_rounded(rhs, Rounding::NearestEven)
     }
 
     /// `self ÷ rhs`, rounded once by `rounding`; `None` for a divisor of 0 or a result that does
     /// not fit.
-    pub const fn checked_div_rounded(self, rhs: Num, rounding: Rounding) -> Option<Num> {
+    pub fn checked_div_rounded(self, rhs: Num, rounding: Rounding) -> Option<Num> {
         if rhs.0 == 0 {
             return None;
         }
-        narrow(rounding.divide((self.0 as i128) << Self::FRAC_BITS, rhs.0 as i128))
+        narrow(rounding.divide(i128::from(self.0) << Self::FRAC_BITS, i128::from(rhs.0)))
     }
 
     /// `self × by ÷ over`, from the exact product, rounded once by `rounding`; `None` for a
     /// divisor of 0 or a result that does not fit.
-    pub const fn checked_mul_div(self, by: Num, over: Num, rounding: Rounding) -> Option<Num> {
+    pub fn checked_mul_div(self, by: Num, over: Num, rounding: Rounding) -> Option<Num> {
         if over.0 == 0 {
             return None;
         }
-        narrow(rounding.divide(self.0 as i128 * by.0 as i128, over.0 as i128))
+        narrow(rounding.divide(i128::from(self.0) * i128::from(by.0), i128::from(over.0)))
     }
 
     /// `self × by ÷ over` for whole `by` and `over`, as a share of a value, from the exact
     /// product, rounded once by `rounding`; `None` for a divisor of 0 or a result that does not
     /// fit.
-    pub const fn checked_mul_ratio(self, by: i64, over: i64, rounding: Rounding) -> Option<Num> {
+    pub fn checked_mul_ratio(self, by: i64, over: i64, rounding: Rounding) -> Option<Num> {
         if over == 0 {
             return None;
         }
-        narrow(rounding.divide(self.0 as i128 * by as i128, over as i128))
+        narrow(rounding.divide(i128::from(self.0) * i128::from(by), i128::from(over)))
     }
 
     /// Exact scaling by an integer.
@@ -194,21 +199,21 @@ impl Num {
 
     /// `self × rhs ÷ divisor`, rounded once to nearest, ties to even; `None` for a divisor of 0
     /// or a result that does not fit.
-    pub const fn checked_mul_div_int(self, rhs: Num, divisor: i64) -> Option<Num> {
+    pub fn checked_mul_div_int(self, rhs: Num, divisor: i64) -> Option<Num> {
         if divisor == 0 {
             return None;
         }
         narrow(Rounding::NearestEven.divide(
-            self.0 as i128 * rhs.0 as i128,
-            (divisor as i128) << Self::FRAC_BITS,
+            i128::from(self.0) * i128::from(rhs.0),
+            i128::from(divisor) << Self::FRAC_BITS,
         ))
     }
 
-    pub const fn checked_div_int(self, rhs: i64) -> Option<Num> {
+    pub fn checked_div_int(self, rhs: i64) -> Option<Num> {
         if rhs == 0 {
             return None;
         }
-        narrow(Rounding::NearestEven.divide(self.0 as i128, rhs as i128))
+        narrow(Rounding::NearestEven.divide(i128::from(self.0), i128::from(rhs)))
     }
 
     /// `None` for a negative value.
@@ -222,15 +227,11 @@ impl Num {
     /// The value whose bits are the integer nearest to √`squared_bits`; `None` when it does not
     /// fit. √ of an integer is never exactly a half, so no tie rule is needed.
     pub(crate) fn from_root_of_bits(squared_bits: u128) -> Option<Num> {
-        let floor = squared_bits.floor_root();
-        // The floor is below 2⁶⁴ and its square at most the value, so no step can overflow, and
-        // the wrapping ones skip the checks a release build makes.
-        let nearest = if squared_bits.wrapping_sub(floor.wrapping_mul(floor)) > floor {
-            floor + 1
-        } else {
-            floor
-        };
-        narrow(nearest.cast_signed())
+        // From 2¹²⁶ on, the root is at least 2⁶³, past `i64`.
+        if squared_bits >= 1 << 126 {
+            return None;
+        }
+        narrow(squared_bits.nearest_root().cast_signed())
     }
 
     #[must_use]
@@ -246,7 +247,7 @@ impl Num {
 
     /// The angle of the point `(x, self)` in radians, in `[−π, π]`; `0` for the origin.
     #[must_use]
-    pub const fn atan2(self, x: Num) -> Num {
+    pub fn atan2(self, x: Num) -> Num {
         trig::atan2(self, x)
     }
 }

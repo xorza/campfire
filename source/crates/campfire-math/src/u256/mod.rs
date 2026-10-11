@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use crate::rounding::Rounding;
+use crate::wide_division::WideDivision;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -27,6 +28,11 @@ const MASK: u128 = u64::MAX as u128;
 
 impl U256 {
     pub const ZERO: U256 = U256 { high: 0, low: 0 };
+
+    /// The number `high · 2¹²⁸ + low`.
+    pub(crate) const fn from_halves(high: u128, low: u128) -> U256 {
+        U256 { high, low }
+    }
 
     /// `value`, widened.
     pub const fn from_u128(value: u128) -> U256 {
@@ -67,11 +73,9 @@ impl U256 {
 
     /// `self / divisor` for a positive divisor, rounded by `rounding`; `None` when it passes
     /// `u128`.
-    pub const fn div_rounded(self, divisor: u128, rounding: Rounding) -> Option<u128> {
+    pub fn div_rounded(self, divisor: u128, rounding: Rounding) -> Option<u128> {
         debug_assert!(divisor > 0);
-        let Some(Division { quotient, rest }) = self.divide(divisor) else {
-            return None;
-        };
+        let Division { quotient, rest } = self.divide(divisor)?;
         U256::rounded(quotient, rest, divisor, rounding)
     }
 
@@ -91,15 +95,13 @@ impl U256 {
     /// `self / divisor` rounded down and its rest, `None` when the quotient passes `u128`, as
     /// it does exactly when the high half is at least the divisor. A value that fits `u128`
     /// divides natively.
-    const fn divide(self, divisor: u128) -> Option<Division> {
+    fn divide(self, divisor: u128) -> Option<Division> {
         if self.high >= divisor {
             return None;
         }
         Some(if self.high == 0 {
-            Division {
-                quotient: self.low / divisor,
-                rest: self.low % divisor,
-            }
+            let WideDivision { quotient, rest } = WideDivision::of(self.low, divisor);
+            Division { quotient, rest }
         } else {
             self.long_division(divisor)
         })
@@ -110,7 +112,7 @@ impl U256 {
     /// quotient digits each from a native division, where a division a bit at a time takes 128
     /// steps. Both sides are shifted until the divisor's top bit is set, which keeps each digit's
     /// estimate from the divisor's top digit at most 2 too large.
-    const fn long_division(self, divisor: u128) -> Division {
+    fn long_division(self, divisor: u128) -> Division {
         debug_assert!(self.high < divisor);
         let shift = divisor.leading_zeros();
         let divisor = divisor << shift;
@@ -133,10 +135,12 @@ impl U256 {
     /// set and a `high` below it, so the digit is below 2⁶⁴. The estimate `high / top` is at
     /// least the digit, and each time the divisor's lower digit shows it too large it falls by
     /// one, until its rest by `top` reaches 2⁶⁴, past which the test cannot fail.
-    const fn digit(high: u128, next: u128, divisor: u128) -> Division {
+    fn digit(high: u128, next: u128, divisor: u128) -> Division {
         let (top, bottom) = (divisor >> HALF, divisor & MASK);
-        let mut quotient = high / top;
-        let mut rest = high % top;
+        let WideDivision {
+            mut quotient,
+            mut rest,
+        } = WideDivision::of(high, top);
         while quotient > MASK || quotient * bottom > ((rest << HALF) | next) {
             quotient -= 1;
             rest += top;
@@ -152,6 +156,24 @@ impl U256 {
     /// How `self × by` orders against `other × other_by`, exactly: each product, up to 384 bits,
     /// held as three 128-bit limbs, so no product passes them.
     pub const fn cmp_products(self, by: u128, other: U256, other_by: u128) -> Ordering {
+        // Most values fit 128 bits, whose products fit 256: half the multiplies.
+        if self.high | other.high == 0 {
+            let ours = U256::product(self.low, by);
+            let theirs = U256::product(other.low, other_by);
+            return if ours.high != theirs.high {
+                if ours.high < theirs.high {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            } else if ours.low < theirs.low {
+                Ordering::Less
+            } else if ours.low > theirs.low {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            };
+        }
         let ours = self.wide_product(by);
         let theirs = other.wide_product(other_by);
         let mut limb = 0;

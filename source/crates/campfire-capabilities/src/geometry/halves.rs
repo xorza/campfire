@@ -2,7 +2,8 @@ use campfire_math::{Flat, Num};
 use campfire_sim::Position;
 
 /// Coordinates in halves of a bit, the scale at which a grid cell's center is whole. Within
-/// twice the world's bound, their sums and products fit a `Flat`'s `i128`s.
+/// twice the world's bound, they and their sums fit a `Flat`'s `i64`s, and their products its
+/// `i128` ones.
 #[derive(Debug)]
 pub(crate) struct Halves;
 

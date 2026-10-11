@@ -13,6 +13,7 @@ mod rounding;
 mod simd;
 mod u256;
 mod vec3;
+mod wide_division;
 
 pub use crate::ceil_root::CeilRoot;
 pub use crate::flat::Flat;

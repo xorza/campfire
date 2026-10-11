@@ -38,8 +38,7 @@ fn polygon(body: &BodyBox, centre: Position) -> Polygon {
 }
 
 fn flat_vec3(off: Flat) -> Vec3 {
-    let num = |bits: i128| Num::from_bits(i64::try_from(bits).unwrap());
-    Vec3::new(num(off[0]), Num::ZERO, num(off[1]))
+    Vec3::new(Num::from_bits(off[0]), Num::ZERO, Num::from_bits(off[1]))
 }
 
 /// Where the path from `start` along `path` crosses the segment from `a` to `b`, as a share of
@@ -704,7 +703,7 @@ fn moves_out(k: i128, along: i128, out: i128, square: i128, radius: i128) -> boo
 }
 
 #[test]
-fn a_push_is_the_least_whole_move_and_its_first_try_one_below_it_at_most() {
+fn a_push_is_the_least_whole_move_and_its_first_try_two_below_it_at_most() {
     // Every small case, against a scan from 0: the least `k` that moves the body out.
     for square in 1..40_i128 {
         for along in (0..=square).filter(|along| along * along <= square) {
@@ -719,9 +718,10 @@ fn a_push_is_the_least_whole_move_and_its_first_try_one_below_it_at_most() {
                         .find(|&k| moves_out(k, along, out, square, radius))
                         .unwrap();
                     let case = format!("{along} {out} {square} {radius}");
-                    assert_eq!(outward(along, out, square, radius), least, "{case}");
-                    let first = first_outward(along, out, square, radius);
-                    assert!(first == least || first + 1 == least, "{case}");
+                    let root = FineRoot::of(square.unsigned_abs());
+                    assert_eq!(outward(along, out, square, radius, root), least, "{case}");
+                    let first = first_outward(along, out, square, radius, root);
+                    assert!(least - 2 <= first && first <= least, "{case}");
                 }
             }
         }
@@ -736,21 +736,22 @@ fn a_push_is_the_least_whole_move_and_its_first_try_one_below_it_at_most() {
     let (axis, aslant) = (4093 * meter, 2894 * meter);
     for (along, square) in [(axis, axis * axis), (aslant, 2 * aslant * aslant)] {
         let length = square.cast_unsigned().floor_root().cast_signed();
+        let root = FineRoot::of(square.unsigned_abs());
         for out in [
             -square,
             0,
             length * (radius - 1),
             length * (radius >> 1) + 12_345,
         ] {
-            let k = outward(along, out, square, radius);
+            let k = outward(along, out, square, radius, root);
             let case = format!("{along} {out}");
             assert!(moves_out(k, along, out, square, radius), "{case}");
             assert!(!moves_out(k - 1, along, out, square, radius), "{case}");
-            let first = first_outward(along, out, square, radius);
-            assert!(first == k || first + 1 == k, "{case}");
+            let first = first_outward(along, out, square, radius, root);
+            assert!(k - 2 <= first && first <= k, "{case}");
         }
     }
-    assert_eq!(outward(1, 1, 1, radius), radius - 1);
+    assert_eq!(outward(1, 1, 1, radius, FineRoot::of(1)), radius - 1);
 }
 
 #[test]

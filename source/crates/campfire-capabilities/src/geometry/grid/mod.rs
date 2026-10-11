@@ -77,7 +77,7 @@ impl Grid {
         let step = i128::from(self.cell.to_bits());
         let min = self.bounds.min();
         let index = |index: usize| i128::try_from(index).expect("a cell of the grid");
-        let at = Halves::ground(pos);
+        let at = Halves::ground(pos).to_array();
         let offset = |axis: usize| {
             let center = |index: i128| Halves::of(min[axis]) + step * (2 * index + 1);
             let nearest = at[axis].clamp(center(index(low[axis])), center(index(high[axis])));
@@ -149,6 +149,7 @@ impl Grid {
         mut mark: impl FnMut(Range<usize>),
     ) {
         let centre = Halves::ground(pos);
+        let at = centre.to_array();
         let extent = body.extent();
         let min = self.bounds.min();
         let cell = i128::from(self.cell.to_bits());
@@ -157,8 +158,8 @@ impl Grid {
         // `2 min + cell (2 i + 1)` halves.
         let span = |axis: usize| {
             let grow = Halves::of(extent[axis]) + Halves::of(reach);
-            let from = centre[axis] - grow - Halves::of(min[axis]) - cell;
-            let to = centre[axis] + grow - Halves::of(min[axis]) - cell;
+            let from = at[axis] - grow - Halves::of(min[axis]) - cell;
+            let to = at[axis] + grow - Halves::of(min[axis]) - cell;
             let first = Rounding::Ceiling.divide(from, 2 * cell).max(0);
             let end = to.div_euclid(2 * cell).min(last(axis));
             first..=end
@@ -176,14 +177,15 @@ impl Grid {
         mut mark: impl FnMut(Range<usize>),
     ) {
         let centre = Halves::ground(pos);
+        let at = centre.to_array();
         let extent = body.extent();
         let min = self.bounds.min();
         let cell = i128::from(self.cell.to_bits());
         let last = |axis: usize| i128::from(self.size[axis]) - 1;
         // The cells whose squares, from `2 min + 2 cell i` to the next, the rectangle meets.
         let span = |axis: usize| {
-            let from = centre[axis] - Halves::of(extent[axis]) - Halves::of(min[axis]);
-            let to = centre[axis] + Halves::of(extent[axis]) - Halves::of(min[axis]);
+            let from = at[axis] - Halves::of(extent[axis]) - Halves::of(min[axis]);
+            let to = at[axis] + Halves::of(extent[axis]) - Halves::of(min[axis]);
             let first = from.div_euclid(2 * cell).max(0);
             let end = to.div_euclid(2 * cell).min(last(axis));
             first..=end
