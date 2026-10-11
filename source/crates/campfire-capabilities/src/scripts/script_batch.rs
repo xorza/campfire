@@ -10,34 +10,37 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
-use crate::units::view::View;
 
-/// A group of script calls in one stage: they share the view as the stage began, and the host,
-/// out of the world while they run.
+/// A group of script calls in one stage: they share the view as the stage began, the `ctx` of
+/// their calls, and the host, out of the world while they run.
 #[derive(Debug)]
 pub(crate) struct ScriptBatch<'a> {
     world: &'a mut World,
     host: &'a mut ScriptHost,
+    ctx: Ctx,
 }
 
 impl ScriptBatch<'_> {
-    /// Reads `view`, takes the host out of `world`, runs `calls`, puts the host back, and gives
-    /// what `calls` gave.
-    pub(crate) fn run<T>(
-        world: &mut World,
-        view: &View,
-        calls: impl FnOnce(&mut ScriptBatch<'_>) -> T,
-    ) -> T {
-        view.read(world);
+    /// Reads the view of `world`'s `ctx`, takes the host out of `world`, runs `calls`, puts the
+    /// host back, and gives what `calls` gave.
+    pub(crate) fn run<T>(world: &mut World, calls: impl FnOnce(&mut ScriptBatch<'_>) -> T) -> T {
+        let ctx = world.non_send::<Ctx>().clone();
+        ctx.view().read(world);
         let mut host = world
             .remove_non_send::<ScriptHost>()
             .expect("the core runs scripts");
         let given = calls(&mut ScriptBatch {
             world,
             host: &mut host,
+            ctx,
         });
         world.insert_non_send(host);
         given
+    }
+
+    /// The `ctx` of the batch's calls.
+    pub(crate) const fn ctx(&self) -> &Ctx {
+        &self.ctx
     }
 
     /// Calls `hook` of `script` with `args`, from the budget of `pool`.
@@ -66,17 +69,17 @@ impl ScriptBatch<'_> {
             .map_err(CallError::from_script)
     }
 
-    /// Runs one call of `hook` in `ctx`'s frame: begins `start`, then runs `body`, which queues
+    /// Runs one call of `hook` in the batch's frame: begins `start`, then runs `body`, which queues
     /// what the call does and calls its script; applies the frame in the call's tick when both
     /// succeed, and otherwise records the failure, for `unit` if any, and applies nothing.
     pub(crate) fn hook_call(
         &mut self,
-        ctx: &Ctx,
         start: CallStart,
         hook: Hook,
         unit: Option<StableId>,
         body: impl FnOnce(&mut ScriptBatch<'_>) -> Result<(), CallError>,
     ) {
+        let ctx = self.ctx.clone();
         // The frame's borrow ends before `body`, which borrows it again.
         let begun = ctx.frame().begin(self.world, start);
         match begun.and_then(|()| body(self)) {

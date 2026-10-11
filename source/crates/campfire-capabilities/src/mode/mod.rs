@@ -1,6 +1,7 @@
 //! The mode: its script, its state, its players' choices, and the units it spawns. It runs the
 //! mode's hooks on the capabilities below it.
 
+use std::any::Any;
 use std::mem;
 use std::rc::Rc;
 
@@ -14,6 +15,7 @@ use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
+use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::damage::DamageWeigher;
 use crate::combat::heal::HealWeigher;
 use crate::declare::declarations::Declarations;
@@ -22,6 +24,7 @@ use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
 use crate::mode::game_map::GameMap;
 use crate::mode::match_end::MatchEnd;
+use crate::mode::match_mode::MatchMode;
 use crate::mode::mode_api::ModeApi;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_books::ModeBooks;
@@ -78,6 +81,7 @@ pub(crate) mod map_point;
 pub(crate) mod marker;
 pub(crate) mod marker_spec;
 pub(crate) mod match_end;
+pub(crate) mod match_mode;
 pub(crate) mod mode_api;
 pub(crate) mod mode_book;
 pub(crate) mod mode_books;
@@ -191,22 +195,19 @@ impl Mode {
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
         ctx.frame().add_part(ModeCall::new(Rc::clone(&book)));
-        ctx.set_mode(book);
-        let spawning = ctx.clone();
+        ctx.set_mode(Rc::clone(&book) as Rc<dyn Any>);
+        world.insert_non_send(MatchMode(Rc::clone(&book)));
         world.insert_non_send(Spawner::new(move |world, at, owner| {
-            let mode = ModeBook::of_match(&spawning);
-            mode.spawn_owned(world, at, owner)
+            book.spawn_owned(world, at, owner)
         }));
+        // A mode that defines either hook declares combat, as the load checks.
         if hooks.contains(Hook::CalcDamage) {
-            let ctx = ctx.clone();
-            world.insert_non_send(DamageWeigher::new(move |batch, damage| {
-                Calls::weigh_damage(batch, &ctx, damage)
-            }));
+            let weigher = DamageWeigher::new(Calls::weigh_damage);
+            world.non_send_mut::<CombatHooks>().weigher = Some(weigher);
         }
         if hooks.contains(Hook::CalcHeal) {
-            world.insert_non_send(HealWeigher::new(move |batch, heal| {
-                Calls::weigh_heal(batch, &ctx, heal)
-            }));
+            let healer = HealWeigher::new(Calls::weigh_heal);
+            world.non_send_mut::<CombatHooks>().healer = Some(healer);
         }
         schedule.add_systems((
             ModeHooks::mode_inputs
@@ -240,13 +241,13 @@ impl Mode {
     /// The mode's state in the match in `world`, every field in the order of their names, as a
     /// mode call reads it.
     pub fn state(world: &World) -> Vec<StateValue> {
-        let ctx = world.non_send::<Ctx>();
         let mut state = Vec::new();
         let (none, all) = (
             ModeState::<SyncNone>::of(world),
             ModeState::<SyncAll>::of(world),
         );
-        ModeBook::of_match(ctx)
+        world
+            .non_send::<MatchMode>()
             .schema
             .merge_state(none, all, &mut state);
         state
@@ -255,8 +256,7 @@ impl Mode {
     /// Whether each slot of the session has its entity, as the mode's start spawns them, so no
     /// call finds one missing.
     fn players_seated(world: &World) -> Result<(), Breach> {
-        let ctx = world.non_send::<Ctx>();
-        let players = ModeBook::of_match(ctx).teams.players();
+        let players = world.non_send::<MatchMode>().teams.players();
         let seated = (0..players)
             .map(PlayerSlot::new)
             .all(|slot| Player::entity(world, slot).is_some());
@@ -268,8 +268,7 @@ impl Mode {
     /// that lacks one. A match with no progression has no level track, as `ModeBook::spawn` reads
     /// it.
     fn kits_held(world: &World) -> Result<(), Breach> {
-        let ctx = world.non_send::<Ctx>();
-        let book = ModeBook::of_match(ctx);
+        let book = world.non_send::<MatchMode>();
         let level_track = world
             .get_resource::<TrackBook>()
             .and_then(TrackBook::level_track);
@@ -284,7 +283,7 @@ impl Mode {
     /// The team of player `slot` in the match in `world`; `None` before the mode installs, or for
     /// a slot the session does not have.
     pub fn team_of(world: &World, slot: PlayerSlot) -> Option<Team> {
-        ModeBook::of(world.get_non_send::<Ctx>()?)?.teams.of(slot)
+        world.get_non_send::<MatchMode>()?.teams.of(slot)
     }
 
     /// Starts the match, before its first tick: the map's placed units spawn, on their paths and
@@ -292,8 +291,7 @@ impl Mode {
     /// start. An error when the call fails: a match its mode cannot start would run without its
     /// rules.
     pub fn start(world: &mut World) -> Result<(), CallError> {
-        let ctx = world.non_send::<Ctx>().clone();
-        let book = ModeBook::of_match(&ctx);
+        let book = world.non_send::<MatchMode>().clone();
         let teams = &book.teams;
         let slots = (0..teams.players()).map(PlayerSlot::new);
         let state = (book.state_none.clone(), book.state_all.clone());
@@ -326,7 +324,7 @@ impl Mode {
             return Ok(());
         }
         let now = world.resource::<SimTick>().start();
-        Calls::batch(world, &ctx, now, |call| {
+        Calls::batch(world, now, |call| {
             call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
         })
         .map_err(CallError::from_script)
@@ -339,7 +337,7 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position, StableId};
 
-    use crate::mode::mode_book::ModeBook;
+    use crate::mode::match_mode::MatchMode;
     use crate::scripts::ctx::Ctx;
     use crate::units::spawn_at::SpawnAt;
     use crate::units::spawner::Spawner;
@@ -349,7 +347,7 @@ pub(crate) mod internals {
     /// kit gives, as the mode's own spawns do.
     pub fn spawn_typed(world: &mut World, name: &str, team: Team, pos: Position) -> StableId {
         let ctx = world.non_send::<Ctx>().clone();
-        let book = ModeBook::of_match(&ctx);
+        let book = world.non_send::<MatchMode>().clone();
         let unit_type = ctx
             .view()
             .unit_type_named(name)

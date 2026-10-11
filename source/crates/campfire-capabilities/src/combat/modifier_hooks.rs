@@ -192,7 +192,7 @@ impl ModifierHooks {
             ..CallStart::hook(heard.id, package, depth, now)
         };
         let ctx = &self.ctx;
-        batch.hook_call(ctx, start, hook, Some(carrier), |batch| {
+        batch.hook_call(start, hook, Some(carrier), |batch| {
             let handle = {
                 let clocks = batch
                     .world()

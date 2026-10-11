@@ -267,10 +267,9 @@ impl Casts {
         if due.is_empty() {
             return;
         }
-        let ctx = world.non_send::<Ctx>().clone();
-        ScriptBatch::run(world, ctx.view(), |batch| {
+        ScriptBatch::run(world, |batch| {
             for &Keyed { id: caster, entity } in &*due {
-                Self::resolve(batch, &ctx, now, caster, entity);
+                Self::resolve(batch, now, caster, entity);
             }
         });
     }
@@ -343,13 +342,8 @@ impl Casts {
     /// apply together, or, when the cast no longer passes its checks or it fails, none of them, and
     /// it only stops. Of an item's action, a use of its consumable is spent last, as one used up
     /// empties its slot.
-    fn resolve(
-        batch: &mut ScriptBatch<'_>,
-        ctx: &Ctx,
-        now: Tick,
-        caster: StableId,
-        entity: Entity,
-    ) {
+    fn resolve(batch: &mut ScriptBatch<'_>, now: Tick, caster: StableId, entity: Entity) {
+        let ctx = &batch.ctx().clone();
         let ran = Self::prepare(batch.world(), ctx, now, caster, entity).and_then(|prepared| {
             let Some(mut prepared) = prepared else {
                 return Ok(None);

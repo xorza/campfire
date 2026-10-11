@@ -10,7 +10,6 @@ use crate::navigation::destination::Destination;
 use crate::orders::ai::Ai;
 use crate::orders::next_think::NextThink;
 use crate::orders::resetting::Resetting;
-use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
@@ -109,8 +108,8 @@ impl Thinking {
             return;
         }
         due.sort_unstable_by_key(|due| (due.since, due.id));
-        let ctx = world.non_send::<Ctx>().clone();
-        ScriptBatch::run(world, ctx.view(), |batch| {
+        ScriptBatch::run(world, |batch| {
+            let ctx = batch.ctx().clone();
             for &Due {
                 since,
                 id,

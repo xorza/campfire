@@ -3,7 +3,8 @@ use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_sim::{SimTick, StableId};
 
-use crate::combat::combat_event::{CombatEvent, CombatEvents};
+use crate::combat::combat_event::CombatEvent;
+use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::interval_due::IntervalDue;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::carried_mut::CarriedMut;
@@ -14,7 +15,6 @@ use crate::units::dead::Dead;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
-use crate::units::view::View;
 
 /// The intervals of the modifiers units carry, which run their hooks in Hit.
 #[derive(Debug)]
@@ -62,11 +62,14 @@ impl ModifierIntervals {
             return;
         }
         due.sort_unstable();
-        let Some(events) = world.remove_non_send::<CombatEvents>() else {
+        let hooks = world
+            .remove_non_send::<CombatHooks>()
+            .expect("combat installs its hooks");
+        let Some(events) = &hooks.events else {
+            world.insert_non_send(hooks);
             return;
         };
-        let view = world.non_send::<View>().clone();
-        ScriptBatch::run(world, &view, |batch| {
+        ScriptBatch::run(world, |batch| {
             for &IntervalDue {
                 carrier,
                 id,
@@ -83,6 +86,6 @@ impl ModifierIntervals {
                 );
             }
         });
-        world.insert_non_send(events);
+        world.insert_non_send(hooks);
     }
 }

@@ -24,7 +24,7 @@ use crate::scripts::script_batch::ScriptBatch;
 #[derive(Debug)]
 pub(crate) struct Calls<'a, 'w> {
     pub(crate) batch: &'a mut ScriptBatch<'w>,
-    pub(crate) ctx: &'a Ctx,
+    pub(crate) ctx: Ctx,
     now: Tick,
 }
 
@@ -32,18 +32,18 @@ impl Calls<'_, '_> {
     /// Runs `calls` in one script batch at the time `now`, and gives what `calls` gave.
     pub(crate) fn batch<T>(
         world: &mut World,
-        ctx: &Ctx,
         now: Tick,
         calls: impl FnOnce(&mut Calls<'_, '_>) -> T,
     ) -> T {
-        ScriptBatch::run(world, ctx.view(), |batch| {
+        ScriptBatch::run(world, |batch| {
+            let ctx = batch.ctx().clone();
             calls(&mut Calls { batch, ctx, now })
         })
     }
 
     /// The match's mode.
     pub(crate) fn book(&self) -> &ModeBook {
-        ModeBook::of_match(self.ctx)
+        ModeBook::of_match(&self.ctx)
     }
 
     /// Runs `hook` with `args` from `pool`: on success its state, choices and ids commit and its
@@ -87,33 +87,28 @@ impl Calls<'_, '_> {
     /// as a number.
     pub(crate) fn weigh_damage(
         batch: &mut ScriptBatch<'_>,
-        ctx: &Ctx,
         damage: Damage,
     ) -> Result<Num, CallError> {
-        let handle = DamageHandle::new(damage, ctx.view().clone());
-        Calls::amount(batch, ctx, Hook::CalcDamage, Dynamic::from(handle))
+        let handle = DamageHandle::new(damage, batch.ctx().view().clone());
+        Calls::amount(batch, Hook::CalcDamage, Dynamic::from(handle))
     }
 
     /// The amount of `heal` before the heal scale: what the mode's `calc_heal` returns for it,
     /// a pure call in `batch`; an error when the call fails or returns no number.
-    pub(crate) fn weigh_heal(
-        batch: &mut ScriptBatch<'_>,
-        ctx: &Ctx,
-        heal: Heal,
-    ) -> Result<Num, CallError> {
-        let handle = HealHandle::new(heal, ctx.view().clone());
-        Calls::amount(batch, ctx, Hook::CalcHeal, Dynamic::from(handle))
+    pub(crate) fn weigh_heal(batch: &mut ScriptBatch<'_>, heal: Heal) -> Result<Num, CallError> {
+        let handle = HealHandle::new(heal, batch.ctx().view().clone());
+        Calls::amount(batch, Hook::CalcHeal, Dynamic::from(handle))
     }
 
     /// The number the mode's pure `hook` returns for `handle`, in `batch`.
-    fn amount(
-        batch: &mut ScriptBatch<'_>,
-        ctx: &Ctx,
-        hook: Hook,
-        handle: Dynamic,
-    ) -> Result<Num, CallError> {
+    fn amount(batch: &mut ScriptBatch<'_>, hook: Hook, handle: Dynamic) -> Result<Num, CallError> {
         let now = batch.world().resource::<SimTick>().start();
-        let mut calls = Calls { batch, ctx, now };
+        let ctx = batch.ctx().clone();
+        let mut calls = Calls {
+            batch,
+            ctx: ctx.clone(),
+            now,
+        };
         calls.begin(true);
         let script = calls.book().schema.script;
         let returned = calls.batch.call_pure(script, hook, (ctx.clone(), handle));

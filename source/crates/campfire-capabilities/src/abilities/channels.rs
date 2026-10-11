@@ -12,7 +12,6 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::channel_call::{ChannelCall, ChannelStep};
 use crate::items::inventory::Inventory;
 use crate::scripts::call_start::CallStart;
-use crate::scripts::ctx::Ctx;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
@@ -46,8 +45,7 @@ impl Channels {
         if due.is_empty() {
             return;
         }
-        let ctx = world.non_send::<Ctx>().clone();
-        ScriptBatch::run(world, ctx.view(), |batch| {
+        ScriptBatch::run(world, |batch| {
             for &Keyed { id, entity } in &*due {
                 let step = Self::step_channel(batch.world(), now, entity);
                 for (call, hook) in [
@@ -55,7 +53,7 @@ impl Channels {
                     (step.ticked, Hook::OnChannelTick),
                 ] {
                     if let Some(call) = call {
-                        Self::channel_call(batch, &ctx, now, id, entity, call, hook);
+                        Self::channel_call(batch, now, id, entity, call, hook);
                     }
                 }
             }
@@ -89,13 +87,13 @@ impl Channels {
     /// action's script defines it; a failed call applies nothing, and is recorded.
     fn channel_call(
         batch: &mut ScriptBatch<'_>,
-        ctx: &Ctx,
         now: Tick,
         caster: StableId,
         entity: Entity,
         call: ChannelCall,
         hook: Hook,
     ) {
+        let ctx = &batch.ctx().clone();
         let ChannelCall {
             call: ActionCall { aim, start },
             action: id,
@@ -114,7 +112,7 @@ impl Channels {
             ..CallStart::cast(id, rank, caster, package, now)
         };
         let pool = Pool::of(owner);
-        batch.hook_call(ctx, start, hook, Some(caster), |batch| match hook {
+        batch.hook_call(start, hook, Some(caster), |batch| match hook {
             Hook::OnInterrupt => {
                 let target = Abilities::target(ctx.view(), aim.target);
                 batch.call_hook(pool, script, hook, (ctx.clone(), handle, target))

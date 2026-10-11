@@ -9,12 +9,11 @@ use crate::combat::respawn::Respawn;
 use crate::mode::group_unit::GroupUnit;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::match_end::MatchResult;
-use crate::mode::mode_book::ModeBook;
+use crate::mode::match_mode::MatchMode;
 use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::navigation::path_walker::PathEnd;
 use crate::players::match_entity::MatchEntity;
-use crate::scripts::ctx::Ctx;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::scripts::state_value::StateValue;
@@ -78,8 +77,7 @@ impl Effect for ModeEffect {
     /// kind's first rank, and nothing for a unit that is gone.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        let ctx = world.non_send::<Ctx>().clone();
-        let book = ModeBook::of_match(&ctx);
+        let book = world.non_send::<MatchMode>().clone();
         match self {
             ModeEffect::Timer {
                 name,

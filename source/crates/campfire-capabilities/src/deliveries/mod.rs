@@ -101,11 +101,20 @@ impl Deliveries {
                 .in_set(SimSet::Hit)
                 .before(CombatSet::Pay),
         );
-        cx.schedule.add_systems(
-            DeliveryHooks::deliver
-                .in_set(SimSet::Hit)
-                .after(DeliverySet::Trigger)
-                .before(CombatSet::Pay),
-        );
+        if cx.scripts() {
+            cx.schedule.add_systems(
+                DeliveryHooks::deliver
+                    .in_set(SimSet::Hit)
+                    .after(DeliverySet::Trigger)
+                    .before(CombatSet::Pay),
+            );
+        } else {
+            cx.schedule.add_systems(
+                DeliveryHooks::end
+                    .in_set(SimSet::Hit)
+                    .after(DeliverySet::Trigger)
+                    .before(CombatSet::Pay),
+            );
+        }
     }
 }

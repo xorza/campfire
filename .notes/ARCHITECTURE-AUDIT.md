@@ -6,7 +6,7 @@ An audit of the workspace at `source/` after slice 3's A4: the entities and how 
 
 - **Registration.** Each module declares once what it adds; effect queues, deliverers and cast spends still register in install bodies, and systems order against each other's sets in each install.
 - **Entities.** Two spawn paths give units different parts, the match's and the players' entities get their parts by hand, and net writes its prediction rule twice.
-- **Ownership.** Almost every pass reaches through `&mut World` to `!Send` shared handles (`View`, `Ctx`, boxed hooks): 152 production functions take `&mut World` and 96 `&World`, against 13 `SystemParam` derives. No pass is testable without a whole `TestMatch`; `deliveries` and `players` have no tests, `actions` 6 for 53 files.
+- **Ownership.** A script function reaches the match only through `Ctx`, never the world, so `View` keeps what a call reads: names, unit types, and the call's snapshot of the tick, rate, bounds and metric. `ModeBook` holds the script engine's values, which are not `Send` while Rhai builds without `sync`, so systems read it through the non-send `MatchMode`, and script calls through `Ctx`. A script batch holds its `ctx`, and combat's passes take `CombatHooks` out of the world as one group. `deliveries` and `players` have no tests, `actions` 6 for 53 files.
 - **Arguments.** Systems take `TickClock`, `ModifierParams`, `StatBooks` and `ProductionBooks`, and the client's `OwnPlayer`, and a call's tick travels in its frame. A unit's life pool still travels beside its pools query in nine systems: the query sits inside each system's own tuple query, which already borrows `UnitPools`, so a separate pools param would conflict with it.
 
 The recommendations consolidate into five systems. Each is one declaration that every consumer reads, enforced by the compiler where it can be, else by one generic test, never by memory.
@@ -15,11 +15,11 @@ The recommendations consolidate into five systems. Each is one declaration that 
 | --- | --- | --- |
 | 1. One declaration per capability (§1) | the registrations left in install bodies, restated orderings | the compiler (visitor with no defaults), the declaration audit test |
 | 2. One entity model (§2) | two spawn paths, parts put on by hand, net's prediction rule | required components, the compiler (`Host` with no default), one spawn function for each kind |
-| 3. Explicit dependencies (§3) | `!Send` reach-through, five match-world builders | one exclusive context for `!Send` access |
+| 3. Explicit dependencies (§3) | five match-world builders, the log in the core, layers with cycles | one builder, the layer test |
 | 4. Restore as a checked boundary (§4) | value-only mutations, checks of the load copied in builders | the registry, a mutation fuzz test |
 | 5. One session host (§5) | three server compositions, two replay loops, two restore glues | one type |
 
-One policy holds across all five: **what can be forgotten is a type or a trait method with no default.** A rule that no type can hold, as "no spawn outside the kinds' spawn functions" or "no `!Send` access outside `ScriptPass`", is held by a type that makes the right way the short one, a test where one can see the breach, and review. `clippy.toml` bans stay for what they ban today, each group owned by a proxy crate, `store`, `codec` or `schedule`, or banned everywhere.
+One policy holds across all five: **what can be forgotten is a type or a trait method with no default.** A rule that no type can hold, as "no spawn outside the kinds' spawn functions" or "a script runs only inside a `ScriptBatch`", is held by a type that makes the right way the short one, a test where one can see the breach, and review. `clippy.toml` bans stay for what they ban today, each group owned by a proxy crate, `store`, `codec` or `schedule`, or banned everywhere.
 
 ## 1. One declaration per capability
 
@@ -72,15 +72,6 @@ An observer on `Owner` would set the target again as `KindFilter` already follow
 
 ## 3. Explicit dependencies
 
-### 3.1 Books and hooks are `Send` resources
-
-- `View` owns book data (`UnitTypes` changes through `view.types_mut()`, `units/view.rs:312`), duplicates `TickRate` (`View.rate`), `SimTick`, `Bounds` and `Metric` (the rows' copies), and `ModeBook` is reachable only as `Rc<dyn Any>` in `Ctx` (`scripts/ctx.rs:25`), downcast by every reader; a client, with no `Ctx`, has no mode book.
-- Recommendation: `UnitTypes` becomes a `UnitTypeBook` resource; `ModeBook` a resource holding an `Arc<ModeBook>` that `Ctx` clones for script calls, which gives a client the mode book; `View` keeps only the per-phase snapshot (`UnitRows`, `TargetIndex`, script names) and no copy of a resource. Cost: about forty call sites in `units`, `mode`, `stats`, `actions`, and each `Rc` the mode book holds, `Rc<Teams>` among them, becomes an `Arc`.
-
-### 3.2 `!Send` access lives in one place
-
-The script host, `Ctx` and `View` are reached through one exclusive context, `ScriptPass { host, ctx, view, failures, budgets, clock }`, built once per pass; `ScriptBatch` holds `ctx`, so `hook_call(start, hook, unit, body)` loses its `ctx`, as a call's tick already travels in its `CallStart`, and the `remove_non_send`/`insert_non_send` pairs around passes (`combat/damage_pass.rs:97`, `combat/attacks.rs:150`, `scripts/script_batch.rs:33`) go. A pass takes `&mut ScriptPass`, so it has the handles without asking the world; `World::non_send` stays public, and review holds a pass that reaches past it.
-
 ### 3.4 One match-world builder
 
 The prepare, schedule, registry and install sequence appears five times (`Session::build`, `Session::snapshot_hash`, `SimClient::build`, `TestMatch::unstarted`, the match build bench). `MatchWorld::new(seed, rate).install(set, budgets).finish()` holds it, built on §1's visitors.
@@ -130,6 +121,5 @@ The mutation fuzz gains a nested option replaced with `None` where its type allo
 
 ## Order
 
-1. §3.1, §3.2: books out of `View` and `Ctx`, and `!Send` access in `ScriptPass`.
-2. §2.1, §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule; §4.3.
-3. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.
+1. §2.1, §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule; §4.3.
+2. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.

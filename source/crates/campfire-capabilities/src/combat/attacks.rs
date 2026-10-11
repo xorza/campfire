@@ -14,7 +14,8 @@ use crate::actions::purse::Purse;
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
-use crate::combat::combat_event::{CombatEvent, CombatEvents};
+use crate::combat::combat_event::CombatEvent;
+use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::going_off::GoingOff;
 use crate::combat::pass_queue::PassQueue;
@@ -35,7 +36,6 @@ use crate::units::owner::Owner;
 use crate::units::predicting::Predicting;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
-use crate::units::view::View;
 
 /// What tells whether a unit's attack strikes: its id, its slots, its tags, and what it pays the
 /// cost from.
@@ -147,7 +147,11 @@ impl Attacks {
         attackers: &mut QueryState<Attacker<'_>, Without<Dead>>,
         mut going: Local<'_, Vec<GoingOff>>,
     ) {
-        let Some(events) = world.remove_non_send::<CombatEvents>() else {
+        let hooks = world
+            .remove_non_send::<CombatHooks>()
+            .expect("combat installs its hooks");
+        let Some(events) = &hooks.events else {
+            world.insert_non_send(hooks);
             return;
         };
         let now = world.resource::<SimTick>().start();
@@ -164,14 +168,13 @@ impl Attacks {
         }
         going.sort_unstable();
         if !going.is_empty() {
-            let view = world.non_send::<View>().clone();
-            ScriptBatch::run(world, &view, |batch| {
+            ScriptBatch::run(world, |batch| {
                 for &GoingOff { attacker, target } in &*going {
                     events.call(batch, CombatEvent::Attack { attacker, target });
                 }
             });
         }
-        world.insert_non_send(events);
+        world.insert_non_send(hooks);
     }
 
     /// Pays, for each attack going off this tick, its attacker's toggles that cost an attack; one

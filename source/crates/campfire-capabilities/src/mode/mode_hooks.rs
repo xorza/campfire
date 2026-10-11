@@ -11,13 +11,12 @@ use campfire_sim::{EntityIndex, SimTick, SlotEventKind, TickInputs};
 use crate::combat::deaths::Deaths;
 use crate::combat::kept::Kept;
 use crate::mode::calls::Calls;
-use crate::mode::mode_book::ModeBook;
+use crate::mode::match_mode::MatchMode;
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
 use crate::progression::level_ups::{LevelUp, LevelUps};
-use crate::scripts::ctx::Ctx;
 use crate::scripts::hook::Hook;
 use crate::scripts::pending_calls::PendingCalls;
 use crate::scripts::pool::Pool;
@@ -43,8 +42,8 @@ impl ModeHooks {
         mut bodies: Local<'_, Vec<u8>>,
         mut inputs: Local<'_, Vec<Input>>,
     ) {
-        let ctx = world.non_send::<Ctx>().clone();
-        if !ModeBook::of_match(&ctx)
+        if !world
+            .non_send::<MatchMode>()
             .schema
             .hooks
             .contains(Hook::OnModeInput)
@@ -69,7 +68,7 @@ impl ModeHooks {
         }
         let now = world.resource::<SimTick>().start();
         let bodies = &*bodies;
-        Calls::batch(world, &ctx, now, |call| {
+        Calls::batch(world, now, |call| {
             for input in &*inputs {
                 let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
                     call.book().schema.input_type_named(name)
@@ -111,10 +110,9 @@ impl ModeHooks {
         world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredSlotEvents>| {
             let events = world.resource::<TickInputs>().slot_events();
             unanswered.0.extend(events.iter().copied());
-            let ctx = world.non_send::<Ctx>().clone();
-            let hooks = ModeBook::of_match(&ctx).schema.hooks;
+            let hooks = world.non_send::<MatchMode>().schema.hooks;
             let now = world.resource::<SimTick>().end();
-            let answered = Calls::batch(world, &ctx, now, |call| {
+            let answered = Calls::batch(world, now, |call| {
                 let mut answered = 0;
                 for event in unanswered.0.iter() {
                     let hook = match event.kind {
@@ -142,8 +140,7 @@ impl ModeHooks {
         if world.resource::<Timers>().due(now).is_none() {
             return;
         }
-        let ctx = world.non_send::<Ctx>().clone();
-        Calls::batch(world, &ctx, now, |call| {
+        Calls::batch(world, now, |call| {
             let hooked = call.book().schema.hooks.contains(Hook::OnTimer);
             while let Some(timer) = call.batch.world().resource::<Timers>().due(now) {
                 let name = ImmutableString::from(timer.name.as_str());
@@ -171,8 +168,7 @@ impl ModeHooks {
     /// whose call finds the pool spent waits, with those after it, for a later tick, and its unit
     /// stays, dead, until then.
     pub(super) fn unit_deaths(world: &mut World, mut units: Local<'_, Vec<Option<Entity>>>) {
-        let ctx = world.non_send::<Ctx>().clone();
-        let hooks = ModeBook::of_match(&ctx).schema.hooks;
+        let hooks = world.non_send::<MatchMode>().schema.hooks;
         if !hooks.contains(Hook::OnUnitDied) {
             return;
         }
@@ -185,7 +181,7 @@ impl ModeHooks {
         let now = world.resource::<SimTick>().end();
         world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredDeaths>| {
             unanswered.extend(world.resource::<Deaths>().iter());
-            let answered = Calls::batch(world, &ctx, now, |call| {
+            let answered = Calls::batch(world, now, |call| {
                 let view = call.ctx.view().clone();
                 let mut answered = 0;
                 for death in unanswered.iter() {
@@ -234,8 +230,7 @@ impl ModeHooks {
         if !world.contains_resource::<LevelUps>() {
             return;
         }
-        let ctx = world.non_send::<Ctx>().clone();
-        let hooks = ModeBook::of_match(&ctx).schema.hooks;
+        let hooks = world.non_send::<MatchMode>().schema.hooks;
         // A write marks the state changed, so a tick with no level-up writes nothing.
         if world.resource::<LevelUps>().0.is_empty() {
             return;
@@ -251,7 +246,7 @@ impl ModeHooks {
             }
             due.clear();
             mem::swap(&mut *due, &mut world.resource_mut::<LevelUps>().0);
-            let answered = Calls::batch(world, &ctx, now, |call| {
+            let answered = Calls::batch(world, now, |call| {
                 let view = call.ctx.view().clone();
                 let mut answered = 0;
                 for &LevelUp { unit, track, level } in due.iter() {

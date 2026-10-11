@@ -6,10 +6,9 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::mode::mode_book::ModeBook;
+use crate::mode::match_mode::MatchMode;
 use crate::mode::mode_data::ModeData;
 use crate::players::match_entity::MatchEntity;
-use crate::scripts::ctx::Ctx;
 use crate::scripts::state_value::StateValue;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
@@ -96,7 +95,7 @@ impl<S: ModeSync> SimComponent for ModeState<S> {
     // A field the class does not declare, or of another type, reaches its script as a value it
     // never wrote.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let book = ModeBook::of_match(world.non_send::<Ctx>());
+        let book = world.non_send::<MatchMode>();
         book.schema.fits_state(S::SYNC, &self.values)
     }
 }

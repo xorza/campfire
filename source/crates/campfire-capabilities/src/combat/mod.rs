@@ -10,6 +10,7 @@ use crate::combat::combat_api::CombatApi;
 use crate::combat::combat_column::{CombatColumn, RowParts};
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvents;
+use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::damage_pass::DamagePass;
 use crate::combat::deaths::Deaths;
 use crate::combat::dying::Dying;
@@ -40,6 +41,7 @@ pub(crate) mod combat_column;
 pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
+pub(crate) mod combat_hooks;
 pub(crate) mod combat_rules;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
@@ -124,12 +126,14 @@ impl Combat {
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Combat, CombatEffect::queue_listed);
-        if scripts {
+        let events = scripts.then(|| {
             let hooks = ModifierHooks::new(world.non_send::<Ctx>().clone());
-            world.insert_non_send(CombatEvents::new(move |batch, event| {
-                hooks.hear(batch, event);
-            }));
-        }
+            CombatEvents::new(move |batch, event| hooks.hear(batch, event))
+        });
+        world.insert_non_send(CombatHooks {
+            events,
+            ..CombatHooks::default()
+        });
         schedule.configure_sets((
             CombatSet::Fire.in_set(SimSet::Hit).after(CombatSet::Strike),
             CombatSet::Launch.in_set(SimSet::Hit).after(CombatSet::Fire),

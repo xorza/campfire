@@ -11,7 +11,6 @@ use crate::actions::lists_of::ListsOf;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::scripts::call_start::CallStart;
-use crate::scripts::ctx::Ctx;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::units::hit_handle::HitHandle;
@@ -23,6 +22,18 @@ use crate::units::owner::Owner;
 pub(super) struct DeliveryHooks;
 
 impl DeliveryHooks {
+    /// Despawns the delivery units that ended this tick, in a match that runs no scripts, whose
+    /// hits and ends run no hook or list.
+    pub(super) fn end(world: &mut World, mut ended: Local<'_, Vec<Entity>>) {
+        let mut deliveries = world.resource_mut::<Deliveries>();
+        deliveries.delivered.clear();
+        ended.clear();
+        ended.append(&mut deliveries.ended);
+        for &entity in &*ended {
+            world.despawn(entity);
+        }
+    }
+
     /// Runs the hooks of the tick's hits and ends, then despawns the delivery units that ended.
     pub(super) fn deliver(
         world: &mut World,
@@ -49,11 +60,9 @@ impl DeliveryHooks {
         if due.is_empty() {
             return;
         }
-        let Some(ctx) = world.get_non_send::<Ctx>().cloned() else {
-            return;
-        };
         let now = world.resource::<SimTick>().start();
-        ScriptBatch::run(world, ctx.view(), |batch| {
+        ScriptBatch::run(world, |batch| {
+            let ctx = batch.ctx().clone();
             for delivered in due {
                 let Delivered { by, reach, hit } = *delivered;
                 let hook = reach.hook();
@@ -85,7 +94,7 @@ impl DeliveryHooks {
                     ..CallStart::cast(by.action, by.rank, by.source, package, now)
                 };
                 let pool = Pool::of(owner);
-                batch.hook_call(&ctx, start, hook, Some(by.source), |batch| {
+                batch.hook_call(start, hook, Some(by.source), |batch| {
                     EffectLists::queue(
                         batch.world(),
                         of,

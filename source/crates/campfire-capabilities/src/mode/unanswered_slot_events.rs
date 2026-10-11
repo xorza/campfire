@@ -3,8 +3,7 @@ use bevy_ecs::world::World;
 use campfire_sim::{SimResource, SlotEvent};
 use serde::{Deserialize, Serialize};
 
-use crate::mode::mode_book::ModeBook;
-use crate::scripts::ctx::Ctx;
+use crate::mode::match_mode::MatchMode;
 use crate::scripts::pending_calls::PendingCalls;
 
 /// The joins and leaves whose hook has yet to run, in the order the log took them. The Mode stage
@@ -19,7 +18,7 @@ impl SimResource for UnansweredSlotEvents {
 
     // An event of a slot the session does not have reaches the mode's script as no player.
     fn check(&self, world: &World) -> bool {
-        let players = ModeBook::of_match(world.non_send::<Ctx>()).teams.players();
+        let players = world.non_send::<MatchMode>().teams.players();
         self.0.iter().all(|event| event.slot.get() < players)
     }
 }
