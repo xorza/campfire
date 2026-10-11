@@ -4,7 +4,7 @@
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_capabilities::{DeclaredName, NameKind, UnitTypeFile};
-use campfire_common::Toml;
+use campfire_codec::Toml;
 use campfire_package::{
     ChoiceProblem, ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef,
     Place,

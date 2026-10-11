@@ -1,4 +1,5 @@
-use campfire_common::{Binary, PlayerSlot, Taken, Tick};
+use campfire_codec::{Binary, Taken};
+use campfire_common::{PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 

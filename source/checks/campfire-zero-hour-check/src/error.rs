@@ -1,5 +1,5 @@
 use campfire_capabilities::PackagePath;
-use campfire_common::BinaryError;
+use campfire_codec::BinaryError;
 use campfire_import::ImportError;
 use campfire_package::{ClassTextureError, ContentError, LoadError};
 use campfire_store::{DurableCreateError, DurableError, PathError};

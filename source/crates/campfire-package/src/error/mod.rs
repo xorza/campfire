@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::str::Utf8Error;
 
 use campfire_capabilities::PackagePath;
-use campfire_common::{BinaryError, Fingerprint};
+use campfire_codec::BinaryError;
+use campfire_common::Fingerprint;
 use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
 use derive_more::Display;
 use thiserror::Error;

@@ -1,4 +1,4 @@
-use campfire_common::{Binary, Taken};
+use campfire_codec::{Binary, Taken};
 use campfire_sim::{Capability, Command};
 
 use crate::mode::mode_data::InputType;

@@ -1,4 +1,4 @@
-use campfire_common::BinaryError;
+use campfire_codec::BinaryError;
 
 use super::*;
 

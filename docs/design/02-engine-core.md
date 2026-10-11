@@ -33,6 +33,7 @@ flowchart TB
         protocol
         math
         common
+        schedule
     end
     client --> net
     server --> net
@@ -51,18 +52,21 @@ flowchart TB
     capabilities --> sim
     script --> math
     sim --> math
+    sim --> schedule
     math --> common
     protocol --> common
     classDef planned stroke-dasharray: 5 5
 ```
 
-Dashed: planned. `log` is left out: the binaries, `net` and `verifier` use it. Each layer uses the layers below it.
+Dashed: planned. `log` is left out: the binaries, `net` and `verifier` use it. `codec` is left out too: every crate that serializes uses it. Each layer uses the layers below it.
 
 ## Modules
 
 | Module | Status | Does |
 | --- | --- | --- |
-| `common` | built | The vocabulary of crates that do not depend on each other: the player slot, ticks, segment seed, 32-byte hex values, a package's fingerprint, exit statuses; and `codec`, the one gateway of serialization ([Serialization](#serialization)) |
+| `common` | built | The vocabulary of crates that do not depend on each other: the player slot, ticks, segment seed, 32-byte hex values, a package's fingerprint, exit statuses |
+| `codec` | built | The one gateway of serialization, a proxy crate: postcard, TOML and JSON, each with one configuration, one canonical form and one error type ([Serialization](#serialization)) |
+| `schedule` | built | The build settings of the sim's schedules, a proxy crate: a schedule that fails on ambiguity and redundant edges, and the probes' variant with no sync points |
 | `math` | built | Fixed-point numbers, 3D vectors, exact ground-plane vectors, trig, exact integer roots, exact 256-bit products and sums, counter-based RNG, SIMD lanes |
 | `protocol` | built | Signatures, session key delegations, the handshake, input chains, the seed chain and the session log, with no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
@@ -76,7 +80,7 @@ Dashed: planned. `log` is left out: the binaries, `net` and `verifier` use it. E
 | `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | built | Lightyear over WebTransport: handshake, replication; internal ([Networking](#networking)) |
 | `log` | built | Log output: text on standard error and JSON lines into a file; the events a tool reads back; the end of a command line |
-| `store` | built | Durable and secret files, data directories and their locks, and worker threads ([Storage](#storage)) |
+| `store` | built | Durable and secret files, data directories and their locks, and worker threads, a proxy crate ([Storage](#storage)) |
 | `launcher` | planned | Fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | built | Bevy app: rendering, input, UI, audio, prediction, presentation systems ([Zero Hour](12-zero-hour.md#the-client)) |
 | `import` | built | Reads a game's install through `store` and writes one reproducible package, a module for each game ([Zero Hour](12-zero-hour.md#the-importer)) |
@@ -90,7 +94,7 @@ A module is built when the workspace has its crate, `campfire-<module>` in `sour
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-**Dependencies.** `server` and `client` → `net` → `runner` → `package` → `capabilities` → `script`, `sim` → `math` → `common`; `runner` → `protocol` → `common`; `verifier` → `runner`; `import` → `package`, `store`. `server`, `client`, `net`, `package`, `verifier` and `lan-check` use `store`, and the runner's `internals` for golden files; `zero-hour-check` uses `import`, `package`, `store` and the runner's `internals`; `client`'s tests use `import`'s `internals` for the KTX2 files the client must read. No crate of the deterministic core depends on `store`, and `store` depends on no engine crate. `log` depends on `common`, and on `store` only under its `start` feature, which only the binaries turn on. A type enters `common` only when two crates that do not depend on each other both name it, as a plain value: construction, parsing, display and serde, and no other logic, but `codec`, the gateway every crate serializes through. `common` depends on `serde`, `derive_more`, `thiserror`, `arrayvec`, and for `codec` the three formats it owns, `postcard`, `toml` and `serde_json`, alone.
+**Dependencies.** `server` and `client` → `net` → `runner` → `package` → `capabilities` → `script`, `sim` → `math` → `common`; `sim` → `schedule`; `runner` → `protocol` → `common`; every crate that serializes → `codec`; `verifier` → `runner`; `import` → `package`, `store`. `server`, `client`, `net`, `package`, `verifier` and `lan-check` use `store`, and the runner's `internals` for golden files; `zero-hour-check` uses `import`, `package`, `store` and the runner's `internals`; `client`'s tests use `import`'s `internals` for the KTX2 files the client must read. No crate of the deterministic core depends on `store`, and `store` depends on no engine crate. `log` depends on `common`, and on `store` only under its `start` feature, which only the binaries turn on. A type enters `common` only when two crates that do not depend on each other both name it, as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde`, `derive_more` and `thiserror` alone.
 
 **Game-bound code.** Code that serves one imported game lives in a module named after it, in the crate whose interface it serves: Zero Hour's importer in `import::zero_hour`, its backends in `navigation::zero_hour`, its AI in the `zero_hour` module of the crate that drives server bots. Nothing depends on it but the place that installs it; a mechanism a second game needs moves into a general module.
 
@@ -112,7 +116,7 @@ Each rule has a test that fails when it breaks, as a rule only a review checks d
 | Restored state is checked like package data: every flaw is an error, never a panic, and what it accepts plays on. Times and counts stay within what a match makes: at most 2⁶², so no sum of two overflows; every period at least a tick; and every relation a system takes between restored values, or with the books, holds. | `Tick` and `Ticks` decodes refuse past 2⁶²; every state type's required check; the snapshot fuzz, which flips each byte of a proving match's snapshot and plays five ticks on what restores; the structured fuzz of every decodable value; the mutation fuzz, which removes, moves and copies each state type's value; restore tests at each type's limits |
 | Each rule of a network session has one owner on each side, and a client that follows the rules is never refused. | The net scenarios under load |
 | `common` depends on no crate but those its row above names. | The manifest test of `common` |
-| Only `store` touches the file system or starts a thread ([Storage](#storage)). | `disallowed-methods` and `disallowed-types` in `clippy.toml`, and the test of `common` that checks every exemption |
+| A banned call goes through its proxy crate: files and threads through `store` ([Storage](#storage)), the formats through `codec` ([Serialization](#serialization)), a schedule's build settings through `schedule`. A proxy exempts the lints at its crate root alone, depends on its listed crates alone and names no other group's call; a ban with no proxy is exempt nowhere. When a proxy lacks what a caller needs, the proxy gains it. | `disallowed-methods` and `disallowed-types` in `clippy.toml`, grouped by owner, and the tests of `common` that check each group, each exemption, each proxy's dependencies and each proxy's names |
 | Code that differs by OS lives only in `store`'s `platform` module ([Platform](#platform)). | The platform rule test of `common`, which scans every source file |
 
 **Books.** One pure function of a match's packages and a tick rate, with no world, builds its books: unit types and tags, tracks, modifiers, actions with their params and effect lists, AIs, projectile and area specs. The load calls it at the fastest rate the manifest allows, where a time counts the most ticks, so what the books cannot hold fails the load; a match calls it at its own rate. Ids follow the builder's order: tags, tracks, every package's modifiers, then each package's actions and unit types, the mode's first. A script is named by its place in the order a match compiles them, and its hooks come from what the load read, so no book needs a script host.
@@ -166,11 +170,11 @@ A save is a checkpoint a player keeps: the snapshot at a tick boundary and the l
 - **Child output.** `OutputFile::stdio` makes a new owner-only file as a child process's `Stdio`, so no `File` leaves `store`.
 - **Scratch.** A test's files live in `store`'s internals' `Scratch`: an owner-only temporary directory, removed when it drops, which makes, reads, lists, renames, links, exposes and removes files by paths within it, panicking with the path on a failure. A test reads the workspace's sources through `SourceFiles`, and races two writers through `Race`.
 - **Faults.** A worker's failure is an enum of the step that failed; `store` decides no policy. `net`'s `Faults` ends the server with exit code 74 on a journal or snapshot failure, and logs a failed receipt and a sync slower than a second.
-- **Enforced.** `source/clippy.toml` bans, under `disallowed-types`, every type that holds a file (`std::fs`'s `File`, `OpenOptions`, `DirBuilder`, `ReadDir`, `DirEntry`, `Metadata`, `tempfile`'s `TempDir` and `NamedTempFile`), and under `disallowed-methods` `std::fs`'s free functions, `Path`'s probes, `tempfile`'s functions and the thread starts. Only `store`'s crate root `expect`s both lints, and the sim schedule's build settings one statement; a test of `common` refuses any other `expect` or `allow` of either. Bevy's asset server reads through a package asset source over `package` and `store` ([Zero Hour](12-zero-hour.md#the-client)).
+- **Enforced.** `source/clippy.toml` bans, under `disallowed-types`, every type that holds a file (`std::fs`'s `File`, `OpenOptions`, `DirBuilder`, `ReadDir`, `DirEntry`, `Metadata`, `tempfile`'s `TempDir` and `NamedTempFile`), and under `disallowed-methods` `std::fs`'s free functions, `Path`'s probes, `tempfile`'s functions and the thread starts. Only `store`'s crate root `expect`s both lints ([Structural rules](#structural-rules)); a test of `common` refuses any other `expect` or `allow` of either but the other proxies' roots. Bevy's asset server reads through a package asset source over `package` and `store` ([Zero Hour](12-zero-hour.md#the-client)).
 
 ## Serialization
 
-Every serde encoding and decoding passes through `common`'s `codec`, as every file passes through `store`: one configuration, one canonical form and one error type for each format.
+Every serde encoding and decoding passes through the proxy crate `codec`, as every file passes through `store`: one configuration, one canonical form and one error type for each format.
 
 - **Formats.** Postcard 1.x for every binary encoding: the protocol's records, the log, the journal, snapshots and the state hash, commands, the package index, a package's binary files. TOML for data files and configuration a person writes. JSON for logged events, reading log lines back, and glTF's JSON. No other serde format.
 - **One encoding.** Postcard's decoder takes an over-long integer and ignores trailing bytes, so the gateway's decode encodes what it read again into a comparing output that allocates nothing: a decode on a hot path costs a second pass and no allocation. A whole value refuses any byte past it. A format's own order rules, as a snapshot's entities by stable id, stay with the format's owner.
@@ -178,7 +182,7 @@ Every serde encoding and decoding passes through `common`'s `codec`, as every fi
 - **Errors.** A postcard decode fails with `BinaryError`: bytes that end inside the value, bytes of no value of its type, or another encoding of a value. A TOML or JSON parse fails with its crate's error, with line and column.
 - **Network.** Every message registers through `register_message_custom_serde`, and every component through `replicate_with` or `replicate_once_with`, with the gateway's encode and decode, at the `lightyear_serde` version Lightyear builds.
 - **Outside the gateway.** Layouts a specification fixes byte by byte stay with their owner, by hand: the files the importer reads or writes (`.big`, map chunks, W3D, DDS, KTX2, GLB) and the protocol's signed messages and frames. Two engine layouts stay hand-built: the cached TLS identity, sized whole so no growth copies its key, and the golden harness's digest of a tick.
-- **Enforced.** `source/clippy.toml` bans, outside `common`, each format crate's entry points, replicon's postcard helpers, and Lightyear's registrations that take its own encoding; each format's `Serializer` and `Deserializer` are banned as types. `str::parse` into a `toml::Table` or `serde_json::Value`, and a struct built by its path with no `use`, stay open, as clippy cannot ban them; no code takes either. `common`'s tests check the lists.
+- **Enforced.** `source/clippy.toml` bans, outside `codec`, each format crate's entry points and replicon's postcard helpers, and everywhere Lightyear's registrations that take its own encoding; each format's `Serializer` and `Deserializer` are banned as types. `str::parse` into a `toml::Table` or `serde_json::Value`, and a struct built by its path with no `use`, stay open, as clippy cannot ban them; no code takes either. `common`'s tests check the lists ([Structural rules](#structural-rules)).
 
 ## Platform
 

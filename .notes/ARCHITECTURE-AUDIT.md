@@ -20,7 +20,7 @@ The recommendations consolidate into five systems. Each is one declaration that 
 | 4. Restore as a checked boundary (§4) | silent checks, wrong-type errors | the registry, a mutation fuzz test |
 | 5. One session host (§5) | three server compositions, two replay loops, two restore glues | one type |
 
-One policy holds across all five: **what can be forgotten is a type or a trait method with no default.** A rule that no type can hold, as "no spawn outside the kinds' spawn functions" or "no `!Send` access outside `ScriptPass`", is held by a type that makes the right way the short one, a test where one can see the breach, and review. `clippy.toml` bans stay for what they ban today: `AGENTS.md` permits no `expect` of a banned method outside `store`, so a ban with an owning module elsewhere would break that rule.
+One policy holds across all five: **what can be forgotten is a type or a trait method with no default.** A rule that no type can hold, as "no spawn outside the kinds' spawn functions" or "no `!Send` access outside `ScriptPass`", is held by a type that makes the right way the short one, a test where one can see the breach, and review. `clippy.toml` bans stay for what they ban today, each group owned by a proxy crate, `store`, `codec` or `schedule`, or banned everywhere.
 
 ## 1. One declaration per capability
 

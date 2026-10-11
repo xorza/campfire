@@ -34,7 +34,7 @@ impl FromStr for StateHash {
 
 #[cfg(test)]
 mod tests {
-    use crate::codec::binary::Binary;
+    use campfire_codec::Binary;
 
     use super::*;
 

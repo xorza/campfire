@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use campfire_common::Binary;
+use campfire_codec::Binary;
 use campfire_script::ScriptError;
 
 use super::*;

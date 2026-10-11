@@ -1,6 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
-use campfire_common::{Binary, SegmentSeed, Tick, Toml};
+use campfire_codec::{Binary, Toml};
+use campfire_common::{SegmentSeed, Tick};
 use campfire_math::RngSource;
 use campfire_sim::{EntityIndex, SimComponent, SnapshotError};
 

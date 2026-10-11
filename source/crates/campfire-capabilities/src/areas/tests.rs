@@ -1,4 +1,5 @@
-use campfire_common::{Tick, Ticks, Toml};
+use campfire_codec::Toml;
+use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 

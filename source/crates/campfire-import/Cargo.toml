@@ -9,6 +9,7 @@ internals = []
 
 [dependencies]
 campfire-capabilities.workspace = true
+campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true

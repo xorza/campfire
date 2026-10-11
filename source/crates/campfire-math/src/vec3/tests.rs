@@ -1,4 +1,4 @@
-use campfire_common::Binary;
+use campfire_codec::Binary;
 use proptest::prelude::*;
 
 use super::*;

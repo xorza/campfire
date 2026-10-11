@@ -1,4 +1,5 @@
-use campfire_common::{BinaryError, PlayerSlot, Tick};
+use campfire_codec::BinaryError;
+use campfire_common::{PlayerSlot, Tick};
 use thiserror::Error;
 
 use crate::checkpoint::error::CheckpointDecodeError;

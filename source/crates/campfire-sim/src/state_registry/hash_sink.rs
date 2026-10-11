@@ -1,7 +1,7 @@
 use arrayvec::ArrayVec;
 use blake3::Hasher;
 
-use campfire_common::Sink;
+use campfire_codec::Sink;
 
 /// A BLAKE3 hasher fed through a buffer. Postcard writes a value at a time, and from small pieces
 /// BLAKE3 hashes one block at a time; from a piece of many chunks it hashes several at once with

@@ -1,4 +1,5 @@
-use campfire_common::{Binary, StateHash, Tick};
+use campfire_codec::Binary;
+use campfire_common::{StateHash, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 

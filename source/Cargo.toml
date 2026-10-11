@@ -11,6 +11,7 @@ license = "MIT OR Apache-2.0"
 # Exact versions: a release must rebuild bit for bit (docs/design/02-engine-core.md).
 [workspace.dependencies]
 campfire-capabilities = { path = "crates/campfire-capabilities" }
+campfire-codec = { path = "crates/campfire-codec" }
 campfire-common = { path = "crates/campfire-common" }
 campfire-import = { path = "crates/campfire-import" }
 campfire-log = { path = "crates/campfire-log" }
@@ -19,6 +20,7 @@ campfire-net = { path = "crates/campfire-net" }
 campfire-package = { path = "crates/campfire-package" }
 campfire-protocol = { path = "crates/campfire-protocol" }
 campfire-runner = { path = "crates/campfire-runner" }
+campfire-schedule = { path = "crates/campfire-schedule" }
 campfire-script = { path = "crates/campfire-script" }
 campfire-sim = { path = "crates/campfire-sim" }
 campfire-store = { path = "crates/campfire-store" }

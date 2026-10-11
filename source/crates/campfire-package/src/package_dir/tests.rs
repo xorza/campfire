@@ -1,6 +1,7 @@
 use std::env;
 
-use campfire_common::{Fingerprint, Toml};
+use campfire_codec::Toml;
+use campfire_common::Fingerprint;
 use campfire_store::{DurableFile, Scratch};
 
 use super::*;

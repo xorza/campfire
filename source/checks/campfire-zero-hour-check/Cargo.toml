@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 campfire-capabilities.workspace = true
+campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-import.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
@@ -17,6 +18,8 @@ clap.workspace = true
 derive_more.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
 
 [lints]
 workspace = true

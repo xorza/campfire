@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::system::RunSystemOnce;
-use campfire_common::{Binary, PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_codec::Binary;
+use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
 use campfire_sim::{EntityIndex, Position, SimComponent, SimRng, StableId};
 

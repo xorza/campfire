@@ -1,4 +1,4 @@
-use campfire_common::BinaryError;
+use campfire_codec::BinaryError;
 use thiserror::Error;
 
 /// Why a snapshot does not restore. Snapshots are untrusted data, so every flaw is an error.

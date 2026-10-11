@@ -127,7 +127,7 @@ impl<'de> Deserialize<'de> for HeightGrid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use campfire_common::{Binary, BinaryError};
+    use campfire_codec::{Binary, BinaryError};
 
     #[test]
     fn a_grid_encodes_its_fields_and_decodes_only_as_new_takes_it() {

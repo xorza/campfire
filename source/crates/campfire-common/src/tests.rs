@@ -1,3 +1,4 @@
+use std::panic;
 use std::path::Path;
 
 use campfire_store::{DirEntries, DirEntry, EntryKind, InputFile, SourceFile, SourceFiles};
@@ -10,12 +11,11 @@ fn read(path: &str) -> String {
     InputFile::read_text(Path::new(path), FILE_LEN).unwrap()
 }
 
-#[test]
-fn the_crate_depends_on_its_values_crates_and_the_codecs_alone() {
-    // Read by hand, as the crate has no TOML parser. Only the listed sections may appear, so
-    // a dependency in any other form, such as `[dependencies.name]`, a target's section or
-    // a dotted key before the first section, fails the test instead of passing it unseen.
-    let manifest = read(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
+/// The names of the crates the manifest `manifest` depends on, its target-specific dependencies
+/// among them, in the order it lists them. Read by hand, as the crate has no TOML parser: only the
+/// known sections may appear, so a dependency in another form, such as `[dependencies.name]` or a
+/// dotted key before the first section, fails instead of passing unseen.
+fn dependencies(manifest: &str) -> Vec<&str> {
     let mut section = "";
     let mut names = Vec::new();
     for line in manifest.lines().map(str::trim) {
@@ -24,8 +24,19 @@ fn the_crate_depends_on_its_values_crates_and_the_codecs_alone() {
         }
         if let Some(header) = line.strip_prefix('[') {
             section = header.strip_suffix(']').unwrap();
-            let known = ["package", "dependencies", "dev-dependencies", "lints"];
-            assert!(known.contains(&section), "section [{section}]");
+            let target =
+                section.starts_with("target.'cfg(") && section.ends_with(")'.dependencies");
+            let known = [
+                "package",
+                "features",
+                "dependencies",
+                "dev-dependencies",
+                "lints",
+            ];
+            assert!(known.contains(&section) || target, "section [{section}]");
+            if target {
+                section = "dependencies";
+            }
         } else {
             assert!(!section.is_empty(), "{line:?} before the first section");
             if section == "dependencies" {
@@ -33,18 +44,39 @@ fn the_crate_depends_on_its_values_crates_and_the_codecs_alone() {
             }
         }
     }
+    names
+}
+
+/// The dependencies of the crate at `dir`, under `source/crates/`, sorted.
+fn crate_dependencies(dir: &str) -> Vec<String> {
+    let manifest = read(&format!(
+        "{}/../{dir}/Cargo.toml",
+        env!("CARGO_MANIFEST_DIR")
+    ));
+    let mut names: Vec<String> = dependencies(&manifest)
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    names.sort_unstable();
+    names
+}
+
+#[test]
+fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
+    // `common` holds plain values, so it needs serde and its derives alone; a proxy reaches only
+    // its own group's crates, so its exemption covers no call of another group.
     assert_eq!(
-        names,
-        [
-            "arrayvec",
-            "derive_more",
-            "postcard",
-            "serde",
-            "serde_json",
-            "thiserror",
-            "toml"
-        ]
+        crate_dependencies("campfire-common"),
+        ["derive_more", "serde", "thiserror"]
     );
+    for proxy in &PROXIES {
+        assert_eq!(
+            crate_dependencies(proxy.dir),
+            proxy.dependencies,
+            "{}",
+            proxy.dir
+        );
+    }
 }
 
 #[test]
@@ -86,7 +118,33 @@ fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
     assert_eq!(built, crates);
 }
 
-/// The functions only `store` calls (design 02, Storage): those that read, list, check, write,
+/// A proxy crate: the one crate that makes the calls of its group of `clippy.toml`'s bans, through
+/// an `expect` of the lints at its crate root alone, and gives every other crate what it needs
+/// of them. A crate's exemption covers each banned call of the lints, of any group, so its
+/// dependencies are listed and its source names no other group's call.
+#[derive(Debug)]
+struct Proxy {
+    /// Its directory under `source/crates/`.
+    dir: &'static str,
+    /// The lints its root exempts.
+    lints: &'static [&'static str],
+    /// Calls and types of its group that `clippy.toml` must keep banning.
+    methods: &'static [&'static str],
+    types: &'static [&'static str],
+    /// Every crate it depends on, sorted.
+    dependencies: &'static [&'static str],
+    /// What names its group's calls in source, which no other proxy's source holds.
+    names: &'static [&'static str],
+}
+
+impl Proxy {
+    /// Its crate root, under `source/`.
+    fn root(&self) -> String {
+        format!("crates/{}/src/lib.rs", self.dir)
+    }
+}
+
+/// The calls only `store` makes (design 02, Storage): those that read, list, check, write,
 /// rename or remove a file or make a directory, `Path`'s probes, and those that start a thread.
 const STORAGE_METHODS: [&str; 34] = [
     "std::fs::read",
@@ -137,6 +195,123 @@ const STORAGE_TYPES: [&str; 8] = [
     "tempfile::NamedTempFile",
 ];
 
+/// The calls only `codec` makes (design 02, Serialization): each format's own encodes and
+/// decodes, and replicon's helpers over postcard.
+const CODEC_METHODS: [&str; 20] = [
+    "postcard::to_allocvec",
+    "postcard::to_stdvec",
+    "postcard::to_extend",
+    "postcard::to_io",
+    "postcard::to_slice",
+    "postcard::serialize_with_flavor",
+    "postcard::from_bytes",
+    "postcard::take_from_bytes",
+    "postcard::from_io",
+    "toml::from_str",
+    "toml::to_string",
+    "toml::to_string_pretty",
+    "serde_json::from_str",
+    "serde_json::from_slice",
+    "serde_json::from_reader",
+    "serde_json::to_string",
+    "serde_json::to_vec",
+    "serde_json::to_writer",
+    "bevy_replicon::postcard_utils::to_extend_mut",
+    "bevy_replicon::postcard_utils::from_buf",
+];
+
+/// The types only `codec` holds, each banned whole so every method of it is.
+const CODEC_TYPES: [&str; 6] = [
+    "postcard::Serializer",
+    "postcard::Deserializer",
+    "toml::Serializer",
+    "toml::Deserializer",
+    "serde_json::Serializer",
+    "serde_json::Deserializer",
+];
+
+/// The calls only `schedule` makes: those that set a schedule's build settings, which can switch
+/// off the ambiguity and hierarchy checks.
+const SCHEDULE_METHODS: [&str; 2] = [
+    "bevy_ecs::schedule::Schedule::set_build_settings",
+    "bevy_ecs::schedule::Schedules::configure_schedules",
+];
+
+/// The lints of the bans, and the groups that hold them, named in parts so that this file's own
+/// samples hold no attribute of them.
+const LINTS: [&str; 2] = [
+    concat!("clippy::", "disallowed_methods"),
+    concat!("clippy::", "disallowed_types"),
+];
+const GROUPS: [&str; 2] = [concat!("clippy::", "style"), concat!("clippy::", "all")];
+
+/// Every proxy crate, each the owner of one group of the bans.
+const PROXIES: [Proxy; 3] = [
+    Proxy {
+        dir: "campfire-store",
+        lints: &LINTS,
+        methods: &STORAGE_METHODS,
+        types: &STORAGE_TYPES,
+        dependencies: &["libc", "tempfile", "thiserror", "windows", "zeroize"],
+        names: &["std::fs", "std::thread", "tempfile::"],
+    },
+    Proxy {
+        dir: "campfire-codec",
+        lints: &[LINTS[0]],
+        methods: &CODEC_METHODS,
+        types: &CODEC_TYPES,
+        dependencies: &[
+            "arrayvec",
+            "postcard",
+            "serde",
+            "serde_json",
+            "thiserror",
+            "toml",
+        ],
+        names: &["postcard::", "serde_json::", "toml::", "postcard_utils"],
+    },
+    Proxy {
+        dir: "campfire-schedule",
+        lints: &[LINTS[0]],
+        methods: &SCHEDULE_METHODS,
+        types: &[],
+        dependencies: &["bevy_ecs"],
+        names: &["set_build_settings", "configure_schedules"],
+    },
+];
+
+/// The bans with no proxy, which nothing may exempt: each lets two conflicting sim systems run in
+/// either order, takes Lightyear's own encoding past the codec, or seeds a map at random.
+const UNOWNED_METHODS: [&str; 8] = [
+    "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with",
+    "bevy_ecs::schedule::Schedule::ignore_ambiguity",
+    "bevy_ecs::schedule::Schedules::allow_ambiguous_component",
+    "bevy_ecs::world::World::allow_ambiguous_resource",
+    "lightyear_messages::registry::AppMessageExt::register_message",
+    "lightyear_replication::registry::replication::AppComponentExt::register_component",
+    "lightyear_replication::registry::replication::ComponentRegistration::replicate",
+    "lightyear_replication::registry::replication::ComponentRegistration::replicate_once",
+];
+const UNOWNED_TYPES: [&str; 3] = [
+    "std::collections::HashMap",
+    "std::collections::HashSet",
+    "std::hash::RandomState",
+];
+
+/// What names a call of no proxy's group in source, which no proxy's source holds, as its
+/// exemption would cover it.
+const UNOWNED_NAMES: [&str; 9] = [
+    "ambiguous_with",
+    "ignore_ambiguity",
+    "allow_ambiguous",
+    "register_message",
+    "register_component",
+    ".replicate",
+    "HashMap",
+    "HashSet",
+    "RandomState",
+];
+
 /// The paths of `rules` that the list `list`, `disallowed-methods` or `disallowed-types`, of
 /// `clippy`, a `clippy.toml`, does not name.
 fn unlisted<'a>(clippy: &str, list: &str, rules: &[&'a str]) -> Vec<&'a str> {
@@ -148,30 +323,10 @@ fn unlisted<'a>(clippy: &str, list: &str, rules: &[&'a str]) -> Vec<&'a str> {
     rules.iter().copied().filter(|path| !named(path)).collect()
 }
 
-/// The lints the storage rules' lists feed, and the groups that hold them, named in parts so
-/// that this file's own samples hold no attribute of them.
-const LINTS: [&str; 2] = [
-    concat!("clippy::", "disallowed_methods"),
-    concat!("clippy::", "disallowed_types"),
-];
-const GROUPS: [&str; 2] = [concat!("clippy::", "style"), concat!("clippy::", "all")];
-
-/// The crate root whose `expect` of both lints lets `store` touch files and start threads.
-const STORE_ROOT: &str = "crates/campfire-store/src/lib.rs";
-
-/// The module root whose `expect` of `disallowed_methods` lets `common`'s `codec` call the
-/// formats.
-const CODEC_ROOT: &str = "crates/campfire-common/src/codec/mod.rs";
-
-/// The one file outside `store` that may `expect` `disallowed_methods`, on a statement: the sim
-/// schedule's build settings, which the same lint bans for another rule than storage's.
-const SCHEDULE_SETTINGS: &str = "crates/campfire-sim/src/sim_update/mod.rs";
-
 /// The lines of `text`, the source at `path` under `source/`, whose attribute exempts code from
-/// either lint other than as the rules let it: only `expect` of a lint itself, never `allow`, a
-/// `cfg_attr` or a group that holds it, so a stale one fails and none hides; of both for the
-/// whole of `store`, which owns the rules, of `disallowed_methods` for the whole of `codec`, which
-/// owns the formats, and in `SCHEDULE_SETTINGS`; nowhere else.
+/// either lint other than as the proxies let it: only an `expect`, at a proxy's crate root, of a
+/// lint that proxy exempts; never `allow`, a `cfg_attr`, a group that holds the lint, or an
+/// attribute on an item or a statement, so a stale one fails and none hides.
 fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
     let line_of = |at: usize| text[..at].matches('\n').count() + 1;
     let mut misplaced = Vec::new();
@@ -199,13 +354,11 @@ fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
             if ["warn", "deny", "forbid"].contains(&kind) {
                 continue;
             }
-            let allowed = LINTS.contains(name)
+            let allowed = inner
                 && kind == "expect"
-                && if inner {
-                    path == STORE_ROOT || (*name == LINTS[0] && path == CODEC_ROOT)
-                } else {
-                    *name == LINTS[0] && path == SCHEDULE_SETTINGS
-                };
+                && PROXIES
+                    .iter()
+                    .any(|proxy| proxy.root() == path && proxy.lints.contains(name));
             if !allowed {
                 misplaced.push(line_of(at));
             }
@@ -213,6 +366,19 @@ fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
     }
     misplaced.sort_unstable();
     misplaced
+}
+
+/// What of another group's names, another proxy's or no proxy's, `text`, a source of `proxy`'s,
+/// holds.
+fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
+    PROXIES
+        .iter()
+        .filter(|other| other.dir != proxy.dir)
+        .flat_map(|other| other.names.iter())
+        .chain(&UNOWNED_NAMES)
+        .copied()
+        .filter(|name| text.contains(name))
+        .collect()
 }
 
 /// Each Rust source file of the workspace's crates and checks, by its path under `source/`,
@@ -232,13 +398,31 @@ fn sources() -> Vec<SourceFile> {
 }
 
 #[test]
-fn only_store_touches_a_file_or_starts_a_thread() {
+fn each_banned_call_goes_through_its_proxy_alone() {
     let clippy = read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../clippy.toml"));
-    let methods = unlisted(&clippy, "disallowed-methods", &STORAGE_METHODS);
-    assert_eq!(methods, Vec::<&str>::new());
-    let types = unlisted(&clippy, "disallowed-types", &STORAGE_TYPES);
-    assert_eq!(types, Vec::<&str>::new());
     let sources = sources();
+    for proxy in &PROXIES {
+        let methods = unlisted(&clippy, "disallowed-methods", proxy.methods);
+        assert_eq!(methods, Vec::<&str>::new(), "{}", proxy.dir);
+        let types = unlisted(&clippy, "disallowed-types", proxy.types);
+        assert_eq!(types, Vec::<&str>::new(), "{}", proxy.dir);
+        assert!(sources.iter().any(|file| file.path == proxy.root()));
+        let own = format!("crates/{}/", proxy.dir);
+        let foreign: Vec<String> = sources
+            .iter()
+            .filter(|file| file.path.starts_with(&own))
+            .flat_map(|file| {
+                foreign_names(proxy, &file.text)
+                    .into_iter()
+                    .map(move |name| format!("{}: {name}", file.path))
+            })
+            .collect();
+        assert_eq!(foreign, Vec::<String>::new());
+    }
+    let methods = unlisted(&clippy, "disallowed-methods", &UNOWNED_METHODS);
+    assert_eq!(methods, Vec::<&str>::new());
+    let types = unlisted(&clippy, "disallowed-types", &UNOWNED_TYPES);
+    assert_eq!(types, Vec::<&str>::new());
     let misplaced: Vec<String> = sources
         .iter()
         .flat_map(|file| {
@@ -248,57 +432,6 @@ fn only_store_touches_a_file_or_starts_a_thread() {
         })
         .collect();
     assert_eq!(misplaced, Vec::<String>::new());
-    assert!(sources.iter().any(|file| file.path == STORE_ROOT));
-    assert!(sources.iter().any(|file| file.path == CODEC_ROOT));
-}
-
-/// The functions only `codec` calls (design 02, Serialization): each format's own encodes and
-/// decodes, replicon's helpers over postcard, and Lightyear's registrations that take Lightyear's
-/// own encoding.
-const CODEC_METHODS: [&str; 24] = [
-    "postcard::to_allocvec",
-    "postcard::to_stdvec",
-    "postcard::to_extend",
-    "postcard::to_io",
-    "postcard::to_slice",
-    "postcard::serialize_with_flavor",
-    "postcard::from_bytes",
-    "postcard::take_from_bytes",
-    "postcard::from_io",
-    "toml::from_str",
-    "toml::to_string",
-    "toml::to_string_pretty",
-    "serde_json::from_str",
-    "serde_json::from_slice",
-    "serde_json::from_reader",
-    "serde_json::to_string",
-    "serde_json::to_vec",
-    "serde_json::to_writer",
-    "bevy_replicon::postcard_utils::to_extend_mut",
-    "bevy_replicon::postcard_utils::from_buf",
-    "lightyear_messages::registry::AppMessageExt::register_message",
-    "lightyear_replication::registry::replication::AppComponentExt::register_component",
-    "lightyear_replication::registry::replication::ComponentRegistration::replicate",
-    "lightyear_replication::registry::replication::ComponentRegistration::replicate_once",
-];
-
-/// The types only `codec` holds, each banned whole so every method of it is.
-const CODEC_TYPES: [&str; 6] = [
-    "postcard::Serializer",
-    "postcard::Deserializer",
-    "toml::Serializer",
-    "toml::Deserializer",
-    "serde_json::Serializer",
-    "serde_json::Deserializer",
-];
-
-#[test]
-fn only_the_codec_calls_a_format() {
-    let clippy = read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../clippy.toml"));
-    let methods = unlisted(&clippy, "disallowed-methods", &CODEC_METHODS);
-    assert_eq!(methods, Vec::<&str>::new());
-    let types = unlisted(&clippy, "disallowed-types", &CODEC_TYPES);
-    assert_eq!(types, Vec::<&str>::new());
 }
 
 /// The one module whose code may differ by OS (design 02, Platform).
@@ -439,7 +572,7 @@ fn the_platform_rule_check_finds_each_way_to_name_an_os() {
 }
 
 #[test]
-fn the_storage_rules_checks_fail_on_what_breaks_them() {
+fn the_ban_checks_fail_on_what_breaks_them() {
     // A list that misses a path, in the list it names and not in the other.
     let one = "disallowed-methods = [\n    { path = \"std::fs::write\", reason = \"r\" },\n]\n";
     let rules = ["std::fs::write", "std::fs::copy"];
@@ -452,8 +585,8 @@ fn the_storage_rules_checks_fail_on_what_breaks_them() {
     let expect = |lint: &str| format!("#[expect({lint}, reason = \"r\")]\n");
     let inner = |lint: &str| format!("#!{}", &expect(lint)[1..]);
     let cases = [
-        // An `expect` of either lint, on an item, a statement or a test module, anywhere but
-        // `store`'s root and the schedule's settings.
+        // An `expect` of either lint, on an item, a statement or a test module, outside the
+        // proxies' roots.
         (
             "crates/x/src/a.rs",
             format!("{}fn f() {{}}\n", expect(methods)),
@@ -475,25 +608,36 @@ fn the_storage_rules_checks_fail_on_what_breaks_them() {
             format!("//! x\n{}", inner(types)),
             vec![2],
         ),
-        // `store`'s root, of both; the schedule's settings, of the methods' alone.
+        // A proxy's root, of the lints it exempts: `store`'s of both, `codec`'s and `schedule`'s
+        // of the methods' alone; another of its files, or a statement anywhere, is found.
         (
-            STORE_ROOT,
+            "crates/campfire-store/src/lib.rs",
             format!("#![expect(\n    {methods},\n    {types},\n    reason = \"r\"\n)]\n"),
             vec![],
         ),
+        ("crates/campfire-codec/src/lib.rs", inner(methods), vec![]),
+        ("crates/campfire-codec/src/lib.rs", inner(types), vec![1]),
         (
-            SCHEDULE_SETTINGS,
-            format!("{}let x = 1;\n", expect(methods)),
+            "crates/campfire-schedule/src/lib.rs",
+            inner(methods),
             vec![],
         ),
         (
-            SCHEDULE_SETTINGS,
-            format!("{}let x = 1;\n", expect(types)),
+            "crates/campfire-codec/src/binary.rs",
+            inner(methods),
             vec![1],
         ),
-        (SCHEDULE_SETTINGS, inner(methods), vec![1]),
+        (
+            "crates/campfire-sim/src/sim_update/mod.rs",
+            format!("{}let x = 1;\n", expect(methods)),
+            vec![1],
+        ),
         // An `allow`, even in `store`; a mention is no attribute.
-        (STORE_ROOT, format!("#![allow({methods})]\n"), vec![1]),
+        (
+            "crates/campfire-store/src/lib.rs",
+            format!("#![allow({methods})]\n"),
+            vec![1],
+        ),
         (
             "crates/x/src/a.rs",
             format!("/// Mentions `{methods}`.\nfn f() {{}}\n"),
@@ -534,4 +678,29 @@ fn the_storage_rules_checks_fail_on_what_breaks_them() {
     for (path, text, lines) in cases {
         assert_eq!(misplaced_exemptions(path, &text), lines, "{text}");
     }
+}
+
+#[test]
+fn the_dependency_and_name_checks_fail_on_what_breaks_them() {
+    // A manifest's dependencies, a target's among them, and not its dev-dependencies or its
+    // features; a section the reader does not know fails it. The target's condition is spelled
+    // in parts, so this file names no OS.
+    let manifest = concat!(
+        "[package]\nname = \"x\"\n\n[features]\ni = [\"dep:t\"]\n\n[dependencies]\n",
+        "a.workspace = true\nt = { workspace = true, optional = true }\n\n",
+        "[target.'cfg(",
+        "un",
+        "ix)'.dependencies]\nl.workspace = true\n\n[dev-dependencies]\nd.workspace = true\n"
+    );
+    assert_eq!(dependencies(manifest), ["a", "t", "l"]);
+    let dotted = panic::catch_unwind(|| dependencies("[dependencies.a]\nversion = \"1\"\n"));
+    assert!(dotted.is_err());
+    // A proxy's source that names another proxy's call or one of no proxy's, but not its own.
+    let [store, codec, _] = &PROXIES;
+    let text = "use std::fs::File;\nlet map: HashMap<u8, u8>;\nlet n = 1;";
+    assert_eq!(foreign_names(codec, text), ["std::fs", "HashMap"]);
+    assert_eq!(
+        foreign_names(store, "use std::fs::File;"),
+        Vec::<&str>::new()
+    );
 }

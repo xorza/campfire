@@ -204,7 +204,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::Binary;
+    use campfire_codec::Binary;
 
     use super::*;
 

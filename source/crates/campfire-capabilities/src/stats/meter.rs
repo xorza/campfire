@@ -134,7 +134,7 @@ impl<'de> Deserialize<'de> for Meter {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::Binary;
+    use campfire_codec::Binary;
 
     use super::*;
     #[test]

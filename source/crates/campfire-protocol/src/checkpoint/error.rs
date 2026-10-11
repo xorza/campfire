@@ -1,4 +1,5 @@
-use campfire_common::{BinaryError, PlayerSlot};
+use campfire_codec::BinaryError;
+use campfire_common::PlayerSlot;
 use thiserror::Error;
 
 use crate::delegation::error::DelegationError;

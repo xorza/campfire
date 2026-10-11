@@ -3,10 +3,10 @@ use std::mem;
 use postcard::ser_flavors::Flavor;
 use serde::{Deserialize, Serialize};
 
-use crate::codec::batch::Batch;
-use crate::codec::compare::Compare;
-use crate::codec::error::BinaryError;
-use crate::codec::sink::Sink;
+use crate::batch::Batch;
+use crate::compare::Compare;
+use crate::error::BinaryError;
+use crate::sink::Sink;
 
 /// Postcard 1.x, the format of every binary encoding of the engine. A value encodes one way,
 /// and decodes only from that way: each decode encodes what it read again, through an output

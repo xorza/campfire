@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use campfire_common::Json;
+use campfire_codec::Json;
 use serde::de::DeserializeOwned;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};

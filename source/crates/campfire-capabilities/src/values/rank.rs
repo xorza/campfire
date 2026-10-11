@@ -51,7 +51,7 @@ impl Default for Rank {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::Binary;
+    use campfire_codec::Binary;
 
     use super::*;
 

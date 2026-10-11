@@ -1,10 +1,10 @@
 use bevy_ecs::schedule::{
-    IntoScheduleConfigs, LogLevel, Schedule, ScheduleBuildSettings, ScheduleLabel,
-    SingleThreadedExecutor, SystemSet,
+    IntoScheduleConfigs, Schedule, ScheduleLabel, SingleThreadedExecutor, SystemSet,
 };
 use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
+use campfire_schedule::StrictSchedule;
 
 use crate::entity_index::EntityIndex;
 use crate::id_allocator::IdAllocator;
@@ -72,25 +72,14 @@ impl SimUpdate {
     /// The schedule with no game systems yet: the stages in order, each with its `SimEdge` after
     /// it, and `SimEdge::Start` before the first. The tick's random sequences start before
     /// `SimEdge::Start`; after `SimEdge::After(SimSet::Vision)` the tick advances and its inputs
-    /// are cleared, so an edge's systems read the tick's random sequences and inputs. Two
-    /// systems with conflicting access and no order fail the build, since either order could win.
-    /// A set membership that a longer path already implies fails it too, so the redundant edge
-    /// shows in every test that builds the schedule, not only as a log line of a running match.
-    /// It runs on one thread whatever features the build turns on: a tick's systems are too small
+    /// are cleared, so an edge's systems read the tick's random sequences and inputs. It is a
+    /// `StrictSchedule`, so an ambiguity or a redundant edge fails every test that builds it, not
+    /// only as a log line of a running match. It runs on one thread whatever features the build turns on: a tick's systems are too small
     /// to share, and Bevy's parallel executor, which its `multi_threaded` feature turns on
     /// wherever a workspace build enables it, made a 3v3 tick cost 2.5 times as much.
     pub fn schedule() -> Schedule {
-        let mut schedule = Schedule::new(SimUpdate);
+        let mut schedule = StrictSchedule::of(SimUpdate);
         schedule.set_executor(SingleThreadedExecutor::new());
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "the one place that sets the build settings a match runs with"
-        )]
-        schedule.set_build_settings(ScheduleBuildSettings {
-            ambiguity_detection: LogLevel::Error,
-            hierarchy_detection: LogLevel::Error,
-            ..ScheduleBuildSettings::new()
-        });
         schedule.configure_sets(SimEdge::Start.before(SimSet::Inputs));
         for stages in SimSet::ALL.windows(2) {
             schedule.configure_sets((
@@ -135,8 +124,9 @@ pub(crate) mod stage_clock;
 pub(crate) mod internals {
     use std::collections::BTreeSet;
 
-    use bevy_ecs::schedule::{IntoSystemSet, ScheduleBuildSettings, SystemSet};
+    use bevy_ecs::schedule::{IntoSystemSet, SystemSet};
     use bevy_ecs::world::World;
+    use campfire_schedule::StrictSchedule;
 
     use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick, start_tick};
 
@@ -147,12 +137,7 @@ pub(crate) mod internals {
         /// names its systems.
         pub fn build_without_sync_points(world: &mut World) -> Result<(), String> {
             world.schedule_scope(SimUpdate, |world, schedule| {
-                let settings = ScheduleBuildSettings {
-                    auto_insert_apply_deferred: false,
-                    ..schedule.get_build_settings()
-                };
-                #[expect(clippy::disallowed_methods, reason = "turns only the sync points off")]
-                schedule.set_build_settings(settings);
+                StrictSchedule::without_sync_points(schedule);
                 let built = schedule.initialize(world).map(drop);
                 built.map_err(|error| error.to_string(schedule.graph(), world))
             })

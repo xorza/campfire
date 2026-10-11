@@ -2,7 +2,8 @@ use std::array;
 use std::fmt::{Debug, Display, Write};
 use std::str::FromStr;
 
-use campfire_common::{Binary, Fingerprint, NotHex, SegmentSeed, StateHash};
+use campfire_codec::Binary;
+use campfire_common::{Fingerprint, NotHex, SegmentSeed, StateHash};
 use serde::Serialize;
 
 use crate::connect::ConnectChallenge;

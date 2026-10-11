@@ -11,7 +11,7 @@ use bevy::mesh::{Mesh, Mesh3d};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::render::render_resource::{Extent3d, TextureDataOrder, TextureDimension, TextureFormat};
 use campfire_capabilities::PackagePath;
-use campfire_common::{Binary, Toml};
+use campfire_codec::{Binary, Toml};
 use campfire_log::ErrorReport;
 use campfire_package::{
     ClassTexture, ContentError, GameData, ModePackages, PackageReader, Terrain, TerrainAtlas,

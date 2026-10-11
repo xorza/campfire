@@ -1,4 +1,5 @@
-use campfire_common::{BinaryError, PlayerSlot};
+use campfire_codec::BinaryError;
+use campfire_common::PlayerSlot;
 
 use super::*;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot};

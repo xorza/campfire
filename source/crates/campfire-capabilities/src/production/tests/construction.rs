@@ -1,4 +1,4 @@
-use campfire_common::Toml;
+use campfire_codec::Toml;
 use campfire_sim::{EntityIndex, TickInput, TickInputs};
 use serde::Deserialize;
 

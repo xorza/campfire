@@ -1,4 +1,4 @@
-use campfire_common::{Binary, Taken};
+use campfire_codec::{Binary, Taken};
 use serde::{Deserialize, Serialize};
 
 use crate::seed_chain::SeedChain;

@@ -10,8 +10,10 @@ internals = ["campfire-math/internals"]
 bench = ["internals", "dep:criterion"]
 
 [dependencies]
+campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-math.workspace = true
+campfire-schedule.workspace = true
 
 arrayvec.workspace = true
 bevy_ecs.workspace = true

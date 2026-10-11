@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::DeclaredName;
-use campfire_common::Toml;
+use campfire_codec::Toml;
 use serde::Serialize;
 use toml::Table;
 

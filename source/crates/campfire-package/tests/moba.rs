@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use campfire_common::{MapName, Toml};
+use campfire_codec::Toml;
+use campfire_common::MapName;
 use campfire_package::{LoadError, ModePackages, PackageDir};
 use toml::{Table, Value};
 

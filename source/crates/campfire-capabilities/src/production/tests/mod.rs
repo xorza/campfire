@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::num::NonZeroU8;
 use std::rc::Rc;
 
-use campfire_common::{Binary, PlayerSlot, Tick, Ticks};
+use campfire_codec::Binary;
+use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, IdAllocator, Position, SimComponent, StableId};
 use serde::Serialize;

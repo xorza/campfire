@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use campfire_common::{Binary, Taken};
+use campfire_codec::{Binary, Taken};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::capability::Capability;

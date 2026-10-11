@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::str;
 
-use campfire_common::Json;
+use campfire_codec::Json;
 use serde::Deserialize;
 
 use crate::error::CheckError;

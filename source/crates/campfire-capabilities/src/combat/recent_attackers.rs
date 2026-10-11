@@ -76,7 +76,7 @@ impl Replication for RecentAttackers {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::Binary;
+    use campfire_codec::Binary;
     use campfire_sim::IdAllocator;
 
     use super::*;

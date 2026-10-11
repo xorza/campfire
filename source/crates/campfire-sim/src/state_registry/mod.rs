@@ -9,7 +9,8 @@ use bevy_ecs::query::{Allow, QueryState};
 use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::{Mut, World};
 use blake3::Hasher;
-use campfire_common::{Binary, BinaryError, Bytes32, Sink, StateHash, Taken};
+use campfire_codec::{Binary, BinaryError, Sink, Taken};
+use campfire_common::{Bytes32, StateHash};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 

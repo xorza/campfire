@@ -1,7 +1,7 @@
 use arrayvec::ArrayVec;
 use postcard::ser_flavors::Flavor;
 
-use crate::codec::sink::Sink;
+use crate::sink::Sink;
 
 /// Postcard writes a byte at a time; batching them spares the sink a call per byte.
 const BUFFER: usize = 64;

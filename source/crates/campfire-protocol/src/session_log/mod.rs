@@ -3,7 +3,8 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::mem;
 use std::ops::Range;
 
-use campfire_common::{Binary, BinaryError, PlayerSlot, Tick};
+use campfire_codec::{Binary, BinaryError};
+use campfire_common::{PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, VerifyOnly};
 use serde::{Deserialize, Serialize};
 

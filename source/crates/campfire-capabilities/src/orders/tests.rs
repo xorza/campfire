@@ -2,7 +2,8 @@ use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
-use campfire_common::{Binary, PlayerSlot, SegmentSeed, Ticks};
+use campfire_codec::Binary;
+use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptError;
 use campfire_sim::{Command, IdAllocator, Position, SimUpdate, StableId, TickInput, TickInputs};

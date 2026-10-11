@@ -16,6 +16,7 @@ bench = ["internals", "dep:criterion"]
 
 [dependencies]
 campfire-capabilities.workspace = true
+campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-log.workspace = true
 campfire-math.workspace = true

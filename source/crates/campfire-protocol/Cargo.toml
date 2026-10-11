@@ -9,6 +9,7 @@ internals = []
 bench = ["internals", "dep:criterion"]
 
 [dependencies]
+campfire-codec.workspace = true
 campfire-common.workspace = true
 
 blake3.workspace = true

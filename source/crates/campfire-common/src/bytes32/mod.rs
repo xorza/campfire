@@ -64,7 +64,7 @@ impl FromStr for Bytes32 {
 mod tests {
     use std::array;
 
-    use crate::codec::binary::Binary;
+    use campfire_codec::Binary;
 
     use super::*;
 

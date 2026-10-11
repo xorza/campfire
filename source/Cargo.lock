@@ -2049,6 +2049,7 @@ name = "campfire-capabilities"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-codec",
  "campfire-common",
  "campfire-log",
  "campfire-math",
@@ -2068,6 +2069,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "campfire-capabilities",
+ "campfire-codec",
  "campfire-common",
  "campfire-import",
  "campfire-log",
@@ -2085,12 +2087,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "campfire-common"
+name = "campfire-codec"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
- "campfire-store",
- "derive_more",
  "postcard",
  "serde",
  "serde_json",
@@ -2099,10 +2099,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-common"
+version = "0.1.0"
+dependencies = [
+ "campfire-codec",
+ "campfire-store",
+ "derive_more",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "campfire-import"
 version = "0.1.0"
 dependencies = [
  "campfire-capabilities",
+ "campfire-codec",
  "campfire-common",
  "campfire-log",
  "campfire-math",
@@ -2123,6 +2135,7 @@ dependencies = [
 name = "campfire-lan-check"
 version = "0.1.0"
 dependencies = [
+ "campfire-codec",
  "campfire-common",
  "campfire-log",
  "campfire-net",
@@ -2142,6 +2155,7 @@ dependencies = [
 name = "campfire-log"
 version = "0.1.0"
 dependencies = [
+ "campfire-codec",
  "campfire-common",
  "campfire-store",
  "clap",
@@ -2156,6 +2170,7 @@ name = "campfire-math"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "campfire-codec",
  "campfire-common",
  "criterion 0.8.2",
  "proptest",
@@ -2173,6 +2188,7 @@ dependencies = [
  "bevy_state",
  "bevy_time",
  "campfire-capabilities",
+ "campfire-codec",
  "campfire-common",
  "campfire-log",
  "campfire-math",
@@ -2197,6 +2213,7 @@ name = "campfire-package"
 version = "0.1.0"
 dependencies = [
  "campfire-capabilities",
+ "campfire-codec",
  "campfire-common",
  "campfire-math",
  "campfire-package",
@@ -2218,6 +2235,7 @@ name = "campfire-protocol"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "campfire-codec",
  "campfire-common",
  "campfire-store",
  "criterion 0.8.2",
@@ -2250,6 +2268,13 @@ dependencies = [
  "serde",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "campfire-schedule"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
 ]
 
 [[package]]
@@ -2295,9 +2320,11 @@ dependencies = [
  "arrayvec",
  "bevy_ecs",
  "blake3",
+ "campfire-codec",
  "campfire-common",
  "campfire-log",
  "campfire-math",
+ "campfire-schedule",
  "criterion 0.8.2",
  "serde",
  "thiserror 2.0.21",
@@ -2338,6 +2365,7 @@ name = "campfire-zero-hour-check"
 version = "0.1.0"
 dependencies = [
  "campfire-capabilities",
+ "campfire-codec",
  "campfire-common",
  "campfire-import",
  "campfire-log",

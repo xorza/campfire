@@ -10,7 +10,8 @@ use campfire_capabilities::{
     ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields,
     Release, Scalar, Status, SyncTo, TimeTooLarge, UnitKitError,
 };
-use campfire_common::{MapName, Toml};
+use campfire_codec::Toml;
+use campfire_common::MapName;
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
     EffectProblem, GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages,

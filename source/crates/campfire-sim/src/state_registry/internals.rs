@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use bevy_ecs::world::World;
-use campfire_common::{Binary, StateHash, Tick};
+use campfire_codec::Binary;
+use campfire_common::{StateHash, Tick};
 use campfire_math::internals::SplitMix64;
 use serde::de::{
     self, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use campfire_capabilities::PackagePath;
-use campfire_common::Toml;
+use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
 use campfire_package::{
     CameraFile, ClientModel, ClientUnit, ClientUnits, GameData, MapLights, PackageWriter,

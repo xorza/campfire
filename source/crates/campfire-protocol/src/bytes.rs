@@ -20,7 +20,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for Bytes<'a> {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::Binary;
+    use campfire_codec::Binary;
 
     use super::*;
 

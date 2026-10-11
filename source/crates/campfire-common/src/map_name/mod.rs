@@ -47,7 +47,7 @@ impl<'de> Deserialize<'de> for MapName {
 
 #[cfg(test)]
 mod tests {
-    use crate::codec::binary::Binary;
+    use campfire_codec::Binary;
 
     use super::*;
 

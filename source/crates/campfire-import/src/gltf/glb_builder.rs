@@ -1,4 +1,4 @@
-use campfire_common::Json;
+use campfire_codec::Json;
 
 use crate::gltf::gltf_document::{
     Accessor, Asset, Buffer, BufferView, GltfDocument, Image, Sampler, Scene, Texture,

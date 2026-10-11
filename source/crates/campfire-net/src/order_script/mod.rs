@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use campfire_capabilities::{Action, ActionTarget, InputValue, ModeInput, Scalar};
-use campfire_common::{Tick, Toml};
+use campfire_codec::Toml;
+use campfire_common::Tick;
 use campfire_sim::StableId;
 use campfire_store::InputFile;
 use serde::Deserialize;

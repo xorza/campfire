@@ -1,6 +1,6 @@
 use std::fmt;
 
-use campfire_common::Json;
+use campfire_codec::Json;
 use serde::Serialize;
 
 /// A field an event logs as its JSON text, with `%`, for a value with no text form of its own,

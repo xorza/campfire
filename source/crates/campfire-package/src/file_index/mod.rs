@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
 use campfire_capabilities::PackagePath;
-use campfire_common::{Binary, Fingerprint};
+use campfire_codec::Binary;
+use campfire_common::Fingerprint;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 

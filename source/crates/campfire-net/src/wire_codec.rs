@@ -3,7 +3,7 @@ use bevy_ecs::error::Result as SystemResult;
 use bevy_replicon::bytes::Bytes;
 use bevy_replicon::prelude::RuleFns;
 use bevy_replicon::shared::replication::registry::ctx::{SerializeCtx, WriteCtx};
-use campfire_common::{Binary, BinaryError, Sink};
+use campfire_codec::{Binary, BinaryError, Sink};
 use lightyear_serde::SerializationError;
 use lightyear_serde::reader::Reader;
 use lightyear_serde::registry::SerializeFns;

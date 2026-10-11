@@ -1,4 +1,4 @@
-use campfire_common::{Binary, Toml};
+use campfire_codec::{Binary, Toml};
 use campfire_math::Num;
 use campfire_sim::{Position, SimComponent};
 use serde::Serialize;

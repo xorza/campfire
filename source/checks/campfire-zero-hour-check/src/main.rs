@@ -17,7 +17,8 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use campfire_capabilities::{HeightGrid, PackagePath};
-use campfire_common::{Binary, ExitStatus, MapName, Toml};
+use campfire_codec::{Binary, Toml};
+use campfire_common::{ExitStatus, MapName};
 use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_package::{

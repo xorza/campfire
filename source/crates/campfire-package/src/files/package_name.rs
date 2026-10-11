@@ -58,7 +58,7 @@ impl<'de> Deserialize<'de> for PackageName {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::Toml;
+    use campfire_codec::Toml;
 
     use super::*;
 

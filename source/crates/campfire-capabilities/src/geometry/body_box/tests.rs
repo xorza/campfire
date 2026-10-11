@@ -1,4 +1,4 @@
-use campfire_common::Binary;
+use campfire_codec::Binary;
 use campfire_math::internals::SplitMix64;
 
 use super::*;

@@ -9,6 +9,7 @@ bench = ["dep:criterion", "internals", "campfire-math/internals"]
 internals = []
 
 [dependencies]
+campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-script.workspace = true

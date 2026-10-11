@@ -3,7 +3,7 @@ use std::error::Error;
 
 use bevy::ecs::resource::Resource;
 use campfire_capabilities::{HeightGrid, PackagePath};
-use campfire_common::{Binary, Toml};
+use campfire_codec::{Binary, Toml};
 use campfire_log::ErrorReport;
 use campfire_package::{
     CameraFile, ClientUnits, ContentError, MapLights, MaterialFile, ModePackages, PackageReader,

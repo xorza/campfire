@@ -207,7 +207,7 @@ impl<'de> Deserialize<'de> for Terrain {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::{Binary, BinaryError};
+    use campfire_codec::{Binary, BinaryError};
 
     use super::*;
 

@@ -69,7 +69,7 @@ impl<'de, const N: usize> Visitor<'de> for SecretVisitor<N> {
 mod tests {
     use std::array;
 
-    use crate::codec::binary::Binary;
+    use campfire_codec::Binary;
 
     use super::*;
     use crate::segment_seed::SegmentSeed;
