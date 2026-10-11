@@ -167,6 +167,8 @@ mod tests {
         for (numerator, denominator, expected) in cases {
             let got = MODES.map(|mode| mode.divide(numerator, denominator));
             assert_eq!(got, expected, "{numerator} / {denominator}");
+            let in_const = MODES.map(|mode| mode.divide_in_const(numerator, denominator));
+            assert_eq!(in_const, expected, "{numerator} / {denominator} in const");
         }
     }
 

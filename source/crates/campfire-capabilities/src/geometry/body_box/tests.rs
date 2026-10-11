@@ -718,24 +718,9 @@ fn a_push_is_the_least_whole_move_and_its_first_try_two_below_it_at_most() {
                         .find(|&k| moves_out(k, along, out, square, radius))
                         .unwrap();
                     let case = format!("{along} {out} {square} {radius}");
-                    assert_eq!(
-                        outward(
-                            along,
-                            out,
-                            square,
-                            radius,
-                            FineRoot::of(square.unsigned_abs())
-                        ),
-                        least,
-                        "{case}"
-                    );
-                    let first = first_outward(
-                        along,
-                        out,
-                        square,
-                        radius,
-                        FineRoot::of(square.unsigned_abs()),
-                    );
+                    let root = FineRoot::of(square.unsigned_abs());
+                    assert_eq!(outward(along, out, square, radius, root), least, "{case}");
+                    let first = first_outward(along, out, square, radius, root);
                     assert!(least - 2 <= first && first <= least, "{case}");
                 }
             }
@@ -751,29 +736,18 @@ fn a_push_is_the_least_whole_move_and_its_first_try_two_below_it_at_most() {
     let (axis, aslant) = (4093 * meter, 2894 * meter);
     for (along, square) in [(axis, axis * axis), (aslant, 2 * aslant * aslant)] {
         let length = square.cast_unsigned().floor_root().cast_signed();
+        let root = FineRoot::of(square.unsigned_abs());
         for out in [
             -square,
             0,
             length * (radius - 1),
             length * (radius >> 1) + 12_345,
         ] {
-            let k = outward(
-                along,
-                out,
-                square,
-                radius,
-                FineRoot::of(square.unsigned_abs()),
-            );
+            let k = outward(along, out, square, radius, root);
             let case = format!("{along} {out}");
             assert!(moves_out(k, along, out, square, radius), "{case}");
             assert!(!moves_out(k - 1, along, out, square, radius), "{case}");
-            let first = first_outward(
-                along,
-                out,
-                square,
-                radius,
-                FineRoot::of(square.unsigned_abs()),
-            );
+            let first = first_outward(along, out, square, radius, root);
             assert!(k - 2 <= first && first <= k, "{case}");
         }
     }

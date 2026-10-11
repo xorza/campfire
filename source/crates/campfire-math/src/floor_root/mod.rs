@@ -10,7 +10,8 @@ pub trait FloorRoot {
 }
 
 /// The integer square root nearest to the exact one, for values below 2¹²⁶, whose roots are
-/// below 2⁶³. A root is never exactly a half, as `(k + ½)²` is not an integer.
+/// below 2⁶³ and nearest roots at most 2⁶³. A root is never exactly a half, as `(k + ½)²` is not
+/// an integer.
 pub(crate) trait NearestRoot {
     #[must_use]
     fn nearest_root(self) -> Self;
@@ -43,7 +44,7 @@ impl NearestRoot for u128 {
     /// as `(n ± ½)² = n² ± n + ¼`; the rare steps correct the rest, as in `floor_root`.
     #[expect(
         clippy::inline_always,
-        reason = "left to the inliner, the call stays, and costs `atomic/floor_root/narrow` 10 % on a Ryzen and 22 % on an M2"
+        reason = "the paths of `floor_root`, whose call the inliner keeps at a cost of 10 % to 22 %"
     )]
     #[inline(always)]
     fn nearest_root(self) -> u128 {
@@ -252,7 +253,7 @@ impl Far {
     fn nearest(self) -> u64 {
         let rounded = (self.offset + TWO_POW_52).to_bits() - TWO_POW_52.to_bits();
         let mut root = self.base.saturating_add(rounded);
-        // Below 2¹²⁶, roots are below 2⁶³, so the residual is within `i128`.
+        // Below 2¹²⁶, roots are at most 2⁶³, so the residual is within `i128`.
         loop {
             let rest = self
                 .value

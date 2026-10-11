@@ -1,6 +1,7 @@
 use proptest::prelude::*;
 
 use super::*;
+
 /// The cases of each property a run, as the other tests of the crate draw.
 const CASES: u32 = 10_000;
 
@@ -55,7 +56,7 @@ proptest! {
 
     #[test]
     fn each_way_is_the_division(divisor in 1_u64.., quotient in any::<u64>(), rest in any::<u64>(), shift in 0_u32..64) {
-        let divisor = u128::from(divisor >> shift | 1);
+        let divisor = u128::from((divisor >> shift).max(1));
         let numerator = u128::from(quotient) * divisor + u128::from(rest) % divisor;
         let expected = reference(numerator, divisor);
         prop_assert_eq!(WideDivision::of(numerator, divisor), expected);

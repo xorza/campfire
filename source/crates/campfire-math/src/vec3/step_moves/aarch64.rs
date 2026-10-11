@@ -24,18 +24,19 @@ const TWO_POW_52: f64 = 4_503_599_627_370_496.0;
 #[expect(
     clippy::cast_precision_loss,
     clippy::float_arithmetic,
-    reason = "an estimate that `step_component` corrects exactly"
+    reason = "an estimate that `estimated` corrects exactly"
 )]
 fn ratio(step: i64, distance: i64) -> f64 {
     step as f64 / distance as f64
 }
 
-/// `offset · step / distance` rounded to nearest, ties to even, from `ratio`, for a distance below 2⁵⁰ and
-/// at least `step` and `|offset|`, so the quotient is at most `|offset|`. Each of the three is
-/// below 2⁵⁰ and converts exactly, and the estimate rounds twice, by at most 2⁻⁵³ of itself
-/// each, so it lies within 2⁻²⁵ of the quotient's magnitude; its nearest integer `m` is the
-/// quotient's or one off it, when the quotient lies within that of a half. The rest
-/// `|offset| · step − m · distance` is below the distance in magnitude, so its low 64 bits,
+/// `offset · step / distance` rounded to nearest, ties to even, from `ratio`, for a distance
+/// below 2⁵⁰ and at least `step` and `|offset|`, so the quotient is at most `|offset|`. Each of
+/// the three is below 2⁵⁰ and converts exactly, and the estimate rounds twice, by at most 2⁻⁵³
+/// of itself each, so it lies within 2⁻² of the quotient's magnitude, below 2⁵⁰; its nearest
+/// integer `m` is the quotient's or one off it, when the quotient lies within that of a half, so
+/// within ¾ of it. The rest `|offset| · step − m · distance` is below the distance in magnitude,
+/// so its low 64 bits,
 /// wrapped, are the rest, and every step runs on `u64`: the nearest, ties to even, has
 /// `−distance ≤ 2 · rest ≤ distance`, the bound taken where `m` is even.
 #[expect(

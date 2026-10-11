@@ -215,9 +215,9 @@ const fn to_index(value: u64) -> usize {
     value as usize
 }
 
-/// `to_num` of a magnitude below 2⁶³·⁷, as `atan2`'s are, its rounding on `u64`, as bits: adding
-/// `2³⁷ − 1` and the floor's last bit before the shift rounds to nearest, ties to even, as in
-/// `Num::from_raw_products`, and stays within `u64`.
+/// The bits of the `Num` nearest to a magnitude at 2⁻⁶², ties to even, for a magnitude below
+/// `π · 2⁶²`, as `atan2`'s are: adding `2³⁷ − 1` and the floor's last bit before the shift rounds
+/// as in `Num::from_raw_products`, and stays within `u64`.
 #[expect(clippy::cast_possible_wrap, reason = "a magnitude below 2⁶⁴ over 2³⁸")]
 fn to_num_magnitude(magnitude: u64) -> i64 {
     const SHIFT: u32 = WIDE_BITS - Num::FRAC_BITS;
@@ -237,7 +237,7 @@ const fn wide_magnitude(value: i128) -> u64 {
     value as u64
 }
 
-/// `to_num` of a value within `i64`, its rounding on `i64`. The added half of
+/// The `Num` nearest to a value at 2⁻⁶², ties to even, rounded on `i64`. The added half of
 /// `to_num_magnitude` measured 10 % slower here on an M2, where `sin_cos` waits on it.
 const fn to_num_narrow(value: i64) -> Num {
     const SHIFT: u32 = WIDE_BITS - Num::FRAC_BITS;

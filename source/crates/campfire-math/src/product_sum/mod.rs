@@ -6,7 +6,7 @@ use crate::u256::U256;
 pub(crate) mod bench;
 
 /// A sum of products of raw values, exact at any size: a 256-bit two's complement number, its
-/// high half first. Each product is below 2¹⁹⁰ in magnitude, so a sum of fewer than 2⁶⁴ never
+/// high half first. Each product is at most 2¹⁹⁰ in magnitude, so a sum of fewer than 2⁶⁴ never
 /// leaves the range, and each add is the same arithmetic whatever the signs, with no branch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProductSum {

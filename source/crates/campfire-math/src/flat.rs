@@ -20,8 +20,8 @@ impl Flat {
         Flat::new(axes[0], axes[1])
     }
 
-    pub fn to_array(self) -> [i128; 2] {
-        self.0.map(i128::from)
+    pub const fn to_array(self) -> [i128; 2] {
+        [self.0[0] as i128, self.0[1] as i128]
     }
 
     /// `[x, z]` of `nums`, in their bits.
@@ -34,16 +34,16 @@ impl Flat {
         Flat::from_nums([at.x, at.z])
     }
 
-    pub fn dot(self, rhs: Flat) -> i128 {
+    pub const fn dot(self, rhs: Flat) -> i128 {
         Flat::product(self.0[0], rhs.0[0]) + Flat::product(self.0[1], rhs.0[1])
     }
 
     /// Positive when `rhs` turns counterclockwise from `self`, seen from above.
-    pub fn cross(self, rhs: Flat) -> i128 {
+    pub const fn cross(self, rhs: Flat) -> i128 {
         Flat::product(self.0[0], rhs.0[1]) - Flat::product(self.0[1], rhs.0[0])
     }
 
-    pub fn length_squared(self) -> u128 {
+    pub const fn length_squared(self) -> u128 {
         self.dot(self).unsigned_abs()
     }
 

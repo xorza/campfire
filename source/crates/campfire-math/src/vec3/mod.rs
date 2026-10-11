@@ -235,9 +235,10 @@ fn unit_scale(length: u64) -> f64 {
 
 /// `component / length` rounded to nearest, ties to even, from `scale`, `unit_scale(length)`.
 /// |component| ≤ length, because the length is the nearest root of the squared sum, so the
-/// quotient is at most 2²⁴. The estimate `|component| · scale` rounds three times, by at most
-/// 2⁻⁵³ of itself each, so it lies within 2⁻²⁷ of the quotient, and lifted by 2⁻²⁰ it lies
-/// above it and within 2⁻¹⁹: its floor is the quotient's floor or one above it, the second only
+/// quotient is at most 2²⁴. The estimate rounds four times, twice in `scale`, once in the
+/// magnitude's conversion and once in the fused multiply-add, by at most 2⁻⁵³ of itself each, so
+/// it lies within 2⁻²⁶ of the quotient, and lifted by 2⁻²⁰ it lies above it and within 2⁻¹⁹: its
+/// floor is the quotient's floor or one above it, the second only
 /// for a quotient within 2⁻¹⁹ below an integer, which one rare step corrects. A whole quotient,
 /// as an axis's component gives, takes no step.
 #[expect(

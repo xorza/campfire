@@ -45,6 +45,6 @@ proptest! {
         // Distances of every width, and offsets within them, as a vector's components are.
         let distance = (distance >> shift).max(1);
         let step = i64::try_from(step % (distance.cast_unsigned() + 1)).unwrap();
-        check(step, distance, offsets.map(|offset| offset % (distance + 1)));
+        check(step, distance, offsets.map(|offset| offset % distance.saturating_add(1)));
     }
 }

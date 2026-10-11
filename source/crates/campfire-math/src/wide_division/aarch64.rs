@@ -5,8 +5,9 @@ const TWO_POW_64: f64 = 18_446_744_073_709_551_616.0;
 /// 2³², exact in f64.
 const TWO_POW_32: f64 = 4_294_967_296.0;
 
-/// The quotient of a divisor and a quotient that fit 64 bits, from a float estimate, a step by the float ratio of its rest, and an exact
-/// correction, with one float reciprocal for both. The numerator converts as two halves with one
+/// `numerator / divisor` and its rest, for a divisor and a quotient that fit 64 bits: a float
+/// estimate, a step by the float ratio of its rest, and an exact correction, with one float
+/// reciprocal for both. The numerator converts as two halves with one
 /// rounding, the divisor with one, the reciprocal and the product round once each, so the
 /// estimate lies within 2⁻⁵⁰ of the quotient, below 2⁶⁴: within 2¹⁴, and its integer part `q`,
 /// held below 2⁶⁴, within 2¹⁵. The rest `numerator − q · divisor` is below 2¹⁵ · divisor in
