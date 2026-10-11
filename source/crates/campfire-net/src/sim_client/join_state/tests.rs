@@ -1,13 +1,11 @@
 use std::cell::Cell;
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{Fingerprint, MapName, TlsKey};
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
-use campfire_protocol::{
-    CertificateHash, ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan,
-};
+use campfire_protocol::{ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan};
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
@@ -43,7 +41,7 @@ fn x_only(secret: u8) -> XOnlyPublicKey {
 fn waiting(tick_hz: NonZeroU32) -> JoinState {
     let server = ServerPin {
         key: x_only(8),
-        certificate: CertificateHash::new([3; 32]),
+        tls_key: TlsKey::new([3; 32]),
         tick_hz,
     };
     JoinState::new(TestKey::of(1), server, false, lane_rules(), clock)
@@ -158,18 +156,18 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
         (granted.seed_contribution, granted.expiration),
         (SeedContribution::new([6; 32]), NOW + 86_400)
     );
-    let check = |certificate| {
+    let check = |tls_key| {
         offer.challenge.check(
             &Secp256k1::verification_only(),
             &offer.terms,
-            &certificate,
+            &tls_key,
             &delegation,
             &join.answer,
             NOW,
         )
     };
-    assert_eq!(check(CertificateHash::new([3; 32])), Ok(()));
-    assert!(check(CertificateHash::new([4; 32])).is_err());
+    assert_eq!(check(TlsKey::new([3; 32])), Ok(()));
+    assert!(check(TlsKey::new([4; 32])).is_err());
     assert_eq!(state.clock(), None);
     assert_eq!((state.slot(), state.team()), (None, None));
 

@@ -5,8 +5,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_time::{Real, Time};
+use campfire_common::TlsKey;
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
-use campfire_protocol::{CertificateHash, ConnectChallenge, Delegation, SessionTerms};
+use campfire_protocol::{ConnectChallenge, Delegation, SessionTerms};
 use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{
     Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlink, UnlinkReason, Unlinked,
@@ -27,12 +28,12 @@ const RESEND_TICKS: u32 = 30;
 
 /// What the server offers each new link, and how it checks the answer: the session's terms, its
 /// grace period and restore window, and a fresh challenge, which the player's session key signs
-/// with the hash of the certificate the client verified. The lobby offers it before the start,
+/// with the TLS key the client verified. The lobby offers it before the start,
 /// and the door after it.
 #[derive(Debug)]
 pub(crate) struct Offering {
     pub(crate) terms: SessionTerms,
-    certificate: CertificateHash,
+    tls_key: TlsKey,
     pub(crate) times: SessionTimes,
     clock: fn() -> u64,
     entropy: fn(&mut [u8; 32]),
@@ -156,7 +157,7 @@ impl Offering {
     pub(crate) fn new(terms: SessionTerms, setup: &ServerSetup) -> Offering {
         Offering {
             terms,
-            certificate: setup.certificate,
+            tls_key: setup.tls_key,
             times: setup.times,
             clock: setup.clock,
             entropy: setup.entropy,
@@ -202,7 +203,7 @@ impl Offering {
     }
 
     /// The delegation of `join`, when its session key answered `challenge` over this server's
-    /// certificate, and it grants this session, not expired by the server's clock.
+    /// TLS key, and it grants this session, not expired by the server's clock.
     pub(crate) fn check(
         &self,
         challenge: ConnectChallenge,
@@ -213,7 +214,7 @@ impl Offering {
             .check(
                 &self.secp,
                 &self.terms,
-                &self.certificate,
+                &self.tls_key,
                 &delegation,
                 &join.answer,
                 (self.clock)(),

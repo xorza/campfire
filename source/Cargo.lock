@@ -2075,6 +2075,7 @@ dependencies = [
  "campfire-net",
  "campfire-package",
  "campfire-protocol",
+ "campfire-quic",
  "campfire-runner",
  "campfire-sim",
  "campfire-store",
@@ -2241,6 +2242,7 @@ dependencies = [
  "bevy_state",
  "bevy_time",
  "bytes",
+ "campfire-common",
  "campfire-log",
  "campfire-store",
  "lightyear",
@@ -2301,6 +2303,7 @@ dependencies = [
  "campfire-net",
  "campfire-package",
  "campfire-protocol",
+ "campfire-quic",
  "campfire-runner",
  "campfire-sim",
  "campfire-store",
@@ -2308,7 +2311,6 @@ dependencies = [
  "lightyear",
  "thiserror 2.0.21",
  "tracing",
- "wtransport",
  "zeroize",
 ]
 

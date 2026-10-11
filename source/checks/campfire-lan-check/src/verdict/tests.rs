@@ -3,8 +3,8 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use campfire_common::StateHash;
-use campfire_protocol::{CertificateHash, SessionId};
+use campfire_common::{StateHash, TlsKey};
+use campfire_protocol::SessionId;
 use serde_json::json;
 
 use super::*;
@@ -94,7 +94,7 @@ fn a_match_passes_when_every_order_lands_in_its_stamp_tick_or_waited_for_a_catch
     // caught up ran ticks 50 to 55, and the server read that input only after them, so it took
     // effect in 56.
     let listening = Listening {
-        certificate: CertificateHash::new([7; 32]),
+        tls_key: TlsKey::new([7; 32]),
         server_key: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
             .parse()
             .unwrap(),
@@ -220,7 +220,7 @@ fn the_impostor_and_each_process_fail_by_their_own_flaws() {
     // stayed silent, fails the check.
     let failed = failed();
     let lost = LinkLost {
-        reason: "Transport error: certificate hash mismatch".to_owned(),
+        reason: "Transport error: the cryptographic handshake failed: error 49".to_owned(),
     };
     let mut verdict = Verdict::default();
     verdict.impostor(failed, &[lost]);

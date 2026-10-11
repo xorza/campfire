@@ -2,13 +2,12 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
-use campfire_common::{MapName, PlayerSlot};
+use campfire_common::{MapName, PlayerSlot, TlsKey};
 use campfire_net::SlotBotFile;
-use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
 use clap::Parser;
 
-use crate::args::error::ServerBotError;
+use crate::args::error::{ServerAddressError, ServerBotError};
 
 mod error;
 
@@ -31,7 +30,7 @@ pub(crate) enum Server {
     /// A server elsewhere, as its listing gives it.
     Remote {
         address: SocketAddr,
-        certificate: CertificateHash,
+        tls_key: TlsKey,
         key: XOnlyPublicKey,
         tick_hz: NonZeroU32,
     },
@@ -43,7 +42,7 @@ pub(crate) enum Server {
 #[derive(Debug, Parser)]
 #[command(
     version,
-    override_usage = "campfire-client [OPTIONS] <MODE> <ADDRESS> <CERTIFICATE> <SERVER_KEY> <TICK_HZ>\n       \
+    override_usage = "campfire-client [OPTIONS] <MODE> <ADDRESS> <TLS_KEY> <SERVER_KEY> <TICK_HZ>\n       \
                       campfire-client --local --data <DIRECTORY> [OPTIONS] <MODE>"
 )]
 pub(crate) struct CommandLine {
@@ -83,9 +82,10 @@ pub(crate) struct CommandLine {
 #[group(conflicts_with = "local")]
 struct Remote {
     /// The server's address, as its listing gives it
+    #[arg(value_parser = CommandLine::server_address)]
     address: SocketAddr,
-    /// The hash of the server's TLS certificate, in hex
-    certificate: CertificateHash,
+    /// The server's TLS key, in hex
+    tls_key: TlsKey,
     /// The server's public key, in hex
     server_key: XOnlyPublicKey,
     /// The session's ticks a second
@@ -98,7 +98,7 @@ impl Args {
         let server = match line.remote {
             Some(remote) => Server::Remote {
                 address: remote.address,
-                certificate: remote.certificate,
+                tls_key: remote.tls_key,
                 key: remote.server_key,
                 tick_hz: remote.tick_hz,
             },
@@ -118,6 +118,18 @@ impl Args {
 }
 
 impl CommandLine {
+    /// The server's address `text` names; an error for one that names no host or no port.
+    fn server_address(text: &str) -> Result<SocketAddr, ServerAddressError> {
+        let address: SocketAddr = text.parse().map_err(ServerAddressError::Syntax)?;
+        if address.ip().is_unspecified() {
+            return Err(ServerAddressError::Unspecified);
+        }
+        if address.port() == 0 {
+            return Err(ServerAddressError::NoPort);
+        }
+        Ok(address)
+    }
+
     /// The server bot `text` names; an error for a bot in slot 0, which the client plays.
     fn server_bot(text: &str) -> Result<SlotBotFile, ServerBotError> {
         let bot: SlotBotFile = text.parse().map_err(ServerBotError::File)?;

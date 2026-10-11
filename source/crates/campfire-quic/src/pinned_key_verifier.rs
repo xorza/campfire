@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use campfire_common::TlsKey;
+
 use quinn_proto::crypto::rustls::QuicClientConfig;
 use rustls::client::Resumption;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
@@ -9,21 +11,21 @@ use rustls::version::TLS13;
 use rustls::{CertificateError, DigitallySignedStruct, Error, SignatureScheme};
 
 use crate::server_key::ALPN;
-use crate::server_public_key::{SPKI_LEN, ServerPublicKey};
+use crate::spki::Spki;
 
 /// A client's check of the server: the raw key the client pinned and no other, with no
 /// certificate, chain, name or date to read (design 15, D6). Any other key is refused with
 /// `ApplicationVerificationFailure`, which TLS sends as the `access_denied` alert.
 #[derive(Debug)]
 pub(crate) struct PinnedKeyVerifier {
-    spki: [u8; SPKI_LEN],
+    spki: Spki,
     algorithms: WebPkiSupportedAlgorithms,
 }
 
 impl PinnedKeyVerifier {
-    pub(crate) fn new(pin: ServerPublicKey) -> PinnedKeyVerifier {
+    pub(crate) fn new(pin: &TlsKey) -> PinnedKeyVerifier {
         PinnedKeyVerifier {
-            spki: pin.spki(),
+            spki: Spki::of(pin),
             algorithms: ring::default_provider().signature_verification_algorithms,
         }
     }
@@ -59,7 +61,7 @@ impl ServerCertVerifier for PinnedKeyVerifier {
         _ocsp_response: &[u8],
         _now: UnixTime,
     ) -> Result<ServerCertVerified, Error> {
-        if intermediates.is_empty() && end_entity.as_ref() == self.spki {
+        if intermediates.is_empty() && end_entity.as_ref() == self.spki.as_bytes() {
             Ok(ServerCertVerified::assertion())
         } else {
             Err(Error::InvalidCertificate(

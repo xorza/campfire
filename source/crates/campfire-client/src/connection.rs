@@ -12,9 +12,7 @@ use campfire_net::{
     SlotBotFile,
 };
 use campfire_package::ModePackages;
-use lightyear::prelude::client::WebTransportClientIo;
-use lightyear::prelude::{LocalAddr, PeerAddr};
-use lightyear::webtransport::client::WebTransportClientPlugin;
+use campfire_quic::{LinkTimes, QuicEndpoint, QuicPlugin};
 use tracing::error;
 
 use crate::args::{Args, Server};
@@ -40,13 +38,13 @@ impl Connection {
         match &args.server {
             &Server::Remote {
                 address,
-                certificate,
+                tls_key,
                 key,
                 tick_hz,
             } => Ok(Connection::Remote {
                 pin: ServerPin {
                     key,
-                    certificate,
+                    tls_key,
                     tick_hz,
                 },
                 address,
@@ -65,23 +63,27 @@ impl Connection {
         }
     }
 
-    /// Links `client`, the client entity of `app`, to the server: over WebTransport to a remote
-    /// one; by in-process channels to a local one, whose `pace` the app then follows, its
-    /// session's ticks `tick` long, and whose new link after each load it takes.
-    pub(crate) fn link(&mut self, app: &mut App, client: Entity, pace: &Arc<Pace>, tick: Duration) {
+    /// Links `client`, the client entity of `app`, to the server: over QUIC to a remote one, which
+    /// takes only the TLS key the pin names; by in-process channels to a local one, whose `pace`
+    /// the app then follows, its session's ticks `tick` long, and whose new link after each load
+    /// it takes. The exit code when the client's socket does not open.
+    pub(crate) fn link(
+        &mut self,
+        app: &mut App,
+        client: Entity,
+        pace: &Arc<Pace>,
+        tick: Duration,
+    ) -> Result<(), ExitCode> {
         match self {
             Connection::Remote { pin, address } => {
-                app.add_plugins(WebTransportClientPlugin);
-                app.world_mut().entity_mut(client).insert((
-                    WebTransportClientIo {
-                        certificate_digest: pin.certificate.to_string(),
-                        target: None,
+                let endpoint = QuicEndpoint::client(*address, &pin.tls_key, LinkTimes::CAMPFIRE).map_err(
+                    |error| {
+                        error!(error = %ErrorReport::of(&error), "the client's socket does not open");
+                        ExitCode::from(ExitStatus::Failure)
                     },
-                    PeerAddr(*address),
-                    // A raw client counts as connected once linked only with a local address,
-                    // which only names it; the transport binds its own socket.
-                    LocalAddr(SocketAddr::from(([0, 0, 0, 0], 0))),
-                ));
+                )?;
+                app.add_plugins(QuicPlugin);
+                app.world_mut().entity_mut(client).insert(endpoint);
             }
             Connection::Local(local) => {
                 app.world_mut().entity_mut(client).insert(local.take_link());
@@ -96,6 +98,7 @@ impl Connection {
                 ));
             }
         }
+        Ok(())
     }
 
     /// Starts the local server of the mode `packages` holds, its data in the client's data

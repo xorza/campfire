@@ -1,8 +1,9 @@
+use std::io::ErrorKind;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use bevy_app::{App, PluginGroup, TaskPoolPlugin, Update};
+use bevy_app::{App, TaskPoolPlugin, Update};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
 use bevy_ecs::world::{Mut, World};
@@ -17,8 +18,6 @@ use lightyear::prelude::{
     MessageReceiver, MessageSender, NetworkDirection, PredictionManager, ReliableSettings,
 };
 use lightyear::transport::packet::fragment_size_for_min_mtu;
-use lightyear::webtransport::client::WebTransportClientPlugin;
-use lightyear::webtransport::server::WebTransportServerPlugin;
 use lightyear_serde::SerializationError;
 use lightyear_serde::reader::Reader;
 use lightyear_serde::registry::SerializeFns;
@@ -56,7 +55,7 @@ struct Loopback {
     server: App,
     endpoint: Entity,
     address: SocketAddr,
-    key: ServerPublicKey,
+    key: TlsKey,
 }
 
 /// A client's app and the entity of its link and endpoint.
@@ -102,7 +101,7 @@ impl Loopback {
     }
 
     fn client(&self, times: LinkTimes) -> ClientApp {
-        ClientApp::start(QuicEndpoint::client(self.address, self.key, times).unwrap())
+        ClientApp::start(QuicEndpoint::client(self.address, &self.key, times).unwrap())
     }
 
     /// Updates the server and `clients` until `done`, a frame each millisecond: how long it took.
@@ -265,7 +264,7 @@ fn handshake(client_cid: usize) -> (Connection, Connection) {
     let server_address = SocketAddr::from(([10, 0, 0, 1], 4433));
     let client_address = SocketAddr::from(([10, 0, 0, 2], 50_000));
     let config = QuicEndpoint::client_config(
-        PinnedKeyVerifier::new(key.public()).client_config(),
+        PinnedKeyVerifier::new(&key.public()).client_config(),
         LinkTimes::CAMPFIRE,
     );
     let (_, mut client_connection) = client
@@ -346,7 +345,7 @@ fn the_link_minimum_is_quics_datagram_on_its_minimum_path() {
 fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
     let config = QuicEndpoint::client_config(
-        PinnedKeyVerifier::new(loopback.key).client_config(),
+        PinnedKeyVerifier::new(&loopback.key).client_config(),
         LinkTimes::CAMPFIRE,
     );
     let mut client =
@@ -359,6 +358,21 @@ fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
     ));
     // The client's handshake completed before the server closed it: it spawned no link either.
     assert!(Loopback::links(client.app.world_mut()).is_empty());
+}
+
+#[test]
+fn a_port_in_use_is_an_error_that_names_its_address() {
+    let first = Loopback::bind(LinkTimes::CAMPFIRE);
+    let taken = first.address;
+    let refused = QuicEndpoint::server(
+        taken,
+        &server_key(),
+        ResetKey::new(&Zeroizing::new([9; 32])),
+        LinkTimes::CAMPFIRE,
+    )
+    .unwrap_err();
+    assert_eq!(refused.address, taken);
+    assert_eq!(refused.error.kind(), ErrorKind::AddrInUse);
 }
 
 #[test]
@@ -442,7 +456,7 @@ fn a_wrong_pin_fails_by_access_denied_and_each_connect_checks_the_key() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
     let wrong = ServerKey::from_seed(&Zeroizing::new([8; 32])).public();
     let mut impostor = ClientApp::start(
-        QuicEndpoint::client(loopback.address, wrong, LinkTimes::CAMPFIRE).unwrap(),
+        QuicEndpoint::client(loopback.address, &wrong, LinkTimes::CAMPFIRE).unwrap(),
     );
     loopback.pump(&mut [&mut impostor], |_, clients| {
         clients[0].is::<Unlinked>()
@@ -459,7 +473,7 @@ fn a_wrong_pin_fails_by_access_denied_and_each_connect_checks_the_key() {
     // With no session ticket, a second connect presents the key again, and the verifier reads it.
     let checks = Arc::new(AtomicUsize::new(0));
     let config = QuicEndpoint::client_config(
-        PinnedKeyVerifier::new(loopback.key).counting(&checks),
+        PinnedKeyVerifier::new(&loopback.key).counting(&checks),
         LinkTimes::CAMPFIRE,
     );
     let mut client =
@@ -618,13 +632,9 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
     let address = quic.local_address();
     let mut server = App::new();
     server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-    server.add_plugins(
-        ServerPlugins {
-            tick_duration: tick,
-        }
-        .build()
-        .disable::<WebTransportServerPlugin>(),
-    );
+    server.add_plugins(ServerPlugins {
+        tick_duration: tick,
+    });
     server.add_plugins(QuicPlugin);
     Blob::register(&mut server);
     server.init_resource::<Received>();
@@ -636,19 +646,15 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
 
     let mut client = App::new();
     client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-    client.add_plugins(
-        ClientPlugins {
-            tick_duration: tick,
-        }
-        .build()
-        .disable::<WebTransportClientPlugin>(),
-    );
+    client.add_plugins(ClientPlugins {
+        tick_duration: tick,
+    });
     client.add_plugins(QuicPlugin);
     client.insert_resource(PredictionManager::default());
     Blob::register(&mut client);
     client.finish();
     client.cleanup();
-    let quic = QuicEndpoint::client(address, key.public(), LinkTimes::CAMPFIRE).unwrap();
+    let quic = QuicEndpoint::client(address, &key.public(), LinkTimes::CAMPFIRE).unwrap();
     let entity = client
         .world_mut()
         .spawn((

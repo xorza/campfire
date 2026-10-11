@@ -1,13 +1,12 @@
 use std::mem;
 
 use bevy_ecs::system::RunSystemOnce;
-use campfire_common::MapName;
+use campfire_common::{MapName, TlsKey};
 use campfire_package::PackageDir;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::{All, Secp256k1};
 use campfire_protocol::{
-    CertificateHash, ConnectChallenge, ConnectError, DelegationError, DelegationTerms,
-    SeedContribution,
+    ConnectChallenge, ConnectError, DelegationError, DelegationTerms, SeedContribution,
 };
 use lightyear::prelude::{PeerId, RemoteId};
 
@@ -44,7 +43,7 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
         open: open.iter().copied().map(PlayerSlot::new).collect(),
         server: ServerSetup {
             key: TestKey::server(),
-            certificate: CertificateHash::new([3; 32]),
+            tls_key: TlsKey::new([3; 32]),
             times: SessionTimes::DEFAULT,
             clock: || NOW,
             entropy: |bytes| bytes.fill(5),
@@ -101,21 +100,21 @@ impl Joining {
     }
 
     /// A join of `json`, whose answer the session key of byte `session` signs over the
-    /// certificate of bytes `certificate`.
-    fn join(&self, json: &str, session: u8, certificate: u8) -> Join {
+    /// TLS key of bytes `tls_key`.
+    fn join(&self, json: &str, session: u8, tls_key: u8) -> Join {
         Join {
             delegation: json.to_owned(),
             answer: self.challenge.answer(
                 &self.secp,
                 &TestKey::of(session),
-                &CertificateHash::new([certificate; 32]),
+                &TlsKey::new([tls_key; 32]),
                 &[0; 32],
             ),
         }
     }
 
     /// The join of the main key of byte `main` from the session key of byte `session`, over this
-    /// server's certificate.
+    /// server's TLS key.
     fn signed(&self, main: u8, session: u8) -> Join {
         self.join(self.delegation(main, session).json(), session, 3)
     }
@@ -131,7 +130,7 @@ fn links(world: &mut World) -> [Entity; 4] {
 #[test]
 fn one_frames_joins_go_in_the_order_of_their_keys_however_a_query_gives_them() {
     // In either order, the answered joins go in the order of their main keys, then their
-    // session keys, and the join over another certificate is refused. The x-only keys begin
+    // session keys, and the join over another TLS key is refused. The x-only keys begin
     // 46… for byte 4 and 53… for byte 3, and the session keys 4d… for byte 2 and f9… for byte 8.
     let lobby = Lobby::new(setup(&[], &[])).unwrap();
     let joining = Joining::new(&lobby);
@@ -173,12 +172,12 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
     let challenge = joining.challenge;
     assert_eq!((lobby.players, lobby.joined()), (2, 0));
     let delegation = joining.delegation(1, 2);
-    let join = |certificate: u8, json: &str| joining.join(json, 2, certificate);
+    let join = |tls_key: u8, json: &str| joining.join(json, 2, tls_key);
     assert_eq!(
         lobby.offering.check(challenge, &join(3, delegation.json())),
         Ok(delegation.clone())
     );
-    // An answer over another certificate, as a relay to this server gives, and a delegation
+    // An answer over another TLS key, as a relay to this server gives, and a delegation
     // that is not an event.
     assert_eq!(
         lobby.offering.check(challenge, &join(4, delegation.json())),

@@ -40,7 +40,7 @@ const LOG_EXTRA: &str =
 
 /// A match of the real server and one bot per script, each a process on `127.0.0.1`, each
 /// logging JSON to a file in the run's directory; beside them, an impostor bot that pins the
-/// wrong certificate plays the first script.
+/// wrong TLS key plays the first script.
 #[derive(Debug)]
 pub(crate) struct LanMatch<'a> {
     pub(crate) binaries: &'a Binaries,
@@ -97,7 +97,7 @@ impl LanMatch<'_> {
         let mut children = ProcessGroup::default();
         let server = children.push(Process::Server, self.server(Process::Server, address)?);
         let Listening {
-            certificate,
+            tls_key,
             server_key,
             tick_hz,
             ..
@@ -105,14 +105,14 @@ impl LanMatch<'_> {
             Listened::Yes(listening) => listening,
             Listened::No(outcome) => return Ok(Played::unplayed(outcome, self.scripts.len())),
         };
-        let wrong = Bytes32::new(certificate.as_bytes().map(|byte| !byte)).to_string();
+        let wrong = Bytes32::new(tls_key.as_bytes().map(|byte| !byte)).to_string();
         let bots = self
             .scripts
             .iter()
             .enumerate()
-            .map(|(index, script)| (Process::Bot(index), script, certificate.to_string()));
+            .map(|(index, script)| (Process::Bot(index), script, tls_key.to_string()));
         let impostor = (Process::Impostor, &self.scripts[0], wrong);
-        let bot = |process: Process, key: Process, script: &Path, certificate: &str| {
+        let bot = |process: Process, key: Process, script: &Path, tls_key: &str| {
             let mut command = Command::new(&self.binaries.client);
             command
                 .arg("--bot")
@@ -121,20 +121,20 @@ impl LanMatch<'_> {
                 .arg(self.dir.join(format!("{}.nsec", key.file_stem())))
                 .arg(self.mode)
                 .arg(address.to_string())
-                .arg(certificate)
+                .arg(tls_key)
                 .arg(server_key.to_string())
                 .arg(tick_hz.to_string());
             self.start(process, &mut command)
         };
-        for (process, script, certificate) in bots.chain([impostor]) {
-            children.push(process, bot(process, process, script, &certificate)?);
+        for (process, script, tls_key) in bots.chain([impostor]) {
+            children.push(process, bot(process, process, script, &tls_key)?);
         }
         let restarted = Process::Bot(RESTARTED);
         let stopped = if self.first_order_logged(restarted, deadline)? {
             let again = Process::Rejoined(RESTARTED);
             let script = &self.scripts[RESTARTED];
             children.replace(1 + RESTARTED, again, || {
-                bot(again, restarted, script, &certificate.to_string())
+                bot(again, restarted, script, &tls_key.to_string())
             })?;
             Some(ProcessOutcome::Stopped)
         } else {

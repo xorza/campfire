@@ -7,6 +7,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query};
 use bytes::Bytes;
+use campfire_common::TlsKey;
 use campfire_log::ErrorReport;
 use campfire_store::Worker;
 use lightyear::core::id::{PeerId, RemoteId};
@@ -36,7 +37,6 @@ use crate::pinned_key_verifier::PinnedKeyVerifier;
 use crate::quic_link::QuicLink;
 use crate::reset_key::ResetKey;
 use crate::server_key::ServerKey;
-use crate::server_public_key::ServerPublicKey;
 use crate::shared_endpoint::SharedEndpoint;
 use crate::udp_port::UdpPort;
 
@@ -88,7 +88,7 @@ impl QuicEndpoint {
     /// A client's endpoint, which connects to `server` and takes only the key `pin`.
     pub fn client(
         server: SocketAddr,
-        pin: ServerPublicKey,
+        pin: &TlsKey,
         times: LinkTimes,
     ) -> Result<QuicEndpoint, BindError> {
         let config =

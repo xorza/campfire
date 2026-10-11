@@ -48,27 +48,26 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
 }
 
 #[test]
-fn a_server_takes_only_an_answer_to_its_challenge_over_its_certificate() {
+fn a_server_takes_only_an_answer_to_its_challenge_over_its_tls_key() {
     let secp = Secp256k1::new();
     let challenge = ConnectChallenge::new([9; 32]);
-    let certificate = CertificateHash::new([7; 32]);
-    let answer = challenge.answer(&secp, &TestKey::of(2), &certificate, &[0; 32]);
+    let tls_key = TlsKey::new([7; 32]);
+    let answer = challenge.answer(&secp, &TestKey::of(2), &tls_key, &[0; 32]);
     let good = delegation(|_| {});
-    let check = |challenge: ConnectChallenge,
-                 certificate: CertificateHash,
-                 delegation: &Delegation,
-                 answer: &Signature,
-                 now: u64| {
-        challenge.check(&secp, &terms(), &certificate, delegation, answer, now)
-    };
-    assert_eq!(check(challenge, certificate, &good, &answer, NOW), Ok(()));
+    let check =
+        |challenge: ConnectChallenge,
+         tls_key: TlsKey,
+         delegation: &Delegation,
+         answer: &Signature,
+         now: u64| { challenge.check(&secp, &terms(), &tls_key, delegation, answer, now) };
+    assert_eq!(check(challenge, tls_key, &good, &answer, NOW), Ok(()));
     // One second before the expiration still holds; at it, the delegation has expired.
     assert_eq!(
-        check(challenge, certificate, &good, &answer, EXPIRATION - 1),
+        check(challenge, tls_key, &good, &answer, EXPIRATION - 1),
         Ok(())
     );
     assert_eq!(
-        check(challenge, certificate, &good, &answer, EXPIRATION),
+        check(challenge, tls_key, &good, &answer, EXPIRATION),
         Err(ConnectError::Expired)
     );
 
@@ -86,16 +85,16 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_certificate() {
         (&other_key, ConnectError::BadAnswer),
     ] {
         assert_eq!(
-            check(challenge, certificate, delegation, &answer, NOW),
+            check(challenge, tls_key, delegation, &answer, NOW),
             Err(error)
         );
     }
-    // An answer given to another challenge, or over another server's certificate, is refused.
+    // An answer given to another challenge, or over another server's TLS key, is refused.
     let relayed =
-        ConnectChallenge::new([10; 32]).answer(&secp, &TestKey::of(2), &certificate, &[0; 32]);
-    let elsewhere = CertificateHash::new([8; 32]);
+        ConnectChallenge::new([10; 32]).answer(&secp, &TestKey::of(2), &tls_key, &[0; 32]);
+    let elsewhere = TlsKey::new([8; 32]);
     assert_eq!(
-        check(challenge, certificate, &good, &relayed, NOW),
+        check(challenge, tls_key, &good, &relayed, NOW),
         Err(ConnectError::BadAnswer)
     );
     assert_eq!(
@@ -104,13 +103,13 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_certificate() {
     );
 
     // The hash reads back what it writes, as 64 lowercase hex digits.
-    let written = certificate.to_string();
+    let written = tls_key.to_string();
     assert_eq!(written, "07".repeat(32));
-    assert_eq!(written.parse(), Ok(certificate));
-    assert_eq!("07".parse::<CertificateHash>(), Err(NotHex));
+    assert_eq!(written.parse(), Ok(tls_key));
+    assert_eq!("07".parse::<TlsKey>(), Err(NotHex));
 
     // The signed message is the domain, the challenge and the hash, end to end.
-    let message = challenge.answer_message(&certificate);
+    let message = challenge.answer_message(&tls_key);
     assert_eq!(&message[..19], b"campfire/connect/v1");
     assert_eq!(
         (&message[19..51], &message[51..]),

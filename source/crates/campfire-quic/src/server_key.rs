@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use campfire_common::TlsKey;
+
 use quinn_proto::crypto::rustls::QuicServerConfig;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use rustls::crypto::ring as provider;
@@ -9,7 +11,8 @@ use rustls::sign::{CertifiedKey, SigningKey};
 use rustls::version::TLS13;
 use zeroize::Zeroizing;
 
-use crate::server_public_key::ServerPublicKey;
+use crate::derived_secret::DerivedSecret;
+use crate::spki::Spki;
 
 /// The ALPN of every Campfire connection, which RFC 9001 requires (design 15, D7).
 pub(crate) const ALPN: &[u8] = b"campfire";
@@ -22,19 +25,24 @@ const PKCS8_PREFIX: [u8; 16] = [
 ];
 const PKCS8_LEN: usize = PKCS8_PREFIX.len() + 32;
 
-/// The server's TLS identity: an Ed25519 key with no certificate (design 15, D6), from its
-/// 32-byte seed.
+/// The server's TLS identity: an Ed25519 key with no certificate, whose seed derives from the
+/// server's own key (design 15, D6).
 #[derive(Debug)]
 pub struct ServerKey {
     signing: Arc<dyn SigningKey>,
-    public: ServerPublicKey,
+    public: TlsKey,
 }
 
 impl ServerKey {
-    pub fn from_seed(seed: &Zeroizing<[u8; 32]>) -> ServerKey {
+    /// The TLS key of the server whose own key's secret is `secret`.
+    pub fn derive(secret: &Zeroizing<[u8; 32]>) -> ServerKey {
+        ServerKey::from_seed(&DerivedSecret::TlsSeed.of(secret))
+    }
+
+    pub(crate) fn from_seed(seed: &Zeroizing<[u8; 32]>) -> ServerKey {
         let pair = Ed25519KeyPair::from_seed_unchecked(seed.as_slice())
             .expect("any 32 bytes are an Ed25519 seed");
-        let public = ServerPublicKey::new(
+        let public = TlsKey::new(
             pair.public_key()
                 .as_ref()
                 .try_into()
@@ -46,7 +54,8 @@ impl ServerKey {
         ServerKey { signing, public }
     }
 
-    pub const fn public(&self) -> ServerPublicKey {
+    /// The public key, which a listing names and a client pins.
+    pub const fn public(&self) -> TlsKey {
         self.public
     }
 
@@ -54,7 +63,9 @@ impl ServerKey {
     /// every client's verifier reads the key (D7).
     pub(crate) fn server_config(&self) -> Arc<QuicServerConfig> {
         let certified = CertifiedKey::new(
-            vec![CertificateDer::from(self.public.spki().to_vec())],
+            vec![CertificateDer::from(
+                Spki::of(&self.public).as_bytes().to_vec(),
+            )],
             Arc::clone(&self.signing),
         );
         let mut config =
@@ -106,9 +117,13 @@ mod tests {
             0x3b, 0x96, 0xc8, 0x50, 0x86, 0xaa, 0x30, 0xb6, 0xb6, 0xcb, 0x0c, 0x5c, 0x38, 0xad,
             0x70, 0x31, 0x66, 0xe1,
         ];
-        assert_eq!(
-            ServerKey::from_seed(&seed).public(),
-            ServerPublicKey::new(public)
-        );
+        assert_eq!(ServerKey::from_seed(&seed).public(), TlsKey::new(public));
+    }
+
+    #[test]
+    fn a_server_key_gives_one_tls_key_and_two_give_two() {
+        let derive = |byte| ServerKey::derive(&Zeroizing::new([byte; 32])).public();
+        assert_eq!(derive(1), derive(1));
+        assert_ne!(derive(1), derive(2));
     }
 }

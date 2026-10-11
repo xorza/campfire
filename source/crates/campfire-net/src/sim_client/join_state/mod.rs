@@ -283,7 +283,7 @@ impl JoinState {
     /// up again: the delegation of the session key in the offered session, a new one with a fresh
     /// seed contribution for a first join, or for a later one whose delegation expires within
     /// `RENEW_MARGIN`, signed by a new session key; and the session key's signature over the
-    /// challenge and the pinned certificate hash. An error when the terms name another server, a
+    /// challenge and the pinned TLS key. An error when the terms name another server, a
     /// session the client cannot play, another rate than the listing, or, for a later join,
     /// another session, and the client then refuses every later offer; `None` for an offer it
     /// does not wait for.
@@ -341,7 +341,7 @@ impl JoinState {
         };
         let join = Join {
             delegation: answered.member.delegation.json().to_owned(),
-            answer: signer.answer(offer.challenge, &self.player.server.certificate),
+            answer: signer.answer(offer.challenge, &self.player.server.tls_key),
         };
         self.step = Step::Answered(answered);
         Some(Ok(join))

@@ -1,5 +1,5 @@
 //! Headless game server: opens a session of a mode on an address, lets its players join over
-//! WebTransport, runs the match, and writes the session log once every player left. Its data
+//! QUIC, runs the match, and writes the session log once every player left. Its data
 //! directory, which it holds locked while it runs, keeps its key.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info` by default). With `CAMPFIRE_LOG` set
@@ -29,29 +29,27 @@ use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_capabilities::CapabilitySet;
-use campfire_common::ExitStatus;
+use campfire_common::{ExitStatus, TlsKey};
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
     JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, RestoredSession, ServerBots,
     ServerDir, ServerExit, ServerSetup, SessionTimes, SimServer,
 };
 use campfire_package::{ModePackages, PackageDir};
-use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::Keypair;
+use campfire_quic::{LinkTimes, QuicEndpoint, QuicPlugin, ResetKey, ServerKey};
 use campfire_sim::TickRate;
-use lightyear::prelude::server::{RawServer, Start, WebTransportServerIo};
-use lightyear::prelude::{Linked, LocalAddr};
-use lightyear::webtransport::server::WebTransportServerPlugin;
+use lightyear::prelude::Linked;
+use lightyear::prelude::server::{RawServer, Start};
 use tracing::{error, info};
+use zeroize::Zeroizing;
 
 use crate::args::Args;
 use crate::opening::error::OpeningError;
 use crate::opening::{Opening, OpeningSetup, Restore};
-use crate::server_tls::ServerTls;
 
 mod args;
 mod opening;
-mod server_tls;
 
 /// The segments of a session's seed chain: the most checkpoints it may take, less one.
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
@@ -102,6 +100,24 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
+    // The socket binds before any session opens, so a port in use ends the start and leaves the
+    // data as it was.
+    let secret = Zeroizing::new(key.secret_bytes());
+    let tls = ServerKey::derive(&secret);
+    let endpoint = match QuicEndpoint::server(
+        address,
+        &tls,
+        ResetKey::derive(&secret),
+        LinkTimes::CAMPFIRE,
+    ) {
+        Ok(endpoint) => endpoint,
+        Err(error) => {
+            error!(%address, error = %ErrorReport::of(&error), "the server's socket does not open");
+            return ExitCode::from(ExitStatus::Failure);
+        }
+    };
+    drop(secret);
+    let tls_key = tls.public();
     // A waiting session names its own map, which its restore, or its end, replays.
     let waiting = Opening::waiting(&data).and_then(|waiting| {
         let journal = waiting.as_ref().map(|session| &session.private.terms.map);
@@ -126,49 +142,36 @@ fn main() -> ExitCode {
         }
     };
     let capabilities = packages.manifest().capabilities;
-    let Started {
-        opening,
-        server,
-        tls,
-    } = match Started::open(&data, waiting, packages, key, times, bots) {
-        Ok(started) => started,
-        Err(code) => return code,
-    };
-    let certificate = tls.certificate();
-    let listening = announce(&opening, &mode, address, certificate, &server.key);
+    let Started { opening, server } =
+        match Started::open(&data, waiting, packages, key, tls_key, times, bots) {
+            Ok(started) => started,
+            Err(code) => return code,
+        };
+    let listening = announce(&opening, &mode, address, tls_key, &server.key);
     let tick = TickRate::new(opening.terms().tick_hz).length();
     let mut app = server_app(opening, data, tick, listening, capabilities);
-    let server = app
-        .world_mut()
-        .spawn((
-            RawServer,
-            WebTransportServerIo {
-                certificate: tls.into_identity(),
-            },
-            LocalAddr(address),
-        ))
-        .id();
+    let server = app.world_mut().spawn((RawServer, endpoint)).id();
     app.world_mut().trigger(Start { entity: server });
     ProcessExit::code(app.run())
 }
 
-/// What the server starts with: its session, its setup, and its TLS identity.
+/// What the server starts with: its session and its setup.
 #[derive(Debug)]
 struct Started {
     opening: Opening,
     server: ServerSetup,
-    tls: ServerTls,
 }
 
 impl Started {
     /// The session `waiting` in the data directory `data` to restore, or a new one of the mode
-    /// `packages` holds, with `bots`; the TLS identity, made again only when no session
-    /// restores; and the server's setup of `key` and `times`. The exit code when one fails.
+    /// `packages` holds, with `bots`; and the server's setup of `key`, its TLS key `tls_key` and
+    /// `times`. The exit code when one fails.
     fn open(
         data: &ServerDir,
         waiting: Option<RestoredSession>,
         packages: ModePackages,
         key: Keypair,
+        tls_key: TlsKey,
         times: SessionTimes,
         bots: ServerBots,
     ) -> Result<Started, ExitCode> {
@@ -185,15 +188,9 @@ impl Started {
             Os::fill,
         )
         .map_err(no_session)?;
-        let tls = ServerTls::open(&data.layout().tls_file(), Os::unix_now(), found.is_some()).map_err(
-            |error| {
-                error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "the TLS identity does not open");
-                ExitCode::from(ExitStatus::Failure)
-            },
-        )?;
         let server = ServerSetup {
             key,
-            certificate: tls.certificate(),
+            tls_key,
             times,
             clock: Os::unix_now,
             entropy: Os::fill,
@@ -215,11 +212,7 @@ impl Started {
             }
             error => no_session(error),
         })?;
-        Ok(Started {
-            opening,
-            server,
-            tls,
-        })
+        Ok(Started { opening, server })
     }
 }
 
@@ -239,7 +232,7 @@ fn server_app(
         StatesPlugin,
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    app.add_plugins((SimServer { tick, capabilities }, WebTransportServerPlugin));
+    app.add_plugins((SimServer { tick, capabilities }, QuicPlugin));
     match opening {
         Opening::New(lobby) => app.insert_resource(*lobby),
         Opening::Restored(restore) => app.insert_resource(*restore),
@@ -264,13 +257,13 @@ fn server_app(
 }
 
 /// What the server logs once its transport listens for the session `opening` starts: how a
-/// player joins it, through `address` and the certificate of `certificate`'s hash; and logs now,
+/// player joins it, through `address` and the TLS key `tls_key`; and logs now,
 /// for a new session, that it opened, of the mode `mode`.
 fn announce(
     opening: &Opening,
     mode: &Path,
     address: SocketAddr,
-    certificate: CertificateHash,
+    tls_key: TlsKey,
     key: &Keypair,
 ) -> Listening {
     let terms = opening.terms();
@@ -286,11 +279,11 @@ fn announce(
     let key = key.x_only_public_key().0;
     let tick_hz = terms.tick_hz;
     Listening {
-        certificate,
+        tls_key,
         server_key: key,
         tick_hz,
         join: format!(
-            "campfire-client {} <this machine's LAN address>:{} {certificate} {key} {tick_hz}",
+            "campfire-client {} <this machine's LAN address>:{} {tls_key} {key} {tick_hz}",
             mode.display(),
             address.port()
         ),

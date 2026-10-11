@@ -8,6 +8,7 @@
     reason = "Bevy systems and hooks take their parameters by value"
 )]
 
+mod derived_secret;
 mod endpoint_state;
 mod error;
 mod io_thread;
@@ -20,8 +21,8 @@ mod quic_plugin;
 mod recv_batch;
 mod reset_key;
 mod server_key;
-mod server_public_key;
 mod shared_endpoint;
+mod spki;
 mod udp_port;
 
 pub use crate::error::BindError;
@@ -30,7 +31,6 @@ pub use crate::quic_endpoint::QuicEndpoint;
 pub use crate::quic_plugin::QuicPlugin;
 pub use crate::reset_key::ResetKey;
 pub use crate::server_key::ServerKey;
-pub use crate::server_public_key::ServerPublicKey;
 
 /// The minimum MTU of every Campfire link, which both its ends' fragments take: the largest
 /// DATAGRAM frame on QUIC's minimum path of 1,200 bytes, `1200 − (1 + 8 + 4 + 16) − 9`, a short

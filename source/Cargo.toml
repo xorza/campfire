@@ -74,7 +74,7 @@ fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"
 # Only `store`'s platform layer, on Unix: the process's effective user, which std does not give.
 libc = "=0.2.190"
-lightyear = { version = "=0.30.1", features = ["webtransport", "crossbeam", "raw_connection"] }
+lightyear = { version = "=0.30.1", features = ["crossbeam", "raw_connection"] }
 # The version Lightyear builds, for the types of its message registration with our own encode and
 # decode, which Lightyear does not re-export: the pin follows Lightyear's at each upgrade.
 lightyear_serde = "=0.30.1"
@@ -119,7 +119,6 @@ windows = { version = "=0.62.2", features = [
     "Win32_System_SystemServices",
     "Win32_System_Threading",
 ] }
-wtransport = "=0.6.1"
 zeroize = "=1.9.0"
 
 [profile.dev]

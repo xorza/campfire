@@ -1,3 +1,5 @@
+use campfire_common::TlsKey;
+
 /// The `SubjectPublicKeyInfo` of an Ed25519 key before its 32 bytes ([RFC 8410] §4): the
 /// algorithm `id-Ed25519` and the bit string's header.
 ///
@@ -7,25 +9,18 @@ const SPKI_PREFIX: [u8; 12] = [
 ];
 
 /// The bytes of an Ed25519 key's `SubjectPublicKeyInfo`.
-pub(crate) const SPKI_LEN: usize = SPKI_PREFIX.len() + 32;
+const SPKI_LEN: usize = SPKI_PREFIX.len() + 32;
 
-/// The public half of a server's TLS key, which a listing names and a client pins (design 15, D6).
+/// A TLS key as TLS carries it with no certificate ([RFC 7250]): its `SubjectPublicKeyInfo`, which
+/// a server presents and a client's verifier takes (design 15, D6).
+///
+/// [RFC 7250]: https://www.rfc-editor.org/rfc/rfc7250
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ServerPublicKey([u8; 32]);
+pub(crate) struct Spki([u8; SPKI_LEN]);
 
-impl ServerPublicKey {
-    pub const fn new(bytes: [u8; 32]) -> ServerPublicKey {
-        ServerPublicKey(bytes)
-    }
-
-    pub const fn bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-
-    /// The key as TLS presents it with no certificate ([RFC 7250]).
-    ///
-    /// [RFC 7250]: https://www.rfc-editor.org/rfc/rfc7250
-    pub(crate) const fn spki(&self) -> [u8; SPKI_LEN] {
+impl Spki {
+    pub(crate) const fn of(key: &TlsKey) -> Spki {
+        let key = key.as_bytes();
         let mut spki = [0; SPKI_LEN];
         let mut index = 0;
         while index < SPKI_PREFIX.len() {
@@ -33,10 +28,14 @@ impl ServerPublicKey {
             index += 1;
         }
         while index < SPKI_LEN {
-            spki[index] = self.0[index - SPKI_PREFIX.len()];
+            spki[index] = key[index - SPKI_PREFIX.len()];
             index += 1;
         }
-        spki
+        Spki(spki)
+    }
+
+    pub(crate) const fn as_bytes(&self) -> &[u8; SPKI_LEN] {
+        &self.0
     }
 }
 
@@ -58,6 +57,6 @@ mod tests {
             0xc8, 0x50, 0x86, 0xaa, 0x30, 0xb6, 0xb6, 0xcb, 0x0c, 0x5c, 0x38, 0xad, 0x70, 0x31,
             0x66, 0xe1,
         ];
-        assert_eq!(ServerPublicKey::new(key).spki(), der);
+        assert_eq!(Spki::of(&TlsKey::new(key)).as_bytes(), &der);
     }
 }

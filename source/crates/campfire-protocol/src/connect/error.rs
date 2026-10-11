@@ -11,8 +11,8 @@ pub enum ConnectError {
     /// The delegation expired by the server's clock.
     #[error("the delegation expired")]
     Expired,
-    /// The delegation's session key did not sign this challenge with this server's certificate
-    /// hash: a reply relayed from a connection to another server fails here.
-    #[error("the session key did not sign this challenge and certificate hash")]
+    /// The delegation's session key did not sign this challenge with this server's TLS key: a
+    /// reply relayed from a connection to another server fails here.
+    #[error("the session key did not sign this challenge and TLS key")]
     BadAnswer,
 }

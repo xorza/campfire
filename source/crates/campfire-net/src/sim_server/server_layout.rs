@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use campfire_protocol::SessionId;
 use campfire_store::SecretFile;
 
-/// The paths of a server's data directory, the one place they are named: its key, `server.nsec`;
-/// its TLS identity, `tls`; each session's directory, `sessions/<session id>`, whose files
+/// The paths of a server's data directory, the one place they are named: its key, `server.nsec`,
+/// from which its TLS key derives; each session's directory, `sessions/<session id>`, whose files
 /// `SessionDir` names; and each ended session's log, `logs/<session id>.campfire-log`. Made from
 /// the directory's path alone, so a tool reads a finished run's directory it does not hold by it,
 /// with no lock to take and no access to check.
@@ -25,11 +25,6 @@ impl ServerLayout {
     /// The server's secret key.
     pub fn key_file(&self) -> SecretFile {
         SecretFile::at(self.root.join("server.nsec"))
-    }
-
-    /// The server's TLS identity.
-    pub fn tls_file(&self) -> SecretFile {
-        SecretFile::at(self.root.join("tls"))
     }
 
     pub(crate) fn sessions_dir(&self) -> PathBuf {

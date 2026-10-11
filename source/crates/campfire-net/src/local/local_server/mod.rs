@@ -13,11 +13,11 @@ use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use campfire_common::PlayerSlot;
+use campfire_common::{PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
-use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
+use campfire_protocol::{SeedChain, SessionPrivate};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::InputRules;
 use campfire_sim::TickRate;
@@ -25,7 +25,6 @@ use campfire_store::Worker;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{Link, LinkMtu, LinkOf, Linked, PeerAddr};
-use lightyear::webtransport::server::WebTransportServerPlugin;
 use tracing::error;
 
 use crate::local::local_pace::LocalPace;
@@ -46,8 +45,8 @@ use crate::sim_server::session_dir::{RestoredSession, SessionDir};
 
 pub(crate) mod error;
 
-/// In-process channels have no TLS; both ends take this as the certificate's hash.
-const CERTIFICATE: CertificateHash = CertificateHash::new([0; 32]);
+/// In-process channels have no TLS; both ends take this as the server's TLS key.
+const TLS_KEY: TlsKey = TlsKey::new([0; 32]);
 /// The segments of a local session's seed chain, as a dedicated server's.
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
@@ -139,7 +138,7 @@ impl LocalServer {
         LocalServer::end_earlier(&dir, &packages, key, entropy)?;
         let server = ServerSetup {
             key,
-            certificate: CERTIFICATE,
+            tls_key: TLS_KEY,
             times: SessionTimes::DEFAULT,
             clock,
             entropy,
@@ -197,7 +196,7 @@ impl LocalServer {
             stop,
             pin: ServerPin {
                 key: key.x_only_public_key().0,
-                certificate: CERTIFICATE,
+                tls_key: TLS_KEY,
                 tick_hz,
             },
             link: Some(client_io),
@@ -211,7 +210,7 @@ impl LocalServer {
         self.relinks.clone()
     }
 
-    /// What the client pins: the server's key, its certificate's hash and its tick rate.
+    /// What the client pins: the server's key, its TLS key and its tick rate.
     pub const fn pin(&self) -> ServerPin {
         self.pin
     }
@@ -343,10 +342,6 @@ impl Runs {
                 tick: self.tick,
             },
         ));
-        assert!(
-            !app.is_plugin_added::<WebTransportServerPlugin>(),
-            "a local server links by channels: WebTransport's plugin leaves a tokio runtime for each app"
-        );
         app.insert_resource(LocalSession);
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
