@@ -5,7 +5,10 @@ time over its 4,096 inputs. Ryzen is a Ryzen 7 6800U (x86-64-v3), pinned to one 
 Apple M2. Each figure is the best of three runs, the base and the change run in turns. The base is
 `7873fd75`, before the branch; "now" is `f8648da5`. Later commits: `7ddf9782`, the narrow root
 truncated through `i64`, `floor_root/narrow` −19 % on the Ryzen; `a88ac345`, a box's push with
-one fine root and a float first try, `collision/boxes` −6.5 % and −7.9 %.
+one fine root and a float first try, `collision/boxes` −6.5 % and −7.9 %; `19b774ab`, products
+rounded by an added half and a product summed in one 256-bit step, `num/mul` −17 % and −19 %,
+`vec3/dot` −24 % and −7 %, `vec3/rotated_y` −21 % and −16 %, `product_sum/sum` −21 % and −7 %,
+`num/atan2` −5 % and −1 %; `b932e59e`, squares summed wrapping, `vec3/within` −6 % and 0 %.
 
 ## Current
 
@@ -71,7 +74,8 @@ The `capabilities` benches before and after `8ab365d8`, in µs for each run of t
 | `sin_cos`: the quadrant and the table's sign by selects; the series by high-half products; results rounded on `i64` | `num/sin_cos` |
 | `atan2`: the series by high-half products; the angle's magnitude rounded on `u64`; the rotated tangent by `WideDivision` | `num/atan2` |
 | `Rng::new`: the message in one `update` | `rng/open` |
-| `ProductSum`: one 256-bit two's complement sum, no branch on signs | `product_sum/sum` |
+| `ProductSum`: one 256-bit two's complement sum, no branch on signs; each product's two parts joined into one addend first | `product_sum/sum` |
+| `Num::from_raw_products` and `atan2`'s rounding: `(p + 2ⁿ⁻¹ − 1 + bitₙ(p)) >> n` in place of the rest's compares | `num/mul`, `vec3/dot`, `vec3/rotated_y`, `num/atan2` |
 | `U256::cmp_products`: 256-bit products when both values fit 128 bits | `u256/cmp_products` |
 | `WideDivision`: a `u128` division by each platform's fastest way: native on x86-64, a float estimate and an exact correction on AArch64, one step for quotients below 2⁴⁹ | `num/mul_div`, `u256/div_*`, `rounding/divide` on the M2 |
 | `StepMoves`: `step_toward`'s moves natively on x86-64, from one float ratio on AArch64 | `vec3/step_toward` |
@@ -97,3 +101,6 @@ its callers pass it, `num/div` is 29 % faster.
 | `Frame::nearest_to` from sums of shared products, 9 products in place of 14 | `body_box/reach` +16 % | +7 % | Each sum is a checked `i128` addition; the edges' own `i64` subtractions and widening products cost less |
 | `U256::cmp_products` with no product for a factor of 1 | −10 % | +11 % | No gain in the box benches, whose compares it serves |
 | `Collider::reaching` by an `f64` estimate and two exact 256-bit checks | `collision/crowded` +3 % | 0 % | It runs too rarely beside the broadphase to show |
+| `sin_cos`'s quadrant from the product's high half, the reduction's product on `i64` | `num/sin_cos` +2 % | +3 % | No gain |
+| `sin_cos`'s results rounded by the added half | `num/sin_cos` −5 % | +10 % | `sin_cos` waits on the rounding, whose chain is a step longer; kept in `atan2` alone |
+| `Rounding::divide`'s 64-bit path rounded on `u64` | `vec3/step_toward` +16 %, `rounding/divide` −7 % | `num/div` −10 %, `rounding/divide` +9 % | No steady gain: this function's speed follows its code's layout more than its instructions |
