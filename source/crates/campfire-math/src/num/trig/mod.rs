@@ -17,6 +17,8 @@ const PI_WIDE: i128 =
     Rounding::NearestEven.shift_right(PI_SCALED.cast_signed(), PI_BITS - WIDE_BITS);
 const HALF_PI_WIDE: i128 =
     Rounding::NearestEven.shift_right(PI_SCALED.cast_signed(), PI_BITS - WIDE_BITS + 1);
+const PI_MAGNITUDE: u64 = wide_magnitude(PI_WIDE);
+const HALF_PI_MAGNITUDE: u64 = wide_magnitude(HALF_PI_WIDE);
 /// 2/π · 2⁶², to find the quadrant with a multiply.
 const TWO_OVER_PI: i64 = to_i64(Rounding::NearestEven.divide_in_const(1 << 124, HALF_PI_WIDE));
 /// Fractional bits of π/2 for reducing an angle: with 101, `n · π/2` stays exact to 2⁻⁶² for
@@ -89,9 +91,19 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     let cos_a = COS_TABLE[entry];
 
     // |b| ≤ 2⁻⁷: the first omitted terms, b⁷/5040 and b⁸/40320, are below 2⁻⁶¹.
-    let b2 = mul(b, b);
-    let sin_b = b - mul(b, mul(b2, INV_6 - mul(b2, INV_120)));
-    let cos_b = WIDE_ONE - mul(b2, INV_2 - mul(b2, INV_24 - mul(b2, INV_720)));
+    // Each product of the series has a factor below 2⁶⁰, b at most 2⁵⁵ or b² at most 2⁴⁸, so it
+    // takes `mul_by_quadruple` with that factor times 4, as `mul` would give it.
+    let (b4, b2) = (b << 2, mul_by_quadruple(b, b << 2));
+    let b2_4 = b2 << 2;
+    let sin_b = b - mul_by_quadruple(
+        mul_by_quadruple(INV_6 - mul_by_quadruple(b2, INV_120 << 2), b2_4),
+        b4,
+    );
+    let cos_b = WIDE_ONE
+        - mul_by_quadruple(
+            INV_2 - mul_by_quadruple(INV_24 - mul_by_quadruple(b2, INV_720 << 2), b2_4),
+            b2_4,
+        );
     let sin = mul(sin_a, cos_b) + mul(cos_a, sin_b);
     let cos = mul(cos_a, cos_b) - mul(sin_a, sin_b);
 
@@ -106,8 +118,8 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     let sin = if quadrant & 2 == 2 { -sin } else { sin };
     let cos = if (quadrant + 1) & 2 == 2 { -cos } else { cos };
     SinCos {
-        sin: to_num(sin as i128),
-        cos: to_num(cos as i128),
+        sin: to_num_narrow(sin),
+        cos: to_num_narrow(cos),
     }
 }
 
@@ -152,20 +164,40 @@ pub(super) fn atan2(y: Num, x: Num) -> Num {
     let u = if rotated < 0 { -quotient } else { quotient };
 
     // |u| ≤ 2⁻⁶ and a hair: the first omitted term, u⁹/9, is below 2⁻⁵⁴.
-    let u2 = mul(u, u);
-    let atan_u = u - mul(u, mul(u2, INV_3 - mul(u2, INV_5 - mul(u2, INV_7))));
-    let mut angle = i128::from(ATAN_ANGLE[entry]) + i128::from(atan_u);
-
+    // As in `sin_cos`, each product has a factor below 2⁶⁰: u at most 2⁵⁶ and a hair, u² 2⁵⁰.
+    let (u4, u2) = (u << 2, mul_by_quadruple(u, u << 2));
+    let u2_4 = u2 << 2;
+    let atan_u = u - mul_by_quadruple(
+        mul_by_quadruple(
+            INV_3 - mul_by_quadruple(INV_5 - mul_by_quadruple(u2, INV_7 << 2), u2_4),
+            u2_4,
+        ),
+        u4,
+    );
+    // The angle from the x axis to the nearer of (large, small), below π/4, is never negative,
+    // nor are the angles past π/2 and π taken from it, each below π · 2⁶² < 2⁶⁴: its magnitude
+    // rounds on `u64`, and a rounding to nearest, ties to even, gives the negation's negation.
+    let near = ATAN_ANGLE[entry] + atan_u;
+    debug_assert!(near >= 0);
+    let mut angle = near.cast_unsigned();
     if steep {
-        angle = HALF_PI_WIDE - angle;
+        angle = HALF_PI_MAGNITUDE - angle;
     }
     if x.to_bits() < 0 {
-        angle = PI_WIDE - angle;
+        angle = PI_MAGNITUDE - angle;
     }
-    if y.to_bits() < 0 {
-        angle = -angle;
-    }
-    to_num(angle)
+    let magnitude = to_num_magnitude(angle);
+    Num::from_bits(if y.to_bits() < 0 {
+        -magnitude
+    } else {
+        magnitude
+    })
+}
+
+/// `mul(a, quadruple / 4)` for a `quadruple` that is 4 times a factor: `(a · 4b) / 2⁶⁴` rounds
+/// down as `(a · b) / 2⁶²` does, so it is the high half of one product, with no shift.
+const fn mul_by_quadruple(a: i64, quadruple: i64) -> i64 {
+    ((a as i128 * quadruple as i128) >> 64) as i64
 }
 
 /// A product at 2⁻⁶² of two values at most 1 in magnitude; truncated, the error stays far below
@@ -183,8 +215,34 @@ const fn to_index(value: u64) -> usize {
     value as usize
 }
 
-const fn to_num(wide: i128) -> Num {
-    Num::from_wide_bits(Rounding::NearestEven.shift_right(wide, WIDE_BITS - Num::FRAC_BITS))
+/// `to_num` of a magnitude within `u64`, its rounding on `u64`, as bits.
+#[expect(clippy::cast_possible_wrap, reason = "a magnitude below 2⁶⁴ over 2³⁸")]
+fn to_num_magnitude(magnitude: u64) -> i64 {
+    const SHIFT: u32 = WIDE_BITS - Num::FRAC_BITS;
+    let floor = magnitude >> SHIFT;
+    let rest = u128::from(magnitude & ((1 << SHIFT) - 1));
+    let up = Rounding::NearestEven.rounds_up(rest, 1 << (SHIFT - 1), rest == 0, floor & 1 == 1);
+    (floor + u64::from(up)) as i64
+}
+
+/// `value`, from 0 to below 2⁶⁴, as a `u64`.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "checked from 0 to below 2⁶⁴"
+)]
+const fn wide_magnitude(value: i128) -> u64 {
+    assert!(0 <= value && value < 1 << 64, "a magnitude below 2⁶⁴");
+    value as u64
+}
+
+/// `to_num` of a value within `i64`, its rounding on `i64`.
+const fn to_num_narrow(value: i64) -> Num {
+    const SHIFT: u32 = WIDE_BITS - Num::FRAC_BITS;
+    let floor = value >> SHIFT;
+    let rest = (value & ((1 << SHIFT) - 1)).cast_unsigned() as u128;
+    let up = Rounding::NearestEven.rounds_up(rest, 1 << (SHIFT - 1), rest == 0, floor & 1 == 1);
+    Num::from_bits(floor + up as i64)
 }
 
 /// sin or cos of `k / 64` at 2⁻⁶², by the exact series.

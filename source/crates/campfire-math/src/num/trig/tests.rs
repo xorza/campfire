@@ -148,4 +148,18 @@ proptest! {
         prop_assert_eq!(minus, SinCos { sin: -plus.sin, cos: plus.cos });
         prop_assert_eq!((-n(a)).atan2(n(b)), -n(a).atan2(n(b)));
     }
+
+    #[test]
+    fn a_product_by_a_quadruple_is_the_product(a in any::<i64>(), b in -(1_i64 << 61)..(1_i64 << 61)) {
+        // (a · 4b) / 2⁶⁴ and (a · b) / 2⁶², each rounded down, are one number.
+        prop_assert_eq!(mul_by_quadruple(a, b << 2), mul(a, b));
+    }
+
+    #[test]
+    fn a_narrow_value_and_a_magnitude_round_as_a_wide_one(value in any::<i64>(), magnitude in any::<u64>()) {
+        // Each to nearest, ties to even, from 2⁻⁶² to 2⁻²⁴, as the i128 shift gives it.
+        let wide = |value: i128| Rounding::NearestEven.shift_right(value, WIDE_BITS - Num::FRAC_BITS);
+        prop_assert_eq!(i128::from(to_num_narrow(value).to_bits()), wide(i128::from(value)));
+        prop_assert_eq!(i128::from(to_num_magnitude(magnitude)), wide(i128::from(magnitude)));
+    }
 }
