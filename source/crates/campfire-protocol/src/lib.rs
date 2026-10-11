@@ -39,7 +39,6 @@ pub use crate::checkpoint::checkpoint_begun::CheckpointBegun;
 pub use crate::checkpoint::error::CheckpointDecodeError;
 pub use crate::checkpoint::log_carry::LogCarry;
 pub use crate::connect::ConnectChallenge;
-pub use crate::connect::certificate_hash::CertificateHash;
 pub use crate::connect::error::ConnectError;
 pub use crate::controller::Controller;
 pub use crate::delegation::delegation_id::DelegationId;

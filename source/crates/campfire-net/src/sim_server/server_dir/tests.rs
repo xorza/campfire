@@ -15,7 +15,6 @@ fn each_path_is_as_stage_6_names_it_and_one_server_holds_the_directory() {
     assert_eq!(*layout, ServerLayout::at(path.clone()));
     assert_eq!(layout.path(), path);
     assert_eq!(layout.key_file(), SecretFile::at(path.join("server.nsec")));
-    assert_eq!(layout.tls_file(), SecretFile::at(path.join("tls")));
     assert_eq!(layout.sessions_dir(), path.join("sessions"));
     assert_eq!(layout.session_dir(id), path.join("sessions").join(&hex));
     assert_eq!(layout.logs_dir(), path.join("logs"));

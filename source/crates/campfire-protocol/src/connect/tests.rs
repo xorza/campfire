@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName, NotHex, Ticks};
+use campfire_common::{Fingerprint, MapName, Ticks};
 use secp256k1::XOnlyPublicKey;
 
 use super::*;
@@ -48,27 +48,26 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
 }
 
 #[test]
-fn a_server_takes_only_an_answer_to_its_challenge_over_its_certificate() {
+fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     let secp = Secp256k1::new();
     let challenge = ConnectChallenge::new([9; 32]);
-    let certificate = CertificateHash::new([7; 32]);
-    let answer = challenge.answer(&secp, &TestKey::of(2), &certificate, &[0; 32]);
+    let binding = ChannelBinding::new([7; 32]);
+    let answer = challenge.answer(&secp, &TestKey::of(2), &binding, &[0; 32]);
     let good = delegation(|_| {});
-    let check = |challenge: ConnectChallenge,
-                 certificate: CertificateHash,
-                 delegation: &Delegation,
-                 answer: &Signature,
-                 now: u64| {
-        challenge.check(&secp, &terms(), &certificate, delegation, answer, now)
-    };
-    assert_eq!(check(challenge, certificate, &good, &answer, NOW), Ok(()));
+    let check =
+        |challenge: ConnectChallenge,
+         binding: ChannelBinding,
+         delegation: &Delegation,
+         answer: &Signature,
+         now: u64| { challenge.check(&secp, &terms(), &binding, delegation, answer, now) };
+    assert_eq!(check(challenge, binding, &good, &answer, NOW), Ok(()));
     // One second before the expiration still holds; at it, the delegation has expired.
     assert_eq!(
-        check(challenge, certificate, &good, &answer, EXPIRATION - 1),
+        check(challenge, binding, &good, &answer, EXPIRATION - 1),
         Ok(())
     );
     assert_eq!(
-        check(challenge, certificate, &good, &answer, EXPIRATION),
+        check(challenge, binding, &good, &answer, EXPIRATION),
         Err(ConnectError::Expired)
     );
 
@@ -86,32 +85,27 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_certificate() {
         (&other_key, ConnectError::BadAnswer),
     ] {
         assert_eq!(
-            check(challenge, certificate, delegation, &answer, NOW),
+            check(challenge, binding, delegation, &answer, NOW),
             Err(error)
         );
     }
-    // An answer given to another challenge, or over another server's certificate, is refused.
+    // An answer given to another challenge, or over another TLS session's binding, as a relay
+    // between two sessions gives, is refused.
     let relayed =
-        ConnectChallenge::new([10; 32]).answer(&secp, &TestKey::of(2), &certificate, &[0; 32]);
-    let elsewhere = CertificateHash::new([8; 32]);
+        ConnectChallenge::new([10; 32]).answer(&secp, &TestKey::of(2), &binding, &[0; 32]);
+    let other_session = ChannelBinding::new([8; 32]);
     assert_eq!(
-        check(challenge, certificate, &good, &relayed, NOW),
+        check(challenge, binding, &good, &relayed, NOW),
         Err(ConnectError::BadAnswer)
     );
     assert_eq!(
-        check(challenge, elsewhere, &good, &answer, NOW),
+        check(challenge, other_session, &good, &answer, NOW),
         Err(ConnectError::BadAnswer)
     );
 
-    // The hash reads back what it writes, as 64 lowercase hex digits.
-    let written = certificate.to_string();
-    assert_eq!(written, "07".repeat(32));
-    assert_eq!(written.parse(), Ok(certificate));
-    assert_eq!("07".parse::<CertificateHash>(), Err(NotHex));
-
-    // The signed message is the domain, the challenge and the hash, end to end.
-    let message = challenge.answer_message(&certificate);
-    assert_eq!(&message[..19], b"campfire/connect/v1");
+    // The signed message is the domain, the challenge and the binding, end to end.
+    let message = challenge.answer_message(&binding);
+    assert_eq!(&message[..19], b"campfire/connect/v2");
     assert_eq!(
         (&message[19..51], &message[51..]),
         (&[9; 32][..], &[7; 32][..])

@@ -29,6 +29,7 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
         "9",
         "--map",
         "lane",
+        "--no-port-map",
     ])
     .unwrap();
     assert_eq!(args.data, PathBuf::from("d"));
@@ -46,10 +47,12 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     assert_eq!(args.mode, PathBuf::from("mode"));
     assert_eq!(args.map, MapName::new("lane"));
     assert_eq!(args.address, SocketAddr::from(([0, 0, 0, 0], 4433)));
+    assert!(!args.port_map);
     // The defaults, with no flag but `--data`.
     let plain = read(&["--data", "d", "mode", "0.0.0.0:4433"]).unwrap();
     assert_eq!(plain.times, SessionTimes::DEFAULT);
     assert!(plain.bots.is_empty() && plain.takeover.is_none() && plain.map.is_none());
+    assert!(plain.port_map);
 
     let refused = |args: &[&str]| read(args).unwrap_err();
     for (args, kind) in [
@@ -71,6 +74,10 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
             ErrorKind::ValueValidation,
         ),
         (&["--data", "d", "mode"], ErrorKind::MissingRequiredArgument),
+        (
+            &["--data", "d", "--no-port-map=yes", "mode", "0.0.0.0:4433"],
+            ErrorKind::TooManyValues,
+        ),
         (
             &["--data", "d", "mode", "0.0.0.0:4433", "x"],
             ErrorKind::UnknownArgument,

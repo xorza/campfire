@@ -1,3 +1,6 @@
+# Protocol names a doc comment writes as words, not code; `..` keeps clippy's own list.
+doc-valid-idents = ["UPnP", ".."]
+
 # The bans fall in groups. A group with a proxy crate is called there alone: the proxy's crate
 # root exempts the lint, and every other crate goes through the proxy, which gives what it
 # needs. A group with no proxy is banned everywhere, and its reason names what to call instead.

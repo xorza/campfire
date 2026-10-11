@@ -1,8 +1,7 @@
 use std::time::Duration;
 
 use bevy_app::{
-    App, FixedUpdate, Last, Plugin, PluginGroup, PostUpdate, RunFixedMainLoop,
-    RunFixedMainLoopSystems, Update,
+    App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
 };
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
@@ -21,6 +20,7 @@ use campfire_package::ModePackages;
 use campfire_protocol::{
     Applied, Controller, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms,
 };
+use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StateRegistry, TickRate};
 use campfire_store::{DurableError, InputFile, PathError};
@@ -28,11 +28,11 @@ use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
-    RoomAllocator, RoomPlugin, Unlink, UnlinkReason,
+    RoomAllocator, RoomPlugin,
 };
-use lightyear::webtransport::server::WebTransportServerPlugin;
 use tracing::{info, trace, trace_span};
 
+use crate::close_code::CloseCode;
 use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
@@ -101,10 +101,8 @@ pub(crate) mod tick_hashes;
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
 /// its team sees. It hashes the state after a tick only while the world holds `TickHashes`. It
 /// adds Lightyear's server at the tick's length `tick`, the protocol, and the replication to each
-/// new link; its app adds its frame loop or clock, its session, and its transport. A server that
-/// takes WebTransport links adds `WebTransportServerPlugin`, once in its process: the plugin makes a
-/// tokio runtime in each app that adds it and never ends it, and an in-process server links by
-/// channels.
+/// new link; its app adds its frame loop or clock, its session, and its transport: QUIC's, or
+/// in-process channels.
 #[derive(Debug)]
 pub struct SimServer {
     pub tick: Duration,
@@ -114,18 +112,15 @@ pub struct SimServer {
 
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
-        app.add_plugins(
-            ServerPlugins {
-                tick_duration: self.tick,
-            }
-            .build()
-            .disable::<WebTransportServerPlugin>(),
-        );
+        app.add_plugins(ServerPlugins {
+            tick_duration: self.tick,
+        });
         app.add_plugins((
             NetProtocol {
                 capabilities: self.capabilities,
             },
             RoomPlugin,
+            QuicPlugin,
         ));
         KindFilters::register(app, self.capabilities);
         KindShows::register(app);
@@ -538,9 +533,9 @@ fn record_inputs(
                 InputMessageUnfit { slot: link.slot() }.log();
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
-                commands.trigger(Unlink {
+                commands.trigger(CloseLink {
                     entity,
-                    reason: UnlinkReason::UserRequested(Some("broken input message".to_owned())),
+                    code: CloseCode::InputRefused.app(),
                 });
                 continue;
             };
@@ -554,9 +549,9 @@ fn record_inputs(
                 .log();
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
-                commands.trigger(Unlink {
+                commands.trigger(CloseLink {
                     entity,
-                    reason: UnlinkReason::UserRequested(Some(report)),
+                    code: CloseCode::InputRefused.app(),
                 });
                 continue;
             }

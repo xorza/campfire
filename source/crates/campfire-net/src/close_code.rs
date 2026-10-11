@@ -1,0 +1,55 @@
+use campfire_quic::AppCode;
+use serde::{Deserialize, Serialize};
+
+/// Why Campfire ends a link, which `quic` carries as an `AppCode` and the peer reads back (design
+/// 15, D10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u32)]
+pub enum CloseCode {
+    /// The player left the match.
+    Left = AppCode::FIRST,
+    /// A newer login of the player took the slot.
+    Superseded,
+    /// The server refused the player's input message.
+    InputRefused,
+    /// The server's copy of the player's chain is not the client's.
+    ChainRewritten,
+    /// The session's terms do not fit the client, which cannot play it.
+    SessionRefused,
+}
+
+impl CloseCode {
+    const ALL: [CloseCode; 5] = [
+        CloseCode::Left,
+        CloseCode::Superseded,
+        CloseCode::InputRefused,
+        CloseCode::ChainRewritten,
+        CloseCode::SessionRefused,
+    ];
+
+    pub const fn app(self) -> AppCode {
+        AppCode::new(self as u32)
+    }
+
+    /// The code a peer closed with, when it names one of Campfire's.
+    pub fn of(code: AppCode) -> Option<CloseCode> {
+        CloseCode::ALL.into_iter().find(|close| close.app() == code)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_code_reads_back_as_itself_and_no_other_number_reads() {
+        for close in CloseCode::ALL {
+            assert_eq!(CloseCode::of(close.app()), Some(close));
+        }
+        // Five codes from 16: 16 to 20.
+        let numbers: Vec<u64> = CloseCode::ALL.map(|close| close.app().get()).to_vec();
+        assert_eq!(numbers, [16, 17, 18, 19, 20]);
+        assert_eq!(CloseCode::of(AppCode::new(21)), None);
+        assert_eq!(CloseCode::of(AppCode::ENDED), None);
+    }
+}

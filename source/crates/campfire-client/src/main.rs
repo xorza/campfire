@@ -1,4 +1,4 @@
-//! Game client: joins a session over WebTransport, predicts the player's own avatar, and draws the
+//! Game client: joins a session over QUIC, predicts the player's own avatar, and draws the
 //! match as capsules on the ground; a right click walks the avatar there. With `--bot <orders
 //! file>`, it opens no window and renders nothing, and plays the file's `OrderScript` instead.
 //! With `--key <file>`, the player's main key is the file's, made when missing; without it, the
@@ -139,7 +139,9 @@ fn main() -> ExitCode {
         LinkWatch,
     ));
     let client = SimClient::spawn_client(app.world_mut());
-    connection.link(&mut app, client, &pace, tick);
+    if let Err(code) = connection.link(&mut app, client, &pace, tick) {
+        return code;
+    }
     app.world_mut().trigger(Connect { entity: client });
     let exit = app.run();
     // Dropped, a local server ends the session and publishes its log.

@@ -7,8 +7,8 @@ use campfire_net::{OrderScript, OrderScriptReadError, ServerBots, SessionTimes, 
 use clap::Parser;
 
 /// What the command line names: the data directory, how long after its journal's last write a
-/// session a stop ended restores, the server's bots, the mode to open and its map, and the address
-/// to listen on.
+/// session a stop ended restores, the server's bots, the mode to open and its map, the address to
+/// listen on, and whether the server asks its router to forward the port.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) data: PathBuf,
@@ -18,6 +18,7 @@ pub(crate) struct Args {
     pub(crate) mode: PathBuf,
     pub(crate) map: Option<MapName>,
     pub(crate) address: SocketAddr,
+    pub(crate) port_map: bool,
 }
 
 /// Opens a session of a mode on an address, runs its match, and writes its session log once
@@ -43,6 +44,10 @@ pub(crate) struct CommandLine {
     /// The mode's map the session plays; the mode's only map when it has one
     #[arg(long, value_name = "NAME")]
     map: Option<MapName>,
+    /// Ask no router to forward the port; a player outside then joins through a port the host
+    /// forwards by hand
+    #[arg(long)]
+    no_port_map: bool,
     /// The mode's package directory
     mode: PathBuf,
     /// The address to listen on, as 0.0.0.0:4433
@@ -63,6 +68,7 @@ impl Args {
             mode: line.mode,
             map: line.map,
             address: line.address,
+            port_map: !line.no_port_map,
         }
     }
 

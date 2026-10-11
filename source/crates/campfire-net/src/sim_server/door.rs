@@ -7,13 +7,13 @@ use bevy_time::{Real, Time};
 use campfire_capabilities::Mode;
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
+use campfire_protocol::{Controller, Delegation, LeaveReason, ServerInput};
+use campfire_quic::CloseLink;
 use campfire_runner::{ServerInputRefused, Session, SlotRuleError};
-use lightyear::prelude::{
-    Connected, LocalTimeline, MessageReceiver, MessageSender, Unlink, UnlinkReason,
-};
+use lightyear::prelude::{Connected, LocalTimeline, MessageReceiver, MessageSender};
 use tracing::info;
 
+use crate::close_code::CloseCode;
 use crate::events::join_refused::JoinRefused;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
@@ -22,7 +22,7 @@ use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::offering::{
-    CheckedJoins, JoinLink, Joined, OfferLinks, Offering, Refused, Superseding, Unanswered,
+    CheckedJoins, JoinLink, Joined, OfferLinks, Offered, Offering, Refused, Superseding, Unanswered,
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
@@ -69,7 +69,7 @@ impl Door {
     pub(crate) fn take_joins(
         world: &mut World,
         mut links: Local<'_, QueryState<JoinLink, Unanswered>>,
-        mut joins: Local<'_, Vec<(Entity, ConnectChallenge, Join)>>,
+        mut joins: Local<'_, Vec<(Entity, Offered, Join)>>,
         mut checked: Local<'_, CheckedJoins>,
     ) {
         joins.extend(
@@ -77,7 +77,7 @@ impl Door {
                 .iter_mut(world)
                 .filter_map(|(link, offered, mut receiver)| {
                     let join = receiver.receive().next()?;
-                    Some((link, offered.challenge, join))
+                    Some((link, *offered, join))
                 }),
         );
         world
@@ -244,9 +244,9 @@ impl Door {
                     if let Ok(mut gone) = world.get_entity_mut(link) {
                         gone.remove::<PlayerLink>();
                     }
-                    world.trigger(Unlink {
+                    world.trigger(CloseLink {
                         entity: link,
-                        reason: UnlinkReason::UserRequested(Some("the player left".to_owned())),
+                        code: CloseCode::Left.app(),
                     });
                     continue;
                 }

@@ -1,20 +1,20 @@
 use std::mem;
 
 use bevy_ecs::system::RunSystemOnce;
-use campfire_common::MapName;
+use campfire_common::{ChannelBinding, MapName};
 use campfire_package::PackageDir;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::{All, Secp256k1};
 use campfire_protocol::{
-    CertificateHash, ConnectChallenge, ConnectError, DelegationError, DelegationTerms,
-    SeedContribution,
+    ConnectChallenge, ConnectError, DelegationError, DelegationTerms, SeedContribution,
 };
-use lightyear::prelude::{PeerId, RemoteId};
+use lightyear::prelude::{PeerId, RemoteId, Tick};
 
 use super::*;
 use crate::join::Join;
 use crate::order_script::OrderScript;
 use crate::session_times::SessionTimes;
+use crate::sim_server::offering::Offered;
 use crate::sim_server::server_bots::SlotBot;
 
 const NOW: u64 = 1_700_000_000;
@@ -44,7 +44,6 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
         open: open.iter().copied().map(PlayerSlot::new).collect(),
         server: ServerSetup {
             key: TestKey::server(),
-            certificate: CertificateHash::new([3; 32]),
             times: SessionTimes::DEFAULT,
             clock: || NOW,
             entropy: |bytes| bytes.fill(5),
@@ -67,12 +66,12 @@ fn the_lobby_plans_each_slot_once_and_leaves_one_to_a_player() {
 }
 
 /// What a lobby's players join with: the terms their delegations grant, and the challenge it
-/// offered them.
+/// offered them over their links' channel binding, of bytes 3.
 #[derive(Debug)]
 struct Joining {
     secp: Secp256k1<All>,
     granted: DelegationTerms,
-    challenge: ConnectChallenge,
+    offered: Offered,
 }
 
 impl Joining {
@@ -87,7 +86,11 @@ impl Joining {
         Joining {
             secp: Secp256k1::new(),
             granted,
-            challenge: ConnectChallenge::new([9; 32]),
+            offered: Offered {
+                challenge: ConnectChallenge::new([9; 32]),
+                binding: ChannelBinding::new([3; 32]),
+                sent: Tick(0),
+            },
         }
     }
 
@@ -101,21 +104,21 @@ impl Joining {
     }
 
     /// A join of `json`, whose answer the session key of byte `session` signs over the
-    /// certificate of bytes `certificate`.
-    fn join(&self, json: &str, session: u8, certificate: u8) -> Join {
+    /// channel binding of bytes `binding`.
+    fn join(&self, json: &str, session: u8, binding: u8) -> Join {
         Join {
             delegation: json.to_owned(),
-            answer: self.challenge.answer(
+            answer: self.offered.challenge.answer(
                 &self.secp,
                 &TestKey::of(session),
-                &CertificateHash::new([certificate; 32]),
+                &ChannelBinding::new([binding; 32]),
                 &[0; 32],
             ),
         }
     }
 
-    /// The join of the main key of byte `main` from the session key of byte `session`, over this
-    /// server's certificate.
+    /// The join of the main key of byte `main` from the session key of byte `session`, over the
+    /// link's binding.
     fn signed(&self, main: u8, session: u8) -> Join {
         self.join(self.delegation(main, session).json(), session, 3)
     }
@@ -131,7 +134,7 @@ fn links(world: &mut World) -> [Entity; 4] {
 #[test]
 fn one_frames_joins_go_in_the_order_of_their_keys_however_a_query_gives_them() {
     // In either order, the answered joins go in the order of their main keys, then their
-    // session keys, and the join over another certificate is refused. The x-only keys begin
+    // session keys, and the join over another session's binding is refused. The x-only keys begin
     // 46… for byte 4 and 53… for byte 3, and the session keys 4d… for byte 2 and f9… for byte 8.
     let lobby = Lobby::new(setup(&[], &[])).unwrap();
     let joining = Joining::new(&lobby);
@@ -154,7 +157,7 @@ fn one_frames_joins_go_in_the_order_of_their_keys_however_a_query_gives_them() {
         }
         let joins = joins
             .into_iter()
-            .map(|(link, join)| (link, joining.challenge, join));
+            .map(|(link, join)| (link, joining.offered, join));
         lobby.offering.check_all(joins, &mut checked);
         let answered: Vec<Entity> = checked.answered.drain(..).map(|(link, _)| link).collect();
         assert_eq!(answered, expected, "reversed: {reversed}");
@@ -170,29 +173,29 @@ fn one_frames_joins_go_in_the_order_of_their_keys_however_a_query_gives_them() {
 fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
     let mut lobby = Lobby::new(setup(&[], &[])).unwrap();
     let joining = Joining::new(&lobby);
-    let challenge = joining.challenge;
+    let offered = joining.offered;
     assert_eq!((lobby.players, lobby.joined()), (2, 0));
     let delegation = joining.delegation(1, 2);
-    let join = |certificate: u8, json: &str| joining.join(json, 2, certificate);
+    let join = |binding: u8, json: &str| joining.join(json, 2, binding);
     assert_eq!(
-        lobby.offering.check(challenge, &join(3, delegation.json())),
+        lobby.offering.check(&offered, &join(3, delegation.json())),
         Ok(delegation.clone())
     );
-    // An answer over another certificate, as a relay to this server gives, and a delegation
+    // An answer over another TLS session's binding, as a relay between two sessions gives, and a delegation
     // that is not an event.
     assert_eq!(
-        lobby.offering.check(challenge, &join(4, delegation.json())),
+        lobby.offering.check(&offered, &join(4, delegation.json())),
         Err(JoinError::Connect(ConnectError::BadAnswer))
     );
     assert!(matches!(
-        lobby.offering.check(challenge, &join(3, "{}")),
+        lobby.offering.check(&offered, &join(3, "{}")),
         Err(JoinError::Delegation(DelegationError::NotEvent(_)))
     ));
 
     // Two seats: a refused join takes none; a second join of one main key, from another link,
     // takes its seat back, and gives its older link; and a third player finds both taken.
     let take = |lobby: &mut Lobby, link: Entity, join: &Join| {
-        let delegation = lobby.offering.check(challenge, join)?;
+        let delegation = lobby.offering.check(&offered, join)?;
         lobby.seat(link, delegation)
     };
     let mut world = World::new();

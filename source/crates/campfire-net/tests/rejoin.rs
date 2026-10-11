@@ -9,8 +9,8 @@ use campfire_common::PlayerSlot;
 use campfire_math::Num;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
-    InputsDiscarded, JoinRefused, JoinState, LinkLost, Loss, OrderScript, PlayerLink, SessionTimes,
-    TickHashes,
+    CloseCode, InputsDiscarded, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, OrderScript,
+    PlayerLink, SessionTimes, TickHashes,
 };
 use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
@@ -161,7 +161,7 @@ fn a_second_login_takes_the_slot_and_ends_the_first_link() {
     assert_eq!(
         local.log().take::<LinkLost>(),
         [LinkLost {
-            reason: "a newer login of the player took the slot".to_owned()
+            cause: LinkLossCause::ClientClosed(CloseCode::Superseded)
         }]
     );
     assert!(local.server_inputs().is_empty());
@@ -202,7 +202,7 @@ fn a_superseded_client_hears_of_it_though_the_first_notice_is_lost() {
     assert_eq!(
         local.log().take::<LinkLost>(),
         [LinkLost {
-            reason: "a newer login of the player took the slot".to_owned()
+            cause: LinkLossCause::ClientClosed(CloseCode::Superseded)
         }]
     );
     assert_eq!(slot_of(&local, second), slot);

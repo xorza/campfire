@@ -5,6 +5,7 @@
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
+use bevy_ecs::world::EntityRef;
 use campfire_capabilities::Order;
 use campfire_capabilities::internals::{give_modifier, set_relation};
 use campfire_capabilities::{
@@ -22,6 +23,7 @@ use campfire_net::{
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
+use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::internals::HashTrail;
 use campfire_runner::{Runner, Session};
 use campfire_sim::StableId;
@@ -29,7 +31,7 @@ use campfire_sim::{EntityIndex, Position, SimTick, Unpredicted};
 use lightyear::prelude::PredictionTarget;
 use lightyear::prelude::Replicate;
 use lightyear::prelude::{
-    Client, Connected, MessageSender, Predicted, PredictionManager, RollbackMode,
+    Client, Connected, Link, MessageSender, Predicted, PredictionManager, RollbackMode,
 };
 
 /// Frames of match: one tick each.
@@ -186,6 +188,18 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     };
     assert_eq!(hero(local.server()), arrived);
     let link = local.link(0);
+    // Both ends of a link take a QUIC link's minimum MTU from their spawn, so their fragments
+    // agree whatever IO links them (design 15, D5).
+    let server_link = local.server().world().get::<Link>(link).unwrap();
+    assert_eq!(server_link.min_mtu(), LINK_MIN_MTU);
+    let client_links: Vec<usize> = local
+        .client(0)
+        .world()
+        .iter_entities()
+        .filter(EntityRef::contains::<Client>)
+        .map(|entity| entity.get::<Link>().unwrap().min_mtu())
+        .collect();
+    assert_eq!(client_links, [LINK_MIN_MTU]);
     let refused = |local: &InProcessMatch| {
         let link = local.server().world().entity(link);
         (

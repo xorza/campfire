@@ -17,22 +17,21 @@ use campfire_capabilities::{
     Action, Body, CapabilitySet, Leaver, MoveStep, Order, Owner, PlayersData, SaveBy, SavesData,
     Team,
 };
-use campfire_common::{MapName, PlayerSlot};
+use campfire_common::{ChannelBinding, MapName, PlayerSlot, TlsKey};
 use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{CertificateHash, SeedChain, ServerInput, SessionPrivate};
+use campfire_protocol::{SeedChain, ServerInput, SessionPrivate};
+use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{
-    Connect, Connected, Link, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
+    Connect, Connected, Link, LinkMtu, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
     PredictionManager, PredictionMetrics, RollbackMode, SyncSystems, Unlink, UnlinkReason,
 };
 use lightyear::transport::plugin::TransportSystems;
-use lightyear::webtransport::client::WebTransportClientPlugin;
-use lightyear::webtransport::server::WebTransportServerPlugin;
 
 use crate::bot_script::BotScript;
 use crate::harness::in_process_match::delay_line::DelayLine;
@@ -63,8 +62,10 @@ pub(crate) mod link_model;
 
 /// Frames a connection gets to link and sync its timeline, and a join to start the match.
 const CONNECT_FRAMES: usize = 300;
-/// In-process channels have no TLS; both ends take this as the certificate's hash.
-const CERTIFICATE: CertificateHash = CertificateHash::new([3; 32]);
+/// In-process channels have no TLS; each client pins this as the server's TLS key.
+const TLS_KEY: TlsKey = TlsKey::new([3; 32]);
+/// In-process channels have no TLS session; both ends of a link take this binding.
+const BINDING: LinkBinding = LinkBinding(ChannelBinding::new([3; 32]));
 /// Unix seconds, on every end, until a test sets the clock.
 const NOW: u64 = 1_700_000_000;
 
@@ -331,10 +332,6 @@ impl InProcessMatch {
         let mut server = App::new();
         server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         server.add_plugins(SimServer { tick, capabilities });
-        assert!(
-            !server.is_plugin_added::<WebTransportServerPlugin>(),
-            "an in-process server links by channels: WebTransport's plugin leaves a tokio runtime for each app"
-        );
         server.insert_resource(LocalSession);
         server.add_plugins(LocalPace {
             pace: Arc::clone(pace),
@@ -388,8 +385,9 @@ impl InProcessMatch {
                 LinkOf {
                     server: self.server_entity,
                 },
-                Link::default(),
+                Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
                 PeerAddr(address),
+                BINDING,
                 Linked,
                 server_io,
                 DelayLine::new(self.setup.link, self.setup.server_frames, stream, tick),
@@ -398,6 +396,7 @@ impl InProcessMatch {
         let entity = self.client_entities[client];
         self.clients[client].world_mut().entity_mut(entity).insert((
             client_io,
+            BINDING,
             DelayLine::new(self.setup.link, 1, stream + 1, tick),
         ));
     }
@@ -458,12 +457,11 @@ impl InProcessMatch {
             .expect("the test mode loads")
     }
 
-    /// What the server opens or restores its session with: its key, the certificate hash both
-    /// ends take, the setup's times, a fixed clock and fixed random bytes.
+    /// What the server opens or restores its session with: its key, the setup's times, a fixed
+    /// clock and fixed random bytes.
     fn server_setup(&self) -> ServerSetup {
         ServerSetup {
             key: TestKey::server(),
-            certificate: CERTIFICATE,
             times: self.setup.times,
             clock: unix_now,
             entropy: |bytes| bytes.fill(5),
@@ -894,7 +892,7 @@ impl ClientApp {
             session_key: TestKey::of(secret + 1),
             server: ServerPin {
                 key: TestKey::server().x_only_public_key().0,
-                certificate: CERTIFICATE,
+                tls_key: TLS_KEY,
                 tick_hz,
             },
             local: true,
@@ -907,10 +905,6 @@ impl ClientApp {
         let mut client = App::new();
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         client.add_plugins(sim_client);
-        assert!(
-            !client.is_plugin_added::<WebTransportClientPlugin>(),
-            "an in-process client links by channels: WebTransport's plugin leaves a tokio runtime for each app"
-        );
         client.add_plugins(LocalPace {
             pace: Arc::clone(pace),
             tick,
