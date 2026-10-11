@@ -1,11 +1,13 @@
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query};
+use bevy_ecs::world::DeferredWorld;
 use campfire_common::TlsKey;
 use campfire_log::ErrorReport;
 use campfire_store::Worker;
@@ -25,6 +27,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{trace, warn};
 use zeroize::Zeroizing;
 
+use crate::app_code::AppCode;
 use crate::endpoint_state::{EndpointState, News};
 use crate::error::BindError;
 use crate::io_thread::IoThread;
@@ -37,14 +40,26 @@ use crate::reset_key::ResetKey;
 use crate::server_key::ServerKey;
 use crate::shared_endpoint::SharedEndpoint;
 use crate::udp_port::UdpPort;
+use crate::used_tokens::UsedTokens;
 use crate::{CID_LEN, LINK_MIN_MTU};
+
+/// The `NEW_TOKEN` tokens a connection gives its client: one for its next connection, and one more
+/// should that one fail before its own handshake gives new ones. `quinn-proto` queues them as the
+/// Retry validates the client's address and again as the handshake does, so a client may get
+/// them twice; it keeps the last two.
+const TOKENS_SENT: u32 = 2;
+/// How long a `NEW_TOKEN` token lasts: two minutes, a session's default restore window, the time a
+/// client tries to rejoin. A server's start makes every earlier token useless by its new key.
+const TOKEN_LIFETIME: Duration = Duration::from_secs(120);
 
 /// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the
 /// thread that drives them (design 15, D3, D9). A `LinkStart` opens it: a server takes
 /// connections and spawns a `LinkOf` for each once its handshake completes; a client connects
-/// to its server, and its entity carries the connection. Dropped, it closes every connection,
-/// waits until its thread wrote the closes, and joins it.
+/// to its server, and its entity carries the connection. Taken from a started entity, by any path,
+/// it ends that entity's link; dropped, it closes every connection with `AppCode::STOPPED`, waits
+/// until its thread wrote the closes, and joins it.
 #[derive(Component, Debug)]
+#[component(on_discard = QuicEndpoint::on_discard)]
 pub struct QuicEndpoint {
     shared: Arc<SharedEndpoint>,
     side: Side,
@@ -120,13 +135,17 @@ impl QuicEndpoint {
         )
     }
 
-    /// The server's QUIC: a Retry for each new address and no `NEW_TOKEN`, which `quinn-proto`
-    /// sends by default with its `bloom` feature (D8).
+    /// The server's QUIC: a Retry for each new address, and `NEW_TOKEN` tokens after each
+    /// handshake, each of which lets the client's next connection from its IP skip the Retry once
+    /// within `TOKEN_LIFETIME` (D8).
     fn server_config(crypto: Arc<QuicServerConfig>, times: LinkTimes) -> ServerConfig {
         let mut config = ServerConfig::new(crypto, QuicEndpoint::token_key());
         config.transport_config(Arc::new(times.transport()));
         let mut tokens = ValidationTokenConfig::default();
-        tokens.sent(0);
+        tokens
+            .sent(TOKENS_SENT)
+            .lifetime(TOKEN_LIFETIME)
+            .log(Arc::new(UsedTokens::default()));
         config.validation_token_config(tokens);
         config
     }
@@ -181,7 +200,7 @@ impl QuicEndpoint {
         }
     }
 
-    /// The key of the Retry tokens, new at each start: a token outlives no server.
+    /// The key of the Retry and `NEW_TOKEN` tokens, new at each start: a token outlives no server.
     fn token_key() -> Arc<dyn HandshakeTokenKey> {
         let mut secret = Zeroizing::new([0; 32]);
         SystemRandom::new()
@@ -324,13 +343,37 @@ impl QuicEndpoint {
     /// observers of `Unlinked` to read; Lightyear's reason holds its text, for its logs.
     fn unlink(entity: Entity, end: LinkEnd, commands: &mut Commands<'_, '_>) {
         if let Ok(mut link) = commands.get_entity(entity) {
-            link.remove::<QuicLink>();
-            link.insert((
+            link.try_remove::<QuicLink>();
+            link.try_insert((
                 end,
                 Unlinked {
                     reason: UnlinkReason::TransportError(format!("{end:?}")),
                 },
             ));
+        }
+    }
+
+    /// Ends the link of a started endpoint's entity as the endpoint leaves it, by a removal, a new
+    /// endpoint in its place or a despawn; its drop then closes each connection. A client's entity
+    /// ends `Closed` with `AppCode::STOPPED`, the code it sent; a server's entity unlinks, and
+    /// Lightyear unlinks and despawns each of its links.
+    fn on_discard(mut world: DeferredWorld<'_>, context: HookContext) {
+        let entity = context.entity;
+        if world.get::<Linked>(entity).is_none() && world.get::<Linking>(entity).is_none() {
+            return;
+        }
+        let end = LinkEnd::Closed(AppCode::STOPPED);
+        let endpoint = world
+            .get::<QuicEndpoint>(entity)
+            .expect("a hook of QuicEndpoint runs on an entity that holds one");
+        let client = matches!(endpoint.side, Side::Client { .. });
+        let mut commands = world.commands();
+        if client {
+            QuicEndpoint::unlink(entity, end, &mut commands);
+        } else {
+            commands.entity(entity).try_insert(Unlinked {
+                reason: UnlinkReason::TransportError(format!("{end:?}")),
+            });
         }
     }
 

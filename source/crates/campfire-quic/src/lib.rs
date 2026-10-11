@@ -9,17 +9,23 @@
 )]
 
 mod app_code;
+mod arena_ring;
 mod close_link;
 mod derived_secret;
 mod endpoint_state;
 mod error;
+mod gateway;
 mod io_thread;
 mod link_binding;
 mod link_end;
 mod link_times;
+mod nat_pmp_map;
 mod outbox;
+mod pcp_map;
 mod peer;
 mod pinned_key_verifier;
+mod port_map;
+mod port_mapper;
 mod quic_endpoint;
 mod quic_link;
 mod quic_plugin;
@@ -29,6 +35,8 @@ mod server_key;
 mod shared_endpoint;
 mod spki;
 mod udp_port;
+mod upnp_gateway;
+mod used_tokens;
 
 pub use crate::app_code::AppCode;
 pub use crate::close_link::CloseLink;
@@ -36,6 +44,7 @@ pub use crate::error::BindError;
 pub use crate::link_binding::LinkBinding;
 pub use crate::link_end::LinkEnd;
 pub use crate::link_times::LinkTimes;
+pub use crate::port_map::PortMap;
 pub use crate::quic_endpoint::QuicEndpoint;
 pub use crate::quic_plugin::QuicPlugin;
 

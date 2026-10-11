@@ -6,19 +6,21 @@ use bytes::BytesMut;
 use quinn_proto::EcnCodepoint;
 use quinn_udp::{BATCH_SIZE, RecvMeta};
 
+use crate::arena_ring::ArenaRing;
 use crate::udp_port::UdpPort;
 
 /// The thread's receive buffer: one read of the socket, `quinn-udp`'s batch, each slot as large as
-/// the most datagrams GRO joins.
+/// the most datagrams GRO joins, and the arenas its datagrams are copied into.
 #[derive(Debug)]
 pub(crate) struct RecvBatch {
     buffer: Box<[u8]>,
     meta: [RecvMeta; BATCH_SIZE],
     slot: usize,
+    arenas: ArenaRing,
 }
 
-/// One UDP datagram the socket read, in the buffer of its slot, which `quinn-proto` takes and a
-/// DATAGRAM frame of it then keeps with no copy.
+/// One UDP datagram the socket read, in an arena with the others of its slot, which `quinn-proto`
+/// takes and a DATAGRAM frame of it then keeps with no copy.
 #[derive(Debug)]
 pub(crate) struct Datagram {
     pub(crate) remote: SocketAddr,
@@ -38,6 +40,7 @@ impl RecvBatch {
             buffer: vec![0; slot * BATCH_SIZE].into_boxed_slice(),
             meta: [RecvMeta::default(); BATCH_SIZE],
             slot,
+            arenas: ArenaRing::new(slot),
         }
     }
 
@@ -49,15 +52,21 @@ impl RecvBatch {
         port.recv(&mut slices, &mut self.meta)
     }
 
-    /// The datagrams of the `filled` slots the last read filled, each split from the ones GRO
-    /// joined in its slot, which share one buffer. An empty datagram, whose stride is 0, gives
-    /// none.
-    pub(crate) fn datagrams(&self, filled: usize) -> impl Iterator<Item = Datagram> + '_ {
-        self.meta[..filled]
+    /// The datagrams of the `filled` slots the last read filled, each slot copied into an arena and
+    /// split there into the datagrams GRO joined in it. An empty datagram, whose stride is 0,
+    /// gives none.
+    pub(crate) fn datagrams(&mut self, filled: usize) -> impl Iterator<Item = Datagram> + '_ {
+        let RecvBatch {
+            buffer,
+            meta,
+            slot,
+            arenas,
+        } = self;
+        meta[..filled]
             .iter()
-            .zip(self.buffer.chunks(self.slot))
+            .zip(buffer.chunks(*slot))
             .flat_map(|(meta, slot)| {
-                let mut data = BytesMut::from(&slot[..meta.len]);
+                let mut data = arenas.copy(&slot[..meta.len]);
                 iter::from_fn(move || {
                     (!data.is_empty()).then(|| Datagram {
                         remote: meta.addr,

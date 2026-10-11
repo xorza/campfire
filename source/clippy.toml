@@ -1,3 +1,6 @@
+# Protocol names a doc comment writes as words, not code; `..` keeps clippy's own list.
+doc-valid-idents = ["UPnP", ".."]
+
 # Randomly seeded: iteration order differs between runs, which breaks determinism.
 disallowed-types = [
     # What holds a file is banned by its type, so each of its methods is, a new one included (design 02, Storage).

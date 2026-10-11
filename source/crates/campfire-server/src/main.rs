@@ -37,7 +37,7 @@ use campfire_net::{
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::Keypair;
-use campfire_quic::{LinkTimes, QuicEndpoint};
+use campfire_quic::{LinkTimes, PortMap, QuicEndpoint};
 use campfire_sim::TickRate;
 use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
@@ -84,6 +84,7 @@ fn main() -> ExitCode {
         mode,
         map,
         address,
+        port_map,
         ..
     } = args;
     let data = match ServerDir::open(&data) {
@@ -141,6 +142,10 @@ fn main() -> ExitCode {
             Ok(started) => started,
             Err(code) => return code,
         };
+    // Held to the exit, whose drop deletes the mapping (design 15, D12).
+    let _port_map = port_map
+        .then(|| PortMap::start(endpoint.local_address()))
+        .flatten();
     let listening = announce(&opening, &mode, address, tls_key, &server.key);
     let tick = TickRate::new(opening.terms().tick_hz).length();
     let mut app = server_app(opening, data, tick, listening, capabilities);

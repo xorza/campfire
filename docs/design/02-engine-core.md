@@ -75,7 +75,7 @@ Dashed: planned. `log` is left out: the binaries, `net` and `verifier` use it. E
 | `zero-hour-check` | built | Imports the Zero Hour install `GENERALSZH_DATA` names and checks it, on request |
 | `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | built | Lightyear over `quic`: handshake, replication; internal ([Networking](#networking)) |
-| `quic` | built | QUIC alone under Lightyear's link: an endpoint on a thread of its own, the server's raw TLS key and the client's pin; no game ([QUIC transport](15-quic-transport.md)) |
+| `quic` | built | QUIC alone under Lightyear's link: an endpoint on a thread of its own, the server's raw TLS key and the client's pin, and the server's port mapping; no game ([QUIC transport](15-quic-transport.md)) |
 | `log` | built | Log output: text on standard error and JSON lines into a file; the events a tool reads back; the end of a command line |
 | `store` | built | Durable and secret files, data directories and their locks, and worker threads ([Storage](#storage)) |
 | `launcher` | planned | Fetches, checks and starts the engine release a server or replay names; server browser |
@@ -271,7 +271,7 @@ Collision, pathfinding, movement and visibility each have one interface and plug
 The open protocol is separate from the transport:
 
 - **`protocol`** (versioned, documented): the session log and everything a replay needs.
-- **`net`**: [Lightyear](https://github.com/cBournhonesque/lightyear) for transport, replication, prediction with rollback, interpolation and interest management, through [`bevy_replicon`](https://github.com/simgine/bevy_replicon), whose per-client visibility the vision rooms and the kind filters drive ([Replication audiences](14-replication-audiences.md)). `net` depends on `bevy_replicon`, pinned to Lightyear's version, for the filter Lightyear does not re-export. The server and the client link over QUIC alone, through `quic`, an IO layer under Lightyear's link with one thread for each endpoint and no async runtime; the harness and the local server link by in-process channels ([QUIC transport](15-quic-transport.md)). Client and server always run the same engine release. Lightyear 0.30.1 is patched in `source/Cargo.toml`'s `[patch.crates-io]` until upstream fixes it: it kept the state at its history's cut as an authoritative sample, so a client that ran further ahead than the rollback window, as after a server stall, snapped every later rollback onto a stale value; and its raw server named each link by its address, which two QUIC connections can share ([QUIC transport](15-quic-transport.md), D9).
+- **`net`**: [Lightyear](https://github.com/cBournhonesque/lightyear) for transport, replication, prediction with rollback, interpolation and interest management, through [`bevy_replicon`](https://github.com/simgine/bevy_replicon), whose per-client visibility the vision rooms and the kind filters drive ([Replication audiences](14-replication-audiences.md)). `net` depends on `bevy_replicon`, pinned to Lightyear's version, for the filter Lightyear does not re-export. The server and the client link over QUIC alone, through `quic`, an IO layer under Lightyear's link with one thread for each endpoint and no async runtime; the harness and the local server link by in-process channels ([QUIC transport](15-quic-transport.md)). Client and server always run the same engine release. Lightyear 0.30.1 is patched in `source/Cargo.toml`'s `[patch.crates-io]` until upstream fixes it: it kept the state at its history's cut as an authoritative sample, so a client that ran further ahead than the rollback window, as after a server stall, snapped every later rollback onto a stale value; its raw server named each link by its address, which two QUIC connections can share ([QUIC transport](15-quic-transport.md), D9); its aeronet link kept an MTU past its session's; and a received payload became mutable, a copy when its allocation was shared, where the transport freezes it at once.
 
 ## Libraries
 
@@ -289,6 +289,7 @@ Exact versions are pinned across the workspace. Each release tag pins its Rust t
 | File and package fingerprints | `sha2` | SHA-256, as Blossom addresses blobs |
 | Secret buffers | `zeroize`, in `store`, `protocol`, `server`, `quic` | Already in the build through `rustls` |
 | QUIC | `quinn-proto`, `quinn-udp`, `polling`, in `quic` | QUIC with no IO, its batched socket, and the thread's wait; no async runtime ([QUIC transport](15-quic-transport.md), D1 to D3) |
+| Port mapping | `igd-next`, `netdev`, in `quic` | UPnP-IGD by its blocking API, and each OS's default gateway, to which `quic`'s own PCP and NAT-PMP speak; no async runtime ([QUIC transport](15-quic-transport.md), D12) |
 | TLS | `rustls` over `ring`, in `quic` | TLS 1.3 alone, a raw Ed25519 key and a pinned one; `ring` derives the TLS and reset keys by HKDF ([QUIC transport](15-quic-transport.md), D6 to D8) |
 | Error types | `thiserror` | `log`'s `ErrorReport` writes the chain |
 | Other `Display` impls | `derive_more` | |
