@@ -22,8 +22,8 @@ impl Walk {
 
     /// Applies `effect` as a call's would, before the next tick.
     fn apply(&mut self, effect: NavigationEffect) {
-        let now = self.sim.now();
-        effect.apply(&mut self.sim.world, &mut Frame::default(), now);
+        let mut frame = Frame::in_tick(self.sim.now());
+        effect.apply(&mut self.sim.world, &mut frame);
     }
 }
 

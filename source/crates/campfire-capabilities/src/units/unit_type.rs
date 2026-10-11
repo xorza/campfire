@@ -38,9 +38,7 @@ impl SimComponent for UnitType {
     // A type the match did not load names nothing its books hold, and a unit without a class of
     // the state its type declares would read a field it lacks.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let known = world
-            .get_non_send::<View>()
-            .is_none_or(|view| view.has_type(*self));
+        let known = world.non_send::<View>().has_type(*self);
         let unit = world.entity(entity);
         let states = || {
             let book = world.resource::<UnitStateBook>();

@@ -3,7 +3,7 @@ use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::{Keyed, Ordered, Position, SimRng, SimTick, StableId, TickRate};
+use campfire_sim::{Keyed, Ordered, Position, SimRng, SimTick, StableId, TickClock};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
@@ -208,9 +208,8 @@ impl Attacks {
     /// instead, and spends nothing. A client that predicts the attack only makes the weapon ready
     /// again, as the damage, the launch and the cost come from the server.
     pub(super) fn strike(
-        (tick, rate, rng, book, life): (
-            Res<'_, SimTick>,
-            Res<'_, TickRate>,
+        (clock, rng, book, life): (
+            TickClock<'_>,
             Res<'_, SimRng>,
             Res<'_, ActionBook>,
             Option<Res<'_, LifePool>>,
@@ -240,7 +239,7 @@ impl Attacks {
         >,
         mut order: Local<'_, Ordered>,
     ) {
-        let now = tick.start();
+        let now = clock.start();
         let life = life.map(|life| life.0);
         let going = attackers.iter().filter_map(|(entity, &id, _, slots, ..)| {
             Self::going_off(slots, now).map(|_| Keyed { id, entity })
@@ -270,7 +269,7 @@ impl Attacks {
                 .and_then(InProgress::resolves_at)
                 .expect("an attack going off started");
             let started = Tick::new(resolves_at.get() - values.windup.get());
-            let period = weapon.period(stats, rate.hz().get(), values.windup);
+            let period = weapon.period(stats, clock.rate().hz().get(), values.windup);
             times.cool_down(wielded.slot, started.after(period));
             slots.stop();
             if predicting.is_some() {

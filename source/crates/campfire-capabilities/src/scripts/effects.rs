@@ -3,19 +3,18 @@ use std::collections::VecDeque;
 use std::fmt::Debug;
 
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 
 use crate::scripts::frame::Frame;
 
 /// An effect a call queues: it applies itself when the call returns, in the order queued among
 /// every type's.
 pub(crate) trait Effect: Debug + 'static {
-    /// Applies the effect, which the call in `frame` queued, in tick `now`.
-    fn apply(self, world: &mut World, frame: &mut Frame, now: Tick);
+    /// Applies the effect, which the call in `frame` queued, in the call's tick.
+    fn apply(self, world: &mut World, frame: &mut Frame);
 }
 
 /// How the next effect in order applies: it takes the first of its type's queue, and applies it.
-type ApplyNext = fn(&mut World, &mut Frame, Tick);
+type ApplyNext = fn(&mut World, &mut Frame);
 
 /// The effects a call queued: one queue for each effect type, made at its first effect and kept
 /// for the match, and the apply of each effect in the order queued. A type's effects apply in
@@ -89,7 +88,7 @@ impl Effects {
 
     /// Takes the first effect of type `E` the call in `frame` queued, which the order names
     /// next, and applies it.
-    fn apply_first<E: Effect>(world: &mut World, frame: &mut Frame, now: Tick) {
+    fn apply_first<E: Effect>(world: &mut World, frame: &mut Frame) {
         let effect = frame
             .effects
             .queues
@@ -97,13 +96,14 @@ impl Effects {
             .find_map(|queue| queue.as_any_mut().downcast_mut::<VecDeque<E>>())
             .and_then(VecDeque::pop_front)
             .expect("the effect the order names is queued");
-        effect.apply(world, frame, now);
+        effect.apply(world, frame);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use bevy_ecs::resource::Resource;
+    use campfire_common::Tick;
 
     use super::*;
 
@@ -115,7 +115,8 @@ mod tests {
     struct Hit(u8);
 
     impl Effect for Hit {
-        fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+        fn apply(self, world: &mut World, frame: &mut Frame) {
+            let now = frame.now();
             world
                 .resource_mut::<Applied>()
                 .0
@@ -128,7 +129,8 @@ mod tests {
     struct Heal(u8);
 
     impl Effect for Heal {
-        fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+        fn apply(self, world: &mut World, frame: &mut Frame) {
+            let now = frame.now();
             world
                 .resource_mut::<Applied>()
                 .0
@@ -140,14 +142,14 @@ mod tests {
     fn effects_apply_themselves_in_their_order_across_types_and_their_own_within_one() {
         let mut world = World::new();
         world.init_resource::<Applied>();
-        let mut frame = Frame::default();
+        let mut frame = Frame::in_tick(Tick::new(7));
         frame.effects.push(Hit(1));
         frame.effects.push(Heal(2));
         frame.effects.push(Hit(3));
         let hits: Vec<_> = frame.effects.queued::<Hit>().collect();
         assert_eq!(hits, [&Hit(1), &Hit(3)]);
         assert_eq!(frame.effects.queued::<Heal>().count(), 1);
-        frame.apply(&mut world, Tick::new(7));
+        frame.apply(&mut world);
         assert_eq!(
             world.resource::<Applied>().0,
             ["hit 1 at 7", "heal 2 at 7", "hit 3 at 7"]
@@ -158,8 +160,9 @@ mod tests {
         assert_eq!(frame.effects.queued::<Hit>().count(), 0);
         let mut fresh = Effects::default();
         assert_eq!(fresh.queued::<Heal>().count(), 0);
+        let mut frame = Frame::in_tick(Tick::new(8));
         frame.effects.push(Heal(4));
-        frame.apply(&mut world, Tick::new(8));
+        frame.apply(&mut world);
         assert_eq!(world.resource::<Applied>().0.last().unwrap(), "heal 4 at 8");
         fresh.push(Hit(5));
         fresh.clear();

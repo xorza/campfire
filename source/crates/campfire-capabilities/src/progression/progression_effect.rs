@@ -1,5 +1,4 @@
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
@@ -59,7 +58,7 @@ impl Effect for ProgressionEffect {
     /// Applies the effect: experience raises its track's level, each level reached joins the
     /// tick's level-ups, and a level reached on the `level` track becomes the unit's level and
     /// gives it a point.
-    fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
+    fn apply(self, world: &mut World, _: &mut Frame) {
         match self {
             ProgressionEffect::AddXp {
                 unit,

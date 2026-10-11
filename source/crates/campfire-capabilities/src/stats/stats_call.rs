@@ -135,6 +135,8 @@ mod tests {
 
     use campfire_sim::IdAllocator;
 
+    use campfire_common::Tick;
+
     use super::*;
     use crate::release::test_match::TestMatch;
     use crate::scripts::state_value::StateValue;
@@ -161,8 +163,11 @@ mod tests {
         call.handles.push(handle(2, &[]));
         let held = call.handles[1].clone();
         let first = ptr::from_ref(&*call.handles[0].data()).addr();
-        call.begin(&World::new(), &CallStart::mode(ScriptRole::Mode))
-            .unwrap();
+        call.begin(
+            &World::new(),
+            &CallStart::mode(ScriptRole::Mode, Tick::ZERO),
+        )
+        .unwrap();
         assert!(call.handles.is_empty());
         let spare = call.spare().unwrap();
         assert!(call.spare().is_none());

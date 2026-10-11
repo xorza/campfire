@@ -154,11 +154,10 @@ impl SimComponent for Relations {
 
     // A relation of a team the mode lacks would join it to a vision group of the mode's teams.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world.get_non_send::<View>().is_none_or(|view| {
-            self.pairs
-                .iter()
-                .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
-        })
+        let view = world.non_send::<View>();
+        self.pairs
+            .iter()
+            .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
     }
 }
 

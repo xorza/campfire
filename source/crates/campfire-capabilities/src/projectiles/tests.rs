@@ -292,8 +292,14 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
         .next()
         .unwrap();
     world.entity_mut(bolt).remove::<FlightState>();
+    let id = *world.get::<StableId>(bolt).unwrap();
     let refusal = restored.sim.refusal_into(&mut fresh().sim);
-    assert_eq!(refusal, Some(SnapshotError::Invalid(FlightState::NAME)));
+    let lacks = SnapshotError::Lacks {
+        holder: Projectile::NAME,
+        needs: FlightState::NAME,
+        id,
+    };
+    assert_eq!(refusal, Some(lacks));
     // The struck units decode only in order, each once: the ids were allocated in order.
     let decode = |hits: &[(StableId, StableId)]| {
         let hits: Vec<Struck> = hits.iter().map(|&(by, unit)| Struck { by, unit }).collect();
@@ -344,7 +350,7 @@ fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
         delivers: None,
     };
     for effect in [blink, dash] {
-        effect.apply(&mut volley.sim.world, &mut Frame::default(), now);
+        effect.apply(&mut volley.sim.world, &mut Frame::in_tick(now));
     }
     volley.sim.step();
     let flying = volley

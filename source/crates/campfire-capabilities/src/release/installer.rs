@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use bevy_ecs::component::{Component, Immutable, Mutable};
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, HostRule, SimComponent, SimResource, StateRegistry};
+use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, StateRegistry};
 
 use crate::declare::book::Book;
 use crate::declare::capability_set::CapabilitySet;
@@ -82,7 +82,7 @@ impl Declarations for Installer<'_> {
 
     fn kind<K: HostRule + Component>(&mut self) {}
 
-    fn require<H: Component, C: SimComponent>(&mut self) {
+    fn require<H: SimComponent, C: SimComponent>(&mut self) {
         self.registry.require::<H, C>();
     }
 
@@ -90,7 +90,7 @@ impl Declarations for Installer<'_> {
         self.registry.host::<C, H>();
     }
 
-    fn check<C: SimComponent>(&mut self, check: fn(&World) -> bool) {
+    fn check<C: SimComponent>(&mut self, check: fn(&World) -> Result<(), Breach>) {
         self.registry.add_check::<C>(check);
     }
 

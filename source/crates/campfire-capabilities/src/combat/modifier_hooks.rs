@@ -184,15 +184,15 @@ impl ModifierHooks {
             .expect("a modifier whose script defines a hook has one");
         let (ability, rank, package) = (instance.ability, instance.rank, entry.package);
         let pool = ModifierHooks::pool(world, heard.source);
+        let now = world.resource::<SimTick>().start();
         let start = CallStart {
             acting: heard.source,
             action: ability,
             rank,
-            ..CallStart::hook(heard.id, package, depth)
+            ..CallStart::hook(heard.id, package, depth, now)
         };
-        let now = world.resource::<SimTick>().start();
         let ctx = &self.ctx;
-        batch.hook_call(ctx, now, start, hook, Some(carrier), |batch| {
+        batch.hook_call(ctx, start, hook, Some(carrier), |batch| {
             let handle = {
                 let clocks = batch
                     .world()

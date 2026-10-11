@@ -72,7 +72,8 @@ pub(crate) struct OrderedUnit {
 /// For the unit that thinks in the call, which checked the order against the units as the phase
 /// began; no unit dies within Think.
 impl Effect for UnitOrder {
-    fn apply(self, world: &mut World, frame: &mut Frame, now: Tick) {
+    fn apply(self, world: &mut World, frame: &mut Frame) {
+        let now = frame.now();
         let unit = frame
             .acting()
             .expect("an order comes from the unit that thinks");

@@ -297,6 +297,12 @@ fn corruption_never_panics_and_what_restores_snapshots_to_the_same_bytes() {
     }
 }
 
+/// The error of a position on an entity with no health, of the first id.
+const UNHEALTHY: SnapshotError = SnapshotError::Invalid {
+    ty: "test.position",
+    id: Some(StableId::new(0)),
+};
+
 #[test]
 fn flawed_snapshots_are_refused() {
     let names = [
@@ -348,7 +354,7 @@ fn flawed_snapshots_are_refused() {
                 Vec::new(),
                 encoded(&[(0_u64, position(1))]),
             ]),
-            SnapshotError::Invalid("test.position"),
+            UNHEALTHY,
         ),
         (
             with([encoded(&[0_u64, 1]), allocator(1), Vec::new(), Vec::new()]),
@@ -472,7 +478,8 @@ fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
         hosts.snapshot(&world, &mut bytes);
         hosts.restore(&bytes, &mut World::new()).err()
     };
-    let invalid = |name| Some(SnapshotError::Invalid(name));
+    // Each names the one entity, the first id.
+    let id = StableId::new(0);
     assert_eq!(
         restores(|world, id| {
             world.spawn((id, health(1), position(0), Armor, Mark));
@@ -483,20 +490,62 @@ fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
         restores(|world, id| {
             world.spawn((id, Armor));
         }),
-        invalid(Armor::NAME)
+        Some(SnapshotError::WrongHost {
+            ty: Armor::NAME,
+            id
+        })
     );
     assert_eq!(
         restores(|world, id| {
             world.spawn((id, health(1), Armor));
         }),
-        invalid(Position::NAME)
+        Some(SnapshotError::Lacks {
+            holder: Armor::NAME,
+            needs: Position::NAME,
+            id
+        })
     );
     assert_eq!(
         restores(|world, id| {
             world.spawn((id, Mark));
         }),
-        invalid(Mark::NAME)
+        Some(SnapshotError::WrongHost { ty: Mark::NAME, id })
     );
+    // A rule another module checks names the entity it finds, or none for the whole match.
+    let ruled = |check: fn(&World) -> Result<(), Breach>| {
+        let mut ruled = registry();
+        ruled.register_component::<Armor>();
+        ruled.add_check::<Armor>(check);
+        let mut world = new_world();
+        world.init_resource::<SimTick>();
+        let id = allocate(&mut world);
+        world.spawn((id, health(1), position(0), Armor));
+        let mut bytes = Vec::new();
+        ruled.snapshot(&world, &mut bytes);
+        ruled.restore(&bytes, &mut World::new()).err()
+    };
+    let armored = |world: &World| {
+        let index = world.resource::<EntityIndex>();
+        let armored = index
+            .iter()
+            .find(|&(_, entity)| world.get::<Armor>(entity).is_some());
+        Err(Breach::Entity(armored.unwrap().1))
+    };
+    assert_eq!(
+        ruled(armored),
+        Some(SnapshotError::Invalid {
+            ty: Armor::NAME,
+            id: Some(id)
+        })
+    );
+    assert_eq!(
+        ruled(|_| Err(Breach::Match)),
+        Some(SnapshotError::Invalid {
+            ty: Armor::NAME,
+            id: None
+        })
+    );
+    assert_eq!(ruled(|_| Ok(())), None);
 }
 
 #[test]

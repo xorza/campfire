@@ -7,7 +7,7 @@ use bevy_ecs::world::{Mut, World};
 use campfire_common::Tick;
 use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickRate};
+use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 
 use crate::abilities::Abilities;
 use crate::abilities::cast_spends::CastSpends;
@@ -280,7 +280,7 @@ impl Casts {
     /// caster's tags keep it from casting goes back to its order. Its cost and its effects come
     /// from the server.
     pub(super) fn predict_casts(
-        (tick, rate): (Res<'_, SimTick>, Res<'_, TickRate>),
+        clock: TickClock<'_>,
         book: Res<'_, ActionBook>,
         (resources, life): (
             PlayerRows<'_, '_, PlayerResources>,
@@ -303,9 +303,9 @@ impl Casts {
             Without<Dead>,
         >,
     ) {
-        let now = tick.start();
+        let now = clock.start();
         let life = life.map(|life| life.0);
-        let second = Abilities::second(*rate);
+        let second = Abilities::second(clock.rate());
         for (&team, mut slots, mut times, pools, owner, tags, forced, inventory) in &mut casters {
             let Some(ActionCall {
                 aim: casting,
@@ -355,7 +355,7 @@ impl Casts {
                 return Ok(None);
             };
             Self::run(batch, ctx, &mut prepared)?;
-            Self::apply(batch.world(), ctx, now, entity, &prepared);
+            Self::apply(batch.world(), ctx, entity, &prepared);
             Ok(Some(prepared.resolved))
         });
         let resolved = ran.unwrap_or_else(|error| {
@@ -379,7 +379,7 @@ impl Casts {
 
     /// Applies a cast that ran: its delivery's launches, then the effects it queued in `frame` and
     /// its handle writes, and its cost in pools.
-    fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Prepared) {
+    fn apply(world: &mut World, ctx: &Ctx, entity: Entity, prepared: &Prepared) {
         let from = *world.get::<Position>(entity).expect("a caster stands");
         let ActionCall { aim, start } = prepared.resolved.call;
         let by = Delivering {
@@ -394,7 +394,7 @@ impl Casts {
             let deliver = world.resource::<Deliverers>().of(delivery.shape);
             deliver(world, by, from, delivery, aim.target);
         }
-        ctx.apply(world, now);
+        ctx.apply(world);
         // The player's resources were paid in the call's frame, before its script ran, so a failed
         // call pays nothing and the script cannot spend what the cost took.
         let life = Combat::life(world);
@@ -459,7 +459,7 @@ impl Casts {
                         checked.rank,
                         Some(start),
                     )),
-                ..CallStart::cast(checked.id, checked.rank, caster.id, package)
+                ..CallStart::cast(checked.id, checked.rank, caster.id, package, now)
             },
         )?;
         // The check let a cost in player resources pass only for a unit a player owns, in a match

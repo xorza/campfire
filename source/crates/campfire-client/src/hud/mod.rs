@@ -21,14 +21,13 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use campfire_capabilities::{
-    ActionSlots, Dead, Learning, Level, Life, PlayerUnits, Points, Pools, Rank, SlotCharges,
-    SlotTimes, Team,
+    ActionSlots, Dead, Learning, Level, Life, Points, Pools, Rank, SlotCharges, SlotTimes, Team,
 };
-use campfire_net::JoinState;
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind};
 use crate::hud::ring::Ring;
+use crate::own_player::OwnPlayer;
 use crate::view::ViewSystems;
 use crate::view::drawing::Drawing;
 use crate::view::look::Shape;
@@ -285,28 +284,19 @@ impl Hud {
     /// rank ticks of each ability that ranks up, then the charge ticks of each ability with
     /// charges. The gauges stand over the drawing's top, facing
     /// the camera, as children of its root.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "a system takes each resource and query it reads"
-    )]
     fn add_gauges(
         palette: Res<'_, HudPalette>,
         learning: Option<Learning<'_>>,
-        state: Option<Res<'_, JoinState>>,
-        players: PlayerUnits<'_, '_>,
+        own: OwnPlayer<'_, '_>,
         drawn: Ungauged<'_, '_>,
         shapes: Query<'_, '_, &Shape>,
         mut scratch: Local<'_, GaugeScratch>,
         mut commands: Commands<'_, '_>,
     ) {
-        let state = state.as_deref();
-        let (Some(slot), Some(own_team)) = (
-            state.and_then(JoinState::slot),
-            state.and_then(JoinState::team),
-        ) else {
+        let Some(own_team) = own.team() else {
             return;
         };
-        let avatar = players.avatar(slot).map(|avatar| avatar.entity);
+        let avatar = own.avatar().map(|avatar| avatar.entity);
         for (unit, drawing, team, life, pools, slots) in &drawn {
             // A projectile's drawing has no look, and no gauges.
             let Ok(shape) = shapes.get(drawing.root()) else {
@@ -444,9 +434,8 @@ impl Hud {
     )]
     fn fill_gauges(
         tick: Option<Res<'_, SimTick>>,
-        state: Option<Res<'_, JoinState>>,
+        own: OwnPlayer<'_, '_>,
         learning: Option<Learning<'_>>,
-        players: PlayerUnits<'_, '_>,
         restated: Restated<'_, '_>,
         mut revived: RemovedComponents<'_, '_, Dead>,
         units: Shown<'_, '_>,
@@ -454,11 +443,7 @@ impl Hud {
         (mut gauges, mut fills): (Query<'_, '_, (&mut Gauge, &mut Visibility)>, Fills<'_, '_>),
         mut touched: Local<'_, Vec<Entity>>,
     ) {
-        let avatar = state
-            .as_deref()
-            .and_then(JoinState::slot)
-            .and_then(|slot| players.avatar(slot))
-            .map(|avatar| avatar.entity);
+        let avatar = own.avatar().map(|avatar| avatar.entity);
         touched.clear();
         touched.extend(restated.iter().chain(revived.read()).chain(avatar));
         touched.sort_unstable();
@@ -553,24 +538,23 @@ impl Hud {
     /// Puts the target ring on the ground under the unit the own avatar attacks, as wide as the
     /// unit's drawing, when the target changes: a child of the target's drawing, which carries it
     /// along. A ring whose unit is gone went with the unit's drawing.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a system takes each resource and query it reads"
+    )]
     fn mark_target(
-        (index, state, palette): (
-            Res<'_, EntityIndex>,
-            Option<Res<'_, JoinState>>,
-            Res<'_, HudPalette>,
-        ),
-        players: PlayerUnits<'_, '_>,
-        own: Query<'_, '_, &ActionSlots>,
+        index: Res<'_, EntityIndex>,
+        palette: Res<'_, HudPalette>,
+        own: OwnPlayer<'_, '_>,
+        slots: Query<'_, '_, &ActionSlots>,
         units: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
         shapes: Query<'_, '_, &Shape>,
         mut marked: Local<'_, Option<Marked>>,
         mut commands: Commands<'_, '_>,
     ) {
-        let target = state
-            .as_deref()
-            .and_then(JoinState::slot)
-            .and_then(|slot| players.avatar(slot))
-            .and_then(|avatar| own.get(avatar.entity).ok())
+        let target = own
+            .avatar()
+            .and_then(|avatar| slots.get(avatar.entity).ok())
             .and_then(ActionSlots::attack_target)
             .and_then(|target| index.get(target))
             .and_then(|target| units.get(target).ok())

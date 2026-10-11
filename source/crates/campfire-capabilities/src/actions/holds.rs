@@ -1,7 +1,7 @@
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res};
-use campfire_sim::{SimTick, StableId, TickRate};
+use campfire_sim::{SimTick, StableId, TickClock};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
@@ -12,10 +12,9 @@ use crate::stats::carried_mut::CarriedMut;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
+use crate::stats::modifier_params::ModifierParams;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
-use crate::stats::param_book::ParamBook;
-use crate::stats::param_sources::ParamSources;
 use crate::stats::stat_book::StatBook;
 use crate::values::rank::Rank;
 
@@ -58,8 +57,8 @@ impl Holds {
         actions: Res<'_, ActionBook>,
         book: Option<Res<'_, ModifierBook>>,
         stats: Option<Res<'_, StatBook>>,
-        (tick, rate): (Res<'_, SimTick>, Res<'_, TickRate>),
-        (params, sources): (Res<'_, ParamBook>, ParamSources<'_, '_>),
+        clock: TickClock<'_>,
+        params: ModifierParams<'_, '_>,
         mut units: Query<
             '_,
             '_,
@@ -81,8 +80,8 @@ impl Holds {
             return;
         };
         let every =
-            actions.is_changed() || book.is_changed() || stats.is_changed() || params.is_changed();
-        let now = tick.start();
+            actions.is_changed() || book.is_changed() || stats.is_changed() || params.changed();
+        let now = clock.start();
         for (entity, &id, slots, times, modifiers, clocks) in &mut units {
             let changed = slots.is_changed() || times.is_changed() || modifiers.is_changed();
             if !(every || changed || waiting.waits(entity)) {
@@ -119,12 +118,19 @@ impl Holds {
                         rank,
                         hold: Some(hold),
                     };
-                    let source = sources.get(id);
+                    let source = params.source(id);
                     let param = |place: &ParamPlace| {
                         let ability = Some(ability);
                         params.modifier_param(modifier, ability, rank, place, source.as_ref())
                     };
-                    carried.apply(book.application(modifier, applier, None, now, *rate, param));
+                    carried.apply(book.application(
+                        modifier,
+                        applier,
+                        None,
+                        now,
+                        clock.rate(),
+                        param,
+                    ));
                 };
                 if let Some(passive) = action.passive {
                     let cooling = passive.while_ready && time.ready_at > now;

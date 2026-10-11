@@ -3,7 +3,6 @@ use std::cell::{OnceCell, RefCell, RefMut};
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_script::rhai::{Dynamic, NativeCallContext};
 use campfire_sim::StableId;
 
@@ -98,9 +97,9 @@ impl Ctx {
         self.mode.get().map(|mode| &**mode)
     }
 
-    /// Applies the effects of the call that ran, in tick `now`.
-    pub(crate) fn apply(&self, world: &mut World, now: Tick) {
-        self.frame().apply(world, now);
+    /// Applies the effects of the call that ran, in its tick.
+    pub(crate) fn apply(&self, world: &mut World) {
+        self.frame().apply(world);
     }
 }
 

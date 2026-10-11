@@ -97,9 +97,7 @@ impl SimComponent for Experience {
     // A track the mode lacks has no thresholds to count levels by; the `level` track's level is
     // the unit's, so it holds one of its own exactly on every other track.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let Some(book) = world.get_resource::<TrackBook>() else {
-            return self.tracks.is_empty();
-        };
+        let book = world.resource::<TrackBook>();
         self.tracks.iter().all(|track| {
             let own = track.level.is_some();
             book.has(track.track) && own != (book.level_track() == Some(track.track))

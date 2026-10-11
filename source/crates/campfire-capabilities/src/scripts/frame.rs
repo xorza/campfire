@@ -42,6 +42,11 @@ pub(crate) struct Frame {
 
 impl Frame {
     /// How the running call started.
+    /// The tick the running call runs in, which its effects apply in.
+    pub(crate) const fn now(&self) -> Tick {
+        self.running().now
+    }
+
     const fn running(&self) -> &CallStart {
         self.call.as_ref().expect("a call began")
     }
@@ -102,20 +107,20 @@ impl Frame {
         self.parts.get_mut()
     }
 
-    /// Starts `on_think` for `unit` in `world`.
-    pub(crate) fn begin_think(&mut self, world: &World, unit: StableId) {
+    /// Starts `on_think` for `unit` in `world`, in tick `now`.
+    pub(crate) fn begin_think(&mut self, world: &World, unit: StableId, now: Tick) {
         let start = CallStart {
             acting: Some(unit),
-            ..CallStart::mode(ScriptRole::Ai)
+            ..CallStart::mode(ScriptRole::Ai, now)
         };
         self.begin(world, start)
             .expect("a call with no params overflows none");
     }
 
-    /// Starts a mode call, with the resources and stable ids as `world` holds them, for the call
-    /// to read and write; `pure` for a hook whose `ctx` only reads.
-    pub(crate) fn begin_mode(&mut self, world: &World, pure: bool) {
-        self.begin(world, CallStart::mode(ScriptRole::Mode))
+    /// Starts a mode call in tick `now`, with the resources and stable ids as `world` holds them,
+    /// for the call to read and write; `pure` for a hook whose `ctx` only reads.
+    pub(crate) fn begin_mode(&mut self, world: &World, pure: bool, now: Tick) {
+        self.begin(world, CallStart::mode(ScriptRole::Mode, now))
             .expect("a call with no params overflows none");
         self.pure = pure;
     }
@@ -170,16 +175,16 @@ impl Frame {
     }
 
     /// Applies the effects the call that ran queued, in order, each itself, from the call's
-    /// acting unit and its action at its rank, in tick `now`, after the ids it took, so a unit it
-    /// creates spawns with the id it took. Then what the call wrote to each part applies, then
-    /// to the players' resources.
-    pub(crate) fn apply(&mut self, world: &mut World, now: Tick) {
+    /// acting unit and its action at its rank, in the call's tick, after the ids it took, so a
+    /// unit it creates spawns with the id it took. Then what the call wrote to each part applies,
+    /// then to the players' resources.
+    pub(crate) fn apply(&mut self, world: &mut World) {
         if self.ids_taken {
             world.resource_mut::<IdAllocator>().clone_from(&self.ids);
         }
         for at in 0..self.effects.order().len() {
             let apply = self.effects.order()[at];
-            apply(world, self, now);
+            apply(world, self);
         }
         self.effects.clear();
         self.parts.apply(world);
@@ -197,5 +202,25 @@ impl Frame {
     /// The running call's param `name`, of the part that holds its role's params.
     pub(crate) fn param_named(&self, name: &str) -> Option<Dynamic> {
         self.parts.param_named(self.role(), name)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_common::Tick;
+
+    use crate::scripts::call_start::CallStart;
+    use crate::scripts::frame::Frame;
+    use crate::scripts::script_role::ScriptRole;
+
+    impl Frame {
+        /// A frame whose mode call runs in tick `now`, as a test applies an effect in: it reads
+        /// no world.
+        pub(crate) fn in_tick(now: Tick) -> Frame {
+            Frame {
+                call: Some(CallStart::mode(ScriptRole::Mode, now)),
+                ..Frame::default()
+            }
+        }
     }
 }

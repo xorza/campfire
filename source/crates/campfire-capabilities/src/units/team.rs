@@ -45,9 +45,7 @@ impl SimComponent for Team {
 
     // The vision groups and the mode's tables hold a place for each of the mode's teams only.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world
-            .get_non_send::<View>()
-            .is_none_or(|view| view.has_team(*self))
+        world.non_send::<View>().has_team(*self)
     }
 }
 

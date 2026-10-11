@@ -82,10 +82,10 @@ impl DeliveryHooks {
                 let start = CallStart {
                     hit: Some(hit),
                     start: by.start,
-                    ..CallStart::cast(by.action, by.rank, by.source, package)
+                    ..CallStart::cast(by.action, by.rank, by.source, package, now)
                 };
                 let pool = Pool::of(owner);
-                batch.hook_call(&ctx, now, start, hook, Some(by.source), |batch| {
+                batch.hook_call(&ctx, start, hook, Some(by.source), |batch| {
                     EffectLists::queue(
                         batch.world(),
                         of,

@@ -129,7 +129,7 @@ impl Calls<'_, '_> {
     /// reads.
     fn begin(&mut self, pure: bool) {
         let world = self.batch.world();
-        self.ctx.frame().begin_mode(world, pure);
+        self.ctx.frame().begin_mode(world, pure, self.now);
     }
 
     /// Commits the call's state and choices, then applies its effects in order.
@@ -144,6 +144,6 @@ impl Calls<'_, '_> {
                 world.resource_mut::<Choices>().clone_from(&call.choices);
             }
         }
-        self.ctx.apply(world, self.now);
+        self.ctx.apply(world);
     }
 }

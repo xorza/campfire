@@ -1,5 +1,4 @@
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_math::Vec3;
 use campfire_sim::{Position, StableId};
 
@@ -33,7 +32,7 @@ pub(crate) enum Toward {
 impl Effect for ProjectilesEffect {
     /// Applies the effect: a launch this tick, its own cast, from the point of the map's bounds
     /// nearest where it says. A direction of no length launches nothing.
-    fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
+    fn apply(self, world: &mut World, _: &mut Frame) {
         let from = world.resource::<Bounds>().clamp(self.from);
         let flight = match self.toward {
             Toward::Unit(target) => Flight::homing(target),

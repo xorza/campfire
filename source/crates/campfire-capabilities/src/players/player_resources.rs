@@ -48,7 +48,7 @@ impl PlayerResources {
     /// How many resources each player of the match in `world` holds an amount of: those its
     /// mode declares, none before a mode.
     pub(crate) fn declared(world: &World) -> usize {
-        world.get_non_send::<View>().map_or(0, View::resource_count)
+        world.non_send::<View>().resource_count()
     }
 
     /// Whether adding each of `amounts` keeps every amount within an `i64`.
@@ -107,9 +107,7 @@ impl SimComponent for PlayerResources {
 
     // A row of another width would place an amount under another resource.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world
-            .get_non_send::<View>()
-            .is_none_or(|view| view.fits_resources(self.0.len()))
+        world.non_send::<View>().fits_resources(self.0.len())
     }
 }
 

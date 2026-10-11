@@ -149,7 +149,8 @@ impl NavigationEffect {
 
 impl Effect for NavigationEffect {
     // A unit gone or dead since the call moves no more.
-    fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+    fn apply(self, world: &mut World, frame: &mut Frame) {
+        let now = frame.now();
         let unit = match self {
             NavigationEffect::Dash { unit, .. }
             | NavigationEffect::KnockBack { unit, .. }

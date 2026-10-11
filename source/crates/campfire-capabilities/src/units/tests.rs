@@ -6,7 +6,7 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
 use campfire_script::rhai::Array;
-use campfire_sim::{SimComponent, SimTick, SnapshotError, StableId};
+use campfire_sim::{EntityIndex, SimComponent, SimTick, SnapshotError, StableId};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -265,17 +265,22 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
         let mut scene = Scene::new();
         scene.sim.world.insert_resource(bounds);
         let at = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-        scene.sim.spawn(at, Team::new(0));
+        let unit = scene.sim.spawn(at, Team::new(0));
         let mut snapshot = Vec::new();
         scene.sim.registry.snapshot(&scene.sim.world, &mut snapshot);
         let mut fresh = Scene::new();
         fresh.sim.world.insert_resource(bounds);
         fresh.sim.clear();
-        scene.sim.registry.restore(&snapshot, &mut fresh.sim.world)
+        let restored = scene.sim.registry.restore(&snapshot, &mut fresh.sim.world);
+        restored.map_err(|error| (error, unit))
     };
     assert_eq!(restores(Num::int(10)), Ok(()));
-    let past = restores(Num::int(10) + Num::EPSILON);
-    assert_eq!(past, Err(SnapshotError::Invalid(Position::NAME)));
+    let (error, unit) = restores(Num::int(10) + Num::EPSILON).unwrap_err();
+    let past = SnapshotError::Invalid {
+        ty: Position::NAME,
+        id: Some(unit),
+    };
+    assert_eq!(error, past);
 }
 
 #[test]

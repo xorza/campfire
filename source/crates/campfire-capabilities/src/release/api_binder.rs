@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use bevy_ecs::component::{Component, Immutable, Mutable};
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, HostRule, SimComponent, SimResource};
+use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
 
 use crate::declare::book::Book;
 use crate::declare::declarations::{ColumnFill, Declarations};
@@ -45,11 +45,11 @@ impl Declarations for ApiBinder<'_, '_> {
 
     fn kind<K: HostRule + Component>(&mut self) {}
 
-    fn require<H: Component, C: SimComponent>(&mut self) {}
+    fn require<H: SimComponent, C: SimComponent>(&mut self) {}
 
     fn host<C: SimComponent, H: HostRule>(&mut self) {}
 
-    fn check<C: SimComponent>(&mut self, _: fn(&World) -> bool) {}
+    fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
     fn book<B: Book>(&mut self) {}
 

@@ -111,10 +111,10 @@ impl Channels {
         let package = action.package;
         let start = CallStart {
             start: Some(start),
-            ..CallStart::cast(id, rank, caster, package)
+            ..CallStart::cast(id, rank, caster, package, now)
         };
         let pool = Pool::of(owner);
-        batch.hook_call(ctx, now, start, hook, Some(caster), |batch| match hook {
+        batch.hook_call(ctx, start, hook, Some(caster), |batch| match hook {
             Hook::OnInterrupt => {
                 let target = Abilities::target(ctx.view(), aim.target);
                 batch.call_hook(pool, script, hook, (ctx.clone(), handle, target))

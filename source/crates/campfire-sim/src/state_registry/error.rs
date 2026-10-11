@@ -1,6 +1,8 @@
 use campfire_codec::BinaryError;
 use thiserror::Error;
 
+use crate::stable_id::StableId;
+
 /// Why a snapshot does not restore. Snapshots are untrusted data, so every flaw is an error.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SnapshotError {
@@ -36,8 +38,22 @@ pub enum SnapshotError {
     /// The resource of this name, which every state holds, is recorded absent.
     #[error("snapshot lacks {0}, which every state holds")]
     Missing(&'static str),
-    /// A value of the type of this name breaks a rule of its type, such as an id that names
-    /// nothing the match's books hold.
-    #[error("snapshot value of {0} breaks its rules")]
-    Invalid(&'static str),
+    /// A value of the type `ty` breaks a rule of its type, such as an id that names nothing the
+    /// match's books hold: on the entity of `id`, or none for a resource or a rule of the whole
+    /// match.
+    #[error("snapshot value of {ty} breaks its rules, on {id:?}")]
+    Invalid {
+        ty: &'static str,
+        id: Option<StableId>,
+    },
+    /// A value of the type `ty` sits on the entity of `id`, which is not of the kind it sits on.
+    #[error("snapshot value of {ty} on {id:?}, which is not of its kind")]
+    WrongHost { ty: &'static str, id: StableId },
+    /// The entity of `id` holds `holder` and lacks `needs`, which every holder of it holds.
+    #[error("snapshot entity {id:?} holds {holder} and lacks {needs}")]
+    Lacks {
+        holder: &'static str,
+        needs: &'static str,
+        id: StableId,
+    },
 }

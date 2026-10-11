@@ -9,7 +9,6 @@ use crate::stats::level::Level;
 use crate::stats::life::Life;
 use crate::stats::life_pool::LifePool;
 use crate::stats::live_carriers::LiveCarriers;
-use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
@@ -17,6 +16,7 @@ use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_books::StatBooks;
 use crate::stats::unit_pools::UnitPools;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
@@ -60,16 +60,16 @@ impl Refresh {
     /// stat book's order, so a live change reads its source's stats once they are final; a live
     /// change whose source is gone keeps the value it last had. An effect whose stat the mode does
     /// not declare keeps what the unit's kit gave it.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a system takes each resource and query it reads"
+    )]
     pub(crate) fn run(
-        (book, pool_book, life, tag_book, modifier_book, index): (
-            Option<Res<'_, StatBook>>,
-            Option<Res<'_, PoolBook>>,
-            Option<Res<'_, LifePool>>,
-            Option<Res<'_, TagBook>>,
-            Res<'_, ModifierBook>,
-            Res<'_, EntityIndex>,
-        ),
-        (params, rate): (Res<'_, ParamBook>, Res<'_, TickRate>),
+        books: StatBooks<'_>,
+        life: Option<Res<'_, LifePool>>,
+        index: Res<'_, EntityIndex>,
+        params: Res<'_, ParamBook>,
+        rate: Res<'_, TickRate>,
         mut carriers: ResMut<'_, LiveCarriers>,
         mut units: ParamSet<
             '_,
@@ -107,8 +107,15 @@ impl Refresh {
                 Query<'_, '_, &mut Modifiers>,
             ),
         >,
-        (mut scratch, mut visits): (Local<'_, RefreshScratch>, Local<'_, Vec<Entity>>),
+        mut scratch: Local<'_, RefreshScratch>,
+        mut visits: Local<'_, Vec<Entity>>,
     ) {
+        let StatBooks {
+            stats: book,
+            pools: pool_book,
+            modifiers: modifier_book,
+            tags: tag_book,
+        } = books;
         let (Some(book), Some(pool_book)) = (book, pool_book) else {
             return;
         };

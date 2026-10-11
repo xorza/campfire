@@ -8,9 +8,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_script::rhai::ImmutableString;
-use campfire_sim::{
-    Capability, EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickRate,
-};
+use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick, StateRegistry, TickRate};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
@@ -256,28 +254,30 @@ impl Mode {
 
     /// Whether each slot of the session has its entity, as the mode's start spawns them, so no
     /// call finds one missing.
-    fn players_seated(world: &World) -> bool {
+    fn players_seated(world: &World) -> Result<(), Breach> {
         let ctx = world.non_send::<Ctx>();
         let players = ModeBook::of_match(ctx).teams.players();
-        (0..players)
+        let seated = (0..players)
             .map(PlayerSlot::new)
-            .all(|slot| Player::entity(world, slot).is_some())
+            .all(|slot| Player::entity(world, slot).is_some());
+        Breach::of_match(seated)
     }
 
     /// Whether each unit but a delivery holds every part its type's kit gives it as it spawns,
-    /// none of which a unit loses while it stands, so no system finds one missing. A match with
-    /// no progression has no level track, as `ModeBook::spawn` reads it.
-    fn kits_held(world: &World) -> bool {
+    /// none of which a unit loses while it stands, so no system finds one missing; the first
+    /// that lacks one. A match with no progression has no level track, as `ModeBook::spawn` reads
+    /// it.
+    fn kits_held(world: &World) -> Result<(), Breach> {
         let ctx = world.non_send::<Ctx>();
         let book = ModeBook::of_match(ctx);
         let level_track = world
             .get_resource::<TrackBook>()
             .and_then(TrackBook::level_track);
-        world.resource::<EntityIndex>().iter().all(|(_, entity)| {
+        Breach::first(world, |entity| {
             let unit = world.entity(entity);
-            !unit.contains::<UnitEntity>()
-                || unit.contains::<DeliveryEntity>()
-                || book.holds_kit(unit, level_track)
+            unit.contains::<UnitEntity>()
+                && !unit.contains::<DeliveryEntity>()
+                && !book.holds_kit(unit, level_track)
         })
     }
 

@@ -5,7 +5,7 @@ use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::{Capability, EntityIndex, Position, SimEdge, SimSet, TickRate};
+use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::declares::Declares;
@@ -226,20 +226,20 @@ impl Units {
     }
 
     /// Whether every unit stands within the match's bounds, as every system keeps it, and as
-    /// vision and navigation index the map's cells by it.
-    fn within_bounds(world: &World) -> bool {
+    /// vision and navigation index the map's cells by it; the first that does not.
+    fn within_bounds(world: &World) -> Result<(), Breach> {
         let bounds = *world.resource::<Bounds>();
-        world.resource::<EntityIndex>().iter().all(|(_, entity)| {
+        Breach::first(world, |entity| {
             world
                 .get::<Position>(entity)
-                .is_none_or(|&at| bounds.contains(at))
+                .is_some_and(|&at| !bounds.contains(at))
         })
     }
 
     /// Whether the match's entity stands, as every match that started spawns it, so no system
     /// finds it missing.
-    fn match_spawned(world: &World) -> bool {
-        MatchEntity::entity(world).is_some()
+    fn match_spawned(world: &World) -> Result<(), Breach> {
+        Breach::of_match(MatchEntity::entity(world).is_some())
     }
 
     /// Compiles `source` in the match's script host, once for every capability that runs it.

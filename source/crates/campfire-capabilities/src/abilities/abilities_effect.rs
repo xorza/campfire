@@ -1,5 +1,5 @@
 use bevy_ecs::world::{Mut, World};
-use campfire_common::{Tick, Ticks};
+use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId};
 
@@ -32,7 +32,8 @@ pub(crate) enum AbilitiesEffect {
 }
 
 impl Effect for AbilitiesEffect {
-    fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+    fn apply(self, world: &mut World, frame: &mut Frame) {
+        let now = frame.now();
         let unit = match self {
             AbilitiesEffect::ReduceCooldown { unit, .. }
             | AbilitiesEffect::ReduceCooldowns { unit, .. }

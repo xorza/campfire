@@ -123,11 +123,11 @@ impl Thinking {
                 let Some(unit) = ctx.view().unit(id) else {
                     continue;
                 };
-                ctx.frame().begin_think(batch.world(), id);
+                ctx.frame().begin_think(batch.world(), id, now);
                 let next = match batch.call(Pool::Think, script, Hook::OnThink, (ctx.clone(), unit))
                 {
                     Ok(_) => {
-                        ctx.apply(batch.world(), now);
+                        ctx.apply(batch.world());
                         now.after(period)
                     }
                     Err(ScriptError::TickBudget) => since,

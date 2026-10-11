@@ -1,7 +1,6 @@
 use std::any::Any;
 
 use bevy_ecs::change_detection::{CheckChangeTicks, DetectChanges, Ref, Tick as ChangeTick};
-use bevy_ecs::component::Component;
 use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
@@ -22,6 +21,7 @@ use crate::sim_state::{SimComponent, SimResource};
 use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
 use crate::state_changes::{Removal, StateChanges};
+use crate::state_registry::breach::Breach;
 use crate::state_registry::copy_queries::CopyQueries;
 use crate::state_registry::error::SnapshotError;
 use crate::state_registry::hash_sink::HashSink;
@@ -30,6 +30,7 @@ use crate::unpredicted::Unpredicted;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+pub(crate) mod breach;
 mod copy_queries;
 pub(crate) mod error;
 mod hash_sink;
@@ -58,12 +59,16 @@ pub struct StateRegistry {
     foreign: Vec<ForeignCheck>,
 }
 
-/// A rule of the registered state type `name` that a capability other than its owner knows,
-/// checked as the type's own check is.
+/// A rule of a registered state type that a capability other than its owner knows, checked as
+/// the type's own check is: a rule of the type `name`, or a part or a kind its holders need,
+/// which names its own error.
 #[derive(Debug, Clone)]
-struct ForeignCheck {
-    name: &'static str,
-    check: fn(&World) -> bool,
+enum ForeignCheck {
+    Rule {
+        name: &'static str,
+        check: fn(&World) -> Result<(), Breach>,
+    },
+    Shape(fn(&World) -> Result<(), SnapshotError>),
 }
 
 #[derive(Debug, Clone)]
@@ -71,8 +76,9 @@ struct Entry {
     name: &'static str,
     encode: fn(&World, &mut dyn Sink),
     decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
-    /// Whether every value of the type keeps its rules, once everything is decoded.
-    check: fn(&World) -> bool,
+    /// Whether every value of the type keeps its rules, once everything is decoded; the error
+    /// that names the first that breaks them.
+    check: fn(&World) -> Result<(), SnapshotError>,
     /// Writes the type's section of a `StateDelta`, through the query `copy_query` made.
     copy: fn(&mut World, &Copying<'_>, Option<&mut CopyQuery>, &mut Vec<u8>),
     /// Makes the query a component type copies its values through, once, as a world starts
@@ -166,7 +172,7 @@ impl StateRegistry {
             name: ENTITIES,
             encode: encode_entities,
             decode: decode_entities,
-            check: |_| true,
+            check: |_| Ok(()),
             copy: |_, _, _, _| {},
             copy_query: None,
             apply: |_, _, _| {},
@@ -204,31 +210,40 @@ impl StateRegistry {
         });
     }
 
-    /// Requires that every entity holding `H` holds `C`, a registered type, as a restore checks:
-    /// a part a kind's entities all hold, or one another part of an entity always comes with.
-    /// A snapshot that breaks it fails as `C`'s.
-    pub fn require<H: Component, C: SimComponent>(&mut self) {
-        self.add_check::<C>(holders_hold::<H, C>);
+    /// Requires that every entity holding `H` holds `C`, both registered types, as a restore
+    /// checks: a part a kind's entities all hold, or one another part of an entity always comes
+    /// with. A snapshot that breaks it fails as `SnapshotError::Lacks`.
+    pub fn require<H: SimComponent, C: SimComponent>(&mut self) {
+        self.assert_registered::<C>();
+        self.foreign.push(ForeignCheck::Shape(holders_hold::<H, C>));
     }
 
     /// Requires that `C`, a registered type of a crate that knows no kinds, sits on the entities
-    /// of `H` alone, as its own `Host` cannot say.
+    /// of `H` alone, as its own `Host` cannot say. A snapshot that breaks it fails as
+    /// `SnapshotError::WrongHost`.
     pub fn host<C: SimComponent, H: HostRule>(&mut self) {
-        self.add_check::<C>(holders_hosted::<C, H>);
+        self.assert_registered::<C>();
+        self.foreign
+            .push(ForeignCheck::Shape(holders_hosted::<C, H>));
     }
 
     /// Adds `check` to the restore checks of `C`, a registered type: a rule of it that a
-    /// capability other than its owner knows, which `C::check` cannot see.
-    pub fn add_check<C: SimComponent>(&mut self, check: fn(&World) -> bool) {
+    /// capability other than its owner knows, which `C::check` cannot see. A breach on an entity
+    /// fails as `SnapshotError::Invalid` of that entity; one of the whole match, of none.
+    pub fn add_check<C: SimComponent>(&mut self, check: fn(&World) -> Result<(), Breach>) {
+        self.assert_registered::<C>();
+        self.foreign.push(ForeignCheck::Rule {
+            name: C::NAME,
+            check,
+        });
+    }
+
+    fn assert_registered<C: SimComponent>(&self) {
         assert!(
             self.entries.iter().any(|entry| entry.name == C::NAME),
             "{} is registered before a check is added to it",
             C::NAME
         );
-        self.foreign.push(ForeignCheck {
-            name: C::NAME,
-            check,
-        });
     }
 
     /// Registers `R` as a resource every state holds, as the sim's own are: the match's install
@@ -372,11 +387,26 @@ impl StateRegistry {
         {
             return Err(SnapshotError::AllocatorBehind);
         }
-        if let Some(entry) = self.entries.iter().find(|entry| !(entry.check)(world)) {
-            return Err(SnapshotError::Invalid(entry.name));
+        for entry in &self.entries {
+            (entry.check)(world)?;
         }
-        if let Some(foreign) = self.foreign.iter().find(|foreign| !(foreign.check)(world)) {
-            return Err(SnapshotError::Invalid(foreign.name));
+        for foreign in &self.foreign {
+            match *foreign {
+                ForeignCheck::Rule { name, check } => {
+                    check(world).map_err(|breach| SnapshotError::Invalid {
+                        ty: name,
+                        id: match breach {
+                            Breach::Entity(entity) => Some(
+                                *world
+                                    .get::<StableId>(entity)
+                                    .expect("a breach names an entity of the match"),
+                            ),
+                            Breach::Match => None,
+                        },
+                    })?;
+                }
+                ForeignCheck::Shape(check) => check(world)?,
+            }
         }
         // Postcard accepts some encodings that are not its own, such as an overlong varint, so
         // only a second encoding shows that no other bytes restore to this state.
@@ -735,37 +765,68 @@ fn apply_resource<R: SimResource>(world: &mut World, body: &[u8], pass: Pass) {
     }
 }
 
-fn check_component<C: SimComponent>(world: &World) -> bool {
+fn check_component<C: SimComponent>(world: &World) -> Result<(), SnapshotError> {
     if !held::<C>(world) {
-        return true;
+        return Ok(());
     }
-    world.resource::<EntityIndex>().iter().all(|(_, entity)| {
-        world
-            .get::<C>(entity)
-            .is_none_or(|component| C::Host::holds(world, entity) && component.check(world, entity))
-    })
+    for (id, entity) in world.resource::<EntityIndex>().iter() {
+        let Some(component) = world.get::<C>(entity) else {
+            continue;
+        };
+        if !C::Host::holds(world, entity) {
+            return Err(SnapshotError::WrongHost { ty: C::NAME, id });
+        }
+        if !component.check(world, entity) {
+            return Err(SnapshotError::Invalid {
+                ty: C::NAME,
+                id: Some(id),
+            });
+        }
+    }
+    Ok(())
 }
 
-/// Whether every entity that holds `C` is of `H`.
-fn holders_hosted<C: SimComponent, H: HostRule>(world: &World) -> bool {
-    world
-        .resource::<EntityIndex>()
+/// Whether every entity that holds `C` is of `H`; the error that names the first that is not.
+fn holders_hosted<C: SimComponent, H: HostRule>(world: &World) -> Result<(), SnapshotError> {
+    let index = world.resource::<EntityIndex>();
+    match index
         .iter()
-        .all(|(_, entity)| world.get::<C>(entity).is_none() || H::holds(world, entity))
+        .find(|&(_, entity)| world.get::<C>(entity).is_some() && !H::holds(world, entity))
+    {
+        Some((id, _)) => Err(SnapshotError::WrongHost { ty: C::NAME, id }),
+        None => Ok(()),
+    }
 }
 
-/// Whether every entity that holds `H` holds `C`.
-fn holders_hold<H: Component, C: SimComponent>(world: &World) -> bool {
-    world.resource::<EntityIndex>().iter().all(|(_, entity)| {
+/// Whether every entity that holds `H` holds `C`; the error that names the first that does not.
+fn holders_hold<H: SimComponent, C: SimComponent>(world: &World) -> Result<(), SnapshotError> {
+    let index = world.resource::<EntityIndex>();
+    let lacks = index.iter().find(|&(_, entity)| {
         let held = world.entity(entity);
-        !held.contains::<H>() || held.contains::<C>()
-    })
+        held.contains::<H>() && !held.contains::<C>()
+    });
+    match lacks {
+        Some((id, _)) => Err(SnapshotError::Lacks {
+            holder: H::NAME,
+            needs: C::NAME,
+            id,
+        }),
+        None => Ok(()),
+    }
 }
 
-fn check_resource<R: SimResource>(world: &World) -> bool {
-    world
+fn check_resource<R: SimResource>(world: &World) -> Result<(), SnapshotError> {
+    if world
         .get_resource::<R>()
         .is_none_or(|resource| resource.check(world))
+    {
+        Ok(())
+    } else {
+        Err(SnapshotError::Invalid {
+            ty: R::NAME,
+            id: None,
+        })
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]

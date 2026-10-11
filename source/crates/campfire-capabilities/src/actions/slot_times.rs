@@ -326,9 +326,7 @@ impl SimComponent for SlotTimes {
         if slots.len() != self.0.len() {
             return false;
         }
-        let Some(book) = world.get_resource::<ActionBook>() else {
-            return self.0.is_empty();
-        };
+        let book = world.resource::<ActionBook>();
         slots.iter().zip(&self.0).all(|(held, time)| {
             let values = held.values_in(book);
             let toggle =

@@ -65,6 +65,7 @@ mod hud;
 mod link_watch;
 mod local_keys;
 mod orders;
+mod own_player;
 mod pointer;
 mod view;
 mod zero_hour;

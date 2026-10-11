@@ -1,5 +1,7 @@
 use campfire_sim::StableId;
 
+use campfire_common::Tick;
+
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::forced_move::DashDelivery;
@@ -26,12 +28,14 @@ pub(crate) struct CallStart {
     pub(crate) hit: Option<Hit>,
     pub(crate) start: Option<ActionStart>,
     pub(crate) dash_delivers: Option<DashDelivery>,
+    /// The tick the call runs in, which its effects apply in.
+    pub(crate) now: Tick,
 }
 
 impl CallStart {
-    /// A call of `role` with no acting unit, action, modifier or chain, of the mode's package, at
-    /// rank 1.
-    pub(crate) const fn mode(role: ScriptRole) -> CallStart {
+    /// A call of `role` in tick `now`, with no acting unit, action, modifier or chain, of the
+    /// mode's package, at rank 1.
+    pub(crate) const fn mode(role: ScriptRole, now: Tick) -> CallStart {
         CallStart {
             role,
             acting: None,
@@ -43,33 +47,40 @@ impl CallStart {
             hit: None,
             start: None,
             dash_delivers: None,
+            now,
         }
     }
 
-    /// A cast of `action` of `package` at `rank` by `caster`, for no hit.
+    /// A cast of `action` of `package` at `rank` by `caster` in tick `now`, for no hit.
     pub(crate) const fn cast(
         action: ActionId,
         rank: Rank,
         caster: StableId,
         package: u16,
+        now: Tick,
     ) -> CallStart {
         CallStart {
             acting: Some(caster),
             action: Some(action),
             rank,
             package,
-            ..CallStart::mode(ScriptRole::Action)
+            ..CallStart::mode(ScriptRole::Action, now)
         }
     }
 
-    /// A hook of `modifier` of `package` at chain depth `depth`, of an instance from no source,
-    /// by no action, at rank 1.
-    pub(crate) const fn hook(modifier: ModifierId, package: u16, depth: u8) -> CallStart {
+    /// A hook of `modifier` of `package` at chain depth `depth` in tick `now`, of an instance
+    /// from no source, by no action, at rank 1.
+    pub(crate) const fn hook(
+        modifier: ModifierId,
+        package: u16,
+        depth: u8,
+        now: Tick,
+    ) -> CallStart {
         CallStart {
             modifier: Some(modifier),
             package,
             depth,
-            ..CallStart::mode(ScriptRole::Modifier)
+            ..CallStart::mode(ScriptRole::Modifier, now)
         }
     }
 }

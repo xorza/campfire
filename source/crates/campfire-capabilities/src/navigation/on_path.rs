@@ -33,9 +33,7 @@ impl SimComponent for OnPath {
 
     // A path the map lacks has no name for `unit.path` to read.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world
-            .get_resource::<Paths>()
-            .is_some_and(|paths| self.0.index() < paths.count() as usize)
+        self.0.index() < world.resource::<Paths>().count() as usize
     }
 }
 

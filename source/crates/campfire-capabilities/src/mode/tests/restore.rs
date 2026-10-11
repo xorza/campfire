@@ -174,84 +174,97 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
 /// check finds it missing, where a tick would find it gone.
 #[test]
 fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
-    let refused = |strip: fn(&mut World)| {
-        let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
-        strip(&mut game.sim.world);
-        let mut snapshot = Vec::new();
-        game.sim.registry.snapshot(&game.sim.world, &mut snapshot);
-        let mut fresh = Game::new(SCRIPT, ScriptLimits::ROOMY);
-        let index = fresh.sim.world.resource::<EntityIndex>();
-        let held: Vec<Entity> = index.iter().map(|(_, entity)| entity).collect();
-        for entity in held {
-            fresh.sim.world.despawn(entity);
-        }
-        game.sim
-            .registry
-            .restore(&snapshot, &mut fresh.sim.world)
-            .err()
-    };
-    assert_eq!(refused(|_| {}), None);
-    let cases: [(&str, fn(&mut World)); 12] = [
-        (Relations::NAME, |world| {
+    assert_eq!(
+        refused_snapshot(&Game::new(SCRIPT, ScriptLimits::ROOMY)),
+        None
+    );
+    // Each case breaks the match and names the error that refuses it.
+    let cases: [fn(&mut World) -> SnapshotError; 12] = [
+        |world| {
             let entity = MatchEntity::entity(world).unwrap();
             world.entity_mut(entity).remove::<Relations>();
-        }),
-        (ModeState::<SyncAll>::NAME, |world| {
+            lacks(MatchEntity::NAME, Relations::NAME, StableId::MATCH)
+        },
+        |world| {
             let entity = MatchEntity::entity(world).unwrap();
             world.entity_mut(entity).remove::<ModeState<SyncAll>>();
-        }),
-        (Player::NAME, |world| {
+            lacks(
+                MatchEntity::NAME,
+                ModeState::<SyncAll>::NAME,
+                StableId::MATCH,
+            )
+        },
+        // A seat the session has with no player's entity is a breach of the whole match.
+        |world| {
             let entity = Player::entity(world, PlayerSlot::new(2)).unwrap();
             world.despawn(entity);
-        }),
-        (PlayerResources::NAME, |world| {
+            invalid(Player::NAME, None)
+        },
+        |world| {
             let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerResources>();
-        }),
-        (PlayerModifiers::NAME, |world| {
+            let id = StableId::of_player(PlayerSlot::new(0));
+            lacks(Player::NAME, PlayerResources::NAME, id)
+        },
+        |world| {
             let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerModifiers>();
-        }),
+            let id = StableId::of_player(PlayerSlot::new(0));
+            lacks(Player::NAME, PlayerModifiers::NAME, id)
+        },
         // A unit: one of a kind its kit gives a level loses it, a unit loses a class of the
         // state its type declares, or its team; a living unit holds a respawn; a unit's life sits
         // on the match's entity; slots come without their times.
-        (UnitType::NAME, |world| {
+        |world| {
             let unit = first::<Level>(world);
             world.entity_mut(unit).remove::<Level>();
-        }),
-        (UnitType::NAME, |world| {
+            invalid(UnitType::NAME, Some(id_of(world, unit)))
+        },
+        |world| {
             let unit = first::<UnitState<SyncOwner>>(world);
             world.entity_mut(unit).remove::<UnitState<SyncOwner>>();
-        }),
-        (Team::NAME, |world| {
+            invalid(UnitType::NAME, Some(id_of(world, unit)))
+        },
+        |world| {
             let unit = first::<UnitType>(world);
             world.entity_mut(unit).remove::<Team>();
-        }),
-        (Dead::NAME, |world| {
+            lacks(UnitEntity::NAME, Team::NAME, id_of(world, unit))
+        },
+        |world| {
             let unit = first::<UnitType>(world);
             world.entity_mut(unit).insert(Respawn { at: Tick::new(5) });
-        }),
-        (Life::NAME, |world| {
+            lacks(Respawn::NAME, Dead::NAME, id_of(world, unit))
+        },
+        |world| {
             let unit = first::<Life>(world);
             let life = world.entity_mut(unit).take::<Life>().unwrap();
             let entity = MatchEntity::entity(world).unwrap();
             world.entity_mut(entity).insert(life);
-        }),
-        (SlotTimes::NAME, |world| {
+            SnapshotError::WrongHost {
+                ty: Life::NAME,
+                id: StableId::MATCH,
+            }
+        },
+        |world| {
             let strike = world.resource::<ActionBook>().named(0, "strike").unwrap();
             let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
             let unit = first::<UnitType>(world);
             world.entity_mut(unit).insert(slots);
-        }),
+            lacks(ActionSlots::NAME, SlotTimes::NAME, id_of(world, unit))
+        },
         // A player's entity takes a unit's kind and place.
-        (UnitEntity::NAME, |world| {
+        |world| {
             let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
             let place = Position::new(Vec3::ZERO).unwrap();
             world.entity_mut(entity).insert((UnitEntity, place));
-        }),
+            let id = StableId::of_player(PlayerSlot::new(0));
+            invalid(UnitEntity::NAME, Some(id))
+        },
     ];
-    for (name, strip) in cases {
-        assert_eq!(refused(strip), Some(SnapshotError::Invalid(name)), "{name}");
+    for strip in cases {
+        let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
+        let expected = strip(&mut game.sim.world);
+        assert_eq!(refused_snapshot(&game), Some(expected));
     }
 }
 
@@ -425,4 +438,35 @@ fn hosts<C: SimComponent>(world: &World, entity: Entity) -> bool {
 fn first<C: Component>(world: &mut World) -> Entity {
     let mut holders = world.query_filtered::<Entity, With<C>>();
     holders.iter(world).next().unwrap()
+}
+
+/// How a fresh match of the script refuses the snapshot of `game`; none when it restores.
+fn refused_snapshot(game: &Game) -> Option<SnapshotError> {
+    let mut snapshot = Vec::new();
+    game.sim.registry.snapshot(&game.sim.world, &mut snapshot);
+    let mut fresh = Game::new(SCRIPT, ScriptLimits::ROOMY);
+    let index = fresh.sim.world.resource::<EntityIndex>();
+    let held: Vec<Entity> = index.iter().map(|(_, entity)| entity).collect();
+    for entity in held {
+        fresh.sim.world.despawn(entity);
+    }
+    game.sim
+        .registry
+        .restore(&snapshot, &mut fresh.sim.world)
+        .err()
+}
+
+/// The stable id of `entity`.
+fn id_of(world: &World, entity: Entity) -> StableId {
+    *world.get::<StableId>(entity).unwrap()
+}
+
+/// The error of a snapshot whose entity of `id` holds `holder` and lacks `needs`.
+const fn lacks(holder: &'static str, needs: &'static str, id: StableId) -> SnapshotError {
+    SnapshotError::Lacks { holder, needs, id }
+}
+
+/// The error of a snapshot whose value of `ty` breaks its rules, on the entity of `id`.
+const fn invalid(ty: &'static str, id: Option<StableId>) -> SnapshotError {
+    SnapshotError::Invalid { ty, id }
 }

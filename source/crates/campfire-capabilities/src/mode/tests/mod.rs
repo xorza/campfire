@@ -1042,21 +1042,22 @@ impl Game {
     ) -> Result<Dynamic, CallError> {
         let ctx = self.sim.world.non_send::<Ctx>().clone();
         ctx.view().read(&mut self.sim.world);
+        let now = self.sim.world.resource::<SimTick>().start();
         match role {
-            ScriptRole::Mode => ctx.frame().begin_mode(&self.sim.world, false),
-            ScriptRole::Ai => ctx.frame().begin_think(&self.sim.world, actor),
+            ScriptRole::Mode => ctx.frame().begin_mode(&self.sim.world, false, now),
+            ScriptRole::Ai => ctx.frame().begin_think(&self.sim.world, actor, now),
             ScriptRole::Action => ctx
                 .frame()
                 .begin(
                     &self.sim.world,
-                    CallStart::cast(self.strike, Rank::FIRST, actor, 0),
+                    CallStart::cast(self.strike, Rank::FIRST, actor, 0, now),
                 )
                 .unwrap(),
             ScriptRole::Modifier => {
                 let blessing = Stats::modifier(&self.sim.world, 0, "blessing").unwrap();
                 let start = CallStart {
                     acting: Some(actor),
-                    ..CallStart::hook(blessing, 0, 1)
+                    ..CallStart::hook(blessing, 0, 1, now)
                 };
                 ctx.frame().begin(&self.sim.world, start).unwrap();
             }
@@ -1069,8 +1070,7 @@ impl Game {
             host.call(&mut budget, script, "probe", (ctx.clone(), handle))
         };
         let returned = returned.map_err(CallError::from_script)?;
-        let now = self.sim.world.resource::<SimTick>().start();
-        ctx.apply(&mut self.sim.world, now);
+        ctx.apply(&mut self.sim.world);
         Ok(returned)
     }
 }

@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_common::{PlayerSlot, Ticks};
 use campfire_sim::StableId;
 
 use crate::actions::action_slots::ActionSlots;
@@ -73,10 +73,11 @@ pub(crate) enum ModeEffect {
 }
 
 impl Effect for ModeEffect {
-    /// Applies the effect, which a call of the mode's script queued in tick `now`; a grant puts its
-    /// abilities in its kind of a unit, after the slots of that kind it has, at the kind's first
-    /// rank, and nothing for a unit that is gone.
-    fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+    /// Applies the effect, which a call of the mode's script queued, in the call's tick; a grant
+    /// puts its abilities in its kind of a unit, after the slots of that kind it has, at the
+    /// kind's first rank, and nothing for a unit that is gone.
+    fn apply(self, world: &mut World, frame: &mut Frame) {
+        let now = frame.now();
         let ctx = world.non_send::<Ctx>().clone();
         let book = ModeBook::of_match(&ctx);
         match self {

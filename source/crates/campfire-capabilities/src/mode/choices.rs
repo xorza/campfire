@@ -18,10 +18,8 @@ impl SimResource for Choices {
 
     // A row or a value past the mode's choices would be read past their places.
     fn check(&self, world: &World) -> bool {
-        let book = world.get_non_send::<Ctx>().and_then(ModeBook::of);
-        book.is_none_or(|book| {
-            let players = book.teams.players() as usize;
-            book.choices.fits(self, players, &book.roster)
-        })
+        let book = ModeBook::of_match(world.non_send::<Ctx>());
+        let players = book.teams.players() as usize;
+        book.choices.fits(self, players, &book.roster)
     }
 }

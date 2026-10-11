@@ -1,6 +1,6 @@
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::system::{Local, Query, Res};
-use campfire_sim::{SimTick, StableId, TickRate};
+use campfire_sim::{StableId, TickClock};
 
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
@@ -9,10 +9,9 @@ use crate::stats::carried_mut::CarriedMut;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
+use crate::stats::modifier_params::ModifierParams;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
-use crate::stats::param_book::ParamBook;
-use crate::stats::param_sources::ParamSources;
 use crate::units::modifier_id::ModifierId;
 use crate::values::rank::Rank;
 
@@ -30,8 +29,8 @@ impl ItemHolds {
     /// changed.
     pub(super) fn hold_items(
         (items, book): (Res<'_, ItemBook>, Res<'_, ModifierBook>),
-        (tick, rate, params): (Res<'_, SimTick>, Res<'_, TickRate>, Res<'_, ParamBook>),
-        sources: ParamSources<'_, '_>,
+        clock: TickClock<'_>,
+        params: ModifierParams<'_, '_>,
         mut units: Query<
             '_,
             '_,
@@ -47,8 +46,8 @@ impl ItemHolds {
         if items.modifiers().is_empty() {
             return;
         }
-        let every = items.is_changed() || book.is_changed() || params.is_changed();
-        let now = tick.start();
+        let every = items.is_changed() || book.is_changed() || params.changed();
+        let now = clock.start();
         for (&id, inventory, modifiers, clocks) in &mut units {
             if !(every || inventory.is_changed() || modifiers.is_changed()) {
                 continue;
@@ -78,11 +77,18 @@ impl ItemHolds {
                         rank: Rank::FIRST,
                         hold: Some(Hold::Passive),
                     };
-                    let source = sources.get(id);
+                    let source = params.source(id);
                     let param = |place: &ParamPlace| {
                         params.modifier_param(modifier, None, Rank::FIRST, place, source.as_ref())
                     };
-                    carried.apply(book.application(modifier, applier, None, now, *rate, param));
+                    carried.apply(book.application(
+                        modifier,
+                        applier,
+                        None,
+                        now,
+                        clock.rate(),
+                        param,
+                    ));
                 }
             }
         }

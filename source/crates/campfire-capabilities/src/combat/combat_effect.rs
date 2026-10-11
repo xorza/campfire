@@ -1,5 +1,4 @@
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
@@ -81,7 +80,7 @@ impl Effect for CombatEffect {
     /// at its chain depth, delivered by its hit. Damage and a heal join the pass's queue, a
     /// restore applies at once, and an extra attack queues the source's attack damage, when it
     /// still has an attack.
-    fn apply(self, world: &mut World, frame: &mut Frame, _: Tick) {
+    fn apply(self, world: &mut World, frame: &mut Frame) {
         let (source, ability, depth) = (frame.acting(), frame.action(), frame.depth());
         let damage = |target, amount, kind, cause| Damage {
             source,

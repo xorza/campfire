@@ -41,6 +41,7 @@ pub(crate) mod node_book;
 pub(crate) mod node_data;
 pub(crate) mod placement;
 pub(crate) mod production_api;
+pub(crate) mod production_books;
 pub(crate) mod production_column;
 pub(crate) mod production_data;
 pub(crate) mod rally;

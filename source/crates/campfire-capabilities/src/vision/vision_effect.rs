@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::{Tick, Ticks};
+use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_sim::Position;
 
@@ -21,7 +21,8 @@ pub(crate) struct VisionEffect {
 
 impl Effect for VisionEffect {
     // A match with no grid sees nothing, so it keeps no reveal.
-    fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+    fn apply(self, world: &mut World, frame: &mut Frame) {
+        let now = frame.now();
         if !world.contains_resource::<VisionGrid>() {
             return;
         }

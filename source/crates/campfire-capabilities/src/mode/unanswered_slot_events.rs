@@ -19,11 +19,7 @@ impl SimResource for UnansweredSlotEvents {
 
     // An event of a slot the session does not have reaches the mode's script as no player.
     fn check(&self, world: &World) -> bool {
-        let book = world.get_non_send::<Ctx>().and_then(ModeBook::of);
-        book.is_none_or(|book| {
-            self.0
-                .iter()
-                .all(|event| event.slot.get() < book.teams.players())
-        })
+        let players = ModeBook::of_match(world.non_send::<Ctx>()).teams.players();
+        self.0.iter().all(|event| event.slot.get() < players)
     }
 }

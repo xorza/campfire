@@ -1,5 +1,4 @@
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_script::rhai::{Dynamic, FuncArgs};
 use campfire_script::{Budget, ScriptError, ScriptHost, ScriptId};
 use campfire_sim::StableId;
@@ -68,12 +67,11 @@ impl ScriptBatch<'_> {
     }
 
     /// Runs one call of `hook` in `ctx`'s frame: begins `start`, then runs `body`, which queues
-    /// what the call does and calls its script; applies the frame in tick `now` when both
+    /// what the call does and calls its script; applies the frame in the call's tick when both
     /// succeed, and otherwise records the failure, for `unit` if any, and applies nothing.
     pub(crate) fn hook_call(
         &mut self,
         ctx: &Ctx,
-        now: Tick,
         start: CallStart,
         hook: Hook,
         unit: Option<StableId>,
@@ -82,7 +80,7 @@ impl ScriptBatch<'_> {
         // The frame's borrow ends before `body`, which borrows it again.
         let begun = ctx.frame().begin(self.world, start);
         match begun.and_then(|()| body(self)) {
-            Ok(()) => ctx.apply(self.world, now),
+            Ok(()) => ctx.apply(self.world),
             Err(error) => self.record(unit, hook, error),
         }
     }

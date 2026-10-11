@@ -1,6 +1,6 @@
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Query, Res};
-use campfire_sim::{SimTick, TickRate};
+use campfire_sim::TickClock;
 
 use crate::abilities::Abilities;
 use crate::actions::action_book::ActionBook;
@@ -23,9 +23,8 @@ impl Toggles {
     /// when it turned on, and one its pools cannot pay turns off. The server alone runs it, as a
     /// client's pools come from the server.
     pub(super) fn run_toggles(
-        (tick, rate, book, life): (
-            Res<'_, SimTick>,
-            Res<'_, TickRate>,
+        (clock, book, life): (
+            TickClock<'_>,
             Res<'_, ActionBook>,
             Option<Res<'_, LifePool>>,
         ),
@@ -42,8 +41,8 @@ impl Toggles {
             ),
         >,
     ) {
-        let now = tick.start();
-        let second = Abilities::second(*rate);
+        let now = clock.start();
+        let second = Abilities::second(clock.rate());
         let life = life.map(|life| life.0);
         for (slots, mut times, pools, tags, inventory, dead) in &mut units {
             let mut pools = pools.of(life);

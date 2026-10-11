@@ -8,7 +8,7 @@ use bevy_ecs::component::{Component, Immutable, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, HostRule, OnAny, SimComponent, SimResource};
+use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::capability_does::CapabilityDoes;
@@ -217,7 +217,7 @@ impl Declarations for DeclarationAudit {
         self.kinds.push(TypeId::of::<K>());
     }
 
-    fn require<H: Component, C: SimComponent>(&mut self) {
+    fn require<H: SimComponent, C: SimComponent>(&mut self) {
         self.requires.push((Named::of::<H>(), Named::of::<C>()));
     }
 
@@ -225,7 +225,7 @@ impl Declarations for DeclarationAudit {
         self.hosts.push((Named::of::<C>(), kinds_of::<H>()));
     }
 
-    fn check<C: SimComponent>(&mut self, _: fn(&World) -> bool) {
+    fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {
         self.checks.push(Named::of::<C>());
     }
 
@@ -306,7 +306,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.component::<Stray>();
     audit.require::<UnitEntity, Stray>();
     audit.require::<UnitEntity, Player>();
-    audit.check::<Player>(|_| true);
+    audit.check::<Player>(|_| Ok(()));
     audit.book::<StrayBook>();
     audit.player_part(|_| Stray);
     let stray = type_name::<Stray>();

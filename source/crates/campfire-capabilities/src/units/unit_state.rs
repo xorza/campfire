@@ -109,10 +109,10 @@ impl<S: StateSync> SimComponent for UnitState<S> {
     // A field its type does not declare in the class, or a value of another type, reaches a
     // script as a value it never wrote, or is read past the type's fields.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let book = world.get_resource::<UnitStateBook>();
-        let unit_type = world.get::<UnitType>(entity);
-        book.zip(unit_type)
-            .is_some_and(|(book, &unit_type)| book.holds(unit_type, S::SYNC, &self.values))
+        let book = world.resource::<UnitStateBook>();
+        world
+            .get::<UnitType>(entity)
+            .is_some_and(|&unit_type| book.holds(unit_type, S::SYNC, &self.values))
     }
 }
 

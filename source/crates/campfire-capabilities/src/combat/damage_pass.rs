@@ -229,9 +229,9 @@ impl DamagePass {
         let start = CallStart {
             depth: damage.depth.saturating_add(1),
             hit: damage.hit,
-            ..CallStart::cast(weapon, rank, source, package)
+            ..CallStart::cast(weapon, rank, source, package, now)
         };
-        batch.hook_call(ctx, now, start, Hook::OnHit, Some(source), |batch| {
+        batch.hook_call(ctx, start, Hook::OnHit, Some(source), |batch| {
             let target = ActionTarget::Unit(damage.target);
             let lists = ListsOf::Action(weapon);
             let frame = &mut ctx.frame();

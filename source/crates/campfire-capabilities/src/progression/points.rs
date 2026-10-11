@@ -52,9 +52,7 @@ impl SimComponent for Points {
 
     // Points come from the levels of the `level` track, so only a unit that has it holds them.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let level_track = world
-            .get_resource::<TrackBook>()
-            .and_then(TrackBook::level_track);
+        let level_track = world.resource::<TrackBook>().level_track();
         let experience = world.get::<Experience>(entity);
         level_track
             .zip(experience)

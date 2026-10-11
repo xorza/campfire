@@ -120,8 +120,8 @@ impl SimComponent for Site {
     // below 0, has no refund to give.
     fn check(&self, world: &World, _: Entity) -> bool {
         let build = world
-            .get_resource::<ActionBook>()
-            .and_then(|book| book.get(self.action))
+            .resource::<ActionBook>()
+            .get(self.action)
             .is_some_and(|action| {
                 action.kind.kind() == ActionKind::Build
                     && action.has_rank(self.rank)

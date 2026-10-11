@@ -127,24 +127,17 @@ impl SimComponent for Projectile {
     // A projectile of a type with no flight, of an action the book lacks or at a rank past its
     // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit.
     fn check(&self, world: &World, entity: Entity) -> bool {
+        let specs = world.resource::<ByType<ProjectileSpec>>();
         let flies = world
             .get::<UnitType>(entity)
-            .zip(world.get_resource::<ByType<ProjectileSpec>>())
-            .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some());
-        let book = world.get_resource::<ActionBook>();
+            .is_some_and(|&unit_type| specs.get(unit_type).is_some());
+        let book = world.resource::<ActionBook>();
+        let ranked = |action, rank| book.get(action).is_some_and(|action| action.has_rank(rank));
         let carries = match self.payload {
             Payload::Attack {
                 action, rank, kind, ..
-            } => {
-                book.and_then(|book| book.get(action))
-                    .is_some_and(|action| action.has_rank(rank))
-                    && world
-                        .get_non_send::<View>()
-                        .is_none_or(|view| view.has_damage_kind(kind))
-            }
-            Payload::Action { action, rank, .. } => book
-                .and_then(|book| book.get(action))
-                .is_some_and(|action| action.has_rank(rank)),
+            } => ranked(action, rank) && world.non_send::<View>().has_damage_kind(kind),
+            Payload::Action { action, rank, .. } => ranked(action, rank),
         };
         flies && carries
     }

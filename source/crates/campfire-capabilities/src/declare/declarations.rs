@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, HostRule, SimComponent};
+use campfire_sim::{Breach, Capability, HostRule, SimComponent};
 
 use crate::declare::book::Book;
 use crate::scripts::api_builder::ApiBuilder;
@@ -28,7 +28,7 @@ pub(crate) trait Declarations: StateTypes {
     fn kind<K: HostRule + Component>(&mut self);
 
     /// Every entity that holds `H` holds `C`, a declared state type, as a restore checks.
-    fn require<H: Component, C: SimComponent>(&mut self);
+    fn require<H: SimComponent, C: SimComponent>(&mut self);
 
     /// `C`, a declared state type of a crate that knows no kinds, sits on the entities of `H`
     /// alone, as a restore checks.
@@ -36,7 +36,7 @@ pub(crate) trait Declarations: StateTypes {
 
     /// `check`, a rule of `C`, a declared state type, that a module other than its owner knows,
     /// which a restore runs.
-    fn check<C: SimComponent>(&mut self, check: fn(&World) -> bool);
+    fn check<C: SimComponent>(&mut self, check: fn(&World) -> Result<(), Breach>);
 
     /// `B`, a book the module reads, empty until the books fill it.
     fn book<B: Book>(&mut self);

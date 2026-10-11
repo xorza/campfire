@@ -56,13 +56,13 @@ impl SimComponent for Area {
     // hooks; and one whose action does not give a param its inside modifiers read would fail as
     // a unit takes one.
     fn check(&self, world: &World, entity: Entity) -> bool {
+        let specs = world.resource::<ByType<AreaSpec>>();
         let spec = world
             .get::<UnitType>(entity)
-            .zip(world.get_resource::<ByType<AreaSpec>>())
-            .and_then(|(&unit_type, specs)| specs.get(unit_type));
-        let book = world.get_resource::<ActionBook>();
-        let by = book
-            .and_then(|book| book.get(self.by.action))
+            .and_then(|&unit_type| specs.get(unit_type));
+        let by = world
+            .resource::<ActionBook>()
+            .get(self.by.action)
             .is_some_and(|action| action.has_rank(self.by.rank));
         let Delivering {
             action,

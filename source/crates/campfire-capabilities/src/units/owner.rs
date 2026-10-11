@@ -33,9 +33,7 @@ impl SimComponent for Owner {
 
     // The script pools and the players' tables hold a place for each player only.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world
-            .get_non_send::<View>()
-            .is_none_or(|view| view.has_player(self.0))
+        world.non_send::<View>().has_player(self.0)
     }
 }
 

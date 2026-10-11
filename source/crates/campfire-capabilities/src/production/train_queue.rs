@@ -106,18 +106,16 @@ impl SimComponent for TrainQueue {
     // type that produces nothing, or past what its type holds, breaks the rule of its room; a
     // paid resource the mode lacks, or an amount below 0, has no refund to give.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let book = world.get_resource::<ActionBook>();
+        let book = world.resource::<ActionBook>();
         let trains = self.entries.iter().all(|queued| {
-            book.and_then(|book| book.get(queued.action))
-                .is_some_and(|action| {
-                    action.kind.kind() == ActionKind::Train && action.has_rank(queued.rank)
-                })
+            book.get(queued.action).is_some_and(|action| {
+                action.kind.kind() == ActionKind::Train && action.has_rank(queued.rank)
+            })
         });
-        let producers = world.get_resource::<ByType<ProductionData>>();
+        let producers = world.resource::<ByType<ProductionData>>();
         let capacity = world
             .get::<UnitType>(entity)
-            .zip(producers)
-            .and_then(|(&unit_type, producers)| producers.get(unit_type))
+            .and_then(|&unit_type| producers.get(unit_type))
             .map(|production| usize::from(production.queue.get()));
         let resources = PlayerResources::declared(world);
         let paid = self

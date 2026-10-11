@@ -1,6 +1,6 @@
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost};
-use campfire_sim::{IdAllocator, Position, StableId};
+use campfire_sim::{IdAllocator, Position, SimTick, StableId};
 
 use super::*;
 use crate::geometry::body_box::BodyBox;
@@ -89,9 +89,10 @@ impl Scene {
         let world = &mut self.sim.world;
         let ctx = world.non_send::<Ctx>().clone();
         ctx.view().read(world);
+        let now = world.resource::<SimTick>().start();
         match actor {
-            Some(actor) => ctx.frame().begin_think(world, actor),
-            None => ctx.frame().begin_mode(world, false),
+            Some(actor) => ctx.frame().begin_think(world, actor, now),
+            None => ctx.frame().begin_mode(world, false, now),
         }
         let at = ctx.view().unit(at).unwrap();
         let source = format!("fn probe(ctx, at) {{ ctx.reveal(at.pos, {radius}, {ms}) }}");
@@ -103,8 +104,7 @@ impl Scene {
         };
         let returned = returned.map_err(|error| CallError::from_script(error).kind())?;
         assert!(returned.is_unit());
-        let now = self.sim.now();
-        ctx.apply(&mut self.sim.world, now);
+        ctx.apply(&mut self.sim.world);
         Ok(())
     }
 

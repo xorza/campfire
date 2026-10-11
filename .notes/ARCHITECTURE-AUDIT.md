@@ -7,8 +7,7 @@ An audit of the workspace at `source/` after slice 3's A4: the entities and how 
 - **Registration.** Each module declares once what it adds; effect queues, deliverers and cast spends still register in install bodies, and systems order against each other's sets in each install.
 - **Entities.** Two spawn paths give units different parts, the match's and the players' entities get their parts by hand, and net writes its prediction rule twice.
 - **Ownership.** Almost every pass reaches through `&mut World` to `!Send` shared handles (`View`, `Ctx`, boxed hooks): 152 production functions take `&mut World` and 96 `&World`, against 13 `SystemParam` derives. No pass is testable without a whole `TestMatch`; `deliveries` and `players` have no tests, `actions` 6 for 53 files.
-- **Arguments.** 59 `now: Tick` parameters sit beside worlds that hold the tick; 57 `ctx: &Ctx` and 57 `view: &View`; 24 systems group parameters in tuples to pass Bevy's limit of 16.
-- **Restore.** A check runs with books that may be absent, and an error names the type alone (§4.1, §4.2).
+- **Arguments.** Systems take `TickClock`, `ModifierParams`, `StatBooks` and `ProductionBooks`, and the client's `OwnPlayer`, and a call's tick travels in its frame. A unit's life pool still travels beside its pools query in nine systems: the query sits inside each system's own tuple query, which already borrows `UnitPools`, so a separate pools param would conflict with it.
 
 The recommendations consolidate into five systems. Each is one declaration that every consumer reads, enforced by the compiler where it can be, else by one generic test, never by memory.
 
@@ -16,8 +15,8 @@ The recommendations consolidate into five systems. Each is one declaration that 
 | --- | --- | --- |
 | 1. One declaration per capability (§1) | the registrations left in install bodies, restated orderings | the compiler (visitor with no defaults), the declaration audit test |
 | 2. One entity model (§2) | two spawn paths, parts put on by hand, net's prediction rule | required components, the compiler (`Host` with no default), one spawn function for each kind |
-| 3. Explicit dependencies (§3) | `!Send` reach-through, threaded `now`, tuple parameters, five match-world builders | typed params, one exclusive context for `!Send` access |
-| 4. Restore as a checked boundary (§4) | silent checks, wrong-type errors | the registry, a mutation fuzz test |
+| 3. Explicit dependencies (§3) | `!Send` reach-through, five match-world builders | one exclusive context for `!Send` access |
+| 4. Restore as a checked boundary (§4) | value-only mutations, checks of the load copied in builders | the registry, a mutation fuzz test |
 | 5. One session host (§5) | three server compositions, two replay loops, two restore glues | one type |
 
 One policy holds across all five: **what can be forgotten is a type or a trait method with no default.** A rule that no type can hold, as "no spawn outside the kinds' spawn functions" or "no `!Send` access outside `ScriptPass`", is held by a type that makes the right way the short one, a test where one can see the breach, and review. `clippy.toml` bans stay for what they ban today, each group owned by a proxy crate, `store`, `codec` or `schedule`, or banned everywhere.
@@ -80,20 +79,7 @@ An observer on `Owner` would set the target again as `KindFilter` already follow
 
 ### 3.2 `!Send` access lives in one place
 
-The script host, `Ctx` and `View` are reached through one exclusive context, `ScriptPass { host, ctx, view, failures, budgets, clock }`, built once per pass; `ScriptBatch` holds `ctx` and `now`, so `hook_call(start, hook, unit, body)` loses two parameters, and the `remove_non_send`/`insert_non_send` pairs around passes (`combat/damage_pass.rs:97`, `combat/attacks.rs:150`, `scripts/script_batch.rs:33`) go. A pass takes `&mut ScriptPass`, so it has the handles without asking the world; `World::non_send` stays public, and review holds a pass that reaches past it.
-
-### 3.3 Typed params for what travels together
-
-| Param | Members | Removes |
-| --- | --- | --- |
-| `TickClock` | `Res<SimTick>`, `Res<TickRate>`; `start()`, `end()`, `ticks(ms)`, `window(ms)` | the `(tick, rate)` tuples, about twenty `Res<SimTick>`, and `now` from about fifteen effect impls, as `Frame::apply` reads the tick once |
-| `PoolQuery<F>` | `Option<Res<LifePool>>`, `Query<UnitPools, F>`; `get_mut(entity) -> PoolMetersMut` | the life pool from nine signatures |
-| `ActionBooks` | action, param books, `ParamSources` | |
-| `StatBooks` | stat, pool, modifier, tag books | with `ActionBooks`, `HeldPass::run` (15), `Refresh::run` (12) and `start_trains` (13) fall under eight parameters, with no tuple |
-| `PlayerRows<C>`, `OnMatch<C>` | already written in A4 | |
-| `OwnPlayer` (client) | `Option<Res<JoinState>>`, `PlayerUnits`; `slot()`, `team()`, `avatar()` | three HUD and view systems that re-read the own player |
-
-Each param is a unit-test seam: a pass that takes `TickClock`, `PoolQuery` and `StatBooks` runs in a bare `World` holding those resources.
+The script host, `Ctx` and `View` are reached through one exclusive context, `ScriptPass { host, ctx, view, failures, budgets, clock }`, built once per pass; `ScriptBatch` holds `ctx`, so `hook_call(start, hook, unit, body)` loses its `ctx`, as a call's tick already travels in its `CallStart`, and the `remove_non_send`/`insert_non_send` pairs around passes (`combat/damage_pass.rs:97`, `combat/attacks.rs:150`, `scripts/script_batch.rs:33`) go. A pass takes `&mut ScriptPass`, so it has the handles without asking the world; `World::non_send` stays public, and review holds a pass that reaches past it.
 
 ### 3.4 One match-world builder
 
@@ -108,14 +94,6 @@ The prepare, schedule, registry and install sequence appears five times (`Sessio
 The layer test rejects imports from a higher layer only. Within a layer, modules import each other in both directions: `units ↔ scripts`, `units ↔ players`, `abilities ↔ items` (`items/mod.rs:6` imports `CastSpends`; four `abilities` files import `Inventory`). The needs table disagrees with the imports: production uses navigation and vision and needs neither; abilities uses items and navigation; orders uses production and items. The declaration audit adds both checks: no cycle within a layer, and imports within the capability's needs, its optional uses and the lower layers. An optional use is correct: production runs without navigation, with no gathering. So each capability declares `USES`, the capabilities it reads when the match has them, and each such read is guarded by `cx.has`. `CastSpends`, a registry of hooks, moves down into `actions`; `abilities` reads a unit's inventory through a hook that `items` registers, as an item's state has no place in the core. `View` and its API users meet in one layer-1 module.
 
 ## 4. Restore as a checked boundary
-
-### 4.1 Checks run with every book in place
-
-`SimComponent::check` runs with the match's books in place, as its doc says and `Session::build` does. Today a missing book panics (`ModifierBook`, `ItemBook`, `ParamBook`), passes (`View` in six checks), or fails unless the value is empty (`action_slots.rs:554`, `slot_times.rs:327`, `experience.rs:98`, branches no install reaches). Every check reads the core's books and its own capability's with `resource` or `non_send`, and the dead branches go: a wiring mistake then crashes the test that makes it. A book of another capability, which a mode may not declare, stays optional, as `Book::held` says: `Mode::kits_held` read `TrackBook` strictly and panicked on a mode with no progression.
-
-### 4.2 Errors name the entity and the rule
-
-`SnapshotError::Invalid(&'static str)` names a type, and a foreign check names the type it is registered on: `Mode::kits_held`, on `UnitType`, fails for a missing kit part, and a `require` fails as the part it requires, not its holder. The errors become `Invalid { ty, id: Option<StableId> }`, `WrongHost { ty, id }`, `Missing { holder, needs, id }`.
 
 ### 4.3 Two more mutations
 
@@ -152,7 +130,6 @@ The mutation fuzz gains a nested option replaced with `None` where its type allo
 
 ## Order
 
-1. §3.3 and §4.1, §4.2: the typed params, one book convention, errors that name the entity.
-2. §3.1, §3.2: books out of `View` and `Ctx`, and `!Send` access in `ScriptPass`.
-3. §2.1, §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule; §4.3.
-4. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.
+1. §3.1, §3.2: books out of `View` and `Ctx`, and `!Send` access in `ScriptPass`.
+2. §2.1, §2.4 within PLAN A6, and §2.5 before A3's spectators need a kind rule; §4.3.
+3. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.

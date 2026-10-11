@@ -55,9 +55,7 @@ impl SimComponent for Player {
     // would hide the player's state from where it is looked for.
     fn check(&self, world: &World, entity: Entity) -> bool {
         world.get::<StableId>(entity) == Some(&StableId::of_player(self.0))
-            && world
-                .get_non_send::<View>()
-                .is_none_or(|view| view.has_player(self.0))
+            && world.non_send::<View>().has_player(self.0)
     }
 }
 

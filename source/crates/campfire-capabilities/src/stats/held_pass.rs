@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{Position, SimTick, StableId, TickRate, Unpredicted};
+use campfire_sim::{Position, StableId, TickClock, Unpredicted};
 
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
@@ -13,12 +13,11 @@ use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
+use crate::stats::modifier_params::ModifierParams;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
-use crate::stats::param_book::ParamBook;
-use crate::stats::param_sources::ParamSources;
 use crate::stats::player_modifiers::PlayerModifiers;
-use crate::stats::stat_book::StatBook;
+use crate::stats::stat_books::StatBooks;
 use crate::units::body::Body;
 use crate::units::body_grid::{BodyGrid, Placed};
 use crate::units::dead::Dead;
@@ -77,27 +76,34 @@ impl HeldPass {
     /// modifier on every living unit of its player that the modifier's `affects` selects, from no
     /// source. Each ends on a unit that left it. An aura's modifier resolves its numbers from the
     /// ability that gave the aura, a player modifier's at rank 1; neither has a duration.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a system takes each resource and query it reads"
+    )]
     pub(crate) fn run(
-        (book, stats, (tick, rate), metric, players, mut others): (
-            Res<'_, ModifierBook>,
-            Option<Res<'_, StatBook>>,
-            (Res<'_, SimTick>, Res<'_, TickRate>),
-            Res<'_, Metric>,
-            PlayerRows<'_, '_, PlayerModifiers>,
-            ResMut<'_, HeldModifiers>,
-        ),
-        params: Res<'_, ParamBook>,
-        sources: ParamSources<'_, '_>,
+        books: StatBooks<'_>,
+        clock: TickClock<'_>,
+        metric: Res<'_, Metric>,
+        players: PlayerRows<'_, '_, PlayerModifiers>,
+        mut others: ResMut<'_, HeldModifiers>,
+        params: ModifierParams<'_, '_>,
         relations: OnMatch<'_, '_, Relations>,
-        (mut units, carriers): (HeldUnits<'_, '_>, HeldCarriers<'_, '_>),
-        tag_book: Option<Res<'_, TagBook>>,
-        (mut held, mut grid): (Local<'_, Vec<Held>>, Local<'_, BodyGrid<Entity>>),
+        mut units: HeldUnits<'_, '_>,
+        carriers: HeldCarriers<'_, '_>,
+        mut held: Local<'_, Vec<Held>>,
+        mut grid: Local<'_, BodyGrid<Entity>>,
     ) {
+        let StatBooks {
+            stats,
+            modifiers: book,
+            tags: tag_book,
+            ..
+        } = books;
         if stats.is_none() {
             return;
         }
         let relations = relations.get();
-        let rate = *rate;
+        let rate = clock.rate();
         held.clear();
         held.extend(others.0.drain(..));
         HeldPass::hold_player_modifiers(&mut held, &book, &players, &units);
@@ -174,12 +180,12 @@ impl HeldPass {
                     rank: entry.rank,
                     hold: Some(Hold::Held),
                 };
-                let source = entry.source.and_then(|source| sources.get(source));
+                let source = entry.source.and_then(|source| params.source(source));
                 let param = |place: &ParamPlace| {
                     let (ability, rank) = (entry.ability, entry.rank);
                     params.modifier_param(entry.modifier, ability, rank, place, source.as_ref())
                 };
-                let start = tick.start();
+                let start = clock.start();
                 carried.apply(book.application(entry.modifier, applier, None, start, rate, param));
             }
         }

@@ -23,14 +23,11 @@ use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production::held::Held;
 use crate::production::holdings::Holdings;
 use crate::production::node_book::NodeBook;
-use crate::production::production_data::ProductionData;
+use crate::production::production_books::ProductionBooks;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
-use crate::production::requirements::Requirements;
 use crate::production::site::Site;
 use crate::production::supply::{CountedUnit, Supply};
-use crate::production::supply_costs::SupplyCosts;
-use crate::production::supply_rules::SupplyRules;
 use crate::production::train_queue::{Queued, TrainQueue};
 use crate::stats::life_pool::LifePool;
 use crate::stats::player_modifiers::PlayerModifiers;
@@ -78,19 +75,15 @@ impl Trains {
     /// cooldown, and joins the queue, where it holds its supply. The order ends either way, and the
     /// unit stays free. Supply and the units a requirement finds are counted once, as the first
     /// train comes to them.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a system takes each resource and query it reads"
+    )]
     pub(super) fn start_trains(
         tick: Res<'_, SimTick>,
-        (book, producers, requirements, costs): (
-            Res<'_, ActionBook>,
-            Res<'_, ByType<ProductionData>>,
-            Res<'_, Requirements>,
-            Res<'_, SupplyCosts>,
-        ),
-        (rules, held_modifiers, life): (
-            Option<Res<'_, SupplyRules>>,
-            PlayerRows<'_, '_, PlayerModifiers>,
-            Option<Res<'_, LifePool>>,
-        ),
+        books: ProductionBooks<'_>,
+        held_modifiers: PlayerRows<'_, '_, PlayerModifiers>,
+        life: Option<Res<'_, LifePool>>,
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: ParamSet<
             '_,
@@ -100,12 +93,17 @@ impl Trains {
                 Query<'_, '_, Training, Without<Dead>>,
             ),
         >,
-        (mut order, mut supply, mut held): (
-            Local<'_, Ordered>,
-            Local<'_, Supply>,
-            Local<'_, Vec<Held>>,
-        ),
+        mut order: Local<'_, Ordered>,
+        mut supply: Local<'_, Supply>,
+        mut held: Local<'_, Vec<Held>>,
     ) {
+        let ProductionBooks {
+            actions: book,
+            producers,
+            requirements,
+            costs,
+            rules,
+        } = books;
         let now = tick.start();
         let trains = {
             let training = units.p1();

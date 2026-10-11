@@ -7,10 +7,10 @@ use bevy::math::primitives::InfinitePlane3d;
 use bevy::math::{Vec2, Vec3};
 use bevy::transform::components::{GlobalTransform, Transform};
 use bevy::window::{PrimaryWindow, Window};
-use campfire_capabilities::{Dead, PlayerUnits, Team};
-use campfire_net::JoinState;
+use campfire_capabilities::{Dead, Team};
 use campfire_sim::{StableId, Unpredicted};
 
+use crate::own_player::OwnPlayer;
 use crate::view::client_data::ClientData;
 use crate::view::drawing::Drawing;
 use crate::view::footing::Footing;
@@ -22,8 +22,7 @@ use crate::view::look::Shape;
 pub(crate) struct Pointer<'w, 's> {
     window: Single<'w, 's, &'static Window, With<PrimaryWindow>>,
     camera: Single<'w, 's, (&'static Camera, &'static GlobalTransform)>,
-    state: Res<'w, JoinState>,
-    players: PlayerUnits<'w, 's>,
+    own: OwnPlayer<'w, 's>,
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, (&'static Transform, &'static Shape)>,
     data: Option<Res<'w, ClientData>>,
@@ -47,11 +46,9 @@ pub(crate) struct Pointed {
 impl Pointer<'_, '_> {
     /// The player's own avatar, once the client plays and holds it.
     pub(crate) fn own_avatar(&self) -> Option<Pointed> {
-        let avatar = self.players.avatar(self.state.slot()?)?;
-        let team = self.state.team()?;
         Some(Pointed {
-            id: avatar.id,
-            team,
+            id: self.own.avatar()?.id,
+            team: self.own.team()?,
         })
     }
 

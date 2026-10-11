@@ -550,12 +550,8 @@ impl SimComponent for ActionSlots {
     // slot of a kind the mode lacks, or of an action with ranks its kind has no level for, would
     // be read past the mode's kinds.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let (Some(book), Some(kinds)) = (
-            world.get_resource::<ActionBook>(),
-            world.get_resource::<SlotKinds>(),
-        ) else {
-            return self.slots.is_empty() && self.underway.is_none();
-        };
+        let book = world.resource::<ActionBook>();
+        let kinds = world.resource::<SlotKinds>();
         let held = |slot: &ActionSlot| {
             let Some(action) = slot.action else {
                 return kinds.holds(slot.kind, 0);

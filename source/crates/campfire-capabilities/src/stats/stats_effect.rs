@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_common::{PlayerSlot, Ticks};
 use campfire_sim::StableId;
 
 use crate::scripts::effects::Effect;
@@ -60,7 +60,7 @@ impl StatsEffect {
 }
 
 impl Effect for StatsEffect {
-    fn apply(self, world: &mut World, frame: &mut Frame, _: Tick) {
+    fn apply(self, world: &mut World, frame: &mut Frame) {
         let applier = Applier {
             source: frame.acting(),
             ability: frame.action(),

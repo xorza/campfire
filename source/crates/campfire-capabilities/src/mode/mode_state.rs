@@ -96,8 +96,8 @@ impl<S: ModeSync> SimComponent for ModeState<S> {
     // A field the class does not declare, or of another type, reaches its script as a value it
     // never wrote.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let book = world.get_non_send::<Ctx>().and_then(ModeBook::of);
-        book.is_none_or(|book| book.schema.fits_state(S::SYNC, &self.values))
+        let book = ModeBook::of_match(world.non_send::<Ctx>());
+        book.schema.fits_state(S::SYNC, &self.values)
     }
 }
 
