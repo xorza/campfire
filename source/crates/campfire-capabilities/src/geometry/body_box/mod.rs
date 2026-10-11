@@ -201,8 +201,11 @@ impl BodyBox {
             }
         };
         let ground = point + flat(centre);
-        let place = |bits: i128| Num::from_bits(i64::try_from(bits).expect("within the bound"));
-        let at = Vec3::new(place(ground[0]), at.get().y, place(ground[1]));
+        let at = Vec3::new(
+            Num::from_bits(ground[0]),
+            at.get().y,
+            Num::from_bits(ground[1]),
+        );
         Position::new(at).expect("a point of a box within the bound")
     }
 
@@ -274,11 +277,12 @@ impl BodyBox {
                 touching(off, away, away.dot(away), radius)
             }
         };
-        let place = |num: i128| {
-            Num::from_bits(i64::try_from(num).expect("a push is shorter than a box and a body"))
-        };
         let ground = moved + flat(centre);
-        Some(Vec3::new(place(ground[0]), at.y, place(ground[1])))
+        Some(Vec3::new(
+            Num::from_bits(ground[0]),
+            at.y,
+            Num::from_bits(ground[1]),
+        ))
     }
 
     /// Whether the insides of the box at `centre` and `other` at `other_centre` share a point:
@@ -469,7 +473,7 @@ impl Frame {
     fn normal(&self, edge: usize) -> Flat {
         let corners = self.corners();
         let along = corners[(edge + 1) % 4] - corners[edge];
-        Flat::new(along[1], -along[0])
+        Flat::new(along.to_array()[1], -along.to_array()[0])
     }
 
     /// Where `off` goes along `edge`'s outward normal to leave a body of `radius` touching the
@@ -603,6 +607,7 @@ fn touching(off: Flat, normal: Flat, out: i128, radius: Num) -> Flat {
                     > U256::product(out.unsigned_abs(), out.unsigned_abs())),
         "a body that overlaps the box lies within its radius of the line"
     );
+    let (off, normal) = (off.to_array(), normal.to_array());
     Flat::from_array([0, 1].map(|axis| {
         off[axis] + outward(normal[axis].abs(), out, square, radius) * normal[axis].signum()
     }))

@@ -38,8 +38,7 @@ fn polygon(body: &BodyBox, centre: Position) -> Polygon {
 }
 
 fn flat_vec3(off: Flat) -> Vec3 {
-    let num = |bits: i128| Num::from_bits(i64::try_from(bits).unwrap());
-    Vec3::new(num(off[0]), Num::ZERO, num(off[1]))
+    Vec3::new(Num::from_bits(off[0]), Num::ZERO, Num::from_bits(off[1]))
 }
 
 /// Where the path from `start` along `path` crosses the segment from `a` to `b`, as a share of
