@@ -8,10 +8,13 @@
     reason = "Bevy systems and hooks take their parameters by value"
 )]
 
+mod app_code;
+mod close_link;
 mod derived_secret;
 mod endpoint_state;
 mod error;
 mod io_thread;
+mod link_end;
 mod link_times;
 mod outbox;
 mod pinned_key_verifier;
@@ -25,7 +28,10 @@ mod shared_endpoint;
 mod spki;
 mod udp_port;
 
+pub use crate::app_code::AppCode;
+pub use crate::close_link::CloseLink;
 pub use crate::error::BindError;
+pub use crate::link_end::LinkEnd;
 pub use crate::link_times::LinkTimes;
 pub use crate::quic_endpoint::QuicEndpoint;
 pub use crate::quic_plugin::QuicPlugin;

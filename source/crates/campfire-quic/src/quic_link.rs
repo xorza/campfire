@@ -2,11 +2,12 @@ use std::sync::Weak;
 use std::time::Instant;
 
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::DeferredWorld;
 use quinn_proto::ConnectionHandle;
 
-use crate::endpoint_state::CLOSED;
+use crate::app_code::AppCode;
 use crate::shared_endpoint::SharedEndpoint;
 
 /// The connection a link's entity carries: a `LinkOf` of a server, or a client's entity (design
@@ -34,16 +35,22 @@ impl QuicLink {
         }
     }
 
-    fn on_discard(world: DeferredWorld<'_>, context: HookContext) {
-        let link = world
-            .get::<QuicLink>(context.entity)
-            .expect("a hook of QuicLink runs on an entity that holds one");
-        let Some(endpoint) = link.endpoint.upgrade() else {
+    /// Closes the connection, which the link entity `entity` carries, with `code`, if it still
+    /// does.
+    pub(crate) fn close(&self, entity: Entity, code: AppCode) {
+        let Some(endpoint) = self.endpoint.upgrade() else {
             return;
         };
-        if let Some(peer) = endpoint.lock().peer(link.handle, link.id) {
-            peer.close(Instant::now(), context.entity, CLOSED);
+        if let Some(peer) = endpoint.lock().peer(self.handle, self.id) {
+            peer.close(Instant::now(), entity, code);
         }
         endpoint.wake();
+    }
+
+    fn on_discard(world: DeferredWorld<'_>, context: HookContext) {
+        world
+            .get::<QuicLink>(context.entity)
+            .expect("a hook of QuicLink runs on an entity that holds one")
+            .close(context.entity, AppCode::ENDED);
     }
 }

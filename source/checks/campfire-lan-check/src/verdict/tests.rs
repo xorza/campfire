@@ -216,15 +216,23 @@ fn a_match_fails_by_each_flaw_it_has() {
 
 #[test]
 fn the_impostor_and_each_process_fail_by_their_own_flaws() {
-    // The impostor must exit with failure and say why; one that succeeded or overran, or
-    // stayed silent, fails the check.
+    // The impostor must exit with failure and say why, the server's key; one that succeeded or
+    // overran, stayed silent, or lost its link by another cause, fails the check.
     let failed = failed();
-    let lost = LinkLost {
-        reason: "Transport error: the cryptographic handshake failed: error 49".to_owned(),
-    };
+    let lost = |cause| LinkLost { cause };
     let mut verdict = Verdict::default();
-    verdict.impostor(failed, &[lost]);
+    verdict.impostor(
+        failed,
+        &[lost(LinkLossCause::Link(LinkEnd::WrongServerKey))],
+    );
     assert_eq!(found(&verdict), []);
+    let timed_out = LinkLossCause::Link(LinkEnd::TimedOut);
+    let mut verdict = Verdict::default();
+    verdict.impostor(failed, &[lost(timed_out)]);
+    assert_eq!(
+        found(&verdict),
+        [Failure::ImpostorNotWrongKey { cause: timed_out }]
+    );
     for outcome in [
         ProcessOutcome::Succeeded,
         ProcessOutcome::Overran,

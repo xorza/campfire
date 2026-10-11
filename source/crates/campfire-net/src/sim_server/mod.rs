@@ -23,6 +23,7 @@ use campfire_package::ModePackages;
 use campfire_protocol::{
     Applied, Controller, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms,
 };
+use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, StartError};
 use campfire_sim::{SimTick, StableId, StateRegistry, TickRate};
 use campfire_store::{DurableError, InputFile, PathError};
@@ -30,11 +31,11 @@ use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, NetworkTarget,
-    PredictionTarget, Replicate, ReplicationSender, RoomAllocator, RoomPlugin, Unlink,
-    UnlinkReason,
+    PredictionTarget, Replicate, ReplicationSender, RoomAllocator, RoomPlugin,
 };
 use tracing::{debug, info, trace, trace_span};
 
+use crate::close_code::CloseCode;
 use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
@@ -120,6 +121,7 @@ impl Plugin for SimServer {
                 capabilities: self.capabilities,
             },
             RoomPlugin,
+            QuicPlugin,
         ));
         KindFilters::register(app, self.capabilities);
         let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
@@ -520,9 +522,9 @@ fn record_inputs(
                 InputMessageUnfit { slot: link.slot() }.log();
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
-                commands.trigger(Unlink {
+                commands.trigger(CloseLink {
                     entity,
-                    reason: UnlinkReason::UserRequested(Some("broken input message".to_owned())),
+                    code: CloseCode::InputRefused.app(),
                 });
                 continue;
             };
@@ -536,9 +538,9 @@ fn record_inputs(
                 .log();
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
-                commands.trigger(Unlink {
+                commands.trigger(CloseLink {
                     entity,
-                    reason: UnlinkReason::UserRequested(Some(report)),
+                    code: CloseCode::InputRefused.app(),
                 });
                 continue;
             }

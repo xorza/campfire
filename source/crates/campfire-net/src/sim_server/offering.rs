@@ -8,12 +8,12 @@ use bevy_time::{Real, Time};
 use campfire_common::TlsKey;
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
 use campfire_protocol::{ConnectChallenge, Delegation, SessionTerms};
+use campfire_quic::CloseLink;
 use lightyear::prelude::server::ClientOf;
-use lightyear::prelude::{
-    Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlink, UnlinkReason, Unlinked,
-};
+use lightyear::prelude::{Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlinked};
 use tracing::debug;
 
+use crate::close_code::CloseCode;
 use crate::join::Join;
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
@@ -106,11 +106,9 @@ impl Superseding {
                 .is_some_and(|told| now.saturating_sub(told) >= LINGER)
             {
                 commands.entity(link).remove::<Superseding>();
-                commands.trigger(Unlink {
+                commands.trigger(CloseLink {
                     entity: link,
-                    reason: UnlinkReason::UserRequested(Some(
-                        "a newer login of the player".to_owned(),
-                    )),
+                    code: CloseCode::Superseded.app(),
                 });
             }
         }
@@ -254,11 +252,13 @@ mod tests {
     use bevy_ecs::resource::Resource;
     use bevy_ecs::system::ResMut;
     use bevy_time::{TimePlugin, TimeUpdateStrategy};
+    use campfire_quic::AppCode;
 
     use super::*;
 
+    /// Each link the system closed, with its code.
     #[derive(Resource, Debug, Default)]
-    struct Unlinks(Vec<Entity>);
+    struct Closes(Vec<(Entity, AppCode)>);
 
     #[test]
     fn a_superseded_link_its_client_never_ends_ends_after_its_linger() {
@@ -269,10 +269,10 @@ mod tests {
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             500,
         )));
-        app.init_resource::<Unlinks>();
+        app.init_resource::<Closes>();
         app.add_observer(
-            |unlink: On<'_, '_, Unlink>, mut unlinks: ResMut<'_, Unlinks>| {
-                unlinks.0.push(unlink.entity);
+            |close: On<'_, '_, CloseLink>, mut closes: ResMut<'_, Closes>| {
+                closes.0.push((close.entity, close.code));
             },
         );
         app.add_systems(Update, Superseding::end);
@@ -285,11 +285,14 @@ mod tests {
         for _ in 0..16 {
             app.update();
             let now = app.world().resource::<Time<Real>>().elapsed();
-            if ended_at.is_none() && !app.world().resource::<Unlinks>().0.is_empty() {
+            if ended_at.is_none() && !app.world().resource::<Closes>().0.is_empty() {
                 ended_at = Some(now);
             }
         }
-        assert_eq!(app.world().resource::<Unlinks>().0, [link]);
+        assert_eq!(
+            app.world().resource::<Closes>().0,
+            [(link, CloseCode::Superseded.app())]
+        );
         assert_eq!(ended_at, Some(Duration::from_secs(6)));
         assert!(app.world().get::<Superseding>(link).is_none());
         assert!(app.world().get::<Superseding>(untold).is_some());

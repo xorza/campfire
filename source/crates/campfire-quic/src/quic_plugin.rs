@@ -1,14 +1,20 @@
 use bevy_app::{App, Plugin, PostUpdate, PreUpdate};
 use bevy_ecs::entity::Entity;
+use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::system::{Commands, Local, Query};
 use lightyear::link::server::ServerLinkPlugin;
-use lightyear::link::{Link, LinkReceiveSystems, LinkStart, LinkSystems, Linked, Linking, Unlink};
+use lightyear::link::{
+    Link, LinkReceiveSystems, LinkStart, LinkSystems, Linked, Linking, Unlink, UnlinkReason,
+};
 use lightyear::prelude::PeerAddr;
 
+use crate::app_code::AppCode;
+use crate::close_link::CloseLink;
 use crate::endpoint_state::News;
+use crate::link_end::LinkEnd;
 use crate::quic_endpoint::QuicEndpoint;
 use crate::quic_link::QuicLink;
 
@@ -18,7 +24,9 @@ type Unstarted = (Without<Linking>, Without<Linked>);
 /// Links Lightyear's `Link`s over QUIC: an entity with a `QuicEndpoint` opens at its `LinkStart`;
 /// in `PreUpdate`, in `BufferToLink`, each endpoint's news and received datagrams reach the
 /// world, and in `PostUpdate`, in `LinkSystems::Send`, each link's packets reach their
-/// connection (design 15, D3). An `Unlink` closes its connection.
+/// connection (design 15, D3). A `CloseLink` closes its connection with its code, and an `Unlink`
+/// with none. It adds no transport: an app with no `QuicEndpoint`, as an in-process one, takes
+/// its `CloseLink` and its `LinkEnd` alike.
 #[derive(Debug)]
 pub struct QuicPlugin;
 
@@ -33,6 +41,28 @@ impl QuicPlugin {
         }
     }
 
+    fn close(
+        close: On<'_, '_, CloseLink>,
+        links: Query<'_, '_, &QuicLink>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let CloseLink { entity, code } = *close;
+        if let Ok(link) = links.get(entity) {
+            link.close(entity, code);
+            commands.entity(entity).remove::<QuicLink>();
+        }
+        commands.entity(entity).insert(LinkEnd::Closed(code));
+        commands.trigger(Unlink {
+            entity,
+            reason: UnlinkReason::UserRequested(Some(format!("closed with code {}", code.get()))),
+        });
+    }
+
+    /// Clears the end of a link's last connection as the link links again.
+    fn relink(linked: On<'_, '_, Add, Linked>, mut commands: Commands<'_, '_>) {
+        commands.entity(linked.entity).try_remove::<LinkEnd>();
+    }
+
     fn unlink(
         unlink: On<'_, '_, Unlink>,
         links: Query<'_, '_, (), With<QuicLink>>,
@@ -40,7 +70,10 @@ impl QuicPlugin {
         mut commands: Commands<'_, '_>,
     ) {
         if links.contains(unlink.entity) {
-            commands.entity(unlink.entity).remove::<QuicLink>();
+            commands
+                .entity(unlink.entity)
+                .remove::<QuicLink>()
+                .insert(LinkEnd::Closed(AppCode::ENDED));
         }
         if let Ok(endpoint) = endpoints.get(unlink.entity) {
             endpoint.stop();
@@ -75,6 +108,8 @@ impl Plugin for QuicPlugin {
         }
         app.add_observer(QuicPlugin::start);
         app.add_observer(QuicPlugin::unlink);
+        app.add_observer(QuicPlugin::close);
+        app.add_observer(QuicPlugin::relink);
         app.add_systems(
             PreUpdate,
             QuicPlugin::receive.in_set(LinkReceiveSystems::BufferToLink),

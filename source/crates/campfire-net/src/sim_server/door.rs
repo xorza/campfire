@@ -8,13 +8,14 @@ use campfire_capabilities::{Area, Mode, Owner, Projectile};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
+use campfire_quic::CloseLink;
 use campfire_runner::{ServerInputRefused, Session, SlotRuleError};
 use lightyear::prelude::{
-    Connected, LocalTimeline, MessageReceiver, MessageSender, PredictionTarget, Replicate, Unlink,
-    UnlinkReason,
+    Connected, LocalTimeline, MessageReceiver, MessageSender, PredictionTarget, Replicate,
 };
 use tracing::info;
 
+use crate::close_code::CloseCode;
 use crate::events::join_refused::JoinRefused;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
@@ -264,9 +265,9 @@ impl Door {
                     if let Ok(mut gone) = world.get_entity_mut(link) {
                         gone.remove::<PlayerLink>();
                     }
-                    world.trigger(Unlink {
+                    world.trigger(CloseLink {
                         entity: link,
-                        reason: UnlinkReason::UserRequested(Some("the player left".to_owned())),
+                        code: CloseCode::Left.app(),
                     });
                     continue;
                 }

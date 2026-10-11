@@ -22,15 +22,14 @@ use lightyear_serde::SerializationError;
 use lightyear_serde::reader::Reader;
 use lightyear_serde::registry::SerializeFns;
 use lightyear_serde::writer::Writer;
-use quinn_proto::{Connection, ConnectionError, DatagramEvent, Dir, Event, TransportErrorCode};
+use quinn_proto::{Connection, DatagramEvent, Dir, Event};
 
 use super::*;
 use crate::QuicPlugin;
+use crate::close_link::CloseLink;
 
 /// The longest a test waits for the network on loopback, inside a test's bound of 1 s.
 const PATIENCE: Duration = Duration::from_millis(800);
-/// TLS's `access_denied` alert, which QUIC carries as the crypto error 0x100 + 49 (RFC 9001 §4.8).
-const ACCESS_DENIED: u8 = 49;
 /// Times short enough that an idle timeout passes inside a test: 4 keep-alives to it.
 const SHORT: LinkTimes = LinkTimes {
     keep_alive: Duration::from_millis(50),
@@ -72,11 +71,17 @@ impl Loopback {
         loopback
     }
 
-    /// The server's endpoint, bound and not started.
+    /// The server's endpoint on a port of the OS's choice, bound and not started.
     fn bind(times: LinkTimes) -> Loopback {
+        Loopback::bind_at(SocketAddr::from(([127, 0, 0, 1], 0)), times)
+    }
+
+    /// The server's endpoint on `address`, bound and not started, its key and its reset key the
+    /// same at each bind.
+    fn bind_at(address: SocketAddr, times: LinkTimes) -> Loopback {
         let key = server_key();
         let quic = QuicEndpoint::server(
-            SocketAddr::from(([127, 0, 0, 1], 0)),
+            address,
             &key,
             ResetKey::new(&Zeroizing::new([9; 32])),
             times,
@@ -352,10 +357,10 @@ fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
         ClientApp::start(QuicEndpoint::client_of(loopback.address, config, 20).unwrap());
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
     assert!(Loopback::links(loopback.server.world_mut()).is_empty());
-    assert!(matches!(
-        client.quic().state().lost(),
-        [ConnectionError::ApplicationClosed(close)] if close.error_code == UNFIT
-    ));
+    assert_eq!(
+        client.app.world().get::<LinkEnd>(client.entity),
+        Some(&LinkEnd::Unfit)
+    );
     // The client's handshake completed before the server closed it: it spawned no link either.
     assert!(Loopback::links(client.app.world_mut()).is_empty());
 }
@@ -378,21 +383,18 @@ fn a_port_in_use_is_an_error_that_names_its_address() {
 #[test]
 fn a_server_takes_connections_only_while_started() {
     let refused = |client: &ClientApp| {
-        matches!(
-            client.quic().state().lost().last(),
-            Some(ConnectionError::ConnectionClosed(close))
-                if close.error_code == TransportErrorCode::CONNECTION_REFUSED
-        )
+        client.app.world().get::<LinkEnd>(client.entity) == Some(&LinkEnd::Refused)
     };
     // Bound, not started: a client is refused.
     let mut loopback = Loopback::bind(LinkTimes::CAMPFIRE);
     let mut client = loopback.client(LinkTimes::CAMPFIRE);
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
     assert!(refused(&client));
-    // Started: it links.
+    // Started: it links, and its last end clears.
     loopback.start();
     client.restart();
     loopback.join(&mut client);
+    assert!(!client.is::<LinkEnd>());
     // Ended: its links end, and a new client is refused.
     let entity = loopback.endpoint;
     loopback.server.world_mut().trigger(Unlink {
@@ -461,11 +463,10 @@ fn a_wrong_pin_fails_by_access_denied_and_each_connect_checks_the_key() {
     loopback.pump(&mut [&mut impostor], |_, clients| {
         clients[0].is::<Unlinked>()
     });
-    assert!(matches!(
-        impostor.quic().state().lost(),
-        [ConnectionError::TransportError(error)]
-            if error.code == TransportErrorCode::crypto(ACCESS_DENIED)
-    ));
+    assert_eq!(
+        impostor.app.world().get::<LinkEnd>(impostor.entity),
+        Some(&LinkEnd::WrongServerKey)
+    );
     // The server's handshake failed by the client's alert: it spawned no link.
     loopback.pump(&mut [], |_, _| true);
     assert!(Loopback::links(loopback.server.world_mut()).is_empty());
@@ -484,50 +485,138 @@ fn a_wrong_pin_fails_by_access_denied_and_each_connect_checks_the_key() {
     assert_eq!(checks.load(Ordering::Relaxed), 2);
 }
 
+/// One way a link ends: what it does, and the `LinkEnd` the server's link and the client then
+/// hold. A QUIC link that its own end closed holds its code, `ENDED` for a plain `Unlink`; a
+/// despawned link holds nothing.
+#[derive(Debug)]
+struct Ending {
+    act: fn(&mut Loopback, &mut ClientApp),
+    at_server: Option<LinkEnd>,
+    at_client: Option<LinkEnd>,
+}
+
 #[test]
-fn each_end_of_a_link_ends_the_others_at_once() {
+fn each_end_of_a_link_reaches_the_other_at_once_with_its_cause() {
     // Each end below reaches the other inside a test's second, where the idle timeout is 5 s: by
-    // the close the ending side sends (D10). The ends: the client unlinks, the server despawns
-    // its link, the server ends, the client's endpoint drops.
-    let ends: [fn(&mut Loopback, &mut ClientApp); 4] = [
-        |_, client| {
-            let entity = client.entity;
-            client.app.world_mut().trigger(Unlink {
-                entity,
-                reason: UnlinkReason::UserRequested(None),
-            });
+    // the close the ending side sends, which carries why (D10).
+    let ends = [
+        // The client unlinks, with no reason.
+        Ending {
+            act: |_, client| {
+                let entity = client.entity;
+                client.app.world_mut().trigger(Unlink {
+                    entity,
+                    reason: UnlinkReason::UserRequested(None),
+                });
+            },
+            at_server: Some(LinkEnd::Ended),
+            at_client: Some(LinkEnd::Closed(AppCode::ENDED)),
         },
-        |loopback, _| {
-            let link = Loopback::links(loopback.server.world_mut())[0];
-            loopback.server.world_mut().despawn(link);
+        // The client closes with its app's code.
+        Ending {
+            act: |_, client| {
+                let entity = client.entity;
+                let code = AppCode::new(17);
+                client.app.world_mut().trigger(CloseLink { entity, code });
+            },
+            at_server: Some(LinkEnd::ClosedByPeer(AppCode::new(17))),
+            at_client: Some(LinkEnd::Closed(AppCode::new(17))),
         },
-        |loopback, _| {
-            let entity = loopback.endpoint;
-            loopback.server.world_mut().trigger(Unlink {
-                entity,
-                reason: UnlinkReason::ServerStopped,
-            });
+        // The server despawns its link.
+        Ending {
+            act: |loopback, _| {
+                let link = Loopback::links(loopback.server.world_mut())[0];
+                loopback.server.world_mut().despawn(link);
+            },
+            at_server: None,
+            at_client: Some(LinkEnd::Ended),
         },
-        |_, client| {
-            client
-                .app
-                .world_mut()
-                .entity_mut(client.entity)
-                .remove::<QuicEndpoint>();
+        // The server closes its link with its app's code.
+        Ending {
+            act: |loopback, _| {
+                let entity = Loopback::links(loopback.server.world_mut())[0];
+                let code = AppCode::new(18);
+                loopback
+                    .server
+                    .world_mut()
+                    .trigger(CloseLink { entity, code });
+            },
+            at_server: Some(LinkEnd::Closed(AppCode::new(18))),
+            at_client: Some(LinkEnd::ClosedByPeer(AppCode::new(18))),
+        },
+        // The server ends, which despawns its links.
+        Ending {
+            act: |loopback, _| {
+                let entity = loopback.endpoint;
+                loopback.server.world_mut().trigger(Unlink {
+                    entity,
+                    reason: UnlinkReason::ServerStopped,
+                });
+            },
+            at_server: None,
+            at_client: Some(LinkEnd::Ended),
+        },
+        // The client's endpoint drops.
+        Ending {
+            act: |_, client| {
+                client
+                    .app
+                    .world_mut()
+                    .entity_mut(client.entity)
+                    .remove::<QuicEndpoint>();
+            },
+            at_server: Some(LinkEnd::PeerStopped),
+            at_client: None,
+        },
+        // The server's app exits, and drops its world.
+        Ending {
+            act: |loopback, _| loopback.server = App::new(),
+            at_server: None,
+            at_client: Some(LinkEnd::PeerStopped),
         },
     ];
-    for end in ends {
+    for ending in ends {
         let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
         let mut client = loopback.client(LinkTimes::CAMPFIRE);
         let link = loopback.join(&mut client);
-        end(&mut loopback, &mut client);
+        (ending.act)(&mut loopback, &mut client);
         loopback.pump(&mut [&mut client], |server, clients| {
             let server_ended =
                 server.get_entity(link).is_err() || server.get::<Unlinked>(link).is_some();
             let client_ended = clients[0].is::<Unlinked>() || !clients[0].is::<QuicEndpoint>();
             server_ended && client_ended
         });
+        let world = loopback.server.world();
+        let at_server = world
+            .get_entity(link)
+            .ok()
+            .and_then(|link| link.get::<LinkEnd>());
+        assert_eq!(at_server, ending.at_server.as_ref(), "{ending:?}");
+        let at_client = client.app.world().get::<LinkEnd>(client.entity);
+        assert_eq!(at_client, ending.at_client.as_ref(), "{ending:?}");
     }
+}
+
+#[test]
+fn a_server_started_again_on_its_reset_key_resets_its_old_connections() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    let link = loopback.join(&mut client);
+    // The server stops with no close, as a crash stops it, and starts again on its port and its
+    // reset key: the client's next packet meets a reset, not the idle timeout (D8).
+    loopback.quic().state().forget(link);
+    let address = loopback.address;
+    drop(loopback);
+    let mut loopback = Loopback::bind_at(address, LinkTimes::CAMPFIRE);
+    loopback.start();
+    client
+        .link()
+        .send(Bytes::from_static(b"to the server that stopped"));
+    loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
+    assert_eq!(
+        client.app.world().get::<LinkEnd>(client.entity),
+        Some(&LinkEnd::Reset)
+    );
 }
 
 #[test]
@@ -551,10 +640,10 @@ fn a_silent_peer_is_lost_by_the_idle_timeout_and_a_stalled_app_is_not() {
         took >= SHORT.idle_timeout.checked_sub(SHORT.keep_alive).unwrap(),
         "lost after {took:?}"
     );
-    assert!(matches!(
-        loopback.quic().state().lost(),
-        [ConnectionError::TimedOut]
-    ));
+    assert_eq!(
+        loopback.server.world().get::<LinkEnd>(link),
+        Some(&LinkEnd::TimedOut)
+    );
 }
 
 /// The bytes of one message a test's link carries, behind their length.

@@ -29,9 +29,11 @@ use tracing::{trace, warn};
 use zeroize::Zeroizing;
 
 use crate::LINK_MIN_MTU;
-use crate::endpoint_state::{EndpointState, News, Peer, UNFIT};
+use crate::app_code::AppCode;
+use crate::endpoint_state::{EndpointState, News, Peer};
 use crate::error::BindError;
 use crate::io_thread::IoThread;
+use crate::link_end::LinkEnd;
 use crate::link_times::LinkTimes;
 use crate::pinned_key_verifier::PinnedKeyVerifier;
 use crate::quic_link::QuicLink;
@@ -208,17 +210,17 @@ impl QuicEndpoint {
             }
             Err(error) => {
                 warn!(error = %ErrorReport::of(&error), %server, "the client does not connect");
-                commands.entity(entity).insert(Unlinked {
-                    reason: UnlinkReason::TransportError(ErrorReport::of(&error).to_string()),
-                });
+                QuicEndpoint::unlink(entity, LinkEnd::NotOpened, commands);
             }
         }
     }
 
     /// Ends a server's endpoint's taking of connections, as its `Unlink` ends the server, whose
-    /// links Lightyear despawns, which closes them.
+    /// links Lightyear despawns, which closes them. A client's endpoint takes none.
     pub(crate) fn stop(&self) {
-        self.shared.lock().accept(false);
+        if let Side::Server = self.side {
+            self.shared.lock().accept(false);
+        }
     }
 
     /// Takes the thread's news into the world, the endpoint on `entity`, and moves each linked
@@ -248,11 +250,7 @@ impl QuicEndpoint {
                     closed |= self.link(entity, peer, fit, now, commands);
                 }
                 News::Lost { entity, reason } => {
-                    QuicEndpoint::unlink(
-                        entity,
-                        UnlinkReason::TransportError(ErrorReport::of(&reason).to_string()),
-                        commands,
-                    );
+                    QuicEndpoint::unlink(entity, LinkEnd::of(&reason), commands);
                 }
             }
         }
@@ -262,8 +260,8 @@ impl QuicEndpoint {
                 continue;
             };
             let Some(max) = QuicEndpoint::fit(peer) else {
-                peer.close(now, entity, UNFIT);
-                QuicEndpoint::unlink(entity, QuicEndpoint::unfit(), commands);
+                peer.close(now, entity, AppCode::UNFIT);
+                QuicEndpoint::unlink(entity, LinkEnd::Unfit, commands);
                 closed = true;
                 continue;
             };
@@ -301,10 +299,11 @@ impl QuicEndpoint {
         }
         if !fit {
             if let Some(client) = peer.entity() {
-                peer.close(now, client, UNFIT);
-                QuicEndpoint::unlink(client, QuicEndpoint::unfit(), commands);
+                peer.close(now, client, AppCode::UNFIT);
+                QuicEndpoint::unlink(client, LinkEnd::Unfit, commands);
             } else {
-                peer.connection.close(now, UNFIT, Bytes::new());
+                peer.connection
+                    .close(now, AppCode::UNFIT.varint(), Bytes::new());
             }
             return true;
         }
@@ -346,16 +345,17 @@ impl QuicEndpoint {
             .filter(|&max| max >= LINK_MIN_MTU)
     }
 
-    fn unfit() -> UnlinkReason {
-        UnlinkReason::TransportError(
-            "the connection's datagrams cannot carry the link's minimum MTU".to_owned(),
-        )
-    }
-
-    fn unlink(entity: Entity, reason: UnlinkReason, commands: &mut Commands<'_, '_>) {
+    /// Unlinks the link `entity`, which ended as `end` says, with it on the entity for the
+    /// observers of `Unlinked` to read; Lightyear's reason holds its text, for its logs.
+    fn unlink(entity: Entity, end: LinkEnd, commands: &mut Commands<'_, '_>) {
         if let Ok(mut link) = commands.get_entity(entity) {
             link.remove::<QuicLink>();
-            link.insert(Unlinked { reason });
+            link.insert((
+                end,
+                Unlinked {
+                    reason: UnlinkReason::TransportError(format!("{end:?}")),
+                },
+            ));
         }
     }
 

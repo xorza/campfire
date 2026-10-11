@@ -17,7 +17,7 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{PlayerInput, SignedReceipt};
-use campfire_quic::LINK_MIN_MTU;
+use campfire_quic::{CloseLink, LINK_MIN_MTU, LinkEnd, QuicPlugin};
 use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
@@ -26,17 +26,18 @@ use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
 };
 use lightyear::prelude::{
-    Client, Connect, Disconnect, Link, LinkMtu, LocalTimeline, MessageReceiver, MessageSender,
-    Predicted, PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
+    Client, Connect, Link, LinkMtu, LocalTimeline, MessageReceiver, MessageSender, Predicted,
+    PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
     UnlinkReason, Unlinked, is_in_rollback,
 };
 use tracing::{debug, info};
 
 use crate::bot_script::BotScript;
+use crate::close_code::CloseCode;
 use crate::events::client_frame::ClientFrame;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
-use crate::events::link_lost::LinkLost;
+use crate::events::link_lost::{LinkLossCause, LinkLost};
 use crate::events::match_started::MatchStarted;
 use crate::events::order_dropped::OrderDropped;
 use crate::events::orders_sent::OrdersSent;
@@ -173,9 +174,12 @@ impl Plugin for SimClient {
         app.add_plugins(ClientPlugins {
             tick_duration: rate.length(),
         });
-        app.add_plugins(NetProtocol {
-            capabilities: self.packages.manifest().capabilities,
-        });
+        app.add_plugins((
+            NetProtocol {
+                capabilities: self.packages.manifest().capabilities,
+            },
+            QuicPlugin,
+        ));
         app.insert_resource(PredictionManager::default());
         let world = app.world_mut();
         SimUpdate::prepare(world, PREDICTION_SEED, rate);
@@ -272,7 +276,10 @@ fn answer_offer(
                         mismatch: ErrorReport::of(&error).to_string(),
                     }
                     .log();
-                    commands.trigger(Disconnect { entity: client });
+                    commands.trigger(CloseLink {
+                        entity: client,
+                        code: CloseCode::SessionRefused.app(),
+                    });
                 }
             }
         }
@@ -306,10 +313,13 @@ fn receive_match_start(
                 }
                 Started::Rewritten => {
                     LinkLost {
-                        reason: "the server's copy of the player's chain is not theirs".to_owned(),
+                        cause: LinkLossCause::ClientClosed(CloseCode::ChainRewritten),
                     }
                     .log();
-                    commands.trigger(Disconnect { entity: client });
+                    commands.trigger(CloseLink {
+                        entity: client,
+                        code: CloseCode::ChainRewritten.app(),
+                    });
                 }
             }
         }
@@ -317,33 +327,31 @@ fn receive_match_start(
 }
 
 /// Notes a link that failed: a client that knows the server's times drops the inputs it sent and
-/// the orders it holds, and tries again; one that does not stops. Lightyear despawns the units
-/// the link replicated.
+/// the orders it holds, and tries again; one that does not stops, and logs the cause its link's end
+/// gives. Lightyear despawns the units the link replicated.
 fn lose_link(
     unlinked: On<'_, '_, Insert, Unlinked>,
-    clients: Query<'_, '_, &Unlinked, With<Client>>,
+    clients: Query<'_, '_, (&Unlinked, Option<&LinkEnd>), With<Client>>,
     time: Res<'_, Time<Real>>,
     signer: Res<'_, Signer>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
     mut pending: ResMut<'_, PendingOrders>,
 ) {
-    let Ok(Unlinked { reason }) = clients.get(unlinked.entity) else {
+    let Ok((Unlinked { reason }, end)) = clients.get(unlinked.entity) else {
         return;
     };
     if matches!(reason, UnlinkReason::Initial) {
         return;
     }
+    let cause = LinkLossCause::of(end);
     match state.lose(time.elapsed(), signer.random()) {
         LinkLoss::Rejoining => {
-            info!(%reason, "the link to the server failed; trying again");
+            info!(?cause, "the link to the server failed; trying again");
             sent.clear();
             pending.clear();
         }
-        LinkLoss::Stopped(_) => LinkLost {
-            reason: reason.to_string(),
-        }
-        .log(),
+        LinkLoss::Stopped(_) => LinkLost { cause }.log(),
         LinkLoss::Nothing => {}
     }
 }
@@ -383,10 +391,13 @@ fn receive_superseded(
         if receiver.receive().count() > 0 {
             state.supersede();
             LinkLost {
-                reason: "a newer login of the player took the slot".to_owned(),
+                cause: LinkLossCause::ClientClosed(CloseCode::Superseded),
             }
             .log();
-            commands.trigger(Disconnect { entity: client });
+            commands.trigger(CloseLink {
+                entity: client,
+                code: CloseCode::Superseded.app(),
+            });
         }
     }
 }
@@ -438,7 +449,7 @@ fn retry_link(
             commands.trigger(Connect { entity });
         }
         Retry::GiveUp => LinkLost {
-            reason: "the server's grace period and restore window passed".to_owned(),
+            cause: LinkLossCause::RetriesEnded,
         }
         .log(),
     }

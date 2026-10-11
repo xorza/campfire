@@ -12,7 +12,7 @@ use campfire_net::{
     SlotBotFile,
 };
 use campfire_package::ModePackages;
-use campfire_quic::{LinkTimes, QuicEndpoint, QuicPlugin};
+use campfire_quic::{LinkTimes, QuicEndpoint};
 use tracing::error;
 
 use crate::args::{Args, Server};
@@ -82,7 +82,6 @@ impl Connection {
                         ExitCode::from(ExitStatus::Failure)
                     },
                 )?;
-                app.add_plugins(QuicPlugin);
                 app.world_mut().entity_mut(client).insert(endpoint);
             }
             Connection::Local(local) => {

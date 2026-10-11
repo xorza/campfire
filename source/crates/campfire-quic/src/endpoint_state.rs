@@ -5,20 +5,15 @@ use bevy_ecs::entity::Entity;
 use bytes::Bytes;
 use quinn_proto::{
     ClientConfig, ConnectError, Connection, ConnectionError, ConnectionHandle, DatagramEvent,
-    Endpoint, Event, Incoming, VarInt,
+    Endpoint, Event, Incoming,
 };
 
+use crate::app_code::AppCode;
 use crate::outbox::Outbox;
 use crate::recv_batch::Datagram;
 
 /// The name every client sends: its verifier reads the key alone (design 15, D7).
 const SERVER_NAME: &str = "campfire";
-
-/// The application's close codes: a link ended by its own end, an endpoint dropped, and a
-/// connection whose datagrams cannot carry a link's minimum MTU.
-pub(crate) const CLOSED: VarInt = VarInt::from_u32(0);
-pub(crate) const STOPPED: VarInt = VarInt::from_u32(1);
-pub(crate) const UNFIT: VarInt = VarInt::from_u32(2);
 
 /// An endpoint and its connections, which its thread and the app's frame share behind one mutex
 /// (design 15, D3, D9). A connection lives in a table by `quinn-proto`'s handle, with the link
@@ -38,8 +33,6 @@ pub(crate) struct EndpointState {
     scratch: Vec<u8>,
     #[cfg(test)]
     retries: usize,
-    #[cfg(test)]
-    lost: Vec<ConnectionError>,
 }
 
 /// A connection, its slot, its id, which no later connection in its slot shares, and its link
@@ -81,8 +74,6 @@ impl EndpointState {
             scratch: Vec::new(),
             #[cfg(test)]
             retries: 0,
-            #[cfg(test)]
-            lost: Vec::new(),
         }
     }
 
@@ -206,8 +197,6 @@ impl EndpointState {
             news,
             max_segments,
             scratch,
-            #[cfg(test)]
-            lost,
             ..
         } = self;
         for (index, slot) in peers.iter_mut().enumerate() {
@@ -237,8 +226,6 @@ impl EndpointState {
                         max_size: connection.datagrams().max_size(),
                     }),
                     Event::ConnectionLost { reason } => {
-                        #[cfg(test)]
-                        lost.push(reason.clone());
                         if let Some(entity) = peer.entity.take() {
                             news.push(News::Lost { entity, reason });
                         }
@@ -285,12 +272,13 @@ impl EndpointState {
             .filter_map(|peer| peer.entity.map(|entity| (entity, peer)))
     }
 
-    /// Closes every connection with `STOPPED`; the thread writes the closes, then ends.
+    /// Closes every connection with `AppCode::STOPPED`; the thread writes the closes, then ends.
     pub(crate) fn close_all(&mut self, now: Instant) {
         self.closing = true;
         for peer in self.peers.iter_mut().flatten() {
             peer.entity = None;
-            peer.connection.close(now, STOPPED, Bytes::new());
+            peer.connection
+                .close(now, AppCode::STOPPED.varint(), Bytes::new());
         }
     }
 }
@@ -320,12 +308,12 @@ impl Peer {
 
     /// Closes the connection with `code` if the entity `entity` still carries it, and parts it
     /// from its entity.
-    pub(crate) fn close(&mut self, now: Instant, entity: Entity, code: VarInt) {
+    pub(crate) fn close(&mut self, now: Instant, entity: Entity, code: AppCode) {
         if self.entity != Some(entity) {
             return;
         }
         self.entity = None;
-        self.connection.close(now, code, Bytes::new());
+        self.connection.close(now, code.varint(), Bytes::new());
     }
 }
 
@@ -338,17 +326,13 @@ pub(crate) mod internals {
             self.retries
         }
 
-        /// Why each connection of the endpoint was lost, in order.
-        pub(crate) fn lost(&self) -> &[ConnectionError] {
-            &self.lost
-        }
-
         /// Closes each connection no entity carries yet, as one lost between its handshake and
         /// the frame that would link it.
         pub(crate) fn close_unlinked(&mut self) {
             for peer in self.peers.iter_mut().flatten() {
                 if peer.entity.is_none() {
-                    peer.connection.close(Instant::now(), CLOSED, Bytes::new());
+                    peer.connection
+                        .close(Instant::now(), AppCode::ENDED.varint(), Bytes::new());
                 }
             }
         }

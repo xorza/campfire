@@ -1,0 +1,76 @@
+use bevy_ecs::component::Component;
+use quinn_proto::{ConnectionError, TransportErrorCode};
+use serde::{Deserialize, Serialize};
+
+use crate::app_code::AppCode;
+
+/// TLS's `access_denied` alert, which a client's verifier sends for a key it did not pin: QUIC
+/// carries it as the crypto error 0x100 + 49 (RFC 9001 §4.8).
+const ACCESS_DENIED: u8 = 49;
+
+/// How a link ended, on its entity from the frame it unlinks to the frame it links again (design
+/// 15, D10): the IO's account of a lost connection, or the code its own end closed it with.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LinkEnd {
+    /// This end closed the link with its code, by `CloseLink`.
+    Closed(AppCode),
+    /// The peer sent nothing for the idle timeout.
+    TimedOut,
+    /// The peer's endpoint holds no connection of this one: it started again since.
+    Reset,
+    /// The server takes no connection: it has not started, or it ended.
+    Refused,
+    /// The server presented a key the client did not pin.
+    WrongServerKey,
+    /// The peer's endpoint dropped, as its app exited.
+    PeerStopped,
+    /// The peer ended the link with no reason given.
+    Ended,
+    /// The connection's datagrams cannot carry a link's minimum MTU.
+    Unfit,
+    /// The peer's app closed the link with its code.
+    ClosedByPeer(AppCode),
+    /// QUIC or TLS failed with this error code, the peer's or this end's.
+    Transport { code: u64 },
+    /// The peer speaks no QUIC version this end does.
+    VersionMismatch,
+    /// The endpoint could not open the connection.
+    NotOpened,
+}
+
+impl LinkEnd {
+    /// How a link whose connection was lost by `error` ended.
+    pub(crate) fn of(error: &ConnectionError) -> LinkEnd {
+        match error {
+            ConnectionError::TimedOut => LinkEnd::TimedOut,
+            ConnectionError::Reset => LinkEnd::Reset,
+            ConnectionError::VersionMismatch => LinkEnd::VersionMismatch,
+            ConnectionError::CidsExhausted => LinkEnd::NotOpened,
+            ConnectionError::ApplicationClosed(close) => match AppCode::of(close.error_code) {
+                AppCode::ENDED => LinkEnd::Ended,
+                AppCode::STOPPED => LinkEnd::PeerStopped,
+                AppCode::UNFIT => LinkEnd::Unfit,
+                code => LinkEnd::ClosedByPeer(code),
+            },
+            ConnectionError::ConnectionClosed(close)
+                if close.error_code == TransportErrorCode::CONNECTION_REFUSED =>
+            {
+                LinkEnd::Refused
+            }
+            ConnectionError::ConnectionClosed(close) => LinkEnd::Transport {
+                code: close.error_code.into(),
+            },
+            ConnectionError::TransportError(error)
+                if error.code == TransportErrorCode::crypto(ACCESS_DENIED) =>
+            {
+                LinkEnd::WrongServerKey
+            }
+            ConnectionError::TransportError(error) => LinkEnd::Transport {
+                code: error.code.into(),
+            },
+            ConnectionError::LocallyClosed => {
+                unreachable!("a connection its own end closed has no entity left to tell")
+            }
+        }
+    }
+}

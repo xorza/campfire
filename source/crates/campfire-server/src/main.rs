@@ -37,7 +37,7 @@ use campfire_net::{
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::Keypair;
-use campfire_quic::{LinkTimes, QuicEndpoint, QuicPlugin, ResetKey, ServerKey};
+use campfire_quic::{LinkTimes, QuicEndpoint, ResetKey, ServerKey};
 use campfire_sim::TickRate;
 use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
@@ -232,7 +232,7 @@ fn server_app(
         StatesPlugin,
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    app.add_plugins((SimServer { tick, capabilities }, QuicPlugin));
+    app.add_plugins(SimServer { tick, capabilities });
     match opening {
         Opening::New(lobby) => app.insert_resource(*lobby),
         Opening::Restored(restore) => app.insert_resource(*restore),
