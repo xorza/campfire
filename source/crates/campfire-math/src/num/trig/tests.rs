@@ -156,8 +156,9 @@ proptest! {
     }
 
     #[test]
-    fn a_narrow_value_and_a_magnitude_round_as_a_wide_one(value in any::<i64>(), magnitude in any::<u64>()) {
-        // Each to nearest, ties to even, from 2⁻⁶² to 2⁻²⁴, as the i128 shift gives it.
+    fn a_narrow_value_and_a_magnitude_round_as_a_wide_one(value in any::<i64>(), magnitude in 0..=(u64::MAX - (1 << 38))) {
+        // Each to nearest, ties to even, from 2⁻⁶² to 2⁻²⁴, as the i128 shift gives it, over each
+        // one's domain.
         let wide = |value: i128| Rounding::NearestEven.shift_right(value, WIDE_BITS - Num::FRAC_BITS);
         prop_assert_eq!(i128::from(to_num_narrow(value).to_bits()), wide(i128::from(value)));
         prop_assert_eq!(i128::from(to_num_magnitude(magnitude)), wide(i128::from(magnitude)));

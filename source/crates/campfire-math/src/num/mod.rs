@@ -141,9 +141,14 @@ impl Num {
     }
 
     /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once to
-    /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit.
+    /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit. Adding
+    /// `2²³ − 1` and the floor's last bit before the shift rounds a rest past half up, a rest of
+    /// half up from an odd floor only, and a smaller rest down. The addition wraps only for a sum
+    /// within 2²⁴ of `i128::MAX`, whose quotient, wrapped or not, does not fit an `i64` either.
     pub(crate) const fn from_raw_products(sum: i128) -> Option<Num> {
-        narrow(Rounding::NearestEven.shift_right(sum, Self::FRAC_BITS))
+        const HALF_LESS_ONE: i128 = (1 << (Num::FRAC_BITS - 1)) - 1;
+        let odd = (sum >> Self::FRAC_BITS) & 1;
+        narrow(sum.wrapping_add(HALF_LESS_ONE + odd) >> Self::FRAC_BITS)
     }
 
     /// The value whose bits are nearest to `numerator / denominator`, for a ratio of raw products;

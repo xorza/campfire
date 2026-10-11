@@ -18,7 +18,9 @@ impl ProductSum {
     pub const ZERO: ProductSum = ProductSum { high: 0, low: 0 };
 
     /// Adds `a × b`, as `a × b_low + a × b_high · 2⁶⁴` for `b`'s halves, each a product that
-    /// fits `i128`: `b_low` below 2⁶⁴ and `b_high` within `i64`.
+    /// fits `i128`: `b_low` below 2⁶⁴ and `b_high` within `i64`. The low product's high half joins
+    /// the high product first, within `i128` as that product is within 2¹²⁶ and the half 2⁶³, so
+    /// the whole product is its low product's low half and that middle sum, one 256-bit addend.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -28,10 +30,10 @@ impl ProductSum {
         let a = a as i128;
         let low_part = a.wrapping_mul(b as u64 as i128);
         let high_part = a.wrapping_mul((b >> 64) as i64 as i128);
-        self.add_wide(low_part.cast_unsigned(), (low_part >> 127).cast_unsigned());
+        let middle = high_part.wrapping_add(low_part >> 64);
         self.add_wide(
-            (high_part << 64).cast_unsigned(),
-            (high_part >> 64).cast_unsigned(),
+            (low_part as u64 as u128) | (middle << 64).cast_unsigned(),
+            (middle >> 64).cast_unsigned(),
         );
     }
 
