@@ -76,7 +76,8 @@ fluent-bundle = "=0.16.0"
 fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"
 igd-next = "=0.18.0"
-# Only `store`'s platform layer, on Unix: the process's effective user, which std does not give.
+# Only `store`'s platform layer, on Unix: the process's effective user and a signal's disposition,
+# which std does not give.
 libc = "=0.2.190"
 lightyear = { version = "=0.30.1", features = ["crossbeam", "raw_connection"] }
 # The version Lightyear builds, for the types of its message registration with our own encode and
@@ -102,6 +103,9 @@ secp256k1 = "=0.30.0"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.11.0"
+# Only `store`'s platform layer, on Unix: the stop's signals, caught with a handler that does only
+# what a signal's handler may.
+signal-hook = { version = "=0.4.4", default-features = false }
 tempfile = "=3.27.0"
 thiserror = "=2.0.21"
 toml = "=1.1.6"
@@ -121,6 +125,7 @@ windows = { version = "=0.62.2", features = [
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
+    "Win32_System_Console",
     "Win32_System_SystemServices",
     "Win32_System_Threading",
 ] }

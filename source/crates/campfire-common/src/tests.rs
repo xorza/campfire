@@ -261,7 +261,14 @@ const PROXIES: [Proxy; 3] = [
         lints: &LINTS,
         methods: &STORAGE_METHODS,
         types: &STORAGE_TYPES,
-        dependencies: &["libc", "tempfile", "thiserror", "windows", "zeroize"],
+        dependencies: &[
+            "libc",
+            "signal-hook",
+            "tempfile",
+            "thiserror",
+            "windows",
+            "zeroize",
+        ],
         names: &["std::fs", "std::thread", "tempfile::"],
     },
     Proxy {

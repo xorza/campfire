@@ -6,20 +6,18 @@ Every planned piece of network work, in one place: the QUIC transport (`quic`), 
 
 The items below, in the order they are done; each line says why it stands where it does.
 
-1. **N1**, the server's stop: small, and every later check on a real network ends through it, its links closed and its mapping deleted.
-2. **N2**, a link that never answers: small, and it frees an address's quota from a silent link before N3 counts one.
-3. **O1** and **O2**: A3 and A5 build on the filters and rooms both settle.
-4. **Slice 3**, A3, A5 and A6, the next slice the user plays ([Workflow](AGENTS.md#workflow)); slice 2, in [PLAN.md](PLAN.md), goes on from S1 after it.
-5. **N3**, limits for each address: after A3, whose spectators count among the seats it bounds by.
-6. **R2**, the bench of the endpoint, then the cap of new connections it sets: on the same path as N3, the thread's new connections.
-7. **N4**, UPnP behind a host firewall.
-8. **R1**, the send queue: its rate model and its size.
-9. **H1** to **H5**, each as a slice touches its code.
-10. **R3** and **R4** as they show; then **P1** to **P4**, **P3** only as D14 of design 15 lets it.
+1. **N2**, a link that never answers: small, and it frees an address's quota from a silent link before N3 counts one.
+2. **O1** and **O2**: A3 and A5 build on the filters and rooms both settle.
+3. **Slice 3**, A3, A5 and A6, the next slice the user plays ([Workflow](AGENTS.md#workflow)); slice 2, in [PLAN.md](PLAN.md), goes on from S1 after it.
+4. **N3**, limits for each address: after A3, whose spectators count among the seats it bounds by.
+5. **R2**, the bench of the endpoint, then the cap of new connections it sets: on the same path as N3, the thread's new connections.
+6. **N4**, UPnP behind a host firewall.
+7. **R1**, the send queue: its rate model and its size.
+8. **H1** to **H5**, each as a slice touches its code.
+9. **R3** and **R4** as they show; then **P1** to **P4**, **P3** only as D14 of design 15 lets it.
 
 ## Ready
 
-- **N1. The server's stop** (`server`, `quic`). Ctrl-C or SIGTERM ends the server's process with no cleanup: its `QuicEndpoint` sends no close, so each client loses its link only by the idle timeout, and its `PortMap` deletes no mapping, which the router keeps for its lifetime of 2 hours, or until it restarts for a UPnP router that takes only leases that never end; design 10's stop has these signals end the server by an exit ([Sessions](docs/design/10-sessions.md#crash-restore), Stop; [QUIC transport](docs/design/15-quic-transport.md), D10, D12).
 - **N2. A link that never answers** (`net`). A link that never answers the offer stays linked while its connection lives, and the server sends it the offer again every `RESEND_TICKS` with no end, where design 05's step 3 closes it with `Unanswered` 10 s after its link's start; no close code `Unanswered` exists ([Protocol](docs/design/05-protocol-spec.md#connection)), and `net` gives that name to a query filter of the links with no answer (`sim_server/offering.rs:141`).
 - **N3. Limits for each address** (`quic`, `net`). No limit holds live connections or new handshakes for each address, where design 15's D13 bounds both by the session's seats for each IPv4 address or IPv6 /64, and `net` gives the endpoint no seat count ([QUIC transport](docs/design/15-quic-transport.md), D13).
 - **O1. An owner that changes** (`capabilities`, `net`). `Owner` is mutable and sent on change, and `KindFilter` follows it only as it is inserted or removed, where design 14's D17 has it immutable and sent on each insert: a change of `Owner` in place would leave each filter on the old owner, so the old owner's client would keep receiving the owner's kinds and the new owner's would not. No code changes an owner after the spawn yet; a capture will.

@@ -1,5 +1,6 @@
 //! How the engine writes files and runs threads: durable and secret files, data directories and
-//! their locks, and the worker threads that write them, each with its failure. The bytes of each
+//! their locks, and the worker threads that write them, each with its failure; and the signals
+//! that stop its process, the other promise of its platform layer. The bytes of each
 //! file are its owner's: this crate depends on no engine crate, and decides no policy for a
 //! failure.
 
@@ -48,6 +49,7 @@ pub use crate::path_error::PathError;
 #[cfg(any(test, feature = "internals"))]
 pub use crate::platform::file_link::FileLink;
 pub use crate::platform::owner_only::Exposure;
+pub use crate::platform::stop_signals::StopSignals;
 #[cfg(any(test, feature = "internals"))]
 pub use crate::race::Race;
 #[cfg(any(test, feature = "internals"))]

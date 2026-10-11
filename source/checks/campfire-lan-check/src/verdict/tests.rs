@@ -94,6 +94,7 @@ fn a_match_passes_when_every_order_lands_in_its_stamp_tick_or_waited_for_a_catch
     // caught up ran ticks 50 to 55, and the server read that input only after them, so it took
     // effect in 56.
     let listening = Listening {
+        address: "0.0.0.0:4433".parse().unwrap(),
         tls_key: TlsKey::new([7; 32]),
         server_key: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
             .parse()

@@ -1,6 +1,9 @@
 //! Headless game server: opens a session of a mode on an address, lets its players join over
 //! QUIC, runs the match, and writes the session log once every player left. Its data
-//! directory, which it holds locked while it runs, keeps its key.
+//! directory, which it holds locked while it runs, keeps its key. Ctrl-C, `SIGTERM` or `SIGHUP`,
+//! each unless its start ignored it, stops it by an exit with code 130: its links close and its
+//! port mapping goes, and its session waits in the journal for the next start to restore; a
+//! second signal ends it at once.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info` by default). With `CAMPFIRE_LOG` set
 //! to a path, they also go there as JSON lines, filtered by `CAMPFIRE_LOG_FILTER` (Campfire's
@@ -18,7 +21,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use bevy_app::{App, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
+use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
@@ -39,6 +42,7 @@ use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::Keypair;
 use campfire_quic::{LinkTimes, PortMap, QuicEndpoint};
 use campfire_sim::TickRate;
+use campfire_store::StopSignals;
 use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
 use tracing::{error, info};
@@ -67,6 +71,14 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
+    // Caught first, so a signal during the start stops the server at its first frame.
+    let stop = match StopSignals::catch() {
+        Ok(stop) => stop,
+        Err(error) => {
+            error!(error = %ErrorReport::of(&error), "the stop's signals are not caught");
+            return ExitCode::from(ExitStatus::Failure);
+        }
+    };
     let args = match Logging::command_line(env::args_os()) {
         Ok(line) => Args::of(line),
         Err(status) => return ExitCode::from(status),
@@ -142,16 +154,19 @@ fn main() -> ExitCode {
             Ok(started) => started,
             Err(code) => return code,
         };
-    // Held to the exit, whose drop deletes the mapping (design 15, D12).
-    let _port_map = port_map
-        .then(|| PortMap::start(endpoint.local_address()))
-        .flatten();
-    let listening = announce(&opening, &mode, address, tls_key, &server.key);
+    let local = endpoint.local_address();
+    let listening = announce(&opening, &mode, local, tls_key, &server.key);
     let tick = TickRate::new(opening.terms().tick_hz).length();
-    let mut app = server_app(opening, data, tick, listening, capabilities);
+    let mut app = server_app(opening, data, tick, listening, capabilities, stop);
+    let port_map = port_map.then(|| PortMap::start(local)).flatten();
     let server = app.world_mut().spawn((RawServer, endpoint)).id();
     app.world_mut().trigger(Start { entity: server });
-    ProcessExit::code(app.run())
+    let exit = app.run();
+    // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP
+    // request's 10 s, which no client waits for (design 15, D12).
+    drop(app);
+    drop(port_map);
+    ProcessExit::code(exit)
 }
 
 /// What the server starts with: its session and its setup.
@@ -214,13 +229,16 @@ impl Started {
 }
 
 /// The server's app: its plugins at `tick` a tick, the session of `opening`, a `listening`
-/// event logged once its transport listens, and the end once every player left.
+/// event logged once its transport listens, and the end once every player left, or at a signal
+/// `stop` caught, with its code, the session left in its journal for the next start to restore
+/// (design 10, Stop).
 fn server_app(
     opening: Opening,
     data: ServerDir,
     tick: Duration,
     listening: Listening,
     capabilities: CapabilitySet,
+    stop: StopSignals,
 ) -> App {
     let mut app = App::new();
     app.add_plugins((
@@ -247,6 +265,11 @@ fn server_app(
         (
             Restore::run.run_if(resource_exists::<Restore>),
             exit_when_due,
+            move |world: &mut World| {
+                if stop.received() {
+                    world.write_message(AppExit::from_code(StopSignals::EXIT_CODE));
+                }
+            },
         )
             .chain(),
     );
@@ -254,8 +277,8 @@ fn server_app(
 }
 
 /// What the server logs once its transport listens for the session `opening` starts: how a
-/// player joins it, through `address` and the TLS key `tls_key`; and logs now,
-/// for a new session, that it opened, of the mode `mode`.
+/// player joins it, through its socket's address `address` and the TLS key `tls_key`; and logs
+/// now, for a new session, that it opened, of the mode `mode`.
 fn announce(
     opening: &Opening,
     mode: &Path,
@@ -276,6 +299,7 @@ fn announce(
     let key = key.x_only_public_key().0;
     let tick_hz = terms.tick_hz;
     Listening {
+        address,
         tls_key,
         server_key: key,
         tick_hz,

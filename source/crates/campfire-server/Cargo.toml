@@ -27,6 +27,7 @@ tracing.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+campfire-package = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]

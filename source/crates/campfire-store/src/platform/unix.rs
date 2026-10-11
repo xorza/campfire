@@ -1,22 +1,35 @@
 #![expect(
     unsafe_code,
-    reason = "the call for the process's effective user, which std does not give"
+    reason = "the calls for the effective user and a signal's disposition, which std does not give"
 )]
 
 use std::fs::{self, DirBuilder, File, Metadata, OpenOptions};
 use std::io;
+use std::mem::MaybeUninit;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::Path;
+use std::ptr;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
+use libc::{SIGHUP, SIGINT, SIGTERM, c_int};
+use signal_hook::flag;
+
+use crate::platform::stop_signals::StopSignals;
 
 /// The Unix side of the platform layer: a mode given as a file or directory is made keeps it its
 /// owner's only, and `fsync` of a directory keeps its names. A file is its owner's only when its
 /// owner is the process's effective user, or root, who may open any file, and its mode lets
-/// neither its group nor others in.
+/// neither its group nor others in. A stop's signal is caught by `signal-hook`, whose handler
+/// does only what a signal's handler may.
 #[derive(Debug)]
 pub(crate) struct Os;
 
 /// The bits of a mode that let a file's group or others in.
 const SHARED: u32 = 0o077;
+
+/// The signals that stop a process.
+const STOP: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
 
 /// Root's user id.
 const ROOT: u32 = 0;
@@ -85,6 +98,34 @@ impl Os {
     pub(crate) fn sync_dir(directory: &Path) -> io::Result<()> {
         File::open(directory)?.sync_all()
     }
+
+    /// Raises `received` at each stop's signal the process did not start with ignored, and ends
+    /// the process at the next: the end's handler goes first, so the first signal finds the flag
+    /// down, as `signal-hook` has it.
+    pub(crate) fn catch_stop(received: &Arc<AtomicBool>) -> io::Result<()> {
+        for signal in STOP {
+            if Os::ignored(signal)? {
+                continue;
+            }
+            let code = c_int::from(StopSignals::EXIT_CODE);
+            flag::register_conditional_shutdown(signal, code, Arc::clone(received))?;
+            flag::register(signal, Arc::clone(received))?;
+        }
+        Ok(())
+    }
+
+    /// Whether the process ignores `signal`.
+    fn ignored(signal: c_int) -> io::Result<bool> {
+        let mut action = MaybeUninit::<libc::sigaction>::uninit();
+        // SAFETY: with no new action, `sigaction` only writes the signal's disposition to a valid
+        // out pointer.
+        if unsafe { libc::sigaction(signal, ptr::null(), action.as_mut_ptr()) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `sigaction` succeeded, so it wrote the whole action.
+        let action = unsafe { action.assume_init() };
+        Ok(action.sa_sigaction == libc::SIG_IGN)
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]
@@ -92,11 +133,39 @@ pub(crate) mod internals {
     use std::fs;
     use std::io;
     use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::os::unix::process::CommandExt;
     use std::path::Path;
+    use std::process::Command;
+
+    use libc::{SIGHUP, SIGINT, SIGTERM};
 
     use crate::platform::os::Os;
 
     impl Os {
+        pub(crate) fn ignore_terminal(command: &mut Command) {
+            // SAFETY: the closure runs in the child between its fork and its exec, and calls only
+            // `signal`, which POSIX makes async-signal-safe.
+            unsafe {
+                command.pre_exec(|| {
+                    for signal in [SIGINT, SIGHUP] {
+                        if libc::signal(signal, libc::SIG_IGN) == libc::SIG_ERR {
+                            return Err(io::Error::last_os_error());
+                        }
+                    }
+                    Ok(())
+                })
+            };
+        }
+
+        pub(crate) fn stop(child: u32) -> io::Result<()> {
+            let child = libc::pid_t::try_from(child).expect("a process id fits pid_t");
+            // SAFETY: `kill` sends a signal to a process by its id, and touches no memory.
+            if unsafe { libc::kill(child, SIGTERM) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        }
+
         pub(crate) fn expose(path: &Path) -> io::Result<()> {
             fs::set_permissions(path, fs::Permissions::from_mode(0o644))
         }
@@ -113,7 +182,22 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use libc::SIGUSR2;
+
     use crate::platform::os::Os;
+
+    #[test]
+    fn an_ignored_signal_is_read_as_ignored() {
+        // `SIGUSR2`, which nothing of the test process catches, so its disposition is the
+        // test's to change.
+        assert!(!Os::ignored(SIGUSR2).unwrap());
+        // SAFETY: `signal` sets a disposition, and touches no memory.
+        unsafe { libc::signal(SIGUSR2, libc::SIG_IGN) };
+        assert!(Os::ignored(SIGUSR2).unwrap());
+        // SAFETY: as above.
+        unsafe { libc::signal(SIGUSR2, libc::SIG_DFL) };
+        assert!(!Os::ignored(SIGUSR2).unwrap());
+    }
 
     #[test]
     fn a_file_is_exposed_by_its_mode_and_by_another_owner() {
