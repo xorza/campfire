@@ -138,7 +138,7 @@ fn system_names(world: &mut World) -> Vec<String> {
 
 /// The exclusive systems a predicting client builds: Bevy gives an exclusive system no access,
 /// so the check cannot read what each reads. The test fails on one this list lacks, and on one
-/// it names that is gone, so no new one joins them unchecked (`PLAN_NET.md`, R6).
+/// it names that is gone, so no new one joins them unchecked (the issue log, **Core**).
 const EXCLUSIVE: [&str; 8] = [
     "abilities::channels::Channels::predict_channels",
     "combat::attacks::Attacks::attack_events",
