@@ -27,6 +27,8 @@ OWN = SOURCE / "target" / "drive"
 LOGS = OWN / "log"
 WARM = OWN / "warm"
 HOLDERS = OWN / "holders"
+# One JSON line for each step a command or a pass ran, to judge what the warm loop saves.
+HISTORY = OWN / "history.jsonl"
 LAN_ROOT = OWN / "lan-check"
 
 IN_CI = "GITHUB_ACTIONS" in os.environ
@@ -45,7 +47,7 @@ LINT = (
 SHIP = ("clippy", "--workspace", "--locked", "--keep-going", "--message-format=short")
 TESTS = ("nextest", "run", "--workspace", "--all-features", "--locked")
 QUIET_NEXTEST = (
-    "--cargo-quiet", "--show-progress", "none", "--status-level", "fail",
+    "--show-progress", "none", "--status-level", "fail",
     "--final-status-level", "slow", "--failure-output", "final", "--success-output", "never",
 )
 LAN_PACKAGES = (
@@ -59,6 +61,8 @@ PROGRESS = re.compile(
 LIBTEST_PASS = re.compile(r"^(running \d+ tests?|test result: ok\..*)$")
 # Nextest's run header and its notices of a test still running: its summary lists each slow test.
 NEXTEST_PROGRESS = re.compile(r"^\s*(Nextest run ID .*|Starting \d+ tests? .*|\[>\s*[\d.]+s\] .*|─+)$")
+# A unit cargo had to build, which a warm cache would have held.
+BUILT = re.compile(r"^\s*(Compiling|Checking|Documenting)\s")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # What changes a fingerprint from outside the workspace's own files.
 STAMPED = re.compile(
@@ -175,6 +179,7 @@ class Outcome:
     seconds: float
     log: Path | None
     printed: int
+    built: int
 
     def line(self) -> str:
         text = f"{self.name:<12} {self.status.value:<4} {self.seconds:6.1f} s"
@@ -324,7 +329,7 @@ def run_step(step: Step) -> Outcome:
     LOGS.mkdir(parents=True, exist_ok=True)
     log = LOGS / step.log_name()
     keep = LineFilter()
-    printed = hidden = 0
+    printed = hidden = built = 0
     start = time.monotonic()
     if IN_CI:
         print(f"::group::{step.name}")
@@ -345,6 +350,8 @@ def run_step(step: Step) -> Outcome:
                 for raw in process.stdout:
                     line = ANSI.sub("", raw.rstrip("\r\n"))
                     out.write(line + "\n")
+                    if BUILT.match(line):
+                        built += 1
                     if IN_CI:
                         print(raw, end="")
                         printed += 1
@@ -363,19 +370,21 @@ def run_step(step: Step) -> Outcome:
     if hidden:
         print(f"... {hidden} more lines in {shown_path(log)}")
     status = Status.OK if code == 0 else Status.FAIL
-    return Outcome(step.name, status, time.monotonic() - start, log, printed)
+    return Outcome(step.name, status, time.monotonic() - start, log, printed, built)
 
 
-def run_steps(steps: list[Step]) -> int:
+def run_steps(command: str, steps: list[Step]) -> int:
     with Holder():
+        warm = warm_loop_pid() is not None
         warn_on_stamp()
         outcomes: list[Outcome] = []
         for step in steps:
             if step.needs_previous and outcomes and outcomes[-1].status is not Status.OK:
-                outcome = Outcome(step.name, Status.SKIP, 0.0, None, 0)
+                outcome = Outcome(step.name, Status.SKIP, 0.0, None, 0, 0)
             else:
                 outcome = run_step(step)
             print(outcome.line())
+            record(command, step.name, outcome.status.value, outcome, warm)
             outcomes.append(outcome)
     # Diagnostics between the status lines leave them apart: gather them again at the end.
     if len(outcomes) > 1 and any(outcome.printed for outcome in outcomes):
@@ -465,7 +474,24 @@ def build_quietly(step: Step) -> Outcome | None:
             stop_group(process)
             raise
     status = Status.OK if code == 0 else Status.FAIL
-    return Outcome(step.name, status, time.monotonic() - start, log, 0)
+    with log.open(encoding="utf-8", errors="replace") as written:
+        built = sum(1 for line in written if BUILT.match(ANSI.sub("", line)))
+    return Outcome(step.name, status, time.monotonic() - start, log, 0, built)
+
+
+def record(command: str, step: str, status: str, outcome: Outcome | None, warm: bool) -> None:
+    entry = {
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "command": command,
+        "step": step,
+        "status": status,
+        "seconds": round(outcome.seconds, 1) if outcome else None,
+        "built": outcome.built if outcome else None,
+        "warm_loop": warm,
+    }
+    OWN.mkdir(parents=True, exist_ok=True)
+    with HISTORY.open("a", encoding="utf-8") as history:
+        history.write(json.dumps(entry) + "\n")
 
 
 def stop_group(process: subprocess.Popen) -> None:
@@ -496,10 +522,12 @@ def warm_pass(args: list[str]) -> int:
                     time.sleep(POLL_SECONDS)
             outcome = build_quietly(steps[index])
             if outcome is None:
+                record("warm", steps[index].name, "stopped", None, True)
                 print(f"{clock()} stopped for a command")
                 index = 0
                 continue
-            print(f"{clock()} {outcome.line()}")
+            record("warm", steps[index].name, outcome.status.value, outcome, True)
+            print(f"{clock()} {outcome.line()} built {outcome.built}")
             index += 1
         print(f"{clock()} warm")
     except KeyboardInterrupt:
@@ -519,7 +547,7 @@ def refuse_arguments(name: str, args: list[str]) -> None:
 
 def check(args: list[str]) -> int:
     refuse_arguments("check", args)
-    return run_steps([fmt_step(), lint_step(), ship_step(), tests_step()])
+    return run_steps("check", [fmt_step(), lint_step(), ship_step(), tests_step()])
 
 
 def test(args: list[str]) -> int:
@@ -527,25 +555,25 @@ def test(args: list[str]) -> int:
     own, rest = args[:split], args[split:]
     env = {"CAMPFIRE_BLESS": "1"} if "--bless" in own else {}
     own = [arg for arg in own if arg != "--bless"]
-    return run_steps([tests_step(own + rest, env)])
+    return run_steps("test", [tests_step(own + rest, env)])
 
 
 def doc(args: list[str]) -> int:
     refuse_arguments("doc", args)
-    return run_steps([doctests_step(), rustdoc_step()])
+    return run_steps("doc", [doctests_step(), rustdoc_step()])
 
 
 def bench(args: list[str]) -> int:
-    return run_steps([bench_step(args)])
+    return run_steps("bench", [bench_step(args)])
 
 
 def lan(args: list[str]) -> int:
     refuse_arguments("lan", args)
-    return run_steps([lan_build_step(), lan_run_step()])
+    return run_steps("lan", [lan_build_step(), lan_run_step()])
 
 
 def zero_hour(args: list[str]) -> int:
-    return run_steps([
+    return run_steps("zero-hour", [
         Step(
             "zero hour",
             cargo("run", "--release", "--locked", "-p", "campfire-zero-hour-check", "--", *args),
@@ -566,7 +594,7 @@ def gate(args: list[str]) -> int:
         steps.append(cross_step(PLATFORM.cross_target))
     # Last, so target/debug holds the LAN check's build of each binary, which CI keeps.
     steps += [lan_build_step(), lan_run_step()]
-    return run_steps(steps)
+    return run_steps("gate", steps)
 
 
 def warm(args: list[str]) -> int:
