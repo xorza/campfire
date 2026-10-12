@@ -17,7 +17,8 @@ use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Controller, ServerInput, SignedReceipt};
 use campfire_runner::Session;
-use campfire_store::{EntryKind, InputFile, Scratch};
+use campfire_store::internals::Scratch;
+use campfire_store::{EntryKind, InputFile};
 
 /// The most bytes a test reads of a receipt file: one receipt, a few hundred.
 const RECEIPT_LEN: usize = 4096;

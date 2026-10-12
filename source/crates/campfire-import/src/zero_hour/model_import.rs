@@ -710,7 +710,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
 
     use super::*;
     use crate::zero_hour::hierarchy::Pivot;

@@ -13,7 +13,8 @@ use campfire_log::LogLine;
 use campfire_net::Listening;
 use campfire_package::PackageDir;
 use campfire_quic::{LINK_MIN_MTU, LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
-use campfire_store::{InputFile, Scratch, StopSignals};
+use campfire_store::internals::Scratch;
+use campfire_store::{InputFile, StopSignals};
 use lightyear::link::{Link, LinkMtu, LinkStart, Linked};
 
 /// The longest each step waits, inside a test's bound of 1 s.

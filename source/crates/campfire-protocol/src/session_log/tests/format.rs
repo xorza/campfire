@@ -5,7 +5,8 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use campfire_store::{DirEntries, DurableFile, EntryKind, InputFile};
+use campfire_store::internals::PinnedFile;
+use campfire_store::{DirEntries, EntryKind, InputFile};
 
 use super::*;
 
@@ -54,8 +55,10 @@ fn a_log_format_changes_only_with_its_tag() {
             "the bytes of {name} changed: a change of the format raises `LOG_TAG`; a change of \
              `minimal` alone removes {name}, then writes it again with CAMPFIRE_BLESS=1"
         ),
-        None if env::var_os("CAMPFIRE_BLESS").is_some() => DurableFile::write(&path, &now).unwrap(),
-        None => panic!("no file pins {name}: write it with CAMPFIRE_BLESS=1"),
+        None => assert!(
+            PinnedFile::new(&path).bless(&now).unwrap(),
+            "no file pins {name}: write it with CAMPFIRE_BLESS=1"
+        ),
     }
     assert_older_refused(&dir, &name);
 }

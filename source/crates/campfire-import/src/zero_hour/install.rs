@@ -294,7 +294,7 @@ impl Archive {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
 
     use crate::texture::internals::textures;
     use crate::zero_hour::big_archive::internals::big;
@@ -369,7 +369,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
 
     use super::*;
     use crate::zero_hour::big_archive::internals::big;

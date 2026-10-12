@@ -1,4 +1,4 @@
-use campfire_store::{Race, Scratch};
+use campfire_store::internals::{Race, Scratch};
 
 use super::*;
 

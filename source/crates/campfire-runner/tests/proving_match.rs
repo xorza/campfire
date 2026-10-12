@@ -13,7 +13,7 @@ use campfire_math::{Num, Vec3};
 use campfire_runner::SessionWorld;
 use campfire_runner::internals::MatchBuild;
 use campfire_runner::internals::{
-    CopyCheck, FixedMatch, Golden, HarnessWorldInternals, ProvingMatch,
+    CopyCheck, FixedMatch, Golden, HarnessWorldInternals, MatchUnits, ProvingMatch,
 };
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
@@ -74,17 +74,8 @@ const LANCER_RANGE: Num = Num::int(4);
 
 /// The hero of player `slot` in `world`, by its stable id.
 fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
-    world
-        .resource::<EntityIndex>()
-        .iter()
-        .map(|(id, entity)| (id, world.entity(entity)))
-        .find(|(_, unit)| {
-            unit.contains::<Experience>()
-                && unit
-                    .get::<Owner>()
-                    .is_some_and(|owner| owner.slot().get() == slot)
-        })
-        .unwrap()
+    let id = MatchUnits::of(world).hero(slot);
+    (id, world.entity_ref_of(id).unwrap())
 }
 
 /// Asserts that tick `tick` of `fixed`, a match of `set`, failed no script call, and

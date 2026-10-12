@@ -13,7 +13,7 @@ use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_protocol::{AfterLeave, Controller, ServerInput, SessionLog};
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
-use campfire_store::Scratch;
+use campfire_store::internals::Scratch;
 
 /// Where the server's hero of `slot` walks to.
 fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {

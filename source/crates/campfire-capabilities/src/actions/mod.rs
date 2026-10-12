@@ -143,22 +143,21 @@ impl Actions {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
+    #[cfg(any(test, feature = "bench"))]
     use campfire_common::Ticks;
+    #[cfg(any(test, feature = "bench"))]
     use campfire_math::Num;
 
     use crate::actions::Actions;
-    use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
-    use crate::actions::actions_column::ActionsColumn;
-    use crate::actions::kind_spec::KindSpec;
-    use crate::actions::rank_values::RankValues;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::actions::{action_range::ActionRange, gather_spec::GatherSpec};
-    use crate::scripts::hook_set::HookSet;
     use crate::units::action_id::ActionId;
-    use crate::units::view::View;
     #[cfg(any(test, feature = "bench"))]
-    use crate::{stats::pool_cost::PoolCost, units::filter::Filter};
+    use crate::{
+        actions::action::Action, actions::action::Aim, actions::action_range::ActionRange,
+        actions::actions_column::ActionsColumn, actions::gather_spec::GatherSpec,
+        actions::kind_spec::KindSpec, actions::rank_values::RankValues, scripts::hook_set::HookSet,
+        stats::pool_cost::PoolCost, units::filter::Filter, units::view::View,
+    };
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
@@ -204,6 +203,7 @@ pub(crate) mod internals {
         }
 
         /// Adds `action` to the match's action book, and shares the book with the script view.
+        #[cfg(any(test, feature = "bench"))]
         pub(crate) fn push(world: &mut World, action: Action) -> ActionId {
             let mut book = world.resource_mut::<ActionBook>();
             let id = book.push(action);

@@ -10,7 +10,8 @@ use std::path::PathBuf;
 use campfire_log::ErrorReport;
 use campfire_runner::internals::ProvingMatch;
 use campfire_sim::StateRegistry;
-use campfire_store::{DurableFile, InputFile};
+use campfire_store::InputFile;
+use campfire_store::internals::PinnedFile;
 
 /// The hex digits of each fingerprint the file pins.
 const DIGITS: usize = 16;
@@ -63,9 +64,10 @@ fn a_state_types_layout_changes_only_with_the_snapshot_version() {
             StateRegistry::DATA_VERSION
         );
     }
-    if env::var_os("CAMPFIRE_BLESS").is_some() {
-        DurableFile::write(&path, now.as_bytes())
-            .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)));
+    let blessed = PinnedFile::new(&path)
+        .bless(now.as_bytes())
+        .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)));
+    if blessed {
         return;
     }
     assert_eq!(

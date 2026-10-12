@@ -6,7 +6,8 @@ use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats
 use bevy_ecs::component::Component;
 use campfire_sim::Position;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_store::{InputFile, SourceFiles};
+use campfire_store::InputFile;
+use campfire_store::internals::SourceFiles;
 
 use super::*;
 use crate::actions::action_book::ActionBook;

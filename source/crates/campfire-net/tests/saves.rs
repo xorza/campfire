@@ -17,7 +17,8 @@ use campfire_net::{
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
 use campfire_runner::{InputRules, Session, SessionWorld};
 use campfire_sim::{SimWorld, TickRate};
-use campfire_store::{InputFile, Scratch};
+use campfire_store::InputFile;
+use campfire_store::internals::Scratch;
 use lightyear::core::tick::TickDuration;
 
 /// A chain of room for three checkpoints.

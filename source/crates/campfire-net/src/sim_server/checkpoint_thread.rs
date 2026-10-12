@@ -185,7 +185,7 @@ mod tests {
     use campfire_protocol::LogCarry;
     use campfire_protocol::internals::TestKey;
     use campfire_sim::{IdAllocator, Position};
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
 
     use super::*;
 

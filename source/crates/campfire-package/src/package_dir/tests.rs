@@ -1,8 +1,6 @@
-use std::env;
-
 use campfire_codec::Toml;
 use campfire_common::Fingerprint;
-use campfire_store::{DurableFile, Scratch};
+use campfire_store::internals::{PinnedFile, Scratch};
 
 use super::*;
 use crate::package_store::PackageStore;
@@ -365,13 +363,10 @@ fn every_workspace_package_holds_the_index_of_its_files() {
     // The four test heroes, the three test modes, the test rules, the MOBA's six heroes, its
     // spells, its German text and its 3v3, and Zero Hour's rules.
     assert_eq!(found.len(), 18, "{found:?}");
-    let bless = env::var_os("CAMPFIRE_BLESS").is_some();
     for dir in found {
         let index = PackageDir::new(&dir).index_files().unwrap();
         let at = dir.join(FileIndex::PATH);
-        if bless {
-            DurableFile::write(&at, index.bytes()).unwrap();
-        }
+        PinnedFile::new(&at).bless(index.bytes()).unwrap();
         let held = InputFile::read_if_present(&at, INDEX_LEN).unwrap();
         assert!(
             held.as_deref() == Some(index.bytes()),

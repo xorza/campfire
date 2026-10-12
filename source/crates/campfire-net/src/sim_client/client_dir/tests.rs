@@ -1,5 +1,5 @@
 use campfire_protocol::SessionId;
-use campfire_store::Scratch;
+use campfire_store::internals::Scratch;
 
 use super::*;
 

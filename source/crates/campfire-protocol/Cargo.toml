@@ -24,7 +24,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 # A test reads and writes the pinned log files.
-campfire-store.workspace = true
+campfire-store = { workspace = true, features = ["internals"] }
 # A test names the postcard error a decode keeps.
 postcard.workspace = true
 

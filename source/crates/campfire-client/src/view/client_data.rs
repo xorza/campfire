@@ -113,7 +113,7 @@ impl ClientData {
 #[cfg(test)]
 mod tests {
     use campfire_package::Blend;
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
 
     use super::*;
     use crate::view::package_source::internals::package;

@@ -266,7 +266,7 @@ mod tests {
     use campfire_common::{Fingerprint, MapName, Ticks};
     use campfire_protocol::internals::TestKey;
     use campfire_protocol::{EngineRelease, SeedChain, SessionTerms, SlotPlan};
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
 
     use super::*;
 

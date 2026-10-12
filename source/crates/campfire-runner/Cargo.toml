@@ -12,7 +12,7 @@ internals = [
     "campfire-package/internals",
     "campfire-protocol/internals",
     "campfire-sim/internals",
-    "dep:campfire-store",
+    "campfire-store/internals",
 ]
 bench = ["internals", "dep:criterion", "dep:campfire-script"]
 

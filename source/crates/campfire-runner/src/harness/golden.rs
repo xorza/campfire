@@ -10,7 +10,8 @@ use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
-use campfire_store::{DurableFile, InputFile};
+use campfire_store::InputFile;
+use campfire_store::internals::PinnedFile;
 
 /// The pinned record of a whole match, one line a tick: the state hash, which changes with the
 /// state's layout, and a digest of the match's behaviour, which does not. A change of layout
@@ -141,9 +142,10 @@ impl Golden {
             let behaviour = &at.behaviour.to_string()[..DIGITS];
             writeln!(lines, "{tick} {state} {behaviour}").expect("text writes into a string");
         }
-        if env::var_os("CAMPFIRE_BLESS").is_some() {
-            DurableFile::write(&path, lines.as_bytes())
-                .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)));
+        let blessed = PinnedFile::new(&path)
+            .bless(lines.as_bytes())
+            .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)));
+        if blessed {
             return;
         }
         let pinned = InputFile::read_text(&path, Golden::MAX_LEN).unwrap_or_else(|error| {

@@ -9,7 +9,7 @@ use campfire_protocol::internals::TestKey;
 use campfire_protocol::{EngineRelease, Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
-use campfire_store::Scratch;
+use campfire_store::internals::Scratch;
 
 /// The scenario's match, its server's data in `scratch`, after 90 steps; with the state hash after
 /// each tick the server ran.

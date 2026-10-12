@@ -1,5 +1,6 @@
 use campfire_protocol::SessionId;
-use campfire_store::{Scratch, SecretFile};
+use campfire_store::SecretFile;
+use campfire_store::internals::Scratch;
 
 use super::*;
 

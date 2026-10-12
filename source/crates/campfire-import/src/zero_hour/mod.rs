@@ -350,7 +350,7 @@ impl ZeroHour<'_> {
 mod tests {
     use campfire_capabilities::DeclaredName;
     use campfire_package::{ModePackages, PackageDir};
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
     use sha2::{Digest, Sha256};
 
     use super::*;

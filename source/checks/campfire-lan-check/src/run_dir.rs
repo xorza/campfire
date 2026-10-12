@@ -67,7 +67,8 @@ impl RunDir {
 mod tests {
     use std::time::Duration;
 
-    use campfire_store::{DurableCreateError, PathError, Scratch};
+    use campfire_store::internals::Scratch;
+    use campfire_store::{DurableCreateError, PathError};
 
     use super::*;
 

@@ -17,7 +17,8 @@ use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::{SimWorld, StateRegistry};
-use campfire_store::{EntryKind, InputFile, Scratch};
+use campfire_store::internals::Scratch;
+use campfire_store::{EntryKind, InputFile};
 
 /// The chain of the scenario's sessions, of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());

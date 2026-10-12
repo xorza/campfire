@@ -18,7 +18,7 @@ use campfire_net::{
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog};
-use campfire_store::Scratch;
+use campfire_store::internals::Scratch;
 use lightyear::prelude::Connect;
 
 /// How long the client gets to join and play.

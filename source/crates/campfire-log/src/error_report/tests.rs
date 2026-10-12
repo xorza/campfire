@@ -1,7 +1,7 @@
 use std::io;
 use std::path::Path;
 
-use campfire_store::{SourceFile, SourceFiles};
+use campfire_store::internals::{SourceFile, SourceFiles};
 
 use super::*;
 

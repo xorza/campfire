@@ -100,7 +100,7 @@ impl AssetReader for PackageSource {
 pub(crate) mod internals {
     use campfire_capabilities::PackagePath;
     use campfire_package::{PackageDir, PackageReader, PackageWriter};
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
 
     /// The package `dir` of `scratch`, written with `files`, as its client reads it.
     pub(crate) fn package(scratch: &Scratch, dir: &str, files: &[(&str, &[u8])]) -> PackageReader {
@@ -126,7 +126,7 @@ mod tests {
     use bevy::render::render_resource::TextureFormat;
     use bevy::tasks::block_on;
     use campfire_import::internals as import;
-    use campfire_store::Scratch;
+    use campfire_store::internals::Scratch;
 
     use super::*;
     use crate::view::package_source::internals::package;

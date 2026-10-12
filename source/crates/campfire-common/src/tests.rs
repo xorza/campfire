@@ -1,7 +1,8 @@
 use std::panic;
 use std::path::Path;
 
-use campfire_store::{DirEntries, DirEntry, EntryKind, InputFile, SourceFile, SourceFiles};
+use campfire_store::internals::{SourceFile, SourceFiles};
+use campfire_store::{DirEntries, DirEntry, EntryKind, InputFile};
 
 /// The most bytes a test reads of a file of the workspace's own: far past any it holds.
 const FILE_LEN: usize = 1 << 20;

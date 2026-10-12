@@ -15,7 +15,7 @@ use campfire_net::{
 use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
-use campfire_store::Scratch;
+use campfire_store::internals::Scratch;
 use lightyear::prelude::Unlinked;
 
 /// Steps a client and the server may take to link, offer, join and play again.

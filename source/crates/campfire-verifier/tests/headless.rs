@@ -30,7 +30,8 @@ use campfire_runner::{
     TermsError,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
-use campfire_store::{AppendWriter, PathError, ReadError, Scratch};
+use campfire_store::internals::Scratch;
+use campfire_store::{AppendWriter, PathError, ReadError};
 use campfire_verifier::{
     Replay, ReplayError, SnapshotCheckError, Verification, Verified, VerifyError,
 };

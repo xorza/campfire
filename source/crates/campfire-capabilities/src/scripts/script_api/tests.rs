@@ -7,7 +7,8 @@ use std::num::NonZeroU64;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 
-use campfire_store::{DurableFile, InputFile};
+use campfire_store::InputFile;
+use campfire_store::internals::PinnedFile;
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 
 use super::*;
@@ -307,9 +308,9 @@ const REFERENCE: &str = concat!(
 fn the_reference_is_what_the_registry_writes() {
     let mut api = Release::script_api();
     let written = api.reference();
-    if env::var_os("CAMPFIRE_BLESS").is_some() {
-        DurableFile::write(Path::new(REFERENCE), written.as_bytes()).unwrap();
-    }
+    PinnedFile::new(Path::new(REFERENCE))
+        .bless(written.as_bytes())
+        .unwrap();
     let held = InputFile::read_text(Path::new(REFERENCE), REFERENCE_LEN).unwrap();
     assert!(
         held == written,

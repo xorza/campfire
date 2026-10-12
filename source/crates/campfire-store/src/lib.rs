@@ -19,6 +19,8 @@ mod input_file;
 mod latest_writer;
 mod output_file;
 mod path_error;
+#[cfg(any(test, feature = "internals"))]
+mod pinned_file;
 mod platform;
 #[cfg(any(test, feature = "internals"))]
 mod race;
@@ -46,17 +48,20 @@ pub use crate::input_file::{FileStamp, InputFile, InputRanges, InputStream, Stam
 pub use crate::latest_writer::LatestWriter;
 pub use crate::output_file::OutputFile;
 pub use crate::path_error::PathError;
-#[cfg(any(test, feature = "internals"))]
-pub use crate::platform::file_link::FileLink;
 pub use crate::platform::owner_only::Exposure;
 pub use crate::platform::stop_signals::StopSignals;
-#[cfg(any(test, feature = "internals"))]
-pub use crate::race::Race;
-#[cfg(any(test, feature = "internals"))]
-pub use crate::scratch::Scratch;
 pub use crate::secret_file::SecretFile;
-#[cfg(any(test, feature = "internals"))]
-pub use crate::source_files::{SourceFile, SourceFiles};
 pub use crate::stream_writer::StreamWriter;
 pub use crate::stream_writer::stream_sender::StreamSender;
 pub use crate::worker::Worker;
+
+/// What the tests of the engine's crates use of files: a test's own directory, the files it pins,
+/// the workspace's sources, a race of writers and a link.
+#[cfg(any(test, feature = "internals"))]
+pub mod internals {
+    pub use crate::pinned_file::PinnedFile;
+    pub use crate::platform::file_link::FileLink;
+    pub use crate::race::Race;
+    pub use crate::scratch::Scratch;
+    pub use crate::source_files::{SourceFile, SourceFiles};
+}
