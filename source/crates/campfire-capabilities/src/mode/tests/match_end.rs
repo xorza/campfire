@@ -36,7 +36,7 @@ fn on_mode_input(ctx, player, name, value) {
     // Units: the tower 0 of a, the neutral grunt 1 at (0, 0), a's grunts 2 and 3, b's grunt 4. The
     // neutral grunt stands at (3, 0) when b's grunt strikes it for its 10 health, in tick 0; a's
     // grunt 2 struck it in the same tick, within the window of 10 ticks.
-    let victim = game.entity_by_id(1);
+    let victim = Mode::entity_by_id(&game, 1);
     *game.get_mut::<Position>(victim).unwrap() = at(3, 0);
     game.insert_resource(AssistWindow(Ticks::new(10)));
     let ids: Vec<_> = game
@@ -59,10 +59,10 @@ fn on_mode_input(ctx, player, name, value) {
         depth: 0,
         hit: None,
     });
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
     // end of tick 0, 1, plus 3 ticks: the start of tick 4.
-    let seen = ["count", "kind", "team", "grunts", "path"].map(|name| game.field(name));
+    let seen = ["count", "kind", "team", "grunts", "path"].map(|name| Mode::field(&game, name));
     let text = |text: &str| StateValue::Text(text.to_owned());
     assert_eq!(
         seen,
@@ -79,23 +79,26 @@ fn on_mode_input(ctx, player, name, value) {
         Some(&Respawn { at: Tick::new(4) })
     );
     for _ in 1..4 {
-        game.tick_inputs(&[]);
+        Mode::tick_inputs(&mut game, &[]);
         assert!(game.entity(victim).contains::<Dead>());
     }
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
     assert!(!game.entity(victim).contains::<Dead>());
     assert_eq!(game.get::<Position>(victim), Some(&at(0, 0)));
     let life = game.get::<Life>(victim).unwrap();
     assert_eq!(life.current(), Num::int(10));
 
     // A living unit, and a dead one whose type despawns, cannot respawn.
-    game.tick_inputs(&[(0, input("probe", "tower"))]);
-    assert_eq!(game.failures(), [FailureKind::Api(ApiError::RespawnAlive)]);
-    let tower = game.entity_by_id(0);
-    game.entity_mut(tower).insert((Dead, OnDeath::Despawn));
-    game.tick_inputs(&[(0, input("probe", "tower"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "tower"))]);
     assert_eq!(
-        game.failures(),
+        Mode::failures(&game),
+        [FailureKind::Api(ApiError::RespawnAlive)]
+    );
+    let tower = Mode::entity_by_id(&game, 0);
+    game.entity_mut(tower).insert((Dead, OnDeath::Despawn));
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "tower"))]);
+    assert_eq!(
+        Mode::failures(&game),
         [FailureKind::Api(ApiError::RespawnDespawns)]
     );
     assert!(game.get_entity(tower).is_err());
@@ -132,12 +135,15 @@ fn on_mode_input(ctx, player, name, value) {
     let mut game = mode_match(script, ScriptLimits::ROOMY);
     // A second end in the same call fails the call, which ends nothing; so does a team the mode
     // does not have. The timer fires at the end of ticks 0 and 1.
-    game.tick_inputs(&[(0, input("probe", "a"))]);
-    assert_eq!(game.failures(), [FailureKind::Api(ApiError::Ended)]);
-    game.tick_inputs(&[(0, input("hero", "z"))]);
-    assert_eq!(game.failures(), [FailureKind::Api(ApiError::UnknownTeam)]);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "a"))]);
+    assert_eq!(Mode::failures(&game), [FailureKind::Api(ApiError::Ended)]);
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "z"))]);
+    assert_eq!(
+        Mode::failures(&game),
+        [FailureKind::Api(ApiError::UnknownTeam)]
+    );
     assert!(game.match_end().is_none());
-    assert_eq!(game.field("count"), StateValue::Int(2));
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(2));
 
     // A pass in each gap between stages counts its runs: the gap before the first stage and
     // the one after each of the nine.
@@ -154,18 +160,18 @@ fn on_mode_input(ctx, player, name, value) {
     // 1, sent 5 m away, stands where it is, and the timer counts no more. Of the gaps, the one
     // before Inputs runs in tick 2, and the one after it, Inputs' closing set: 2 runs. In tick 3
     // nothing runs, the input to end again included.
-    let grunt = game.entity_by_id(1);
+    let grunt = Mode::entity_by_id(&game, 1);
     let mut destination = game.get_mut::<Destination>(grunt).unwrap();
     *destination = Destination::to(Some(at(5, 0)));
-    let before = game.placed_units();
-    game.tick_inputs(&[(0, input("hero", "b"))]);
+    let before = Mode::placed_units(&game);
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "b"))]);
     let end = MatchEnd::new(Tick::new(2), MatchResult::Won(Team::new(1)));
     assert_eq!(game.match_end(), Some(end));
-    game.tick_inputs(&[(0, input("phase", "draw"))]);
-    assert!(game.failures().is_empty());
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "draw"))]);
+    assert!(Mode::failures(&game).is_empty());
     assert_eq!(game.match_end(), Some(end));
-    assert_eq!(game.placed_units(), before);
-    assert_eq!(game.field("count"), StateValue::Int(2));
+    assert_eq!(Mode::placed_units(&game), before);
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(2));
     assert_eq!(game.resource::<SimTick>().start(), Tick::new(4));
     assert_eq!(game.resource::<GapRuns>().0, 2);
 
@@ -174,13 +180,13 @@ fn on_mode_input(ctx, player, name, value) {
     assert!(game.entity(grunt).contains::<MoveStep>());
     let away = at(10_000, 0);
     *game.get_mut::<Position>(grunt).unwrap() = away;
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
     assert_eq!(game.get::<Position>(grunt), Some(&away));
     assert_eq!(game.resource::<GapRuns>().0, 2);
 
     // `end(())` is a draw.
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    game.tick_inputs(&[(0, input("phase", "draw"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "draw"))]);
     let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
     assert_eq!(game.match_end(), Some(draw));
 }

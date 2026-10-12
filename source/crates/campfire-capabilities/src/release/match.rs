@@ -100,7 +100,7 @@ pub(crate) mod test_matches {
 
     use crate::actions::slot_kind_data::SlotKindData;
     use crate::actions::slot_kinds::SlotKinds;
-    use crate::combat::combat_world::test_world::CombatWorldTest;
+    use crate::combat::Combat;
     use crate::declare::capability_set::CapabilitySet;
     use crate::players::Players;
     use crate::release::Release;
@@ -158,7 +158,7 @@ pub(crate) mod test_matches {
                 world.insert_resource(SlotKinds(vec![basic]));
             }
             if set.contains(Capability::Combat) {
-                world.bind_life(PoolId::FIRST);
+                Combat::bind_life(&mut world, PoolId::FIRST);
             }
             Match {
                 world,

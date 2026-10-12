@@ -55,7 +55,6 @@ pub(crate) mod navigation_api;
 pub(crate) mod navigation_column;
 pub(crate) mod navigation_effect;
 pub(crate) mod navigation_rules;
-pub(crate) mod navigation_world;
 pub(crate) mod on_path;
 pub(crate) mod party;
 pub(crate) mod path_walker;
@@ -241,6 +240,89 @@ impl Navigation {
         let walkable = Walkable::of(clearance, world.resource::<BodyIndex>());
         let cell = planner.nearest_open(walkable, point, &mut 0)?;
         Some(clearance.grid().center(cell, point.get().y))
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{Position, StableId};
+
+    use crate::geometry::bounds::Bounds;
+    use crate::geometry::grid::Grid;
+    use crate::navigation::Navigation;
+    use crate::navigation::destination::Destination;
+    use crate::navigation::walker::Walker;
+    use crate::navigation::wall::Wall;
+    use crate::units::Units;
+    use crate::units::body::Body;
+    use crate::units::move_step::MoveStep;
+    use crate::units::team::Team;
+
+    impl Navigation {
+        /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
+        pub(crate) fn load_open_pathing(
+            world: &mut World,
+            cell: Num,
+            min: [i64; 2],
+            max: [i64; 2],
+            walkers: Vec<Walker>,
+        ) {
+            Navigation::load_walled(world, cell, min, max, walkers, &[]);
+        }
+
+        /// Loads a pathing grid as `load_pathing` does, with `walls`.
+        pub(crate) fn load_walled(
+            world: &mut World,
+            cell: Num,
+            min: [i64; 2],
+            max: [i64; 2],
+            walkers: Vec<Walker>,
+            walls: &[Wall],
+        ) {
+            let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
+            let grid = Grid::new(cell, bounds).unwrap();
+            Navigation::load_pathing(world, grid, walls, walkers);
+        }
+
+        /// A unit at `pos` walking a meter a tick to `to`.
+        pub(crate) fn unit(world: &mut World, pos: Position, to: Option<Position>) -> StableId {
+            let walker = Navigation::walker(MoveStep::new(Num::ONE).unwrap());
+            let id = Units::spawn(world, pos, Team::new(0), walker);
+            *world.part_mut::<Destination>(id) = Destination::to(to);
+            id
+        }
+
+        /// A unit at `pos` with a body of `radius`, walking `step` a tick to `to`, or one that does not
+        /// walk when `step` is `None`.
+        pub(crate) fn body(
+            world: &mut World,
+            pos: Position,
+            to: Option<Position>,
+            step: Option<Num>,
+            radius: Num,
+        ) -> StableId {
+            Navigation::body_on(world, pos, to, step, Body::new(radius).unwrap())
+        }
+
+        /// A unit at `pos` with `body`, walking `step` a tick to `to`, or one that does not walk when
+        /// `step` is `None`.
+        pub(crate) fn body_on(
+            world: &mut World,
+            pos: Position,
+            to: Option<Position>,
+            step: Option<Num>,
+            body: Body,
+        ) -> StableId {
+            let id = Units::spawn(world, pos, Team::new(0), body);
+            if let Some(step) = step {
+                world.insert_parts(id, Navigation::walker(MoveStep::new(step).unwrap()));
+                *world.part_mut::<Destination>(id) = Destination::to(to);
+            }
+            id
+        }
     }
 }
 

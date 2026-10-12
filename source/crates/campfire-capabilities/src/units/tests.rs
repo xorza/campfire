@@ -5,14 +5,15 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
 use campfire_script::rhai::Array;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, SimComponent, SimTick, SimWorld, SnapshotError};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::navigation::on_path::OnPath;
+use crate::release::Release;
 use crate::release::r#match::Match;
-use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::script_limits::ScriptLimits;
@@ -24,7 +25,6 @@ use crate::units::block::Block;
 use crate::units::path_id::PathId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 
@@ -36,32 +36,32 @@ fn units_match() -> Match {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
     let game = Match::server(&[Capability::Stats, Capability::Combat], scripts);
-    game.name_kinds(&[], &["health", "mana"], &[]);
+    Units::name_kinds(&game, &[], &["health", "mana"], &[]);
     game
 }
 
 #[test]
 fn queries_select_living_units_by_filter_and_exact_distance() {
     let mut game = units_match();
-    let creep = game.tagged_type(&["creep"], &[]);
-    let of = game.armed_unit(at(0, 0, 0), 1, ());
+    let creep = Units::tagged_type(&mut game, &["creep"], &[]);
+    let of = Units::spawn_armed(&mut game, at(0, 0, 0), 1, ());
     // Up at y = 9, 3 m away on the ground plane: the nearest.
-    let high = game.armed_unit(at(0, 9, 3), 0, ());
-    let east = game.armed_unit_of(creep, at(4, 0, 0), 0, ());
-    let west = game.armed_unit(at(-4, 0, 0), 0, ());
-    let edge = game.armed_unit(at(0, 0, 5), 0, ());
-    let far = game.armed_unit(at(6, 0, 0), 0, ());
-    let ally = game.armed_unit(at(1, 0, 0), 1, ());
-    let dead = game.armed_unit(at(0, 0, 1), 0, Dead);
+    let high = Units::spawn_armed(&mut game, at(0, 9, 3), 0, ());
+    let east = Units::spawn_armed_of(&mut game, creep, at(4, 0, 0), 0, ());
+    let west = Units::spawn_armed(&mut game, at(-4, 0, 0), 0, ());
+    let edge = Units::spawn_armed(&mut game, at(0, 0, 5), 0, ());
+    let far = Units::spawn_armed(&mut game, at(6, 0, 0), 0, ());
+    let ally = Units::spawn_armed(&mut game, at(1, 0, 0), 1, ());
+    let dead = Units::spawn_armed(&mut game, at(0, 0, 1), 0, Dead);
     // Within 2 m, but no target: one untargetable, one invulnerable.
-    let hidden = game.armed_unit(at(2, 0, 0), 0, ());
-    game.set_blocks(hidden, &[Block::Target]);
-    let guarded = game.armed_unit(at(-2, 0, 0), 0, ());
-    game.set_blocks(guarded, &[Block::Target, Block::Damage]);
+    let hidden = Units::spawn_armed(&mut game, at(2, 0, 0), 0, ());
+    Units::set_blocks(&mut game, hidden, &[Block::Target]);
+    let guarded = Units::spawn_armed(&mut game, at(-2, 0, 0), 0, ());
+    Units::set_blocks(&mut game, guarded, &[Block::Target, Block::Damage]);
 
     let find = |game: &mut Match, filter: &str| {
         let source = format!(r#"fn probe(ctx, of) {{ ctx.find(of, of.pos, 5, "{filter}") }}"#);
-        Unit::ids(game.probe(&source, of).unwrap())
+        Unit::ids(Units::probe(game, &source, of).unwrap())
     };
     // By stable id; the edge at exactly 5 m is in; the far one, the dead one and the two that are
     // no target are not.
@@ -74,7 +74,7 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     // At 6 m the far one is in, so the radius kept it out; the dead one and the two that are no
     // target stay out at any radius.
     let within_six = r#"fn probe(ctx, of) { ctx.find(of, of.pos, 6, "enemies") }"#;
-    let found = Unit::ids(game.probe(within_six, of).unwrap());
+    let found = Unit::ids(Units::probe(&mut game, within_six, of).unwrap());
     assert_eq!(found, [high, east, west, edge, far]);
     assert!(
         ![dead, hidden, guarded]
@@ -85,7 +85,10 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     game.insert_resource(Metric::Spatial);
     assert_eq!(find(&mut game, "enemies"), [east, west, edge]);
     let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(10), "enemies") }"#;
-    assert_eq!(Unit::ids(game.probe(nearest, of).unwrap()), [east]);
+    assert_eq!(
+        Unit::ids(Units::probe(&mut game, nearest, of).unwrap()),
+        [east]
+    );
     game.insert_resource(Metric::Planar);
 
     // A query reaches a body to its edge, as an area does: far, at 6 m, with a body of 1 m comes
@@ -95,16 +98,22 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     game.insert_parts(far, body);
     assert_eq!(find(&mut game, "enemies"), [high, east, west, edge, far]);
     let near_two = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(2), "enemies") }"#;
-    assert_eq!(Unit::ids(game.probe(near_two, of).unwrap()), []);
+    assert_eq!(
+        Unit::ids(Units::probe(&mut game, near_two, of).unwrap()),
+        []
+    );
     game.insert_parts(of, body);
-    assert_eq!(Unit::ids(game.probe(near_two, of).unwrap()), [high]);
+    assert_eq!(
+        Unit::ids(Units::probe(&mut game, near_two, of).unwrap()),
+        [high]
+    );
 
     // The nearest in turn as each despawns, by distance between centres: east and west tie at
     // 4 m, and east has the lower id; far, its body's edge at 5 m as edge's centre is, is 6 m
     // away.
     let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(5), "enemies") }"#;
     let mut order = Vec::new();
-    while let [next] = Unit::ids(game.probe(nearest, of).unwrap())[..] {
+    while let [next] = Unit::ids(Units::probe(&mut game, nearest, of).unwrap())[..] {
         order.push(next);
         let entity = game.unit_entity(next);
         game.despawn(entity);
@@ -130,7 +139,7 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
         ),
     ];
     for (call, refusal) in refusals {
-        let error = game.read(call, of).unwrap_err();
+        let error = Units::read(&mut game, call, of).unwrap_err();
         assert_eq!(error.kind(), FailureKind::Api(refusal), "{call}: {error:?}");
     }
 }
@@ -138,9 +147,9 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
 #[test]
 fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     let mut game = units_match();
-    let of = game.armed_unit(at(0, 0, 0), 0, ());
-    game.armed_unit(at(3, 0, 4), 1, ());
-    game.armed_unit(at(0, 12, 3), 1, ());
+    let of = Units::spawn_armed(&mut game, at(0, 0, 0), 0, ());
+    Units::spawn_armed(&mut game, at(3, 0, 4), 1, ());
+    Units::spawn_armed(&mut game, at(0, 12, 3), 1, ());
     let probe = r#"fn probe(ctx, of) {
         let found = ctx.find(of, of.pos, 13, "enemies");
         let near = found[0];
@@ -162,7 +171,7 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     ];
     for (metric, within, distance) in metrics {
         game.insert_resource(metric);
-        let read = game.probe(probe, of).unwrap().cast::<Array>();
+        let read = Units::probe(&mut game, probe, of).unwrap().cast::<Array>();
         let read_within: Vec<_> = read[..5]
             .iter()
             .map(|reach| reach.as_bool().unwrap())
@@ -174,17 +183,20 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
             .collect();
         assert_eq!(read_distance, [Num::int(5), distance], "{metric:?}");
     }
-    let error = game
-        .probe("fn probe(ctx, of) { of.pos.within(of.pos, -1) }", of)
-        .unwrap_err();
+    let error = Units::probe(
+        &mut game,
+        "fn probe(ctx, of) { of.pos.within(of.pos, -1) }",
+        of,
+    )
+    .unwrap_err();
     assert_eq!(error.kind(), FailureKind::Api(ApiError::NegativeRadius));
 }
 
 #[test]
 fn vectors_add_subtract_and_scale_each_rounded_once() {
     let mut game = units_match();
-    let of = game.armed_unit(at(0, 0, 0), 0, ());
-    game.armed_unit(at(3, 0, 4), 1, ());
+    let of = Units::spawn_armed(&mut game, at(0, 0, 0), 0, ());
+    Units::spawn_armed(&mut game, at(3, 0, 4), 1, ());
     let probe = r#"fn probe(ctx, of) {
         let d = of.pos.direction_to(ctx.find(of, of.pos, 6, "enemies")[0].pos);
         [d + d, d - d, d * 5, 5 * d, d * (num(1) / 2), (num(1) / 2) * d]
@@ -194,7 +206,7 @@ fn vectors_add_subtract_and_scale_each_rounded_once() {
     // difference is none, and 5 times each is exact. Half of 13 421 773 is 6 710 886.5, a tie,
     // which goes to the even 6 710 886.
     let vector = |x, z| Vec3::new(Num::from_bits(x), Num::ZERO, Num::from_bits(z));
-    let read = game.probe(probe, of).unwrap().cast::<Array>();
+    let read = Units::probe(&mut game, probe, of).unwrap().cast::<Array>();
     let read: Vec<Vec3> = read.into_iter().map(Dynamic::cast::<Vec3>).collect();
     let five = vector(5 * 10_066_330, 5 * 13_421_773);
     let half = vector(5_033_165, 6_710_886);
@@ -211,8 +223,7 @@ fn vectors_add_subtract_and_scale_each_rounded_once() {
     );
     // 0.8 × 2³⁹ is about 4.4 × 10¹¹, within a number's 5.5 × 10¹¹; its double is past it, and
     // the sum fails the call.
-    let error = game
-        .read(
+    let error = Units::read(&mut game,
             r#"let d = of.pos.direction_to(ctx.find(of, of.pos, 6, "enemies")[0].pos) * (1 << 38) * 2; d + d"#,
             of,
         )
@@ -238,13 +249,13 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
         let mut game = units_match();
         game.insert_resource(bounds);
         let pos = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-        let id = game.spawn_unit(pos, Team::new(0), ());
+        let id = Units::spawn(&mut game, pos, Team::new(0), ());
         let mut snapshot = Vec::new();
         game.snapshot(&mut snapshot);
         let mut fresh = units_match();
         fresh.insert_resource(bounds);
-        assert_eq!(fresh.test_unit_type(), game.test_unit_type());
-        fresh.clear();
+        assert_eq!(Units::test_type(&mut fresh), Units::test_type(&mut game));
+        Release::clear(&mut fresh);
         let restored = fresh.restore(&snapshot);
         restored.map_err(|error| (error, id))
     };
@@ -264,12 +275,13 @@ fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     // away, and a team an entity gains, change no part's tick, only the unit's archetype. The
     // loose unit loses its team at once, as no spawn makes a unit of no team.
     let mut game = units_match();
-    let of = game.armed_unit(at(0, 0, 0), 0, ());
-    let other = game.armed_unit(at(3, 0, 4), 1, ());
-    let loose = game.spawn_unit(at(1, 0, 0), Team::new(1), ());
+    let of = Units::spawn_armed(&mut game, at(0, 0, 0), 0, ());
+    let other = Units::spawn_armed(&mut game, at(3, 0, 4), 1, ());
+    let loose = Units::spawn(&mut game, at(1, 0, 0), Team::new(1), ());
     let loose_entity = game.unit_entity(loose);
     game.entity_mut(loose_entity).remove::<Team>();
-    let value = |game: &mut Match, unit, expression: &str| game.read(expression, unit).unwrap();
+    let value =
+        |game: &mut Match, unit, expression: &str| Units::read(game, expression, unit).unwrap();
     let enemies =
         |game: &mut Match| Unit::ids(value(game, of, r#"ctx.find(of, of.pos, 100, "enemies")"#));
     assert_eq!(enemies(&mut game), [other]);
@@ -311,17 +323,22 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let mut game = units_match();
     let window = ("help_window_ms", Scalar::Int(2000));
     let range = ("aggro_range", Scalar::Decimal(Num::int(7)));
-    let hero = game.tagged_type(&["avatar"], &[window, range]);
+    let hero = Units::tagged_type(&mut game, &["avatar"], &[window, range]);
     // On a path, but the scene has no `navigation` to fill `unit.path`.
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
     let spawn = SpawnPoint::new(at(5, 0, -5));
-    let of = game.armed_unit_of(hero, at(0, 0, 0), 0, (owner, path, body, spawn));
-    let near = game.armed_unit(at(3, 0, 4), 1, ());
-    let recent = game.armed_unit(at(9, 0, 0), 1, ());
-    let fallen = game.armed_unit(at(9, 0, 1), 1, Dead);
-    let bare = game.spawn_unit(at(9, 0, 2), Team::new(1), Life::full(Num::int(1)));
+    let of = Units::spawn_armed_of(&mut game, hero, at(0, 0, 0), 0, (owner, path, body, spawn));
+    let near = Units::spawn_armed(&mut game, at(3, 0, 4), 1, ());
+    let recent = Units::spawn_armed(&mut game, at(9, 0, 0), 1, ());
+    let fallen = Units::spawn_armed(&mut game, at(9, 0, 1), 1, Dead);
+    let bare = Units::spawn(
+        &mut game,
+        at(9, 0, 2),
+        Team::new(1),
+        Life::full(Num::int(1)),
+    );
     let entity = game.unit_entity(of);
     game.get_mut::<ActionSlots>(entity)
         .unwrap()
@@ -338,7 +355,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     }
     *game.get_mut::<RecentAttackers>(entity).unwrap() = attackers;
 
-    let read = |game: &mut Match, expression: &str| game.read(expression, of);
+    let read = |game: &mut Match, expression: &str| Units::read(game, expression, of);
     let value = |game: &mut Match, expression: &str| read(game, expression).unwrap();
     assert!(value(&mut game, "of.is_avatar").as_bool().unwrap());
     assert!(value(&mut game, "of.alive").as_bool().unwrap());
@@ -349,14 +366,14 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     // Its body's radius, 0.75 m; a unit with no body has none.
     let radius = |game: &mut Match, unit| {
         let source = "fn probe(ctx, of) { of.radius }";
-        game.probe(source, unit).unwrap().cast::<Num>()
+        Units::probe(game, source, unit).unwrap().cast::<Num>()
     };
     assert_eq!(radius(&mut game, of), body.radius().unwrap());
     assert_eq!(radius(&mut game, near), Num::ZERO);
     // Where it spawned, which a unit the mode did not spawn has none of.
     let spawn_pos = |game: &mut Match, unit| {
         let source = "fn probe(ctx, of) { of.spawn_pos }";
-        game.probe(source, unit).unwrap()
+        Units::probe(game, source, unit).unwrap()
     };
     assert_eq!(spawn_pos(&mut game, of).cast::<Position>(), spawn.get());
     assert!(spawn_pos(&mut game, near).is_unit());
@@ -397,9 +414,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
         let error = read(&mut game, expression).unwrap_err();
         assert_eq!(error.kind(), FailureKind::Api(refusal), "{expression}");
     }
-    let error = game
-        .probe("fn probe(ctx, of) { of.attack_range }", bare)
-        .unwrap_err();
+    let error = Units::probe(&mut game, "fn probe(ctx, of) { of.attack_range }", bare).unwrap_err();
     assert_eq!(
         error.kind(),
         FailureKind::Api(ApiError::NoAttack),
@@ -421,15 +436,20 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     StatsColumn::share_stat_names(game.non_send::<View>(), Arc::from(names));
     let mut stats = UnitStats::default();
     stats.refill().extend([Num::int(25), Num::int(10)]);
-    let of = game.armed_unit(at(0, 0, 0), 0, Level::new(3).unwrap());
+    let of = Units::spawn_armed(&mut game, at(0, 0, 0), 0, Level::new(3).unwrap());
     let entity = game.unit_entity(of);
     game.insert_parts(of, stats);
     let mut life = game.get_mut::<Life>(entity).unwrap();
     life.take(Num::int(4));
-    let bare = game.spawn_unit(at(1, 0, 0), Team::new(1), Life::full(Num::int(1)));
-    let shell = game.spawn_unit(at(2, 0, 0), Team::new(1), ());
+    let bare = Units::spawn(
+        &mut game,
+        at(1, 0, 0),
+        Team::new(1),
+        Life::full(Num::int(1)),
+    );
+    let shell = Units::spawn(&mut game, at(2, 0, 0), Team::new(1), ());
 
-    let read = |game: &mut Match, unit, expression: &str| game.read(expression, unit);
+    let read = |game: &mut Match, unit, expression: &str| Units::read(game, expression, unit);
     let value = |game: &mut Match, expression: &str| read(game, of, expression).unwrap();
     assert_eq!(value(&mut game, "of.level").as_int(), Ok(3));
     assert_eq!(
@@ -472,7 +492,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
 fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let mut game = units_match();
     let data = UnitTypeData::default();
-    let mut load = |scope, name| game.load_unit_type(scope, name, &data);
+    let mut load = |scope, name| Units::load_type(&mut game, scope, name, &data);
     let first = load(TypeScope::Mode, "grunt");
     let second = load(TypeScope::Mode, "tower");
     // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
@@ -506,6 +526,6 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
 fn a_type_named_twice_in_one_scope_is_a_logic_error() {
     let mut game = units_match();
     let data = UnitTypeData::default();
-    game.load_unit_type(TypeScope::Package(1), "grunt", &data);
-    game.load_unit_type(TypeScope::Package(1), "grunt", &data);
+    Units::load_type(&mut game, TypeScope::Package(1), "grunt", &data);
+    Units::load_type(&mut game, TypeScope::Package(1), "grunt", &data);
 }

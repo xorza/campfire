@@ -94,7 +94,9 @@ impl SimWorld for World {
 pub(crate) mod internals {
     use std::collections::BTreeSet;
 
+    use bevy_ecs::bundle::Bundle;
     use bevy_ecs::component::{Component, Mutable};
+    use bevy_ecs::entity::Entity;
     use bevy_ecs::schedule::{IntoSystemSet, SystemSet};
     use bevy_ecs::world::{Mut, World};
     use campfire_common::{PlayerSlot, Tick};
@@ -157,6 +159,12 @@ pub(crate) mod internals {
 
         /// Unit `id`'s part `C`, to change; panics when the unit is gone or lacks it.
         fn part_mut<C: Component<Mutability = Mutable>>(&mut self, id: StableId) -> Mut<'_, C>;
+
+        /// The entity of unit `id`; panics when the unit is gone.
+        fn unit_entity(&self, id: StableId) -> Entity;
+
+        /// Inserts `parts` on unit `id`.
+        fn insert_parts(&mut self, id: StableId, parts: impl Bundle);
     }
 
     impl SimWorldInternals for World {
@@ -245,8 +253,17 @@ pub(crate) mod internals {
         }
 
         fn part_mut<C: Component<Mutability = Mutable>>(&mut self, id: StableId) -> Mut<'_, C> {
-            let entity = self.entity_of(id).expect("a unit of the match");
+            let entity = self.unit_entity(id);
             self.get_mut::<C>(entity).expect("a unit with the part")
+        }
+
+        fn unit_entity(&self, id: StableId) -> Entity {
+            self.entity_of(id).expect("a unit of the match")
+        }
+
+        fn insert_parts(&mut self, id: StableId, parts: impl Bundle) {
+            let entity = self.unit_entity(id);
+            self.entity_mut(entity).insert(parts);
         }
     }
 }

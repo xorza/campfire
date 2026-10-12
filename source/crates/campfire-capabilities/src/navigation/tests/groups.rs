@@ -30,7 +30,14 @@ fn walled_to(max: [i64; 2], more: &[([i64; 2], [i64; 2])]) -> Match {
         layer: AIR,
         radius: Num::QUARTER,
     };
-    game.load_walled(Num::ONE, [0, 0], max, vec![ground(Num::ZERO), air], &walls);
+    Navigation::load_walled(
+        &mut game,
+        Num::ONE,
+        [0, 0],
+        max,
+        vec![ground(Num::ZERO), air],
+        &walls,
+    );
     game
 }
 
@@ -60,7 +67,7 @@ fn ordered(goal: Position) -> Party {
 impl Match {
     /// A walker of no body at `pos` that asks in tick 0 for its route to `goal` as one of `party`.
     fn member(&mut self, pos: Position, goal: Position, party: Party) -> StableId {
-        let id = self.unit(pos, Some(goal));
+        let id = Navigation::unit(self, pos, Some(goal));
         self.part_mut::<Route>(id)
             .ask(goal, Tick::new(0), Some(party));
         id
@@ -86,7 +93,7 @@ fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_
     assert_eq!(game.searches() - before, 1);
     let [first, second, goal] = over_the_wall();
     for (member, own) in members.into_iter().zip([7, 8, 9]) {
-        let route = game.get_route(member);
+        let route = game.part::<Route>(member);
         assert_eq!(route.ahead(), [first, second, at(own, 0, 1)], "{own}");
         assert!(route.reached() && route.asked().is_none());
     }
@@ -99,7 +106,7 @@ fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_
     let ids = [at(1, 0, 1), at(2, 0, 1), at(9, 0, 5)].map(|at| game.member(at, goal, party));
     game.step();
     assert_eq!(game.searches(), 1);
-    let routes = ids.map(|id| game.get_route(id).ahead().to_vec());
+    let routes = ids.map(|id| game.part::<Route>(id).ahead().to_vec());
     assert_eq!(
         routes,
         [
@@ -116,21 +123,21 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
     // another, and keeps its first tick. The two still search once.
     let mut game = walled(&[]);
     let goal = at(8, 0, 1);
-    let early = game.unit(at(2, 0, 1), Some(at(9, 0, 5)));
+    let early = Navigation::unit(&mut game, at(2, 0, 1), Some(at(9, 0, 5)));
     game.part_mut::<Route>(early)
         .ask(at(9, 0, 5), Tick::new(0), None);
     *game.part_mut::<Destination>(early) = Destination::to(Some(goal));
     let party = ordered(goal);
     game.part_mut::<Route>(early)
         .ask(goal, Tick::new(3), Some(party));
-    assert_eq!(game.get_route(early).asked(), Some(Tick::new(0)));
-    let late = game.unit(at(3, 0, 1), Some(goal));
+    assert_eq!(game.part::<Route>(early).asked(), Some(Tick::new(0)));
+    let late = Navigation::unit(&mut game, at(3, 0, 1), Some(goal));
     game.part_mut::<Route>(late)
         .ask(goal, Tick::new(3), Some(party));
     game.step();
     assert_eq!(game.searches(), 1);
     for id in [early, late] {
-        assert_eq!(game.get_route(id).ahead(), over_the_wall());
+        assert_eq!(game.part::<Route>(id).ahead(), over_the_wall());
     }
 }
 
@@ -148,8 +155,11 @@ fn a_member_that_sees_no_waypoint_plans_its_own_route() {
     game.step();
     assert_eq!(game.searches(), 2);
     let [first, second, _] = over_the_wall();
-    assert_eq!(game.get_route(near).ahead(), [first, second, point(17, 0)]);
-    let own = game.get_route(hidden);
+    assert_eq!(
+        game.part::<Route>(near).ahead(),
+        [first, second, point(17, 0)]
+    );
+    let own = game.part::<Route>(hidden);
     assert_eq!(own.ahead().last(), Some(&point(15, 6)));
     assert!(own.reached() && !own.ahead().contains(&first));
 }
@@ -165,7 +175,7 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
     let ground = [2, 3].map(|x| game.member(at(x, 0, 1), goal, party));
     let body = Body::new(Num::QUARTER).unwrap().on(AIR);
     let air = [1, 2].map(|z| {
-        let id = game.body_on(at(2, 0, z), Some(goal), Some(Num::ONE), body);
+        let id = Navigation::body_on(&mut game, at(2, 0, z), Some(goal), Some(Num::ONE), body);
         game.part_mut::<Route>(id)
             .ask(goal, Tick::new(0), Some(party));
         id
@@ -173,10 +183,10 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
     game.step();
     assert_eq!(game.searches(), 2);
     for id in ground {
-        assert_eq!(game.get_route(id).ahead(), over_the_wall());
+        assert_eq!(game.part::<Route>(id).ahead(), over_the_wall());
     }
     for id in air {
-        assert_eq!(game.get_route(id).ahead(), [goal]);
+        assert_eq!(game.part::<Route>(id).ahead(), [goal]);
     }
 }
 
@@ -191,7 +201,13 @@ fn a_party_whose_tests_pass_the_ticks_limit_finishes_in_the_next_tick() {
     // limit at m = 47. So members 0 to 46 take their routes, and 47 to 49 wait for the next
     // tick, which searches once more, for their own party.
     let mut game = walk_match();
-    game.load_open_pathing(Num::ONE, [0, 0], [10, 6], vec![ground(Num::ZERO)]);
+    Navigation::load_open_pathing(
+        &mut game,
+        Num::ONE,
+        [0, 0],
+        [10, 6],
+        vec![ground(Num::ZERO)],
+    );
     let goal = point(17, 7);
     let party = ordered(goal);
     let members: Vec<StableId> = (0..50)
@@ -199,7 +215,7 @@ fn a_party_whose_tests_pass_the_ticks_limit_finishes_in_the_next_tick() {
         .collect();
     let waiting = |game: &Match| -> Vec<usize> {
         (0..members.len())
-            .filter(|&at| game.get_route(members[at]).asked().is_some())
+            .filter(|&at| game.part::<Route>(members[at]).asked().is_some())
             .collect()
     };
     game.step();
@@ -208,7 +224,7 @@ fn a_party_whose_tests_pass_the_ticks_limit_finishes_in_the_next_tick() {
     game.step();
     assert!(waiting(&game).is_empty());
     assert_eq!(game.searches(), 2);
-    assert!(members.iter().all(|&id| game.get_route(id).reached()));
+    assert!(members.iter().all(|&id| game.part::<Route>(id).reached()));
 }
 
 #[test]
@@ -223,7 +239,7 @@ fn a_spawn_group_on_its_path_shares_a_route_and_a_unit_off_it_plans_its_own() {
     ] {
         let mut game = walled(&[]);
         let ids: Vec<StableId> = (0..3)
-            .map(|_| game.unit(at(2, 0, 1), Some(at(8, 0, 1))))
+            .map(|_| Navigation::unit(&mut game, at(2, 0, 1), Some(at(8, 0, 1))))
             .collect();
         for (at, &id) in ids.iter().enumerate() {
             let mut walker = PathWalker::start(PathEnd::Start, ids[groups[at]]);
@@ -235,7 +251,7 @@ fn a_spawn_group_on_its_path_shares_a_route_and_a_unit_off_it_plans_its_own() {
         game.step();
         assert_eq!(game.searches(), searches, "{groups:?} {left}");
         for id in ids {
-            assert_eq!(game.get_route(id).ahead(), over_the_wall());
+            assert_eq!(game.part::<Route>(id).ahead(), over_the_wall());
         }
     }
 }

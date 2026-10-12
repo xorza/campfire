@@ -382,4 +382,142 @@ pub(crate) mod internals {
 }
 
 #[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::world::World;
+    use campfire_common::Tick;
+    use campfire_math::Num;
+    use campfire_sim::Position;
+    use campfire_sim::StableId;
+    use campfire_sim::internals::SimWorldInternals;
+
+    use crate::actions::action_book::ActionBook;
+    use crate::actions::action_slots::ActionSlots;
+    use crate::actions::in_progress::InProgress;
+    use crate::actions::slot_times::SlotTimes;
+    use crate::combat::Combat;
+    use crate::combat::combat_bindings::CombatBindings;
+    use crate::combat::damage::{Damage, DamageCause};
+    use crate::combat::damage_pass::DamagePass;
+    use crate::combat::internals::Armed;
+    use crate::combat::pass_queue::PassQueue;
+    use crate::stats::life_pool::LifePool;
+    use crate::stats::pool_id::PoolId;
+    use crate::stats::unit_stats::UnitStats;
+    use crate::units::Units;
+    use crate::units::team::Team;
+    use crate::units::unit_type::UnitType;
+    use crate::values::damage_kind::DamageKind;
+
+    impl Combat {
+        /// Heals `id` at once, as the pass heals it, when it exists and its life is above zero.
+        pub(crate) fn heal_unit(world: &mut World, id: StableId, amount: Num) {
+            if let Some(entity) = DamagePass::living(world, id) {
+                DamagePass::heal(world, entity, amount);
+            }
+        }
+
+        /// Binds `life` as the life pool, with no stat bound, as a test world with no mode needs.
+        pub(crate) fn bind_life(world: &mut World, life: PoolId) {
+            world.insert_resource(LifePool(life));
+            world.insert_resource(CombatBindings::UNBOUND);
+        }
+
+        pub(crate) fn spawn_armed(
+            world: &mut World,
+            team: Team,
+            pos: Position,
+            combatant: Armed,
+        ) -> StableId {
+            let unit_type = Units::test_type(world);
+            Combat::spawn_armed_of(world, unit_type, team, pos, combatant)
+        }
+
+        pub(crate) fn spawn_armed_of(
+            world: &mut World,
+            unit_type: UnitType,
+            team: Team,
+            pos: Position,
+            combatant: Armed,
+        ) -> StableId {
+            let bundle = combatant.bundle(world);
+            Units::spawn_of(world, unit_type, pos, team, bundle)
+        }
+
+        pub(crate) fn attack(world: &mut World, attacker: StableId, target: StableId) {
+            let entity = world.unit_entity(attacker);
+            world
+                .get_mut::<ActionSlots>(entity)
+                .unwrap()
+                .set_attack_target(Some(target));
+        }
+
+        /// Gives `id` the values of `load_damage_stats`' stats.
+        pub(crate) fn stats(world: &mut World, id: StableId, values: [Num; 3]) {
+            let mut stats = UnitStats::default();
+            stats.refill().extend(values);
+            world.insert_parts(id, stats);
+        }
+
+        /// Queues `amount` of damage from `source` to `target`, dealt by `cause`.
+        pub(crate) fn damage(
+            world: &mut World,
+            source: Option<StableId>,
+            target: StableId,
+            amount: i64,
+            cause: DamageCause,
+        ) {
+            world.resource_mut::<PassQueue>().push_damage(Damage {
+                source,
+                target,
+                amount: Num::int(amount),
+                kind: DamageKind::new(0),
+                cause,
+                action: None,
+                depth: 0,
+                hit: None,
+            });
+        }
+    }
+
+    /// A unit's attack as the tests read it: its target, the tick the attack in its windup started
+    /// in, and the first tick its weapon may attack again.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub(crate) struct Attack {
+        target: Option<StableId>,
+        started: Option<Tick>,
+        ready_at: Tick,
+    }
+
+    impl Attack {
+        /// The attack of unit `id` of `world`, whose one weapon sits in its first slot.
+        pub(crate) fn of(world: &World, id: StableId) -> Attack {
+            let slots = world.part::<ActionSlots>(id);
+            let slot = slots.slot(0).unwrap();
+            let time = world.part::<SlotTimes>(id).slot(0).unwrap();
+            let book = world.resource::<ActionBook>();
+            let windup = book.get(slot.action.unwrap()).unwrap().ranks[0].windup;
+            let started = slots.attacking().and(slots.in_progress());
+            let started = started.and_then(InProgress::resolves_at);
+            Attack {
+                target: slots.attack_target(),
+                started: started.map(|at| Tick::new(at.get() - windup.get())),
+                ready_at: time.ready_at,
+            }
+        }
+
+        pub(crate) const fn target(self) -> Option<StableId> {
+            self.target
+        }
+
+        pub(crate) const fn started(self) -> Option<Tick> {
+            self.started
+        }
+
+        pub(crate) const fn ready_at(self) -> Tick {
+            self.ready_at
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

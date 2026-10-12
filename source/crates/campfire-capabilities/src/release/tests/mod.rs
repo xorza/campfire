@@ -5,6 +5,7 @@ use std::path::Path;
 use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
 use bevy_ecs::component::Component;
 use campfire_sim::Position;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_store::{InputFile, SourceFiles};
 
 use super::*;
@@ -12,7 +13,6 @@ use crate::actions::action_book::ActionBook;
 use crate::declare::error::CapabilityError;
 use crate::orders::ai::Ai;
 use crate::release::r#match::Match;
-use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::by_type::ByType;
@@ -538,7 +538,7 @@ fn a_unit_holds_only_parts_the_declarations_list() {
     let set = Release::capabilities();
     let declared: Vec<Capability> = set.iter().collect();
     let mut game = Match::client(&declared);
-    let id = game.spawn_unit(Position::ORIGIN, Team::new(0), ());
+    let id = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), ());
     assert_eq!(
         Release::unlisted_components(set, &game),
         Vec::<String>::new()

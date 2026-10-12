@@ -27,12 +27,15 @@ fn on_mode_input(ctx, player, name, value) {
         ..ScriptLimits::ROOMY
     };
     let mut game = mode_match(spin, limits);
-    let inputs = |game: &Match| game.field("inputs");
-    game.tick_inputs(&[
-        (0, input("fail", "")),
-        (0, input("phase", "")),
-        (1, input("phase", "")),
-    ]);
+    let inputs = |game: &Match| Mode::field(game, "inputs");
+    Mode::tick_inputs(
+        &mut game,
+        &[
+            (0, input("fail", "")),
+            (0, input("phase", "")),
+            (1, input("phase", "")),
+        ],
+    );
     let failures = game.non_send::<ScriptFailures>();
     let errors: Vec<_> = failures
         .get()
@@ -51,7 +54,7 @@ fn on_mode_input(ctx, player, name, value) {
     );
     assert_eq!(inputs(&game), StateValue::Int(1));
     // Every pool starts full in the next tick.
-    game.tick_inputs(&[(0, input("phase", ""))]);
+    Mode::tick_inputs(&mut game, &[(0, input("phase", ""))]);
     assert_eq!(inputs(&game), StateValue::Int(2));
 }
 
@@ -85,12 +88,12 @@ fn on_timer(ctx, name, data) {
             timers.due(Tick::ZERO).is_some(),
         )
     };
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
     assert_eq!(due(&game), (Some("b".to_owned()), false));
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
     assert_eq!(due(&game), (None, false));
     // Both calls failed, so none counted.
-    assert_eq!(game.field("count"), StateValue::Int(0));
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(0));
 }
 
 #[test]
@@ -125,11 +128,11 @@ fn on_level_up(ctx, unit, track, level) {
         ..ScriptLimits::ROOMY
     };
     let mut game = mode_match(script, limits);
-    game.tick_inputs(&[(0, input("hero", "hero-x"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     // Units: the tower 0 of a, b's grunts 1 to 3, which despawn when they die, and the hero 4.
     // The tower's damage kills the three grunts in tick 1, as the hero reaches level 2.
-    let grunts = [1, 2, 3].map(|at| game.entity_by_id(at));
-    let tower = game.get::<StableId>(game.entity_by_id(0)).copied();
+    let grunts = [1, 2, 3].map(|at| Mode::entity_by_id(&game, at));
+    let tower = game.get::<StableId>(Mode::entity_by_id(&game, 0)).copied();
     for grunt in grunts {
         game.entity_mut(grunt).insert(OnDeath::Despawn);
         let target = *game.get::<StableId>(grunt).unwrap();
@@ -152,11 +155,11 @@ fn on_level_up(ctx, unit, track, level) {
         let unit = game.get_entity(grunt).ok()?;
         Some((unit.contains::<Dead>(), unit.contains::<Kept>()))
     };
-    game.tick_inputs(&[(0, input("probe", "xp"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "xp"))]);
     // Two deaths ran; the third waits, and so does the level-up behind it. The first two grunts
     // despawned; the third stays, dead and kept, for its call.
     assert_eq!(
-        game.field("kind"),
+        Mode::field(&game, "kind"),
         StateValue::Text("b by a;b by a;".to_owned())
     );
     assert_eq!(waiting(&game), (1, 1));
@@ -173,14 +176,14 @@ fn on_level_up(ctx, unit, track, level) {
         grunts.map(|grunt| stands(&game, grunt)),
         [None, None, Some((true, true))]
     );
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
     // Both run first in the next tick, with the third grunt and its killer as handles; then it
     // despawns.
     let all = "b by a;b by a;b by a;level 2;";
-    assert_eq!(game.field("kind"), StateValue::Text(all.to_owned()));
+    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(all.to_owned()));
     assert_eq!(waiting(&game), (0, 0));
     assert_eq!(stands(&game, grunts[2]), None);
-    assert_eq!(game.failures(), []);
+    assert_eq!(Mode::failures(&game), []);
 }
 
 #[test]
@@ -207,9 +210,9 @@ fn on_player_leave(ctx, player) {
     // Player 2 leaves, and players 1 and 2 join, in one tick: the first two calls run, in that
     // order, and player 2's join waits.
     let (joined, left) = (SlotEventKind::Joined, SlotEventKind::Left);
-    game.tick_slots(&[(2, left), (1, joined), (2, joined)]);
+    Mode::tick_slots(&mut game, &[(2, left), (1, joined), (2, joined)]);
     assert_eq!(
-        game.field("kind"),
+        Mode::field(&game, "kind"),
         StateValue::Text("leave 2;join 1;".to_owned())
     );
     let waiting = game.resource::<UnansweredSlotEvents>();
@@ -223,9 +226,9 @@ fn on_player_leave(ctx, player) {
     let decoded = Binary::decode::<UnansweredSlotEvents>(&bytes).ok();
     assert_eq!(decoded.as_ref(), Some(waiting));
     // It runs first in the next tick, before that tick's leave of player 1.
-    game.tick_slots(&[(1, left)]);
+    Mode::tick_slots(&mut game, &[(1, left)]);
     let all = "leave 2;join 1;join 2;leave 1;";
-    assert_eq!(game.field("kind"), StateValue::Text(all.to_owned()));
+    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(all.to_owned()));
     assert!(game.resource::<UnansweredSlotEvents>().0.is_empty());
 }
 
@@ -248,7 +251,7 @@ fn on_mode_input(ctx, player, name, value) {
 "#;
     let mut game = mode_match(script, ScriptLimits::ROOMY);
     let mut spent = |name: &str| {
-        game.tick_inputs(&[(0, input(name, ""))]);
+        Mode::tick_inputs(&mut game, &[(0, input(name, ""))]);
         let mut budgets = game.resource_mut::<ScriptBudgets>();
         ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left()
     };

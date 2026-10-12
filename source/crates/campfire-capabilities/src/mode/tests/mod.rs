@@ -19,7 +19,6 @@ use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::actions_world::test_world::ActionsWorldTest;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::actions::slot_kinds::SlotKinds;
@@ -47,7 +46,6 @@ use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::mode_world::ModeWorld;
-use crate::mode::mode_world::test_world::{ModeAbilities, ModeWorldTest};
 use crate::mode::offer::Offer;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
@@ -67,14 +65,13 @@ use crate::players::player::Player;
 use crate::players::resource_id::ResourceId;
 use crate::production::production_data::ProductionData;
 use crate::production::train_queue::{Queued, TrainQueue};
+use crate::progression::Progression;
 use crate::progression::experience::Experience;
 use crate::progression::points::Points;
-use crate::progression::progression_world::test_world::ProgressionWorldTest;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
 use crate::release::Release;
 use crate::release::r#match::Match;
-use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError, ParamProblem};
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -98,8 +95,8 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
-use crate::stats::stats_world::test_world::StatsWorldTest;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
@@ -119,7 +116,6 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::engine_enum::EngineEnum;
@@ -739,13 +735,13 @@ fn start_match_setup(
         .iter()
         .map(DeclaredName::as_str)
         .collect();
-    game.name_kinds(&DAMAGE_KINDS, &POOLS, &resources);
+    Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &resources);
     let layers = files.data.navigation.layers.iter();
-    game.declare_tags(layers.map(DeclaredName::as_str));
-    let grunt_type = game.load_unit_type(TypeScope::Mode, "grunt", &grunt_data());
+    Units::declare_tags(&mut game, layers.map(DeclaredName::as_str));
+    let grunt_type = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt_data());
     let mut load = |name: &str, tag: &str| {
         let data = UnitTypeData::tagged(&[tag]);
-        game.load_unit_type(TypeScope::Mode, name, &data)
+        Units::load_type(&mut game, TypeScope::Mode, name, &data)
     };
     let tower_type = load("tower", "tower");
     let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
@@ -755,11 +751,11 @@ fn start_match_setup(
     load("bolt", "projectile");
     // The stats first, as a match's books know them before any action or modifier; the mode's
     // books give the full book at install.
-    game.load_stat_rules(&files.data.stats);
+    Stats::load_rules(&mut game, &files.data.stats);
     let blink = blink_data();
     // A spell has one rank; hero X's ability, 2.
-    let strike = game.load_action(0, "strike", &blink, None, 2).unwrap();
-    let blink = game.load_action(0, "blink", &blink, None, 1).unwrap();
+    let strike = Actions::load(&mut game, 0, "strike", &blink, None, 2).unwrap();
+    let blink = Actions::load(&mut game, 0, "blink", &blink, None, 1).unwrap();
     // Loaded out of name order, each is found by its name, and only in its package.
     let named = ["blink", "strike", "dash"].map(|name| Actions::named(&game, 0, name));
     assert_eq!(named, [Some(blink), Some(strike), None]);
@@ -767,11 +763,11 @@ fn start_match_setup(
     let mut spell = LoadoutSetup::default();
     spell.push("blink", blink);
     let types = [grunt_type, tower_type, x, y, crate_type];
-    game.load_tracks(&files.data.tracks);
+    Progression::load_tracks(&mut game, &files.data.tracks);
     for (name, data) in &files.modifiers {
-        game.load_modifier(0, name, data, None);
+        Stats::load_modifier(&mut game, 0, name, data, None);
     }
-    let script = game.compile_hooked(&format!("{script}{PICK}")).unwrap();
+    let script = Units::compile_hooked(&mut game, &format!("{script}{PICK}")).unwrap();
     let blessing = Stats::modifier(&game, 0, "blessing").unwrap();
     let mut setup = setup(&files, script, types, spell, strike, blessing);
     adjust(&mut setup);
@@ -805,9 +801,8 @@ fn start_match_setup(
     assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
     Release::install_mode(&mut game, setup, books);
     // The scripts name pools the data does not declare, whose maxima no stat sets.
-    game.name_kinds(&DAMAGE_KINDS, &POOLS, &RESOURCES);
+    Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
     Mode::start(&mut game)?;
-    game.insert_resource(ModeAbilities { blink, strike });
     Ok(game)
 }
 

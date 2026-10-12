@@ -32,10 +32,16 @@ fn a_walker_routes_round_a_box_and_never_stands_inside_it() {
     // a walker of 0.5 m from (-6, 0) to (6, 0), a quarter meter a tick. It goes round, never
     // inside the box, its center at least 0.5 m off it every tick, and arrives.
     let mut game = walk_match();
-    game.load_open_pathing(HALF, [-8, -8], [8, 8], vec![ground(HALF)]);
+    Navigation::load_open_pathing(&mut game, HALF, [-8, -8], [8, 8], vec![ground(HALF)]);
     let body = boxed(4, 1, 30);
-    game.body_on(at(0, 0, 0), None, None, body);
-    let walker = game.body(at(-6, 0, 0), Some(at(6, 0, 0)), Some(QUARTER), HALF);
+    Navigation::body_on(&mut game, at(0, 0, 0), None, None, body);
+    let walker = Navigation::body(
+        &mut game,
+        at(-6, 0, 0),
+        Some(at(6, 0, 0)),
+        Some(QUARTER),
+        HALF,
+    );
     let mut widest = Num::ZERO;
     for _ in 0..200 {
         game.step();
@@ -55,10 +61,22 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
     // 600 along x and −80 to 80 along z. It goes round the box's end at x = 558.5, never inside
     // it, and arrives.
     let mut game = walk_match();
-    game.load_open_pathing(Num::ONE, [-600, -80], [600, 80], vec![ground(HALF)]);
+    Navigation::load_open_pathing(
+        &mut game,
+        Num::ONE,
+        [-600, -80],
+        [600, 80],
+        vec![ground(HALF)],
+    );
     let bridge = boxed(1117, 100, 0);
-    game.body_on(at(0, 0, 0), None, None, bridge);
-    let walker = game.body(at(540, 0, -56), Some(at(540, 0, 56)), Some(Num::ONE), HALF);
+    Navigation::body_on(&mut game, at(0, 0, 0), None, None, bridge);
+    let walker = Navigation::body(
+        &mut game,
+        at(540, 0, -56),
+        Some(at(540, 0, 56)),
+        Some(Num::ONE),
+        HALF,
+    );
     let mut farthest = Num::ZERO;
     for _ in 0..200 {
         game.step();
@@ -70,7 +88,13 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
     assert!(farthest > Num::int(559), "{farthest:?}");
     // A walker of 1 m that stands half a meter into its long edge at z = 50, far from its ends:
     // the Collide stage moves it out to touch, to z = 51.
-    let pushed = game.body(quarters(-1600, 198), None, Some(QUARTER), Num::ONE);
+    let pushed = Navigation::body(
+        &mut game,
+        quarters(-1600, 198),
+        None,
+        Some(QUARTER),
+        Num::ONE,
+    );
     game.step();
     assert_eq!(*game.part::<Position>(pushed), at(-400, 0, 51));
 }
@@ -81,8 +105,8 @@ fn collision_pushes_a_walker_out_of_a_box_to_touch_it() {
     // meter into its edge at x = 2: the Collide stage moves it out to touch, to x = 3, exactly, and
     // leaves the box where it stands.
     let mut game = walk_match();
-    let building = game.body_on(at(0, 0, 0), None, None, boxed(4, 2, 0));
-    let walker = game.body(quarters(10, 0), None, Some(QUARTER), Num::ONE);
+    let building = Navigation::body_on(&mut game, at(0, 0, 0), None, None, boxed(4, 2, 0));
+    let walker = Navigation::body(&mut game, quarters(10, 0), None, Some(QUARTER), Num::ONE);
     game.step();
     assert_eq!(*game.part::<Position>(walker), at(3, 0, 0));
     assert_eq!(*game.part::<Position>(building), at(0, 0, 0));
@@ -96,17 +120,17 @@ fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     // and the first, in the lower row, is the lower cell. It goes there as the box spawns, not by
     // collision.
     let mut game = walk_match();
-    game.load_open_pathing(HALF, [-4, -4], [4, 4], vec![ground(QUARTER)]);
-    let walker = game.body(quarters(1, 1), None, Some(QUARTER), QUARTER);
+    Navigation::load_open_pathing(&mut game, HALF, [-4, -4], [4, 4], vec![ground(QUARTER)]);
+    let walker = Navigation::body(&mut game, quarters(1, 1), None, Some(QUARTER), QUARTER);
     game.step();
-    let building = game.spawn_unit(at(0, 0, 0), Team::new(0), boxed(2, 2, 0));
+    let building = Units::spawn(&mut game, at(0, 0, 0), Team::new(0), boxed(2, 2, 0));
     let entity = game.unit_entity(building);
     Navigation::make_room(&mut game, entity);
     assert_eq!(*game.part::<Position>(walker), quarters(5, 1));
     // With no pathing grid, the box pushes it out through its nearest edge, x = 1, to touch.
     let mut bare = walk_match();
-    let walker = bare.body(quarters(1, 0), None, Some(QUARTER), QUARTER);
-    let building = bare.spawn_unit(at(0, 0, 0), Team::new(0), boxed(2, 2, 0));
+    let walker = Navigation::body(&mut bare, quarters(1, 0), None, Some(QUARTER), QUARTER);
+    let building = Units::spawn(&mut bare, at(0, 0, 0), Team::new(0), boxed(2, 2, 0));
     let entity = bare.unit_entity(building);
     Navigation::make_room(&mut bare, entity);
     assert_eq!(*bare.part::<Position>(walker), quarters(5, 0));
@@ -118,8 +142,8 @@ fn a_dash_at_a_box_ends_touching_it() {
     // at its nearest point, (-1, 0), each tick, through -4, -3 and -2, to -1.5, where the
     // bodies touch, in tick 3, and the dash ends.
     let mut game = walk_match();
-    let building = game.body_on(at(0, 0, 0), None, None, boxed(2, 2, 0));
-    let dasher = game.body(at(-5, 0, 0), None, Some(QUARTER), HALF);
+    let building = Navigation::body_on(&mut game, at(0, 0, 0), None, None, boxed(2, 2, 0));
+    let dasher = Navigation::body(&mut game, at(-5, 0, 0), None, Some(QUARTER), HALF);
     game.insert_parts(
         dasher,
         ForcedMove::Dash {

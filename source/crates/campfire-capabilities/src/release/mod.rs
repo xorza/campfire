@@ -343,4 +343,79 @@ pub(crate) mod internals {
 }
 
 #[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::world::World;
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{SimWorld, SnapshotError, StateCopy, StateRegistry};
+
+    use crate::players::players_world::PlayersWorld;
+    use crate::release::Release;
+    use crate::units::Units;
+    use crate::units::test_world::TestUnitType;
+
+    impl Release {
+        /// Restores its state into `fresh`, a match that loaded the same books, as a restore does; the
+        /// error that refuses it, if one does. A match whose spawns sealed its unit types seals
+        /// `fresh`'s, which loads the same type of its own.
+        pub(crate) fn refusal_into(world: &World, fresh: &mut World) -> Option<SnapshotError> {
+            if let Some(&own) = world.get_resource::<TestUnitType>() {
+                Units::seal_types(fresh);
+                assert_eq!(
+                    fresh.get_resource::<TestUnitType>(),
+                    Some(&own),
+                    "the fresh match loaded the same types"
+                );
+            }
+            Release::clear(fresh);
+            let mut snapshot = Vec::new();
+            world.snapshot(&mut snapshot);
+            fresh.restore(&snapshot).err()
+        }
+
+        /// Despawns the match's entity it started with, as a restore takes a world of no entity.
+        pub(crate) fn clear(world: &mut World) {
+            if let Some(entity) = world.match_entity() {
+                world.despawn(entity);
+            }
+        }
+
+        /// Restores its state into `fresh`, a match that loaded the same books, as a restore does, and
+        /// asserts that the two hash the same.
+        pub(crate) fn restore_into(world: &World, fresh: &mut World) {
+            assert_eq!(
+                Release::refusal_into(world, fresh),
+                None,
+                "a match's own snapshot restores"
+            );
+            assert_eq!(
+                fresh.state_hash(),
+                world.state_hash(),
+                "the restored match hashes as the match"
+            );
+        }
+
+        /// Brings `copy`, a copy of the match's state, up to the match, and checks that every state
+        /// type of it hashes as the match's own.
+        pub(crate) fn check_copy(world: &mut World, copy: &mut StateCopy) {
+            copy.follow(world);
+            let (mut copied, mut own) = (Vec::new(), Vec::new());
+            let registry = world.resource::<StateRegistry>();
+            registry.hash_by_type(copy.world(), &mut copied);
+            registry.hash_by_type(world, &mut own);
+            let differ: Vec<&str> = copied
+                .iter()
+                .zip(&own)
+                .filter(|(copied, own)| copied.hash != own.hash)
+                .map(|(copied, _)| copied.name)
+                .collect();
+            assert!(
+                differ.is_empty(),
+                "the copy differs before tick {}: {differ:?}",
+                world.now().get()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

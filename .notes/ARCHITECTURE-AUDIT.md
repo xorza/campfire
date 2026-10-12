@@ -73,7 +73,7 @@ The audiences, the release and the log events, which change `net`, are in [PLAN_
 
 ## Tests
 
-`Match::test` and `ReleaseWorldTest` are the shared base; the duplication is in leaf helpers: about fifteen copies of `fn at(x, z) -> Position`, 22 of `NonZeroU32::new(30)`, three near-identical hero probes (`net/tests/scenario.rs:25`, `net/tests/prototype.rs:40`, `verifier/tests/headless.rs:99`), and one sequence of budgets, server, names and players in fourteen harness constructors. `Position::ground(x, z)` in `sim`'s internals; a `UnitProbe` beside `MatchUnits`; `Match::server_with(declared, players, kinds)`.
+`Match::test` and the capability types' test functions (`Units::spawn`, `Stats::health`, …) are the shared base; the duplication is in leaf helpers: about fifteen copies of `fn at(x, z) -> Position`, 22 of `NonZeroU32::new(30)`, three near-identical hero probes (`net/tests/scenario.rs:25`, `net/tests/prototype.rs:40`, `verifier/tests/headless.rs:99`), and one sequence of budgets, server, names and players in fourteen harness constructors. `Position::ground(x, z)` in `sim`'s internals; a `UnitProbe` beside `MatchUnits`; `Match::server_with(declared, players, kinds)`.
 
 ## Hot paths
 

@@ -1,4 +1,5 @@
 use campfire_common::Tick;
+use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
 
@@ -8,7 +9,8 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     let half = Num::HALF;
     // The source deals 50% more, crits on a roll below 0.25, ignores half of armor, then 10
     // more.
-    let source = game.stat_grunt(
+    let source = Mode::stat_grunt(
+        &mut game,
         0,
         &[
             ("damage_dealt_pct", half),
@@ -17,7 +19,8 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
             ("armor_pen", Num::int(10)),
         ],
     );
-    let armored = game.stat_grunt(
+    let armored = Mode::stat_grunt(
+        &mut game,
         1,
         &[
             ("armor", Num::int(120)),
@@ -25,8 +28,8 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
             ("physical_block", Num::int(5)),
         ],
     );
-    let exposed = game.stat_grunt(1, &[("armor", Num::int(-100))]);
-    game.tick_inputs(&[]);
+    let exposed = Mode::stat_grunt(&mut game, 1, &[("armor", Num::int(-100))]);
+    Mode::tick_inputs(&mut game, &[]);
     let crit = DamageCause::Attack {
         roll: Num::from_bits((1 << Num::FRAC_BITS) / 4 - 1),
         rank: Rank::FIRST,
@@ -37,26 +40,39 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     };
     // 100 physical, its roll of 0.25 no crit, 150 dealt: armor 120 × (1 − 0.5) − 10 = 50, 150 ×
     // 100 ÷ 150 = 100, less the block of 5: 95.
-    game.damage_of_kind(Some(source), armored, 100, "physical", attack);
+    Mode::damage_of_kind(&mut game, Some(source), armored, 100, "physical", attack);
     // 40 magic, a crit on a roll just below 0.25: 40 × 1.5 × 2 = 120, magic resist 60 with no
     // magic pen: 120 × 100 ÷ 160 = 75, no block.
-    game.damage_of_kind(Some(source), armored, 40, "magic", crit);
+    Mode::damage_of_kind(&mut game, Some(source), armored, 40, "magic", crit);
     // 100 physical, 150 dealt, against armor −100, which pen does not touch: 150 × (2 − 100 ÷
     // 200) = 225.
-    game.damage_of_kind(Some(source), exposed, 100, "physical", attack);
+    Mode::damage_of_kind(&mut game, Some(source), exposed, 100, "physical", attack);
     // 100 true, 150 dealt, whatever the armor.
-    game.damage_of_kind(Some(source), exposed, 100, "true", DamageCause::Effect);
+    Mode::damage_of_kind(
+        &mut game,
+        Some(source),
+        exposed,
+        100,
+        "true",
+        DamageCause::Effect,
+    );
     // An attack of 100 physical from no source, its roll 0: no bonus and no crit chance, 100 ×
     // 1.5 = 150.
     let lowest = DamageCause::Attack {
         roll: Num::ZERO,
         rank: Rank::FIRST,
     };
-    game.damage_of_kind(None, exposed, 100, "physical", lowest);
-    game.tick_inputs(&[]);
-    assert!(game.failures().is_empty());
-    assert_eq!(game.life(armored), Num::int(1000 - 95 - 75));
-    assert_eq!(game.life(exposed), Num::int(1000 - 225 - 150 - 150));
+    Mode::damage_of_kind(&mut game, None, exposed, 100, "physical", lowest);
+    Mode::tick_inputs(&mut game, &[]);
+    assert!(Mode::failures(&game).is_empty());
+    assert_eq!(
+        game.part::<Life>(armored).current(),
+        Num::int(1000 - 95 - 75)
+    );
+    assert_eq!(
+        game.part::<Life>(exposed).current(),
+        Num::int(1000 - 225 - 150 - 150)
+    );
 }
 
 #[test]
@@ -82,23 +98,30 @@ fn calc_heal(ctx, h) {
         ..ScriptLimits::ROOMY
     };
     let mut game = mode_match(script, limits);
-    let source = game.stat_grunt(0, &[]);
-    let target = game.stat_grunt(1, &[]);
-    game.tick_inputs(&[]);
+    let source = Mode::stat_grunt(&mut game, 0, &[]);
+    let target = Mode::stat_grunt(&mut game, 1, &[]);
+    Mode::tick_inputs(&mut game, &[]);
     // Physical 10, tripled; magic 10, whose timer the pure `ctx` refuses; true 10, which returns
     // no number. The two failures keep their 10: 1000 − 30 − 10 − 10.
     for kind in DAMAGE_KINDS {
-        game.damage_of_kind(Some(source), target, 10, kind, DamageCause::Effect);
+        Mode::damage_of_kind(
+            &mut game,
+            Some(source),
+            target,
+            10,
+            kind,
+            DamageCause::Effect,
+        );
     }
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
     assert_eq!(
-        game.failures(),
+        Mode::failures(&game),
         [
             FailureKind::Api(ApiError::PureCall),
             FailureKind::Api(ApiError::NotAnAmount)
         ]
     );
-    assert_eq!(game.life(target), Num::int(950));
+    assert_eq!(game.part::<Life>(target).current(), Num::int(950));
     let timers = game.resource::<Timers>();
     assert!(timers.due(Tick::new(u64::MAX)).is_none());
 
@@ -114,7 +137,7 @@ fn calc_heal(ctx, h) {
             depth: 0,
         });
     }
-    game.tick_inputs(&[]);
-    assert_eq!(game.failures(), []);
-    assert_eq!(game.life(target), Num::int(961));
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(Mode::failures(&game), []);
+    assert_eq!(game.part::<Life>(target).current(), Num::int(961));
 }

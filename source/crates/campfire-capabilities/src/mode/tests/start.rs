@@ -7,7 +7,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     // grunt, 1, at its marker; team a's spawn group of two, 2 and 3, at the path's start; team
     // b's spawn group of one, 4, at its end. Teams a and b are 0 and 1, neutral 2.
     assert_eq!(
-        game.placed_units(),
+        Mode::placed_units(&game),
         [
             (0, at(-8, 0), 0, None),
             (1, at(0, 0), 2, None),
@@ -16,7 +16,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
             (4, at(10, 0), 1, Some(PathEnd::End)),
         ]
     );
-    let tower = game.entity_by_id(0);
+    let tower = Mode::entity_by_id(&game, 0);
     assert_eq!(
         game.get::<OnPath>(tower).map(|path| path.get()),
         Some(PathId::new(0))
@@ -63,18 +63,22 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     assert_eq!(*game.resource::<Bounds>(), map().bounds);
     // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
     // the grunt, with no body, the first's, `ground`.
-    let tags = |id| game.get::<UnitTags>(game.entity_by_id(id)).unwrap().tags;
+    let tags = |id| {
+        game.get::<UnitTags>(Mode::entity_by_id(&game, id))
+            .unwrap()
+            .tags
+    };
     let tag = |name| game.non_send::<View>().types_mut().tag_named(name).unwrap();
     let layer_tags = [0, 1].map(|id| [tag("ground"), tag("air")].map(|tag| tags(id).contains(tag)));
     assert_eq!(layer_tags, [[false, true], [true, false]]);
-    assert_eq!(game.tracked_state(), state("start", 0, 0, 0));
+    assert_eq!(Mode::tracked_state(&game), state("start", 0, 0, 0));
 
     // Set at the start, time 0: "every" is due at 1, the end of tick 0, and every tick after;
     // "once", 250 ms, 2.5 ticks rounded up to 3, at the end of tick 2, with its data.
     let mut seen = Vec::new();
     for _ in 0..4 {
-        game.tick_inputs(&[]);
-        seen.push(game.tracked_state());
+        Mode::tick_inputs(&mut game, &[]);
+        seen.push(Mode::tracked_state(&game));
     }
     assert_eq!(
         seen,
@@ -85,7 +89,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
             state("start", 7, 4, 0),
         ]
     );
-    assert!(game.failures().is_empty());
+    assert!(Mode::failures(&game).is_empty());
 }
 
 #[test]
@@ -128,7 +132,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut game = start_match(script, ScriptLimits::ROOMY, files).unwrap();
     assert_eq!(*game.resource::<Metric>(), Metric::Spatial);
     let up = |x| Position::new(Vec3::new(Num::int(x), Num::int(3), Num::ZERO)).unwrap();
-    let walkers = |game: &Match| <[_; 3]>::try_from(&game.placed_units()[1..]).unwrap();
+    let walkers = |game: &Match| <[_; 3]>::try_from(&Mode::placed_units(game)[1..]).unwrap();
     assert_eq!(
         walkers(&game),
         [
@@ -144,9 +148,12 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(last, [Some(up(10)), Some(up(-10)), Some(up(10))]);
     // A text that names no end fails the call of `named`, and a string in place of a member
     // fails the call of `spawn_group`, as no form of it takes one.
-    game.tick_inputs(&[(0, input("phase", "named")), (0, input("phase", "text"))]);
+    Mode::tick_inputs(
+        &mut game,
+        &[(0, input("phase", "named")), (0, input("phase", "text"))],
+    );
     assert_eq!(
-        game.failures(),
+        Mode::failures(&game),
         [
             FailureKind::Api(ApiError::UnknownMember(EngineEnum::PathEnd)),
             FailureKind::Runtime
@@ -227,17 +234,17 @@ fn on_input(ctx, player, name, value) {
         |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
     assert_eq!(crates(&game), [ground(0, 2)]);
     for value in ["c1", "twice", "c10"] {
-        game.tick_inputs(&[(0, input("phase", value))]);
+        Mode::tick_inputs(&mut game, &[(0, input("phase", value))]);
         assert_eq!(crates(&game), [ground(0, 2)], "{value}");
         assert_eq!(
-            game.failures().last(),
+            Mode::failures(&game).last(),
             Some(&FailureKind::Api(ApiError::NoRoom)),
             "{value}"
         );
     }
-    game.tick_inputs(&[(0, input("phase", "c2"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "c2"))]);
     assert_eq!(crates(&game), [ground(0, 2), ground(2, 2)]);
-    assert!(game.failures().is_empty());
+    assert!(Mode::failures(&game).is_empty());
 }
 
 #[test]
@@ -248,14 +255,14 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
     files.map.units[0].height = Num::int(3);
     files.map.units[0].angle = Num::int(-90);
     let game = start_match(SCRIPT, ScriptLimits::ROOMY, files).unwrap();
-    let tower = game.entity(game.entity_by_id(0));
+    let tower = game.entity(Mode::entity_by_id(&game, 0));
     let raised = Position::new(Vec3::new(Num::int(-8), Num::int(3), Num::ZERO)).unwrap();
     assert_eq!(tower.get::<Position>(), Some(&raised));
     assert_eq!(
         tower.get::<Facing>().map(|facing| facing.degrees()),
         Some(Num::int(270))
     );
-    let grunt = game.entity(game.entity_by_id(1));
+    let grunt = game.entity(Mode::entity_by_id(&game, 1));
     assert_eq!(
         grunt.get::<Facing>().map(|facing| facing.degrees()),
         Some(Num::ZERO)

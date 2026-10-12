@@ -4,13 +4,13 @@ use std::num::{NonZeroU8, NonZeroU32};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Position, SimComponent, SimWorld};
+use campfire_sim::{Position, SimComponent, SimWorld, StableId};
 use serde::Deserialize;
 
 use super::*;
+use crate::actions::Actions;
 use crate::actions::action_data::ActionData;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::actions_world::test_world::ActionsWorldTest;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting, HealFields};
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::targeting::Targeting;
@@ -20,32 +20,31 @@ use crate::geometry::bounds::Bounds;
 use crate::items::inventory::ItemStack;
 use crate::items::item_book::ItemSpec;
 use crate::items::item_id::ItemId;
-use crate::items::items_world::test_world::{Carrier, ItemsWorldTest};
 use crate::items::shop::{Shop, ShopPlace};
 use crate::orders::order::Action;
+use crate::orders::order::Order;
 use crate::players::Players;
 use crate::players::players_world::PlayersWorldCrate;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::release::r#match::Match;
-use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
 use crate::stats::life::Life;
+use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
-use crate::stats::stats_world::test_world::StatsWorldTest;
+use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::block::Block;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
-use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::Number;
 use crate::values::ranked::Ranked;
@@ -57,12 +56,21 @@ const POTION: u32 = 0;
 const FLASH: u32 = 1;
 const CHARM: u32 = 2;
 
-/// A match of a sim of three inventory slots, of slot kind 0, with 200 of its 500 life
-/// lost, its player 1000 gold, and a shop round it that sells: a potion, two to a slot, of one
-/// use, that heals 50; a flash of no effect and a cooldown of 1000 ms; and a charm whose
-/// sim holds Might, 10 attack damage.
-fn carrier_match() -> Match {
-    let declared = [
+/// A carrier of three inventory slots, of slot kind 0, with 200 of its 500 life lost, its player
+/// 1000 gold, and a shop round it that sells: a potion, two to a slot, of one use, that heals 50; a
+/// flash of no effect and a cooldown of 1000 ms; and a charm whose carrier holds Might, 10 attack
+/// damage.
+#[derive(Debug, Clone, Copy)]
+struct Carrier {
+    id: StableId,
+    drink: ActionId,
+    flash: ActionId,
+    might: ModifierId,
+}
+
+impl Carrier {
+    /// The capabilities a carrier's match declares.
+    const CAPABILITIES: [Capability; 6] = [
         Capability::Stats,
         Capability::Combat,
         Capability::Navigation,
@@ -70,68 +78,124 @@ fn carrier_match() -> Match {
         Capability::Orders,
         Capability::Items,
     ];
-    let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
-    let gold = DeclaredName::new("gold").unwrap();
-    game.name_kinds(&["physical"], &["health"], &["gold"]);
-    let attack_damage = Stat::named("attack_damage").unwrap();
-    game.load_stat_rules(&BTreeMap::from([(
-        attack_damage.clone(),
-        StatRule::default(),
-    )]));
-    let change = StatChange {
-        op: StatOp::Add,
-        value: Number::Value(Scalar::Int(10)),
-    };
-    let might = ModifierData {
-        stats: BTreeMap::from([(attack_damage, change)]),
-        ..ModifierData::default()
-    };
-    game.load_modifier(0, "might", &might, None);
-    let might = Stats::modifier(&game, 0, "might").unwrap();
-    let heal = EffectData {
-        does: Effecting::Heal(HealFields {
-            amount: Number::Value(Scalar::Int(50)),
-        }),
-        to: EffectTo::Source,
-    };
-    let drink = ActionData {
-        on_resolve: vec![heal],
-        ..ActionData::cast(Targeting::None)
-    };
-    let flash = ActionData {
-        cooldown_ms: Some(Ranked::One(Number::Value(Scalar::Int(1000)))),
-        ..ActionData::cast(Targeting::None)
-    };
-    let mut load = |name: &str, data: &ActionData| {
-        let id = game.load_action(0, name, data, None, 1).unwrap();
-        game.load_effect_lists(id, 0, data);
-        id
-    };
-    let (drink, flash) = (load("drink", &drink), load("flash", &flash));
-    stock(&mut game, gold, [drink, flash], might);
-    let kind = SlotKind::new(0);
-    let slots = ActionSlots::new([]).with_empty(kind, 3).timed();
-    let mut life = Life::full(Num::int(500));
-    life.take(Num::int(200));
-    let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
-    let three = NonZeroU8::new(3).unwrap();
-    let id = game.spawn_unit(
-        pos,
-        Team::new(0),
-        (
-            (Owner::new(PlayerSlot::new(0)), life),
-            (OnDeath::Stay, RecentAttackers::default()),
-            (Modifiers::default(), ModifierClocks::default()),
-            (slots, Inventory::new(three, kind)),
-        ),
-    );
-    game.insert_resource(Carrier {
-        id,
-        drink,
-        flash,
-        might,
-    });
-    game
+
+    /// Loads the carrier's stats, modifier, actions and shop into `game`, a match of
+    /// `CAPABILITIES`, and spawns it.
+    fn place(game: &mut Match) -> Carrier {
+        let gold = DeclaredName::new("gold").unwrap();
+        Units::name_kinds(game, &["physical"], &["health"], &["gold"]);
+        let attack_damage = Stat::named("attack_damage").unwrap();
+        Stats::load_rules(
+            game,
+            &BTreeMap::from([(attack_damage.clone(), StatRule::default())]),
+        );
+        let change = StatChange {
+            op: StatOp::Add,
+            value: Number::Value(Scalar::Int(10)),
+        };
+        let might = ModifierData {
+            stats: BTreeMap::from([(attack_damage, change)]),
+            ..ModifierData::default()
+        };
+        Stats::load_modifier(game, 0, "might", &might, None);
+        let might = Stats::modifier(game, 0, "might").unwrap();
+        let heal = EffectData {
+            does: Effecting::Heal(HealFields {
+                amount: Number::Value(Scalar::Int(50)),
+            }),
+            to: EffectTo::Source,
+        };
+        let drink = ActionData {
+            on_resolve: vec![heal],
+            ..ActionData::cast(Targeting::None)
+        };
+        let flash = ActionData {
+            cooldown_ms: Some(Ranked::One(Number::Value(Scalar::Int(1000)))),
+            ..ActionData::cast(Targeting::None)
+        };
+        let mut load = |name: &str, data: &ActionData| {
+            let id = Actions::load(game, 0, name, data, None, 1).unwrap();
+            Actions::load_effect_lists(game, id, 0, data);
+            id
+        };
+        let (drink, flash) = (load("drink", &drink), load("flash", &flash));
+        stock(game, gold, [drink, flash], might);
+        let kind = SlotKind::new(0);
+        let slots = ActionSlots::new([]).with_empty(kind, 3).timed();
+        let mut life = Life::full(Num::int(500));
+        life.take(Num::int(200));
+        let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+        let three = NonZeroU8::new(3).unwrap();
+        let id = Units::spawn(
+            game,
+            pos,
+            Team::new(0),
+            (
+                (Owner::new(PlayerSlot::new(0)), life),
+                (OnDeath::Stay, RecentAttackers::default()),
+                (Modifiers::default(), ModifierClocks::default()),
+                (slots, Inventory::new(three, kind)),
+            ),
+        );
+        Carrier {
+            id,
+            drink,
+            flash,
+            might,
+        }
+    }
+
+    /// Runs a tick in which player 0 orders the carrier each of `actions`.
+    fn order(self, game: &mut World, actions: &[Action]) {
+        let unit = self.id;
+        let orders: Vec<Order> = actions
+            .iter()
+            .map(|&action| Order::one(unit, action))
+            .collect();
+        let payload = Order::payload(&orders);
+        game.step_with(&[(PlayerSlot::new(0), &payload)]);
+    }
+
+    /// The carrier's life.
+    fn life(self, game: &World) -> Num {
+        game.part::<Life>(self.id).current()
+    }
+
+    /// Each slot's item type and count, then its action and the tick it is ready.
+    fn items(self, game: &World) -> Vec<Option<(usize, u32)>> {
+        let inventory = game.part::<Inventory>(self.id);
+        let carried = |slot: &Option<ItemStack>| {
+            slot.map(|carried| (carried.item.index(), carried.count.get()))
+        };
+        inventory.slots().iter().map(carried).collect()
+    }
+
+    /// The action in each of the carrier's slots.
+    fn actions(self, game: &World) -> Vec<Option<ActionId>> {
+        let slots = game.part::<ActionSlots>(self.id);
+        slots.iter().map(|slot| slot.action).collect()
+    }
+
+    /// How many instances of Might the carrier holds, each from itself as a passive.
+    fn mights(self, game: &World) -> usize {
+        let modifiers = game.part::<Modifiers>(self.id);
+        modifiers
+            .iter()
+            .filter(|instance| {
+                instance.id == self.might
+                    && instance.source == Some(self.id)
+                    && instance.lifetime.held_by(Hold::Passive)
+            })
+            .count()
+    }
+}
+
+/// A server's match of the carrier's capabilities.
+fn carrier_match() -> Match {
+    Match::server(
+        &Carrier::CAPABILITIES,
+        ScriptBudgets::new(ScriptLimits::ROOMY, 1),
+    )
 }
 
 /// Gives `game` the item book, the shop at the origin, and player 0's 1000 of `gold`.
@@ -184,12 +248,12 @@ const fn cast(slot: u8) -> Action {
 #[test]
 fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     let mut game = carrier_match();
-    let carrier = game.carrier();
+    let carrier = Carrier::place(&mut game);
     let drink = Some(carrier.drink);
     // Two potions stack in slot 0, which holds their action; the others hold none.
-    game.order_carrier(&[buy(POTION), buy(POTION)]);
-    assert_eq!(game.carried_items(), [Some((0, 2)), None, None]);
-    assert_eq!(game.carried_actions(), [drink, None, None]);
+    carrier.order(&mut game, &[buy(POTION), buy(POTION)]);
+    assert_eq!(carrier.items(&game), [Some((0, 2)), None, None]);
+    assert_eq!(carrier.actions(&game), [drink, None, None]);
     // A restored inventory holds stacks its book allows: a potion of its one use, two at most to
     // a slot, and a flash with no uses.
     let restored = |item: u32, count: u32, uses: Option<u32>| {
@@ -209,35 +273,36 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     assert!(!restored(FLASH, 1, Some(1)));
     assert!(!restored(9, 1, None));
     // One resolves as its order comes, and heals 50 of the 200 lost: one potion left.
-    game.order_carrier(&[cast(0)]);
+    carrier.order(&mut game, &[cast(0)]);
     assert_eq!(
-        (game.carrier_life(), game.carried_items()),
+        (carrier.life(&game), carrier.items(&game)),
         (Num::int(350), vec![Some((0, 1)), None, None])
     );
     // A stun blocks `use`: the drink waits as its order, and resolves the tick the stun ends,
     // spending the last potion, which leaves the slot and its action empty.
-    game.set_blocks(
+    Units::set_blocks(
+        &mut game,
         carrier.id,
         &[Block::Move, Block::Attack, Block::Cast, Block::Use],
     );
-    game.order_carrier(&[cast(0)]);
+    carrier.order(&mut game, &[cast(0)]);
     assert_eq!(
-        (game.carrier_life(), game.carried_items()),
+        (carrier.life(&game), carrier.items(&game)),
         (Num::int(350), vec![Some((0, 1)), None, None])
     );
-    game.set_blocks(carrier.id, &[]);
+    Units::set_blocks(&mut game, carrier.id, &[]);
     game.step();
     assert_eq!(
-        (game.carrier_life(), game.carried_items()),
+        (carrier.life(&game), carrier.items(&game)),
         (Num::int(400), vec![None, None, None])
     );
-    assert_eq!(game.carried_actions(), [None, None, None]);
+    assert_eq!(carrier.actions(&game), [None, None, None]);
     // A silence blocks casts alone: a new potion is drunk through it.
-    game.order_carrier(&[buy(POTION)]);
-    game.set_blocks(carrier.id, &[Block::Cast]);
-    game.order_carrier(&[cast(0)]);
+    carrier.order(&mut game, &[buy(POTION)]);
+    Units::set_blocks(&mut game, carrier.id, &[Block::Cast]);
+    carrier.order(&mut game, &[cast(0)]);
     assert_eq!(
-        (game.carrier_life(), game.carried_items()),
+        (carrier.life(&game), carrier.items(&game)),
         (Num::int(450), vec![None, None, None])
     );
 }
@@ -245,13 +310,13 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
 #[test]
 fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modifier_once() {
     let mut game = carrier_match();
-    let carrier = game.carrier();
-    game.order_carrier(&[buy(FLASH)]);
-    game.order_carrier(&[cast(0)]);
+    let carrier = Carrier::place(&mut game);
+    carrier.order(&mut game, &[buy(FLASH)]);
+    carrier.order(&mut game, &[cast(0)]);
     let ready = game.part::<SlotTimes>(carrier.id).slot(0).unwrap().ready_at;
     assert!(ready > game.now());
     // The flash moves to slot 2 with its cooldown; slot 0 is empty and ready.
-    game.order_carrier(&[Action::Swap { from: 0, to: 2 }]);
+    carrier.order(&mut game, &[Action::Swap { from: 0, to: 2 }]);
     let slots = game.part::<ActionSlots>(carrier.id);
     let times = game.part::<SlotTimes>(carrier.id);
     let held = |at: u8| {
@@ -260,18 +325,18 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
     };
     assert_eq!(held(2), (Some(carrier.flash), ready));
     assert_eq!(held(0), (None, Tick::ZERO));
-    // A charm holds Might from the sim, as a passive; a second charm holds it no more often;
+    // A charm holds Might from the carrier, as a passive; a second charm holds it no more often;
     // selling one keeps it, selling both lets it go.
-    assert_eq!(game.mights(), 0);
-    game.order_carrier(&[buy(CHARM)]);
-    assert_eq!(game.mights(), 1);
-    game.order_carrier(&[buy(CHARM)]);
+    assert_eq!(carrier.mights(&game), 0);
+    carrier.order(&mut game, &[buy(CHARM)]);
+    assert_eq!(carrier.mights(&game), 1);
+    carrier.order(&mut game, &[buy(CHARM)]);
     assert_eq!(
-        (game.carried_items(), game.mights()),
+        (carrier.items(&game), carrier.mights(&game)),
         (vec![Some((2, 1)), Some((2, 1)), Some((1, 1))], 1)
     );
-    game.order_carrier(&[Action::Sell { slot: 0 }]);
-    assert_eq!(game.mights(), 1);
-    game.order_carrier(&[Action::Sell { slot: 1 }]);
-    assert_eq!(game.mights(), 0);
+    carrier.order(&mut game, &[Action::Sell { slot: 0 }]);
+    assert_eq!(carrier.mights(&game), 1);
+    carrier.order(&mut game, &[Action::Sell { slot: 1 }]);
+    assert_eq!(carrier.mights(&game), 0);
 }
