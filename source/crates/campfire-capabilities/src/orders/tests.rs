@@ -14,7 +14,6 @@ use serde::Deserialize;
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_book::internals::TestWeapon;
 use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
@@ -22,8 +21,9 @@ use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
-use crate::combat::internals::Armed;
+use crate::actions::test_world::TestWeapon;
 use crate::combat::on_death::OnDeath;
+use crate::combat::test_world::Armed;
 use crate::declare::capability_set::CapabilitySet;
 use crate::geometry::grid::Grid;
 use crate::items::inventory::Inventory;

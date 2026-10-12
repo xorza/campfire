@@ -113,12 +113,13 @@ impl Orders {
                 .in_set(SimSet::Act)
                 .before(CombatSet::Attack),
         ));
-        schedule.configure_sets((
-            ActionsSet::HoldAtInputs.after(OrdersSet::Orders),
-            ItemsSet::HoldAtInputs.after(OrdersSet::Orders),
-            ProductionSet::CheckBuilds.after(OrdersSet::Orders),
-            OrdersSet::Orders.after(AbilitiesSet::Toggles),
-        ));
+        schedule.configure_sets(
+            OrdersSet::Orders
+                .after(AbilitiesSet::Toggles)
+                .before(ActionsSet::HoldAtInputs)
+                .before(ItemsSet::HoldAtInputs)
+                .before(ProductionSet::CheckBuilds),
+        );
         if production {
             schedule.add_systems(
                 ProductionOrders::apply_production_orders::<S>
@@ -207,7 +208,7 @@ pub(crate) mod test_world {
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::in_progress::InProgress;
     use crate::actions::slot_times::SlotTimes;
-    use crate::combat::internals::Armed;
+    use crate::combat::test_world::Armed;
     use crate::items::inventory::{Inventory, ItemStack};
     use crate::navigation::Navigation;
     use crate::orders::Orders;

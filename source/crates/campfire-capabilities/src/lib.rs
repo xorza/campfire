@@ -292,7 +292,6 @@ pub use crate::vision::vision_data::VisionData;
 
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
-    pub use crate::combat::internals::{Arms, ArmsParts};
     pub use crate::geometry::kernel_scene::{Density, KernelScene};
     pub use crate::players::Players;
     pub use crate::scripts::scripts_world::internals::ScriptsWorldInternals;

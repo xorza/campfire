@@ -200,49 +200,9 @@ impl Book for ActionBook {
 pub(crate) mod internals {
     use std::sync::Arc;
 
-    use campfire_common::Ticks;
-
     use crate::actions::action::Action;
     use crate::actions::action_book::ActionBook;
-    use crate::actions::action_range::ActionRange;
-    use crate::players::resource_amount::ResourceAmount;
-    use crate::stats::pool_cost::PoolCost;
-    use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
-    use crate::units::filter::Filter;
-    use crate::units::unit_type::UnitType;
-
-    /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
-    /// homing projectile it fires, if it fires one, the places among its unit's stats of its
-    /// rate and its damage, and its cost in pools and in a player resource.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub(crate) struct TestWeapon {
-        pub(crate) aim: Filter,
-        pub(crate) range: ActionRange,
-        pub(crate) windup: Ticks,
-        pub(crate) projectile: Option<UnitType>,
-        pub(crate) rate: StatId,
-        pub(crate) damage: StatId,
-        pub(crate) cost: PoolCost,
-        pub(crate) resource_cost: Option<ResourceAmount>,
-    }
-
-    impl TestWeapon {
-        /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
-        /// rate and damage, costing nothing.
-        pub(crate) fn new(aim: Filter, range: ActionRange, windup: Ticks) -> TestWeapon {
-            TestWeapon {
-                aim,
-                range,
-                windup,
-                projectile: None,
-                rate: StatId::new(0),
-                damage: StatId::new(1),
-                cost: PoolCost::default(),
-                resource_cost: None,
-            }
-        }
-    }
 
     impl ActionBook {
         /// Adds `action`; its id.

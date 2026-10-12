@@ -267,10 +267,17 @@ pub(crate) mod internals {
 
     use crate::units::Units;
     use crate::units::team::Team;
+    use crate::units::unit_type::UnitType;
     use crate::units::units_world::UnitsWorldCrate;
+    use crate::units::view::View;
     use crate::values::relation::Relation;
 
     impl Units {
+        /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
+        pub fn type_named(world: &World, name: &str) -> Option<UnitType> {
+            world.non_send::<View>().unit_type_named(name)
+        }
+
         /// Sets how the two teams of the match regard each other, as `ctx.set_relation`
         /// does, their vision as it was.
         pub fn set_relation(world: &mut World, of: Team, other: Team, relation: Relation) {

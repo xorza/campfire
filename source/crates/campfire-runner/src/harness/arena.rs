@@ -1,30 +1,43 @@
 use std::path::Path;
+use std::sync::Arc;
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    ActionId, Actions, Match, ModifierId, Order, PoolId, ScriptFailure, ScriptFailures, Stats,
-    Vision,
+    ActionId, Actions, Match, ModeUnits, ModifierId, Order, PoolId, ScriptFailure, ScriptFailures,
+    Stats, Team, Units, Vision,
 };
 use campfire_common::PlayerSlot;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimWorld, TickRate};
+use campfire_sim::{Position, SimWorld, StableId, TickRate};
 
 use crate::match_build::MatchBuild;
 
-/// An arena: the books of the mode at a directory, on its only map, with every book in place,
-/// the mode's own among them, and no mode installed. Its script never runs, so no `calc_damage`
-/// weighs a hit and no map unit spawns, and its match starts with the match's entity alone. A test
-/// places its units by hand and drives their actions, as the packages hold them.
+/// An arena: the books of a mode, on its only map, with every book in place, the mode's own
+/// among them, and no mode installed. Its script never runs, so no `calc_damage` weighs a hit and
+/// no map unit spawns, and its match starts with the match's entity alone. A test spawns its units
+/// as the mode spawns them, each of a type the test adds to the mode, and drives their actions, as
+/// the packages hold them.
 #[derive(Debug)]
 pub struct Arena {
     packages: ModePackages,
 }
 
 impl Arena {
-    /// The arena of the mode at `dir`, on its only map.
-    pub fn load(dir: &Path) -> Arena {
-        let mode = PackageDir::new(dir);
+    /// The arena of the mode at `mode` within the workspace's package tree `tree`, on its only
+    /// map, with each of `additions`, text the arena adds to the end of a file of the mode, by
+    /// its path within the mode: the unit types of the units a test spawns, and their actions.
+    pub fn load(tree: &str, mode: &str, additions: &[(&str, &str)]) -> Arena {
+        let mut files = PackageDir::workspace_tree(tree);
+        for &(path, text) in additions {
+            let file = files
+                .get_mut(&Path::new(mode).join(path))
+                .unwrap_or_else(|| panic!("the mode has no {path}"));
+            file.push(b'\n');
+            file.extend_from_slice(text.as_bytes());
+        }
+        let mode = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), mode);
         let map = ModePackages::choose_map(&mode, None).unwrap();
         let packages = ModePackages::from_package_dir(&mode, &map).unwrap();
         Arena { packages }
@@ -36,6 +49,26 @@ impl Arena {
         let mut game = MatchBuild::arena(&self.packages, rate, players);
         game.insert_non_send(ArenaFailures::default());
         game
+    }
+
+    /// A unit of the mode's type `unit_type` and `team` at `pos`, with `parts`, spawned as the
+    /// mode spawns one: with its type's kit, stats, slots and passive.
+    pub fn spawn(
+        &self,
+        game: &mut World,
+        unit_type: &str,
+        pos: Position,
+        team: Team,
+        parts: impl Bundle,
+    ) -> StableId {
+        let unit_type = Units::type_named(game, unit_type)
+            .unwrap_or_else(|| panic!("no unit type {unit_type}"));
+        let units = game
+            .remove_non_send::<ArenaUnits>()
+            .expect("an arena holds its mode's unit types");
+        let id = units.0.spawn(game, unit_type, pos, team, parts);
+        game.insert_non_send(units);
+        id
     }
 
     /// The action `name` of the arena's package `package`.
@@ -98,6 +131,10 @@ impl Arena {
         u16::try_from(at).unwrap()
     }
 }
+
+/// The unit types of an arena's mode, which its tests spawn.
+#[derive(Debug)]
+pub(crate) struct ArenaUnits(pub(crate) ModeUnits);
 
 /// Every script failure since an arena's match began; `ScriptFailures` keeps only the last tick's.
 #[derive(Debug, Default)]

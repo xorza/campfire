@@ -141,9 +141,9 @@ pub(crate) mod test_world {
     use crate::actions::in_progress::InProgress;
     use crate::actions::slot_kind::SlotKind;
     use crate::actions::slot_times::{SlotTime, SlotTimes, TimedSlots};
-    use crate::combat::internals::Armed;
     use crate::combat::on_death::OnDeath;
     use crate::combat::recent_attackers::RecentAttackers;
+    use crate::combat::test_world::Armed;
     use crate::navigation::Navigation;
     use crate::scripts::hook::Hook;
     use crate::scripts::script_failures::ScriptFailures;

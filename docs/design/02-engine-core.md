@@ -58,7 +58,7 @@ flowchart TB
     classDef planned stroke-dasharray: 5 5
 ```
 
-Dashed: planned. `log` is left out: the binaries, `net` and `verifier` use it. `codec` is left out too: every crate that serializes uses it. Each layer uses the layers below it.
+Dashed: planned. `log` is left out: the binaries, `net`, `runner` and `verifier` use it. `codec` is left out too: every crate that serializes uses it. Each layer uses the layers below it.
 
 ## Modules
 

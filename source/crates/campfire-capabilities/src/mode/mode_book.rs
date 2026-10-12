@@ -20,21 +20,12 @@ use crate::mode::roster::Roster;
 use crate::mode::slot_action::SlotAction;
 use crate::mode::unit_kit::UnitKit;
 use crate::mode::unit_kit::kit_part::{KitPart, KitSpawn};
-use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
-use crate::progression::track_book::TrackBook;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
-use crate::stats::applier::Applier;
-use crate::stats::level::Level;
-use crate::stats::lifetime::Hold;
-use crate::stats::stat_book::StatBook;
-use crate::stats::stats_effect::StatsEffect;
-use crate::stats::unit_stats::UnitStats;
-use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::facing::Facing;
 use crate::units::modifier_id::ModifierId;
@@ -47,7 +38,6 @@ use crate::units::teams::Teams;
 use crate::units::track_id::TrackId;
 use crate::units::unit_state::{SyncAll, SyncNone};
 use crate::units::unit_type::UnitType;
-use crate::values::rank::Rank;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
 /// loads it from the packages, as a new match does.
@@ -160,19 +150,7 @@ impl ModeBook {
     /// kind, then an empty slot of its inventory's kind for each inventory slot; none for a type
     /// with neither.
     pub(crate) fn spawn_slots(&self, unit_type: UnitType) -> Option<ActionSlots> {
-        let inventory = self.kit(unit_type)?.inventory;
-        if !self.has_slots(unit_type) {
-            return None;
-        }
-        let actions = self
-            .actions(unit_type)
-            .iter()
-            .map(|action| (action.action, action.kind, action.rank));
-        let slots = ActionSlots::new(actions);
-        Some(match inventory {
-            Some(inventory) => slots.with_empty(inventory.kind, inventory.slots.get()),
-            None => slots,
-        })
+        self.kit(unit_type)?.slots(self.actions(unit_type))
     }
 
     pub(super) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
@@ -181,10 +159,8 @@ impl ModeBook {
 
     /// Whether a unit of `unit_type` spawns with slots: actions, or an inventory.
     fn has_slots(&self, unit_type: UnitType) -> bool {
-        let inventory = self
-            .kit(unit_type)
-            .is_some_and(|kit| kit.inventory.is_some());
-        inventory || !self.actions(unit_type).is_empty()
+        self.kit(unit_type)
+            .is_some_and(|kit| kit.has_slots(self.actions(unit_type)))
     }
 
     /// Whether `unit` holds every part a unit of its type spawns with, of a match whose `level`
@@ -226,9 +202,8 @@ impl ModeBook {
         self.spawn(world, at, owner.map(Owner::new), ())
     }
 
-    /// Spawns `at`, with its kit, its stats, its script state at its type's defaults, its
-    /// actions, each at the first rank of its kind, an empty slot of its inventory's kind for each
-    /// inventory slot, its passive, and `parts`.
+    /// Spawns `at` with its type's kit, actions and passive, as `UnitKit::spawn` does, and
+    /// `parts`.
     pub(crate) fn spawn(
         &self,
         world: &mut World,
@@ -236,59 +211,13 @@ impl ModeBook {
         owner: Option<Owner>,
         parts: impl Bundle,
     ) -> Entity {
-        let SpawnAt {
-            id,
-            unit_type,
-            pos,
-            angle,
-            ..
-        } = at;
-        let kit = self
-            .kit(unit_type)
+        let held = self
+            .types
+            .get(at.unit_type)
             .expect("a unit type of the mode has a kit");
-        let level_track = world
-            .get_resource::<TrackBook>()
-            .and_then(TrackBook::level_track);
-        // Its stats as its first refresh derives them, of its type at level 1 with no modifiers, so
-        // a reader in the stage it spawns in finds them.
-        let stats = world
-            .get_resource::<StatBook>()
-            .map_or_else(UnitStats::default, |book| {
-                UnitStats::new(book.base_values(unit_type, Level::default().get()))
-            });
-        let mut unit = at.core(owner).spawn(world, (stats, parts));
-        let at = KitSpawn {
-            kit: &kit,
-            level_track,
-            pos,
-            angle,
-        };
-        KitPart::give_every(&at, &mut unit);
-        if let Some(slots) = self.spawn_slots(unit_type) {
-            unit.insert(slots.timed());
-        }
-        let boxed = unit
-            .get::<Body>()
-            .is_some_and(|body| body.half_edges().is_some());
-        let entity = unit.id();
-        if let Some(passive) = self.types.get(unit_type).and_then(|held| held.passive) {
-            let applier = Applier {
-                source: Some(id),
-                action: None,
-                rank: Rank::FIRST,
-                hold: Some(Hold::Passive),
-            };
-            let add = StatsEffect::Add {
-                target: id,
-                id: passive,
-                duration: None,
-            };
-            add.apply_by(world, applier);
-        }
-        if boxed {
-            Navigation::make_room(world, entity);
-        }
-        entity
+        let actions = &self.actions[held.actions.clone()];
+        held.kit
+            .spawn(world, at, owner, actions, held.passive, parts)
     }
 
     /// Spawns `units` of `team`, each a unit type with the id a call took for it, in order at the

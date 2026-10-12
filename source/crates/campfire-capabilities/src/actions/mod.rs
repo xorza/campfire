@@ -106,16 +106,20 @@ impl Declares for Actions {
 }
 
 impl Actions {
-    /// Adds the actions to a match whose core is installed, with none loaded yet.
+    /// Adds the actions to a match whose core is installed, with none loaded yet, and, in a match
+    /// with combat, the holds of every action: its charges as each tick starts, and its passives
+    /// then and as each stage that changes ranks or cooldowns ends. A match with no combat holds
+    /// none, as every action's unit target is one combat finds; the start of an action is the
+    /// abilities'.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
         cx.world.insert_resource(SlotKinds::default());
         cx.world.insert_resource(EffectQueues::default());
+        if cx.has(Capability::Combat) {
+            Actions::schedule(cx.schedule);
+        }
     }
 
-    /// Adds to `schedule` the holds of every action: its charges as each tick starts, and its
-    /// passives then and as each stage that changes ranks or cooldowns ends. Combat calls it, as
-    /// every action's unit target is one combat finds; the start of an action is the abilities'.
-    pub(crate) fn schedule(schedule: &mut Schedule) {
+    fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
             Holds::hold_charges
                 .in_set(SimSet::Inputs)
@@ -138,8 +142,6 @@ impl Actions {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use std::num::NonZeroU8;
-
     use bevy_ecs::world::World;
     use campfire_common::Ticks;
     use campfire_math::Num;
@@ -147,19 +149,14 @@ pub(crate) mod internals {
     use crate::actions::Actions;
     use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
-    use crate::actions::action_book::internals::TestWeapon;
     use crate::actions::actions_column::ActionsColumn;
-    use crate::actions::delivery::{Delivery, DeliveryShape};
-    use crate::actions::fan::Fan;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
-    use crate::actions::weapon::Weapon;
     #[cfg(any(test, feature = "bench"))]
     use crate::actions::{action_range::ActionRange, gather_spec::GatherSpec};
     use crate::scripts::hook_set::HookSet;
     use crate::units::action_id::ActionId;
     use crate::units::view::View;
-    use crate::values::damage_kind::DamageKind;
     #[cfg(any(test, feature = "bench"))]
     use crate::{stats::pool_cost::PoolCost, units::filter::Filter};
 
@@ -167,49 +164,6 @@ pub(crate) mod internals {
         /// The action `name` of `package`, as the match loaded it.
         pub fn named(world: &World, package: u16, name: &str) -> Option<ActionId> {
             world.resource::<ActionBook>().named(package, name)
-        }
-
-        /// Adds `weapon` to the match's action book, which deals damage of the first kind.
-        pub(crate) fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
-            let delivery = weapon.projectile.map(|unit_type| Delivery {
-                unit_type,
-                shape: DeliveryShape::Projectile {
-                    fan: Fan {
-                        count: NonZeroU8::MIN,
-                        spread_deg: Num::ZERO,
-                    },
-                    homes: true,
-                },
-            });
-            Actions::push(
-                world,
-                Action {
-                    package: 0,
-                    name: "weapon".into(),
-                    kind: KindSpec::Attack(Weapon {
-                        rate: weapon.rate,
-                        damage: weapon.damage,
-                        kind: DamageKind::new(0),
-                    }),
-                    passive: None,
-                    hold: None,
-                    aim: Aim::Unit(weapon.aim),
-                    ranks: vec![RankValues {
-                        range: weapon.range,
-                        cooldown: Ticks::ZERO,
-                        cost: weapon.cost,
-                        windup: weapon.windup,
-                        charges: None,
-                        toggle: None,
-                        channel: None,
-                        charge: None,
-                    }],
-                    resource_costs: weapon.resource_cost.into_iter().collect(),
-                    script: None,
-                    hooks: HookSet::default(),
-                    delivery,
-                },
-            )
         }
 
         /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
@@ -262,6 +216,8 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 pub(crate) mod test_world {
+    use std::num::NonZeroU8;
+
     use bevy_ecs::world::Mut;
     use bevy_ecs::world::World;
     use campfire_common::Ticks;
@@ -278,10 +234,13 @@ pub(crate) mod test_world {
     use crate::actions::action_range::ActionRange;
     use crate::actions::actions_column::ActionsColumn;
     use crate::actions::cost_target::CostTarget;
+    use crate::actions::delivery::{Delivery, DeliveryShape};
     use crate::actions::effect_lists::EffectLists;
     use crate::actions::effect_names::EffectNames;
+    use crate::actions::fan::Fan;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
+    use crate::actions::weapon::Weapon;
     use crate::players::resource_amount::ResourceAmount;
     use crate::progression::progression_column::ProgressionColumn;
     use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -310,7 +269,82 @@ pub(crate) mod test_world {
     use crate::values::param::Param;
     use crate::values::stat::Stat;
 
+    /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
+    /// homing projectile it fires, if it fires one, the places among its unit's stats of its
+    /// rate and its damage, and its cost in pools and in a player resource.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) struct TestWeapon {
+        pub(crate) aim: Filter,
+        pub(crate) range: ActionRange,
+        pub(crate) windup: Ticks,
+        pub(crate) projectile: Option<UnitType>,
+        pub(crate) rate: StatId,
+        pub(crate) damage: StatId,
+        pub(crate) cost: PoolCost,
+        pub(crate) resource_cost: Option<ResourceAmount>,
+    }
+
+    impl TestWeapon {
+        /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
+        /// rate and damage, costing nothing.
+        pub(crate) fn new(aim: Filter, range: ActionRange, windup: Ticks) -> TestWeapon {
+            TestWeapon {
+                aim,
+                range,
+                windup,
+                projectile: None,
+                rate: StatId::new(0),
+                damage: StatId::new(1),
+                cost: PoolCost::default(),
+                resource_cost: None,
+            }
+        }
+    }
+
     impl Actions {
+        /// Adds `weapon` to the match's action book, which deals damage of the first kind.
+        pub(crate) fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
+            let delivery = weapon.projectile.map(|unit_type| Delivery {
+                unit_type,
+                shape: DeliveryShape::Projectile {
+                    fan: Fan {
+                        count: NonZeroU8::MIN,
+                        spread_deg: Num::ZERO,
+                    },
+                    homes: true,
+                },
+            });
+            Actions::push(
+                world,
+                Action {
+                    package: 0,
+                    name: "weapon".into(),
+                    kind: KindSpec::Attack(Weapon {
+                        rate: weapon.rate,
+                        damage: weapon.damage,
+                        kind: DamageKind::new(0),
+                    }),
+                    passive: None,
+                    hold: None,
+                    aim: Aim::Unit(weapon.aim),
+                    ranks: vec![RankValues {
+                        range: weapon.range,
+                        cooldown: Ticks::ZERO,
+                        cost: weapon.cost,
+                        windup: weapon.windup,
+                        charges: None,
+                        toggle: None,
+                        channel: None,
+                        charge: None,
+                    }],
+                    resource_costs: weapon.resource_cost.into_iter().collect(),
+                    script: None,
+                    hooks: HookSet::default(),
+                    delivery,
+                },
+            )
+        }
+
         /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which
         /// the package load checked: each name resolved to its id, each param to its place among
         /// the action's params.

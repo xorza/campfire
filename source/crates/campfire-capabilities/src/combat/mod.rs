@@ -2,8 +2,8 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_math::RngStream;
 use campfire_sim::{Capability, SimSet};
 
+use crate::actions::ActionsSet;
 use crate::actions::effect_queues::EffectQueues;
-use crate::actions::{Actions, ActionsSet};
 use crate::combat::attacks::Attacks;
 use crate::combat::combat_api::CombatApi;
 use crate::combat::combat_column::{CombatColumn, RowParts};
@@ -137,19 +137,19 @@ impl Combat {
         schedule.configure_sets((
             CombatSet::Fire.in_set(SimSet::Hit).after(CombatSet::Strike),
             CombatSet::Launch.in_set(SimSet::Hit).after(CombatSet::Fire),
-            CombatSet::Die.before(StatsSet::Hold),
             CombatSet::Attack
                 .in_set(SimSet::Act)
                 .before(ActionsSet::Start),
-            ActionsSet::HoldAtResolve
-                .after(CombatSet::Damage)
-                .before(CombatSet::Die),
-            CombatSet::Pay.in_set(SimSet::Hit).before(CombatSet::Strike),
-            ActionsSet::HoldAtStrike
-                .after(CombatSet::Pay)
+            CombatSet::Damage.before(ActionsSet::HoldAtResolve),
+            CombatSet::Die
+                .after(ActionsSet::HoldAtResolve)
+                .before(StatsSet::Hold),
+            CombatSet::Pay
+                .in_set(SimSet::Hit)
+                .before(ActionsSet::HoldAtStrike)
                 .before(CombatSet::Strike),
+            CombatSet::Strike.after(ActionsSet::HoldAtStrike),
         ));
-        Actions::schedule(schedule);
         schedule.add_systems((
             Attacks::start_attacks.in_set(CombatSet::Attack),
             Attacks::pay_attack_toggles.in_set(CombatSet::Pay),
@@ -185,32 +185,77 @@ impl Combat {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
-    use campfire_common::Ticks;
-    use campfire_math::{Num, Rounding};
-    use campfire_sim::{StableId, TickRate};
+    use campfire_math::Num;
+    use campfire_sim::StableId;
 
-    use crate::actions::Actions;
-    use crate::actions::action_book::internals::TestWeapon;
-    use crate::actions::action_range::ActionRange;
-    use crate::actions::action_slots::ActionSlots;
-    use crate::actions::slot_kind::SlotKind;
-    use crate::actions::slot_times::TimedSlots;
     use crate::combat::Combat;
     use crate::combat::damage::{Damage, DamageCause};
-    #[cfg(test)]
+    use crate::combat::pass_queue::PassQueue;
+    use crate::units::view::View;
+
+    impl Combat {
+        /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
+        /// pass, as an effect of no action deals it: for a test that deals what no input can.
+        pub fn queue_damage(
+            world: &mut World,
+            source: Option<StableId>,
+            target: StableId,
+            amount: Num,
+            kind: &str,
+        ) {
+            let kind = world
+                .non_send::<View>()
+                .damage_kind_named(kind)
+                .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
+            world.resource_mut::<PassQueue>().push_damage(Damage {
+                source,
+                target,
+                amount,
+                kind,
+                cause: DamageCause::Effect,
+                action: None,
+                depth: 0,
+                hit: None,
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::bundle::Bundle;
+    use bevy_ecs::world::World;
+    use campfire_common::{Tick, Ticks};
+    use campfire_math::{Num, Rounding};
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{Position, StableId, TickRate};
+
+    use crate::actions::Actions;
+    use crate::actions::action_book::ActionBook;
+    use crate::actions::action_range::ActionRange;
+    use crate::actions::action_slots::ActionSlots;
+    use crate::actions::in_progress::InProgress;
+    use crate::actions::slot_kind::SlotKind;
+    use crate::actions::slot_times::{SlotTimes, TimedSlots};
+    use crate::actions::test_world::TestWeapon;
+    use crate::combat::Combat;
+    use crate::combat::combat_bindings::CombatBindings;
+    use crate::combat::damage::{Damage, DamageCause};
+    use crate::combat::damage_pass::DamagePass;
     use crate::combat::on_death::OnDeath;
     use crate::combat::pass_queue::PassQueue;
-    #[cfg(test)]
     use crate::combat::recent_attackers::RecentAttackers;
-    #[cfg(test)]
     use crate::stats::life::Life;
+    use crate::stats::life_pool::LifePool;
+    use crate::stats::pool_id::PoolId;
     use crate::stats::stat_book::StatBook;
     use crate::stats::unit_stats::UnitStats;
+    use crate::units::Units;
     use crate::units::filter::Filter;
+    use crate::units::team::Team;
     use crate::units::unit_type::UnitType;
-    use crate::units::view::View;
+    use crate::values::damage_kind::DamageKind;
     use crate::values::rank::Rank;
     use crate::values::relation_set::RelationSet;
 
@@ -218,7 +263,7 @@ pub(crate) mod internals {
     /// again `period` after an attack's start, deals `damage`, and fires a projectile of the
     /// homing type `projectile` when given.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct Arms {
+    pub(crate) struct Arms {
         range: Num,
         windup: Ticks,
         period: Ticks,
@@ -228,14 +273,14 @@ pub(crate) mod internals {
 
     /// A unit's slots and stats: its weapon's slot, if it has one, and the stats it reads.
     #[derive(Debug, Bundle)]
-    pub struct ArmsParts {
+    pub(crate) struct ArmsParts {
         slots: TimedSlots,
         stats: UnitStats,
     }
 
     impl ArmsParts {
         /// The parts of a unit with no weapon: no slot, and no stats.
-        pub fn unarmed() -> ArmsParts {
+        pub(crate) fn unarmed() -> ArmsParts {
             ArmsParts {
                 slots: ActionSlots::new([]).timed(),
                 stats: UnitStats::default(),
@@ -245,7 +290,7 @@ pub(crate) mod internals {
 
     impl Arms {
         /// A melee weapon of `range`, `windup` ticks, `period` ticks and `damage`.
-        pub const fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Arms {
+        pub(crate) const fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Arms {
             Arms {
                 range,
                 windup: Ticks::new(windup),
@@ -257,7 +302,7 @@ pub(crate) mod internals {
 
         /// The same weapon, firing projectiles of the homing type `projectile`.
         #[must_use]
-        pub const fn ranged(self, projectile: UnitType) -> Arms {
+        pub(crate) const fn ranged(self, projectile: UnitType) -> Arms {
             Arms {
                 projectile: Some(projectile),
                 ..self
@@ -267,7 +312,7 @@ pub(crate) mod internals {
         /// The weapon added to the book of `world`, in a unit's one slot, and the stats it reads:
         /// the rate that makes its period at the match's rate, then its damage, then 0 for every
         /// other stat of the match's stat book.
-        pub fn parts(self, world: &mut World) -> ArmsParts {
+        pub(crate) fn parts(self, world: &mut World) -> ArmsParts {
             let hz = world.resource::<TickRate>().hz().get();
             let weapon = TestWeapon {
                 projectile: self.projectile,
@@ -301,7 +346,6 @@ pub(crate) mod internals {
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
     /// and its one weapon, if it has one.
-    #[cfg(test)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct Armed {
         pub(crate) life: Num,
@@ -309,7 +353,6 @@ pub(crate) mod internals {
         pub(crate) arms: Option<Arms>,
     }
 
-    #[cfg(test)]
     impl Armed {
         /// A unit of `life` that despawns when it dies, with a melee weapon of `range`, `windup`
         /// ticks, `period` ticks and `damage`.
@@ -362,63 +405,6 @@ pub(crate) mod internals {
             )
         }
     }
-
-    impl Combat {
-        /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
-        /// pass, as an effect of no action deals it: for a test that deals what no input can.
-        pub fn queue_damage(
-            world: &mut World,
-            source: Option<StableId>,
-            target: StableId,
-            amount: Num,
-            kind: &str,
-        ) {
-            let kind = world
-                .non_send::<View>()
-                .damage_kind_named(kind)
-                .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
-            world.resource_mut::<PassQueue>().push_damage(Damage {
-                source,
-                target,
-                amount,
-                kind,
-                cause: DamageCause::Effect,
-                action: None,
-                depth: 0,
-                hit: None,
-            });
-        }
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod test_world {
-    use crate::combat::on_death::OnDeath;
-    use bevy_ecs::bundle::Bundle;
-    use bevy_ecs::world::World;
-    use campfire_common::Tick;
-    use campfire_math::Num;
-    use campfire_sim::Position;
-    use campfire_sim::StableId;
-    use campfire_sim::internals::SimWorldInternals;
-
-    use crate::actions::action_book::ActionBook;
-    use crate::actions::action_slots::ActionSlots;
-    use crate::actions::in_progress::InProgress;
-    use crate::actions::slot_times::SlotTimes;
-    use crate::combat::Combat;
-    use crate::combat::combat_bindings::CombatBindings;
-    use crate::combat::damage::{Damage, DamageCause};
-    use crate::combat::damage_pass::DamagePass;
-    use crate::combat::internals::Armed;
-    use crate::combat::pass_queue::PassQueue;
-    use crate::stats::life_pool::LifePool;
-    use crate::stats::pool_id::PoolId;
-    use crate::stats::unit_stats::UnitStats;
-    use crate::units::Units;
-    use crate::units::team::Team;
-    use crate::units::unit_type::UnitType;
-    use crate::values::damage_kind::DamageKind;
 
     impl Combat {
         /// Heals `id` at once, as the pass heals it, when it exists and its life is above zero.
