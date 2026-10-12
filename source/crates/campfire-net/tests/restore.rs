@@ -6,7 +6,7 @@ use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
+use campfire_protocol::{EngineRelease, Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Runner, Session};
 use campfire_store::Scratch;
 
@@ -75,14 +75,14 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
         .join("private");
     let ours = data.read(&path);
     let mut private = SessionPrivate::decode(&ours).unwrap();
-    private.terms.release = "0.0.9".to_owned();
+    private.terms.release = EngineRelease::new(0, 0, 9);
     let mut bytes = Vec::new();
     private.encode(&mut bytes);
     data.write(&path, bytes);
     let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let refused = dir.restore().err();
     assert!(
-        matches!(&refused, Some(RestoreError::OtherRelease(release)) if release == "0.0.9"),
+        matches!(&refused, Some(RestoreError::OtherRelease(release)) if *release == EngineRelease::new(0, 0, 9)),
         "{refused:?}"
     );
 

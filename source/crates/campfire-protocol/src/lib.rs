@@ -9,6 +9,7 @@ mod checkpoint;
 mod connect;
 mod controller;
 mod delegation;
+mod engine_release;
 #[cfg(any(test, feature = "internals"))]
 mod harness;
 mod input_chain;
@@ -45,6 +46,8 @@ pub use crate::delegation::delegation_id::DelegationId;
 pub use crate::delegation::error::{DelegationError, ScopeError};
 pub use crate::delegation::seed_contribution::SeedContribution;
 pub use crate::delegation::{Delegation, DelegationTerms};
+pub use crate::engine_release::EngineRelease;
+pub use crate::engine_release::error::NotRelease;
 pub use crate::input_chain::InputChain;
 pub use crate::input_hash::InputHash;
 pub use crate::journal::error::{JournalReplayError, NotJournal};

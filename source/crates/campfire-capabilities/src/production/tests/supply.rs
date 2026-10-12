@@ -1,5 +1,6 @@
 use super::*;
 use crate::players::player::Player;
+use crate::production::player_supply::PlayerSupply;
 use crate::production::requirements::Requirements;
 use crate::stats::player_modifiers::PlayerModifiers;
 use crate::units::modifier_id::ModifierId;
@@ -25,9 +26,12 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
         ],
     );
     let player = PlayerSlot::new(0);
+    MatchEntity::spawn_players(&mut shop.sim.world, 1, 0);
     let producer = shop.id();
     shop.producer(producer, 1, 10, Some(player), train, TrainQueue::default());
-    let step = |shop: &mut Shop, queued: usize, spawned: usize, tick: u64| {
+    // Each tick's end leaves the queue's length, the spawns, and the supply the player's entity
+    // shows: what is used, and the cap.
+    let step = |shop: &mut Shop, queued: usize, spawned: usize, supply: (u64, u64), tick: u64| {
         shop.order(producer);
         shop.tick();
         assert_eq!(
@@ -35,21 +39,25 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
             (queued, spawned),
             "tick {tick}"
         );
+        let world = &shop.sim.world;
+        let entity = Player::entity(world, player).unwrap();
+        let shown = world.get::<PlayerSupply>(entity).copied().unwrap();
+        assert_eq!((shown.used(), shown.cap()), supply, "tick {tick}");
     };
     // Tick 0: 0 + 3 of 4 joins. Tick 1: its 3 held in the queue, 6 of 4 does not; the first spawns
     // as the tick ends, and uses its 3 as a unit.
-    step(&mut shop, 1, 0, 0);
-    step(&mut shop, 0, 1, 1);
+    step(&mut shop, 1, 0, (3, 4), 0);
+    step(&mut shop, 0, 1, (3, 4), 1);
     // A depot gives 4 more, a cap of 8: tick 2, 3 + 3 joins; tick 3, 9 of 8 does not, and the
     // second spawns.
     let first_depot = shop.owned(depot, player);
-    step(&mut shop, 1, 1, 2);
-    step(&mut shop, 0, 2, 3);
+    step(&mut shop, 1, 1, (6, 8), 2);
+    step(&mut shop, 0, 2, (6, 8), 3);
     // The depot dies: a cap of 4 below the 6 used kills nothing, and stops trains; a depot no
     // player owns gives nothing.
     shop.sim.insert(first_depot, Dead);
     shop.sim.spawn_of(depot, at(0), Team::new(1), ());
-    step(&mut shop, 0, 2, 4);
+    step(&mut shop, 0, 2, (6, 4), 4);
     assert!(
         shop.spawned
             .borrow()
@@ -62,9 +70,9 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     shop.sim.world.entity_mut(entity).remove::<Dead>();
     shop.owned(depot, player);
     shop.owned(depot, player);
-    step(&mut shop, 1, 2, 5);
-    step(&mut shop, 0, 3, 6);
-    step(&mut shop, 0, 3, 7);
+    step(&mut shop, 1, 2, (9, 10), 5);
+    step(&mut shop, 0, 3, (9, 10), 6);
+    step(&mut shop, 0, 3, (9, 10), 7);
 }
 
 #[test]

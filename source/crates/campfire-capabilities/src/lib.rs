@@ -43,6 +43,7 @@ mod state_types;
 mod stats;
 mod units;
 mod values;
+mod visibility;
 mod vision;
 
 pub use crate::abilities::Abilities;
@@ -155,6 +156,7 @@ pub use crate::production::build_target::BuildTarget;
 pub use crate::production::builder::{BuildOrder, Builder};
 pub use crate::production::drop_off_data::DropOffData;
 pub use crate::production::node_data::NodeData;
+pub use crate::production::player_supply::PlayerSupply;
 pub use crate::production::production_data::ProductionData;
 pub use crate::production::rally::Rally;
 pub use crate::production::rally_target::RallyTarget;
@@ -197,6 +199,7 @@ pub use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl}
 pub use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 pub use crate::scripts::state_value::StateValue;
 pub use crate::state_types::data_kind::DataKind;
+pub use crate::state_types::recipients::Recipients;
 pub use crate::state_types::replication::Replication;
 pub use crate::state_types::sending::{
     NotSent, Sending, SentOnChange, SentOnInsert, SentOnce, SentPredicted,
@@ -209,6 +212,7 @@ pub use crate::stats::life::Life;
 pub use crate::stats::modifier_clocks::ModifierClocks;
 pub use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
 pub use crate::stats::modifiers::Modifiers;
+pub use crate::stats::player_modifiers::PlayerModifiers;
 pub use crate::stats::pool_cost::PoolCost;
 pub use crate::stats::pool_data::PoolData;
 pub use crate::stats::pool_id::PoolId;
@@ -267,6 +271,10 @@ pub use crate::values::scalar::Scalar;
 pub use crate::values::share::Share;
 pub use crate::values::speed::Speed;
 pub use crate::values::stat::{DeclaredStat, EngineStat, Stat};
+pub use crate::visibility::error::{VisibilityDecodeError, VisibilityError};
+pub use crate::visibility::mode_visibility::{HostVisibility, ModeVisibility};
+pub use crate::visibility::setting::{Setting, SettingValue};
+pub use crate::visibility::{OutView, SpectatorFog, Visibility};
 pub use crate::vision::Vision;
 pub use crate::vision::seen_by::SeenBy;
 pub use crate::vision::sight::Sight;

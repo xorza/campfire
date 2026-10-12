@@ -13,7 +13,7 @@ use campfire_runner::SessionRules;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
 
 use crate::dismissed::Dismissed;
-use crate::join::Join;
+use crate::join::{Join, JoinRole};
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
@@ -23,6 +23,7 @@ use crate::sim_client::join_state::error::ReceiptRefusal;
 use crate::sim_client::join_state::error::TermsMismatch;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
+use crate::watch_start::WatchStart;
 
 pub(crate) mod error;
 
@@ -53,6 +54,8 @@ enum Step {
     /// It answered an offer, and waits for the match to start, or to take it up again.
     Answered(Answered),
     Playing(Playing),
+    /// It watches the match, with no slot.
+    Watching(Watching),
     /// Its link failed: it tries the link again until the server's grace period and restore
     /// window passed.
     Rejoining(Rejoining),
@@ -81,11 +84,13 @@ pub enum Loss {
 }
 
 /// What answers the server's offer: the player's identity, which signs the delegation, the server
-/// they mean to reach, whether it is local, and the rules of the mode the client holds.
+/// they mean to reach, whether they play or watch, whether it is local, and the rules of the mode
+/// the client holds.
 #[derive(Debug)]
 pub(crate) struct Joining {
     main_key: Keypair,
     server: ServerPin,
+    role: JoinRole,
     /// Whether the server runs on a thread of the client's process: only such a server loads a
     /// save, so only its match start that says so is taken as one.
     local: bool,
@@ -137,6 +142,14 @@ pub(crate) struct Playing {
     history: ChainHistory,
     /// The last stamp the log holds of the player, below which it refuses the next.
     last_stamp: Option<Tick>,
+}
+
+/// A spectator that watches the match: what it holds as a member, and the clock of the match's
+/// ticks.
+#[derive(Debug)]
+struct Watching {
+    member: Member,
+    clock: MatchClock,
 }
 
 /// A player who left while they played: what they hold as a member, their slot and their chain's
@@ -195,6 +208,7 @@ impl JoinState {
     pub(crate) const fn new(
         main_key: Keypair,
         server: ServerPin,
+        role: JoinRole,
         local: bool,
         rules: SessionRules,
         clock: fn() -> u64,
@@ -203,6 +217,7 @@ impl JoinState {
             player: Joining {
                 main_key,
                 server,
+                role,
                 local,
                 rules,
                 clock,
@@ -215,6 +230,14 @@ impl JoinState {
     pub const fn clock(&self) -> Option<MatchClock> {
         match &self.step {
             Step::Playing(playing) => Some(playing.clock),
+            _ => None,
+        }
+    }
+
+    /// The clock of the match the client watches as a spectator; `None` while it does not.
+    pub const fn watching(&self) -> Option<MatchClock> {
+        match &self.step {
+            Step::Watching(watching) => Some(watching.clock),
             _ => None,
         }
     }
@@ -346,6 +369,7 @@ impl JoinState {
         let join = Join {
             delegation: answered.member.delegation.json().to_owned(),
             answer: signer.answer(offer.challenge, binding),
+            role: self.player.role,
         };
         self.step = Step::Answered(answered);
         Some(Ok(join))
@@ -358,7 +382,7 @@ impl JoinState {
     /// local server takes it. Sim tick `start.first` is Lightyear tick `start.start_tick`.
     pub(crate) fn start(&mut self, start: MatchStart) -> Started {
         let answered = match mem::replace(&mut self.step, Step::Left) {
-            Step::Answered(answered) => answered,
+            Step::Answered(answered) if self.player.role == JoinRole::Play => answered,
             other => {
                 self.step = other;
                 return Started::No;
@@ -410,6 +434,23 @@ impl JoinState {
         Started::Playing { discarded }
     }
 
+    /// Watches the match `start` names, for a client that answered to watch: sim tick
+    /// `start.first` is Lightyear tick `start.start_tick`. Whether it did.
+    pub(crate) fn watch(&mut self, start: WatchStart) -> bool {
+        let answered = match mem::replace(&mut self.step, Step::Left) {
+            Step::Answered(answered) if self.player.role == JoinRole::Watch => answered,
+            other => {
+                self.step = other;
+                return false;
+            }
+        };
+        self.step = Step::Watching(Watching {
+            member: answered.member,
+            clock: MatchClock::resumed(NetTick(start.start_tick), start.first),
+        });
+        true
+    }
+
     /// Notes that the client's link failed at `now`, by its real clock: a client that knows the
     /// server's times tries again, its chain's history kept; one that does not stops; one that
     /// left takes no receipt from then on.
@@ -417,6 +458,7 @@ impl JoinState {
         let (member, history) = match mem::replace(&mut self.step, Step::Left) {
             Step::Playing(playing) => (playing.member, Some(playing.history)),
             Step::Answered(answered) => (answered.member, answered.history),
+            Step::Watching(watching) => (watching.member, None),
             Step::Waiting => {
                 self.step = Step::Lost(Loss::LinkFailed);
                 return LinkLoss::Stopped(Loss::LinkFailed);
@@ -508,6 +550,7 @@ impl JoinState {
         let member = match &self.step {
             Step::Answered(Answered { member, .. })
             | Step::Playing(Playing { member, .. })
+            | Step::Watching(Watching { member, .. })
             | Step::Leaving(Leaving { member, .. })
             | Step::Rejoining(Rejoining { member, .. }) => member,
             Step::Waiting | Step::Refused(_) | Step::Left | Step::Lost(_) => return None,

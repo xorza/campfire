@@ -19,6 +19,8 @@ use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
 use crate::save_command::SaveCommand;
+use crate::watch_start::WatchStart;
+use crate::watch_teams::WatchTeams;
 use crate::wire_codec::WireCodec;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
@@ -26,12 +28,13 @@ use crate::wire_codec::WireCodec;
 #[derive(Debug)]
 pub struct InputChannel;
 
-/// Carries the offer, the match start, the receipts, and the word that a newer login took the
-/// seat, to the client.
+/// Carries the offer, the match start and a spectator's, the receipts, and the word that the
+/// server ends the link, to the client.
 #[derive(Debug)]
 pub(crate) struct MatchChannel;
 
-/// Carries a player's join to the server, and their word that they leave.
+/// Carries a player's join to the server, their word that they leave, and a spectator's choice
+/// of teams.
 #[derive(Debug)]
 pub(crate) struct JoinChannel;
 
@@ -94,6 +97,10 @@ impl Plugin for NetProtocol {
             .add_direction(NetworkDirection::ClientToServer);
         app.register_message_custom_serde::<LeaveMatch>(WireCodec::message())
             .add_direction(NetworkDirection::ClientToServer);
+        app.register_message_custom_serde::<WatchStart>(WireCodec::message())
+            .add_direction(NetworkDirection::ServerToClient);
+        app.register_message_custom_serde::<WatchTeams>(WireCodec::message())
+            .add_direction(NetworkDirection::ClientToServer);
 
         // A unit's identity, which no state type holds: the entity list holds it.
         app.component::<StableId>()
@@ -139,6 +146,12 @@ impl StateTypes for Replicated<'_> {
     fn server<C: Replication>(&mut self, _: Declared) {}
 
     fn derived<C: Component>(&mut self) {}
+
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+        self.0
+            .component::<C>()
+            .replicate_with(WireCodec::component());
+    }
 
     fn resource<R: SimResource>(&mut self) {}
 

@@ -21,7 +21,7 @@ use campfire_protocol::{
     Applied, Controller, Outcome, ServerInput, ServerSeeds, SessionLog, SessionTerms,
 };
 use campfire_quic::{CloseLink, QuicPlugin};
-use campfire_runner::{Session, StartError};
+use campfire_runner::{Session, SessionRules, StartError, TermsError};
 use campfire_sim::{SimTick, StateRegistry, TickRate};
 use campfire_store::{DurableError, InputFile, PathError};
 use lightyear::core::tick::TickDuration;
@@ -57,6 +57,7 @@ use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::kind_filter::KindFilters;
 use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
+use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{Dismissing, Offered, Offering};
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
@@ -66,6 +67,7 @@ use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
 use crate::sim_server::session_journal::SessionJournal;
+use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::tick_hashes::TickHashes;
 
@@ -81,6 +83,7 @@ pub(crate) mod key_file;
 pub(crate) mod kind_filter;
 pub(crate) mod kind_shows;
 pub(crate) mod lobby;
+pub(crate) mod match_visibility;
 pub(crate) mod offering;
 pub(crate) mod player_link;
 pub(crate) mod receipts;
@@ -94,8 +97,10 @@ pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
 pub(crate) mod slot_bot_file;
+pub(crate) mod spectators;
 pub(crate) mod team_rooms;
 pub(crate) mod tick_hashes;
+pub(crate) mod viewer;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
@@ -174,6 +179,8 @@ impl Plugin for SimServer {
                 .run_if(resource_exists::<Door>)
                 .run_if(session_running),
         );
+        app.add_systems(Update, Spectators::choose_teams);
+        app.add_observer(Spectators::leave);
         app.add_systems(Last, Dismissing::tell);
         app.add_systems(
             PostUpdate,
@@ -271,6 +278,7 @@ impl SimServer {
         );
         let terms = log.header().terms.clone();
         SimServer::bound_frames(world, &terms);
+        SimServer::set_visibility(world, &terms).map_err(StartError::Terms)?;
         let slots = log.slot_count();
         Session::start(world, log, seeds, packages)?;
         let (journal, snapshots) = files.map(|files| (files.journal, files.snapshots)).unzip();
@@ -333,6 +341,8 @@ impl SimServer {
         } = restored;
         let terms = log.header().terms.clone();
         SimServer::bound_frames(world, &terms);
+        SimServer::set_visibility(world, &terms)
+            .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
         let ticks = log.next_tick();
         let slots = log.slot_count();
         let seeds = private.seed_chain.seeds();
@@ -475,6 +485,17 @@ impl SimServer {
         }
         world.insert_resource(ServerSigner::new(server.key, server.entropy));
         world.insert_resource(Door::new(Offering::new(terms, server)));
+    }
+
+    /// Keeps the visibility `terms` carry, which each kind's filter takes its audience from as
+    /// the match's entities spawn; an error for terms whose visibility does not read.
+    fn set_visibility(world: &mut World, terms: &SessionTerms) -> Result<(), TermsError> {
+        let visibility = SessionRules::visibility_of(terms)?;
+        world
+            .resource_mut::<TeamRooms>()
+            .set_spectators(&visibility);
+        world.insert_resource(MatchVisibility(visibility));
+        Ok(())
     }
 
     /// Bounds the server's frames for a session of `terms`: a frame advances its clock by the

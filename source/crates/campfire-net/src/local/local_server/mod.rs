@@ -14,6 +14,7 @@ use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
+use campfire_capabilities::HostVisibility;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
@@ -176,6 +177,7 @@ impl LocalServer {
             slots: usize::try_from(slots).expect("slots fit usize"),
             bots: bots.clone(),
             open,
+            host: HostVisibility::default(),
             server,
         })
         .map_err(LocalServerError::Lobby)?;

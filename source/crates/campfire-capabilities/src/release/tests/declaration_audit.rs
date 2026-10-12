@@ -201,6 +201,10 @@ impl StateTypes for DeclarationAudit {
 
     fn derived<C: Component>(&mut self) {}
 
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+        self.state::<C>();
+    }
+
     fn resource<R: SimResource>(&mut self) {
         self.resources.push(R::NAME);
     }

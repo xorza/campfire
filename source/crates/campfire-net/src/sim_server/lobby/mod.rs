@@ -7,6 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use bevy_time::{Real, Time};
+use campfire_capabilities::{HostVisibility, Visibility};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
@@ -26,6 +27,8 @@ use crate::sim_server::offering::{
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::SessionFiles;
+use crate::sim_server::spectators::Spectators;
+use crate::sim_server::viewer::Viewer;
 use crate::sim_server::{SessionStart, SimServer};
 
 pub(crate) mod error;
@@ -45,6 +48,8 @@ pub struct Lobby {
     setup: ServerSetup,
     /// The links that joined, by slot, with their delegations.
     joined: Vec<(Entity, Delegation)>,
+    /// The session's visibility, which bounds its spectators.
+    visibility: Visibility,
     /// Where the session's log and snapshots go as the server writes them, once it keeps them.
     files: Option<SessionFiles>,
 }
@@ -64,14 +69,16 @@ pub struct LobbySetup {
     /// The slots no one takes at the start, which a late join may take; the rest but the bots'
     /// are the players'.
     pub open: Vec<PlayerSlot>,
+    /// What the host sets of the session's visibility, within what the mode leaves it.
+    pub host: HostVisibility,
     pub server: ServerSetup,
 }
 
 impl Lobby {
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
     /// not run at the setup's tick rate or has not as many slots, when a bot or an open slot
-    /// names a slot the session does not have or one already named, and when no slot is left to
-    /// a player.
+    /// names a slot the session does not have or one already named, when no slot is left to a
+    /// player, and when the host sets a visibility the mode does not leave it.
     pub fn new(setup: LobbySetup) -> Result<Lobby, LobbyError> {
         let LobbySetup {
             packages,
@@ -81,6 +88,7 @@ impl Lobby {
             slots,
             bots,
             open,
+            host,
             server,
         } = setup;
         let mut plan = vec![SlotPlan::Player; slots];
@@ -102,13 +110,19 @@ impl Lobby {
         if players == 0 {
             return Err(LobbyError::NoPlayer);
         }
-        let terms = SessionRules::of(&packages)
+        let rules = SessionRules::of(&packages);
+        let visibility = rules
+            .visibility()
+            .session(&host)
+            .map_err(LobbyError::Visibility)?;
+        let terms = rules
             .terms(
                 server.key.x_only_public_key().0,
                 seed_chain.commitment(),
                 tick_hz,
                 inputs,
                 plan,
+                &visibility,
             )
             .map_err(LobbyError::Terms)?;
         Ok(Lobby {
@@ -119,6 +133,7 @@ impl Lobby {
             bots,
             setup: server,
             joined: Vec::with_capacity(players),
+            visibility,
             files: None,
         })
     }
@@ -153,11 +168,13 @@ impl Lobby {
     }
 
     /// Takes each offered link's join: a player who answered their challenge joins in the next
-    /// free slot, or the seat their main key held, whose older link ends; a refused link keeps
-    /// its reason. The joins of one frame take their slots in `Offering::check_all`'s order.
+    /// free slot, or the seat their main key held, whose older link ends; one who answered to
+    /// watch takes a spectator's place while one is free; a refused link keeps its reason. The
+    /// joins of one frame take their slots in `Offering::check_all`'s order.
     pub(crate) fn take_joins(
         mut lobby: ResMut<'_, Lobby>,
         mut links: JoinLinks<'_, '_>,
+        viewers: Query<'_, '_, &Viewer>,
         mut commands: Commands<'_, '_>,
         mut checked: Local<'_, CheckedJoins>,
     ) {
@@ -170,6 +187,17 @@ impl Lobby {
         lobby.offering.check_all(joins, &mut checked);
         for (link, error) in checked.refused.drain(..) {
             Lobby::refuse(&mut commands, link, error);
+        }
+        let mut watching = Spectators::count(viewers.iter());
+        for link in checked.watching.drain(..) {
+            match Spectators::place(&lobby.visibility, watching) {
+                Ok(viewer) => {
+                    commands.entity(link).insert((Joined, viewer));
+                    watching += 1;
+                    info!(?link, "a spectator joined");
+                }
+                Err(error) => Lobby::refuse(&mut commands, link, error),
+            }
         }
         for (link, delegation) in checked.answered.drain(..) {
             match lobby.seat(link, delegation) {
@@ -237,6 +265,7 @@ impl Lobby {
         };
         SimServer::start_match(world, start, &links)
             .expect("the lobby's terms come from its own packages");
+        Spectators::start_every(world);
     }
 
     /// Frees the seat of each joined link that is no longer connected, so a match starts only

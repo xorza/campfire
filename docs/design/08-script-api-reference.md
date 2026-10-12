@@ -258,6 +258,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `tags` | core | since 1.0 |
 | `players` | core | since 1.0 |
 | `saves` | core | since 1.0 |
+| `visibility` | core | since 1.0 |
 | `state_version` | core | planned |
 
 ### The mode's `[combat]`

@@ -10,3 +10,4 @@ mod rejoin;
 mod restore;
 mod saves;
 mod scenario;
+mod spectators;

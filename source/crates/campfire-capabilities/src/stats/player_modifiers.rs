@@ -17,7 +17,7 @@ use crate::values::rank::Rank;
 /// once, in order.
 #[derive(Component, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct PlayerModifiers(Vec<ModifierId>);
+pub struct PlayerModifiers(Vec<ModifierId>);
 
 impl PlayerModifiers {
     /// The modifiers player `slot` holds in `world`, to change; none before its entity spawns.

@@ -175,3 +175,38 @@ fn a_value_its_parser_refuses_gives_that_parsers_error_and_the_help_is_no_refusa
     }
     assert!(refused(&["--fast", "mode"]).use_stderr());
 }
+
+#[test]
+fn a_spectator_watches_a_remote_server_and_names_teams_only_as_one() {
+    let (key, tls_key) = (KEY, tls_key());
+    let remote = ["mode", "10.0.0.2:4433", &tls_key, key, "30"];
+    let watch = |flags: &[&str]| line(&[flags, &remote[..]].concat());
+    let spectator = Args::of(watch(&["--spectate", "--watch", "west", "--watch", "east"]).unwrap());
+    assert!(spectator.spectate);
+    let names = |names: &[&str]| -> Vec<DeclaredName> {
+        names
+            .iter()
+            .map(|name| DeclaredName::new(name).unwrap())
+            .collect()
+    };
+    assert_eq!(spectator.watch, names(&["west", "east"]));
+    // A player, with neither.
+    let player = read(&remote);
+    assert!(!player.spectate && player.watch.is_empty());
+    // A team named with no spectator, a spectator of a local server or a bot, and no team's name.
+    for (flags, kind) in [
+        (&["--watch", "west"][..], ErrorKind::MissingRequiredArgument),
+        (
+            &["--spectate", "--bot", "b.toml"],
+            ErrorKind::ArgumentConflict,
+        ),
+        (
+            &["--spectate", "--watch", "West"],
+            ErrorKind::ValueValidation,
+        ),
+    ] {
+        assert_eq!(watch(flags).unwrap_err().kind(), kind, "{flags:?}");
+    }
+    let local = refused(&["--spectate", "--local", "--data", "d", "mode"]);
+    assert_eq!(local.kind(), ErrorKind::ArgumentConflict);
+}

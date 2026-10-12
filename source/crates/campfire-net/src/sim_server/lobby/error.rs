@@ -1,3 +1,4 @@
+use campfire_capabilities::VisibilityError;
 use campfire_common::PlayerSlot;
 use campfire_runner::TermsError;
 use thiserror::Error;
@@ -16,4 +17,7 @@ pub enum LobbyError {
     /// Every slot is a bot's or open: no player starts the session.
     #[error("every slot is a bot's or open")]
     NoPlayer,
+    /// The host's visibility settings are not ones the mode leaves it.
+    #[error("the host's visibility")]
+    Visibility(#[source] VisibilityError),
 }
