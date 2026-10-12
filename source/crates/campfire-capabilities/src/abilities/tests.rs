@@ -1397,7 +1397,7 @@ fn on_interrupt(ctx, caster, target) {
     // Cast in tick 0 by a caster at x, an enemy beside it; then `cut` in tick 5, if any.
     let run = |game: &mut Match, x: i16, cut: &dyn Fn(&mut Match, StableId)| {
         let caster = Abilities::caster(game, drain, 1);
-        game.insert_parts(caster, Modifiers::default());
+        game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
         *game.part_mut::<Position>(caster) = Position::from((x, 0, 0));
         let target = Abilities::spawn_combatant(game, (x + 1, 0, 0), Team::new(1), ());
         Abilities::cast(game, caster, ActionTarget::Unit(target));
@@ -1877,7 +1877,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let action = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let caster = Abilities::caster(&mut game, action, 0);
     let entity = game.unit_entity(caster);
-    game.insert_parts(caster, Modifiers::default());
+    game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
     let id = Stats::modifier(&game, 0, "guard").unwrap();
     let shield = |game: &Match| {
         let modifiers = game.get::<Modifiers>(entity).unwrap();
@@ -1939,7 +1939,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let slots = ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]).timed();
     let beast = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), slots);
     let entity = game.unit_entity(beast);
-    game.insert_parts(beast, Modifiers::default());
+    game.insert_parts(beast, (Modifiers::default(), ModifierClocks::default()));
     game.step();
     let ward = Stats::modifier(&game, 0, "ward").unwrap();
     let modifiers = game.get::<Modifiers>(entity).unwrap();
@@ -1977,7 +1977,7 @@ fn on_resolve(ctx, caster, target) {
     let action = Abilities::load(&mut game, "lash_out", &lash_out(), marker);
     let caster = Abilities::caster(&mut game, action, 3);
     let entity = game.unit_entity(caster);
-    game.insert_parts(caster, Modifiers::default());
+    game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
     let t = game.resource::<SimTick>().start();
     Abilities::cast(&mut game, caster, ActionTarget::None);
     // From the caster, by Lash Out at rank 3: a shield of its damage there, 125; 1000 ms at 30
@@ -2052,7 +2052,11 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
     let strike = Abilities::load(&mut game, "strike", &strike(), script);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let parts = (Level::default(), UnitStats::default(), Modifiers::default());
+    let parts = (
+        Level::default(),
+        UnitStats::default(),
+        (Modifiers::default(), ModifierClocks::default()),
+    );
     let enemy =
         Abilities::spawn_combatant_of(&mut game, target_type, (5, 0, 0), Team::new(1), parts);
     let entity = game.unit_entity(enemy);
@@ -2124,7 +2128,13 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     let action = Actions::load(&mut game, 0, "cleanse", &data, None, 1).unwrap();
     Actions::load_effect_lists(&mut game, action, 0, &data);
     let [first, second] = [(); 2].map(|()| Abilities::caster(&mut game, action, 1));
-    let parts = || (Level::default(), UnitStats::default(), Modifiers::default());
+    let parts = || {
+        (
+            Level::default(),
+            UnitStats::default(),
+            (Modifiers::default(), ModifierClocks::default()),
+        )
+    };
     let freed = Abilities::spawn_combatant_of(&mut game, target, (1, 0, 0), Team::new(1), parts());
     let held = Abilities::spawn_combatant_of(&mut game, target, (-1, 0, 0), Team::new(1), parts());
     for source in [first, second] {
@@ -2549,7 +2559,11 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let mut points = Points::at_spawn(TrackSet::of([track]), Some(track)).unwrap();
     points.gain(1);
     let step = MoveStep::new(Num::ONE).unwrap();
-    let parts = (Level::default(), points, Modifiers::default());
+    let parts = (
+        Level::default(),
+        points,
+        (Modifiers::default(), ModifierClocks::default()),
+    );
     game.insert_parts(caster, (parts, Navigation::walker(step)));
     let entity = game.unit_entity(caster);
     let id = Stats::modifier(&game, 0, "guard").unwrap();
@@ -2747,8 +2761,12 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
         let (mut game, fighter) = weapon_match();
         let weapon = Abilities::load_weapon(&mut game, "sapper", &sapper(ranged));
         let out = if ranged { 4 } else { 1 };
-        let target =
-            Abilities::spawn_combatant(&mut game, (out, 0, 0), Team::new(1), Modifiers::default());
+        let target = Abilities::spawn_combatant(
+            &mut game,
+            (out, 0, 0),
+            Team::new(1),
+            (Modifiers::default(), ModifierClocks::default()),
+        );
         let attacker = if by_cast {
             let data = ActionData {
                 range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
@@ -2934,8 +2952,14 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
         fighter,
         ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
     );
-    let mut target =
-        |x| Abilities::spawn_combatant(&mut game, (x, 0, 0), Team::new(1), Modifiers::default());
+    let mut target = |x| {
+        Abilities::spawn_combatant(
+            &mut game,
+            (x, 0, 0),
+            Team::new(1),
+            (Modifiers::default(), ModifierClocks::default()),
+        )
+    };
     let [living, blocked, spent, deep, deepest, warded] = [1, 2, 3, 4, 5, 6].map(&mut target);
     // A tick first, whose stats derive each new unit's tags, as for every unit that spawns: the
     // blocked target's tags, set after it, stay.
@@ -3092,8 +3116,12 @@ fn on_resolve(ctx, caster, target) {
     let parts = (caster_type, Level::new(3).unwrap(), UnitStats::default());
     game.insert_parts(caster, parts);
     Abilities::give(&mut game, caster, "boost");
-    let target =
-        Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), Modifiers::default());
+    let target = Abilities::spawn_combatant(
+        &mut game,
+        (5, 0, 0),
+        Team::new(1),
+        (Modifiers::default(), ModifierClocks::default()),
+    );
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
 
     // At rank 2 and level 3: 200 + 10 × 2 + 0.5 × 40 + 1.5 × (80 − 60) = 270, which the script
@@ -3602,7 +3630,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     let ally =
         Abilities::spawn_combatant(&mut game, point(Num::int(2), Num::ZERO), Team::new(0), ());
     for unit in enemies.iter().chain([&ally]) {
-        game.insert_parts(*unit, Modifiers::default());
+        game.insert_parts(*unit, (Modifiers::default(), ModifierClocks::default()));
     }
     Abilities::cast(
         &mut game,
@@ -3803,12 +3831,12 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     "#;
     let action = Abilities::load(&mut game, "shot", &shot, source);
     let caster = Abilities::caster(&mut game, action, 1);
-    game.insert_parts(caster, Modifiers::default());
+    game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
     // The area lands on (1, 0, 0), with its caster 1 m away. Inside it: an ally, an enemy grunt,
     // an enemy of no type, and one whose tags block it as a target. Outside it, 3 m away: an ally
     // and an enemy grunt.
     let point = |x: i16, z: i16| Position::from((x, 0, z));
-    let none = Modifiers::default;
+    let none = || (Modifiers::default(), ModifierClocks::default());
     let ally = Abilities::spawn_combatant(&mut game, point(1, 1), Team::new(0), none());
     let enemy_grunt = Abilities::spawn_combatant_of(
         &mut game,

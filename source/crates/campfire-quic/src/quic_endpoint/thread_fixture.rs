@@ -112,20 +112,19 @@ impl ThreadFixture {
         panic!("the ends did not fall quiet after the handshake");
     }
 
-    /// One read of each end, the client's first, and a step of the clock: how many slots
-    /// they read.
+    /// What each end sends the other, the client's first, over as many reads as it takes, and
+    /// a step of the clock: how many slots they read.
     fn exchange(&mut self) -> usize {
         self.client.pass(self.now);
-        self.client.deliver_to(&mut self.server);
-        let slots = self.server.filled;
+        let slots = self.client.deliver_to(&mut self.server, self.now);
         self.server.pass(self.now);
-        self.server.deliver_to(&mut self.client);
+        let slots = slots + self.server.deliver_to(&mut self.client, self.now);
         self.now += STEP;
-        slots + self.client.filled
+        slots
     }
 
     /// The client sends `datagrams` datagrams, which its pass writes as GSO does and the
-    /// server's next read takes as GRO joins them: how many slots that read fills.
+    /// server's reads take as GRO joins them: how many slots they fill.
     pub fn send(&mut self, datagrams: usize) -> usize {
         let connection = &mut self
             .client
@@ -140,8 +139,7 @@ impl ThreadFixture {
                 .expect("a linked connection carries a datagram of LINK_MIN_MTU");
         }
         self.client.pass(self.now);
-        self.client.deliver_to(&mut self.server);
-        self.server.filled
+        self.client.deliver_to(&mut self.server, self.now)
     }
 
     /// The server's pass over its read: what the thread does under the mutex.
@@ -153,7 +151,7 @@ impl ThreadFixture {
     /// client, and moves the clock a step: how many datagrams it took.
     pub fn answer(&mut self) -> usize {
         let taken = self.server.state.take_datagrams();
-        self.server.deliver_to(&mut self.client);
+        self.server.deliver_to(&mut self.client, self.now);
         self.now += STEP;
         taken
     }
@@ -185,14 +183,22 @@ impl FixtureEnd {
         self.filled = 0;
     }
 
-    /// What the last pass sent, each transmit a slot of `to`'s next read.
-    fn deliver_to(&mut self, to: &mut FixtureEnd) {
+    /// What the last pass sent, each transmit a slot of `to`'s reads: a read takes
+    /// `BATCH_SIZE` slots, 1 where `quinn-udp` reads one datagram at a time, as on macOS and
+    /// Windows, so `to` passes over a full read at `now` before the next, as its thread does.
+    /// How many slots it delivered.
+    fn deliver_to(&mut self, to: &mut FixtureEnd, now: Instant) -> usize {
         let from = self.address;
+        let mut delivered = 0;
         self.outbox.drain(|destination, bytes, stride| {
             assert_eq!(destination, to.address, "the fixture has two ends");
-            assert!(to.filled < BATCH_SIZE, "a read takes BATCH_SIZE slots");
+            if to.filled == BATCH_SIZE {
+                to.pass(now);
+            }
             to.batch.load(to.filled, from, bytes, stride);
             to.filled += 1;
+            delivered += 1;
         });
+        delivered
     }
 }

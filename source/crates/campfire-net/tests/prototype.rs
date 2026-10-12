@@ -17,8 +17,8 @@ use campfire_common::{MapName, PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
-    InputChannel, InputMessage, InputMessageRefused, LinkLost, PendingOrders, PlayerLink,
-    TickHashes,
+    InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,
+    PlayerLink, TickHashes,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
@@ -327,9 +327,25 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
 }
 
 #[test]
-fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
-    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
+    let mut local = InProcessMatch::new(MatchSetup {
+        max_spectators: 1,
+        ..MatchSetup::SOLO
+    });
     local.start_match();
+    let spectator = local.add_spectator();
+    for _ in 0..300 {
+        if local
+            .client(spectator)
+            .world()
+            .resource::<JoinState>()
+            .watching()
+            .is_some()
+        {
+            break;
+        }
+        local.step();
+    }
     // The east tower, of team 1, the one unit of that team that neither walks nor has an owner,
     // falls to one strike: the walker's attack on it ends the match, and the west, team 0, wins.
     let world = local.server().world();
@@ -387,6 +403,8 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
     local.step();
     assert_eq!(local.client(0).world().match_end(), Some(end));
+    // A spectator holds the match's entity, and its end with it (design 14, D7).
+    assert_eq!(local.client(spectator).world().match_end(), Some(end));
 
     // After the end neither end moves the hero, and the server's tick still counts on.
     let still = hero(local.server());

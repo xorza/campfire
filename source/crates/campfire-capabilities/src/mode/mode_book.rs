@@ -29,7 +29,9 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::applier::Applier;
+use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
+use crate::stats::stat_book::StatBook;
 use crate::stats::stats_effect::StatsEffect;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::body::Body;
@@ -224,9 +226,9 @@ impl ModeBook {
         self.spawn(world, at, owner.map(Owner::new), ())
     }
 
-    /// Spawns `at`, with its kit, its script state at its type's defaults, its actions, each at
-    /// the first rank of its kind, an empty slot of its inventory's kind for each inventory slot,
-    /// its passive, and `parts`.
+    /// Spawns `at`, with its kit, its stats, its script state at its type's defaults, its
+    /// actions, each at the first rank of its kind, an empty slot of its inventory's kind for each
+    /// inventory slot, its passive, and `parts`.
     pub(crate) fn spawn(
         &self,
         world: &mut World,
@@ -247,7 +249,14 @@ impl ModeBook {
         let level_track = world
             .get_resource::<TrackBook>()
             .and_then(TrackBook::level_track);
-        let mut unit = at.core(owner).spawn(world, (UnitStats::default(), parts));
+        // Its stats as its first refresh derives them, of its type at level 1 with no modifiers, so
+        // a reader in the stage it spawns in finds them.
+        let stats = world
+            .get_resource::<StatBook>()
+            .map_or_else(UnitStats::default, |book| {
+                UnitStats::new(book.base_values(unit_type, Level::default().get()))
+            });
+        let mut unit = at.core(owner).spawn(world, (stats, parts));
         let at = KitSpawn {
             kit: &kit,
             level_track,

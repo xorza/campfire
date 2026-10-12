@@ -1,6 +1,7 @@
 use bevy_ecs::change_detection::DetectChanges;
+use bevy_ecs::query::Allow;
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_sim::{EntityIndex, StableId};
+use campfire_sim::{EntityIndex, StableId, Unpredicted};
 
 use crate::stats::level::Level;
 use crate::stats::modifier_spec::ParamPlace;
@@ -15,7 +16,8 @@ use crate::units::unit_type::UnitType;
 use crate::values::rank::Rank;
 
 /// What a system reads a modifier's params from: the param book, and the units a param scales by,
-/// by stable id.
+/// by stable id, those a predicting client holds as the server sent them among them (design 14,
+/// D11).
 #[derive(SystemParam, Debug)]
 pub(crate) struct ModifierParams<'w, 's> {
     params: Res<'w, ParamBook>,
@@ -29,6 +31,7 @@ pub(crate) struct ModifierParams<'w, 's> {
             Option<&'static Level>,
             Option<&'static UnitStats>,
         ),
+        Allow<Unpredicted>,
     >,
 }
 

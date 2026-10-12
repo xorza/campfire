@@ -12,6 +12,7 @@ use crate::mode::match_mode::MatchMode;
 use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::navigation::path_walker::PathEnd;
+use crate::players::held_out::HeldOut;
 use crate::players::players_world::PlayersWorld;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
@@ -64,6 +65,11 @@ pub(crate) enum ModeEffect {
         a: Team,
         b: Team,
         relation: Relation,
+    },
+    /// Holds `slot` out of play while `out`.
+    SetOut {
+        slot: PlayerSlot,
+        out: bool,
     },
     /// A save, at the end of the tick.
     Save,
@@ -134,6 +140,15 @@ impl Effect for ModeEffect {
             }
             ModeEffect::SetRelation { a, b, relation } => {
                 world.relations_mut().set_keeping_vision(a, b, relation);
+            }
+            ModeEffect::SetOut { slot, out } => {
+                let player = world.player_entity(slot);
+                let mut player = world.entity_mut(player.expect("every slot has its entity"));
+                if out {
+                    player.insert(HeldOut);
+                } else {
+                    player.remove::<HeldOut>();
+                }
             }
             // A call's `now` is the end of its tick.
             ModeEffect::Save => world.insert_resource(SaveAsked::new(now)),

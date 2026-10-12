@@ -278,12 +278,12 @@ impl Hud {
         });
     }
 
-    /// Gives each drawn unit its gauges, once the client plays, its team telling friend from
-    /// foe: life for every unit with a life; for the own avatar, each other pool, then,
-    /// when an ability ranks up, a row of learn marks, then a cooldown per ability slot, then the
-    /// rank ticks of each ability that ranks up, then the charge ticks of each ability with
-    /// charges. The gauges stand over the drawing's top, facing
-    /// the camera, as children of its root.
+    /// Gives each drawn unit its gauges, once the client plays or watches, its side telling
+    /// friend from foe: life for every unit with a life; for the own avatar, each other pool,
+    /// then, when an ability ranks up, a row of learn marks, then a cooldown per ability slot,
+    /// then the rank ticks of each ability that ranks up, then the charge ticks of each ability
+    /// with charges. The gauges stand over the drawing's top, facing the camera, as children of
+    /// its root.
     fn add_gauges(
         palette: Res<'_, HudPalette>,
         learning: Option<Learning<'_>>,
@@ -293,7 +293,7 @@ impl Hud {
         mut scratch: Local<'_, GaugeScratch>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Some(own_team) = own.team() else {
+        let Some(own_team) = own.side() else {
             return;
         };
         let avatar = own.avatar().map(|avatar| avatar.entity);

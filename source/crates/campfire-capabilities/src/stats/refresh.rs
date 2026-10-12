@@ -1,9 +1,9 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, Changed, Or, With, Without};
+use bevy_ecs::query::{Added, Allow, Changed, Or, With, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, StableId, TickRate};
+use campfire_sim::{EntityIndex, StableId, TickRate, Unpredicted};
 
 use crate::stats::level::Level;
 use crate::stats::life::Life;
@@ -13,6 +13,7 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::pool_book::PoolBook;
+use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
@@ -36,13 +37,24 @@ pub(crate) struct Refresh;
 
 impl Refresh {
     /// Gives each unit of a type, but a delivery, that lacks them the parts its stats and tags
-    /// derive into, which a restore does not bring back, as they are never state; the refresh
-    /// after it derives them, as it does a new unit's. A delivery has no level to derive stats
-    /// from, and its tags come back by `UnitTags::give_delivery_tags`.
+    /// derive into, which a restore does not bring back, as they are never state, and a client
+    /// receives with no unit; the refresh after it derives them, as it does a new unit's. A
+    /// delivery has no level to derive stats from, and its tags come back by
+    /// `UnitTags::give_delivery_tags`.
     pub(crate) fn give_parts(
         book: Option<Res<'_, StatBook>>,
         mut commands: Commands<'_, '_>,
-        units: Query<'_, '_, Entity, (With<UnitType>, Without<DeliveryEntity>, Without<UnitStats>)>,
+        units: Query<
+            '_,
+            '_,
+            Entity,
+            (
+                With<UnitType>,
+                Without<DeliveryEntity>,
+                Without<UnitStats>,
+                Allow<Unpredicted>,
+            ),
+        >,
     ) {
         if book.is_none() {
             return;
@@ -60,7 +72,10 @@ impl Refresh {
     /// suppress gives no tags and no stats. Each stat is computed for every refreshing unit in the
     /// stat book's order, so a live change reads its source's stats once they are final; a live
     /// change whose source is gone keeps the value it last had. An effect whose stat the mode does
-    /// not declare keeps what the unit's kit gave it.
+    /// not declare keeps what the unit's kit gave it. A predicting client derives the stats and
+    /// tags of every unit it holds, as their inputs reach it, so an aura's numbers resolve there
+    /// as on the server (design 14, D11); it writes nothing else of a unit it holds as the server
+    /// sent it.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
@@ -88,6 +103,7 @@ impl Refresh {
                             Changed<StatusTags>,
                             Added<UnitStats>,
                         )>,
+                        Allow<Unpredicted>,
                     ),
                 >,
                 Query<
@@ -101,10 +117,11 @@ impl Refresh {
                         Option<&mut UnitTags>,
                         Option<&StatusTags>,
                     ),
-                    With<UnitStats>,
+                    (With<UnitStats>, Allow<Unpredicted>),
                 >,
-                Query<'_, '_, (&UnitType, &Level, &UnitStats)>,
-                Query<'_, '_, (&mut UnitStats, Option<&mut MoveStep>, UnitPools)>,
+                Query<'_, '_, (&UnitType, &Level, &UnitStats), Allow<Unpredicted>>,
+                Query<'_, '_, &mut UnitStats, Allow<Unpredicted>>,
+                Query<'_, '_, (Option<&mut MoveStep>, UnitPools)>,
                 Query<'_, '_, &mut Modifiers>,
             ),
         >,
@@ -178,9 +195,9 @@ impl Refresh {
         scratch.compute(&book, &params, other);
         let count = usize::from(book.len());
         let life = life.map(|life| life.0);
-        let mut writes = units.p3();
+        let mut stats = units.p3();
         for (unit, refreshing) in scratch.units.iter().enumerate() {
-            let Ok((mut stats, step, pools)) = writes.get_mut(refreshing.entity) else {
+            let Ok(mut stats) = stats.get_mut(refreshing.entity) else {
                 continue;
             };
             let values = scratch.values(unit, count);
@@ -188,18 +205,11 @@ impl Refresh {
             if stats.values() != values {
                 stats.refill().extend_from_slice(values);
             }
-            if let (Some(mut step), Some(value)) = (step, book.step(values, *rate)) {
-                step.set_if_neq(MoveStep::new(value).expect("a step is at least 0"));
-            }
-            let mut pools = pools.of(life);
-            for (pool, stats) in pool_book.iter() {
-                let max = values[stats.max.index()].max(Num::EPSILON);
-                pools.set_max(pool, max);
-            }
         }
+        Refresh::hold_effects(scratch, (&book, &pool_book), life, *rate, &mut units.p4());
         // The value a live change last had is state, so a replay keeps it; a unit that carries
         // one refreshes every pass anyway, so the change its write marks starts no refresh.
-        let mut holders = units.p4();
+        let mut holders = units.p5();
         for term in scratch.lives() {
             let entity = scratch.units[term.unit as usize].entity;
             if let Ok(mut modifiers) = holders.get_mut(entity) {
@@ -207,6 +217,33 @@ impl Refresh {
                 if modifiers.share_value(at) != term.value {
                     modifiers.set_share_value(at, term.value);
                 }
+            }
+        }
+    }
+
+    /// Sets what holds the effect of each refreshed unit's stats, `scratch`'s values: how far it
+    /// walks a tick at `rate`, and its pools' maxima, `life` the life pool's. A unit a client
+    /// holds as the server sent it is no unit of `effects`, so a client writes nothing of it.
+    fn hold_effects(
+        scratch: &RefreshScratch,
+        (book, pool_book): (&StatBook, &PoolBook),
+        life: Option<PoolId>,
+        rate: TickRate,
+        effects: &mut Query<'_, '_, (Option<&mut MoveStep>, UnitPools)>,
+    ) {
+        let count = usize::from(book.len());
+        for (unit, refreshing) in scratch.units.iter().enumerate() {
+            let Ok((step, pools)) = effects.get_mut(refreshing.entity) else {
+                continue;
+            };
+            let values = scratch.values(unit, count);
+            if let (Some(mut step), Some(value)) = (step, book.step(values, rate)) {
+                step.set_if_neq(MoveStep::new(value).expect("a step is at least 0"));
+            }
+            let mut pools = pools.of(life);
+            for (pool, stats) in pool_book.iter() {
+                let max = values[stats.max.index()].max(Num::EPSILON);
+                pools.set_max(pool, max);
             }
         }
     }

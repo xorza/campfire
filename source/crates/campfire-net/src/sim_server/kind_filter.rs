@@ -552,6 +552,7 @@ mod tests {
             Some(Viewer::Player {
                 slot: PlayerSlot::new(slot),
                 team: Team::new(team),
+                out: false,
             })
         };
         let spectator = Some(Viewer::Spectator(Watching::Teams(TeamSet::ALL)));
