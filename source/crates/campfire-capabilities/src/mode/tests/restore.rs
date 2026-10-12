@@ -93,13 +93,13 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     );
 
     // Tracks: the mode has two, 0 and 1.
-    let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track)]), None);
+    let on_tracks = |track| Experience::new(TrackSet::from([TrackId::new(track)]), None);
     assert!(on_tracks(1).check(&game, grunt) && !on_tracks(2).check(&game, grunt));
     // Track 0 is the `level` track, whose level is the unit's: one that holds its own is
     // refused, one that holds none passes.
     let level_track = |own: bool| {
         let track = TrackId::new(0);
-        Experience::new(TrackSet::of([track]), (!own).then_some(track))
+        Experience::new(TrackSet::from([track]), (!own).then_some(track))
     };
     assert!(level_track(false).check(&game, grunt) && !level_track(true).check(&game, grunt));
     let id = *game.get::<StableId>(grunt).unwrap();
@@ -108,8 +108,8 @@ fn a_restore_check_refuses_what_the_match_lacks() {
         track: TrackId::new(track),
         level: Level::new(2).unwrap(),
     };
-    assert!(LevelUps(vec![level_up(1)].into()).check(&game));
-    assert!(!LevelUps(vec![level_up(2)].into()).check(&game));
+    assert!(LevelUps([level_up(1)].into()).check(&game));
+    assert!(!LevelUps([level_up(2)].into()).check(&game));
 
     // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
     let route = game.get::<Route>(grunt).unwrap().clone();

@@ -487,7 +487,7 @@ fn slot_kinds() -> SlotKinds {
         name: DeclaredName::new(name).unwrap(),
         ranks: NonZeroU8::new(ranks).map(|count| SlotRanks::new(count, None).unwrap()),
     };
-    SlotKinds::from(vec![kind("basic", 2), kind("spell", 0)])
+    SlotKinds::from([kind("basic", 2), kind("spell", 0)])
 }
 
 /// The test mode's choices: a unique hero, one spell, and `duo`, two avatars any player may
@@ -653,7 +653,7 @@ fn setup(
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y, crate_type] = types;
     let hero = UnitKit {
-        tracks: TrackSet::of([0, 1].map(TrackId::new)),
+        tracks: TrackSet::from([0, 1].map(TrackId::new)),
         ..grunt()
     };
     let unit = |unit_type, kit| UnitTypeSetup {
@@ -699,7 +699,7 @@ fn setup(
                     },
                 ),
             ],
-            avatars: ["hero-x", "hero-y"].into_iter().collect(),
+            avatars: Names::from(["hero-x", "hero-y"]),
             loadout: spell,
         },
     }

@@ -187,6 +187,12 @@ impl<I: NameId, K: NameKey<I::Scope>> FromIterator<K> for Names<I> {
     }
 }
 
+impl<I: NameId, K: NameKey<I::Scope>, const N: usize> From<[K; N]> for Names<I> {
+    fn from(keys: [K; N]) -> Names<I> {
+        keys.into_iter().collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,7 +234,7 @@ mod tests {
     #[test]
     fn a_name_finds_its_id_in_its_scope_and_an_id_its_name() {
         // Ids by the order they are added, which a lookup finds whatever their names' order.
-        let names: Names<Small> = ["b", "", "a"].into_iter().collect();
+        let names = Names::<Small>::from(["b", "", "a"]);
         assert_eq!(names.len(), 3);
         assert_eq!(names.texts().collect::<Vec<_>>(), ["b", "", "a"]);
         assert_eq!(
@@ -254,7 +260,7 @@ mod tests {
 
     #[test]
     fn a_table_refuses_a_repeat_in_a_scope_and_an_id_past_its_limit() {
-        let mut names: Names<Small> = ["a", "b"].into_iter().collect();
+        let mut names = Names::<Small>::from(["a", "b"]);
         assert_eq!(names.try_add("a"), Err(NamesError::Repeated));
         assert_eq!(names.try_add("c"), Ok(Small(2)));
         assert_eq!(names.try_add("d"), Err(NamesError::Full));
@@ -280,6 +286,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "a scope names an id once: a")]
     fn an_add_of_a_repeat_fails() {
-        drop::<Names<Small>>(["a", "a"].into_iter().collect());
+        drop(Names::<Small>::from(["a", "a"]));
     }
 }

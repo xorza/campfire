@@ -236,7 +236,7 @@ mod tests {
         );
         let cells = Grid::new(quarter, bounds.unwrap()).unwrap();
         let mut planner = RoutePlanner::new(&cells);
-        let grid = PathingGrid::new(cells, vec![walker], &Terrain::default());
+        let grid = PathingGrid::new(cells, [walker], &Terrain::default());
         let statics = BodyIndex::new(wide);
         let mut ids = IdAllocator::default();
         let (id, blocker) = (ids.allocate(), ids.allocate());
@@ -277,7 +277,7 @@ mod tests {
         };
         let bounds = Bounds::new([Num::int(-8); 2], [Num::int(8); 2]);
         let cells = Grid::new(quarter, bounds.unwrap()).unwrap();
-        let grid = PathingGrid::new(cells, vec![walker], &Terrain::default());
+        let grid = PathingGrid::new(cells, [walker], &Terrain::default());
         let statics = BodyIndex::new(quarter);
         let mut ids = IdAllocator::default();
         let (id, blocker) = (ids.allocate(), ids.allocate());

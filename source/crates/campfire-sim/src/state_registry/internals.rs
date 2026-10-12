@@ -256,13 +256,10 @@ impl Draws {
         world: &mut World,
         mutation: Mutation,
     ) -> bool {
-        let entities: Vec<_> = world
+        let (holders, others): (Vec<_>, Vec<_>) = world
             .resource::<EntityIndex>()
             .iter()
             .map(|(_, entity)| entity)
-            .collect();
-        let (holders, others): (Vec<_>, Vec<_>) = entities
-            .into_iter()
             .partition(|&entity| world.get::<C>(entity).is_some());
         let Some(&holder) = self.pick(&holders) else {
             return false;

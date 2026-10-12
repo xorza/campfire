@@ -28,6 +28,12 @@ impl FromIterator<TypeOrigin> for TypeOriginBook {
     }
 }
 
+impl<const N: usize> From<[TypeOrigin; N]> for TypeOriginBook {
+    fn from(origins: [TypeOrigin; N]) -> TypeOriginBook {
+        origins.into_iter().collect()
+    }
+}
+
 impl TypeOriginBook {
     pub(crate) fn push(&mut self, origin: TypeOrigin) {
         self.origins.push(origin);

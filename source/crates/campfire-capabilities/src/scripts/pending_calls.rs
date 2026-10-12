@@ -51,9 +51,17 @@ impl<T> Default for PendingCalls<T> {
     }
 }
 
-impl<T> From<Vec<T>> for PendingCalls<T> {
-    fn from(calls: Vec<T>) -> PendingCalls<T> {
-        PendingCalls { calls }
+impl<T> FromIterator<T> for PendingCalls<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(calls: I) -> PendingCalls<T> {
+        PendingCalls {
+            calls: calls.into_iter().collect(),
+        }
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for PendingCalls<T> {
+    fn from(calls: [T; N]) -> PendingCalls<T> {
+        calls.into_iter().collect()
     }
 }
 
@@ -65,9 +73,9 @@ mod tests {
 
     #[test]
     fn calls_run_from_the_front_and_later_ones_join_the_end() {
-        let mut pending = PendingCalls::from(vec![1, 2, 3]);
+        let mut pending = PendingCalls::from([1, 2, 3]);
         pending.answered(2);
-        let mut later = PendingCalls::from(vec![4]);
+        let mut later = PendingCalls::from([4]);
         pending.append(&mut later);
         pending.extend([5]);
         assert_eq!(pending.iter().copied().collect::<Vec<_>>(), [3, 4, 5]);

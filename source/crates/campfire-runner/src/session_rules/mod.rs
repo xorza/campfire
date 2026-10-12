@@ -55,7 +55,7 @@ impl SessionRules {
         seed_commitment: SeedCommitment,
         tick_hz: NonZeroU32,
         rules: InputRules,
-        slots: Vec<SlotPlan>,
+        slots: impl IntoIterator<Item = SlotPlan>,
         visibility: &Visibility,
     ) -> Result<SessionTerms, TermsError> {
         let terms = SessionTerms {
@@ -70,7 +70,7 @@ impl SessionRules {
             mode: self.mode,
             map: self.map.clone(),
             dependencies: self.dependencies.to_vec(),
-            slots,
+            slots: slots.into_iter().collect(),
             visibility: visibility.encode(),
         };
         self.check(&terms)?;

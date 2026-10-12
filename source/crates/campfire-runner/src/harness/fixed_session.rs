@@ -1,3 +1,4 @@
+use std::iter;
 use std::num::NonZeroU32;
 
 use campfire_common::PlayerSlot;
@@ -50,7 +51,8 @@ impl FixedSession {
         players: u32,
         rules: InputRules,
     ) -> FixedSession {
-        let plan = vec![SlotPlan::Player; usize::try_from(players).expect("players fit usize")];
+        let players = usize::try_from(players).expect("players fit usize");
+        let plan = iter::repeat_n(SlotPlan::Player, players);
         FixedSession::planned(packages, tick_hz, rules, plan)
     }
 
@@ -60,7 +62,7 @@ impl FixedSession {
         packages: ModePackages,
         tick_hz: NonZeroU32,
         rules: InputRules,
-        plan: Vec<SlotPlan>,
+        plan: impl IntoIterator<Item = SlotPlan>,
     ) -> FixedSession {
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();

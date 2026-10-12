@@ -14,7 +14,7 @@ fn a_stat_grows_by_its_per_level_from_level_1() {
     let [health, armor] = ["health", "armor"].map(|name| Stat::named(name).unwrap());
     let attack_damage = Stat::named("attack_damage").unwrap();
     let move_speed = Stat::Engine(EngineStat::MoveSpeed);
-    let stats = StatsData(BTreeMap::from([
+    let stats = StatsData::from([
         (
             health.clone(),
             value(Num::from_int(472).unwrap(), Num::from_int(84).unwrap()),
@@ -24,7 +24,7 @@ fn a_stat_grows_by_its_per_level_from_level_1() {
             value(Num::from_int(47).unwrap(), Num::from_str("3.8").unwrap()),
         ),
         (armor.clone(), value(Num::from_int(18).unwrap(), Num::ZERO)),
-    ]));
+    ]);
     assert!(stats.declares(&health) && !stats.declares(&move_speed));
     // The stat book's ids: move speed, an engine stat, first, then armor, attack damage, health.
     let rules = [&move_speed, &armor, &attack_damage, &health]

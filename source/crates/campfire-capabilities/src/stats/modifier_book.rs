@@ -108,7 +108,7 @@ impl ModifierBook {
             .iter()
             .map(|modifier| {
                 let declare = |name: &DeclaredName| types.declare(name.as_str());
-                TagSet::of(modifier.data.tags.iter().map(declare))
+                modifier.data.tags.iter().map(declare).collect()
             })
             .collect();
         let names = SpecNames {
@@ -405,12 +405,12 @@ mod tests {
         // and a scaling table of 2 ranks.
         let int = |value| Param::Ranked(Ranked::One(Scalar::Int(value)));
         let scaling = Param::Scaling(Scaling {
-            base: Ranked::PerRank(vec![Num::ONE, Num::ONE]),
+            base: Ranked::from([Num::ONE, Num::ONE]),
             per_level: Num::ZERO,
             bonus: BTreeMap::new(),
             ratios: BTreeMap::new(),
         });
-        let per_rank = Ranked::PerRank(vec![Scalar::Int(100), Scalar::Int(200)]);
+        let per_rank = Ranked::from([Scalar::Int(100), Scalar::Int(200)]);
         let action = BTreeMap::from([
             (name("huge"), int(1 << 40)),
             (name("late"), int(-5)),
@@ -428,10 +428,7 @@ mod tests {
             ..ModifierData::default()
         };
         let own = ModifierData {
-            params: BTreeMap::from([(
-                name("own"),
-                Param::Ranked(Ranked::PerRank(vec![Scalar::Int(1)])),
-            )]),
+            params: BTreeMap::from([(name("own"), Param::Ranked(Ranked::from([Scalar::Int(1)])))]),
             ..shield("own")
         };
         let data = [

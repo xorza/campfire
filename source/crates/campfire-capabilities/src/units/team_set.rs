@@ -41,6 +41,12 @@ impl FromIterator<Team> for TeamSet {
     }
 }
 
+impl<const N: usize> From<[Team; N]> for TeamSet {
+    fn from(teams: [Team; N]) -> TeamSet {
+        teams.into_iter().collect()
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::units::team::Team;

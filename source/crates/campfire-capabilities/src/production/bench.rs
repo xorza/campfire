@@ -78,7 +78,7 @@ fn two_fields() -> Match {
     world.non_send::<View>().names_mut().set_types(types);
     let mut book = NodeBook::default();
     book.nodes.set(node_type, gold);
-    book.drop_offs.set(drop_off_type, ResourceSet::of([gold]));
+    book.drop_offs.set(drop_off_type, ResourceSet::from([gold]));
     world.insert_resource(book);
     let spec = GatherSpec {
         resource: gold,

@@ -667,12 +667,11 @@ fn only_the_platform_module_names_an_os() {
         .collect();
     assert_eq!(named, Vec::<String>::new());
     // The module names one, so the walk reaches it and the check sees what it holds.
-    let platform: Vec<&str> = sources
+    let mut platform = sources
         .iter()
         .filter(|file| file.path.starts_with(PLATFORM) && !os_names(&file.text).is_empty())
-        .map(|file| file.path.as_str())
-        .collect();
-    assert!(platform.contains(&"crates/campfire-store/src/platform/mod.rs"));
+        .map(|file| file.path.as_str());
+    assert!(platform.any(|path| path == "crates/campfire-store/src/platform/mod.rs"));
 }
 
 #[test]

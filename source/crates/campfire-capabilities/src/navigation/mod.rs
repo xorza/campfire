@@ -173,8 +173,9 @@ impl Navigation {
         world: &mut World,
         grid: Grid,
         walls: &[Wall],
-        walkers: Vec<Walker>,
+        walkers: impl IntoIterator<Item = Walker>,
     ) {
+        let walkers: Vec<Walker> = walkers.into_iter().collect();
         debug_assert!(
             world.contains_resource::<StaticChanges>(),
             "a map's pathing grid is navigation's, which the load checked the mode declares"
@@ -275,7 +276,7 @@ pub(crate) mod test_world {
             cell: impl Into<Num>,
             min: [i64; 2],
             max: [i64; 2],
-            walkers: Vec<Walker>,
+            walkers: impl IntoIterator<Item = Walker>,
         ) {
             let cell = cell.into();
             Navigation::load_walled(world, cell, min, max, walkers, &[]);
@@ -287,7 +288,7 @@ pub(crate) mod test_world {
             cell: impl Into<Num>,
             min: [i64; 2],
             max: [i64; 2],
-            walkers: Vec<Walker>,
+            walkers: impl IntoIterator<Item = Walker>,
             walls: &[Wall],
         ) {
             let cell = cell.into();

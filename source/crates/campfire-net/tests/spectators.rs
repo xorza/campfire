@@ -114,7 +114,7 @@ fn a_spectator_of_the_teams_views_watches_the_teams_it_chooses() {
     assert_eq!(held(local.client_mut(spectator)), both);
     assert_ne!(west, both, "the teams see apart");
 
-    let west_alone = TeamSet::from_iter([Team::new(0)]);
+    let west_alone = TeamSet::from([Team::new(0)]);
     local
         .client_mut(spectator)
         .world_mut()

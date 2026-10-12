@@ -20,7 +20,7 @@ pub(crate) struct MapGround {
 
 impl MapGround {
     /// Puts the ground in `world`, its pathing grid for the kinds of `walkers`.
-    pub(crate) fn install(self, world: &mut World, walkers: Vec<Walker>) {
+    pub(crate) fn install(self, world: &mut World, walkers: impl IntoIterator<Item = Walker>) {
         let MapGround {
             metric,
             bounds,

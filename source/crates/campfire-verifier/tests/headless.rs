@@ -410,7 +410,7 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
         packages(),
         NonZeroU32::new(30).unwrap(),
         InputRules::ROOMY,
-        vec![SlotPlan::Player, SlotPlan::Bot],
+        [SlotPlan::Player, SlotPlan::Bot],
     );
     let mut fixed = session.start();
     let mut live = HashTrail::default();

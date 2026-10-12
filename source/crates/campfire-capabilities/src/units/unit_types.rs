@@ -48,7 +48,8 @@ impl Default for UnitTypes {
 
 impl UnitTypes {
     /// The engine's tags `engine` at their places, as the release lists them, and no type.
-    pub(crate) fn new(engine: Vec<EngineTag>) -> UnitTypes {
+    pub(crate) fn new(engine: impl IntoIterator<Item = EngineTag>) -> UnitTypes {
+        let engine: Vec<EngineTag> = engine.into_iter().collect();
         UnitTypes {
             tags: engine.iter().map(|tag| tag.name()).collect(),
             engine,
@@ -66,7 +67,7 @@ impl UnitTypes {
             .engine
             .iter()
             .filter(|tag| tag.properties().named_only());
-        TagSet::of(named_only.map(|tag| tag.tag()))
+        named_only.map(|tag| tag.tag()).collect()
     }
 
     /// Loads `data` as the type `name` of `scope`, declared by the package at `package`, which the
@@ -160,7 +161,7 @@ impl UnitTypes {
                     .named(name.as_str())
                     .expect("the match declared every tag the mode names")
             });
-            (engine.union(TagProperties::of(data)), TagSet::of(immune))
+            (engine.union(TagProperties::of(data)), immune.collect())
         });
         let effects: Vec<_> = tags.collect();
         let staged = self

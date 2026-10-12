@@ -44,9 +44,16 @@ impl<T> From<T> for Ranked<T> {
     }
 }
 
-impl<T> From<Vec<T>> for Ranked<T> {
-    fn from(values: Vec<T>) -> Ranked<T> {
-        Ranked::PerRank(values)
+/// One value for each rank of `values`, in order.
+impl<T> FromIterator<T> for Ranked<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(values: I) -> Ranked<T> {
+        Ranked::PerRank(values.into_iter().collect())
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for Ranked<T> {
+    fn from(values: [T; N]) -> Ranked<T> {
+        values.into_iter().collect()
     }
 }
 
@@ -57,6 +64,6 @@ mod tests {
     #[test]
     fn a_value_is_one_and_a_list_one_a_rank() {
         assert_eq!(Ranked::from(4_u8), Ranked::One(4));
-        assert_eq!(Ranked::from(vec![1_u8, 2]), Ranked::PerRank(vec![1, 2]));
+        assert_eq!(Ranked::from([1_u8, 2]), Ranked::PerRank(vec![1, 2]));
     }
 }

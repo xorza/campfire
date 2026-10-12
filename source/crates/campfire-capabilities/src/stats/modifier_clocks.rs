@@ -132,8 +132,9 @@ impl ModifierClocks {
         at: usize,
         interval: Option<Interval>,
         shield: Option<Num>,
-        state: Vec<StateValue>,
+        state: impl IntoIterator<Item = StateValue, IntoIter: ExactSizeIterator>,
     ) {
+        let state = state.into_iter();
         let start = self.state_start(at);
         let clock = Clock {
             interval,

@@ -137,7 +137,7 @@ pub(crate) fn route_planner(c: &mut Criterion) {
         layer: Layer::FIRST,
         radius: KernelScene::centimeters(HERO_RADIUS),
     };
-    let mut grid = PathingGrid::new(cells, vec![walker], &Terrain::new(&cells, &walls));
+    let mut grid = PathingGrid::new(cells, [walker], &Terrain::new(&cells, &walls));
     let mut index = BodyIndex::new(walker.radius);
     index.update(&scene_statics(span));
     grid.update(&index);

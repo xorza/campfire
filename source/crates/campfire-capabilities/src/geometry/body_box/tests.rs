@@ -34,7 +34,7 @@ fn polygon(body: &BodyBox, centre: Position) -> Polygon {
             .to_array()
             .map(|bits| Num::from_bits(i64::try_from(bits).unwrap()))
     });
-    Polygon::new(points.to_vec()).unwrap()
+    Polygon::new(points).unwrap()
 }
 
 /// The squared distance from `pos` to the nearest point of `body` at `centre`; 0 inside.
@@ -467,7 +467,7 @@ fn a_box_overlaps_a_polygon_its_inside_meets() {
     let body = made("4", "2", "0");
     let origin = at("0", "0");
     let shape = |points: &[(&str, &str)]| {
-        Polygon::new(points.iter().map(|&(x, z)| [num(x), num(z)]).collect()).unwrap()
+        Polygon::new(points.iter().map(|&(x, z)| [num(x), num(z)])).unwrap()
     };
     let cases: [(&[(&str, &str)], bool); 7] = [
         // A corner on the edge at x = 2, and an edge along it: touching.

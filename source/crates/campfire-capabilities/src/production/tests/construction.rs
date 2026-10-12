@@ -109,7 +109,7 @@ impl Yard {
             radius: Num::HALF,
         };
         let grid = Grid::new(Num::ONE, bounds).unwrap();
-        Navigation::load_pathing(game, grid, &rules.walls, vec![walker]);
+        Navigation::load_pathing(game, grid, &rules.walls, [walker]);
         let gold = shop.gold;
         let player = PlayerSlot::new(0);
         Players::spawn(game, 1, 1);
@@ -198,7 +198,7 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
             "tick {tick}"
         );
         let status = *game.part::<StatusTags>(depot);
-        let constructing = StatusTags::of([Production::CONSTRUCTING]);
+        let constructing = StatusTags::from([Production::CONSTRUCTING]);
         assert_eq!(
             status,
             if tick < 10 {
@@ -390,12 +390,8 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
     // places nothing. Its control, the same yard without what refuses it, places its site.
     let wall = Wall {
         layer: Layer::FIRST,
-        area: Polygon::new(
-            [[-1, -1], [1, -1], [1, 1], [-1, 1]]
-                .map(|point| point.map(Num::int))
-                .to_vec(),
-        )
-        .unwrap(),
+        area: Polygon::new([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(|point| point.map(Num::int)))
+            .unwrap(),
     };
     let rule = |relation| PlacementCheck {
         filter: Filter::of_release_relations(relation),

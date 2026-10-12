@@ -90,7 +90,7 @@ mod walls {
                 let (west, east) = (meters(side * span / 2 - 2), meters(side * span / 2 + 2));
                 for [south, north] in [[-(span - 10), -5], [5, span - 10]] {
                     let (south, north) = (meters(south), meters(north));
-                    let corners = vec![[west, south], [east, south], [east, north], [west, north]];
+                    let corners = [[west, south], [east, south], [east, north], [west, north]];
                     walls.push(Polygon::new(corners).unwrap());
                 }
             }

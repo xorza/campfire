@@ -93,7 +93,7 @@ impl Texts {
 
 /// The bundle of `language` of `resources`, in order: an earlier one's message wins, as a
 /// package's own file comes before the translations.
-fn bundle(language: &Language, resources: Vec<Arc<FluentResource>>) -> Bundle {
+fn bundle(language: &Language, resources: impl IntoIterator<Item = Arc<FluentResource>>) -> Bundle {
     let mut bundle = Bundle::new_concurrent(vec![language.identifier().clone()]);
     for resource in resources {
         if let Err(errors) = bundle.add_resource(resource) {

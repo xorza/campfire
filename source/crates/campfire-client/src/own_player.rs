@@ -62,8 +62,8 @@ mod tests {
     #[test]
     fn a_player_sides_with_its_team_and_a_spectator_with_the_one_team_it_watches_or_the_first() {
         let (north, south) = (Team::new(0), Team::new(1));
-        let both = TeamSet::from_iter([north, south]);
-        let alone = TeamSet::from_iter([south]);
+        let both = TeamSet::from([north, south]);
+        let alone = TeamSet::from([south]);
         for (team, watching, chosen, side) in [
             // A player, whatever it watches; a client that neither plays nor watches.
             (Some(south), false, None, Some(south)),

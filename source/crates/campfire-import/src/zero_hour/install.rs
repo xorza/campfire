@@ -198,15 +198,12 @@ impl Install {
             }
             let depth = base.names().count();
             let folder = format!("{base}\\");
-            let inside: Vec<&ArchivePath> = self
+            let (direct, deeper): (Vec<&ArchivePath>, Vec<_>) = self
                 .files
                 .keys()
                 .filter(|path| {
                     path.extension() == Some("ini") && path.as_str().starts_with(&folder)
                 })
-                .collect();
-            let (direct, deeper): (Vec<_>, Vec<_>) = inside
-                .into_iter()
                 .partition(|path| path.names().count() == depth + 1);
             inis.extend(direct.into_iter().cloned());
             inis.extend(deeper.into_iter().cloned());

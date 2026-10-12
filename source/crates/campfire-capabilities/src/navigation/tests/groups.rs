@@ -15,7 +15,7 @@ fn walled(more: &[([i64; 2], [i64; 2])]) -> Match {
 fn walled_to(max: [i64; 2], more: &[([i64; 2], [i64; 2])]) -> Match {
     let box_of = |[x0, z0]: [i64; 2], [x1, z1]: [i64; 2]| {
         let area = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(|point| point.map(Num::int));
-        Polygon::new(area.to_vec()).unwrap()
+        Polygon::new(area).unwrap()
     };
     let walls: Vec<Wall> = [([4, 0], [6, 4])]
         .iter()

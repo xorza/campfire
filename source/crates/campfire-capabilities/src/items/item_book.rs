@@ -36,7 +36,8 @@ pub(crate) struct ItemSpec {
 
 impl ItemBook {
     /// The book of `items`, named `names`, the ids following their order.
-    pub(crate) fn new(names: Names<ItemId>, items: Vec<ItemSpec>) -> ItemBook {
+    pub(crate) fn new(names: Names<ItemId>, items: impl IntoIterator<Item = ItemSpec>) -> ItemBook {
+        let items: Vec<ItemSpec> = items.into_iter().collect();
         assert_eq!(names.len(), items.len(), "an item has a name");
         let mut modifiers: Vec<ModifierId> = items
             .iter()

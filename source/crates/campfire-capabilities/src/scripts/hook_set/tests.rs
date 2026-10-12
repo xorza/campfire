@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn a_set_holds_exactly_its_hooks() {
-    let set = HookSet::of([Hook::OnTimer, Hook::OnUnitDied]);
+    let set = HookSet::from([Hook::OnTimer, Hook::OnUnitDied]);
     let held: Vec<_> = Hook::ALL
         .into_iter()
         .filter(|&hook| set.contains(hook))

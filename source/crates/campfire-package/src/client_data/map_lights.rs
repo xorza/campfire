@@ -21,7 +21,8 @@ pub struct MapLight {
 impl MapLights {
     /// The lights of `ambient` and `lights`; none for a number that is not finite, or a light
     /// whose direction has no length, which no directional light has.
-    pub fn new(ambient: [f32; 3], lights: Vec<MapLight>) -> Option<MapLights> {
+    pub fn new(ambient: [f32; 3], lights: impl IntoIterator<Item = MapLight>) -> Option<MapLights> {
+        let lights: Vec<MapLight> = lights.into_iter().collect();
         let finite = |values: [f32; 3]| values.iter().all(|value| value.is_finite());
         let holds = finite(ambient)
             && lights.iter().all(|light| {

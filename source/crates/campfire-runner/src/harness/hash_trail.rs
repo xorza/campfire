@@ -25,9 +25,9 @@ pub struct HashTrail {
 
 impl HashTrail {
     /// A trail of `totals` alone, such as a server's tick hashes.
-    pub fn of_totals(totals: Vec<StateHash>) -> HashTrail {
+    pub fn of_totals(totals: impl IntoIterator<Item = StateHash>) -> HashTrail {
         HashTrail {
-            totals,
+            totals: totals.into_iter().collect(),
             ..HashTrail::default()
         }
     }
@@ -158,7 +158,7 @@ mod tests {
             })
         );
         // A trail of totals alone names no type.
-        let totals = HashTrail::of_totals(live.totals().to_vec());
+        let totals = HashTrail::of_totals(live.totals().iter().copied());
         assert_eq!(totals.difference(&live), None);
         assert_eq!(
             totals.difference(&replayed),

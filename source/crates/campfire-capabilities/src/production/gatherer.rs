@@ -124,6 +124,7 @@ mod tests {
     use super::*;
     use crate::release::Release;
     use crate::units::view::View;
+    use crate::values::names::Names;
 
     #[test]
     fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
@@ -133,7 +134,7 @@ mod tests {
             TickRate::new(NonZeroU32::new(30).unwrap()),
             Release::engine_tags(),
         );
-        view.names_mut().resources = Arc::new(["gold"].into_iter().collect());
+        view.names_mut().resources = Arc::new(Names::from(["gold"]));
         world.insert_non_send(view);
         let entity = world.spawn_empty().id();
         let [gold, wood] = [0, 1].map(ResourceId::nth);

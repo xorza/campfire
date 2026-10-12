@@ -94,13 +94,10 @@ impl MapImport {
         };
         let map_lights = MapLights::new(
             lighting.objects[0].ambient,
-            lighting.objects[..lights]
-                .iter()
-                .map(|light| MapLight {
-                    color: light.diffuse,
-                    direction: MapImport::axes(light),
-                })
-                .collect(),
+            lighting.objects[..lights].iter().map(|light| MapLight {
+                color: light.diffuse,
+                direction: MapImport::axes(light),
+            }),
         )
         .ok_or(MapError::Lighting)?;
         let terrain = Terrain::new(

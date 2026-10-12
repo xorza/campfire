@@ -47,7 +47,12 @@ pub(crate) struct PathingGrid {
 impl PathingGrid {
     /// The grid over `grid`'s cells for `walkers`, with the cells `terrain`'s walls block and no
     /// static body yet.
-    pub(crate) fn new(grid: Grid, mut walkers: Vec<Walker>, terrain: &Terrain) -> PathingGrid {
+    pub(crate) fn new(
+        grid: Grid,
+        walkers: impl IntoIterator<Item = Walker>,
+        terrain: &Terrain,
+    ) -> PathingGrid {
+        let mut walkers: Vec<Walker> = walkers.into_iter().collect();
         walkers.sort_unstable();
         walkers.dedup();
         let words = grid.cells().div_ceil(64);

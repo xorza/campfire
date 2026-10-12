@@ -52,7 +52,7 @@ fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
     // stays: a level is state. The `level` track's level is the unit's, which the add raises;
     // another track holds its own.
     let level_track = book.level_track();
-    let mut experience = Experience::new(TrackSet::of([track(0), track(1)]), level_track);
+    let mut experience = Experience::new(TrackSet::from([track(0), track(1)]), level_track);
     assert_eq!(experience.get(track(0)).unwrap().level, None);
     assert_eq!(
         experience.get(track(1)).unwrap().level,
@@ -70,7 +70,7 @@ fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
         (2, 3, 3)
     );
     assert_eq!(experience.get(track(0)).unwrap().xp, Num::MAX);
-    let mut ahead = Experience::new(TrackSet::of([track(1)]), level_track);
+    let mut ahead = Experience::new(TrackSet::from([track(1)]), level_track);
     ahead.tracks_mut()[0].level = Level::new(5);
     let raised = ahead.add(track(1), Num::int(60), &book, None);
     assert_eq!((raised.from.get(), raised.to.get()), (5, 5));
@@ -152,7 +152,7 @@ fn experience_is_state_and_restores() {
     // A unit 150 into `level`, at level 2 with a point more than at its spawn, and 10 into
     // `valor`, still at level 1.
     let book = book();
-    let both = TrackSet::of([track(0), track(1)]);
+    let both = TrackSet::from([track(0), track(1)]);
     let mut experience = Experience::new(both, book.level_track());
     let mut level = Level::default();
     let mut points = Points::at_spawn(both, book.level_track()).unwrap();
@@ -173,7 +173,7 @@ fn experience_is_state_and_restores() {
     assert_eq!(restored.part::<Points>(id).get(), 2);
     // Only a unit with the `level` track has points: one with `valor` alone has none at its
     // spawn, and points on it fail the check.
-    let valor = TrackSet::of([track(1)]);
+    let valor = TrackSet::from([track(1)]);
     assert_eq!(Points::at_spawn(valor, book.level_track()), None);
     let held = Units::spawn(
         &mut game,

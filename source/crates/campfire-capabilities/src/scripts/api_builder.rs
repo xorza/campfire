@@ -95,7 +95,7 @@ impl<'a> ApiBuilder<'a> {
         self.host
             .engine_mut()
             .register_static_module(name, module.into());
-        let members = T::MEMBERS.iter().map(|&(member, _)| member).collect();
+        let members = T::MEMBERS.iter().map(|&(member, _)| member);
         self.api.record_enum(T::ENUM, members);
         self
     }

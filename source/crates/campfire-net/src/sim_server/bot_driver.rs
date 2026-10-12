@@ -57,7 +57,11 @@ impl BotDriver {
     /// The bots of the plan's `slots` that play their script from the start, from tick `next` of
     /// `log` on: a slot that changed hands since, as a restore finds one a player took, plays it
     /// no more, and gets the takeover script once its player left it to a bot.
-    fn planned(slots: Vec<SlotBot>, log: &SessionLog, next: Tick) -> Vec<DrivenBot> {
+    fn planned(
+        slots: impl IntoIterator<Item = SlotBot>,
+        log: &SessionLog,
+        next: Tick,
+    ) -> Vec<DrivenBot> {
         slots
             .into_iter()
             .filter(|bot| log.changes().iter().all(|change| change.slot != bot.slot))
@@ -199,11 +203,11 @@ mod tests {
         };
         let packages = InProcessMatch::lane_mode(rules, saves);
         let tick_hz = packages.manifest().tick_hz.default();
-        let plan = vec![SlotPlan::Player, SlotPlan::Bot];
+        let plan = [SlotPlan::Player, SlotPlan::Bot];
         let mut fixed = FixedSession::planned(packages, tick_hz, InputRules::LAN, plan).start();
         let script = OrderScript::parse("[[order]]\ntick = 2\nmove = [1, 0]\n").unwrap();
         let planned = |log: &SessionLog| {
-            let slots = vec![SlotBot::new(1, script.clone())];
+            let slots = [SlotBot::new(1, script.clone())];
             BotDriver::planned(slots, log, Tick::new(0))
                 .iter()
                 .map(|driven| driven.slot.get())

@@ -533,7 +533,7 @@ mod scripted_match {
         // The other extreme: the spectators watch the teams' views, one every team's and one the
         // south's alone, as the host's flags say; each kind's audience flips as the mode's
         // `[visibility]` says.
-        let south = TeamSet::from_iter([Team::new(1)]);
+        let south = TeamSet::from([Team::new(1)]);
         let mut extreme = LeakCheck::start(
             short_3v3(&HELD_OUT, &other_extreme()),
             &["spectators=teams", "out=spectators"],

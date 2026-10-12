@@ -4,15 +4,23 @@ use crate::units::track_id::TrackId;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TrackSet(u32);
 
-impl TrackSet {
-    pub fn of(tracks: impl IntoIterator<Item = TrackId>) -> TrackSet {
+impl FromIterator<TrackId> for TrackSet {
+    fn from_iter<I: IntoIterator<Item = TrackId>>(tracks: I) -> TrackSet {
         let mut set = TrackSet::default();
         for track in tracks {
             set.0 |= 1 << track.index();
         }
         set
     }
+}
 
+impl<const N: usize> From<[TrackId; N]> for TrackSet {
+    fn from(tracks: [TrackId; N]) -> TrackSet {
+        tracks.into_iter().collect()
+    }
+}
+
+impl TrackSet {
     pub const fn contains(self, track: TrackId) -> bool {
         self.0 & (1 << track.index()) != 0
     }
@@ -37,7 +45,7 @@ mod tests {
     #[test]
     fn a_set_holds_exactly_the_tracks_it_was_made_of() {
         let [first, fifth, last] = [0, 4, 31].map(TrackId::new);
-        let set = TrackSet::of([last, first, fifth, first]);
+        let set = TrackSet::from([last, first, fifth, first]);
         assert_eq!(set.iter().collect::<Vec<_>>(), [first, fifth, last]);
         assert!(set.contains(last) && !set.contains(TrackId::new(1)));
         assert!(TrackSet::default().is_empty() && !set.is_empty());

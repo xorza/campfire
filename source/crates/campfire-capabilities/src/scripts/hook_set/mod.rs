@@ -4,13 +4,21 @@ use crate::scripts::hook::Hook;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct HookSet(u32);
 
-impl HookSet {
-    pub(crate) fn of(hooks: impl IntoIterator<Item = Hook>) -> HookSet {
+impl FromIterator<Hook> for HookSet {
+    fn from_iter<I: IntoIterator<Item = Hook>>(hooks: I) -> HookSet {
         hooks
             .into_iter()
             .fold(HookSet(0), |set, hook| HookSet(set.0 | HookSet::bit(hook)))
     }
+}
 
+impl<const N: usize> From<[Hook; N]> for HookSet {
+    fn from(hooks: [Hook; N]) -> HookSet {
+        hooks.into_iter().collect()
+    }
+}
+
+impl HookSet {
     pub(crate) const fn contains(self, hook: Hook) -> bool {
         self.0 & HookSet::bit(hook) != 0
     }

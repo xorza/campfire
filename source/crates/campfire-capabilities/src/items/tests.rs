@@ -214,7 +214,7 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) {
     let names = ["drink", "flash", "might"].into_iter().collect();
     game.insert_resource(ItemBook::new(
         names,
-        vec![
+        [
             item(50, 2, Some(1), Some(drink), Vec::new()),
             item(100, 1, None, Some(flash), Vec::new()),
             item(300, 1, None, None, vec![might]),

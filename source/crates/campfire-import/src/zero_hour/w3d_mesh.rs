@@ -444,7 +444,8 @@ impl W3dMesh {
 
 impl Ids {
     /// One id for all if the chunk holds one, else one each.
-    fn of(ids: Vec<u32>) -> Result<Ids, W3dError> {
+    fn of(ids: impl IntoIterator<Item = u32>) -> Result<Ids, W3dError> {
+        let ids: Vec<u32> = ids.into_iter().collect();
         match ids[..] {
             [] => Err(W3dError::Missing),
             [one] => Ok(Ids::One(one)),

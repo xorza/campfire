@@ -43,13 +43,13 @@ impl Mine {
             radius: Num::HALF,
         };
         let grid = Grid::new(Num::ONE, bounds).unwrap();
-        Navigation::load_pathing(game, grid, &[], vec![walker]);
+        Navigation::load_pathing(game, grid, &[], [walker]);
         let gold = shop.gold;
         Players::spawn(game, 1, 1);
         let mineral = Units::load_type(game, TypeScope::Mode, "mineral", &UnitTypeCore::default());
         let mut nodes = NodeBook::default();
         nodes.nodes.set(mineral, gold);
-        nodes.drop_offs.set(shop.depot, ResourceSet::of([gold]));
+        nodes.drop_offs.set(shop.depot, ResourceSet::from([gold]));
         game.insert_resource(nodes);
         let spec = GatherSpec {
             resource: gold,

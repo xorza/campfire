@@ -167,7 +167,7 @@ mod tests {
             .map(|(name, data)| (DeclaredName::new(name).unwrap(), data)),
         );
         let book = types.tag_book(&data);
-        let set = |tags: &[Tag]| TagSet::of(tags.iter().copied());
+        let set = |tags: &[Tag]| tags.iter().copied().collect::<TagSet>();
 
         // Its type's true sight detects; a stun blocks what the data names, and no more.
         let tags = book.unit_tags(tower, [set(&[stunned]), set(&[slowed])].into_iter());

@@ -39,7 +39,7 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
             SeedChain::new([9; 32], NonZeroU32::MIN).commitment(),
             packages.manifest().tick_hz.default(),
             InputRules::LAN,
-            vec![SlotPlan::Open],
+            [SlotPlan::Open],
             rules.visibility().settings(),
         )
         .unwrap();

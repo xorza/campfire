@@ -96,7 +96,8 @@ impl StatBook {
     /// The book with the stats in `order`, a permutation of their places, as a stat graph of
     /// the mode gives it.
     #[must_use]
-    pub(crate) fn with_order(self, order: Vec<StatId>) -> StatBook {
+    pub(crate) fn with_order(self, order: impl IntoIterator<Item = StatId>) -> StatBook {
+        let order: Vec<StatId> = order.into_iter().collect();
         let mut sorted = order.clone();
         sorted.sort_unstable();
         assert!(

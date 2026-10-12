@@ -122,7 +122,11 @@ impl ScriptApi {
     }
 
     /// Records the engine enum `engine_enum`, with its `members` by their names in scripts.
-    pub(crate) fn record_enum(&mut self, engine_enum: EngineEnum, members: Vec<&'static str>) {
+    pub(crate) fn record_enum(
+        &mut self,
+        engine_enum: EngineEnum,
+        members: impl IntoIterator<Item = &'static str>,
+    ) {
         assert!(
             self.enums
                 .iter()
@@ -131,7 +135,7 @@ impl ScriptApi {
         );
         self.enums.push(EnumRecord {
             engine_enum,
-            members,
+            members: members.into_iter().collect(),
         });
     }
 

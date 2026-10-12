@@ -255,7 +255,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     // blocks cell 15. A walker never marks the grid.
     let half = Num::HALF;
     let mut game = walk_match();
-    Navigation::load_open_pathing(&mut game, Num::ONE, [-2, -2], [2, 2], vec![ground(half)]);
+    Navigation::load_open_pathing(&mut game, Num::ONE, [-2, -2], [2, 2], [ground(half)]);
     let quarter = |value: i64| Num::from_bits(value << 22);
     let place =
         |x: i64, z: i64| Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap();
@@ -313,7 +313,7 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
     for planned in [true, false] {
         let mut game = walk_match();
         if planned {
-            Navigation::load_open_pathing(&mut game, half, [-8, -8], [8, 8], vec![ground(half)]);
+            Navigation::load_open_pathing(&mut game, half, [-8, -8], [8, 8], [ground(half)]);
         }
         Navigation::body(&mut game, (0, 0, 0), None, None, tower_radius);
         let walker = Navigation::body(
@@ -360,7 +360,7 @@ fn a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it() {
     let mut game = walk_match();
     let box_of = |[x0, z0]: [i64; 2], [x1, z1]: [i64; 2]| {
         let area = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(|point| point.map(Num::int));
-        Polygon::new(area.to_vec()).unwrap()
+        Polygon::new(area).unwrap()
     };
     let barrier = Wall {
         layer: Layer::FIRST,
@@ -472,7 +472,7 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
     for planned in [true, false] {
         let mut game = walk_match();
         if planned {
-            Navigation::load_open_pathing(&mut game, half, [-8, -8], [8, 8], vec![ground(half)]);
+            Navigation::load_open_pathing(&mut game, half, [-8, -8], [8, 8], [ground(half)]);
         }
         let east = Navigation::body(
             &mut game,
@@ -686,7 +686,7 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
         Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
     };
     let mut game = walk_match();
-    Navigation::load_open_pathing(&mut game, Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
+    Navigation::load_open_pathing(&mut game, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
     let goal = place(7, 1).unwrap();
     let walker = Navigation::body(
         &mut game,
@@ -728,7 +728,7 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     let goal = place(6, 1).unwrap();
     let walled = || {
         let mut game = walk_match();
-        Navigation::load_open_pathing(&mut game, Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
+        Navigation::load_open_pathing(&mut game, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
         let towers =
             [0, 1, 2].map(|z| Navigation::body(&mut game, place(4, z).unwrap(), None, None, half));
         let walker = Navigation::body(

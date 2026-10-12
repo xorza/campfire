@@ -243,7 +243,7 @@ fn a_unit_in_brush_is_seen_only_from_its_brush_and_by_a_reveal() {
     // 5.5, which both hold, is A's, the first the map lists.
     let area = |[x0, z0]: [i64; 2], [x1, z1]: [i64; 2]| {
         let corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(|point| point.map(Num::int));
-        Polygon::new(corners.to_vec()).unwrap()
+        Polygon::new(corners).unwrap()
     };
     let brush = [area([2, -2], [6, 2]), area([5, -2], [9, 2])];
     let mut game = vision_match_with_brush(3, &brush);

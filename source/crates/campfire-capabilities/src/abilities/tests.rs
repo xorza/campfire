@@ -1740,7 +1740,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     let mut uneven = lash_out();
     uneven.cost = BTreeMap::from([(
         DeclaredName::new("mana").unwrap(),
-        Ranked::PerRank(vec![int(35), int(40)]),
+        Ranked::from([int(35), int(40)]),
     )]);
     let mut aimed = lash_out();
     aimed.targeting = Targeting::Direction;
@@ -1811,7 +1811,7 @@ fn a_capability_field_reads_its_param_at_each_rank() {
     data.cooldown_ms = Some(Ranked::One(param("cd")));
     data.cost = BTreeMap::from([(
         DeclaredName::new("mana").unwrap(),
-        Ranked::PerRank(vec![int(5), param("price"), int(9)]),
+        Ranked::from([int(5), param("price"), int(9)]),
     )]);
     let per_rank = |values: &[i64]| {
         Param::Ranked(Ranked::PerRank(
@@ -2277,7 +2277,7 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
         &mut game,
         (1, 0, 0),
         Team::new(1),
-        Experience::new(TrackSet::of([valor]), None),
+        Experience::new(TrackSet::from([valor]), None),
     );
     let untracked = Abilities::spawn_combatant(&mut game, (-1, 0, 0), Team::new(1), ());
     let [first, second] = [(); 2].map(|()| Abilities::caster(&mut game, action, 1));
@@ -2340,7 +2340,7 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
     let action = Actions::load(&mut game, 0, "bolt", &data, None, 1).unwrap();
     Actions::load_effect_lists(&mut game, action, 0, &data);
     let caster = Abilities::caster(&mut game, action, 1);
-    game.insert_parts(caster, Experience::new(TrackSet::of([valor]), None));
+    game.insert_parts(caster, Experience::new(TrackSet::from([valor]), None));
     let enemy = Abilities::spawn_combatant(&mut game, (4, 0, 0), Team::new(1), ());
     Abilities::cast(
         &mut game,
@@ -2557,14 +2557,14 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let lash_out = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let levels = [1, 1, 3, 3, 5].map(|level| Level::new(level).unwrap());
     let ranks = SlotRanks::new(NonZeroU8::new(5).unwrap(), Some(levels.to_vec())).unwrap();
-    game.insert_resource(SlotKinds::from(vec![SlotKindData {
+    game.insert_resource(SlotKinds::from([SlotKindData {
         name: DeclaredName::new("basic").unwrap(),
         ranks: Some(ranks),
     }]));
     // Player 0's caster, at level 1 with 2 points, its spawn's and one more.
     let caster = Abilities::caster(&mut game, lash_out, 0);
     let track = TrackId::new(0);
-    let mut points = Points::at_spawn(TrackSet::of([track]), Some(track)).unwrap();
+    let mut points = Points::at_spawn(TrackSet::from([track]), Some(track)).unwrap();
     points.gain(1);
     let step = MoveStep::new(Num::ONE).unwrap();
     let parts = (
@@ -2664,7 +2664,7 @@ fn weapon_match() -> (Match, UnitType) {
         per_level: Num::ZERO,
     };
     let [attack_damage, armor] = ["attack_damage", "armor"].map(|name| Stat::named(name).unwrap());
-    let growth = StatsData([(attack_damage, flat(40)), (armor, flat(1))].into());
+    let growth = StatsData::from([(attack_damage, flat(40)), (armor, flat(1))]);
     let rules: BTreeMap<_, _> = scaling_stats()
         .map(|stat| (stat, StatRule::default()))
         .into();
@@ -3083,7 +3083,7 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
         base: Num::from_int(50).unwrap(),
         per_level: Num::from_int(5).unwrap(),
     };
-    let growth = StatsData([(attack_damage, growth)].into());
+    let growth = StatsData::from([(attack_damage, growth)]);
     let rules: BTreeMap<_, _> = scaling_stats()
         .map(|stat| (stat, StatRule::default()))
         .into();
@@ -3171,7 +3171,7 @@ impl Veil {
             base: Num::from_int(53).unwrap(),
             per_level: Num::ZERO,
         };
-        let growth = StatsData([(attack_damage.clone(), growth)].into());
+        let growth = StatsData::from([(attack_damage.clone(), growth)]);
         let [spell_vamp, armor] = ["spell_vamp", "armor"].map(|name| Stat::named(name).unwrap());
         let mut graph = StatGraph::new(scaling_stats());
         graph.add(&attack_damage, &spell_vamp).unwrap();

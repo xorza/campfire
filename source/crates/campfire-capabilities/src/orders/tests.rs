@@ -1316,7 +1316,7 @@ fn shop_match() -> Match {
     let names = ["boots", "blade", "potion", "ward"].into_iter().collect();
     let book = ItemBook::new(
         names,
-        vec![
+        [
             item(300, &[], 1),
             item(1000, &[0, 0], 1),
             item(50, &[], 3),
@@ -1488,7 +1488,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
             radius: Num::ZERO,
         };
         let grid = Grid::new(Num::ONE, bounds).unwrap();
-        Navigation::load_pathing(&mut game, grid, &[], vec![walker]);
+        Navigation::load_pathing(&mut game, grid, &[], [walker]);
         let walkers = [
             Position::from((1, 0, 2)),
             Position::from((4, 0, 6)),

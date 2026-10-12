@@ -257,7 +257,7 @@ impl ModeMap {
         let widest_radius = walkers.iter().map(|walker| walker.radius).max();
         let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
         statics.update(&structures);
-        let mut grid = PathingGrid::new(cells, widest.clone().collect(), &terrain);
+        let mut grid = PathingGrid::new(cells, widest.clone(), &terrain);
         grid.update(&statics);
         let declared = |name: &str| DeclaredName::new(name).expect("the map's names are declared");
         for walker in widest {

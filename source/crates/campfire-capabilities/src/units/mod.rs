@@ -239,7 +239,11 @@ impl Units {
     /// Opens a match for the modules' installs: the script view, whose first tags are the
     /// engine's `engine`, and with `budgets`, the script host the scripts run in within them, and
     /// the context of their calls. A client runs no scripts.
-    pub(crate) fn open(world: &mut World, budgets: Option<ScriptBudgets>, engine: Vec<EngineTag>) {
+    pub(crate) fn open(
+        world: &mut World,
+        budgets: Option<ScriptBudgets>,
+        engine: impl IntoIterator<Item = EngineTag>,
+    ) {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate, engine);
         if let Some(budgets) = budgets {

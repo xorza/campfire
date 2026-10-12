@@ -8,11 +8,19 @@ use crate::units::tag::Tag;
 #[serde(transparent)]
 pub(crate) struct TagSet(Bits256);
 
-impl TagSet {
-    pub(crate) fn of(tags: impl IntoIterator<Item = Tag>) -> TagSet {
+impl FromIterator<Tag> for TagSet {
+    fn from_iter<I: IntoIterator<Item = Tag>>(tags: I) -> TagSet {
         tags.into_iter().fold(TagSet::default(), TagSet::with)
     }
+}
 
+impl<const N: usize> From<[Tag; N]> for TagSet {
+    fn from(tags: [Tag; N]) -> TagSet {
+        tags.into_iter().collect()
+    }
+}
+
+impl TagSet {
     pub(crate) const fn with(self, tag: Tag) -> TagSet {
         TagSet(self.0.with(tag.index()))
     }
@@ -52,7 +60,12 @@ mod tests {
 
     #[test]
     fn a_set_holds_tags_in_every_word() {
-        let tags = |indices: &[u8]| TagSet::of(indices.iter().map(|&index| Tag::new(index)));
+        let tags = |indices: &[u8]| {
+            indices
+                .iter()
+                .map(|&index| Tag::new(index))
+                .collect::<TagSet>()
+        };
         let set = tags(&[0, 63, 64, 200, 255]);
         let held: Vec<_> = set.iter().map(Tag::index).collect();
         assert_eq!(held, [0, 63, 64, 200, 255]);

@@ -32,7 +32,7 @@ fn a_walker_routes_round_a_box_and_never_stands_inside_it() {
     // a walker of 0.5 m from (-6, 0) to (6, 0), a quarter meter a tick. It goes round, never
     // inside the box, its center at least 0.5 m off it every tick, and arrives.
     let mut game = walk_match();
-    Navigation::load_open_pathing(&mut game, HALF, [-8, -8], [8, 8], vec![ground(HALF)]);
+    Navigation::load_open_pathing(&mut game, HALF, [-8, -8], [8, 8], [ground(HALF)]);
     let body = boxed(4, 1, 30);
     Navigation::body_on(&mut game, (0, 0, 0), None, None, body);
     let walker = Navigation::body(
@@ -129,7 +129,7 @@ fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     // and the first, in the lower row, is the lower cell. It goes there as the box spawns, not by
     // collision.
     let mut game = walk_match();
-    Navigation::load_open_pathing(&mut game, HALF, [-4, -4], [4, 4], vec![ground(QUARTER)]);
+    Navigation::load_open_pathing(&mut game, HALF, [-4, -4], [4, 4], [ground(QUARTER)]);
     let walker = Navigation::body(&mut game, quarters(1, 1), None, Some(QUARTER), QUARTER);
     game.step();
     let building = Units::spawn(&mut game, (0, 0, 0), Team::new(0), boxed(2, 2, 0));

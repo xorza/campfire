@@ -110,18 +110,16 @@ fn pools() -> BTreeMap<DeclaredName, PoolData> {
 
 /// A unit type's stats, each a base and a gain a level.
 fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
-    StatsData(
-        values
-            .iter()
-            .map(|(stat, base, per_level)| {
-                let value = StatValue {
-                    base: *base,
-                    per_level: *per_level,
-                };
-                (stat.clone(), value)
-            })
-            .collect(),
-    )
+    values
+        .iter()
+        .map(|(stat, base, per_level)| {
+            let value = StatValue {
+                base: *base,
+                per_level: *per_level,
+            };
+            (stat.clone(), value)
+        })
+        .collect()
 }
 
 /// A match with the stats capability, a unit type for each of `types`, and a book of their
@@ -287,16 +285,13 @@ fn share(id: u16, source: Option<StableId>, value: Num, reapply: Reapply) -> App
 #[test]
 fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
     // Armor 10 + 2 a level, at level 3: 10 + 2 × 2 = 14.
-    let armored = StatsData(
-        [(
-            armor_stat(),
-            StatValue {
-                base: Num::from_int(10).unwrap(),
-                per_level: Num::from_int(2).unwrap(),
-            },
-        )]
-        .into(),
-    );
+    let armored = StatsData::from([(
+        armor_stat(),
+        StatValue {
+            base: Num::from_int(10).unwrap(),
+            per_level: Num::from_int(2).unwrap(),
+        },
+    )]);
     let tenths = |tenths: i64| Num::int(tenths) / 10;
     let value = |changes: &[(StatOp, Num, u32)]| {
         let mut game = stat_match(slice::from_ref(&armored));
@@ -358,9 +353,9 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let effects = [
         (TagProperties::default().with_detects(), TagSet::default()),
         (TagProperties::default(), TagSet::default()),
-        (TagProperties::default(), TagSet::of([slowed])),
+        (TagProperties::default(), TagSet::from([slowed])),
     ];
-    let own = TagSet::of([sight]);
+    let own = TagSet::from([sight]);
     game.insert_resource(TagBook::new(0, effects, [(UnitType::new(0), own)]));
     let unit = unit(&mut game, 0);
     game.entity_mut(unit)
@@ -372,12 +367,12 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // The modifiers, by id: a slowing cut, an add, a pct, an untagged cut, an immunity, and a
     // cut that grants both `slowed` and the immunity to it.
     let modifiers = [
-        (StatOp::Cut, TagSet::of([slowed])),
+        (StatOp::Cut, TagSet::from([slowed])),
         (StatOp::Add, TagSet::default()),
         (StatOp::Pct, TagSet::default()),
         (StatOp::Cut, TagSet::default()),
-        (StatOp::Add, TagSet::of([slow_immune])),
-        (StatOp::Cut, TagSet::of([slowed, slow_immune])),
+        (StatOp::Add, TagSet::from([slow_immune])),
+        (StatOp::Cut, TagSet::from([slowed, slow_immune])),
     ];
     for (op, tags) in modifiers {
         Stats::push_modifier_changes(&mut game, &[(speed, op)], tags);
@@ -397,7 +392,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let step = |game: &Match| game.get::<MoveStep>(unit).unwrap().get();
     assert_eq!(step(&game), Num::from_bits(1_398_101));
     let tags = |game: &Match| *game.get::<UnitTags>(unit).unwrap();
-    assert_eq!(tags(&game).tags, TagSet::of([sight, slowed]));
+    assert_eq!(tags(&game).tags, TagSet::from([sight, slowed]));
     assert!(tags(&game).properties.detects());
 
     // A pct of 0.25: 5 × 1.25 × 0.5 = 3.125 m/s, 3.125 × 2²⁴ ÷ 30 = 1 747 626.67 bits, to
@@ -422,8 +417,8 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     carried.apply(immune);
     game.step();
     assert_eq!(step(&game), Num::from_bits(2_796_203));
-    assert_eq!(tags(&game).tags, TagSet::of([sight, slow_immune]));
-    assert_eq!(tags(&game).immune, TagSet::of([slowed]));
+    assert_eq!(tags(&game).tags, TagSet::from([sight, slow_immune]));
+    assert_eq!(tags(&game).immune, TagSet::from([slowed]));
 
     // A modifier that grants both an immunity and the tag it is immune to holds itself: its
     // cut of 0.25 counts, whatever order the modifiers are in. 6.25 × 0.75 = 4.6875 m/s, 4.6875
@@ -432,7 +427,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     CarriedMut::of(&mut game, unit).unwrap().apply(both);
     game.step();
     assert_eq!(step(&game), Num::from_bits(2_621_440));
-    assert_eq!(tags(&game).tags, TagSet::of([sight, slowed, slow_immune]));
+    assert_eq!(tags(&game).tags, TagSet::from([sight, slowed, slow_immune]));
 
     // The immunity ends: the held cuts act again, the larger 0.5: 3.125 m/s.
     let mut carried = CarriedMut::of(&mut game, unit).unwrap();
@@ -674,9 +669,9 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     game.step();
     assert!(holds(&game, far));
     let mut book = game.resource_mut::<ModifierBook>();
-    book.grant_tags(presence, TagSet::of([Tag::new(0)]));
+    book.grant_tags(presence, TagSet::from([Tag::new(0)]));
     let immune = UnitTags {
-        immune: TagSet::of([Tag::new(0)]),
+        immune: TagSet::from([Tag::new(0)]),
         ..UnitTags::default()
     };
     let carrier_entity = entity(&game, carrier);
@@ -756,14 +751,14 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         )];
         let own = [
             (UnitType::new(0), TagSet::default()),
-            (UnitType::new(1), TagSet::of([stunned])),
+            (UnitType::new(1), TagSet::from([stunned])),
         ];
         let book = TagBook::new(0, effects, own);
         game.insert_resource(book);
         // The modifiers the shares below are instances of, 0 and 1.
         let speed = game.resource::<StatBook>();
         let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
-        let stunning = TagSet::of([stunned]);
+        let stunning = TagSet::from([stunned]);
         Stats::push_modifier_changes(&mut game, &[(speed, StatOp::Add)], stunning);
         Stats::push_modifier_changes(&mut game, &[(speed, StatOp::Cut)], TagSet::default());
         game
@@ -809,9 +804,9 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     let delivery = (id, UnitType::new(1), pos, Team::new(0), DeliveryEntity);
     let bolt = game.spawn(delivery).id();
     let tags = |game: &Match| game.get::<UnitTags>(bolt).map(|tags| tags.tags);
-    assert_eq!(tags(&game), Some(TagSet::of([stunned])));
+    assert_eq!(tags(&game), Some(TagSet::from([stunned])));
     game.step();
-    assert_eq!(tags(&game), Some(TagSet::of([stunned])));
+    assert_eq!(tags(&game), Some(TagSet::from([stunned])));
     assert!(game.get::<UnitStats>(bolt).is_none());
 
     // A walker received with its level before its type, as a client may receive them: its stats

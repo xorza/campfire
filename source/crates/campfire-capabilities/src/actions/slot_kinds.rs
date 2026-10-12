@@ -23,13 +23,27 @@ pub struct SlotKinds {
 /// The kinds of `kinds`, in order, each named by its id. A list that names a kind twice, or holds
 /// more kinds than an id counts, names none, so no id stands for another's place: the package
 /// load refuses both.
-impl From<Vec<SlotKindData>> for SlotKinds {
-    fn from(kinds: Vec<SlotKindData>) -> SlotKinds {
+impl FromIterator<SlotKindData> for SlotKinds {
+    fn from_iter<I: IntoIterator<Item = SlotKindData>>(kinds: I) -> SlotKinds {
+        let kinds: Vec<SlotKindData> = kinds.into_iter().collect();
         let names = Names::all_of(kinds.iter().map(|kind| kind.name.as_str()));
         SlotKinds {
             kinds,
             names: names.unwrap_or_default(),
         }
+    }
+}
+
+/// The kinds of `kinds`, as `FromIterator` takes them: the form `[[slots]]` reads into.
+impl From<Vec<SlotKindData>> for SlotKinds {
+    fn from(kinds: Vec<SlotKindData>) -> SlotKinds {
+        kinds.into_iter().collect()
+    }
+}
+
+impl<const N: usize> From<[SlotKindData; N]> for SlotKinds {
+    fn from(kinds: [SlotKindData; N]) -> SlotKinds {
+        kinds.into_iter().collect()
     }
 }
 
@@ -147,7 +161,7 @@ mod tests {
         // The mode's kinds hold an action in one of them that finds a level for each of its
         // ranks: in `basic`, of three levels, three ranks and no more; in `spell`, of none, any.
         let basic = read("name = \"basic\"\nranks = 3\nlevels = [6, 11, 16]").unwrap();
-        let kinds = SlotKinds::from(vec![basic, read("name = \"spell\"").unwrap()]);
+        let kinds = SlotKinds::from([basic, read("name = \"spell\"").unwrap()]);
         let [basic, spell, past] = [0, 1, 2].map(SlotKind::new);
         assert!(kinds.holds(basic, 3) && !kinds.holds(basic, 4));
         assert!(kinds.holds(spell, 30) && !kinds.holds(past, 0));
@@ -155,7 +169,7 @@ mod tests {
         // A list that names a kind twice names none, so `spell`, after the repeat, takes no id
         // that stands for the repeat's place.
         let kind = |name: &str| read(&format!("name = \"{name}\"")).unwrap();
-        let twice = SlotKinds::from(vec![kind("basic"), kind("basic"), kind("spell")]);
+        let twice = SlotKinds::from([kind("basic"), kind("basic"), kind("spell")]);
         assert_eq!(twice.names().named("spell"), None);
         assert_eq!(twice.kinds().len(), 3);
     }

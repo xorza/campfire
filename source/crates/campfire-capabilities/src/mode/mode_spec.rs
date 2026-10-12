@@ -110,7 +110,7 @@ impl ModeSpec {
         scripts: &ScriptBook,
         start: MapStart,
         loadout_ranks: u8,
-        kit_parts: Vec<KitPart>,
+        kit_parts: impl IntoIterator<Item = KitPart>,
     ) -> ModeSpec {
         let MapStart {
             teams,
@@ -146,7 +146,7 @@ impl ModeSpec {
             state_none: ModeState::initial(setup.data),
             state_all: ModeState::initial(setup.data),
             map,
-            kit_parts,
+            kit_parts: kit_parts.into_iter().collect(),
         }
     }
 

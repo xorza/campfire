@@ -53,7 +53,7 @@ struct ViewParts {
 impl View {
     /// The view of a match at `rate`, its names the engine's tags `engine` alone, until the load
     /// gives the match's.
-    pub(crate) fn new(rate: TickRate, engine: Vec<EngineTag>) -> View {
+    pub(crate) fn new(rate: TickRate, engine: impl IntoIterator<Item = EngineTag>) -> View {
         View(Rc::new(ViewParts {
             rate,
             names: RefCell::new(ViewNames::new(UnitTypes::new(engine))),

@@ -395,7 +395,7 @@ impl<'a> BookBuilder<'a> {
                     .map_err(|name| BookError::unknown(index, unit.at(), name))?;
             }
         }
-        Ok(book.with_order(input.stat_order.to_vec()))
+        Ok(book.with_order(input.stat_order.iter().copied()))
     }
 
     /// Declares the unit types of the package at `index` in the order its own load reads them,
@@ -664,9 +664,9 @@ impl<'a> BookBuilder<'a> {
         }
         if let Some(drop_off) = &file.drop_off {
             let taken = drop_off.resources.iter().map(resource);
-            let taken = taken.collect::<Result<Vec<ResourceId>, UnknownName>>()?;
+            let taken = taken.collect::<Result<ResourceSet, UnknownName>>()?;
             books.types.give_tag(unit_type, Production::DROP_OFF.tag());
-            books.nodes.drop_offs.set(unit_type, ResourceSet::of(taken));
+            books.nodes.drop_offs.set(unit_type, taken);
         }
         Ok(())
     }
@@ -752,7 +752,7 @@ impl<'a> BookBuilder<'a> {
             .collect::<Result<_, UnknownName>>()
             .map_err(unknown)?;
         let names = self.names(index, None);
-        let tracks: Vec<TrackId> = file
+        let tracks: TrackSet = file
             .tracks
             .iter()
             .map(|track| names.track(track))
@@ -776,7 +776,7 @@ impl<'a> BookBuilder<'a> {
             pools,
             vision: file.vision.as_ref(),
             body,
-            tracks: TrackSet::of(tracks),
+            tracks,
             production: file.production.as_ref(),
             builds: slotted(ActionKind::Build),
             node: file.node.as_ref().map(|node| node.amount),

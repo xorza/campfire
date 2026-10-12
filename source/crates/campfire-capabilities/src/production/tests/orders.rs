@@ -109,7 +109,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         &mut game,
         Grid::new(Num::ONE, bounds).unwrap(),
         &[],
-        vec![walker],
+        [walker],
     );
     let mut walkers = ByType::default();
     walkers.set(shop.grunt, walker);

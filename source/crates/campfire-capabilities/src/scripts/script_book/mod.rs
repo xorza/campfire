@@ -21,7 +21,7 @@ impl ScriptBook {
         let functions: Vec<(&str, usize)> = functions.into_iter().collect();
         let defines = |hook: &Hook| functions.contains(&(hook.name(), hook.params()));
         self.hooks
-            .push(HookSet::of(Hook::ALL.into_iter().filter(defines)));
+            .push(Hook::ALL.into_iter().filter(defines).collect());
     }
 
     /// The hooks of `role` that `script` defines, none with no script.
@@ -31,7 +31,7 @@ impl ScriptBook {
         };
         let defined = self.hooks[script.index()];
         let hooks = Hook::ALL.into_iter().filter(|hook| hook.role() == role);
-        HookSet::of(hooks.filter(|&hook| defined.contains(hook)))
+        hooks.filter(|&hook| defined.contains(hook)).collect()
     }
 }
 

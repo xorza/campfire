@@ -20,11 +20,11 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         max_payload_len: 7,
         max_inputs_per_tick: 2,
     };
-    let plan = vec![SlotPlan::Player, SlotPlan::Bot, SlotPlan::Open];
+    let plan = [SlotPlan::Player, SlotPlan::Bot, SlotPlan::Open];
     let terms = |hz| {
         let hz = NonZeroU32::new(hz).unwrap();
         let visibility = rules.visibility().settings();
-        rules.terms(key, commitment, hz, inputs, plan.clone(), visibility)
+        rules.terms(key, commitment, hz, inputs, plan, visibility)
     };
     for hz in [19, 61] {
         assert_eq!(
@@ -49,7 +49,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             mode: packages.fingerprint(),
             map: TestMode::Moba3v3.map(),
             dependencies,
-            slots: plan.clone(),
+            slots: plan.to_vec(),
             // The 3v3 sets no visibility: the defaults, which admit no spectator.
             visibility: Visibility::DEFAULT.encode(),
         }

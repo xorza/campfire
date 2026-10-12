@@ -1,3 +1,5 @@
+use std::iter;
+
 use bevy_ecs::world::World;
 use campfire_capabilities::Mode;
 use campfire_capabilities::internals::{Density, KernelScene};
@@ -305,11 +307,11 @@ impl Moba3v3 {
 
     pub fn load() -> ScriptedMode<Moba3v3> {
         let players = usize::try_from(Moba3v3::PLAYERS).expect("6 fits usize");
-        Moba3v3::planned(vec![SlotPlan::Player; players])
+        Moba3v3::planned(iter::repeat_n(SlotPlan::Player, players))
     }
 
     /// The MOBA 3v3 with its slots opened as `plan` says.
-    pub fn planned(plan: Vec<SlotPlan>) -> ScriptedMode<Moba3v3> {
+    pub fn planned(plan: impl IntoIterator<Item = SlotPlan>) -> ScriptedMode<Moba3v3> {
         let packages = TestMode::Moba3v3.packages();
         let items = &packages.packages().next().expect("a mode").content.items;
         let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();

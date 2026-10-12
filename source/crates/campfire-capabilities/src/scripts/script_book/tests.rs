@@ -16,7 +16,7 @@ fn a_script_defines_a_hook_only_by_its_name_and_its_count_of_parameters() {
     // Of an action's hooks, it defines `on_resolve` alone; of the mode's, none.
     assert_eq!(
         book.defines(Some(script), ScriptRole::Action),
-        HookSet::of([Hook::OnResolve])
+        HookSet::from([Hook::OnResolve])
     );
     assert_eq!(book.defines(None, ScriptRole::Action), HookSet::default());
     assert_eq!(

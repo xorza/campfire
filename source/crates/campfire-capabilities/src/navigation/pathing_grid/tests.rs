@@ -156,12 +156,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     let bounds = Bounds::new([Num::int(-3), Num::int(-3)], [Num::int(3), Num::int(3)]).unwrap();
     let cells = Grid::new(Num::int(1), bounds).unwrap();
     let corner = |x: i64, z: i64| [Num::HALF * x, Num::HALF * z];
-    let area = Polygon::new(vec![
-        corner(-1, -1),
-        corner(1, -1),
-        corner(1, 1),
-        corner(-1, 1),
-    ]);
+    let area = Polygon::new([corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]);
     let wall = Wall {
         layer: Layer::FIRST,
         area: area.unwrap(),

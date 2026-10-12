@@ -39,8 +39,8 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
     assert_eq!(Filter::of_release_relations(RelationSet::All), parse("all"));
     let units = [
         TagSet::default(),
-        TagSet::of([projectile]),
-        TagSet::of([area]),
+        TagSet::from([projectile]),
+        TagSet::from([area]),
     ];
     for (filter, selected) in [
         ("enemies", [true, false, false]),

@@ -14,7 +14,8 @@ fn class(first_tile: u32, tiles: u32, width: u32) -> TextureClass {
 }
 
 /// A terrain of `classes`, holding their tiles, with one cell.
-fn terrain(classes: Vec<TextureClass>) -> TerrainParts {
+fn terrain(classes: impl IntoIterator<Item = TextureClass>) -> TerrainParts {
+    let classes: Vec<TextureClass> = classes.into_iter().collect();
     let tiles = classes
         .iter()
         .map(|class| class.first_tile + class.tiles)
@@ -66,7 +67,7 @@ fn texel(atlas: &TerrainAtlas, level: usize, [x, y]: [u32; 2]) -> [u8; 4] {
 fn classes_take_the_grid_widest_first_and_one_with_no_room_has_none() {
     // Widths 1, 2, 1 and 3: the 3 takes the first cell, the 2 the next free one in row 0, and the
     // ones the free cells after it, in their order.
-    let small = terrain(vec![
+    let small = terrain([
         class(0, 1, 1),
         class(1, 4, 2),
         class(5, 1, 1),
@@ -81,7 +82,7 @@ fn classes_take_the_grid_widest_first_and_one_with_no_room_has_none() {
     // A class of 27 leaves no free column of rows 0 to 26 that a 2 may start in, and no row
     // below them that a 2 fits in, so it has no room, but a 1 takes column 27 of row 0. A 29 is
     // wider than the grid.
-    let crowded = terrain(vec![
+    let crowded = terrain([
         class(0, 1, 29),
         class(1, 4, 2),
         class(5, 729, 27),
@@ -95,7 +96,7 @@ fn classes_take_the_grid_widest_first_and_one_with_no_room_has_none() {
 
 #[test]
 fn a_class_s_tiles_lie_upright_in_its_block_wrapped_by_its_border_at_each_level() {
-    let parts = terrain(vec![class(0, 4, 2)]);
+    let parts = terrain([class(0, 4, 2)]);
     let data = texture(128);
     let textures = [Some(ClassTexture {
         width: 128,
@@ -144,7 +145,7 @@ fn a_class_loads_the_largest_square_of_its_tiles_that_its_texture_holds() {
     // Three tiles load a square of one: the bottom left, at the block's bottom left; tiles 1 and
     // 2 have no texture.
     let data = texture(128);
-    let three = terrain(vec![class(0, 3, 2)]);
+    let three = terrain([class(0, 3, 2)]);
     let textures = [Some(ClassTexture {
         width: 128,
         height: 128,
@@ -158,7 +159,7 @@ fn a_class_loads_the_largest_square_of_its_tiles_that_its_texture_holds() {
     // A texture of one tile holds no class of four, and a class with no texture loads none, but
     // keeps its block.
     let small = texture(64);
-    let four = terrain(vec![class(0, 4, 2), class(4, 1, 1)]);
+    let four = terrain([class(0, 4, 2), class(4, 1, 1)]);
     let textures = [
         Some(ClassTexture {
             width: 64,

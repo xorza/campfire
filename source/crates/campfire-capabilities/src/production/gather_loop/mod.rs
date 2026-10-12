@@ -371,7 +371,7 @@ impl GatherLoop {
                 None if looping => {
                     commands
                         .entity(entity)
-                        .insert(StatusTags::of([Production::GATHERING]));
+                        .insert(StatusTags::from([Production::GATHERING]));
                 }
                 None => {}
             }

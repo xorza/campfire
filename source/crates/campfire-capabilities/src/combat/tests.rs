@@ -809,7 +809,7 @@ fn load_damage_stats(world: &mut World) {
         heal_scale: Some(heal),
         ..ModeCombatData::default()
     };
-    let pools: Names<PoolId> = [health.as_str()].into_iter().collect();
+    let pools = Names::<PoolId>::from([health.as_str()]);
     world.insert_resource(LifePool(combat.life_pool(&pools).unwrap().unwrap()));
     let bindings = CombatBindings::new(&combat, |stat| book.named(stat).ok_or(stat.clone()));
     world.insert_resource(bindings.unwrap());

@@ -68,7 +68,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
             SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),
             TICK_HZ,
             InputRules::LAN,
-            vec![SlotPlan::Player; 2],
+            [SlotPlan::Player; 2],
             rules.visibility().settings(),
         )
         .unwrap();

@@ -5,14 +5,22 @@ use crate::units::bits256::Bits256;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ResourceSet(Bits256);
 
-impl ResourceSet {
-    pub(crate) fn of(resources: impl IntoIterator<Item = ResourceId>) -> ResourceSet {
+impl FromIterator<ResourceId> for ResourceSet {
+    fn from_iter<I: IntoIterator<Item = ResourceId>>(resources: I) -> ResourceSet {
         let bits = resources
             .into_iter()
             .fold(Bits256::NONE, |bits, resource| bits.with(resource.index()));
         ResourceSet(bits)
     }
+}
 
+impl<const N: usize> From<[ResourceId; N]> for ResourceSet {
+    fn from(resources: [ResourceId; N]) -> ResourceSet {
+        resources.into_iter().collect()
+    }
+}
+
+impl ResourceSet {
     pub(crate) const fn contains(self, resource: ResourceId) -> bool {
         self.0.contains(resource.index())
     }

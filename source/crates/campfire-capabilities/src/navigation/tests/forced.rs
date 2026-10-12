@@ -258,12 +258,8 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
     let mut game = walk_match();
     let barrier = Wall {
         layer: Layer::FIRST,
-        area: Polygon::new(
-            [[5, 0], [7, 0], [7, 10], [5, 10]]
-                .map(|point| point.map(Num::int))
-                .to_vec(),
-        )
-        .unwrap(),
+        area: Polygon::new([[5, 0], [7, 0], [7, 10], [5, 10]].map(|point| point.map(Num::int)))
+            .unwrap(),
     };
     Navigation::load_walled(
         &mut game,

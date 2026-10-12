@@ -20,7 +20,8 @@ impl Polygon {
     /// The polygon of `points`; an error for fewer than three, or for two edges that meet where
     /// they should not: two that do not follow each other meet anywhere, or two that do overlap
     /// beyond the point they share, as a zero-length edge or a turn straight back does.
-    pub(crate) fn new(points: Vec<[Num; 2]>) -> Result<Polygon, PolygonError> {
+    pub(crate) fn new(points: impl IntoIterator<Item = [Num; 2]>) -> Result<Polygon, PolygonError> {
+        let points: Vec<[Num; 2]> = points.into_iter().collect();
         let count = points.len();
         if count < 3 {
             return Err(PolygonError::TooFewPoints);

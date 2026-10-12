@@ -139,7 +139,7 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
         .sum();
     let server = local.server_mut().world_mut();
     server.resource_mut::<Session>().reveal_seed();
-    let live = HashTrail::of_totals(server.resource::<TickHashes>().get().to_vec());
+    let live = HashTrail::of_totals(server.resource::<TickHashes>().get().iter().copied());
     let mut file = Vec::new();
     server.resource::<Session>().log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();

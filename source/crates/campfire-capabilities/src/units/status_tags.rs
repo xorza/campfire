@@ -19,11 +19,19 @@ use crate::units::unit_entity::UnitEntity;
 #[serde(transparent)]
 pub(crate) struct StatusTags(TagSet);
 
-impl StatusTags {
-    pub(crate) fn of(tags: impl IntoIterator<Item = EngineTag>) -> StatusTags {
-        StatusTags(TagSet::of(tags.into_iter().map(EngineTag::tag)))
+impl FromIterator<EngineTag> for StatusTags {
+    fn from_iter<I: IntoIterator<Item = EngineTag>>(tags: I) -> StatusTags {
+        StatusTags(tags.into_iter().map(EngineTag::tag).collect())
     }
+}
 
+impl<const N: usize> From<[EngineTag; N]> for StatusTags {
+    fn from(tags: [EngineTag; N]) -> StatusTags {
+        tags.into_iter().collect()
+    }
+}
+
+impl StatusTags {
     pub(crate) const fn get(self) -> TagSet {
         self.0
     }
@@ -67,8 +75,8 @@ mod tests {
 
     #[test]
     fn a_turn_changes_its_own_tag_alone() {
-        let site = StatusTags::of([Production::CONSTRUCTING]);
-        let both = StatusTags::of([Production::CONSTRUCTING, Production::GATHERING]);
+        let site = StatusTags::from([Production::CONSTRUCTING]);
+        let both = StatusTags::from([Production::CONSTRUCTING, Production::GATHERING]);
         assert_eq!(site.turned(Production::GATHERING, true), both);
         assert_eq!(both.turned(Production::GATHERING, false), site);
         assert_eq!(site.turned(Production::CONSTRUCTING, true), site);

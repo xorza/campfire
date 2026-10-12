@@ -53,7 +53,11 @@ impl UnitStates {
         UnitStates::insert_class::<SyncAll>(target, all);
     }
 
-    fn insert_class<S: StateSync>(target: &mut impl SpawnTarget, values: Vec<StateValue>) {
+    fn insert_class<S: StateSync>(
+        target: &mut impl SpawnTarget,
+        values: impl IntoIterator<Item = StateValue>,
+    ) {
+        let values: Vec<StateValue> = values.into_iter().collect();
         if !values.is_empty() {
             target.insert_part(UnitState::<S>::new(values));
         }
