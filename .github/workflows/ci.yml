@@ -23,9 +23,9 @@ defaults:
     working-directory: source
 
 jobs:
-  # The check chain and a LAN match on each platform. Each keeps its match's run directory, with
-  # the session log, for the platforms to verify one another's, and the verifier that verifies them
-  # on its platform.
+  # The driver's gate, a LAN match among its steps, on each platform. Each keeps its match's run
+  # directory, with the session log, for the platforms to verify one another's, and the verifier
+  # that verifies them on its platform.
   check:
     name: check (${{ matrix.os }})
     strategy:
@@ -44,36 +44,24 @@ jobs:
       - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
         with:
           tool: nextest@0.9.135
-      - name: Format
-        if: runner.os == 'Linux'
-        run: cargo fmt --all --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-      - name: Test
-        run: cargo nextest run --workspace --all-features --locked --profile ci
-      - name: Benches
-        run: cargo nextest run --workspace --all-features --locked --profile ci --bench '*'
-      # One build for the check and the processes it starts, which then share every feature: alone,
-      # `cargo run -p campfire-lan-check` selects other features and compiles the workspace again.
-      # The check builds the processes with the cargo `CARGO` names, as `cargo run` sets it, and
-      # finds every crate fresh.
-      - name: LAN check
-        run: |
-          exe=""
-          if [ "$RUNNER_OS" = Windows ]; then exe=.exe; fi
-          cargo build --locked -p campfire-lan-check -p campfire-server -p campfire-client -p campfire-verifier
-          CARGO=cargo "target/debug/campfire-lan-check$exe" "$RUNNER_TEMP/lan-check"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      # Every check CI runs is a step of the gate, the list a local `./drive.py gate` runs too.
+      - name: Gate
+        run: python drive.py gate
       - name: Keep the LAN match
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lan-check-${{ runner.os }}
-          path: ${{ runner.temp }}/lan-check
+          path: source/target/drive/lan-check
           retention-days: 7
           if-no-files-found: ignore
-      # The LAN check's build writes the check and the verifier in target/debug last, after the
-      # tests' build of them with every feature. A tar keeps the executable bits, which an artifact
-      # drops. Its paths stay relative: GNU tar reads the `D:` of a Windows path as a remote host.
+      # The gate's last build, the LAN check's, writes the check and the verifier in target/debug,
+      # after the tests' build of them with every feature. A tar keeps the executable bits, which
+      # an artifact drops. Its paths stay relative: GNU tar reads the `D:` of a Windows path as a
+      # remote host.
       - name: Pack the verifier
         run: |
           exe=""

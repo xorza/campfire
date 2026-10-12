@@ -24,7 +24,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
         - `15-quic-transport.md` — the link over QUIC alone, on `quinn-proto` under Lightyear: its thread, the server's raw TLS key, a link's end, and the connect answer bound to the TLS session
     - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import, `quic.md` for the transport, `spectating.md` for what spectators and players out of play see
 - `.notes/ISSUES.md` — the issue log: every open problem, under the step it waits for ([Issue log](#issue-log))
-- `source/` — engine and game code; `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
+- `source/` — engine and game code, and `drive.py`, the driver of every check ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
 - `../GeneralsX/` — beside this repository, not in it: a checkout of [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS. It is the reference for Zero Hour's formats and rules, and the base of the parity oracle. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions), D2).
 
 `PLAN.md` is the one plan: every open step of the project, the network's among them, in the order it is done, in batches of one commit each, and the foundations ([Issue log](#issue-log)). It lists open items only.
@@ -38,7 +38,7 @@ Work goes in vertical slices. A slice ends with something new that the user play
 1. **Decide** the slice: what the player does or sees at its end, in one or two sentences. The issue log lists the problems the systems it touches already have.
 2. **Investigate** the code it touches, and how established engines and games solve the problem and why.
 3. **Propose** a design of what the slice adds, written into `docs/design/`, with an implementation plan in `PLAN.md`, for review. The plan names every system the slice changes.
-4. **Implement** the plan as reviewed, step by step, each step ending with the checks passing. The slice ends when the user plays it in the client, and a scripted match keeps it working.
+4. **Implement** the plan as reviewed, step by step, each step ending with `./drive.py check` passing. The slice ends when the user plays it in the client, and a scripted match keeps it working.
 
 No changes to systems outside the plan along the way. A problem found outside the slice, or depth that the slice does not need, goes to the issue log, and a later slice takes it.
 
@@ -55,6 +55,22 @@ The issue log is `.notes/ISSUES.md`, one file for every open problem of the proj
 - **Life.** An item moves between sections as it is triaged. A fixed item is deleted, with no done marker and no history. A section with no items stays, empty.
 - **Foundations.** A problem whose cause is in the architecture or a chosen format, not in one piece of code, as several items show one cause or it limits every system built after it, also has an entry in the Foundations section of `PLAN.md`: its cause, what it limits, and the issue-log items it holds, named by system and the start of their text. Its own item in the issue log states the cause. The entry goes when its cause is fixed, and an item it names goes from it when that item is deleted.
 
+## Checks
+
+Every check, test, doc build and bench runs through `source/drive.py` ([The driver](docs/design/02-engine-core.md#the-driver)), never through `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own, and the driver's shapes are the ones kept warm. No command takes `-p` or a crate list, as each covers the workspace, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
+
+| Command | Runs |
+| --- | --- |
+| `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, and the whole suite: a step's check |
+| `./drive.py test [--bless] [nextest arguments]` | the suite, or a part of it: `-E 'package(campfire-net)'`, a test's name; `--bless` writes the pinned files again |
+| `./drive.py doc` | the doc tests, and rustdoc with `-D warnings` |
+| `./drive.py bench [cargo bench arguments]` | the benches, only when the task asks for them |
+| `./drive.py lan`, `./drive.py zero-hour [run root]` | the LAN check, and the Zero Hour check, on request |
+| `./drive.py gate` | every step CI runs, and the Windows lint on Linux |
+| `./drive.py warm` | in the user's terminal: rebuilds every lane on each change; a command stops its pass and takes cargo's lock |
+
+Each step prints one line, its result and its time, after its diagnostics in short form; a failed step names its log, `target/drive/log/<step>.log`, which holds its whole output. Read the log, rather than run cargo again or pipe the driver through `grep` or `head`: what it prints is already filtered. The exit status is 0 when every step passed.
+
 ## Code
 
 - **Banned calls go through their proxy crate**: files and threads through `store`, the formats through `codec`, a schedule's build settings through `schedule` ([Structural rules](docs/design/02-engine-core.md#structural-rules)). Only a proxy's crate root `expect`s `clippy::disallowed_methods` or `clippy::disallowed_types`; nothing else exempts a banned call. When a proxy lacks what a caller needs, the proxy gains it.
@@ -63,8 +79,8 @@ The issue log is `.notes/ISSUES.md`, one file for every open problem of the proj
 - **No data in strings.** A value from a fixed set is an enum, a value with rules is a checked newtype, and an error is an enum of cases. Text from data files, scripts, JSON or the network becomes these types where it enters. Strings stay only for human text and for names the outside format defines.
 - **All file I/O goes through `store`**, as [Storage](docs/design/02-engine-core.md#storage) says: every read, listing, check and write of a file, in production code, tests and checks alike. Production code uses its types; a test uses its internals for every file it makes or reads. No `std::fs`, no `Path::exists` and its kin, no `tempfile`: when `store` lacks what a caller needs, `store` gains it. A read names its bound, and no code asks whether a path exists: it reads or lists, and takes `Missing`.
 - **Game-bound code lives in a module named after its game**, `zero_hour`, in the crate whose interface it serves, so no reader takes it for a general system; nothing but the place that installs it depends on it ([Modules](docs/design/02-engine-core.md#modules)).
-- **Tests run through `cargo nextest run`**, never `cargo test`, which can end no stuck test ([Test runner](docs/design/02-engine-core.md#testing-and-diagnostics)): a check chain's test step is `cargo nextest run -p <crate> --all-features`, and a mode's scripted match sits in a module named `scripted_match`, whose tests `source/.config/nextest.toml` exempts from the bound of 1 s.
+- **Tests run through `./drive.py test`**, on nextest, never `cargo test`, which can end no stuck test ([Test runner](docs/design/02-engine-core.md#testing-and-diagnostics)): a mode's scripted match sits in a module named `scripted_match`, whose tests `source/.config/nextest.toml` exempts from the bound of 1 s.
 - **Benches run only when the user's task asks for them.** Optimization has its own sessions, which the user starts; until then a step's checks are its tests, and a bench case a step adds is built by clippy, not run.
-- **Benches run through `cargo benches`**, never `cargo bench` with `--workspace` or one `-p` ([Benches](docs/design/02-engine-core.md#benches)). A crate that gains a `[[bench]]` joins the alias in `source/.cargo/config.toml`. One case: `cargo benches -- --exact atomic/num/mul`; a kind or a group: `-- '^atomic/'`, `-- atomic/num/`; one crate: `--bench math`; the ids: `-- --list`.
+- **Benches run through `./drive.py bench`**, which selects every crate with a `[[bench]]` and no other ([Benches](docs/design/02-engine-core.md#benches)). One case: `./drive.py bench -- --exact atomic/num/mul`; a kind or a group: `-- '^atomic/'`, `-- atomic/num/`; one crate: `--bench math`; the ids: `-- --list`.
 - **Bench structure.** An id is `<kind>/<group>/<case>`: `atomic` for one operation over inputs, `integration` for one system's tick on a made scene or a whole end on the test packages. The group is the path measured, unique in the workspace; the case is the operation, the scene, or the statistic and scenario (`worst_3v3`). Benches live in a `bench.rs` beside their code, gated `#[cfg(feature = "internals")]`, the one feature of what only tests and benches build, called from `lib.rs`'s `bench::run`. A fixture that reads files or runs ticks is made in the first case that needs it, so a filter that skips the case costs nothing.
 - **Match tests** follow [One scripted match for each mode](docs/design/02-engine-core.md#testing-and-diagnostics): a new rule joins the mode's scripted match, not a new run. A mode's scripted match test is the one test exempt from the bound of 1 s for a test; every other test keeps it.

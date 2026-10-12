@@ -163,7 +163,7 @@ debug = "line-tables-only"
 split-debuginfo = "off"
 strip = "none"
 
-# Warn, not deny: the check chain runs clippy with `-D warnings`, and builds keep working mid-edit.
+# Warn, not deny: the driver runs clippy with `-D warnings`, and builds keep working mid-edit.
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 missing_debug_implementations = "warn"
