@@ -8,7 +8,10 @@ use campfire_sim::TickRate;
 #[derive(Debug)]
 #[cfg_attr(
     not(feature = "internals"),
-    expect(unreachable_pub, reason = "the internals facade exports it, for its restore targets")
+    expect(
+        unreachable_pub,
+        reason = "the internals facade exports it, for its restore targets"
+    )
 )]
 pub struct MatchBuild;
 

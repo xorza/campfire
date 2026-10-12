@@ -24,7 +24,10 @@ use crate::units::team::Team;
 #[derive(Debug)]
 #[cfg_attr(
     not(any(test, feature = "internals")),
-    expect(unreachable_pub, reason = "the internals facade exports it, for its spawns")
+    expect(
+        unreachable_pub,
+        reason = "the internals facade exports it, for its spawns"
+    )
 )]
 pub struct Players;
 

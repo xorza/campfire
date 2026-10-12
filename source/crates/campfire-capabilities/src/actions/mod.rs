@@ -154,10 +154,14 @@ pub(crate) mod internals {
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
+    #[cfg(any(test, feature = "bench"))]
+    use crate::actions::{action_range::ActionRange, gather_spec::GatherSpec};
     use crate::scripts::hook_set::HookSet;
     use crate::units::action_id::ActionId;
     use crate::units::view::View;
     use crate::values::damage_kind::DamageKind;
+    #[cfg(any(test, feature = "bench"))]
+    use crate::{stats::pool_cost::PoolCost, units::filter::Filter};
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
@@ -218,11 +222,6 @@ pub(crate) mod internals {
             range: Num,
             time: Ticks,
         ) -> ActionId {
-            use crate::actions::action_range::ActionRange;
-            use crate::actions::gather_spec::GatherSpec;
-            use crate::stats::pool_cost::PoolCost;
-            use crate::units::filter::Filter;
-
             Actions::push(
                 world,
                 Action {
