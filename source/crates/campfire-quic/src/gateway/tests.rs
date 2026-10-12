@@ -118,7 +118,7 @@ fn a_silent_gateway_is_asked_each_try_and_given_up() {
     assert!(matches!(error, MapError::NoAnswer), "{error:?}");
     // 20 + 40 + 80 ms of waits, each after its own request.
     assert!(start.elapsed() >= Duration::from_millis(140));
-    assert_eq!(gateway.requests().len(), 3);
+    assert_eq!(gateway.requests_once(3).len(), 3);
 }
 
 #[test]
