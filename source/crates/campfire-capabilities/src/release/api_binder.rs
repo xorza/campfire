@@ -24,6 +24,8 @@ pub(super) struct ApiBinder<'b, 'a>(pub(super) &'b mut ApiBuilder<'a>);
 impl StateTypes for ApiBinder<'_, '_> {
     fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {}
 
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {}
+
     fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {}
 
     fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(

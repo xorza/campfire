@@ -7,13 +7,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::SentOnChange;
+use crate::state_types::sending::SentOnInsert;
+use crate::units::team::Team;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::view::View;
 
 /// The player who controls a unit, by slot: design 04's control relation, which `orders` and,
-/// later, `character` read. A player may control many units.
+/// later, `character` read. A player may control many units, each of the player's team.
+/// Immutable, so a change of owner is a new one inserted, which every kind's filter follows
+/// (design 14, D17, D18).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[component(immutable)]
 #[serde(transparent)]
 pub struct Owner(PlayerSlot);
 
@@ -31,13 +35,16 @@ impl SimComponent for Owner {
     const NAME: &'static str = "units.owner";
     type Host = UnitEntity;
 
-    // The script pools and the players' tables hold a place for each player only.
-    fn check(&self, world: &World, _: Entity) -> bool {
-        world.non_send::<View>().has_player(self.0)
+    // The script pools and the players' tables hold a place for each player only, and a unit's
+    // owner is of its team, whose vision its client holds the unit by.
+    fn check(&self, world: &World, unit: Entity) -> bool {
+        world
+            .get::<Team>(unit)
+            .is_some_and(|&team| world.non_send::<View>().plays_for(self.0, team))
     }
 }
 
 impl Replication for Owner {
     const KIND: DataKind = DataKind::Unit;
-    type Sending = SentOnChange;
+    type Sending = SentOnInsert;
 }

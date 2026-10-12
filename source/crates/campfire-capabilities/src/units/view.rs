@@ -114,6 +114,11 @@ impl View {
         self.names().has_player(slot)
     }
 
+    /// See `ViewNames::plays_for`.
+    pub(crate) fn plays_for(&self, slot: PlayerSlot, team: Team) -> bool {
+        self.names().plays_for(slot, team)
+    }
+
     /// See `ViewNames::resource_count`.
     pub(crate) fn resource_count(&self) -> usize {
         self.names().resource_count()

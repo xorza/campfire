@@ -18,6 +18,11 @@ pub trait Sending<C: ?Sized> {
 #[derive(Debug)]
 pub struct SentOnce;
 
+/// Sent as its entity spawns and on each insert after: the type is immutable, so an insert is
+/// its one change, which a client must see, as a new owner (design 14, D17).
+#[derive(Debug)]
+pub struct SentOnInsert;
+
 /// Sent on each change, not predicted.
 #[derive(Debug)]
 pub struct SentOnChange;
@@ -39,6 +44,18 @@ impl<C: Replication + Component<Mutability = Immutable>> Sending<C> for SentOnce
             );
         }
         types.once::<C>(Declared(()));
+    }
+}
+
+impl<C: Replication + Component<Mutability = Immutable>> Sending<C> for SentOnInsert {
+    fn visit<T: StateTypes>(types: &mut T) {
+        const {
+            assert!(
+                C::KIND.is_sent(),
+                "a type sent on insert is of a kind a client receives"
+            );
+        }
+        types.on_insert::<C>(Declared(()));
     }
 }
 

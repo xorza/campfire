@@ -197,7 +197,11 @@ unused_result_ok = "warn"
 # within the session's, and a received payload kept in the form its IO backend holds, so a QUIC
 # datagram reaches the link with no copy, until upstream releases the fixes (branch main of the
 # fork, which merges the branch of each fix).
+# Replicon 0.44.2 with a mutation kept for a client in the tick a filter hides a component from
+# it, which it otherwise drops, as a new owner the old owner's client must see (design 14, D17),
+# until upstream releases the fix (simgine/bevy_replicon#782; branch master of the fork).
 [patch.crates-io]
+bevy_replicon = { git = "https://github.com/xorza/bevy_replicon", branch = "master" }
 lightyear = { git = "https://github.com/xorza/lightyear", branch = "main" }
 lightyear_aeronet = { git = "https://github.com/xorza/lightyear", branch = "main" }
 lightyear_connection = { git = "https://github.com/xorza/lightyear", branch = "main" }

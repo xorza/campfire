@@ -6,20 +6,17 @@ Every planned piece of network work, in one place: the QUIC transport (`quic`), 
 
 The items below, in the order they are done; each line says why it stands where it does.
 
-1. **O1** and **O2**: A3 and A5 build on the filters and rooms both settle.
-2. **Slice 3**, A3, A5 and A6, the next slice the user plays ([Workflow](AGENTS.md#workflow)); slice 2, in [PLAN.md](PLAN.md), goes on from S1 after it.
-3. **N3**, limits for each address: after A3, whose spectators count among the seats it bounds by.
-4. **R2**, the bench of the endpoint, then the cap of new connections it sets: on the same path as N3, the thread's new connections.
-5. **N4**, UPnP behind a host firewall.
-6. **R1**, the send queue: its rate model and its size.
-7. **H1** to **H5**, each as a slice touches its code.
-8. **R3** and **R4** as they show; then **P1** to **P4**, **P3** only as D14 of design 15 lets it.
+1. **Slice 3**, A3, A5 and A6, the next slice the user plays ([Workflow](AGENTS.md#workflow)); slice 2, in [PLAN.md](PLAN.md), goes on from S1 after it.
+2. **N3**, limits for each address: after A3, whose spectators count among the seats it bounds by.
+3. **R2**, the bench of the endpoint, then the cap of new connections it sets: on the same path as N3, the thread's new connections.
+4. **N4**, UPnP behind a host firewall.
+5. **R1**, the send queue: its rate model and its size.
+6. **H1** to **H5**, each as a slice touches its code.
+7. **R3** and **R4** as they show; then **P1** to **P4**, **P3** only as D14 of design 15 lets it.
 
 ## Ready
 
 - **N3. Limits for each address** (`quic`, `net`). No limit holds live connections or new handshakes for each address, where design 15's D13 bounds both by the session's seats for each IPv4 address or IPv6 /64, and `net` gives the endpoint no seat count ([QUIC transport](docs/design/15-quic-transport.md), D13).
-- **O1. An owner that changes** (`capabilities`, `net`). `Owner` is mutable and sent on change, and `KindFilter` follows it only as it is inserted or removed, where design 14's D17 has it immutable and sent on each insert: a change of `Owner` in place would leave each filter on the old owner, so the old owner's client would keep receiving the owner's kinds and the new owner's would not. No code changes an owner after the spawn yet; a capture will.
-- **O2. An owner of another team** (`capabilities`). A unit's owner may be a player of another team than the unit's, where design 14's D18 holds the owner to the unit's team: `Owner`'s restore check reads only that the player exists, and no change of owner moves the unit's team.
 - **N4. UPnP behind a host firewall** (`quic`). UPnP finds no router behind a host firewall that tracks connections when the router answers SSDP searches from a port other than 1900, as Omada's ER605 does: `igd-next` discovers by search alone, and the router's `NOTIFY` announcements, which the firewall lets in, go unread ([QUIC transport](docs/design/15-quic-transport.md), D12).
 
 ## Slice 3 — Replication audiences

@@ -272,6 +272,10 @@ pub(crate) mod internals {
             self.push::<C>();
         }
 
+        fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+            self.push::<C>();
+        }
+
         fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
             self.push::<C>();
         }

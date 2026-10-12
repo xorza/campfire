@@ -114,6 +114,12 @@ impl StateTypes for Replicated<'_> {
             .replicate_once_with(WireCodec::component());
     }
 
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+        self.0
+            .component::<C>()
+            .replicate_with(WireCodec::component());
+    }
+
     fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
         self.0
             .component::<C>()

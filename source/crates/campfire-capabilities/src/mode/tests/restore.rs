@@ -22,8 +22,12 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let world = &game.sim.world;
     // Teams a, b and neutral are 0 to 2, players 0 to 2.
     assert!(Team::new(2).check(world, grunt) && !Team::new(3).check(world, grunt));
+    // Team a holds players 0 and 1, team b player 2. The grunt is of team a: player 0 or 1 owns
+    // it, and neither player 2, of team b, nor 3, whom the session lacks.
+    assert_eq!(world.get::<Team>(grunt), Some(&Team::new(0)));
     let owner = |slot| Owner::new(PlayerSlot::new(slot));
-    assert!(owner(2).check(world, grunt) && !owner(3).check(world, grunt));
+    assert!(owner(0).check(world, grunt) && owner(1).check(world, grunt));
+    assert!(!owner(2).check(world, grunt) && !owner(3).check(world, grunt));
     let own_type = *world.get::<UnitType>(grunt).unwrap();
     assert!(own_type.check(world, grunt) && !UnitType::new(u16::MAX).check(world, grunt));
     // The map has one path, 0.
