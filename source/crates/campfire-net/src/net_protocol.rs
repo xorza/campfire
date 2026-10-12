@@ -11,6 +11,7 @@ use lightyear::prelude::{
     PredictionBuilderExt, ReliableSettings,
 };
 
+use crate::dismissed::Dismissed;
 use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::join::Join;
@@ -18,7 +19,6 @@ use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
 use crate::save_command::SaveCommand;
-use crate::superseded::Superseded;
 use crate::wire_codec::WireCodec;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
@@ -84,7 +84,7 @@ impl Plugin for NetProtocol {
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message_custom_serde::<Offer>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<Superseded>(WireCodec::message())
+        app.register_message_custom_serde::<Dismissed>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message_custom_serde::<SignedReceipt>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);

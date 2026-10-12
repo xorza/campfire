@@ -8,7 +8,9 @@ use campfire_capabilities::{Action, Owner, Progress, Relation, Relations, Route,
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{InProcessMatch, MatchSetup};
-use campfire_net::{JoinRefused, JoinState, LinkLost, MatchClock, TickHashes};
+use campfire_net::{
+    CloseCode, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
+};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
@@ -202,7 +204,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     assert_eq!(relations(local.client(second)), relations(local.server()));
     assert_eq!(local.log().take::<LinkLost>().len(), 1);
 
-    // A client whose player has no slot is refused, and its link, still connected, holds no unit.
+    // A client whose player has no slot is refused, and told so, and its link held no unit.
     let stranger = local.add_client(1);
     for _ in 0..60 {
         local.step();
@@ -217,6 +219,12 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     );
     assert_eq!(held(&mut local, stranger), []);
     assert_eq!(local.log().take::<JoinRefused>().len(), 1);
+    assert_eq!(
+        local.log().take::<LinkLost>(),
+        [LinkLost {
+            cause: LinkLossCause::ClientClosed(CloseCode::JoinRefused)
+        }]
+    );
 }
 
 /// The sim tick of the server message that last updated `unit` on the client.

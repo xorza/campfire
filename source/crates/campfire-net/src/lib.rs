@@ -7,6 +7,7 @@
 
 mod bot_script;
 mod close_code;
+mod dismissed;
 mod events;
 mod faults;
 #[cfg(feature = "internals")]
@@ -28,7 +29,6 @@ mod save_command;
 mod session_times;
 mod sim_client;
 mod sim_server;
-mod superseded;
 mod wire_codec;
 
 pub use crate::bot_script::BotScript;

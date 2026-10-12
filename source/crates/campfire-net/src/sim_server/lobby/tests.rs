@@ -1,4 +1,5 @@
 use std::mem;
+use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
 use campfire_common::{ChannelBinding, MapName};
@@ -90,6 +91,7 @@ impl Joining {
                 challenge: ConnectChallenge::new([9; 32]),
                 binding: ChannelBinding::new([3; 32]),
                 sent: Tick(0),
+                first: Duration::ZERO,
             },
         }
     }

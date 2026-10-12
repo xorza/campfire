@@ -57,7 +57,7 @@ use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::kind_filter::KindFilters;
 use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
-use crate::sim_server::offering::{Offering, Superseding};
+use crate::sim_server::offering::{Dismissing, Offered, Offering};
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
@@ -174,8 +174,11 @@ impl Plugin for SimServer {
                 .run_if(resource_exists::<Door>)
                 .run_if(session_running),
         );
-        app.add_systems(Last, Superseding::tell);
-        app.add_systems(PostUpdate, Superseding::end.after(LinkSystems::Send));
+        app.add_systems(Last, Dismissing::tell);
+        app.add_systems(
+            PostUpdate,
+            (Dismissing::end, Offered::close_silent).after(LinkSystems::Send),
+        );
         // Lightyear keeps a received message for one frame only, and a frame runs no fixed tick
         // or several, so the inputs are logged in every frame, before its fixed ticks; a frame
         // that runs several is logged, as an input that missed its start waits for all of them.

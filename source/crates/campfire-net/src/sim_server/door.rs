@@ -22,7 +22,7 @@ use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::offering::{
-    CheckedJoins, JoinLink, Joined, OfferLinks, Offered, Offering, Refused, Superseding, Unanswered,
+    CheckedJoins, Dismissing, JoinLink, Joined, OfferLinks, Offered, Offering, ToAnswer,
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
@@ -57,18 +57,19 @@ impl Door {
     pub(crate) fn offer(
         door: Res<'_, Door>,
         timeline: Res<'_, LocalTimeline>,
+        time: Res<'_, Time<Real>>,
         mut links: OfferLinks<'_, '_>,
         mut commands: Commands<'_, '_>,
     ) {
         door.offering
-            .offer(timeline.tick(), &mut links, &mut commands);
+            .offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
     }
 
     /// Seats the player of each offered link that answered, or refuses them; the joins of one
     /// frame in `Offering::check_all`'s order.
     pub(crate) fn take_joins(
         world: &mut World,
-        mut links: Local<'_, QueryState<JoinLink, Unanswered>>,
+        mut links: Local<'_, QueryState<JoinLink, ToAnswer>>,
         mut joins: Local<'_, Vec<(Entity, Offered, Join)>>,
         mut checked: Local<'_, CheckedJoins>,
     ) {
@@ -101,7 +102,8 @@ impl Door {
             error: ErrorReport::of(&error).to_string(),
         }
         .log();
-        world.entity_mut(link).insert(Refused(error));
+        Dismissing::refuse(&mut world.commands(), link, error);
+        world.flush();
     }
 
     /// Logs what seating the player of `delegation` changes, and gives where they sit.
@@ -134,7 +136,7 @@ impl Door {
                         ?older,
                         "a newer login took the player's slot"
                     );
-                    Superseding::mark(&mut world.commands(), older);
+                    Dismissing::refuse(&mut world.commands(), older, JoinError::Superseded);
                     world.flush();
                 }
                 _ if seat.gone_since.is_some() => {

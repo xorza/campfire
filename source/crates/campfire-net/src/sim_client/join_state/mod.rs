@@ -12,6 +12,7 @@ use campfire_protocol::{
 use campfire_runner::SessionRules;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
 
+use crate::dismissed::Dismissed;
 use crate::join::Join;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
@@ -75,6 +76,8 @@ pub enum Loss {
     Rewritten,
     /// A newer login of the player took the slot.
     Superseded,
+    /// The server refused the player's join; its log says why.
+    JoinRefused,
 }
 
 /// What answers the server's offer: the player's identity, which signs the delegation, the server
@@ -512,9 +515,12 @@ impl JoinState {
         member.receipt.as_ref()
     }
 
-    /// A newer login of the player took the slot: the client stops.
-    pub(crate) fn supersede(&mut self) {
-        self.step = Step::Lost(Loss::Superseded);
+    /// The server dismissed the client, for `dismissed`: it stops.
+    pub(crate) fn dismiss(&mut self, dismissed: Dismissed) {
+        self.step = Step::Lost(match dismissed {
+            Dismissed::Superseded => Loss::Superseded,
+            Dismissed::JoinRefused => Loss::JoinRefused,
+        });
     }
 
     /// The player leaves: the client tries no link again, and, when they played, takes the

@@ -34,6 +34,7 @@ use tracing::{debug, info};
 
 use crate::bot_script::BotScript;
 use crate::close_code::CloseCode;
+use crate::dismissed::Dismissed;
 use crate::events::client_frame::ClientFrame;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
@@ -59,7 +60,6 @@ use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
-use crate::superseded::Superseded;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -226,7 +226,7 @@ impl Plugin for SimClient {
             send_leave.run_if(resource_exists::<LeaveRequest>),
             send_saves,
             answer_offer,
-            receive_superseded,
+            receive_dismissed,
             receive_match_start,
             receive_receipt,
         )
@@ -388,25 +388,27 @@ fn receive_receipt(
     }
 }
 
-/// Stops a client whose slot a newer login of its player took, and ends its link, which tells
-/// the server that the notice arrived.
-fn receive_superseded(
-    mut receivers: Query<'_, '_, (Entity, &mut MessageReceiver<Superseded>), With<Client>>,
+/// Stops a client the server dismissed, and ends its link with the dismissal's code, which tells
+/// the server that the word arrived.
+fn receive_dismissed(
+    mut receivers: Query<'_, '_, (Entity, &mut MessageReceiver<Dismissed>), With<Client>>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
     for (client, mut receiver) in &mut receivers {
-        if receiver.receive().count() > 0 {
-            state.supersede();
-            LinkLost {
-                cause: LinkLossCause::ClientClosed(CloseCode::Superseded),
-            }
-            .log();
-            commands.trigger(CloseLink {
-                entity: client,
-                code: CloseCode::Superseded.app(),
-            });
+        let Some(dismissed) = receiver.receive().next() else {
+            continue;
+        };
+        state.dismiss(dismissed);
+        let code = dismissed.code();
+        LinkLost {
+            cause: LinkLossCause::ClientClosed(code),
         }
+        .log();
+        commands.trigger(CloseLink {
+            entity: client,
+            code: code.app(),
+        });
     }
 }
 

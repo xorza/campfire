@@ -287,8 +287,17 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
     for _ in 0..60 {
         local.step();
     }
+    // The server refuses the new player's join, and tells their client, which stops.
     assert_eq!(local.log().take::<JoinRefused>().len(), 1);
     assert!(!playing(&local, late));
+    let state = local.client(late).world().resource::<JoinState>();
+    assert_eq!(state.loss(), Some(Loss::JoinRefused));
+    assert_eq!(
+        local.log().take::<LinkLost>(),
+        [LinkLost {
+            cause: LinkLossCause::ClientClosed(CloseCode::JoinRefused)
+        }]
+    );
     local.mend_link(1);
     step_until(&mut local, REJOIN_STEPS, |local| playing(local, 1));
     assert!(matches!(

@@ -6,6 +6,7 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
@@ -20,7 +21,7 @@ use crate::events::join_refused::JoinRefused;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::lobby::error::LobbyError;
 use crate::sim_server::offering::{
-    CheckedJoins, JoinLinks, Joined, OfferLinks, Offering, Refused, Superseding,
+    CheckedJoins, Dismissing, JoinLinks, Joined, OfferLinks, Offering,
 };
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
@@ -142,12 +143,13 @@ impl Lobby {
     pub(crate) fn offer(
         lobby: Res<'_, Lobby>,
         timeline: Res<'_, LocalTimeline>,
+        time: Res<'_, Time<Real>>,
         mut links: OfferLinks<'_, '_>,
         mut commands: Commands<'_, '_>,
     ) {
         lobby
             .offering
-            .offer(timeline.tick(), &mut links, &mut commands);
+            .offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
     }
 
     /// Takes each offered link's join: a player who answered their challenge joins in the next
@@ -181,7 +183,7 @@ impl Lobby {
                     commands.entity(link).insert(Joined);
                     if let Some(older) = older {
                         info!(?older, "a newer login took the player's seat");
-                        Superseding::mark(&mut commands, older);
+                        Dismissing::refuse(&mut commands, older, JoinError::Superseded);
                     }
                 }
                 Err(error) => Lobby::refuse(&mut commands, link, error),
@@ -195,7 +197,7 @@ impl Lobby {
             error: ErrorReport::of(&error).to_string(),
         }
         .log();
-        commands.entity(link).insert(Refused(error));
+        Dismissing::refuse(commands, link, error);
     }
 
     /// Starts the match once every slot is taken, and closes the lobby: the door takes the

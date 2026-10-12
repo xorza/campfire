@@ -16,15 +16,21 @@ pub enum CloseCode {
     ChainRewritten,
     /// The session's terms do not fit the client, which cannot play it.
     SessionRefused,
+    /// The client sent no answer to the server's offer within its window.
+    Unanswered,
+    /// The server refused the client's join, which its log names.
+    JoinRefused,
 }
 
 impl CloseCode {
-    const ALL: [CloseCode; 5] = [
+    const ALL: [CloseCode; 7] = [
         CloseCode::Left,
         CloseCode::Superseded,
         CloseCode::InputRefused,
         CloseCode::ChainRewritten,
         CloseCode::SessionRefused,
+        CloseCode::Unanswered,
+        CloseCode::JoinRefused,
     ];
 
     pub const fn app(self) -> AppCode {
@@ -46,10 +52,10 @@ mod tests {
         for close in CloseCode::ALL {
             assert_eq!(CloseCode::of(close.app()), Some(close));
         }
-        // Five codes from 16: 16 to 20.
+        // Seven codes from 16: 16 to 22.
         let numbers: Vec<u64> = CloseCode::ALL.map(|close| close.app().get()).to_vec();
-        assert_eq!(numbers, [16, 17, 18, 19, 20]);
-        assert_eq!(CloseCode::of(AppCode::new(21)), None);
+        assert_eq!(numbers, [16, 17, 18, 19, 20, 21, 22]);
+        assert_eq!(CloseCode::of(AppCode::new(23)), None);
         assert_eq!(CloseCode::of(AppCode::ENDED), None);
     }
 }
