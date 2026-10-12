@@ -84,8 +84,15 @@ fn hero_died(ctx, hero, killer, assisters) {
         ctx.state.first_blood = true;
     }
     ctx.add_resource(killer.owner, "gold", gold);
+    // Only a hero's player takes gold: a tower or a creep that struck the hero takes no share.
+    let heroes = [];
     for unit in assisters {
-        ctx.add_resource(unit.owner, "gold", ctx.p.assist_gold / assisters.len());
+        if unit.is_avatar {
+            heroes.push(unit);
+        }
+    }
+    for assister in heroes {
+        ctx.add_resource(assister.owner, "gold", ctx.p.assist_gold / heroes.len());
     }
 }
 

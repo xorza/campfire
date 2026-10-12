@@ -1,8 +1,8 @@
 //! The MOBA 3v3's late rules, which no short match reaches at level 1: an inhibitor's fall
 //! and its respawn, the super creep of the next wave on its lane, the warden's blessing and its
-//! respawn, and the core's fall, which ends the match. A hero deals each fatal blow through the
-//! runner's world, as no input can at level 1, so the test pins rules, not a log: it has no
-//! golden and no replay. The test pins the content's values, so a change to the content changes
+//! respawn, a hero's kill that a tower assisted, and the core's fall, which ends the match. A
+//! hero deals each fatal blow through the runner's world, as no input can at level 1, so the
+//! test pins rules, not a log: it has no golden and no replay. The test pins the content's values, so a change to the content changes
 //! it, by design.
 
 use campfire_capabilities::{Combat, Dead, Life, MatchResult, ModeWorld, Respawn, Stats, Team};
@@ -28,6 +28,8 @@ fn the_3v3s_late_rules_follow_each_fall() {
     let north_west_inhibitor = units.spawned_at((-11, 0, -52));
     let warden = units.spawned_at((0, 0, 0));
     let north_core = units.spawned_at((0, 0, -54));
+    let south_west_tower = units.spawned_at((-22, 0, 46));
+    let assister = units.hero(4);
 
     // Kensho fells the north's west inhibitor in tick 1200: its 50 gold to player 3, and it
     // comes back 240 s, 4800 ticks, after the end of that tick, at the start of tick 6001.
@@ -89,7 +91,25 @@ fn the_3v3s_late_rules_follow_each_fall() {
         (96 + 150, 96 + 50)
     );
 
-    // Kensho fells the north core in tick 2400: the match ends then, won by the south.
+    // In tick 2400 the south's west tower at (−22, 46) and player 4's hero strike Husk; in tick
+    // 2401 Kensho kills him, as the pass deals a tick's damage by its source's stable id, which
+    // would deal Kensho's first. The match's first hero kill gives player 3 the kill gold, 300,
+    // and the first blood, 100; the tower takes no share of the assist gold, so player 4's hero,
+    // the one hero assister, takes all 150. No income falls in either tick.
+    for source in [south_west_tower, assister] {
+        Combat::queue_damage(fixed.game_mut(), Some(source), husk, Num::ONE, "true");
+    }
+    run_to(&mut fixed, 2401);
+    Combat::queue_damage(fixed.game_mut(), Some(kensho), husk, Num::int(5000), "true");
+    run_to(&mut fixed, 2402);
+    let world = fixed.game();
+    assert!(world.try_part::<Dead>(husk).is_some());
+    assert_eq!(
+        [2, 3, 4].map(|slot| gold(&moba, world, slot)),
+        [96 + 150, 96 + 50 + 300 + 100, 96 + 150]
+    );
+
+    // Kensho fells the north core in tick 2402: the match ends then, won by the south.
     Combat::queue_damage(
         fixed.game_mut(),
         Some(kensho),
@@ -97,10 +117,10 @@ fn the_3v3s_late_rules_follow_each_fall() {
         Num::int(5500),
         "true",
     );
-    run_to(&mut fixed, 2401);
+    run_to(&mut fixed, 2403);
     let end = fixed.game().match_end().expect("the match ended");
     assert_eq!(
         (end.tick(), end.result()),
-        (Tick::new(2400), MatchResult::Won(Team::new(1)))
+        (Tick::new(2402), MatchResult::Won(Team::new(1)))
     );
 }
