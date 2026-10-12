@@ -6,7 +6,10 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::host_rule::OnAny;
+use crate::position::error::OutOfBounds;
 use crate::sim_state::SimComponent;
+
+pub(crate) mod error;
 
 /// Where an entity is. Every coordinate stays within ±`BOUND`, so exact squared distances fit a
 /// `u128` with room to spare.
@@ -61,6 +64,28 @@ impl SimComponent for Position {
     }
 }
 
+/// Exact: every `i16` lies within ±`BOUND`.
+impl From<(i16, i16, i16)> for Position {
+    fn from((x, y, z): (i16, i16, i16)) -> Position {
+        Position(Vec3::from((x, y, z)))
+    }
+}
+
+/// Exact: every `i16` lies within ±`BOUND`.
+impl From<[i16; 3]> for Position {
+    fn from(point: [i16; 3]) -> Position {
+        Position(Vec3::from(point))
+    }
+}
+
+impl TryFrom<Vec3> for Position {
+    type Error = OutOfBounds;
+
+    fn try_from(point: Vec3) -> Result<Position, OutOfBounds> {
+        Position::new(point).ok_or(OutOfBounds::Beyond)
+    }
+}
+
 /// A snapshot is untrusted, so a position out of bounds fails to decode.
 impl<'de> Deserialize<'de> for Position {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Position, D::Error> {
@@ -91,6 +116,30 @@ mod tests {
             assert_eq!(decoded.ok(), Position::new(at), "{at:?}");
         }
         assert_eq!(Position::BOUND, Num::from_int(1 << 20).unwrap());
+    }
+
+    #[test]
+    fn a_triple_of_i16_converts_exactly_and_a_vector_within_the_bound() {
+        // Every i16 lies within ±2²⁰: the least and greatest convert to themselves.
+        let least = Position::new(Vec3::new(Num::int(-32_768), Num::ZERO, Num::int(32_767)));
+        assert_eq!(Some(Position::from((i16::MIN, 0, i16::MAX))), least);
+        assert_eq!(Some(Position::from([i16::MIN, 0, i16::MAX])), least);
+        // A vector converts up to the bound, both signs, and is refused one ulp past it.
+        let bound = Position::BOUND;
+        let past = bound + Num::EPSILON;
+        let edge = Vec3::new(bound, -bound, Num::ZERO);
+        assert_eq!(Position::try_from(edge).map(Position::get), Ok(edge));
+        for beyond in [
+            Vec3::new(past, Num::ZERO, Num::ZERO),
+            Vec3::new(Num::ZERO, -past, Num::ZERO),
+            Vec3::new(Num::ZERO, Num::ZERO, past),
+        ] {
+            assert_eq!(
+                Position::try_from(beyond),
+                Err(OutOfBounds::Beyond),
+                "{beyond:?}"
+            );
+        }
     }
 
     #[test]

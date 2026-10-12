@@ -18,7 +18,7 @@ mod wide_division;
 pub use crate::ceil_root::CeilRoot;
 pub use crate::flat::Flat;
 pub use crate::floor_root::FloorRoot;
-pub use crate::num::error::ParseNumError;
+pub use crate::num::error::{IntToNumError, ParseNumError};
 pub use crate::num::{Num, SinCos};
 pub use crate::product_sum::ProductSum;
 pub use crate::rng::Rng;
