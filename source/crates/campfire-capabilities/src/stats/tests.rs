@@ -360,7 +360,8 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let own = TagSet::of([sight]);
     game.insert_resource(TagBook::new(effects, [(UnitType::new(0), own)]));
     let unit = unit(&mut game, 0);
-    game.entity_mut(unit).insert(Modifiers::default());
+    game.entity_mut(unit)
+        .insert((Modifiers::default(), ModifierClocks::default()));
     let book = game.resource::<StatBook>();
     let speed = book.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
     let mut ids = IdAllocator::default();
@@ -453,7 +454,8 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
     let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), Num::int(4), Num::ZERO)]);
     let mut game = stat_match(&[walker]);
     let unit = unit(&mut game, 0);
-    game.entity_mut(unit).insert(Modifiers::default());
+    game.entity_mut(unit)
+        .insert((Modifiers::default(), ModifierClocks::default()));
     let half = Param::Ranked(Ranked::One(Scalar::Decimal(sixteenths(8))));
     let cut = StatChange {
         op: StatOp::Cut,
@@ -538,7 +540,8 @@ fn a_scaling_aura_radius_and_shield_below_zero_hold_zero_and_restore() {
     // the decode of an instance refuses one below zero, so the snapshot restores.
     let (mut game, warding) = warding_match();
     let unit = unit(&mut game, 0);
-    game.entity_mut(unit).insert(Modifiers::default());
+    game.entity_mut(unit)
+        .insert((Modifiers::default(), ModifierClocks::default()));
     game.step();
     let id = *game.get::<StableId>(unit).unwrap();
     Stats::give_modifier(&mut game, id, warding, Some((id, None, 1)), false);
@@ -561,7 +564,8 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
     // interval past the limit, whose next tick would overflow, fails to decode.
     let (mut game, warding) = warding_match();
     let unit = unit(&mut game, 0);
-    game.entity_mut(unit).insert(Modifiers::default());
+    game.entity_mut(unit)
+        .insert((Modifiers::default(), ModifierClocks::default()));
     game.step();
     let id = *game.get::<StableId>(unit).unwrap();
     Stats::give_modifier(&mut game, id, warding, Some((id, None, 1)), false);
@@ -608,7 +612,12 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     Stats::load_modifier(&mut game, 0, "presence", &data(Some(presence)), None);
     let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
     let spawn = |game: &mut Match, x: i64, team: u8| {
-        Units::spawn(game, at(x), Team::new(team), Modifiers::default())
+        Units::spawn(
+            game,
+            at(x),
+            Team::new(team),
+            (Modifiers::default(), ModifierClocks::default()),
+        )
     };
     // The carrier at 0; an ally at 2, on the edge, and one at 3; an enemy at 1.
     let carrier = spawn(&mut game, 0, 0);
@@ -697,7 +706,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
         &mut game,
         Position::ORIGIN,
         Team::new(0),
-        Modifiers::default(),
+        (Modifiers::default(), ModifierClocks::default()),
     );
     let unit = game.unit_entity(id);
     let inspired = game

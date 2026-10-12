@@ -2,6 +2,7 @@ mod bots;
 mod checkpoints;
 mod fog;
 mod lane;
+mod leak;
 mod local_server;
 mod pace;
 mod prototype;
