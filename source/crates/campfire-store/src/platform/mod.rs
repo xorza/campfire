@@ -6,6 +6,7 @@ pub(crate) mod durable_name;
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod file_link;
 pub(crate) mod owner_only;
+pub(crate) mod stop_signals;
 
 // An OS of neither family names no file here, so the build fails where no promise is kept.
 #[cfg_attr(unix, path = "unix.rs")]

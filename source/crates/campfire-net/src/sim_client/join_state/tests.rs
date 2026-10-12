@@ -1,13 +1,11 @@
 use std::cell::Cell;
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{Fingerprint, MapName, TlsKey};
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
-use campfire_protocol::{
-    CertificateHash, ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan,
-};
+use campfire_protocol::{ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan};
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
@@ -38,12 +36,15 @@ fn x_only(secret: u8) -> XOnlyPublicKey {
     TestKey::of(secret).x_only_public_key().0
 }
 
+/// The channel binding of the client's link.
+const BINDING: ChannelBinding = ChannelBinding::new([3; 32]);
+
 /// A client of the lane mode, main key 1, that means to reach the remote server of key 8 at
 /// `tick_hz`.
 fn waiting(tick_hz: NonZeroU32) -> JoinState {
     let server = ServerPin {
         key: x_only(8),
-        certificate: CertificateHash::new([3; 32]),
+        tls_key: TlsKey::new([3; 32]),
         tick_hz,
     };
     JoinState::new(TestKey::of(1), server, false, lane_rules(), clock)
@@ -121,12 +122,12 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     for (pinned, change, mismatch) in cases {
         let mut state = waiting(pinned);
         assert_eq!(
-            state.answer(&offer(change), &mut signer),
+            state.answer(&offer(change), &BINDING, &mut signer),
             Some(Err(mismatch.clone()))
         );
         assert_eq!(state.refusal(), Some(&mismatch));
         // A refused client answers no later offer, and starts no match.
-        assert_eq!(state.answer(&offer(|_| {}), &mut signer), None);
+        assert_eq!(state.answer(&offer(|_| {}), &BINDING, &mut signer), None);
         assert_eq!(state.start(START), Started::No);
     }
 
@@ -140,9 +141,12 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
         "no match starts before the answer"
     );
     let offer = offer(|_| {});
-    let join = state.answer(&offer, &mut signer).unwrap().unwrap();
+    let join = state
+        .answer(&offer, &BINDING, &mut signer)
+        .unwrap()
+        .unwrap();
     assert_eq!(
-        state.answer(&offer, &mut signer),
+        state.answer(&offer, &BINDING, &mut signer),
         None,
         "the client answers once"
     );
@@ -158,18 +162,18 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
         (granted.seed_contribution, granted.expiration),
         (SeedContribution::new([6; 32]), NOW + 86_400)
     );
-    let check = |certificate| {
+    let check = |binding| {
         offer.challenge.check(
             &Secp256k1::verification_only(),
             &offer.terms,
-            &certificate,
+            &binding,
             &delegation,
             &join.answer,
             NOW,
         )
     };
-    assert_eq!(check(CertificateHash::new([3; 32])), Ok(()));
-    assert!(check(CertificateHash::new([4; 32])).is_err());
+    assert_eq!(check(BINDING), Ok(()));
+    assert!(check(ChannelBinding::new([4; 32])).is_err());
     assert_eq!(state.clock(), None);
     assert_eq!((state.slot(), state.team()), (None, None));
 
@@ -199,7 +203,10 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
 fn played(payloads: &[&[u8]]) -> (JoinState, Signer, Vec<InputHash>, Delegation) {
     let mut signer = signer();
     let mut state = waiting(TICK_HZ);
-    let join = state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+    let join = state
+        .answer(&offer(|_| {}), &BINDING, &mut signer)
+        .unwrap()
+        .unwrap();
     state.start(START);
     let playing = state.playing_mut().unwrap();
     let mut heads = vec![playing.chain.head()];
@@ -231,7 +238,10 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
     assert_eq!(state.retry(at(999_999_999), [0; 32]), Retry::Connect);
 
     // An offer of the same session: it answers with its own delegation, which has not expired.
-    let join = state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+    let join = state
+        .answer(&offer(|_| {}), &BINDING, &mut signer)
+        .unwrap()
+        .unwrap();
     assert_eq!(join.delegation, delegation.json());
     // The server's copy holds 2 of its 3 inputs: the third never applies, and the chain goes on
     // from the second, at sim tick 500, Lightyear tick 7. The log holds its last stamp, 503.
@@ -260,7 +270,10 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
 
     // Again: a server whose copy is not the client's own ends it.
     assert_eq!(state.lose(lost, [0; 32]), LinkLoss::Rejoining);
-    state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+    state
+        .answer(&offer(|_| {}), &BINDING, &mut signer)
+        .unwrap()
+        .unwrap();
     let rewritten = ChainHead {
         next_seq: 1,
         head: heads[2],
@@ -281,7 +294,10 @@ fn a_client_renews_an_expiring_delegation_and_gives_up_past_the_servers_times() 
     let (mut state, mut signer, _, delegation) = played(&[b"a"]);
     CLOCK.with(|clock| clock.set(NOW + 86_400 - 60));
     assert_eq!(state.lose(Duration::ZERO, [0; 32]), LinkLoss::Rejoining);
-    let join = state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+    let join = state
+        .answer(&offer(|_| {}), &BINDING, &mut signer)
+        .unwrap()
+        .unwrap();
     let renewed = Delegation::parse(&join.delegation).unwrap();
     assert_eq!(renewed.main_key(), delegation.main_key());
     assert_ne!(renewed.terms().session_key, delegation.terms().session_key);
@@ -294,7 +310,7 @@ fn a_client_renews_an_expiring_delegation_and_gives_up_past_the_servers_times() 
     state.lose(Duration::ZERO, [0; 32]);
     let other = offer(|terms| terms.max_payload_len += 1);
     assert_eq!(
-        state.answer(&other, &mut signer),
+        state.answer(&other, &BINDING, &mut signer),
         Some(Err(TermsMismatch::OtherSession))
     );
 
@@ -433,7 +449,10 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
         state.player.local = local;
         state.take_receipt(&signed(receipt), &verifier).unwrap();
         state.lose(Duration::ZERO, [0; 32]);
-        state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+        state
+            .answer(&offer(|_| {}), &BINDING, &mut signer)
+            .unwrap()
+            .unwrap();
         let loaded = MatchStart {
             chain: Some(ChainHead {
                 next_seq: 1,
@@ -503,7 +522,10 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
     assert_eq!(state.lose(failed, [0; 32]), LinkLoss::Rejoining);
     assert_eq!(state.receipt(), Some(&signed(third)));
     CLOCK.with(|clock| clock.set(NOW + 86_400 - 60));
-    let join = state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+    let join = state
+        .answer(&offer(|_| {}), &BINDING, &mut signer)
+        .unwrap()
+        .unwrap();
     CLOCK.with(|clock| clock.set(NOW));
     let renewed = Delegation::parse(&join.delegation).unwrap();
     assert_ne!(delegation.id(), renewed.id());
@@ -549,7 +571,10 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
     // The history forgot every head before the receipt's: a server whose copy holds fewer
     // inputs than it named rewrote the chain.
     assert_eq!(state.lose(failed, [0; 32]), LinkLoss::Rejoining);
-    state.answer(&offer(|_| {}), &mut signer).unwrap().unwrap();
+    state
+        .answer(&offer(|_| {}), &BINDING, &mut signer)
+        .unwrap()
+        .unwrap();
     let start = MatchStart {
         chain: Some(ChainHead {
             next_seq: 4,

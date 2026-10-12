@@ -16,7 +16,7 @@ pub(crate) enum Process {
     /// The bot of this index, started again with its key file after the check stopped it.
     #[display("bot {_0}, started again")]
     Rejoined(usize),
-    /// A bot that pins a certificate no server has, so it never links.
+    /// A bot that pins a TLS key no server has, so it never links.
     #[display("the impostor bot")]
     Impostor,
     #[display("the verifier")]

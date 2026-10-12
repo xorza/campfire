@@ -4,12 +4,13 @@
 )]
 
 use std::fs::{File, OpenOptions};
-use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
 use std::path::{self, Path};
-use std::ptr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::{io, process, ptr, thread};
 
 use windows::Win32::Foundation::{GENERIC_WRITE, HANDLE, HLOCAL, WIN32_ERROR};
 use windows::Win32::Security::Authorization::{
@@ -27,19 +28,29 @@ use windows::Win32::Storage::FileSystem::{
     FILE_SHARE_WRITE, FlushFileBuffers, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
     MoveFileExW, OPEN_ALWAYS, OPEN_EXISTING,
 };
+use windows::Win32::System::Console::{
+    CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT, SetConsoleCtrlHandler,
+};
 use windows::Win32::System::SystemServices::{
     ACCESS_ALLOWED_ACE_TYPE, ACCESS_ALLOWED_CALLBACK_ACE_TYPE,
     ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE, ACCESS_ALLOWED_COMPOUND_ACE_TYPE,
     ACCESS_ALLOWED_OBJECT_ACE_TYPE,
 };
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-use windows::core::{Error, HSTRING, Owned, PWSTR};
+use windows::core::{BOOL, Error, HSTRING, Owned, PWSTR};
+
+use crate::platform::stop_signals::StopSignals;
 
 /// The Windows side of the platform layer: a security descriptor given as a file or directory is
 /// made keeps it its owner's only, `MoveFileExW` writes a rename through, and `FlushFileBuffers`
-/// on a directory's handle keeps its names.
+/// on a directory's handle keeps its names. A stop's event reaches a console's handler, which
+/// Windows runs on a thread of its own.
 #[derive(Debug)]
 pub(crate) struct Os;
+
+/// The flag a stop's event raises: a static, as `SetConsoleCtrlHandler` gives its handler no data
+/// of its caller's.
+static STOP: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 
 /// Whom the one entry of an owner-only descriptor reaches: the object alone, a file, or also
 /// the files and directories a directory comes to hold.
@@ -230,6 +241,34 @@ impl Os {
         // SAFETY: the handle is open, with write access, until it drops.
         unsafe { FlushFileBuffers(*handle) }.map_err(io_error)
     }
+
+    pub(crate) fn catch_stop(received: &Arc<AtomicBool>) -> io::Result<()> {
+        assert!(
+            STOP.set(Arc::clone(received)).is_ok(),
+            "a process catches the stop's signals once"
+        );
+        // SAFETY: a handler of the routine's signature, which lives as long as the process.
+        unsafe { SetConsoleCtrlHandler(Some(Os::on_console_event), true) }.map_err(io_error)
+    }
+
+    /// Raises the stop's flag at the console's `event`, or ends the process at a second; on a
+    /// close, logoff or shutdown, which end the process once the handler returns, waits for its
+    /// exit.
+    extern "system" fn on_console_event(event: u32) -> BOOL {
+        let received = STOP.get().expect("the handler is set after its flag");
+        if received.swap(true, Ordering::SeqCst) {
+            process::exit(i32::from(StopSignals::EXIT_CODE));
+        }
+        if matches!(
+            event,
+            CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT
+        ) {
+            loop {
+                thread::park();
+            }
+        }
+        true.into()
+    }
 }
 
 /// A security descriptor whose DACL, protected from inheritance, lets the user alone in, with
@@ -377,10 +416,11 @@ fn io_error(error: Error) -> io::Error {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use std::io;
     use std::os::windows::fs::symlink_file;
+    use std::os::windows::process::CommandExt;
     use std::path::Path;
-    use std::ptr;
+    use std::process::Command;
+    use std::{io, ptr};
 
     use windows::Win32::Foundation::HLOCAL;
     use windows::Win32::Security::Authorization::{
@@ -390,11 +430,23 @@ pub(crate) mod internals {
         DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, OWNER_SECURITY_INFORMATION,
         PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
     };
+    use windows::Win32::System::Console::{CTRL_BREAK_EVENT, GenerateConsoleCtrlEvent};
+    use windows::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
     use windows::core::{BOOL, Owned};
 
     use crate::platform::os::{Os, descriptor, io_error, user_sid, wide};
 
     impl Os {
+        pub(crate) fn ignore_terminal(command: &mut Command) {
+            command.creation_flags(CREATE_NEW_PROCESS_GROUP.0);
+        }
+
+        /// A child of a process group of its own leads it, so its id is the group's.
+        pub(crate) fn stop(child: u32) -> io::Result<()> {
+            // SAFETY: an event to a process group by its id, which touches no memory.
+            unsafe { GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, child) }.map_err(io_error)
+        }
+
         pub(crate) fn expose(path: &Path) -> io::Result<()> {
             let user = user_sid()?;
             let descriptor = descriptor(&format!("D:P(A;;FA;;;{user})(A;;FR;;;BU)"))?;

@@ -31,6 +31,7 @@ fn dependencies(manifest: &str) -> Vec<&str> {
                 "features",
                 "dependencies",
                 "dev-dependencies",
+                "[test]",
                 "lints",
             ];
             assert!(known.contains(&section) || target, "section [{section}]");
@@ -63,12 +64,20 @@ fn crate_dependencies(dir: &str) -> Vec<String> {
 
 #[test]
 fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
-    // `common` holds plain values, so it needs serde and its derives alone; a proxy reaches only
-    // its own group's crates, so its exemption covers no call of another group.
+    // `common` holds plain values, so it needs serde and its derives alone, and `backtrace` for
+    // the allocation audit, which only a test build turns on; a proxy reaches only its own
+    // group's crates, so its exemption covers no call of another group.
     assert_eq!(
         crate_dependencies("campfire-common"),
-        ["derive_more", "serde", "thiserror"]
+        ["backtrace", "derive_more", "serde", "thiserror"]
     );
+    let manifest = read(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
+    assert!(
+        manifest
+            .lines()
+            .any(|line| line.starts_with("backtrace = ") && line.contains("optional = true"))
+    );
+    assert!(manifest.contains(r#"internals = ["dep:backtrace"]"#));
     for proxy in &PROXIES {
         assert_eq!(
             crate_dependencies(proxy.dir),
@@ -252,7 +261,14 @@ const PROXIES: [Proxy; 3] = [
         lints: &LINTS,
         methods: &STORAGE_METHODS,
         types: &STORAGE_TYPES,
-        dependencies: &["libc", "tempfile", "thiserror", "windows", "zeroize"],
+        dependencies: &[
+            "libc",
+            "signal-hook",
+            "tempfile",
+            "thiserror",
+            "windows",
+            "zeroize",
+        ],
         names: &["std::fs", "std::thread", "tempfile::"],
     },
     Proxy {

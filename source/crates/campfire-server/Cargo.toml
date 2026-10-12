@@ -11,6 +11,7 @@ campfire-log = { workspace = true, features = ["start"] }
 campfire-net.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
+campfire-quic.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
@@ -23,10 +24,10 @@ clap.workspace = true
 lightyear.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-wtransport.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+campfire-package = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 use campfire_capabilities::Team;
-use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_common::{ChannelBinding, PlayerSlot, Tick, Ticks};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{
     Delegation, DelegationId, DelegationTerms, InputChain, SeedContribution, SessionId,
@@ -12,14 +12,14 @@ use campfire_protocol::{
 use campfire_runner::SessionRules;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
 
+use crate::dismissed::Dismissed;
 use crate::join::Join;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
 use crate::session_times::SessionTimes;
 use crate::sim_client::chain_history::ChainHistory;
-use crate::sim_client::join_state::error::ReceiptRefusal;
-use crate::sim_client::join_state::error::TermsMismatch;
+use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
 
@@ -75,6 +75,8 @@ pub enum Loss {
     Rewritten,
     /// A newer login of the player took the slot.
     Superseded,
+    /// The server refused the player's join; its log says why.
+    JoinRefused,
 }
 
 /// What answers the server's offer: the player's identity, which signs the delegation, the server
@@ -283,13 +285,14 @@ impl JoinState {
     /// up again: the delegation of the session key in the offered session, a new one with a fresh
     /// seed contribution for a first join, or for a later one whose delegation expires within
     /// `RENEW_MARGIN`, signed by a new session key; and the session key's signature over the
-    /// challenge and the pinned certificate hash. An error when the terms name another server, a
+    /// challenge and `binding`, the link's TLS session's. An error when the terms name another server, a
     /// session the client cannot play, another rate than the listing, or, for a later join,
     /// another session, and the client then refuses every later offer; `None` for an offer it
     /// does not wait for.
     pub(crate) fn answer(
         &mut self,
         offer: &Offer,
+        binding: &ChannelBinding,
         signer: &mut Signer,
     ) -> Option<Result<Join, TermsMismatch>> {
         let now = (self.player.clock)();
@@ -341,7 +344,7 @@ impl JoinState {
         };
         let join = Join {
             delegation: answered.member.delegation.json().to_owned(),
-            answer: signer.answer(offer.challenge, &self.player.server.certificate),
+            answer: signer.answer(offer.challenge, binding),
         };
         self.step = Step::Answered(answered);
         Some(Ok(join))
@@ -511,9 +514,12 @@ impl JoinState {
         member.receipt.as_ref()
     }
 
-    /// A newer login of the player took the slot: the client stops.
-    pub(crate) fn supersede(&mut self) {
-        self.step = Step::Lost(Loss::Superseded);
+    /// The server dismissed the client, for `dismissed`: it stops.
+    pub(crate) fn dismiss(&mut self, dismissed: Dismissed) {
+        self.step = Step::Lost(match dismissed {
+            Dismissed::Superseded => Loss::Superseded,
+            Dismissed::JoinRefused => Loss::JoinRefused,
+        });
     }
 
     /// The player leaves: the client tries no link again, and, when they played, takes the

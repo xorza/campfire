@@ -1,5 +1,6 @@
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::LogLevel;
+use campfire_net::LinkLossCause;
 use derive_more::Display;
 use serde_json::Value;
 
@@ -64,6 +65,9 @@ pub(crate) enum Failure {
     /// The impostor bot did not log why its link failed.
     #[display("the impostor bot did not log its lost link")]
     ImpostorSilent,
+    /// The impostor bot's link ended by another cause than the server's key, which no pin takes.
+    #[display("the impostor bot's link ended by {cause:?}, where the server's key must refuse it")]
+    ImpostorNotWrongKey { cause: LinkLossCause },
     /// The host of the session did not say it wrote the session log.
     #[display("{session} did not write the session log")]
     NoLog { session: SessionKind },

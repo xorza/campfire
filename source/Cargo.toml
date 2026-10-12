@@ -19,6 +19,7 @@ campfire-math = { path = "crates/campfire-math" }
 campfire-net = { path = "crates/campfire-net" }
 campfire-package = { path = "crates/campfire-package" }
 campfire-protocol = { path = "crates/campfire-protocol" }
+campfire-quic = { path = "crates/campfire-quic" }
 campfire-runner = { path = "crates/campfire-runner" }
 campfire-schedule = { path = "crates/campfire-schedule" }
 campfire-script = { path = "crates/campfire-script" }
@@ -27,6 +28,7 @@ campfire-store = { path = "crates/campfire-store" }
 campfire-verifier = { path = "crates/campfire-verifier" }
 
 arrayvec = { version = "=0.7.8", default-features = false }
+backtrace = "=0.3.76"
 bevy = { version = "=0.19.1", default-features = false, features = [
     "std",
     "multi_threaded",
@@ -59,6 +61,7 @@ bevy_ecs = { version = "=0.19.1", features = ["debug"] }
 bevy_state = "=0.19.1"
 bevy_time = "=0.19.1"
 blake3 = "=1.8.7"
+bytes = "=1.12.1"
 clap = { version = "=4.6.7", default-features = false, features = [
     "std",
     "derive",
@@ -72,24 +75,37 @@ derive_more = { version = "=2.1.1", default-features = false, features = ["displ
 fluent-bundle = "=0.16.0"
 fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"
-# Only `store`'s platform layer, on Unix: the process's effective user, which std does not give.
+igd-next = "=0.18.0"
+# Only `store`'s platform layer, on Unix: the process's effective user and a signal's disposition,
+# which std does not give.
 libc = "=0.2.190"
-lightyear = { version = "=0.30.1", features = ["webtransport", "crossbeam", "raw_connection"] }
+lightyear = { version = "=0.30.1", features = ["crossbeam", "raw_connection"] }
 # The version Lightyear builds, for the types of its message registration with our own encode and
 # decode, which Lightyear does not re-export: the pin follows Lightyear's at each upgrade.
 lightyear_serde = "=0.30.1"
 miniz_oxide = "=0.9.1"
+netdev = { version = "=0.46.3", default-features = false, features = ["gateway"] }
 nostr = "=0.45.5"
+polling = "=3.11.0"
 postcard = { version = "=1.1.3", features = ["use-std"] }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+# QUIC with no IO and its socket layer; `bloom` would send the `NEW_TOKEN` that design 15, D8, sends none of.
+quinn-proto = { version = "=0.11.19", default-features = false, features = ["rustls-ring"] }
+quinn-udp = "=0.5.16"
 # No default features: they reseed Rhai's hasher in every process. `script` also sets a
 # fixed seed, because Rhai always seeds per build otherwise. `internals` gives `AST::walk`
 # for the package load checks; its API is unstable, which the exact pin makes safe.
 rhai = { version = "=1.26.1", default-features = false, features = ["std", "no_float", "no_time", "internals"] }
+# TLS 1.3 alone over `ring`: the defaults bring `aws-lc-rs` and TLS 1.2 (design 15, The build).
+ring = "=0.17.14"
+rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std"] }
 secp256k1 = "=0.30.0"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.11.0"
+# Only `store`'s platform layer, on Unix: the stop's signals, caught with a handler that does only
+# what a signal's handler may.
+signal-hook = { version = "=0.4.4", default-features = false }
 tempfile = "=3.27.0"
 thiserror = "=2.0.21"
 toml = "=1.1.6"
@@ -109,10 +125,10 @@ windows = { version = "=0.62.2", features = [
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
+    "Win32_System_Console",
     "Win32_System_SystemServices",
     "Win32_System_Threading",
 ] }
-wtransport = "=0.6.1"
 zeroize = "=1.9.0"
 
 [profile.dev]
@@ -177,34 +193,41 @@ todo = "warn"
 unused_result_ok = "warn"
 
 # Lightyear 0.30.1 with its confirmed history never pruned past the latest completed checkpoint,
-# until upstream releases the fix (branch campfire-shift-fix of the fork).
+# its raw server keeping a `RemoteId` its link holds (design 15, D9), its aeronet link's MTU kept
+# within the session's, and a received payload kept in the form its IO backend holds, so a QUIC
+# datagram reaches the link with no copy, until upstream releases the fixes (branch main of the
+# fork, which merges the branch of each fix).
+# Replicon 0.44.2 with a mutation kept for a client in the tick a filter hides a component from
+# it, which it otherwise drops, as a new owner the old owner's client must see (design 14, D17),
+# until upstream releases the fix (simgine/bevy_replicon#782; branch master of the fork).
 [patch.crates-io]
-lightyear = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_aeronet = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_connection = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_core = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_crossbeam = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_deterministic_replication = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_frame_interpolation = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_inputs = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_inputs_bei = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_inputs_leafwing = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_inputs_native = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_interpolation = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_link = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_messages = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_metrics = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_netcode = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_prediction = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_raw_connection = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_replication = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_serde = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_steam = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_sync = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_tools = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_transport = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_udp = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_utils = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_web = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_websocket = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
-lightyear_webtransport = { git = "https://github.com/xorza/lightyear", rev = "9c2d69bf496cb6764e0629b30ebf2f45c4e82bab" }
+bevy_replicon = { git = "https://github.com/xorza/bevy_replicon", branch = "master" }
+lightyear = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_aeronet = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_connection = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_core = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_crossbeam = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_deterministic_replication = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_frame_interpolation = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_inputs = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_inputs_bei = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_inputs_leafwing = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_inputs_native = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_interpolation = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_link = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_messages = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_metrics = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_netcode = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_prediction = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_raw_connection = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_replication = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_serde = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_steam = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_sync = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_tools = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_transport = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_udp = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_utils = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_web = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_websocket = { git = "https://github.com/xorza/lightyear", branch = "main" }
+lightyear_webtransport = { git = "https://github.com/xorza/lightyear", branch = "main" }

@@ -3,11 +3,10 @@ use std::fmt::{Debug, Display, Write};
 use std::str::FromStr;
 
 use campfire_codec::Binary;
-use campfire_common::{Fingerprint, NotHex, SegmentSeed, StateHash};
+use campfire_common::{Fingerprint, NotHex, SegmentSeed, StateHash, TlsKey};
 use serde::Serialize;
 
 use crate::connect::ConnectChallenge;
-use crate::connect::certificate_hash::CertificateHash;
 use crate::delegation::delegation_id::DelegationId;
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::input_hash::InputHash;
@@ -63,8 +62,8 @@ fn each_32_byte_value_encodes_its_bytes_and_a_public_one_writes_them_as_hex() {
     reads_hex(&state, state.as_bytes());
     let session = SessionId::new(sample);
     reads_hex(&session, session.as_bytes());
-    let certificate = CertificateHash::new(sample);
-    reads_hex(&certificate, certificate.as_bytes());
+    let tls_key = TlsKey::new(sample);
+    reads_hex(&tls_key, tls_key.as_bytes());
     let contribution = SeedContribution::new(sample);
     reads_hex(&contribution, contribution.as_bytes());
 

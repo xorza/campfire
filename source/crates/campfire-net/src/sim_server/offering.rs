@@ -5,14 +5,16 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_time::{Real, Time};
+use campfire_common::ChannelBinding;
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
-use campfire_protocol::{CertificateHash, ConnectChallenge, Delegation, SessionTerms};
+use campfire_protocol::{ConnectChallenge, Delegation, SessionTerms};
+use campfire_quic::{CloseLink, LinkBinding};
 use lightyear::prelude::server::ClientOf;
-use lightyear::prelude::{
-    Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlink, UnlinkReason, Unlinked,
-};
+use lightyear::prelude::{Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlinked};
 use tracing::debug;
 
+use crate::close_code::CloseCode;
+use crate::dismissed::Dismissed;
 use crate::join::Join;
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
@@ -20,96 +22,114 @@ use crate::session_times::SessionTimes;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::superseded::Superseded;
 
 /// Ticks between two sends of an offer that got no answer.
 const RESEND_TICKS: u32 = 30;
 
+/// How long a link may stay silent after its first offer, which goes out as it connects, before
+/// the server closes it (design 05, Connection, step 3): an honest client answers the first offer
+/// it receives, so a connection that only keeps itself alive holds no link.
+const ANSWER_WINDOW: Duration = Duration::from_secs(10);
+
 /// What the server offers each new link, and how it checks the answer: the session's terms, its
 /// grace period and restore window, and a fresh challenge, which the player's session key signs
-/// with the hash of the certificate the client verified. The lobby offers it before the start,
-/// and the door after it.
+/// with the link's channel binding (design 15, D11). The lobby offers it before the start, and
+/// the door after it.
 #[derive(Debug)]
 pub(crate) struct Offering {
     pub(crate) terms: SessionTerms,
-    certificate: CertificateHash,
     pub(crate) times: SessionTimes,
     clock: fn() -> u64,
     entropy: fn(&mut [u8; 32]),
     secp: Secp256k1<VerifyOnly>,
 }
 
-/// The challenge a link was offered, and the tick the offer last went out in.
+/// The challenge a link was offered, the channel binding of its TLS session, which its answer
+/// signs, the tick the offer last went out in, and when it first did, in the server's real time.
 #[derive(Component, Debug, Clone, Copy)]
 pub(crate) struct Offered {
     pub(crate) challenge: ConnectChallenge,
-    sent: NetTick,
+    pub(crate) binding: ChannelBinding,
+    pub(crate) sent: NetTick,
+    pub(crate) first: Duration,
 }
 
 /// A link whose player took a slot, before or after the start.
 #[derive(Component, Debug, Clone, Copy)]
 pub(crate) struct Joined;
 
-/// Why the server refused a link's join. The link stays connected and receives nothing more.
+/// Why the server refused a link's join, or took its seat: the link receives nothing more, and
+/// ends as `Dismissing` has it.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Refused(pub JoinError);
 
-/// A link whose seat a newer login of its player took: the server tells its client, which ends
-/// the link once the word arrives. The reliable channel sends the word again while it is lost,
-/// so the server keeps the link, until `LINGER` after it first sent it.
+/// A link the server ends, for `dismissed`: the server tells its client, which ends the link once
+/// the word arrives. The reliable channel sends the word again while it is lost, so the server
+/// keeps the link, until `LINGER` after it first sent it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Superseding {
+pub(crate) struct Dismissing {
+    dismissed: Dismissed,
     /// When the word first went out, in the server's real time.
     told: Option<Duration>,
 }
 
-/// How long the server keeps a superseded link whose client has not ended it: many resends of a
+/// How long the server keeps a dismissed link whose client has not ended it: many resends of a
 /// reliable message over a link that loses its packets a while. Past it, the client is as good
-/// as gone, and the server ends the link itself.
+/// as gone, or ignores the word, and the server ends the link itself.
 const LINGER: Duration = Duration::from_secs(5);
 
-impl Superseding {
-    /// Ends `link`'s seat, as a newer login of its player took it: the link carries the slot no
-    /// more, receives no offer, and ends once its client is told.
-    pub(crate) fn mark(commands: &mut Commands<'_, '_>, link: Entity) {
-        if let Ok(mut older) = commands.get_entity(link) {
-            older
-                .remove::<(Joined, PlayerLink)>()
-                .insert((Refused(JoinError::Superseded), Superseding { told: None }));
+impl Dismissing {
+    /// Refuses `link` for `error`: its seat, when a newer login of its player took it, or its
+    /// join. The link carries no slot, receives no offer, and ends once its client is told.
+    pub(crate) fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
+        let dismissed = match error {
+            JoinError::Superseded => Dismissed::Superseded,
+            JoinError::Delegation(_)
+            | JoinError::Connect(_)
+            | JoinError::Full
+            | JoinError::NoSlot
+            | JoinError::Refused(_) => Dismissed::JoinRefused,
+        };
+        if let Ok(mut refused) = commands.get_entity(link) {
+            refused.remove::<(Joined, PlayerLink)>().insert((
+                Refused(error),
+                Dismissing {
+                    dismissed,
+                    told: None,
+                },
+            ));
         }
     }
 
-    /// Tells each superseded link's client, once.
+    /// Tells each dismissed link's client, once.
     pub(crate) fn tell(
         time: Res<'_, Time<Real>>,
-        mut links: Query<'_, '_, (&mut Superseding, &mut MessageSender<Superseded>)>,
+        mut links: Query<'_, '_, (&mut Dismissing, &mut MessageSender<Dismissed>)>,
     ) {
-        for (mut superseding, mut sender) in &mut links {
-            if superseding.told.is_none() {
-                sender.send::<MatchChannel>(Superseded);
-                superseding.told = Some(time.elapsed());
+        for (mut dismissing, mut sender) in &mut links {
+            if dismissing.told.is_none() {
+                sender.send::<MatchChannel>(dismissing.dismissed);
+                dismissing.told = Some(time.elapsed());
             }
         }
     }
 
-    /// Ends each superseded link whose client was told `LINGER` ago and has not ended it.
+    /// Ends each dismissed link whose client was told `LINGER` ago and has not ended it.
     pub(crate) fn end(
         time: Res<'_, Time<Real>>,
-        links: Query<'_, '_, (Entity, &Superseding), Without<Unlinked>>,
+        links: Query<'_, '_, (Entity, &Dismissing), Without<Unlinked>>,
         mut commands: Commands<'_, '_>,
     ) {
         let now = time.elapsed();
-        for (link, superseding) in &links {
-            if superseding
+        for (link, dismissing) in &links {
+            if dismissing
                 .told
                 .is_some_and(|told| now.saturating_sub(told) >= LINGER)
             {
-                commands.entity(link).remove::<Superseding>();
-                commands.trigger(Unlink {
+                commands.entity(link).remove::<Dismissing>();
+                commands.trigger(CloseLink {
                     entity: link,
-                    reason: UnlinkReason::UserRequested(Some(
-                        "a newer login of the player".to_owned(),
-                    )),
+                    code: dismissing.dismissed.code().app(),
                 });
             }
         }
@@ -123,6 +143,7 @@ pub(crate) type OfferLinks<'w, 's> = Query<
     (
         Entity,
         Option<&'static mut Offered>,
+        Option<&'static LinkBinding>,
         &'static mut MessageSender<Offer>,
     ),
     (
@@ -137,10 +158,31 @@ pub(crate) type OfferLinks<'w, 's> = Query<
 pub(crate) type JoinLink = (Entity, &'static Offered, &'static mut MessageReceiver<Join>);
 
 /// A link still to answer: not joined, and not refused.
-pub(crate) type Unanswered = (Without<Joined>, Without<Refused>);
+pub(crate) type ToAnswer = (Without<Joined>, Without<Refused>);
 
 /// The offered links still to answer.
-pub(crate) type JoinLinks<'w, 's> = Query<'w, 's, JoinLink, Unanswered>;
+pub(crate) type JoinLinks<'w, 's> = Query<'w, 's, JoinLink, ToAnswer>;
+
+impl Offered {
+    /// Closes each offered link still to answer `ANSWER_WINDOW` after its first offer, with
+    /// `CloseCode::Unanswered`.
+    pub(crate) fn close_silent(
+        time: Res<'_, Time<Real>>,
+        links: Query<'_, '_, (Entity, &Offered), (ToAnswer, Without<Unlinked>)>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let now = time.elapsed();
+        for (link, offered) in &links {
+            if now.saturating_sub(offered.first) >= ANSWER_WINDOW {
+                debug!(?link, "the link left the offer unanswered");
+                commands.trigger(CloseLink {
+                    entity: link,
+                    code: CloseCode::Unanswered.app(),
+                });
+            }
+        }
+    }
+}
 
 /// The joins of one frame, checked: the links that answered, with their delegations, and the
 /// links refused, with why.
@@ -156,7 +198,6 @@ impl Offering {
     pub(crate) fn new(terms: SessionTerms, server: &ServerSetup) -> Offering {
         Offering {
             terms,
-            certificate: server.certificate,
             times: server.times,
             clock: server.clock,
             entropy: server.entropy,
@@ -166,14 +207,16 @@ impl Offering {
 
     /// Offers the terms and a fresh challenge to each connected link that has none, and the same
     /// offer again every `RESEND_TICKS` until it answers: a client may not yet receive messages
-    /// when the link connects, and then the first offer is lost.
+    /// when the link connects, and then the first offer is lost. `now` is the tick, `real` the
+    /// server's real time.
     pub(crate) fn offer(
         &self,
         now: NetTick,
+        real: Duration,
         links: &mut OfferLinks<'_, '_>,
         commands: &mut Commands<'_, '_>,
     ) {
-        for (link, offered, mut sender) in links {
+        for (link, offered, binding, mut sender) in links {
             let challenge = match offered {
                 Some(offered) if now.0.wrapping_sub(offered.sent.0) < RESEND_TICKS => continue,
                 Some(mut offered) => {
@@ -185,9 +228,13 @@ impl Offering {
                     let mut challenge = [0; 32];
                     (self.entropy)(&mut challenge);
                     let challenge = ConnectChallenge::new(challenge);
+                    let LinkBinding(binding) =
+                        *binding.expect("a connected link holds its session's binding");
                     commands.entity(link).insert(Offered {
                         challenge,
+                        binding,
                         sent: now,
+                        first: real,
                     });
                     debug!(?link, "offered the terms");
                     challenge
@@ -201,19 +248,16 @@ impl Offering {
         }
     }
 
-    /// The delegation of `join`, when its session key answered `challenge` over this server's
-    /// certificate, and it grants this session, not expired by the server's clock.
-    pub(crate) fn check(
-        &self,
-        challenge: ConnectChallenge,
-        join: &Join,
-    ) -> Result<Delegation, JoinError> {
+    /// The delegation of `join`, when its session key answered the challenge `offered` over the
+    /// link's channel binding, and it grants this session, not expired by the server's clock.
+    pub(crate) fn check(&self, offered: &Offered, join: &Join) -> Result<Delegation, JoinError> {
         let delegation = Delegation::parse(&join.delegation).map_err(JoinError::Delegation)?;
-        challenge
+        offered
+            .challenge
             .check(
                 &self.secp,
                 &self.terms,
-                &self.certificate,
+                &offered.binding,
                 &delegation,
                 &join.answer,
                 (self.clock)(),
@@ -222,17 +266,17 @@ impl Offering {
         Ok(delegation)
     }
 
-    /// Checks each of a frame's `joins`, each link's challenge and join, into `checked`. A query
+    /// Checks each of a frame's `joins`, each link's offer and join, into `checked`. A query
     /// gives the links in the order of its tables, which changes from run to run once Lightyear
     /// iterates them in parallel, so the answered ones go in an order of what they sent.
     pub(crate) fn check_all(
         &self,
-        joins: impl Iterator<Item = (Entity, ConnectChallenge, Join)>,
+        joins: impl Iterator<Item = (Entity, Offered, Join)>,
         checked: &mut CheckedJoins,
     ) {
         debug_assert!(checked.answered.is_empty() && checked.refused.is_empty());
-        for (link, challenge, join) in joins {
-            match self.check(challenge, &join) {
+        for (link, offered, join) in joins {
+            match self.check(&offered, &join) {
                 Ok(delegation) => checked.answered.push((link, delegation)),
                 Err(error) => checked.refused.push((link, error)),
             }
@@ -253,44 +297,92 @@ mod tests {
     use bevy_ecs::resource::Resource;
     use bevy_ecs::system::ResMut;
     use bevy_time::{TimePlugin, TimeUpdateStrategy};
+    use campfire_quic::AppCode;
+    use lightyear::prelude::UnlinkReason;
 
     use super::*;
 
+    /// Each link the systems closed, with its code and when, in real time.
     #[derive(Resource, Debug, Default)]
-    struct Unlinks(Vec<Entity>);
+    struct Closes(Vec<(Entity, AppCode, Duration)>);
 
     #[test]
-    fn a_superseded_link_its_client_never_ends_ends_after_its_linger() {
-        // Frames of 500 ms from real time 0; the word went out at 1 s, so the link ends in the
-        // frame at 6 s, 1 + `LINGER`, and once.
+    fn a_dismissed_link_ends_after_its_linger_and_a_silent_one_after_its_window() {
+        // Frames of 500 ms from real time 0. A link the server dismissed, its client told at 1 s
+        // and 2 s, ends at 1 + `LINGER`, 6 s, and 7 s, with the dismissal's code; one never told
+        // stays. A link offered at 0.5 s and silent ends at 0.5 + `ANSWER_WINDOW`, 10.5 s, with
+        // `Unanswered`; one that joined, one refused, and one offered at 1 s that joins at 10.5 s,
+        // before its window ends at 11 s, stay. Each closes once: as `quic` does, a close unlinks
+        // the link.
         let mut app = App::new();
         app.add_plugins(TimePlugin);
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             500,
         )));
-        app.init_resource::<Unlinks>();
+        app.init_resource::<Closes>();
         app.add_observer(
-            |unlink: On<'_, '_, Unlink>, mut unlinks: ResMut<'_, Unlinks>| {
-                unlinks.0.push(unlink.entity);
+            |close: On<'_, '_, CloseLink>,
+             time: Res<'_, Time<Real>>,
+             mut closes: ResMut<'_, Closes>,
+             mut commands: Commands<'_, '_>| {
+                closes.0.push((close.entity, close.code, time.elapsed()));
+                commands.entity(close.entity).insert(Unlinked {
+                    reason: UnlinkReason::UserRequested(None),
+                });
             },
         );
-        app.add_systems(Update, Superseding::end);
-        let told = Superseding {
-            told: Some(Duration::from_secs(1)),
+        app.add_systems(Update, (Dismissing::end, Offered::close_silent));
+        let dismissing = |dismissed, told: u64| Dismissing {
+            dismissed,
+            told: Some(Duration::from_secs(told)),
         };
-        let link = app.world_mut().spawn(told).id();
-        let untold = app.world_mut().spawn(Superseding { told: None }).id();
-        let mut ended_at = None;
-        for _ in 0..16 {
+        let offered = |first| Offered {
+            challenge: ConnectChallenge::new([9; 32]),
+            binding: ChannelBinding::new([3; 32]),
+            sent: NetTick(0),
+            first,
+        };
+        let world = app.world_mut();
+        let superseded = world.spawn(dismissing(Dismissed::Superseded, 1)).id();
+        let refused = world.spawn(dismissing(Dismissed::JoinRefused, 2)).id();
+        let untold = world
+            .spawn(Dismissing {
+                dismissed: Dismissed::JoinRefused,
+                told: None,
+            })
+            .id();
+        let silent = world.spawn(offered(Duration::from_millis(500))).id();
+        world.spawn((offered(Duration::ZERO), Joined));
+        world.spawn((offered(Duration::ZERO), Refused(JoinError::Full)));
+        let answering = world.spawn(offered(Duration::from_secs(1))).id();
+        for _ in 0..23 {
             app.update();
             let now = app.world().resource::<Time<Real>>().elapsed();
-            if ended_at.is_none() && !app.world().resource::<Unlinks>().0.is_empty() {
-                ended_at = Some(now);
+            if now == Duration::from_millis(10_500) {
+                app.world_mut().entity_mut(answering).insert(Joined);
             }
         }
-        assert_eq!(app.world().resource::<Unlinks>().0, [link]);
-        assert_eq!(ended_at, Some(Duration::from_secs(6)));
-        assert!(app.world().get::<Superseding>(link).is_none());
-        assert!(app.world().get::<Superseding>(untold).is_some());
+        assert_eq!(
+            app.world().resource::<Closes>().0,
+            [
+                (
+                    superseded,
+                    CloseCode::Superseded.app(),
+                    Duration::from_secs(6)
+                ),
+                (
+                    refused,
+                    CloseCode::JoinRefused.app(),
+                    Duration::from_secs(7)
+                ),
+                (
+                    silent,
+                    CloseCode::Unanswered.app(),
+                    Duration::from_millis(10_500)
+                ),
+            ]
+        );
+        assert!(app.world().get::<Dismissing>(superseded).is_none());
+        assert!(app.world().get::<Dismissing>(untold).is_some());
     }
 }

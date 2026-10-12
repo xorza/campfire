@@ -204,7 +204,9 @@ pub use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 pub use crate::scripts::state_value::StateValue;
 pub use crate::state_types::data_kind::DataKind;
 pub use crate::state_types::replication::Replication;
-pub use crate::state_types::sending::{NotSent, Sending, SentOnChange, SentOnce, SentPredicted};
+pub use crate::state_types::sending::{
+    NotSent, Sending, SentOnChange, SentOnInsert, SentOnce, SentPredicted,
+};
 pub use crate::state_types::{Declared, StateTypes};
 pub use crate::stats::Stats;
 pub use crate::stats::error::ModifierProblem;

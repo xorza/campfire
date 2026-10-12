@@ -1,0 +1,43 @@
+[package]
+name = "campfire-quic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = []
+
+[dependencies]
+campfire-common.workspace = true
+campfire-log.workspace = true
+campfire-store.workspace = true
+
+bevy_app.workspace = true
+bevy_ecs.workspace = true
+bytes.workspace = true
+igd-next.workspace = true
+lightyear.workspace = true
+netdev.workspace = true
+polling.workspace = true
+quinn-proto.workspace = true
+quinn-udp.workspace = true
+ring.workspace = true
+rustls.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+campfire-common = { workspace = true, features = ["internals"] }
+bevy_state.workspace = true
+bevy_time.workspace = true
+lightyear_serde.workspace = true
+
+[[test]]
+name = "alloc"
+path = "tests/alloc/main.rs"
+required-features = ["internals"]
+
+[lints]
+workspace = true

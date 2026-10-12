@@ -1,8 +1,8 @@
 use bevy_ecs::resource::Resource;
+use campfire_common::ChannelBinding;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly, XOnlyPublicKey};
 use campfire_protocol::{
-    CertificateHash, ConnectChallenge, Delegation, DelegationTerms, InputChain, RandomKey,
-    SessionId, Signature,
+    ConnectChallenge, Delegation, DelegationTerms, InputChain, RandomKey, SessionId, Signature,
 };
 
 /// The player's session key, which signs their join answer and every input message, with the
@@ -45,13 +45,13 @@ impl Signer {
         Delegation::sign(&self.secp, main_key, granted, now, &self.random())
     }
 
-    /// The session key's answer to `challenge`, over `certificate`, the hash the client verified.
+    /// The session key's answer to `challenge`, over `binding`, its link's TLS session's.
     pub(crate) fn answer(
         &self,
         challenge: ConnectChallenge,
-        certificate: &CertificateHash,
+        binding: &ChannelBinding,
     ) -> Signature {
-        challenge.answer(&self.secp, &self.key, certificate, &self.random())
+        challenge.answer(&self.secp, &self.key, binding, &self.random())
     }
 
     /// The session key's signature over the head of `chain` in the session of `session_id`.

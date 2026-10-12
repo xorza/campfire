@@ -3,8 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::LogLevel;
 use campfire_net::{
-    InputsDiscarded, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten, TicksCaughtUp,
+    InputsDiscarded, LinkLossCause, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten,
+    TicksCaughtUp,
 };
+use campfire_quic::LinkEnd;
 use campfire_verifier::Verified;
 
 use crate::error::CheckError;
@@ -96,14 +98,20 @@ impl Verdict {
         self.warned(process, log);
     }
 
-    /// Checks that the impostor bot exited with failure, and logged why its link failed: a client
-    /// whose link fails ends, and says why.
+    /// Checks that the impostor bot exited with failure, and logged why its link failed: the
+    /// server's key, which its pin does not take (design 15, D10).
     pub(crate) fn impostor(&mut self, outcome: ProcessOutcome, lost: &[LinkLost]) {
         if !matches!(outcome, ProcessOutcome::Failed { .. }) {
             self.failures.push(Failure::ImpostorNotRefused { outcome });
         }
         if lost.is_empty() {
             self.failures.push(Failure::ImpostorSilent);
+        }
+        let wrong_key = LinkLossCause::Link(LinkEnd::WrongServerKey);
+        for &LinkLost { cause } in lost {
+            if cause != wrong_key {
+                self.failures.push(Failure::ImpostorNotWrongKey { cause });
+            }
         }
     }
 

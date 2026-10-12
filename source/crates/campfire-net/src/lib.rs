@@ -6,6 +6,8 @@
 )]
 
 mod bot_script;
+mod close_code;
+mod dismissed;
 mod events;
 mod faults;
 #[cfg(feature = "internals")]
@@ -27,10 +29,10 @@ mod save_command;
 mod session_times;
 mod sim_client;
 mod sim_server;
-mod superseded;
 mod wire_codec;
 
 pub use crate::bot_script::BotScript;
+pub use crate::close_code::CloseCode;
 pub use crate::events::avatar_missing::AvatarMissing;
 pub use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
 pub use crate::events::checkpoint_failed::CheckpointFailed;
@@ -45,7 +47,7 @@ pub use crate::events::inputs_discarded::InputsDiscarded;
 pub use crate::events::join_refused::JoinRefused;
 pub use crate::events::journal_failed::JournalFailed;
 pub use crate::events::journal_sync_slow::JournalSyncSlow;
-pub use crate::events::link_lost::LinkLost;
+pub use crate::events::link_lost::{LinkLossCause, LinkLost};
 pub use crate::events::listening::Listening;
 pub use crate::events::match_started::MatchStarted;
 pub use crate::events::order_dropped::OrderDropped;
@@ -65,7 +67,7 @@ pub use crate::input_message::InputMessage;
 pub use crate::local::local_pace::LocalPace;
 pub use crate::local::local_relink::LocalRelink;
 pub use crate::local::local_server::error::LocalServerError;
-pub use crate::local::local_server::{LocalServer, LocalServerSetup, Relinks};
+pub use crate::local::local_server::{LocalLink, LocalServer, LocalServerSetup, Relinks};
 pub use crate::match_clock::MatchClock;
 pub use crate::net_protocol::{InputChannel, NetProtocol};
 pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};

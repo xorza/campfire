@@ -15,26 +15,26 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
         - `07-moba.md` — the MOBA test content: heroes, player spells, rules
         - `08-script-api.md` — script API by capability, derived from the packages the engine plays
         - `08-script-api-reference.md` — every name of the script API, with its roles, capability and whether it runs; generated from the registry by a test, never edited by hand
-        - `09-determinism-core.md` — Stage 1 proposal: numbers, vectors, randomness, stable ids, state hash
-        - `10-sessions.md` — Stage 6 proposal: journal, crash restore, slots, reconnect, server bots, receipts, checkpoints, saves, local server
+        - `09-determinism-core.md` — the determinism core: numbers, vectors, randomness, stable ids, state hash
+        - `10-sessions.md` — sessions: journal, crash restore, slots, reconnect, server bots, receipts, checkpoints, saves, local server
         - `11-rts-foundations.md` — box bodies, package unit types, group orders, production's first cut
         - `12-zero-hour.md` — the first imported game: importer, rules package, parity oracle, presentation
         - `13-bodies-uses-shop-gravity.md` — bodies up to 2,048 m and the spatial indexes' levels, the `use` action kind, the client's shop and item keys, projectiles that fall
         - `14-replication-audiences.md` — proposal: who receives each part of the state, the kind on each state type, the audiences a mode and its host set for other teams, spectators and players out of play, the one list of state types, the player, team and match entities
-        - `15-quic-transport.md` — proposal: the link over QUIC alone, on `quinn-proto` under Lightyear, the server's raw TLS key, and the connect answer bound to the TLS session
+        - `15-quic-transport.md` — the link over QUIC alone, on `quinn-proto` under Lightyear: its thread, the server's raw TLS key, a link's end, and the connect answer bound to the TLS session
     - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import, `quic.md` for the transport, `spectating.md` for what spectators and players out of play see
-- `.notes/ISSUES.md` — the issue log: every open problem, under the step it waits for ([Issue log](#issue-log))
+- `.notes/ISSUES.md` — the issue log: every open problem outside the network, under the step it waits for ([Issue log](#issue-log))
 - `.notes/FOUNDATIONS.md` — the open problems whose cause is in the architecture or a chosen format, each with the issue-log items it holds ([Issue log](#issue-log))
 - `source/` — engine and game code; `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
 - `../GeneralsX/` — beside this repository, not in it: a checkout of [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS. It is the reference for Zero Hour's formats and rules, and the base of the parity oracle. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions), D2).
 
-`ROADMAP.md` holds what each milestone needs, in stages; `PLAN.md` holds the steps of the current slice. Both list open items only.
+`PLAN.md` holds the steps of the current slice; `PLAN_NET.md` holds every planned piece of network work, the transport, the connection protocol, replication, the hosting of a session in `net` and the open network, with its open problems, which the issue log does not hold. Each lists open items only.
 
 When code and design disagree, fix one of them, and state which one.
 
 ## Workflow
 
-Work goes in vertical slices. A slice ends with something new that the user plays or sees in the client: a hero that walks its lane, a tower that shoots, a match that ends with a winner. A slice crosses every system it needs, and takes each one only as deep as the slice needs. It takes its items from any stage of the roadmap. A slice goes in four steps, each agreed before the next starts:
+Work goes in vertical slices. A slice ends with something new that the user plays or sees in the client: a hero that walks its lane, a tower that shoots, a match that ends with a winner. A slice crosses every system it needs, and takes each one only as deep as the slice needs. It takes its items from the issue log and the plans. A slice goes in four steps, each agreed before the next starts:
 
 1. **Decide** the slice: what the player does or sees at its end, in one or two sentences. The issue log lists the problems the systems it touches already have.
 2. **Investigate** the code it touches, and how established engines and games solve the problem and why.
@@ -45,14 +45,14 @@ No changes to systems outside the plan along the way. A problem found outside th
 
 ## Issue log
 
-The issue log is `.notes/ISSUES.md`, one file for every open problem of the project.
+The issue log is `.notes/ISSUES.md`, one file for every open problem of the project but the network's, which [PLAN_NET.md](PLAN_NET.md) holds in its own Decide, Research and Ready sections, by the rules below, beside its steps and its planned work.
 
 - **System.** Each item names, in bold, the system whose code or data its fix changes: an engine module of [Modules](docs/design/02-engine-core.md#modules), the core or a capability of `docs/design/04-capabilities/`, the MOBA test content, or an imported game. When that system is not known, it names the system where the problem shows, and the item goes under Research.
 - **Sections.** The file has three sections, in this order, and an item sits in the section of its next step:
     - **Decide**: the options are known, and the user chooses one. The item names the question and its options.
     - **Research**: the cause, or the right fix, is not known.
     - **Ready**: the fix is known, and waits for its turn.
-- **Items.** One bullet for each problem: its system, then what is wrong, where the code and the design differ, and not how to fix it. An item that a roadmap stage or a plan step takes carries its tag after its system, `**Client.** **Stage 5.**` or `**Net.** **Plan: F3.**`; an item with no tag has no stage yet. Within a section, items go in the order of their systems' names.
+- **Items.** One bullet for each problem: its system, then what is wrong, where the code and the design differ, and not how to fix it. An item that a plan step takes carries its tag after its system, `**Net.** **Plan: F3.**`; an item with no tag waits for a slice to take it. Within a section, items go in the order of their systems' names.
 - **Life.** An item moves between sections as it is triaged. A fixed item is deleted, with no done marker and no history. A section with no items stays, empty.
 - **Foundations.** A problem whose cause is in the architecture or a chosen format, not in one piece of code, as several items show one cause or it limits every system built after it, also has an entry in `.notes/FOUNDATIONS.md`: its cause, what it limits, and the issue-log items it holds, named by system and the start of their text. Its own item in the issue log states the cause. The entry goes when its cause is fixed, and an item it names goes from it when that item is deleted.
 

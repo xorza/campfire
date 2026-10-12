@@ -5,12 +5,14 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
 use campfire_capabilities::internals::UnitsWorldInternals;
 use campfire_capabilities::{
-    Action, Owner, Progress, Relation, Relations, Route, SeenBy, Team, UnitsWorld,
+    Action, Owner, Progress, Relation, Relations, Route, SeenBy, SpawnPoint, Team, UnitsWorld,
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use campfire_net::internals::{InProcessMatch, MatchSetup};
-use campfire_net::{JoinRefused, JoinState, LinkLost, MatchClock, TickHashes};
+use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
+use campfire_net::{
+    CloseCode, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
+};
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
@@ -202,7 +204,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     assert_eq!(relations(local.client(second)), relations(local.server()));
     assert_eq!(local.log().take::<LinkLost>().len(), 1);
 
-    // A client whose player has no slot is refused, and its link, still connected, holds no unit.
+    // A client whose player has no slot is refused, and told so, and its link held no unit.
     let stranger = local.add_client(1);
     for _ in 0..60 {
         local.step();
@@ -217,6 +219,12 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     );
     assert_eq!(held(&mut local, stranger), []);
     assert_eq!(local.log().take::<JoinRefused>().len(), 1);
+    assert_eq!(
+        local.log().take::<LinkLost>(),
+        [LinkLost {
+            cause: LinkLossCause::ClientClosed(CloseCode::JoinRefused)
+        }]
+    );
 }
 
 /// The sim tick of the server message that last updated `entity` on the client.
@@ -229,4 +237,86 @@ fn sent_in(local: &InProcessMatch, entity: Entity) -> Tick {
         .unwrap();
     let clock = local.server().world().resource::<MatchClock>();
     clock.sim_tick(net_tick).unwrap()
+}
+
+/// How a client holds a unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Held {
+    owner: Owner,
+    team: Team,
+    /// Whether it holds the unit's spawn point, a kind only the owner's client receives.
+    owners_kinds: bool,
+    predicted: bool,
+}
+
+/// How `client` holds `id`; none when it holds no such unit.
+fn held_as(local: &InProcessMatch, client: usize, id: StableId) -> Option<Held> {
+    let world = local.client(client).world();
+    let id = world.entity(world.resource::<EntityIndex>().get(id)?);
+    Some(Held {
+        owner: *id.get()?,
+        team: *id.get()?,
+        owners_kinds: id.contains::<SpawnPoint>(),
+        predicted: !id.contains::<Unpredicted>(),
+    })
+}
+
+#[test]
+fn a_new_owner_reaches_the_clients_and_takes_the_owners_kinds_to_its_own() {
+    // A duo, player 0 west and player 1 east. Player 0's hero passes to player 1, and to the east
+    // with it, as a capture does (design 14, D17, D18): a new `Owner` and `Team` inserted.
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.start_match();
+    let hashes = local
+        .server_mut()
+        .world_mut()
+        .remove_resource::<TickHashes>();
+    assert!(hashes.is_some());
+    let (hero, other) = (local.avatar(0), local.avatar(1));
+    let on_server = |local: &InProcessMatch, unit| {
+        let world = local.server().world();
+        let unit = world.entity(world.resource::<EntityIndex>().get(unit).unwrap());
+        (*unit.get::<Owner>().unwrap(), *unit.get::<Team>().unwrap())
+    };
+    let (west_owner, west) = on_server(&local, hero);
+    let (east_owner, east) = on_server(&local, other);
+    assert_ne!(west, east);
+    for _ in 0..5 {
+        local.step();
+    }
+    let owned = |owner, team| Held {
+        owner,
+        team,
+        owners_kinds: true,
+        predicted: true,
+    };
+    assert_eq!(held_as(&local, 0, hero), Some(owned(west_owner, west)));
+
+    let entity = local
+        .server()
+        .world()
+        .resource::<EntityIndex>()
+        .get(hero)
+        .unwrap();
+    local
+        .server_mut()
+        .world_mut()
+        .entity_mut(entity)
+        .insert((east_owner, east));
+    for _ in 0..5 {
+        local.step();
+    }
+    // The east client takes the hero, which the east now sees, with its owner's kinds, and
+    // predicts it; the west client, which still sees it, holds its new owner and team, none of
+    // the owner's kinds, and takes it as the server sends it.
+    assert_eq!(held_as(&local, 1, hero), Some(owned(east_owner, east)));
+    let seen = Held {
+        owners_kinds: false,
+        predicted: false,
+        ..owned(east_owner, east)
+    };
+    assert_eq!(held_as(&local, 0, hero), Some(seen));
 }

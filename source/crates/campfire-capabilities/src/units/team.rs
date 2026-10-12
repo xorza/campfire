@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::players::player::Player;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::SentOnce;
+use crate::state_types::sending::SentOnInsert;
 use crate::units::bits256::Bits256;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::view::View;
@@ -49,7 +49,9 @@ impl SimComponent for Team {
     }
 }
 
+// Sent on each insert, as a change of owner moves its unit to the new owner's team (design 14,
+// D18).
 impl Replication for Team {
     const KIND: DataKind = DataKind::Unit;
-    type Sending = SentOnce;
+    type Sending = SentOnInsert;
 }

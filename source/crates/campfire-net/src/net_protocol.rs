@@ -11,6 +11,7 @@ use lightyear::prelude::{
     PredictionBuilderExt, ReliableSettings,
 };
 
+use crate::dismissed::Dismissed;
 use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::join::Join;
@@ -18,7 +19,6 @@ use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
 use crate::save_command::SaveCommand;
-use crate::superseded::Superseded;
 use crate::wire_codec::WireCodec;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
@@ -84,7 +84,7 @@ impl Plugin for NetProtocol {
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message_custom_serde::<Offer>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
-        app.register_message_custom_serde::<Superseded>(WireCodec::message())
+        app.register_message_custom_serde::<Dismissed>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message_custom_serde::<SignedReceipt>(WireCodec::message())
             .add_direction(NetworkDirection::ServerToClient);
@@ -112,6 +112,12 @@ impl StateTypes for Replicated<'_> {
         self.0
             .component::<C>()
             .replicate_once_with(WireCodec::component());
+    }
+
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+        self.0
+            .component::<C>()
+            .replicate_with(WireCodec::component());
     }
 
     fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
@@ -146,11 +152,10 @@ mod tests {
     use bevy_app::TaskPoolPlugin;
     use bevy_state::app::StatesPlugin;
     use bevy_time::TimePlugin;
-    use lightyear::prelude::ComponentRegistry;
-    use lightyear::prelude::server::ServerPlugins;
-
     use campfire_capabilities::{Dead, Destination, Inventory, Level, Points, Projectile};
     use campfire_sim::{Capability, Position};
+    use lightyear::prelude::ComponentRegistry;
+    use lightyear::prelude::server::ServerPlugins;
 
     use super::*;
 

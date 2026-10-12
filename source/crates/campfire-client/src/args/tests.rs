@@ -28,25 +28,17 @@ fn invalid(args: &[&str]) -> clap::Error {
     error
 }
 
-/// A server's key, and its certificate's hash, as a listing writes them.
+/// A server's key, and its TLS key, as a listing writes them.
 const KEY: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
-fn certificate() -> String {
+fn tls_key() -> String {
     "03".repeat(32)
 }
 
 #[test]
 fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
-    let (key, certificate) = (KEY, certificate());
-    let remote = read(&[
-        "--key",
-        "k",
-        "mode",
-        "10.0.0.2:4433",
-        &certificate,
-        key,
-        "30",
-    ]);
+    let (key, tls_key) = (KEY, tls_key());
+    let remote = read(&["--key", "k", "mode", "10.0.0.2:4433", &tls_key, key, "30"]);
     assert_eq!((remote.key, remote.mode), (Some("k".into()), "mode".into()));
     assert_eq!(remote.map, None);
     assert!(matches!(
@@ -91,7 +83,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
                 "1=a.toml",
                 "mode",
                 "10.0.0.2:4433",
-                &certificate,
+                &tls_key,
                 key,
                 "30",
             ],
@@ -117,7 +109,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
             ErrorKind::MissingRequiredArgument,
         ),
         (
-            &["mode", "10.0.0.2:4433", &certificate, key, "30", "x"],
+            &["mode", "10.0.0.2:4433", &tls_key, key, "30", "x"],
             ErrorKind::UnknownArgument,
         ),
     ] {
@@ -127,7 +119,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
 
 #[test]
 fn a_value_its_parser_refuses_gives_that_parsers_error_and_the_help_is_no_refusal() {
-    let (key, certificate) = (KEY, certificate());
+    let (key, tls_key) = (KEY, tls_key());
     let bot = |text: &str| {
         let error = invalid(&["--local", "--data", "d", "--server-bot", text, "mode"]);
         error
@@ -142,20 +134,32 @@ fn a_value_its_parser_refuses_gives_that_parsers_error_and_the_help_is_no_refusa
         )))
     );
     assert_eq!(bot("0=a.toml"), Some(ServerBotError::ClientSlot));
-    let wrong_certificate = invalid(&["mode", "10.0.0.2:4433", "03", key, "30"]);
+    let wrong_tls_key = invalid(&["mode", "10.0.0.2:4433", "03", key, "30"]);
     assert_eq!(
-        wrong_certificate
+        wrong_tls_key
             .source()
             .and_then(|error| error.downcast_ref()),
         Some(&NotHex)
     );
     let source = |args: &[&str]| invalid(args).source().map(ToString::to_string);
+    let address = |address: &str| {
+        invalid(&["mode", address, &tls_key, key, "30"])
+            .source()
+            .and_then(|error| error.downcast_ref::<ServerAddressError>())
+            .cloned()
+    };
+    assert!(matches!(
+        address("nowhere"),
+        Some(ServerAddressError::Syntax(_))
+    ));
     assert_eq!(
-        source(&["mode", "nowhere", &certificate, key, "30"]).as_deref(),
-        Some("invalid socket address syntax")
+        address("0.0.0.0:4433"),
+        Some(ServerAddressError::Unspecified)
     );
+    assert_eq!(address("[::]:4433"), Some(ServerAddressError::Unspecified));
+    assert_eq!(address("10.0.0.2:0"), Some(ServerAddressError::NoPort));
     assert_eq!(
-        source(&["mode", "10.0.0.2:4433", &certificate, key, "0"]).as_deref(),
+        source(&["mode", "10.0.0.2:4433", &tls_key, key, "0"]).as_deref(),
         Some("number would be zero for non-zero type")
     );
 

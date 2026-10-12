@@ -1,8 +1,7 @@
 use std::time::Duration;
 
 use bevy_app::{
-    App, FixedUpdate, Last, Plugin, PluginGroup, PostUpdate, RunFixedMainLoop,
-    RunFixedMainLoopSystems, Update,
+    App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
 };
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
@@ -19,17 +18,18 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, Controller, ServerSeeds, SessionLog, SessionTerms};
+use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionWorld, StartError};
 use campfire_sim::{SimTick, SimWorld, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
-    RoomAllocator, RoomPlugin, Unlink, UnlinkReason,
+    RoomAllocator, RoomPlugin,
 };
-use lightyear::webtransport::server::WebTransportServerPlugin;
 use tracing::{info, trace, trace_span};
 
+use crate::close_code::CloseCode;
 use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
@@ -52,7 +52,7 @@ use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::kind_filter::KindFilters;
 use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
-use crate::sim_server::offering::{Offering, Superseding};
+use crate::sim_server::offering::{Dismissing, Offered, Offering};
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
@@ -96,10 +96,8 @@ pub(crate) mod tick_hashes;
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
 /// its team sees. It hashes the state after a tick only while the world holds `TickHashes`. It
 /// adds Lightyear's server at the tick's length `tick`, the protocol, and the replication to each
-/// new link; its app adds its frame loop or clock, its session, and its transport. A server that
-/// takes WebTransport links adds `WebTransportServerPlugin`, once in its process: the plugin makes a
-/// tokio runtime in each app that adds it and never ends it, and an in-process server links by
-/// channels.
+/// new link; its app adds its frame loop or clock, its session, and its transport: QUIC's, or
+/// in-process channels.
 #[derive(Debug)]
 pub struct SimServer {
     pub tick: Duration,
@@ -109,18 +107,15 @@ pub struct SimServer {
 
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
-        app.add_plugins(
-            ServerPlugins {
-                tick_duration: self.tick,
-            }
-            .build()
-            .disable::<WebTransportServerPlugin>(),
-        );
+        app.add_plugins(ServerPlugins {
+            tick_duration: self.tick,
+        });
         app.add_plugins((
             NetProtocol {
                 capabilities: self.capabilities,
             },
             RoomPlugin,
+            QuicPlugin,
         ));
         KindFilters::register(app, self.capabilities);
         KindShows::register(app);
@@ -174,8 +169,11 @@ impl Plugin for SimServer {
                 .run_if(resource_exists::<Door>)
                 .run_if(session_running),
         );
-        app.add_systems(Last, Superseding::tell);
-        app.add_systems(PostUpdate, Superseding::end.after(LinkSystems::Send));
+        app.add_systems(Last, Dismissing::tell);
+        app.add_systems(
+            PostUpdate,
+            (Dismissing::end, Offered::close_silent).after(LinkSystems::Send),
+        );
         // Lightyear keeps a received message for one frame only, and a frame runs no fixed tick
         // or several, so the inputs are logged in every frame, before its fixed ticks; a frame
         // that runs several is logged, as an input that missed its start waits for all of them.
@@ -382,9 +380,9 @@ fn record_inputs(
                 InputMessageUnfit { slot: link.slot() }.log();
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
-                commands.trigger(Unlink {
+                commands.trigger(CloseLink {
                     entity,
-                    reason: UnlinkReason::UserRequested(Some("broken input message".to_owned())),
+                    code: CloseCode::InputRefused.app(),
                 });
                 continue;
             };
@@ -398,9 +396,9 @@ fn record_inputs(
                 .log();
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
-                commands.trigger(Unlink {
+                commands.trigger(CloseLink {
                     entity,
-                    reason: UnlinkReason::UserRequested(Some(report)),
+                    code: CloseCode::InputRefused.app(),
                 });
                 continue;
             }

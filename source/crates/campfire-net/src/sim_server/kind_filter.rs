@@ -289,6 +289,10 @@ impl StateTypes for FilterObservers<'_> {
         self.filter::<C>();
     }
 
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+        self.filter::<C>();
+    }
+
     fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
         self.filter::<C>();
     }
@@ -406,6 +410,10 @@ mod tests {
 
     impl StateTypes for Kinds {
         fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+            self.push::<C>();
+        }
+
+        fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
             self.push::<C>();
         }
 

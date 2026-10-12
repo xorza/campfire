@@ -26,6 +26,13 @@ impl<T: StateTypes> StateTypes for StateOnly<'_, T> {
         self.0.once::<C>(declared);
     }
 
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(
+        &mut self,
+        declared: Declared,
+    ) {
+        self.0.on_insert::<C>(declared);
+    }
+
     fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, declared: Declared) {
         self.0.on_change::<C>(declared);
     }

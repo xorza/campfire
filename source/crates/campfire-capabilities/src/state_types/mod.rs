@@ -27,6 +27,9 @@ pub trait StateTypes: Sized {
     /// `C`, sent once, as it never changes after its entity spawns.
     fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, declared: Declared);
 
+    /// `C`, sent as its entity spawns and on each insert after, as an insert is its one change.
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, declared: Declared);
+
     /// `C`, sent on each change.
     fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, declared: Declared);
 
@@ -57,6 +60,10 @@ pub trait StateTypes: Sized {
 
 impl StateTypes for StateRegistry {
     fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+        self.register_component::<C>();
+    }
+
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
         self.register_component::<C>();
     }
 

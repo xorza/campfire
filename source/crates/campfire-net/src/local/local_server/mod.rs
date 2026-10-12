@@ -7,24 +7,25 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use campfire_common::PlayerSlot;
+use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
-use campfire_protocol::{CertificateHash, SeedChain, SessionPrivate};
+use campfire_protocol::{SeedChain, SessionPrivate};
+use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::InputRules;
 use campfire_sim::TickRate;
 use campfire_store::Worker;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
-use lightyear::prelude::{Link, LinkOf, Linked, PeerAddr};
-use lightyear::webtransport::server::WebTransportServerPlugin;
+use lightyear::prelude::{Link, LinkMtu, LinkOf, Linked, PeerAddr};
 use tracing::error;
 
 use crate::local::local_pace::LocalPace;
@@ -45,8 +46,8 @@ use crate::sim_server::sim_server_world::SimServerWorld;
 
 pub(crate) mod error;
 
-/// In-process channels have no TLS; both ends take this as the certificate's hash.
-const CERTIFICATE: CertificateHash = CertificateHash::new([0; 32]);
+/// In-process channels have no TLS; the client pins this as the server's TLS key.
+const TLS_KEY: TlsKey = TlsKey::new([0; 32]);
 /// The segments of a local session's seed chain, as a dedicated server's.
 const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
@@ -70,6 +71,14 @@ pub struct LocalServer {
 /// which the client takes; see `LocalRelink`.
 #[derive(Clone, Default)]
 pub struct Relinks(Arc<Mutex<Option<CrossbeamIo>>>);
+
+/// The client's end of a local link and the binding both ends take, which the client inserts on
+/// its entity as one, so no client holds the link with no binding.
+#[derive(Bundle)]
+pub struct LocalLink {
+    io: CrossbeamIo,
+    binding: LinkBinding,
+}
 
 /// What the local server's thread keeps across the apps it runs: one, then a new one after each
 /// load, which restores the session from its data.
@@ -120,6 +129,10 @@ pub struct LocalServerSetup {
 struct Stop(Arc<AtomicBool>);
 
 impl LocalServer {
+    /// In-process channels have no TLS session: both ends of a local link take this binding
+    /// (design 15, D11).
+    const BINDING: ChannelBinding = ChannelBinding::new([0; 32]);
+
     /// Opens the local server's data directory and session, and starts its thread. An error when
     /// the directory does not open, a session an earlier start left does not end, or the new
     /// one does not open.
@@ -138,7 +151,6 @@ impl LocalServer {
         LocalServer::end_earlier(&dir, &packages, key, entropy)?;
         let server = ServerSetup {
             key,
-            certificate: CERTIFICATE,
             times: SessionTimes::DEFAULT,
             clock,
             entropy,
@@ -196,7 +208,7 @@ impl LocalServer {
             stop,
             pin: ServerPin {
                 key: key.x_only_public_key().0,
-                certificate: CERTIFICATE,
+                tls_key: TLS_KEY,
                 tick_hz,
             },
             link: Some(client_io),
@@ -210,14 +222,17 @@ impl LocalServer {
         self.relinks.clone()
     }
 
-    /// What the client pins: the server's key, its certificate's hash and its tick rate.
+    /// What the client pins: the server's key, its TLS key and its tick rate.
     pub const fn pin(&self) -> ServerPin {
         self.pin
     }
 
-    /// The client's end of the link, once.
-    pub fn take_link(&mut self) -> CrossbeamIo {
-        self.link.take().expect("the client takes the link once")
+    /// The client's end of the link, once, with the binding both ends take.
+    pub fn take_link(&mut self) -> LocalLink {
+        LocalLink {
+            io: self.link.take().expect("the client takes the link once"),
+            binding: LinkBinding(LocalServer::BINDING),
+        }
     }
 
     /// Ends aborted a session an earlier start left under `data`, of the mode `packages` holds,
@@ -342,10 +357,6 @@ impl Runs {
                 tick: self.tick,
             },
         ));
-        assert!(
-            !app.is_plugin_added::<WebTransportServerPlugin>(),
-            "a local server links by channels: WebTransport's plugin leaves a tokio runtime for each app"
-        );
         app.insert_resource(LocalSession);
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
@@ -363,8 +374,9 @@ impl Runs {
         let address = SocketAddr::from(([127, 0, 0, 1], 1));
         app.world_mut().spawn((
             LinkOf { server },
-            Link::default(),
+            Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
             PeerAddr(address),
+            LinkBinding(LocalServer::BINDING),
             Linked,
             link,
         ));
@@ -384,6 +396,14 @@ impl Relinks {
 
     fn lock(&self) -> MutexGuard<'_, Option<CrossbeamIo>> {
         self.0.lock().expect("no thread panics holding the link")
+    }
+}
+
+impl fmt::Debug for LocalLink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LocalLink")
+            .field("binding", &self.binding)
+            .finish_non_exhaustive()
     }
 }
 

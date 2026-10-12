@@ -107,6 +107,13 @@ impl ViewNames {
         teams.is_none_or(|teams| teams.of(slot).is_some())
     }
 
+    /// Whether `slot` is a player of `team`; any slot is of any team before a mode sets the
+    /// teams.
+    pub(crate) fn plays_for(&self, slot: PlayerSlot, team: Team) -> bool {
+        let teams = self.teams.as_deref();
+        teams.is_none_or(|teams| teams.of(slot) == Some(team))
+    }
+
     /// How many resources the mode declares; none before a mode sets them.
     pub(crate) fn resource_count(&self) -> usize {
         self.resource_names.len()
