@@ -1,13 +1,10 @@
-use std::cmp::Ordering;
-
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{Capability, Keyed, Position, SimEdge, SimSet, SimTick, StableId};
+use campfire_sim::{Capability, Position, SimEdge, SimSet};
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::declare::declarations::Declarations;
@@ -26,6 +23,7 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::progress::Progress;
+use crate::navigation::room_making::{RoomMaking, RoomMakingRun};
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
 use crate::navigation::routing::Routing;
@@ -35,10 +33,8 @@ use crate::navigation::statics_dirty::StaticsDirty;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::walking::Walking;
-use crate::units::body::Body;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
-use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
 
 #[cfg(feature = "internals")]
@@ -62,6 +58,7 @@ pub(crate) mod pathing_grid;
 pub(crate) mod paths;
 pub(crate) mod progress;
 pub(crate) mod regions;
+pub(crate) mod room_making;
 pub(crate) mod route;
 pub(crate) mod route_asks;
 pub(crate) mod route_planner;
@@ -106,6 +103,7 @@ impl Module for Navigation {
         d.cache::<PathingGrid>();
         d.cache::<RoutePlanner>();
         d.cache::<StaticTrackingRun>();
+        d.cache::<RoomMakingRun>();
         d.callback::<EffectQueues>(Capability::Navigation, NavigationEffect::queue_listed);
         d.book::<ByType<Walker>>();
         d.book::<NavigationBook>();
@@ -130,6 +128,8 @@ impl Module for Navigation {
         StaticsDirty::install(world);
         let run = world.register_system(StaticTracking::track_static_bodies);
         world.insert_resource(StaticTrackingRun(run));
+        let run = world.register_system(RoomMaking::make_room);
+        world.insert_resource(RoomMakingRun(run));
         schedule.add_systems((
             StaticTracking::track_static_bodies
                 .in_set(SimSet::Inputs)
@@ -200,46 +200,10 @@ impl Navigation {
     /// collision can hold the walker between two. With no pathing grid, the box pushes it out
     /// as collision would.
     pub(crate) fn make_room(world: &mut World, entity: Entity) {
-        let run = world.resource::<StaticTrackingRun>().0;
+        let run = world.resource::<RoomMakingRun>().0;
         world
-            .run_system(run)
-            .expect("the static bodies' tracking runs on any world");
-        let unit = world.entity(entity);
-        let pos = *unit.get::<Position>().expect("a unit has a place");
-        let body = *unit.get::<Body>().expect("a box makes room");
-        let Shape::Box(boxed) = body.shape() else {
-            return;
-        };
-        let now = world.resource::<SimTick>().start();
-        let mut walkers =
-            world.query_filtered::<(Entity, &StableId, &Position, &Body), (With<MoveStep>, Without<Dead>)>();
-        let mut inside: Vec<Keyed> = walkers
-            .iter(world)
-            .filter(|&(_, _, &walker_pos, other)| {
-                let radius = Walker::walking(Some(other)).radius;
-                other.layer() == body.layer()
-                    && boxed.nearest(pos, walker_pos, radius) == Ordering::Less
-            })
-            .map(|(entity, &id, ..)| Keyed { id, entity })
-            .collect();
-        inside.sort_unstable_by_key(|keyed| keyed.id);
-        for Keyed { entity: walker, .. } in inside {
-            let unit = world.entity(walker);
-            let walker_pos = *unit.get::<Position>().expect("a walker has a place");
-            let kind = Walker::walking(unit.get::<Body>());
-            let grid = world.get_resource::<PathingGrid>();
-            let planner = world.get_resource::<RoutePlanner>();
-            let place = if let (Some(grid), Some(planner)) = (grid, planner) {
-                let walkable = Walkable::of(grid.clearance(kind), world.resource::<BodyIndex>());
-                planner.stand_at(walkable, walker_pos).unwrap_or(walker_pos)
-            } else {
-                let out = boxed
-                    .push_out(pos, walker_pos.get(), kind.radius)
-                    .expect("the box overlaps the walker, so it pushes the walker out");
-                Position::new(out).expect("a push stays near the bounds")
-            };
-            NavigationEffect::put(world, walker, place, now);
-        }
+            .run_system_with(run, entity)
+            .expect("a box makes room on any world");
     }
 
     /// The center of the cell nearest `point` among those `walker` may stand in, at `point`'s

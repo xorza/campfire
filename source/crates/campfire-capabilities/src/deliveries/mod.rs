@@ -23,6 +23,7 @@ pub(crate) mod deliveries_api;
 pub(crate) mod delivering;
 pub(crate) mod delivery_hooks;
 pub(crate) mod delivery_spawner;
+pub(crate) mod teleported;
 
 /// The hits and ends of this tick's deliveries whose action's hooks run, in the order they
 /// happened; and the delivery units that ended, which despawn once the hooks ran, so a hook still

@@ -31,17 +31,20 @@ impl Spawner {
         types: impl IntoIterator<Item = UnitType>,
         after: impl Fn(&mut World, Entity) + 'static,
     ) -> Spawner {
-        let mut spawns = Vec::new();
+        let types: Vec<UnitType> = types.into_iter().collect();
+        Spawner::of(&types, Rc::new(after))
+    }
+
+    /// The spawner of `types` that runs `after` on each unit it spawned.
+    fn of(types: &[UnitType], after: Rc<AfterFn>) -> Spawner {
+        let len = types.iter().map(|unit_type| unit_type.index() + 1).max();
+        let mut spawns = vec![false; len.unwrap_or(0)];
         for unit_type in types {
-            let at = unit_type.index();
-            if spawns.len() <= at {
-                spawns.resize(at + 1, false);
-            }
-            spawns[at] = true;
+            spawns[unit_type.index()] = true;
         }
         Spawner {
             types: spawns.into(),
-            after: Rc::new(after),
+            after,
         }
     }
 

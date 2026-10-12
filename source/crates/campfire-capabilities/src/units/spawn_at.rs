@@ -21,13 +21,17 @@ pub(crate) struct SpawnAt {
 
 impl SpawnAt {
     /// The core of the unit.
-    pub(crate) fn core(self) -> UnitCore {
+    pub(crate) const fn core(self) -> UnitCore {
+        let owner = match self.owner {
+            Some(slot) => Some(Owner::new(slot)),
+            None => None,
+        };
         UnitCore {
             id: self.id,
             pos: self.pos,
             unit_type: self.unit_type,
             team: self.team,
-            owner: self.owner.map(Owner::new),
+            owner,
         }
     }
 }

@@ -35,7 +35,8 @@ impl Walking {
     /// a step a tick for `Steering::STUCK_MS`, and its progress starts again when it takes a short
     /// route. A predicting client counts the units it holds that stand: one that stands has not
     /// moved since the server sent it. With no pathing grid no walker steers, and one that does not
-    /// walk this tick, or waits for its route, does not either.
+    /// walk this tick, waits for its route, or has none ahead, does not either: none of them
+    /// takes a place in the order.
     pub(super) fn steer(
         rate: Res<'_, TickRate>,
         grid: Option<Res<'_, PathingGrid>>,
@@ -105,16 +106,17 @@ impl Walking {
             .ticks(Steering::STUCK_MS)
             .expect("a fixed time fits")
             .get();
-        let ordered = walkers.iter().map(|(entity, &id, ..)| Keyed { id, entity });
+        let ordered = walkers
+            .iter()
+            .filter(|&(_, _, _, destination, _, _, route, _, tags, forced)| {
+                Self::walks(Some(destination), tags, forced)
+                    && route.asked().is_none()
+                    && !route.ahead().is_empty()
+            })
+            .map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, .. } in order.sort(ordered) {
-            let (_, &id, &at, destination, step, body, mut route, mut progress, tags, forced) =
+            let (_, &id, &at, _, step, body, mut route, mut progress, tags, _) =
                 walkers.get_mut(entity).expect("a walker in the order");
-            if !Self::walks(Some(destination), tags, forced)
-                || route.asked().is_some()
-                || route.ahead().is_empty()
-            {
-                continue;
-            }
             let steered = Steered {
                 id,
                 pos: at,
@@ -215,7 +217,9 @@ impl Walking {
     /// sent them that cannot walk, such as towers, which never move. Every other held unit is where
     /// the server last had it, behind the client's ticks, and may have started or stopped walking
     /// since, so the server alone parts the client's units from it. Every tick reads the bodies
-    /// into `colliders`, and finds their contacts with `broadphase`, buffers it keeps.
+    /// into `colliders`, finds their contacts with `broadphase`, and writes back the bodies a
+    /// contact may have pushed, by their places in `pushed`, buffers it keeps: a body that may
+    /// not be pushed, or that no contact names, stays where it stood.
     pub(super) fn collide(
         mut units: Query<
             '_,
@@ -234,8 +238,11 @@ impl Walking {
             (Without<Dead>, Allow<Unpredicted>),
         >,
         statics: Res<'_, BodyIndex>,
-        mut colliders: Local<'_, Vec<Collider>>,
-        mut broadphase: Local<'_, Broadphase>,
+        (mut colliders, mut broadphase, mut pushed): (
+            Local<'_, Vec<Collider>>,
+            Local<'_, Broadphase>,
+            Local<'_, Vec<usize>>,
+        ),
     ) {
         colliders.clear();
         colliders.extend(
@@ -266,7 +273,17 @@ impl Walking {
         );
         let contacts = broadphase.contacts(&colliders, &statics);
         Collider::resolve(&mut colliders, contacts);
-        for collider in &*colliders {
+        pushed.clear();
+        pushed.extend(
+            contacts
+                .iter()
+                .flat_map(|contact| [contact.first, contact.second])
+                .filter(|&index| colliders[index].movable),
+        );
+        pushed.sort_unstable();
+        pushed.dedup();
+        for &index in &*pushed {
+            let collider = &colliders[index];
             let (_, _, _, mut position, ..) = units
                 .get_mut(collider.entity)
                 .expect("a body read this tick");

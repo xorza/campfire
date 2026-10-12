@@ -6,6 +6,7 @@ use campfire_sim::{Position, SimWorld, StableId};
 
 use crate::actions::capability_does_spec::CapabilityDoesSpec;
 use crate::actions::effect_data::EffectTo;
+use crate::deliveries::teleported::Teleported;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::navigation_column::NavigationColumn;
@@ -14,8 +15,6 @@ use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
 use crate::navigation::walker::Walker;
-use crate::projectiles::flight_state::FlightState;
-use crate::projectiles::projectile::Projectile;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::frame::Frame;
@@ -152,8 +151,9 @@ impl NavigationEffect {
         let mut moved = world.entity_mut(entity);
         *moved.get_mut::<Position>().expect("a unit has a place") = pos;
         moved.remove::<ForcedMove>();
-        let mut walkers = world.query::<(&Destination, &mut Route, &mut Progress)>();
-        if let Ok((destination, mut route, mut progress)) = walkers.get_mut(world, entity) {
+        if let Ok((destination, mut route, mut progress)) =
+            moved.get_components_mut::<(&Destination, &mut Route, &mut Progress)>()
+        {
             route.ask_again(destination, &mut progress, now);
         }
     }
@@ -218,7 +218,7 @@ fn knock_back_end(pos: Position, from: Position, distance: Num) -> Vec3 {
 /// Puts the unit of `entity`, `id`, at `to`, taken to the nearest point of the bounds, or, where
 /// its walker may not stand on the pathing grid, at the center of the nearest cell it may stand
 /// in, at `to`'s height; on a grid with no such cell, it stays. It ends its forced move and walks
-/// its route again from there, and every homing projectile on it loses it.
+/// its route again from there, and every delivery that homes on it loses it.
 fn teleport(world: &mut World, entity: Entity, id: StableId, to: Position, now: Tick) {
     let mut pos = world.resource::<MapBook>().bounds.clamp(to);
     if let Some(grid) = world.get_resource::<PathingGrid>()
@@ -234,10 +234,5 @@ fn teleport(world: &mut World, entity: Entity, id: StableId, to: Position, now: 
         pos = open;
     }
     NavigationEffect::put(world, entity, pos, now);
-    let mut projectiles = world.query::<(&Projectile, &mut FlightState)>();
-    for (projectile, mut state) in projectiles.iter_mut(world) {
-        if projectile.homes_on(id) {
-            state.disjoint();
-        }
-    }
+    world.trigger(Teleported { id });
 }

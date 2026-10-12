@@ -1,4 +1,5 @@
 use bevy_ecs::entity::Entity;
+use bevy_ecs::observer::On;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::{Keyed, Ordered, Position, StableId};
@@ -6,6 +7,7 @@ use campfire_sim::{Keyed, Ordered, Position, StableId};
 use crate::actions::targets::{TargetKey, Targets};
 use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
+use crate::deliveries::teleported::Teleported;
 use crate::geometry::fraction::Fraction;
 use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::flights::{Aloft, Flights};
@@ -23,6 +25,18 @@ use crate::units::unit_type::UnitType;
 pub(super) struct Flying;
 
 impl Flying {
+    /// Makes each projectile that homes on the unit `teleported` names lose it.
+    pub(super) fn lose_teleported(
+        teleported: On<'_, '_, Teleported>,
+        mut projectiles: Query<'_, '_, (&Projectile, &mut FlightState)>,
+    ) {
+        for (projectile, mut state) in &mut projectiles {
+            if projectile.homes_on(teleported.id) {
+                state.disjoint();
+            }
+        }
+    }
+
     /// Flies each projectile a step, in the order of their stable ids, as `Flights::fly` says. An
     /// attack's hit deals its damage; an action's hits and ends run its hooks, and an ended
     /// projectile despawns after them. A line's hits are kept while it flies, and a cast's, for a

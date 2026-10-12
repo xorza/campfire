@@ -65,10 +65,12 @@ impl Module for Projectiles {
 
     /// Adds projectiles to a match. In Hit, before attacks strike, each projectile flies a step,
     /// and its hits and its end run their action's `on_hit` and `on_end`; after attacks strike
-    /// and casts resolve, the tick's launches take off, and fly from the next tick. A predicting
-    /// client predicts no delivery, so it flies none.
+    /// and casts resolve, the tick's launches take off, and fly from the next tick. A teleport
+    /// makes each projectile that homes on its unit lose it. A predicting client predicts no
+    /// delivery, so it flies none.
     fn install(cx: &mut InstallCx<'_>) {
         let predicting = cx.predicting();
+        cx.world.add_observer(Flying::lose_teleported);
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
             Launching::take_shots.in_set(CombatSet::Fire),

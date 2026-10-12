@@ -27,6 +27,7 @@ use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
+use crate::units::dead::Dead;
 use crate::units::layer::Layer;
 use crate::units::map_book::MapBook;
 use crate::units::path_id::PathId;
