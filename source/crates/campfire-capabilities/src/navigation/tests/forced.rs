@@ -34,8 +34,8 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
     // then the last meter in tick 2, where it ends. Its unit keeps its destination, (0, 0, 9),
     // and takes no step of its own, so it stays on z = 0; once the dash ends it asks its route
     // there again in tick 2, and walks it from tick 3.
-    let dasher = Navigation::unit(&mut game, at(0, 0, 0), Some(at(0, 0, 9)));
-    let to = DashTo::Point(at(5, 9, 0));
+    let dasher = Navigation::unit(&mut game, (0, 0, 0), Some(Position::from((0, 0, 9))));
+    let to = DashTo::Point(Position::from((5, 9, 0)));
     game.insert_parts(
         dasher,
         ForcedMove::Dash {
@@ -50,12 +50,12 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
     // to 14, where their bodies touch, and ends.
     let walker = Navigation::body(
         &mut game,
-        at(10, 0, 20),
-        Some(at(30, 0, 20)),
+        (10, 0, 20),
+        Some(Position::from((30, 0, 20))),
         Some(Num::ONE),
         HALF,
     );
-    let chaser = Navigation::body(&mut game, at(0, 0, 20), None, Some(Num::ONE), HALF);
+    let chaser = Navigation::body(&mut game, (0, 0, 20), None, Some(Num::ONE), HALF);
     let to = DashTo::Unit(walker);
     game.insert_parts(
         chaser,
@@ -78,11 +78,14 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
         dash_path.push(game.at(dasher));
         chase_path.push((game.at(chaser), game.at(walker)));
     }
-    let x = |x: i64| at(x, 0, 0);
+    let x = |x: i16| Position::from((x, 0, 0));
     assert_eq!(dash_path, [x(2), x(4), x(5), dash_path[3], dash_path[4]]);
     assert_ne!(dash_path[3], x(5));
-    assert_eq!(game.part::<Destination>(dasher).get(), Some(at(0, 0, 9)));
-    let row = |x: i64| at(x, 0, 20);
+    assert_eq!(
+        game.part::<Destination>(dasher).get(),
+        Some(Position::from((0, 0, 9)))
+    );
+    let row = |x: i16| Position::from((x, 0, 20));
     let pairs = [(3, 11), (6, 12), (9, 13), (12, 14), (14, 15)];
     assert_eq!(
         chase_path,
@@ -96,9 +99,12 @@ fn a_knock_back_moves_its_unit_away_by_equal_shares_and_a_new_move_replaces_it()
     let mut game = walk_match();
     // 3 m over 3 ticks away from (0, 0, −2): along z, a meter a tick, the last tick on its end.
     // One off its own place goes along x.
-    let off_point = Navigation::unit(&mut game, at(0, 0, 0), None);
-    let off_itself = Navigation::unit(&mut game, at(10, 0, 0), None);
-    for (id, from) in [(off_point, at(0, 0, -2)), (off_itself, at(10, 0, 0))] {
+    let off_point = Navigation::unit(&mut game, (0, 0, 0), None);
+    let off_itself = Navigation::unit(&mut game, (10, 0, 0), None);
+    for (id, from) in [
+        (off_point, Position::from((0, 0, -2))),
+        (off_itself, Position::from((10, 0, 0))),
+    ] {
         game.apply(NavigationEffect::KnockBack {
             id,
             from,
@@ -107,22 +113,22 @@ fn a_knock_back_moves_its_unit_away_by_equal_shares_and_a_new_move_replaces_it()
         });
     }
     game.step();
-    assert_eq!(game.at(off_point), at(0, 0, 1));
-    assert_eq!(game.at(off_itself), at(11, 0, 0));
+    assert_eq!(game.at(off_point), Position::from((0, 0, 1)));
+    assert_eq!(game.at(off_itself), Position::from((11, 0, 0)));
     // A dash of 2 m a tick to (11, 0, 4) replaces the second's knock back: (11, 0, 2), then
     // (11, 0, 4), where it ends.
     game.apply(NavigationEffect::Dash {
         id: off_itself,
-        to: DashTo::Point(at(11, 0, 4)),
+        to: DashTo::Point(Position::from((11, 0, 4))),
         step: Num::int(2),
         delivers: None,
     });
     game.step();
-    assert_eq!(game.at(off_point), at(0, 0, 2));
-    assert_eq!(game.at(off_itself), at(11, 0, 2));
+    assert_eq!(game.at(off_point), Position::from((0, 0, 2)));
+    assert_eq!(game.at(off_itself), Position::from((11, 0, 2)));
     game.step();
-    assert_eq!(game.at(off_point), at(0, 0, 3));
-    assert_eq!(game.at(off_itself), at(11, 0, 4));
+    assert_eq!(game.at(off_point), Position::from((0, 0, 3)));
+    assert_eq!(game.at(off_itself), Position::from((11, 0, 4)));
     assert_eq!(
         [off_point, off_itself].map(|id| game.forced(id)),
         [None, None]
@@ -131,10 +137,10 @@ fn a_knock_back_moves_its_unit_away_by_equal_shares_and_a_new_move_replaces_it()
     // A third of a meter a tick: 1 m over 3 ticks, each a share of what is left, 1/3 m rounded
     // once to 5 592 405 bits, then (2²⁴ − 5 592 405) / 2 = 5 592 405.5 to 5 592 406, and the
     // rest, 5 592 405 bits, in the last tick, on the end.
-    let thirds = Navigation::unit(&mut game, at(0, 0, 10), None);
+    let thirds = Navigation::unit(&mut game, (0, 0, 10), None);
     game.apply(NavigationEffect::KnockBack {
         id: thirds,
-        from: at(-1, 0, 10),
+        from: Position::from((-1, 0, 10)),
         distance: Num::ONE,
         ticks: Ticks::new(3),
     });
@@ -155,22 +161,22 @@ fn a_forced_move_stops_before_a_static_body_and_on_the_bounds() {
     // A tower of 1 m at (3, 0, 0). A dash of 2 m a tick from (−3, 0, 0) to (4, 0, 0), its body
     // 0.5 m: −1, then 1; the step to 3 would come within 1.5 m of the tower, so it stays on 1
     // and ends.
-    Navigation::body(&mut game, at(3, 0, 0), None, None, Num::ONE);
-    let dasher = Navigation::body(&mut game, at(-3, 0, 0), None, Some(Num::ONE), HALF);
+    Navigation::body(&mut game, (3, 0, 0), None, None, Num::ONE);
+    let dasher = Navigation::body(&mut game, (-3, 0, 0), None, Some(Num::ONE), HALF);
     game.insert_parts(
         dasher,
         ForcedMove::Dash {
-            to: DashTo::Point(at(4, 0, 0)),
+            to: DashTo::Point(Position::from((4, 0, 0))),
             step: Num::int(2),
             delivers: None,
         },
     );
     // A knock back of 9 m over 3 ticks from (−2, 0, 2) along x: 1, then 4, on the bound, then
     // 7, past it: it stops on 4, and ends a tick early. Its way passes 2 m from the tower.
-    let knocked = Navigation::unit(&mut game, at(-2, 0, 2), None);
+    let knocked = Navigation::unit(&mut game, (-2, 0, 2), None);
     game.apply(NavigationEffect::KnockBack {
         id: knocked,
-        from: at(-3, 0, 2),
+        from: Position::from((-3, 0, 2)),
         distance: Num::int(9),
         ticks: Ticks::new(3),
     });
@@ -183,9 +189,18 @@ fn a_forced_move_stops_before_a_static_body_and_on_the_bounds() {
     assert_eq!(
         path,
         [
-            ([at(-1, 0, 0), at(1, 0, 2)], [true, true]),
-            ([at(1, 0, 0), at(4, 0, 2)], [true, true]),
-            ([at(1, 0, 0), at(4, 0, 2)], [false, false]),
+            (
+                [Position::from((-1, 0, 0)), Position::from((1, 0, 2))],
+                [true, true]
+            ),
+            (
+                [Position::from((1, 0, 0)), Position::from((4, 0, 2))],
+                [true, true]
+            ),
+            (
+                [Position::from((1, 0, 0)), Position::from((4, 0, 2))],
+                [false, false]
+            ),
         ]
     );
 }
@@ -204,12 +219,12 @@ fn a_teleport_puts_its_unit_where_it_may_stand_at_once_and_ends_its_move() {
         Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap(),
     );
     // A tower of 1 m at the origin blocks the four cells round it, whose centers are √0.5 m off.
-    Navigation::body(&mut game, at(0, 0, 0), None, None, Num::ONE);
-    let id = Navigation::unit(&mut game, at(-3, 0, -3), Some(at(3, 0, 3)));
+    Navigation::body(&mut game, (0, 0, 0), None, None, Num::ONE);
+    let id = Navigation::unit(&mut game, (-3, 0, -3), Some(Position::from((3, 0, 3))));
     game.insert_parts(
         id,
         ForcedMove::Dash {
-            to: DashTo::Point(at(3, 0, -3)),
+            to: DashTo::Point(Position::from((3, 0, -3))),
             step: HALF,
             delivers: None,
         },
@@ -220,7 +235,7 @@ fn a_teleport_puts_its_unit_where_it_may_stand_at_once_and_ends_its_move() {
     // (−0.5, 0, −1.5), at the height asked. It ends the dash, and asks its route again.
     game.apply(NavigationEffect::Teleport {
         id,
-        to: at(0, 2, 0),
+        to: Position::from((0, 2, 0)),
     });
     let center = Position::new(Vec3::new(-HALF, Num::int(2), Num::from_bits(-3 * ONE / 2)));
     assert_eq!(game.at(id), center.unwrap());
@@ -229,9 +244,9 @@ fn a_teleport_puts_its_unit_where_it_may_stand_at_once_and_ends_its_move() {
     // Past the bounds, on the nearest point of them, where it may stand.
     game.apply(NavigationEffect::Teleport {
         id,
-        to: at(9, 0, 1),
+        to: Position::from((9, 0, 1)),
     });
-    assert_eq!(game.at(id), at(4, 0, 1));
+    assert_eq!(game.at(id), Position::from((4, 0, 1)));
 }
 
 #[test]

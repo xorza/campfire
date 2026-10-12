@@ -18,7 +18,7 @@ use campfire_capabilities::{
     Points, Rank, Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
 };
 use campfire_common::Tick;
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_protocol::SessionLog;
 use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, HashTrail, Moba3v3};
 use campfire_runner::internals::{MatchUnits, ScriptedMode};
@@ -255,7 +255,7 @@ impl Seen {
             self.xp_after_skirmish = xp();
         }
         let wolf = units.spawned_at(-18, 12);
-        let home = ground(-18, 12).get();
+        let home = Position::from((-18, 0, 12)).get();
         match tick {
             2460 => self.wolf_answers = target(wolf),
             2500..2620 => {
@@ -279,14 +279,9 @@ impl Seen {
     }
 }
 
-fn ground(x: i64, z: i64) -> Position {
-    let meters = |value| Num::from_int(value).unwrap();
-    Position::new(Vec3::new(meters(x), Num::ZERO, meters(z))).unwrap()
-}
-
 /// The unit that stood at `x`, `z` at the pick's end: a structure or a camp.
-fn placed(run: &Run, x: i64, z: i64) -> StableId {
-    let pos = ground(x, z);
+fn placed(run: &Run, x: i16, z: i16) -> StableId {
+    let pos = Position::from((x, 0, z));
     let unit = run.at_pick_end.iter().find(|unit| unit.pos == pos);
     unit.expect("a placed unit").id
 }
@@ -338,7 +333,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run) -> UnitType {
     let hero = |slot: u32| {
         let team = u8::from(slot >= 3);
         let z = if team == 0 { -60 } else { 60 };
-        (Team::new(team), ground(0, z), Some(slot))
+        (Team::new(team), Position::from((0, 0, z)), Some(slot))
     };
     let heroes: Vec<_> = run.at_pick_end[14..20]
         .iter()
@@ -397,7 +392,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run) -> UnitType {
     let ends = [(0, -6, -50), (1, -6, 50), (0, 6, -50), (1, 6, 50)];
     let expected: Vec<_> = ends
         .iter()
-        .flat_map(|&(team, x, z)| [(Team::new(team), ground(x, z)); 6])
+        .flat_map(|&(team, x, z)| [(Team::new(team), Position::from((x, 0, z))); 6])
         .collect();
     assert_eq!(seen, expected);
     assert!(wave.iter().all(|unit| unit.walks));
@@ -472,7 +467,10 @@ fn assert_camp(run: &Run) {
         "{}",
         run.seen.wolf_farthest
     );
-    assert_eq!(run.seen.wolf_home, Some((None, ground(-18, 12))));
+    assert_eq!(
+        run.seen.wolf_home,
+        Some((None, Position::from((-18, 0, 12))))
+    );
     // It falls in tick 2994 and comes back 60 s, 1200 ticks, after the end of that tick; its 90
     // experience is split between the two heroes within 16 m, 45 each, in that tick alone.
     let fell = run.deaths.iter().find(|death| death.id == wolf);

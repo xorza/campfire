@@ -37,7 +37,7 @@ fn on_mode_input(ctx, player, name, value) {
     // neutral grunt stands at (3, 0) when b's grunt strikes it for its 10 health, in tick 0; a's
     // grunt 2 struck it in the same tick, within the window of 10 ticks.
     let victim = Mode::entity_by_id(&game, 1);
-    *game.get_mut::<Position>(victim).unwrap() = at(3, 0);
+    *game.get_mut::<Position>(victim).unwrap() = Position::from((3, 0, 0));
     game.insert_resource(AssistWindow(Ticks::new(10)));
     let ids: Vec<_> = game
         .resource::<EntityIndex>()
@@ -84,7 +84,10 @@ fn on_mode_input(ctx, player, name, value) {
     }
     Mode::tick_inputs(&mut game, &[]);
     assert!(!game.entity(victim).contains::<Dead>());
-    assert_eq!(game.get::<Position>(victim), Some(&at(0, 0)));
+    assert_eq!(
+        game.get::<Position>(victim),
+        Some(&Position::from((0, 0, 0)))
+    );
     let life = game.get::<Life>(victim).unwrap();
     assert_eq!(life.current(), Num::int(10));
 
@@ -162,7 +165,7 @@ fn on_mode_input(ctx, player, name, value) {
     // nothing runs, the input to end again included.
     let grunt = Mode::entity_by_id(&game, 1);
     let mut destination = game.get_mut::<Destination>(grunt).unwrap();
-    *destination = Destination::to(Some(at(5, 0)));
+    *destination = Destination::to(Some(Position::from((5, 0, 0))));
     let before = Mode::placed_units(&game);
     Mode::tick_inputs(&mut game, &[(0, input("hero", "b"))]);
     let end = MatchEnd::new(Tick::new(2), MatchResult::Won(Team::new(1)));
@@ -178,7 +181,7 @@ fn on_mode_input(ctx, player, name, value) {
     // The grunt walks, so `keep_in_bounds`, in the gap after Collide, would clamp it back into
     // the bounds; past the end it stays where it is put.
     assert!(game.entity(grunt).contains::<MoveStep>());
-    let away = at(10_000, 0);
+    let away = Position::from((10_000, 0, 0));
     *game.get_mut::<Position>(grunt).unwrap() = away;
     Mode::tick_inputs(&mut game, &[]);
     assert_eq!(game.get::<Position>(grunt), Some(&away));

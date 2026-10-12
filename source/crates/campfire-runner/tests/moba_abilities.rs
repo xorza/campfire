@@ -63,11 +63,12 @@ fn spawn_with(
 fn spawn_at(
     arena: &Arena,
     game: &mut Match,
-    pos: Position,
+    pos: impl Into<Position>,
     team: Team,
     (mana, energy): (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
+    let pos = pos.into();
     let pools: Vec<_> = [("mana", mana), ("energy", energy)]
         .into_iter()
         .filter(|&(_, max)| max > 0)

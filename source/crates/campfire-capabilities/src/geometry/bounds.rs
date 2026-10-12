@@ -119,9 +119,6 @@ impl<'de> Deserialize<'de> for Bounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn at(x: Num, y: Num, z: Num) -> Position {
-        Position::new(Vec3::new(x, y, z)).unwrap()
-    }
 
     #[test]
     fn bounds_hold_their_closed_rectangle_and_clamp_to_it() {
@@ -138,7 +135,7 @@ mod tests {
             (Num::int(0), Num::int(-1) - e, false),
         ] {
             assert_eq!(
-                bounds.contains(at(x, Num::int(50), z)),
+                bounds.contains(Position::try_from(Vec3::from((x, 50, z))).unwrap()),
                 inside,
                 "{x:?} {z:?}"
             );
@@ -146,27 +143,24 @@ mod tests {
         // (9, 9) clamps to the corner (4, 3), (−5, 1) to the left edge at z = 1, and a point
         // inside stays, each at its own height.
         assert_eq!(
-            bounds.clamp(at(Num::int(9), Num::int(7), Num::int(9))),
-            at(Num::int(4), Num::int(7), Num::int(3))
+            bounds.clamp(Position::from((9, 7, 9))),
+            Position::from((4, 7, 3))
         );
         assert_eq!(
-            bounds.clamp(at(Num::int(-5), Num::int(5), Num::int(1))),
-            at(Num::int(-2), Num::int(5), Num::int(1))
+            bounds.clamp(Position::from((-5, 5, 1))),
+            Position::from((-2, 5, 1))
         );
         assert_eq!(
-            bounds.clamp(at(Num::int(1), Num::int(0), Num::int(2))),
-            at(Num::int(1), Num::int(0), Num::int(2))
+            bounds.clamp(Position::from((1, 0, 2))),
+            Position::from((1, 0, 2))
         );
         assert_eq!(
             bounds.clamp_ground([Num::int(-9), Num::int(-9)]),
             [Num::int(-2), Num::int(-1)]
         );
         assert_eq!(
-            bounds.ground_point(
-                [Num::int(9), Num::int(-9)],
-                at(Num::int(1), Num::int(6), Num::int(2))
-            ),
-            at(Num::int(4), Num::int(6), Num::int(-1))
+            bounds.ground_point([Num::int(9), Num::int(-9)], Position::from((1, 6, 2))),
+            Position::from((4, 6, -1))
         );
 
         let past = Position::BOUND + e;
@@ -178,20 +172,19 @@ mod tests {
         ] {
             assert_eq!(Bounds::new(min, max), None, "{min:?} {max:?}");
         }
-        assert!(Bounds::WORLD.contains(at(-Position::BOUND, Num::int(0), Position::BOUND)));
+        assert!(Bounds::WORLD.contains(
+            Position::try_from(Vec3::from((-Position::BOUND, 0, Position::BOUND))).unwrap()
+        ));
 
         // From (0, 0, 1): 4 to the right edge along +x, 2 to the bottom along −z, and from a
         // point past the right edge, 0. Straight up, the path leaves at the world's height.
         let x = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
         let z = Vec3::new(Num::ZERO, Num::ZERO, -Num::ONE);
         let up = Vec3::new(Num::ZERO, Num::ONE, Num::ZERO);
-        let origin = at(Num::int(0), Num::int(0), Num::int(1));
+        let origin = Position::from((0, 0, 1));
         assert_eq!(bounds.exit(origin, x), Num::int(4));
         assert_eq!(bounds.exit(origin, z), Num::int(2));
-        assert_eq!(
-            bounds.exit(at(Num::int(5), Num::int(0), Num::int(1)), x),
-            Num::ZERO
-        );
+        assert_eq!(bounds.exit(Position::from((5, 0, 1)), x), Num::ZERO);
         assert_eq!(bounds.exit(origin, up), Position::BOUND);
     }
 }

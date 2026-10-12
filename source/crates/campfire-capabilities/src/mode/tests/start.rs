@@ -9,11 +9,11 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     assert_eq!(
         Mode::placed_units(&game),
         [
-            (0, at(-8, 0), 0, None),
-            (1, at(0, 0), 2, None),
-            (2, at(-10, 0), 0, Some(PathEnd::Start)),
-            (3, at(-10, 0), 0, Some(PathEnd::Start)),
-            (4, at(10, 0), 1, Some(PathEnd::End)),
+            (0, Position::from((-8, 0, 0)), 0, None),
+            (1, Position::from((0, 0, 0)), 2, None),
+            (2, Position::from((-10, 0, 0)), 0, Some(PathEnd::Start)),
+            (3, Position::from((-10, 0, 0)), 0, Some(PathEnd::Start)),
+            (4, Position::from((10, 0, 0)), 1, Some(PathEnd::End)),
         ]
     );
     let tower = Mode::entity_by_id(&game, 0);

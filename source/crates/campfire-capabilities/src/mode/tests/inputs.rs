@@ -67,7 +67,13 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     // The heroes, 5 and 6, at their teams' spawns under their players' control: player 0's
     // with its own ability unlearned, then its spell learned.
     let heroes: Vec<_> = Mode::placed_units(&game)[5..].to_vec();
-    assert_eq!(heroes, [(5, at(0, -5), 0, None), (6, at(0, 5), 1, None)]);
+    assert_eq!(
+        heroes,
+        [
+            (5, Position::from((0, 0, -5)), 0, None),
+            (6, Position::from((0, 0, 5)), 1, None)
+        ]
+    );
     let hero = Mode::entity_by_id(&game, 5);
     assert_eq!(game.get::<Owner>(hero).unwrap().slot(), PlayerSlot::new(0));
     let slots = game.get::<ActionSlots>(hero).unwrap();

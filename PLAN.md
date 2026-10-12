@@ -6,7 +6,7 @@ The steps of the current slice ([Workflow](AGENTS.md#workflow)), in order, open 
 
 The rule of [Determinism core](docs/design/09-determinism-core.md), D7, and the tests' rule of [Testing](docs/design/02-engine-core.md#testing-and-diagnostics): `From` where every value converts exactly, `TryFrom` where one can fail, and the tests' helpers take `impl Into`. Each step ends with the check chain over the workspace.
 
-3. **C3. The tests' helpers** (`capabilities`, `runner`, `net`, `verifier`, `client`): the capability types' test functions, the fixtures and the harness take `impl Into<Position>` and `impl Into<Num>`; the 33 copies of `at`, `ground`, `half` and `point` go, and their calls name the value. A pure refactor: the tests pass as they are.
+3. **C3. Positions in fractions of a meter** (`capabilities`): the six helpers that convert half, quarter and eighth meters; see [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#c3-positions-in-fractions-of-a-meter).
 
 ## Slice 2 — Wide bodies, uses, the shop and gravity
 

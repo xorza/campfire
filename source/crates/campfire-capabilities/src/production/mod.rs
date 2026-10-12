@@ -228,10 +228,11 @@ pub(crate) mod test_world {
         /// A walker of `team` at `pos`, of a half meter, seen by `seen`, by all when `None`.
         pub(crate) fn yard_walker(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             seen: Option<TeamSet>,
         ) -> StableId {
+            let pos = pos.into();
             let parts = (
                 Body::new(Num::HALF).unwrap(),
                 Navigation::walker(MoveStep::new(Num::ONE).unwrap()),

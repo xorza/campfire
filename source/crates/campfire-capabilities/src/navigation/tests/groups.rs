@@ -86,15 +86,25 @@ fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_
     // and not the second or the goal past the wall; from the second, (6.5, 4.5), the straight
     // line to each goal is clear, so each ends on its own.
     let mut game = walled(&[]);
-    let party = ordered(at(8, 0, 1));
-    let members = [1, 2, 3].map(|x| game.member(at(x, 0, 1), at(x + 6, 0, 1), party));
+    let party = ordered(Position::from((8, 0, 1)));
+    let members = [1, 2, 3].map(|x| {
+        game.member(
+            Position::from((x, 0, 1)),
+            Position::from((x + 6, 0, 1)),
+            party,
+        )
+    });
     let before = game.searches();
     game.step();
     assert_eq!(game.searches() - before, 1);
     let [first, second, goal] = over_the_wall();
     for (member, own) in members.into_iter().zip([7, 8, 9]) {
         let route = game.part::<Route>(member);
-        assert_eq!(route.ahead(), [first, second, at(own, 0, 1)], "{own}");
+        assert_eq!(
+            route.ahead(),
+            [first, second, Position::from((own, 0, 1))],
+            "{own}"
+        );
         assert!(route.reached() && route.asked().is_none());
     }
 
@@ -103,7 +113,12 @@ fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_
     // (9, 5) sees the goal itself past the wall's corner, so its route is the goal alone.
     let mut game = walled(&[]);
     let party = ordered(goal);
-    let ids = [at(1, 0, 1), at(2, 0, 1), at(9, 0, 5)].map(|at| game.member(at, goal, party));
+    let ids = [
+        Position::from((1, 0, 1)),
+        Position::from((2, 0, 1)),
+        Position::from((9, 0, 5)),
+    ]
+    .map(|at| game.member(at, goal, party));
     game.step();
     assert_eq!(game.searches(), 1);
     let routes = ids.map(|id| game.part::<Route>(id).ahead().to_vec());
@@ -122,16 +137,16 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
     // One walker asked alone in tick 0 for (9, 5), and waits; in tick 3 it joins a party with
     // another, and keeps its first tick. The two still search once.
     let mut game = walled(&[]);
-    let goal = at(8, 0, 1);
-    let early = Navigation::unit(&mut game, at(2, 0, 1), Some(at(9, 0, 5)));
+    let goal = Position::from((8, 0, 1));
+    let early = Navigation::unit(&mut game, (2, 0, 1), Some(Position::from((9, 0, 5))));
     game.part_mut::<Route>(early)
-        .ask(at(9, 0, 5), Tick::new(0), None);
+        .ask(Position::from((9, 0, 5)), Tick::new(0), None);
     *game.part_mut::<Destination>(early) = Destination::to(Some(goal));
     let party = ordered(goal);
     game.part_mut::<Route>(early)
         .ask(goal, Tick::new(3), Some(party));
     assert_eq!(game.part::<Route>(early).asked(), Some(Tick::new(0)));
-    let late = Navigation::unit(&mut game, at(3, 0, 1), Some(goal));
+    let late = Navigation::unit(&mut game, (3, 0, 1), Some(goal));
     game.part_mut::<Route>(late)
         .ask(goal, Tick::new(3), Some(party));
     game.step();
@@ -149,9 +164,9 @@ fn a_member_that_sees_no_waypoint_plans_its_own_route() {
     // the member at (1, 5) searches its own route to its goal, (7.5, 3). The first's goal,
     // (8.5, −1), is taken into the bounds, (8.5, 0), which it sees from (6.5, 4.5).
     let mut game = walled(&[([2, 4], [3, 6])]);
-    let party = ordered(at(8, 0, 1));
-    let near = game.member(at(2, 0, 1), point(17, 0), party);
-    let hidden = game.member(at(1, 0, 5), point(15, 6), party);
+    let party = ordered(Position::from((8, 0, 1)));
+    let near = game.member(Position::from((2, 0, 1)), point(17, 0), party);
+    let hidden = game.member(Position::from((1, 0, 5)), point(15, 6), party);
     game.step();
     assert_eq!(game.searches(), 2);
     let [first, second, _] = over_the_wall();
@@ -170,12 +185,12 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
     // air at (2, 1) and (2, 2); no wall blocks the air, so the air's route is the goal alone. The
     // ground's is searched from (2, 1), the lower id of the two as near the centre, (2.5, 1.5).
     let mut game = walled(&[]);
-    let goal = at(8, 0, 1);
+    let goal = Position::from((8, 0, 1));
     let party = ordered(goal);
-    let ground = [2, 3].map(|x| game.member(at(x, 0, 1), goal, party));
+    let ground = [2, 3].map(|x| game.member(Position::from((x, 0, 1)), goal, party));
     let body = Body::new(Num::QUARTER).unwrap().on(AIR);
     let air = [1, 2].map(|z| {
-        let id = Navigation::body_on(&mut game, at(2, 0, z), Some(goal), Some(Num::ONE), body);
+        let id = Navigation::body_on(&mut game, (2, 0, z), Some(goal), Some(Num::ONE), body);
         game.part_mut::<Route>(id)
             .ask(goal, Tick::new(0), Some(party));
         id
@@ -239,7 +254,7 @@ fn a_spawn_group_on_its_path_shares_a_route_and_a_unit_off_it_plans_its_own() {
     ] {
         let mut game = walled(&[]);
         let ids: Vec<StableId> = (0..3)
-            .map(|_| Navigation::unit(&mut game, at(2, 0, 1), Some(at(8, 0, 1))))
+            .map(|_| Navigation::unit(&mut game, (2, 0, 1), Some(Position::from((8, 0, 1)))))
             .collect();
         for (at, &id) in ids.iter().enumerate() {
             let mut walker = PathWalker::start(PathEnd::Start, ids[groups[at]]);

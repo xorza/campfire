@@ -29,10 +29,6 @@ use crate::units::unit_type_data::UnitTypeData;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 
-fn at(x: i64, y: i64, z: i64) -> Position {
-    Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
-}
-
 fn units_match() -> Match {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
@@ -45,19 +41,19 @@ fn units_match() -> Match {
 fn queries_select_living_units_by_filter_and_exact_distance() {
     let mut game = units_match();
     let creep = Units::tagged_type(&mut game, &["creep"], &[]);
-    let of = Combat::spawn_melee(&mut game, at(0, 0, 0), Team::new(1), ());
+    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(1), ());
     // Up at y = 9, 3 m away on the ground plane: the nearest.
-    let high = Combat::spawn_melee(&mut game, at(0, 9, 3), Team::new(0), ());
-    let east = Combat::spawn_melee_of(&mut game, creep, at(4, 0, 0), Team::new(0), ());
-    let west = Combat::spawn_melee(&mut game, at(-4, 0, 0), Team::new(0), ());
-    let edge = Combat::spawn_melee(&mut game, at(0, 0, 5), Team::new(0), ());
-    let far = Combat::spawn_melee(&mut game, at(6, 0, 0), Team::new(0), ());
-    let ally = Combat::spawn_melee(&mut game, at(1, 0, 0), Team::new(1), ());
-    let dead = Combat::spawn_melee(&mut game, at(0, 0, 1), Team::new(0), Dead);
+    let high = Combat::spawn_melee(&mut game, (0, 9, 3), Team::new(0), ());
+    let east = Combat::spawn_melee_of(&mut game, creep, (4, 0, 0), Team::new(0), ());
+    let west = Combat::spawn_melee(&mut game, (-4, 0, 0), Team::new(0), ());
+    let edge = Combat::spawn_melee(&mut game, (0, 0, 5), Team::new(0), ());
+    let far = Combat::spawn_melee(&mut game, (6, 0, 0), Team::new(0), ());
+    let ally = Combat::spawn_melee(&mut game, (1, 0, 0), Team::new(1), ());
+    let dead = Combat::spawn_melee(&mut game, (0, 0, 1), Team::new(0), Dead);
     // Within 2 m, but no target: one untargetable, one invulnerable.
-    let hidden = Combat::spawn_melee(&mut game, at(2, 0, 0), Team::new(0), ());
+    let hidden = Combat::spawn_melee(&mut game, (2, 0, 0), Team::new(0), ());
     Units::set_blocks(&mut game, hidden, &[Block::Target]);
-    let guarded = Combat::spawn_melee(&mut game, at(-2, 0, 0), Team::new(0), ());
+    let guarded = Combat::spawn_melee(&mut game, (-2, 0, 0), Team::new(0), ());
     Units::set_blocks(&mut game, guarded, &[Block::Target, Block::Damage]);
 
     let find = |game: &mut Match, filter: &str| {
@@ -148,9 +144,9 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
 #[test]
 fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     let mut game = units_match();
-    let of = Combat::spawn_melee(&mut game, at(0, 0, 0), Team::new(0), ());
-    Combat::spawn_melee(&mut game, at(3, 0, 4), Team::new(1), ());
-    Combat::spawn_melee(&mut game, at(0, 12, 3), Team::new(1), ());
+    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), ());
+    Combat::spawn_melee(&mut game, (3, 0, 4), Team::new(1), ());
+    Combat::spawn_melee(&mut game, (0, 12, 3), Team::new(1), ());
     let probe = r#"fn probe(ctx, of) {
         let found = ctx.find(of, of.pos, 13, "enemies");
         let near = found[0];
@@ -196,8 +192,8 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
 #[test]
 fn vectors_add_subtract_and_scale_each_rounded_once() {
     let mut game = units_match();
-    let of = Combat::spawn_melee(&mut game, at(0, 0, 0), Team::new(0), ());
-    Combat::spawn_melee(&mut game, at(3, 0, 4), Team::new(1), ());
+    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), ());
+    Combat::spawn_melee(&mut game, (3, 0, 4), Team::new(1), ());
     let probe = r#"fn probe(ctx, of) {
         let d = of.pos.direction_to(ctx.find(of, of.pos, 6, "enemies")[0].pos);
         [d + d, d - d, d * 5, 5 * d, d * (num(1) / 2), (num(1) / 2) * d]
@@ -276,9 +272,9 @@ fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     // away, and a team an entity gains, change no part's tick, only the unit's archetype. The
     // loose unit loses its team at once, as no spawn makes a unit of no team.
     let mut game = units_match();
-    let of = Combat::spawn_melee(&mut game, at(0, 0, 0), Team::new(0), ());
-    let other = Combat::spawn_melee(&mut game, at(3, 0, 4), Team::new(1), ());
-    let loose = Units::spawn(&mut game, at(1, 0, 0), Team::new(1), ());
+    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), ());
+    let other = Combat::spawn_melee(&mut game, (3, 0, 4), Team::new(1), ());
+    let loose = Units::spawn(&mut game, (1, 0, 0), Team::new(1), ());
     let loose_entity = game.unit_entity(loose);
     game.entity_mut(loose_entity).remove::<Team>();
     let value =
@@ -309,14 +305,14 @@ fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     // tick that runs then makes the check, as a schedule's run does, so a later check finds it
     // done.
     let mut pos = game.get_mut::<Position>(loose_entity).unwrap();
-    *pos.bypass_change_detection() = at(2, 0, 0);
+    *pos.bypass_change_detection() = Position::from((2, 0, 0));
     for _ in 0..CHECK_TICK_THRESHOLD {
         game.increment_change_tick();
     }
     game.step();
     assert!(game.check_change_ticks().is_none());
     let moved = value(&mut game, loose, "of.pos");
-    assert_eq!(moved.cast::<Position>(), at(2, 0, 0));
+    assert_eq!(moved.cast::<Position>(), Position::from((2, 0, 0)));
 }
 
 #[test]
@@ -329,23 +325,18 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
-    let spawn = SpawnPoint::new(at(5, 0, -5));
+    let spawn = SpawnPoint::new(Position::from((5, 0, -5)));
     let of = Combat::spawn_melee_of(
         &mut game,
         hero,
-        at(0, 0, 0),
+        (0, 0, 0),
         Team::new(0),
         (owner, path, body, spawn),
     );
-    let near = Combat::spawn_melee(&mut game, at(3, 0, 4), Team::new(1), ());
-    let recent = Combat::spawn_melee(&mut game, at(9, 0, 0), Team::new(1), ());
-    let fallen = Combat::spawn_melee(&mut game, at(9, 0, 1), Team::new(1), Dead);
-    let bare = Units::spawn(
-        &mut game,
-        at(9, 0, 2),
-        Team::new(1),
-        Life::full(Num::int(1)),
-    );
+    let near = Combat::spawn_melee(&mut game, (3, 0, 4), Team::new(1), ());
+    let recent = Combat::spawn_melee(&mut game, (9, 0, 0), Team::new(1), ());
+    let fallen = Combat::spawn_melee(&mut game, (9, 0, 1), Team::new(1), Dead);
+    let bare = Units::spawn(&mut game, (9, 0, 2), Team::new(1), Life::full(Num::int(1)));
     let entity = game.unit_entity(of);
     game.get_mut::<ActionSlots>(entity)
         .unwrap()
@@ -443,18 +434,13 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     StatsColumn::share_stat_names(game.non_send::<View>(), Arc::from(names));
     let mut stats = UnitStats::default();
     stats.refill().extend([Num::int(25), Num::int(10)]);
-    let of = Combat::spawn_melee(&mut game, at(0, 0, 0), Team::new(0), Level::new(3).unwrap());
+    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), Level::new(3).unwrap());
     let entity = game.unit_entity(of);
     game.insert_parts(of, stats);
     let mut life = game.get_mut::<Life>(entity).unwrap();
     life.take(Num::int(4));
-    let bare = Units::spawn(
-        &mut game,
-        at(1, 0, 0),
-        Team::new(1),
-        Life::full(Num::int(1)),
-    );
-    let shell = Units::spawn(&mut game, at(2, 0, 0), Team::new(1), ());
+    let bare = Units::spawn(&mut game, (1, 0, 0), Team::new(1), Life::full(Num::int(1)));
+    let shell = Units::spawn(&mut game, (2, 0, 0), Team::new(1), ());
 
     let read = |game: &mut Match, unit, expression: &str| Units::read(game, expression, unit);
     let value = |game: &mut Match, expression: &str| read(game, of, expression).unwrap();

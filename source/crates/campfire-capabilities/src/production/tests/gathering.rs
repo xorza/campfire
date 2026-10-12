@@ -67,7 +67,8 @@ impl Mine {
     }
 
     /// A worker of player `owner` at `pos`, its gather learned.
-    fn worker(self, game: &mut World, pos: Position, owner: u32) -> StableId {
+    fn worker(self, game: &mut World, pos: impl Into<Position>, owner: u32) -> StableId {
+        let pos = pos.into();
         self.worker_ranked(game, pos, owner, Rank::new(1))
     }
 
@@ -75,10 +76,11 @@ impl Mine {
     fn worker_ranked(
         self,
         game: &mut World,
-        pos: Position,
+        pos: impl Into<Position>,
         owner: u32,
         rank: Option<Rank>,
     ) -> StableId {
+        let pos = pos.into();
         let gather = self.gather;
         let slots = ActionSlots::new([(gather, SlotKind::new(0), rank)]).timed();
         let parts = (
@@ -92,7 +94,8 @@ impl Mine {
     }
 
     /// A mineral at `pos` holding `amount`.
-    fn mineral(self, game: &mut World, pos: Position, amount: u32) -> StableId {
+    fn mineral(self, game: &mut World, pos: impl Into<Position>, amount: u32) -> StableId {
+        let pos = pos.into();
         let body = BodyForm::box_sized([Num::int(2), Num::ONE])
             .unwrap()
             .at(Num::ZERO);

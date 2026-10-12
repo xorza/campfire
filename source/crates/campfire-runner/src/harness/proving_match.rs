@@ -154,7 +154,9 @@ impl Plan for ProvingMatch {
                 barracks(units, slot)[at],
                 Action::Slot {
                     slot: 1,
-                    target: ActionTarget::Point(ground(Num::int(x), Num::int(z))),
+                    target: ActionTarget::Point(
+                        Position::try_from(Vec3::from((Num::int(x), 0, Num::int(z)))).unwrap(),
+                    ),
                 },
             ),
             ProvingMatch::Cast { slot, at } => (
@@ -185,8 +187,4 @@ fn boulder(units: MatchUnits<'_>) -> StableId {
         .find(|(_, unit)| unit.get::<Team>() == Some(&CAMPS))
         .map(|(id, _)| id)
         .expect("the boulder stands until its order")
-}
-
-const fn ground(x: Num, z: Num) -> Position {
-    Position::new(Vec3::new(x, Num::ZERO, z)).expect("a point of the map")
 }

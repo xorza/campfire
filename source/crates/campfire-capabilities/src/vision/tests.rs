@@ -1,4 +1,4 @@
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId};
 
@@ -21,10 +21,6 @@ use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
 use crate::units::units_world::UnitsWorldCrate;
 use crate::values::relation::Relation;
-
-fn at(x: i64, z: i64) -> Position {
-    Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
-}
 
 /// A match of three teams.
 fn vision_match() -> Match {
@@ -103,7 +99,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
 
     // The seer steps 1 m: far's cell, now √6.5 m away, comes into sight in the next Vision stage.
     let entity = game.unit_entity(seer);
-    *game.get_mut::<Position>(entity).unwrap() = at(1, 0);
+    *game.get_mut::<Position>(entity).unwrap() = Position::from((1, 0, 0));
     assert_eq!(Vision::seen_by(&game, far), team(1));
     game.step();
     assert_eq!(Vision::seen_by(&game, far), team(1).with(Team::new(0)));
@@ -120,7 +116,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     game.step();
     assert_eq!(Vision::seen_by(&game, sneak), team(1));
     let entity = game.unit_entity(ward);
-    *game.get_mut::<Position>(entity).unwrap() = at(-3, 0);
+    *game.get_mut::<Position>(entity).unwrap() = Position::from((-3, 0, 0));
     game.step();
     assert_eq!(Vision::seen_by(&game, sneak), team(1).with(Team::new(0)));
 
@@ -281,7 +277,7 @@ fn a_unit_in_brush_is_seen_only_from_its_brush_and_by_a_reveal() {
     assert_eq!(seen(&game)[0], and(1, 2));
     // Once the watcher stands in A too, at (2, 1), its cell's center (2.5, 1.5), it sees the hider
     // from there.
-    *game.part_mut::<Position>(watcher) = at(2, 1);
+    *game.part_mut::<Position>(watcher) = Position::from((2, 0, 1));
     game.step();
     assert_eq!(seen(&game)[0], and(1, 2).with(Team::new(0)));
 }
@@ -314,13 +310,13 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     assert!(read(&mut game, "of.radius", building).is_unit());
     // A step west, to (-2, 0), and the edge's centers lie √20.5 m off: no cell of it is seen.
     let entity = game.unit_entity(seer);
-    *game.get_mut::<Position>(entity).unwrap() = at(-2, 0);
+    *game.get_mut::<Position>(entity).unwrap() = Position::from((-2, 0, 0));
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1));
     // Hidden, it is seen only by detection: a detector of team 0 at (-1, 0), seeing 4 m, detects
     // the edge's cells, and the seer, which does not detect, back there too, does not.
     Vision::set_properties(&mut game, building, TagProperties::default().with_hidden());
-    *game.get_mut::<Position>(entity).unwrap() = at(-1, 0);
+    *game.get_mut::<Position>(entity).unwrap() = Position::from((-1, 0, 0));
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1));
     let ward = Vision::spawn_seer(&mut game, -1, 1, Team::new(0), Some(4));

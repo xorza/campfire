@@ -201,10 +201,11 @@ pub(crate) mod test_world {
         /// `parts`, with no slots unless they hold some.
         pub(crate) fn spawn_combatant(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
+            let pos = pos.into();
             let unit_type = Units::test_type(world);
             Abilities::spawn_combatant_of(world, unit_type, pos, team, parts)
         }
@@ -213,10 +214,11 @@ pub(crate) mod test_world {
         pub(crate) fn spawn_combatant_of(
             world: &mut World,
             unit_type: UnitType,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
+            let pos = pos.into();
             let combat = (
                 Life::full(Num::int(500)),
                 OnDeath::Stay,
@@ -233,11 +235,12 @@ pub(crate) mod test_world {
         /// A unit of `team` armed as `combatant` that attacks `target`.
         pub(crate) fn attacker(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             combatant: Armed,
             target: StableId,
         ) -> StableId {
+            let pos = pos.into();
             let combatant = combatant.bundle(world);
             let id = Units::spawn(world, pos, team, combatant);
             let mut slots = world.part_mut::<ActionSlots>(id);
