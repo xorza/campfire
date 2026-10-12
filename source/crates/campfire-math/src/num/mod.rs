@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::floor_root::NearestRoot;
 use crate::num::decimal::Decimal;
-use crate::num::error::ParseNumError;
+use crate::num::error::{IntToNumError, ParseNumError};
 use crate::rounding::Rounding;
 
 #[cfg(feature = "bench")]
@@ -360,6 +360,67 @@ impl MulAssign<i64> for Num {
 impl DivAssign<i64> for Num {
     fn div_assign(&mut self, rhs: i64) {
         *self = *self / rhs;
+    }
+}
+
+/// Exact: every `i8` lies within the integers a `Num` holds.
+impl From<i8> for Num {
+    fn from(value: i8) -> Num {
+        Num::int(i64::from(value))
+    }
+}
+
+/// Exact: every `u8` lies within the integers a `Num` holds.
+impl From<u8> for Num {
+    fn from(value: u8) -> Num {
+        Num::int(i64::from(value))
+    }
+}
+
+/// Exact: every `i16` lies within the integers a `Num` holds.
+impl From<i16> for Num {
+    fn from(value: i16) -> Num {
+        Num::int(i64::from(value))
+    }
+}
+
+/// Exact: every `u16` lies within the integers a `Num` holds.
+impl From<u16> for Num {
+    fn from(value: u16) -> Num {
+        Num::int(i64::from(value))
+    }
+}
+
+/// Exact: every `i32` lies within the integers a `Num` holds.
+impl From<i32> for Num {
+    fn from(value: i32) -> Num {
+        Num::int(i64::from(value))
+    }
+}
+
+/// Exact: every `u32` lies within the integers a `Num` holds.
+impl From<u32> for Num {
+    fn from(value: u32) -> Num {
+        Num::int(i64::from(value))
+    }
+}
+
+impl TryFrom<i64> for Num {
+    type Error = IntToNumError;
+
+    fn try_from(value: i64) -> Result<Num, IntToNumError> {
+        Num::from_int(value).ok_or(IntToNumError::OutOfRange)
+    }
+}
+
+impl TryFrom<u64> for Num {
+    type Error = IntToNumError;
+
+    fn try_from(value: u64) -> Result<Num, IntToNumError> {
+        let value = i64::try_from(value).ok();
+        value
+            .and_then(Num::from_int)
+            .ok_or(IntToNumError::OutOfRange)
     }
 }
 

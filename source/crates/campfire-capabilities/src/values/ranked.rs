@@ -37,3 +37,26 @@ impl<T> Ranked<T> {
         }
     }
 }
+
+impl<T> From<T> for Ranked<T> {
+    fn from(value: T) -> Ranked<T> {
+        Ranked::One(value)
+    }
+}
+
+impl<T> From<Vec<T>> for Ranked<T> {
+    fn from(values: Vec<T>) -> Ranked<T> {
+        Ranked::PerRank(values)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_value_is_one_and_a_list_one_a_rank() {
+        assert_eq!(Ranked::from(4_u8), Ranked::One(4));
+        assert_eq!(Ranked::from(vec![1_u8, 2]), Ranked::PerRank(vec![1, 2]));
+    }
+}

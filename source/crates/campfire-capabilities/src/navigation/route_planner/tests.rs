@@ -14,7 +14,7 @@ use crate::navigation::walker::Walker;
 use crate::units::layer::Layer;
 
 /// The point `(x, z)` in quarters of a meter.
-fn at(x: i64, z: i64) -> Position {
+fn quarters(x: i64, z: i64) -> Position {
     let quarter = |value: i64| Num::from_bits(value << (Num::FRAC_BITS - 2));
     Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap()
 }
@@ -54,7 +54,7 @@ fn walled(rows: &[&str]) -> Walled {
                 let center = |index: usize| i64::try_from(4 * index + 2).unwrap();
                 posts.push(IndexedBody {
                     id: ids.allocate(),
-                    pos: at(center(column), center(row)),
+                    pos: quarters(center(column), center(row)),
                     shape: Shape::Circle(quarter),
                     layer: Layer::FIRST,
                 });
@@ -79,7 +79,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     let walkable = Walkable::of(clearance, &statics);
     let mut planner = RoutePlanner::new(clearance.grid());
     let mut waypoints = Vec::new();
-    let (start, goal) = (at(2, 10), at(29, 11));
+    let (start, goal) = (quarters(2, 10), quarters(29, 11));
     let first = planner.plan(walkable, start, goal, &mut waypoints);
     // From (0, 2) three diagonals to (3, 5), 42; a step to (4, 5), 10; a step to (5, 5), as a
     // diagonal to (5, 4) would pass the blocked (4, 4), 10; then diagonals to (6, 4) and
@@ -94,11 +94,11 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     // |5·2 − 3·4| / √34 ≈ 0.34 m off, less than 0.5. From (4.5, 5.5) the line to the goal,
     // (7.25, 2.75), along (1, −1), passes that post √0.5 ≈ 0.71 m off, and the post at
     // (4.5, 3.5) √2 m off.
-    assert_eq!(waypoints, [at(18, 22), goal]);
+    assert_eq!(waypoints, [quarters(18, 22), goal]);
 
     // The same route from a planner that planned others, and from a new one.
     let mut other = Vec::new();
-    planner.plan(walkable, at(29, 1), at(1, 21), &mut other);
+    planner.plan(walkable, quarters(29, 1), quarters(1, 21), &mut other);
     let mut again = Vec::new();
     assert_eq!(planner.plan(walkable, start, goal, &mut again), first);
     assert_eq!(again, waypoints);
@@ -114,7 +114,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     // of total 14 + 10, before (1, 2) of 10 + 14, then (2, 1) of 24 + 0. Its work: the test of
     // the goal, the one region, through row 5, and its 48 cells scanned for the nearest, the
     // 3 cells expanded, and one line tested, from the start straight to (2.5, 1.5): 54.
-    let blocked = planner.plan(walkable, start, at(14, 6), &mut waypoints);
+    let blocked = planner.plan(walkable, start, quarters(14, 6), &mut waypoints);
     assert_eq!(
         blocked,
         Planned {
@@ -124,13 +124,13 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
             reached: false,
         }
     );
-    assert_eq!(waypoints, [at(10, 6)]);
+    assert_eq!(waypoints, [quarters(10, 6)]);
 
     // A goal at (3.5, 3.25) in the open cell (3, 3), past the corner of the wall: a
     // walker may stand there, 0.75 m from (3.5, 2.5) and 1.03 m from (4.5, 3.5).
-    let corner = planner.plan(walkable, start, at(14, 13), &mut waypoints);
+    let corner = planner.plan(walkable, start, quarters(14, 13), &mut waypoints);
     assert!(corner.reached);
-    assert_eq!(waypoints, [at(14, 13)]);
+    assert_eq!(waypoints, [quarters(14, 13)]);
 
     // A goal in a blocked cell that a walker may stand on: (3.5, 0.5) is a post, but (3.85,
     // 0.0) is clear of it by √(0.35² + 0.5²) ≈ 0.61 m, so the route ends on it.
@@ -158,7 +158,12 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     let closed_clearance = closed.clearance(walker());
     let closed_walkable = Walkable::of(closed_clearance, &closed_statics);
     let mut closed_planner = RoutePlanner::new(closed_clearance.grid());
-    let walled_off = closed_planner.plan(closed_walkable, at(2, 6), at(26, 6), &mut waypoints);
+    let walled_off = closed_planner.plan(
+        closed_walkable,
+        quarters(2, 6),
+        quarters(26, 6),
+        &mut waypoints,
+    );
     assert_eq!(
         walled_off,
         Planned {
@@ -168,11 +173,11 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
             reached: false,
         }
     );
-    assert_eq!(waypoints, [at(14, 6)]);
+    assert_eq!(waypoints, [quarters(14, 6)]);
 
     // A goal in the start's cell: nothing to expand past it, and no line to test past the
     // goal's.
-    let here = planner.plan(walkable, start, at(3, 9), &mut waypoints);
+    let here = planner.plan(walkable, start, quarters(3, 9), &mut waypoints);
     assert_eq!(
         here,
         Planned {
@@ -182,7 +187,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
             reached: true,
         }
     );
-    assert_eq!(waypoints, [at(3, 9)]);
+    assert_eq!(waypoints, [quarters(3, 9)]);
 }
 
 /// Posts on a 9 by 7 grid, and windows of 2 cells each way around cells at its corners, edges
@@ -230,7 +235,7 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
         };
         for x in -4..=40 {
             for z in -4..=32 {
-                let goal = at(x, z);
+                let goal = quarters(x, z);
                 let scanned = (0..columns * cells.rows())
                     .filter(|&at| open(at))
                     .map(|at| (cells.center_distance(at, goal), at))
@@ -262,8 +267,8 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
         }),
     };
     let mut planner = RoutePlanner::new(clearance.grid());
-    let mut waypoints = vec![at(0, 0)];
-    let nowhere = planner.plan(walkable, at(10, 10), at(2, 2), &mut waypoints);
+    let mut waypoints = vec![quarters(0, 0)];
+    let nowhere = planner.plan(walkable, quarters(10, 10), quarters(2, 2), &mut waypoints);
     assert_eq!(
         nowhere,
         Planned {
@@ -287,11 +292,11 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
     let mut planner = RoutePlanner::new(cells);
     let mut ids = IdAllocator::default();
     let blockers =
-        [(0, 0, 1), (6, 14, 4), (17, 9, 10), (30, 26, 3), (40, 30, 6)].map(|(x, z, quarters)| {
+        [(0, 0, 1), (6, 14, 4), (17, 9, 10), (30, 26, 3), (40, 30, 6)].map(|(x, z, radius)| {
             IndexedBody {
                 id: ids.allocate(),
-                pos: at(x, z),
-                shape: Shape::Circle(Num::from_bits(quarters << (Num::FRAC_BITS - 2))),
+                pos: quarters(x, z),
+                shape: Shape::Circle(Num::from_bits(radius << (Num::FRAC_BITS - 2))),
                 layer: Layer::FIRST,
             }
         });

@@ -339,5 +339,19 @@ impl DivAssign<Num> for Vec3 {
     }
 }
 
+/// Exact, as each element's conversion to a `Num` is.
+impl<X: Into<Num>, Y: Into<Num>, Z: Into<Num>> From<(X, Y, Z)> for Vec3 {
+    fn from((x, y, z): (X, Y, Z)) -> Vec3 {
+        Vec3::new(x.into(), y.into(), z.into())
+    }
+}
+
+/// Exact, as each element's conversion to a `Num` is.
+impl<T: Into<Num>> From<[T; 3]> for Vec3 {
+    fn from([x, y, z]: [T; 3]) -> Vec3 {
+        Vec3::new(x.into(), y.into(), z.into())
+    }
+}
+
 #[cfg(test)]
 mod tests;

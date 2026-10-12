@@ -11,11 +11,6 @@ use crate::units::team_set::TeamSet;
 use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
 
-/// The ground point at `x` and `z` half meters.
-fn half(x: i64, z: i64) -> Position {
-    Position::new(Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)).unwrap()
-}
-
 #[test]
 fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     // Player 0 holds 0 gold; its barracks queues three trains of 4 ticks, pushed at tick 0, that
@@ -137,7 +132,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     game.insert_parts(producer, body);
     let flag = Units::spawn(
         &mut game,
-        half(0, 12),
+        halves(0, 12),
         Team::new(1),
         Body::new(Num::HALF).unwrap(),
     );
@@ -158,14 +153,14 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     //   to where the unit stands.
     // - None: at the producer, and it stands.
     let cases = [
-        (Some(point(8, 0)), half(5, -1), Some(half(16, 0))),
-        (Some(point(-40, 0)), half(-5, -1), Some(half(-20, 0))),
+        (Some(point(8, 0)), halves(5, -1), Some(halves(16, 0))),
+        (Some(point(-40, 0)), halves(-5, -1), Some(halves(-20, 0))),
         (
             Some(RallyTarget::Unit(flag)),
-            half(-1, 3),
-            Some(half(0, 12)),
+            halves(-1, 3),
+            Some(halves(0, 12)),
         ),
-        (None, half(0, 0), None),
+        (None, halves(0, 0), None),
     ];
     for (at, (target, place, walks)) in cases.into_iter().enumerate() {
         Production::tick_ordering(&mut game, 0, producer, Action::Rally { target });
@@ -183,7 +178,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     Production::order_train(&mut game, producer);
     game.step();
     let spawned = Shop::spawned(&game)[4];
-    assert_eq!(spawned.at.pos, half(0, 0));
+    assert_eq!(spawned.at.pos, halves(0, 0));
 
     // With a vision grid, a rally to a unit of team 0 at (0, 6) that the producer's team 1 does
     // not see is ignored: the dead flag stays its rally, and the grunt spawns at its producer.
@@ -191,14 +186,17 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     Vision::fog_grid(&mut game, 2);
     let watch = Units::spawn(
         &mut game,
-        half(0, 12),
+        halves(0, 12),
         Team::new(0),
         Body::new(Num::HALF).unwrap(),
     );
     let team0 = TeamSet::of(Team::new(0));
-    for (at, (seers, place)) in [(team0, half(0, 0)), (team0.with(Team::new(1)), half(-1, 3))]
-        .into_iter()
-        .enumerate()
+    for (at, (seers, place)) in [
+        (team0, halves(0, 0)),
+        (team0.with(Team::new(1)), halves(-1, 3)),
+    ]
+    .into_iter()
+    .enumerate()
     {
         game.insert_parts(watch, SeenBy::new(seers));
         Production::tick_ordering(&mut game, 0, producer, rally(RallyTarget::Unit(watch)));

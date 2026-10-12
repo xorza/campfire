@@ -16,10 +16,6 @@ const MATCH_TICKS: u64 = 600;
 /// The lane mode's respawn, 5000 ms at 30 ticks a second, from the end of the tick of death.
 const RESPAWN_TICKS: u64 = 150;
 
-const fn at(x: i64, z: i64) -> Position {
-    Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
-}
-
 /// Where a hero stands in an app, and whether it is dead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Hero {
@@ -118,7 +114,7 @@ fn play(link: LinkModel) -> [u32; 2] {
     }
     // Each ends where its last order sent it, alive, on the server and on its client.
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
-        let end = [at(-3, -2), at(3, 4)][team];
+        let end = [Position::from((-3, 0, -2)), Position::from((3, 0, 4))][team];
         let end = Hero {
             pos: end,
             dead: false,
@@ -358,7 +354,7 @@ fn route(link: LinkModel) -> [u32; 2] {
         reach * reach
     );
     let end = Hero {
-        pos: at(-12, -4),
+        pos: Position::from((-12, 0, -4)),
         dead: false,
     };
     assert_eq!(hero(local.server(), walker), end);
@@ -402,7 +398,10 @@ fn round(link: LinkModel) -> [u32; 2] {
         "{closest} against {}",
         reach * reach
     );
-    for (id, end) in [(walker, at(0, 5)), (stander, at(0, 2))] {
+    for (id, end) in [
+        (walker, Position::from((0, 0, 5))),
+        (stander, Position::from((0, 0, 2))),
+    ] {
         let end = Hero {
             pos: end,
             dead: false,
@@ -462,7 +461,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     // Each hero ends where its last order sent it, on the server and on its client.
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
         let end = Hero {
-            pos: [at(-3, -2), at(3, 4)][team],
+            pos: [Position::from((-3, 0, -2)), Position::from((3, 0, 4))][team],
             dead: false,
         };
         assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
@@ -485,7 +484,10 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
         }
     };
     // An order every 5 frames from before the stall on, so some go out as a timeline steps back.
-    let (away, targets) = ([at(-3, -1), at(3, 1)], [at(-3, 2), at(3, 0)]);
+    let (away, targets) = (
+        [Position::from((-3, 0, -1)), Position::from((3, 0, 1))],
+        [Position::from((-3, 0, 2)), Position::from((3, 0, 0))],
+    );
     for frame in 0..60 {
         if frame % 5 == 0 {
             order(&mut local, away);

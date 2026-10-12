@@ -31,3 +31,30 @@ impl ActionTarget {
         }
     }
 }
+
+impl From<StableId> for ActionTarget {
+    fn from(unit: StableId) -> ActionTarget {
+        ActionTarget::Unit(unit)
+    }
+}
+
+impl From<Position> for ActionTarget {
+    fn from(point: Position) -> ActionTarget {
+        ActionTarget::Point(point)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_sim::IdAllocator;
+
+    use super::*;
+
+    #[test]
+    fn a_unit_or_a_point_is_its_target() {
+        let unit = IdAllocator::default().allocate();
+        let point = Position::from((3, 0, -4));
+        assert_eq!(ActionTarget::from(unit), ActionTarget::Unit(unit));
+        assert_eq!(ActionTarget::from(point), ActionTarget::Point(point));
+    }
+}

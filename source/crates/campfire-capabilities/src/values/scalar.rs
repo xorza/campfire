@@ -80,3 +80,26 @@ fn decimal<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Num, D::Error> 
     let text = String::deserialize(deserializer)?;
     Num::from_str(&text).map_err(Error::custom)
 }
+
+impl From<i64> for Scalar {
+    fn from(value: i64) -> Scalar {
+        Scalar::Int(value)
+    }
+}
+
+impl From<Num> for Scalar {
+    fn from(value: Num) -> Scalar {
+        Scalar::Decimal(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_integer_or_a_number_is_its_scalar() {
+        assert_eq!(Scalar::from(-5), Scalar::Int(-5));
+        assert_eq!(Scalar::from(Num::HALF), Scalar::Decimal(Num::HALF));
+    }
+}

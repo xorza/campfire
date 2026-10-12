@@ -23,11 +23,6 @@ use crate::units::move_step::MoveStep;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation_set::RelationSet;
 
-/// The point at `x` and `z` half meters.
-fn half(x: i64, z: i64) -> Position {
-    Position::new(Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)).unwrap()
-}
-
 /// A mine's match: a worker's gather, and the type of the minerals it gathers at.
 #[derive(Debug, Clone, Copy)]
 struct Mine {
@@ -67,7 +62,8 @@ impl Mine {
     }
 
     /// A worker of player `owner` at `pos`, its gather learned.
-    fn worker(self, game: &mut World, pos: Position, owner: u32) -> StableId {
+    fn worker(self, game: &mut World, pos: impl Into<Position>, owner: u32) -> StableId {
+        let pos = pos.into();
         self.worker_ranked(game, pos, owner, Rank::new(1))
     }
 
@@ -75,10 +71,11 @@ impl Mine {
     fn worker_ranked(
         self,
         game: &mut World,
-        pos: Position,
+        pos: impl Into<Position>,
         owner: u32,
         rank: Option<Rank>,
     ) -> StableId {
+        let pos = pos.into();
         let gather = self.gather;
         let slots = ActionSlots::new([(gather, SlotKind::new(0), rank)]).timed();
         let parts = (
@@ -92,7 +89,8 @@ impl Mine {
     }
 
     /// A mineral at `pos` holding `amount`.
-    fn mineral(self, game: &mut World, pos: Position, amount: u32) -> StableId {
+    fn mineral(self, game: &mut World, pos: impl Into<Position>, amount: u32) -> StableId {
+        let pos = pos.into();
         let body = BodyForm::box_sized([Num::int(2), Num::ONE])
             .unwrap()
             .at(Num::ZERO);
@@ -115,12 +113,12 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    shop.hall(&mut game, half(0, 0));
-    let node = mine.mineral(&mut game, half(0, 12), 12);
-    let worker = mine.worker(&mut game, half(1, 6), 0);
+    shop.hall(&mut game, halves(0, 0));
+    let node = mine.mineral(&mut game, halves(0, 12), 12);
+    let worker = mine.worker(&mut game, halves(1, 6), 0);
     // A worker far off whose gather it has not learned holds no gather: its order stops in the
     // tick it applies.
-    let unlearned = mine.worker_ranked(&mut game, half(-20, 6), 0, None);
+    let unlearned = mine.worker_ranked(&mut game, halves(-20, 6), 0, None);
     Production::gather_at(&mut game, &[worker, unlearned], node);
     let mut seen = Vec::new();
     for tick in 1..=21 {
@@ -156,9 +154,9 @@ fn waiting_workers_take_a_freed_node_by_the_tick_they_waited_then_by_stable_id()
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    shop.hall(&mut game, half(0, 3));
-    let node = mine.mineral(&mut game, half(0, 12), 100);
-    let workers = [-2, 0, 2].map(|x| mine.worker(&mut game, half(x, 8), 0));
+    shop.hall(&mut game, halves(0, 3));
+    let node = mine.mineral(&mut game, halves(0, 12), 100);
+    let workers = [-2, 0, 2].map(|x| mine.worker(&mut game, halves(x, 8), 0));
     Production::gather_at(&mut game, &workers, node);
     let mut holders = vec![game.part::<Node>(node).holder()];
     let mut gold = vec![shop.gold(&game)];
@@ -181,7 +179,7 @@ fn waiting_workers_take_a_freed_node_by_the_tick_they_waited_then_by_stable_id()
         .iter()
         .map(|&id| *game.part::<Position>(id))
         .collect();
-    assert_eq!(positions, [-2, 0, 2].map(|x| half(x, 8)));
+    assert_eq!(positions, [-2, 0, 2].map(|x| halves(x, 8)));
 }
 
 #[test]
@@ -193,12 +191,12 @@ fn a_worker_at_a_taken_node_goes_to_the_nearest_free_one_near_it_or_waits() {
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    let node = mine.mineral(&mut game, half(0, 12), 100);
-    let east = mine.mineral(&mut game, half(7, 12), 100);
-    mine.mineral(&mut game, half(-10, 12), 100);
-    mine.mineral(&mut game, half(24, 12), 100);
-    let first = mine.worker(&mut game, half(1, 8), 0);
-    let second = mine.worker(&mut game, half(-1, 8), 0);
+    let node = mine.mineral(&mut game, halves(0, 12), 100);
+    let east = mine.mineral(&mut game, halves(7, 12), 100);
+    mine.mineral(&mut game, halves(-10, 12), 100);
+    mine.mineral(&mut game, halves(24, 12), 100);
+    let first = mine.worker(&mut game, halves(1, 8), 0);
+    let second = mine.worker(&mut game, halves(-1, 8), 0);
     Production::gather_at(&mut game, &[first, second], node);
     assert_eq!(game.part::<Node>(node).holder(), Some(first));
     assert_eq!(
@@ -213,10 +211,10 @@ fn a_worker_at_a_taken_node_goes_to_the_nearest_free_one_near_it_or_waits() {
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    let node = mine.mineral(&mut game, half(0, 12), 100);
-    mine.mineral(&mut game, half(24, 12), 100);
-    let first = mine.worker(&mut game, half(1, 8), 0);
-    let second = mine.worker(&mut game, half(-1, 8), 0);
+    let node = mine.mineral(&mut game, halves(0, 12), 100);
+    mine.mineral(&mut game, halves(24, 12), 100);
+    let first = mine.worker(&mut game, halves(1, 8), 0);
+    let second = mine.worker(&mut game, halves(-1, 8), 0);
     Production::gather_at(&mut game, &[first, second], node);
     let waits = GatherStep::Waiting {
         since: Tick::new(0),
@@ -239,9 +237,9 @@ fn a_node_frees_to_its_waiting_worker_as_its_holder_dies_or_takes_another_order(
         let mut game = ordering_match();
         let shop = Shop::place(&mut game);
         let mine = Mine::place(&mut game, shop);
-        let node = mine.mineral(&mut game, half(0, 12), 100);
-        let first = mine.worker(&mut game, half(1, 8), 0);
-        let second = mine.worker(&mut game, half(-1, 8), 0);
+        let node = mine.mineral(&mut game, halves(0, 12), 100);
+        let first = mine.worker(&mut game, halves(1, 8), 0);
+        let second = mine.worker(&mut game, halves(-1, 8), 0);
         Production::gather_at(&mut game, &[first, second], node);
         if dies {
             game.insert_parts(first, Dead);
@@ -278,8 +276,8 @@ fn a_block_of_use_ends_a_gather_with_no_load_and_the_loop_starts_again_as_it_end
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    let node = mine.mineral(&mut game, half(0, 12), 100);
-    let worker = mine.worker(&mut game, half(1, 8), 0);
+    let node = mine.mineral(&mut game, halves(0, 12), 100);
+    let worker = mine.worker(&mut game, halves(1, 8), 0);
     Production::gather_at(&mut game, &[worker], node);
     game.insert_parts(worker, UnitTags::blocking(&[Block::Use]));
     game.step();
@@ -319,9 +317,9 @@ fn a_load_past_what_an_amount_holds_stays_with_its_worker() {
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    shop.hall(&mut game, half(0, 3));
-    let node = mine.mineral(&mut game, half(0, 12), 100);
-    let worker = mine.worker(&mut game, half(1, 8), 0);
+    shop.hall(&mut game, halves(0, 3));
+    let node = mine.mineral(&mut game, halves(0, 12), 100);
+    let worker = mine.worker(&mut game, halves(1, 8), 0);
     let near_most = i64::MAX - 2;
     let resources = game.player_resources_mut(PlayerSlot::new(0));
     resources.unwrap().add(shop.gold, near_most).unwrap();
@@ -355,14 +353,14 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    let hall = shop.hall(&mut game, half(0, 3));
-    let node = mine.mineral(&mut game, half(0, 12), 100);
-    let worker = mine.worker(&mut game, half(1, 8), 0);
+    let hall = shop.hall(&mut game, halves(0, 3));
+    let node = mine.mineral(&mut game, halves(0, 12), 100);
+    let worker = mine.worker(&mut game, halves(1, 8), 0);
     Production::gather_at(&mut game, &[worker], node);
     for _ in 1..=3 {
         game.step();
     }
-    let nearer = mine.mineral(&mut game, half(5, 8), 100);
+    let nearer = mine.mineral(&mut game, halves(5, 8), 100);
     let mut gatherer = game.part_mut::<Gatherer>(worker);
     gatherer.set(None);
     gatherer.carry(Some(Load {
@@ -400,10 +398,10 @@ fn a_node_that_runs_out_mid_trip_sends_its_worker_to_the_nearest_free_one() {
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    shop.hall(&mut game, half(0, 3));
-    let node = mine.mineral(&mut game, half(0, 12), 5);
-    let east = mine.mineral(&mut game, half(7, 12), 100);
-    let worker = mine.worker(&mut game, half(1, 8), 0);
+    shop.hall(&mut game, halves(0, 3));
+    let node = mine.mineral(&mut game, halves(0, 12), 5);
+    let east = mine.mineral(&mut game, halves(7, 12), 100);
+    let worker = mine.worker(&mut game, halves(1, 8), 0);
     Production::gather_at(&mut game, &[worker], node);
     for _ in 1..=3 {
         game.step();
@@ -432,7 +430,7 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let mine = Mine::place(&mut game, shop);
-    let node = mine.mineral(&mut game, half(0, 12), 100);
+    let node = mine.mineral(&mut game, halves(0, 12), 100);
     let gather = mine.gather;
     let worker_type = shop.grunt;
     game.insert_non_send(Spawner::new(move |world, at, owner| {

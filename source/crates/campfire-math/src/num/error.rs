@@ -10,3 +10,11 @@ pub enum ParseNumError {
     #[error("outside the range of Num")]
     OutOfRange,
 }
+
+/// Why an integer is not a `Num`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum IntToNumError {
+    /// Outside `−2³⁹ ≤ value < 2³⁹`, the integers a `Num` holds.
+    #[error("outside the integers a Num holds, -2^39 to 2^39 - 1")]
+    OutOfRange,
+}

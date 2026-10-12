@@ -40,8 +40,9 @@ use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;
 
-fn at(x: i64) -> Position {
-    Position::new(Vec3::new(Num::from_int(x).unwrap(), Num::ZERO, Num::ZERO)).unwrap()
+/// The point `(x, z)` in halves of a meter.
+fn halves(x: i64, z: i64) -> Position {
+    Position::new(Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)).unwrap()
 }
 
 /// A match of production alone, for a shop.
@@ -173,7 +174,8 @@ impl Shop {
     }
 
     /// Player 0's hall at `pos`.
-    fn hall(self, game: &mut World, pos: Position) -> StableId {
+    fn hall(self, game: &mut World, pos: impl Into<Position>) -> StableId {
+        let pos = pos.into();
         let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
             .unwrap()
             .at(Num::ZERO);
@@ -238,8 +240,8 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
         train,
         queue(train, &[0]),
     );
-    let from_first = (Team::new(1), at(10), Some(player));
-    let from_second = (Team::new(2), at(20), None);
+    let from_first = (Team::new(1), Position::from((10, 0, 0)), Some(player));
+    let from_second = (Team::new(2), Position::from((20, 0, 0)), None);
     // Tick 0 ends at time 1. The first's train spawns first. The second's two trains of no time
     // spawn one after the other: each next starts at time 1 and is done at once. Its third, of
     // 1 tick, starts at time 1 and is done at time 2, the end of tick 1.
@@ -313,7 +315,10 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     Production::order_train(&mut game, owned);
     Production::order_train(&mut game, unowned);
     game.step();
-    assert_eq!(shop.spawns(&game), [(Team::new(1), at(10), Some(player))]);
+    assert_eq!(
+        shop.spawns(&game),
+        [(Team::new(1), Position::from((10, 0, 0)), Some(player))]
+    );
     let held = game.player_resources(player).unwrap().amount(gold);
     assert_eq!(held, 3);
     for id in [owned, unowned] {

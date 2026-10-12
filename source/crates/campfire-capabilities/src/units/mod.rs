@@ -322,10 +322,11 @@ pub(crate) mod test_world {
         /// spawns one.
         pub(crate) fn spawn(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
+            let pos = pos.into();
             let unit_type = Units::test_type(world);
             Units::spawn_of(world, unit_type, pos, team, parts)
         }
@@ -337,10 +338,11 @@ pub(crate) mod test_world {
         pub(crate) fn spawn_of(
             world: &mut World,
             unit_type: UnitType,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
+            let pos = pos.into();
             let id = world.resource_mut::<IdAllocator>().allocate();
             let core = UnitCore {
                 id,

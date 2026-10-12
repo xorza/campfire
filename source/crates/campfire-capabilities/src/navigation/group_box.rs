@@ -66,10 +66,6 @@ mod tests {
 
     use super::*;
 
-    fn at(x: Num, z: Num) -> Position {
-        Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
-    }
-
     #[test]
     fn a_group_keeps_its_shape_only_on_a_move_away_from_its_box() {
         // Three units at (1, 2), (4, 6) and (2, 3): the box runs from (1, 2) to (4, 6), its centre
@@ -78,7 +74,11 @@ mod tests {
         // (19.5, 9). Bounds of ±21 m take the second to x = 21.
         let int = Num::int;
         let half = |value: i64| Num::int(value) / 2;
-        let units = [at(int(1), int(2)), at(int(4), int(6)), at(int(2), int(3))];
+        let units = [
+            Position::try_from(Vec3::from((int(1), 0, int(2)))).unwrap(),
+            Position::try_from(Vec3::from((int(4), 0, int(6)))).unwrap(),
+            Position::try_from(Vec3::from((int(2), 0, int(3)))).unwrap(),
+        ];
         let group = GroupBox::of(units).unwrap();
         assert_eq!(group.centre(), [half(5), int(4)]);
         let bounds = Bounds::new([int(-21), int(-21)], [int(21), int(21)]).unwrap();
@@ -105,7 +105,11 @@ mod tests {
     fn the_centre_rounds_toward_negative_infinity() {
         // Ends 1 and 2 bits apart: (−1 + 0) / 2 = −½ bit rounds to −1 bit, (0 + 1) / 2 = ½ to 0.
         let bit = Num::from_bits;
-        let group = GroupBox::of([at(bit(-1), bit(0)), at(bit(0), bit(1))]).unwrap();
+        let group = GroupBox::of([
+            Position::try_from(Vec3::from((bit(-1), 0, bit(0)))).unwrap(),
+            Position::try_from(Vec3::from((bit(0), 0, bit(1)))).unwrap(),
+        ])
+        .unwrap();
         assert_eq!(group.centre(), [bit(-1), bit(0)]);
     }
 }

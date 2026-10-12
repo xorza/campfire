@@ -265,30 +265,37 @@ pub(crate) mod test_world {
         /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
         pub(crate) fn load_open_pathing(
             world: &mut World,
-            cell: Num,
+            cell: impl Into<Num>,
             min: [i64; 2],
             max: [i64; 2],
             walkers: Vec<Walker>,
         ) {
+            let cell = cell.into();
             Navigation::load_walled(world, cell, min, max, walkers, &[]);
         }
 
         /// Loads a pathing grid as `load_pathing` does, with `walls`.
         pub(crate) fn load_walled(
             world: &mut World,
-            cell: Num,
+            cell: impl Into<Num>,
             min: [i64; 2],
             max: [i64; 2],
             walkers: Vec<Walker>,
             walls: &[Wall],
         ) {
+            let cell = cell.into();
             let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
             let grid = Grid::new(cell, bounds).unwrap();
             Navigation::load_pathing(world, grid, walls, walkers);
         }
 
         /// A unit at `pos` walking a meter a tick to `to`.
-        pub(crate) fn unit(world: &mut World, pos: Position, to: Option<Position>) -> StableId {
+        pub(crate) fn unit(
+            world: &mut World,
+            pos: impl Into<Position>,
+            to: Option<Position>,
+        ) -> StableId {
+            let pos = pos.into();
             let walker = Navigation::walker(MoveStep::new(Num::ONE).unwrap());
             let id = Units::spawn(world, pos, Team::new(0), walker);
             *world.part_mut::<Destination>(id) = Destination::to(to);
@@ -299,11 +306,13 @@ pub(crate) mod test_world {
         /// walk when `step` is `None`.
         pub(crate) fn body(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             to: Option<Position>,
             step: Option<Num>,
-            radius: Num,
+            radius: impl Into<Num>,
         ) -> StableId {
+            let pos = pos.into();
+            let radius = radius.into();
             Navigation::body_on(world, pos, to, step, Body::new(radius).unwrap())
         }
 
@@ -311,11 +320,12 @@ pub(crate) mod test_world {
         /// `step` is `None`.
         pub(crate) fn body_on(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             to: Option<Position>,
             step: Option<Num>,
             body: Body,
         ) -> StableId {
+            let pos = pos.into();
             let id = Units::spawn(world, pos, Team::new(0), body);
             if let Some(step) = step {
                 world.insert_parts(id, Navigation::walker(MoveStep::new(step).unwrap()));
