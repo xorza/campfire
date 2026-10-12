@@ -52,18 +52,13 @@ impl Module for Deliveries {
         d.api(DeliveriesApi::register);
     }
 
-    /// Adds the deliveries' hooks to a match of a capability that delivers: after the
-    /// `DeliverySet`s, before attacks pay their toggles and strike.
+    /// Adds the deliveries' hooks to a match whose modules call for them, as a module that sets a
+    /// delivery out or calls one does: after the `DeliverySet`s, before attacks pay their toggles
+    /// and strike.
     fn install(cx: &mut InstallCx<'_>) {
-        let delivers = [
-            Capability::Projectiles,
-            Capability::Areas,
-            Capability::Abilities,
-        ];
-        if !delivers.into_iter().any(|capability| cx.has(capability)) {
+        if !cx.calls_for::<Deliverers>() {
             return;
         }
-        cx.world.insert_resource(Deliverers::default());
         cx.schedule.configure_sets(
             (DeliverySet::Fly, DeliverySet::Trigger)
                 .chain()

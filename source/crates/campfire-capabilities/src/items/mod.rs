@@ -43,6 +43,7 @@ impl Module for Items {
     const NEEDS: &'static [Capability] = &[Capability::Stats];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.callback::<CastSpends>((), Items::spend_use);
         d.component::<Inventory>();
         d.book::<ItemBook>();
         d.api(ItemsApi::register);
@@ -52,10 +53,7 @@ impl Module for Items {
     /// inventories its units carry, as state, and the modifiers their items hold, as each tick
     /// starts once the trades are in, and in Resolve once a use may have spent an item.
     fn install(cx: &mut InstallCx<'_>) {
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world
-            .get_resource_or_init::<CastSpends>()
-            .register(Items::spend_use);
+        let schedule = &mut *cx.schedule;
         schedule.add_systems((
             ItemHolds::hold_items
                 .in_set(SimSet::Inputs)

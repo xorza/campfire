@@ -3,6 +3,7 @@
 
 pub(crate) mod book;
 pub(crate) mod cache;
+pub(crate) mod callbacks;
 pub(crate) mod capability_set;
 pub(crate) mod declarations;
 pub(crate) mod error;

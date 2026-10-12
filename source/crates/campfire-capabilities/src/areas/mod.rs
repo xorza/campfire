@@ -18,7 +18,7 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::deliveries::DeliverySet;
-use crate::deliveries::deliverers::Deliverers;
+use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::deliveries::delivering::Delivering;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
@@ -48,6 +48,8 @@ impl Module for Areas {
         d.component::<Area>();
         d.component::<AreaTrigger>();
         d.scratch::<AreaLaunches>();
+        d.callback::<Deliverers>(DeliveryKind::Area, Areas::deliver);
+        d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);
         d.book::<ByType<AreaSpec>>();
         d.api(AreasApi::register);
     }
@@ -60,13 +62,7 @@ impl Module for Areas {
     /// delivery, so it triggers none.
     fn install(cx: &mut InstallCx<'_>) {
         let predicting = cx.predicting();
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world
-            .resource_mut::<Deliverers>()
-            .register_area(Areas::deliver);
-        world
-            .resource_mut::<EffectQueues>()
-            .register(Capability::Areas, AreasEffect::queue_listed);
+        let schedule = &mut *cx.schedule;
         if !predicting {
             schedule.add_systems(AreaLife::trigger.in_set(DeliverySet::Trigger));
         }

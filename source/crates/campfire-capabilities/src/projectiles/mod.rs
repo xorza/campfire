@@ -13,7 +13,7 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::deliveries::DeliverySet;
-use crate::deliveries::deliverers::Deliverers;
+use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::deliveries::delivering::Delivering;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
@@ -54,6 +54,7 @@ impl Module for Projectiles {
         d.component::<FlightState>();
         d.resource::<StruckUnits>();
         d.scratch::<Launches>();
+        d.callback::<Deliverers>(DeliveryKind::Projectile, Projectiles::deliver);
         d.require::<Projectile, FlightState>();
         d.book::<ByType<ProjectileSpec>>();
         d.api(ProjectilesApi::register);
@@ -65,10 +66,7 @@ impl Module for Projectiles {
     /// client predicts no delivery, so it flies none.
     fn install(cx: &mut InstallCx<'_>) {
         let predicting = cx.predicting();
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world
-            .resource_mut::<Deliverers>()
-            .register_projectile(Projectiles::deliver);
+        let schedule = &mut *cx.schedule;
         schedule.add_systems((
             Launching::take_shots.in_set(CombatSet::Fire),
             Launching::launch.in_set(CombatSet::Launch),

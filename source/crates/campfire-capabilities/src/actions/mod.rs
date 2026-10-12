@@ -101,6 +101,7 @@ impl Module for Actions {
         d.book::<ActionBook>();
         d.book::<ParamBook>();
         d.book::<EffectLists>();
+        d.calls::<EffectQueues>();
         d.column::<ActionsColumn, RowParts>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
     }
@@ -112,7 +113,6 @@ impl Module for Actions {
     /// abilities'.
     fn install(cx: &mut InstallCx<'_>) {
         cx.world.insert_resource(SlotKinds::default());
-        cx.world.insert_resource(EffectQueues::default());
         if cx.has(Capability::Combat) {
             Actions::schedule(cx.schedule);
         }

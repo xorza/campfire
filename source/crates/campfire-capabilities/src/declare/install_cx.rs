@@ -1,19 +1,23 @@
+use std::any::TypeId;
 use std::fmt;
 
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_sim::Capability;
 
+use crate::declare::callbacks::Callbacks;
 use crate::declare::capability_set::CapabilitySet;
 
 /// What a module's install reads and changes: the match's world and schedule, the capabilities
-/// the match declares, whether it runs scripts, and whether a client predicts it.
+/// the match declares, whether it runs scripts, whether a client predicts it, and the registries
+/// of callbacks its modules call or declare callbacks in.
 pub(crate) struct InstallCx<'a> {
     pub(crate) world: &'a mut World,
     pub(crate) schedule: &'a mut Schedule,
     set: CapabilitySet,
     scripts: bool,
     predicting: bool,
+    called: Vec<TypeId>,
 }
 
 impl<'a> InstallCx<'a> {
@@ -23,6 +27,7 @@ impl<'a> InstallCx<'a> {
         set: CapabilitySet,
         scripts: bool,
         predicting: bool,
+        called: Vec<TypeId>,
     ) -> InstallCx<'a> {
         InstallCx {
             world,
@@ -30,6 +35,7 @@ impl<'a> InstallCx<'a> {
             set,
             scripts,
             predicting,
+            called,
         }
     }
 
@@ -46,6 +52,11 @@ impl<'a> InstallCx<'a> {
     /// Whether the match runs scripts: a server's does, a client's predicts with none.
     pub(crate) const fn scripts(&self) -> bool {
         self.scripts
+    }
+
+    /// Whether a module of the match calls the registry `C`, or declares a callback in it.
+    pub(crate) fn calls_for<C: Callbacks>(&self) -> bool {
+        self.called.contains(&TypeId::of::<C>())
     }
 
     /// Whether a client predicts the match: it builds no system that computes the server's own

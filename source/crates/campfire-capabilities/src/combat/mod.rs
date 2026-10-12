@@ -106,6 +106,7 @@ impl Module for Combat {
         d.scratch::<PassQueue>();
         d.scratch::<Shots>();
         d.report::<Deaths>();
+        d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();
         d.column::<CombatColumn, RowParts>(CombatColumn::fill_row);
@@ -123,9 +124,6 @@ impl Module for Combat {
         let predicting = cx.predicting();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.insert_resource(Deaths::default());
-        world
-            .resource_mut::<EffectQueues>()
-            .register(Capability::Combat, CombatEffect::queue_listed);
         let events = scripts.then(|| {
             let hooks = ModifierHooks::new(world.non_send::<Ctx>().clone());
             CombatEvents::new(move |batch, event| hooks.hear(batch, event))

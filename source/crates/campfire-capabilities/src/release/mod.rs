@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::num::NonZeroU64;
 
 use bevy_ecs::world::World;
@@ -27,6 +28,7 @@ use crate::production::Production;
 use crate::progression::Progression;
 use crate::projectiles::Projectiles;
 use crate::release::api_binder::ApiBinder;
+use crate::release::called_registries::CalledRegistries;
 use crate::release::capability_rows::CapabilityRows;
 use crate::release::declaring::Declaring;
 use crate::release::installing::Installing;
@@ -41,6 +43,7 @@ use crate::units::Units;
 use crate::vision::Vision;
 
 mod api_binder;
+mod called_registries;
 mod capability_rows;
 mod declaring;
 mod installer;
@@ -141,6 +144,13 @@ impl Release {
         declaring.declare::<Mode>();
     }
 
+    /// The registries of callbacks the modules of a match of `set` call or declare callbacks in.
+    fn called(set: CapabilitySet) -> Vec<TypeId> {
+        let mut called = CalledRegistries::default();
+        Release::declare(set, &mut called);
+        called.0
+    }
+
     /// Lists, into `types`, the state types of a match of `set`, as its install registers them.
     pub fn state_types<T: StateTypes>(set: CapabilitySet, types: &mut T) {
         Release::declare(set, &mut StateOnly(types));
@@ -183,7 +193,8 @@ impl Release {
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
         }
         MatchEnd::stop_stages(schedule);
-        let mut cx = InstallCx::new(world, schedule, set, scripts, spec.predicting);
+        let called = Release::called(set);
+        let mut cx = InstallCx::new(world, schedule, set, scripts, spec.predicting, called);
         Release::modules(&mut Installing::new(&mut cx, registry));
         #[cfg(feature = "internals")]
         if spec.unbuilt {
@@ -203,7 +214,8 @@ impl Release {
             schedule,
             registry,
         } = sim.parts();
-        let mut cx = InstallCx::new(world, schedule, set, true, false);
+        let called = Release::called(set);
+        let mut cx = InstallCx::new(world, schedule, set, true, false, called);
         Installing::new(&mut cx, registry).install::<Mode>();
         Mode::load(world, registry, setup, books);
         sim.build();

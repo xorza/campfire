@@ -6,6 +6,7 @@ use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
 
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
+use crate::declare::callbacks::Callbacks;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::parted_kind::PartedKind;
@@ -70,6 +71,10 @@ impl Declarations for ApiBinder<'_, '_> {
     fn cache<R: Cache>(&mut self) {}
 
     fn report<R: Report>(&mut self) {}
+
+    fn calls<C: Callbacks>(&mut self) {}
+
+    fn callback<C: Callbacks>(&mut self, _: C::Key, _: C::Callback) {}
 
     fn column<C: ViewColumn + Default, D: RowParts>(&mut self, _: ColumnFill<D, C>) {}
 

@@ -1,43 +1,57 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_sim::Position;
+use campfire_sim::{Capability, Position};
 
 use crate::actions::action_target::ActionTarget;
 use crate::actions::delivery::{Delivery, DeliveryShape};
+use crate::declare::callbacks::Callbacks;
 use crate::deliveries::delivering::Delivering;
 
 /// How a delivery of a shape sets out: the delivery of `by`, which aimed at the target from the
 /// point, as `Delivery` gives it.
 pub(crate) type Deliver = fn(&mut World, Delivering, Position, Delivery, ActionTarget);
 
-/// How each shape of delivery sets out, which the capability of the shape registers as it
-/// installs, so a cast that delivers names no capability's units. Not state.
+campfire_common::enum_all! {
+    /// A kind of delivery that sets out: a key of `Deliverers`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum DeliveryKind {
+        Projectile,
+        Area,
+    }
+    pub(crate) const ALL;
+}
+
+/// How each kind of delivery sets out, which the capability of the kind declares, so a cast that
+/// delivers names no capability's units.
 #[derive(Resource, Debug, Default)]
-pub(crate) struct Deliverers {
-    projectile: Option<Deliver>,
-    area: Option<Deliver>,
+pub(crate) struct Deliverers([Option<Deliver>; DeliveryKind::ALL.len()]);
+
+impl Callbacks for Deliverers {
+    type Key = DeliveryKind;
+    type Callback = Deliver;
+
+    fn owner(kind: DeliveryKind) -> Option<Capability> {
+        match kind {
+            DeliveryKind::Projectile => Some(Capability::Projectiles),
+            DeliveryKind::Area => Some(Capability::Areas),
+        }
+    }
+
+    fn register(&mut self, kind: DeliveryKind, deliver: Deliver) {
+        let slot = &mut self.0[kind as usize];
+        assert!(slot.is_none(), "{kind:?} registers how it sets out once");
+        *slot = Some(deliver);
+    }
 }
 
 impl Deliverers {
-    /// Registers how projectiles set out.
-    pub(crate) fn register_projectile(&mut self, deliver: Deliver) {
-        assert!(self.projectile.is_none(), "projectiles register once");
-        self.projectile = Some(deliver);
-    }
-
-    /// Registers how areas set out.
-    pub(crate) fn register_area(&mut self, deliver: Deliver) {
-        assert!(self.area.is_none(), "areas register once");
-        self.area = Some(deliver);
-    }
-
-    /// How a delivery of `shape` sets out, which a match registered as it installed its
-    /// capability.
+    /// How a delivery of `shape` sets out, which the match's capability of it declared.
     pub(crate) fn of(&self, shape: DeliveryShape) -> Deliver {
-        let deliver = match shape {
-            DeliveryShape::Projectile { .. } => self.projectile,
-            DeliveryShape::Area => self.area,
+        let kind = match shape {
+            DeliveryShape::Projectile { .. } => DeliveryKind::Projectile,
+            DeliveryShape::Area => DeliveryKind::Area,
         };
-        deliver.expect("the load refuses a delivery of a capability the match does not have")
+        self.0[kind as usize]
+            .expect("the load refuses a delivery of a capability the match does not have")
     }
 }

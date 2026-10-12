@@ -5,20 +5,18 @@ use bevy_ecs::component::{Component, Immutable, Mutable};
 use bevy_ecs::world::World;
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, SimWorldBuilder};
 
-use crate::abilities::cast_spends::CastSpends;
-use crate::actions::effect_queues::EffectQueues;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
+use crate::declare::callbacks::Callbacks;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::parted_kind::PartedKind;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
-use crate::deliveries::deliverers::Deliverers;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
 use crate::items::shop::Shop;
@@ -101,13 +99,10 @@ impl DeclaredResources {
         ]
     }
 
-    /// The books and the registries of callbacks that no declaration names yet: plan step F11
-    /// declares the registries, the first three, and F24 the books, each removing its own.
-    fn undeclared_yet() -> [TypeId; 18] {
+    /// The books that no declaration names yet, which plan step F24 declares, and removes this
+    /// list.
+    fn undeclared_yet() -> [TypeId; 15] {
         [
-            TypeId::of::<CastSpends>(),
-            TypeId::of::<EffectQueues>(),
-            TypeId::of::<Deliverers>(),
             TypeId::of::<SlotKinds>(),
             TypeId::of::<CombatBindings>(),
             TypeId::of::<LifePool>(),
@@ -186,6 +181,14 @@ impl Declarations for DeclaredResources {
 
     fn report<R: Report>(&mut self) {
         self.ids.push(TypeId::of::<R>());
+    }
+
+    fn calls<C: Callbacks>(&mut self) {
+        self.ids.push(TypeId::of::<C>());
+    }
+
+    fn callback<C: Callbacks>(&mut self, _: C::Key, _: C::Callback) {
+        self.ids.push(TypeId::of::<C>());
     }
 
     fn column<C: ViewColumn + Default, D: RowParts>(&mut self, _: ColumnFill<D, C>) {}

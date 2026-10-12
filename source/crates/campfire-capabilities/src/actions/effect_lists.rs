@@ -189,7 +189,7 @@ impl EffectLists {
     /// its rank, which the match runs: each effect to the unit `reached`, what the list reached, or
     /// to the acting unit; a spawn where that unit stands, or at the point `reached` is. A
     /// modifier, a purge and a spawn queue here, as `stats` and the core are below the action
-    /// pipeline; every other effect queues as its capability registered, which can fail the
+    /// pipeline; every other effect queues as its capability declared, which can fail the
     /// call, as experience to a unit without the track fails `ctx.add_xp`.
     pub(crate) fn queue(
         world: &World,

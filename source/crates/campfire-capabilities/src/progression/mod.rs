@@ -34,18 +34,14 @@ impl Module for Progression {
         d.component::<Experience>();
         d.component::<Points>();
         d.resource::<LevelUps>();
+        d.callback::<EffectQueues>(Capability::Progression, ProgressionEffect::queue_listed);
         d.book::<TrackBook>();
         d.column::<ProgressionColumn, RowParts>(ProgressionColumn::fill_row);
         d.api(ProgressionApi::register);
     }
 
-    /// Adds progression to a match, with no track until the mode loads its own.
-    fn install(cx: &mut InstallCx<'_>) {
-        let world = &mut *cx.world;
-        world
-            .resource_mut::<EffectQueues>()
-            .register(Capability::Progression, ProgressionEffect::queue_listed);
-    }
+    /// Progression runs no system of its own: its effects queue through its callback.
+    fn install(_: &mut InstallCx<'_>) {}
 }
 
 #[cfg(test)]

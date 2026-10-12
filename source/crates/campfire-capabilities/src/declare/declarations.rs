@@ -4,6 +4,7 @@ use campfire_sim::{Breach, Capability, HostRule, SimComponent};
 
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
+use crate::declare::callbacks::Callbacks;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::parted_kind::PartedKind;
 use crate::declare::report::Report;
@@ -50,6 +51,12 @@ pub(crate) trait Declarations: StateTypes + KindVisitor {
 
     /// `R`, a tick's record for the host.
     fn report<R: Report>(&mut self);
+
+    /// `C`, a registry of callbacks the module calls.
+    fn calls<C: Callbacks>(&mut self);
+
+    /// `callback`, under `key`, in the registry of callbacks `C`.
+    fn callback<C: Callbacks>(&mut self, key: C::Key, callback: C::Callback);
 
     /// `C`, a column of the script view, which `fill` fills from each unit's parts `D`.
     fn column<C: ViewColumn + Default, D: RowParts>(&mut self, fill: ColumnFill<D, C>);

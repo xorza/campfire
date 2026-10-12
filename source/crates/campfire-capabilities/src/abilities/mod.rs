@@ -15,6 +15,7 @@ use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::deliveries::deliverers::Deliverers;
 use crate::items::inventory::Inventory;
 use crate::stats::StatsSet;
 use crate::units::block::Block;
@@ -45,6 +46,8 @@ impl Module for Abilities {
     const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.calls::<Deliverers>();
+        d.calls::<CastSpends>();
         d.api(AbilitiesApi::register);
     }
 
@@ -56,8 +59,7 @@ impl Module for Abilities {
     /// only cools down, as the server's does.
     fn install(cx: &mut InstallCx<'_>) {
         let scripts = cx.scripts();
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.init_resource::<CastSpends>();
+        let schedule = &mut *cx.schedule;
         schedule.add_systems(
             Casts::start_casts
                 .in_set(SimSet::Act)

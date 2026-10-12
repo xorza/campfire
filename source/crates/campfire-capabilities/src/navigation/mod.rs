@@ -106,6 +106,7 @@ impl Module for Navigation {
         d.cache::<PathingGrid>();
         d.cache::<RoutePlanner>();
         d.cache::<StaticTrackingRun>();
+        d.callback::<EffectQueues>(Capability::Navigation, NavigationEffect::queue_listed);
         d.book::<ByType<Walker>>();
         d.column::<NavigationColumn, RowParts>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
@@ -123,9 +124,6 @@ impl Module for Navigation {
         StaticsDirty::install(world);
         let run = world.register_system(StaticTracking::track_static_bodies);
         world.insert_resource(StaticTrackingRun(run));
-        world
-            .resource_mut::<EffectQueues>()
-            .register(Capability::Navigation, NavigationEffect::queue_listed);
         schedule.add_systems((
             StaticTracking::track_static_bodies
                 .in_set(SimSet::Inputs)

@@ -11,18 +11,20 @@ use bevy_ecs::world::World;
 use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
 use serde::{Deserialize, Serialize};
 
+use crate::abilities::cast_spends::CastSpends;
 use crate::actions::capability_does::CapabilityDoes;
-use crate::actions::effect_queues::EffectQueues;
+use crate::actions::effect_queues::{EffectQueues, QueueListed};
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
+use crate::declare::callbacks::Callbacks;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::parted_kind::PartedKind;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
+use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::players::player::Player;
 use crate::release::Release;
-use crate::release::r#match::Match;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::state_types::data_kind::DataKind;
@@ -72,6 +74,16 @@ struct DeclaredBook {
     declared_by: Option<Capability>,
 }
 
+/// A callback as declared: its registry, its key as `Debug` writes it, the capability whose
+/// module owns the key, and the capability of the module that declares it.
+#[derive(Debug)]
+struct DeclaredCallback {
+    registry: Named,
+    key: String,
+    owner: Option<Capability>,
+    declared_by: Option<Capability>,
+}
+
 /// Every declaration of the modules it visits.
 #[derive(Debug, Default)]
 struct DeclarationAudit {
@@ -87,6 +99,8 @@ struct DeclarationAudit {
     columns: Vec<Named>,
     call_parts: Vec<Named>,
     parts: Vec<(Named, Named)>,
+    calls: Vec<Named>,
+    callbacks: Vec<DeclaredCallback>,
 }
 
 impl DeclarationAudit {
@@ -105,7 +119,8 @@ impl DeclarationAudit {
     /// declared once; each state type sits on declared kinds, by its host, by a `host`
     /// declaration when its host takes any entity, or as a kind itself; a pair's holder is a kind
     /// or a state type and its part a state type; a check and a `host` name state types; a book's
-    /// capability is the module's that declares it; and a kind's part is a state type of that kind.
+    /// capability is the module's that declares it; a kind's part is a state type of that kind; and
+    /// a callback is its key's owner's, declared once, in a registry a module calls.
     fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
         let mut once = |what: &str, names: Vec<&'static str>| {
@@ -173,6 +188,29 @@ impl DeclarationAudit {
                 .is_some_and(|state| state.kinds.as_deref() == Some(&[kind.id][..]));
             if !of_kind {
                 problems.push(format!("{} is no state of {}", ty.name, kind.name));
+            }
+        }
+        for (at, callback) in self.callbacks.iter().enumerate() {
+            let (registry, key) = (callback.registry.name, &callback.key);
+            if callback.owner != callback.declared_by {
+                problems.push(format!(
+                    "the callback {key} of {registry} is declared by another module"
+                ));
+            }
+            let twice = self.callbacks[..at]
+                .iter()
+                .any(|other| other.registry.id == callback.registry.id && other.key == *key);
+            if twice {
+                problems.push(format!(
+                    "the callback {key} of {registry} is declared twice"
+                ));
+            }
+            if !self
+                .calls
+                .iter()
+                .any(|calls| calls.id == callback.registry.id)
+            {
+                problems.push(format!("{registry} has a callback no module calls"));
             }
         }
         problems
@@ -273,6 +311,19 @@ impl Declarations for DeclarationAudit {
         self.parts.push((Named::of::<K>(), Named::of::<C>()));
     }
 
+    fn calls<C: Callbacks>(&mut self) {
+        self.calls.push(Named::of::<C>());
+    }
+
+    fn callback<C: Callbacks>(&mut self, key: C::Key, _: C::Callback) {
+        self.callbacks.push(DeclaredCallback {
+            registry: Named::of::<C>(),
+            key: format!("{key:?}"),
+            owner: C::owner(key),
+            declared_by: self.capability,
+        });
+    }
+
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 }
 
@@ -333,6 +384,11 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.check::<Player>(|_| Ok(()));
     audit.book::<StrayBook>();
     audit.part::<Player, Stray>(|_| Stray);
+    // A callback the areas own, twice, in a registry no module calls.
+    let queue: QueueListed = |_, _, _, _, _| Ok(());
+    audit.callback::<EffectQueues>(Capability::Areas, queue);
+    audit.callback::<EffectQueues>(Capability::Areas, queue);
+    let queues = type_name::<EffectQueues>();
     let stray = type_name::<Stray>();
     let player = type_name::<Player>();
     let unit = type_name::<UnitEntity>();
@@ -346,6 +402,11 @@ fn each_rule_names_the_declaration_that_breaks_it() {
             format!("a check of {player}, not declared"),
             format!("{} is declared by another module", type_name::<StrayBook>()),
             format!("{stray} is no state of {player}"),
+            format!("the callback Areas of {queues} is declared by another module"),
+            format!("{queues} has a callback no module calls"),
+            format!("the callback Areas of {queues} is declared by another module"),
+            format!("the callback Areas of {queues} is declared twice"),
+            format!("{queues} has a callback no module calls"),
         ]
     );
     // A `host` declaration puts the stray on a declared kind.
@@ -357,26 +418,24 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     );
 }
 
-/// `capability` and each it builds on, those first.
-fn with_needs(capability: Capability, into: &mut Vec<Capability>) {
-    for &need in Release::rows().needs(capability) {
-        with_needs(need, into);
-    }
-    if !into.contains(&capability) {
-        into.push(capability);
-    }
-}
-
 #[test]
-fn each_listed_effect_queues_in_the_capability_it_names() {
+fn each_key_a_caller_asks_for_has_its_callback() {
+    // A listed effect queues in the capability it names; each kind of delivery sets out by its
+    // capability's callback; and a cast spends what items keep of a slot.
+    let mut audit = DeclarationAudit::default();
+    Release::declare(Release::capabilities(), &mut audit);
+    let declared = |registry: &str, key: String| {
+        audit
+            .callbacks
+            .iter()
+            .any(|callback| callback.registry.name == registry && callback.key == key)
+    };
     for does in CapabilityDoes::one_of_each() {
-        let capability = does.capability();
-        let mut declared = Vec::new();
-        with_needs(capability, &mut declared);
-        let game = Match::client(&declared);
-        assert!(
-            game.resource::<EffectQueues>().holds(capability),
-            "{capability:?}"
-        );
+        let key = format!("{:?}", does.capability());
+        assert!(declared(type_name::<EffectQueues>(), key), "{does:?}");
     }
+    for kind in DeliveryKind::ALL {
+        assert!(declared(type_name::<Deliverers>(), format!("{kind:?}")));
+    }
+    assert!(declared(type_name::<CastSpends>(), format!("{:?}", ())));
 }

@@ -6,6 +6,7 @@ use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, Stat
 
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
+use crate::declare::callbacks::Callbacks;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
@@ -31,6 +32,8 @@ pub(super) struct Installer<'a> {
     registry: &'a mut StateRegistry,
     set: CapabilitySet,
     scripts: bool,
+    /// The capability of the module whose declarations it installs.
+    capability: Option<Capability>,
 }
 
 impl<'a> Installer<'a> {
@@ -47,6 +50,7 @@ impl<'a> Installer<'a> {
             registry,
             set,
             scripts,
+            capability: None,
         }
     }
 }
@@ -99,7 +103,9 @@ impl KindVisitor for Installer<'_> {
 }
 
 impl Declarations for Installer<'_> {
-    fn module(&mut self, _: Option<Capability>) {}
+    fn module(&mut self, capability: Option<Capability>) {
+        self.capability = capability;
+    }
 
     fn require<H: SimComponent, C: SimComponent>(&mut self) {
         self.registry.require::<H, C>();
@@ -126,6 +132,21 @@ impl Declarations for Installer<'_> {
     fn cache<R: Cache>(&mut self) {}
 
     fn report<R: Report>(&mut self) {}
+
+    fn calls<C: Callbacks>(&mut self) {
+        self.world.init_resource::<C>();
+    }
+
+    fn callback<C: Callbacks>(&mut self, key: C::Key, callback: C::Callback) {
+        assert_eq!(
+            C::owner(key),
+            self.capability,
+            "the callback of {key:?} is its owner's to declare"
+        );
+        self.world
+            .get_resource_or_init::<C>()
+            .register(key, callback);
+    }
 
     fn column<C: ViewColumn + Default, D: RowParts>(&mut self, fill: ColumnFill<D, C>) {
         let view = self.world.non_send::<View>().clone();
