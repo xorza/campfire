@@ -6,14 +6,14 @@ use crate::declare::book::Book;
 use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
 use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::parted_kind::PartedKind;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::state_types::StateTypes;
+use crate::units::entity_kind::EntityKind;
 use crate::units::row_fill::RowFill;
-use crate::units::row_parts::RowParts;
+use crate::units::row_reads::RowReads;
 use crate::units::view_column::ViewColumn;
 
 /// How a column `C` of the script view fills from the parts `D` of each unit.
@@ -59,14 +59,14 @@ pub(crate) trait Declarations: StateTypes + KindVisitor {
     fn callback<C: Callbacks>(&mut self, key: C::Key, callback: C::Callback);
 
     /// `C`, a column of the script view, which `fill` fills from each unit's parts `D`.
-    fn column<C: ViewColumn + Default, D: RowParts>(&mut self, fill: ColumnFill<D, C>);
+    fn column<C: ViewColumn + Default, D: RowReads>(&mut self, fill: ColumnFill<D, C>);
 
     /// `P`, a part of every script call.
     fn call_part<P: CallPart + Default>(&mut self);
 
     /// `C`, a part of each entity of the kind `K`, which `start` makes as the entity spawns; a
     /// restore checks that every entity of the kind holds one.
-    fn part<K: PartedKind, C: SimComponent>(&mut self, start: fn(&World) -> C);
+    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, start: fn(&World) -> C);
 
     /// The module's script API, which `register` binds and records.
     fn api(&mut self, register: fn(&mut ApiBuilder<'_>));

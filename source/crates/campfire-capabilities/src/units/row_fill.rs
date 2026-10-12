@@ -9,7 +9,7 @@ use bevy_ecs::world::World;
 
 use crate::units::relations::Relations;
 use crate::units::row_marks::RowMarks;
-use crate::units::row_parts::RowParts;
+use crate::units::row_reads::RowReads;
 use crate::units::unit_row::UnitRow;
 use crate::units::view_column::{ViewColumn, ViewColumns};
 
@@ -17,7 +17,7 @@ use crate::units::view_column::{ViewColumn, ViewColumns};
 /// row it owns: from the parts `D` of the unit, through queries the view keeps from one read to
 /// the next, so a read looks up no part by its type. It fills only the rows of units whose parts
 /// changed since its last read; the column keeps the others.
-pub(crate) struct RowSource<D: RowParts, C: ViewColumn> {
+pub(crate) struct RowSource<D: RowReads, C: ViewColumn> {
     parts: QueryState<D>,
     /// The units whose parts changed since the source's last read.
     changed: SystemState<Query<'static, 'static, Entity, D::Changed>>,
@@ -27,7 +27,7 @@ pub(crate) struct RowSource<D: RowParts, C: ViewColumn> {
     of: PhantomData<C>,
 }
 
-impl<D: RowParts, C: ViewColumn> RowSource<D, C> {
+impl<D: RowReads, C: ViewColumn> RowSource<D, C> {
     /// A source of `world` that fills the row of its column at `column` by `fill` from the unit's
     /// parts `D`.
     pub(crate) fn new(
@@ -46,7 +46,7 @@ impl<D: RowParts, C: ViewColumn> RowSource<D, C> {
 }
 
 /// A query prints only what it reads.
-impl<D: RowParts, C: ViewColumn> fmt::Debug for RowSource<D, C> {
+impl<D: RowReads, C: ViewColumn> fmt::Debug for RowSource<D, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RowSource")
             .field("parts", &self.parts)
@@ -82,7 +82,7 @@ pub(crate) trait FillRow: fmt::Debug {
     fn keep(&self, columns: &mut ViewColumns, rows: Range<usize>);
 }
 
-impl<D: RowParts, C: ViewColumn> FillRow for RowSource<D, C> {
+impl<D: RowReads, C: ViewColumn> FillRow for RowSource<D, C> {
     fn begin(
         &mut self,
         world: &World,

@@ -231,13 +231,14 @@ pub(crate) mod internals {
     use bevy_ecs::archetype::Archetype;
     use bevy_ecs::component::{Component, Immutable, Mutable};
     use bevy_ecs::world::World;
-    use campfire_sim::{SimResource, StableId};
+    use campfire_sim::{EntityIndex, SimResource, StableId};
 
     use crate::declare::capability_set::CapabilitySet;
     use crate::release::Release;
     use crate::release::resource_audit::DeclaredResources;
     use crate::state_types::replication::Replication;
     use crate::state_types::{Declared, StateTypes};
+    use crate::units::entity_kinds::EntityKinds;
 
     /// The component types the lists declare, as state or as derived, by their ids.
     #[derive(Debug, Default)]
@@ -301,6 +302,18 @@ pub(crate) mod internals {
             host: &[TypeId],
         ) -> Vec<String> {
             DeclaredResources::audit(set, world, host)
+        }
+
+        /// The stable ids of the entities of `world` that are of no kind: each entity the state
+        /// registry indexes holds the marker of one kind.
+        pub fn entities_of_no_kind(world: &World) -> Vec<StableId> {
+            let kinds = world.resource::<EntityKinds>();
+            world
+                .resource::<EntityIndex>()
+                .iter()
+                .filter(|&(_, entity)| kinds.of(world.entity(entity)).is_none())
+                .map(|(id, _)| id)
+                .collect()
         }
 
         /// The names of the component types a unit of `world`, an entity with a stable id, holds

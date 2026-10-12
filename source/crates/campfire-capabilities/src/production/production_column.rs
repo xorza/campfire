@@ -21,7 +21,7 @@ use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 
 /// The parts of a unit production adds to its row of the script view.
-pub(super) type RowParts = (
+pub(super) type RowReads = (
     Option<&'static Owner>,
     Option<&'static UnitType>,
     Has<Dead>,
@@ -126,7 +126,7 @@ impl ProductionColumn {
     /// Fills a row of the script view with what the unit counts for of its player's supply, and
     /// what it carries.
     pub(super) fn fill_row(
-        (owner, unit_type, dead, queue, site, gatherer): ROQueryItem<'_, '_, RowParts>,
+        (owner, unit_type, dead, queue, site, gatherer): ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, ProductionColumn>,
     ) {
         let counted = unit_type

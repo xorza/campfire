@@ -91,7 +91,7 @@ type Owners<'w, 's, K> = Query<
         Option<&'static Owner>,
         Option<&'static Player>,
         Option<&'static Team>,
-        Has<KindFilter<K>>,
+        Has<DataFilter<K>>,
     ),
 >;
 
@@ -101,20 +101,20 @@ type Owners<'w, 's, K> = Query<
 /// replicon requires: a change of owner or team inserts a new one.
 #[derive(Component, Debug)]
 #[component(immutable)]
-pub(crate) struct KindFilter<K: FilteredKind> {
+pub(crate) struct DataFilter<K: FilteredKind> {
     owner: Option<PlayerSlot>,
     team: Option<Team>,
     audience: Recipients,
     kind: PhantomData<K>,
 }
 
-impl<K: FilteredKind> KindFilter<K> {
+impl<K: FilteredKind> DataFilter<K> {
     const fn new(
         owner: Option<&Owner>,
         team: Option<&Team>,
         visibility: &MatchVisibility,
-    ) -> KindFilter<K> {
-        KindFilter {
+    ) -> DataFilter<K> {
+        DataFilter {
             owner: match owner {
                 Some(owner) => Some(owner.slot()),
                 None => None,
@@ -131,17 +131,17 @@ impl<K: FilteredKind> KindFilter<K> {
         player: Option<&Player>,
         team: Option<&Team>,
         visibility: &MatchVisibility,
-    ) -> KindFilter<K> {
+    ) -> DataFilter<K> {
         let owner = owner
             .copied()
             .or(player.map(|player| Owner::new(player.slot())));
-        KindFilter::new(owner.as_ref(), team, visibility)
+        DataFilter::new(owner.as_ref(), team, visibility)
     }
 
     /// The filter of `K`, and the observers that follow its entity's owner and team.
     fn register_kind(app: &mut App) {
-        app.add_visibility_filter::<KindFilter<K>>();
-        KindFilter::<K>::follow(app);
+        app.add_visibility_filter::<DataFilter<K>>();
+        DataFilter::<K>::follow(app);
     }
 
     /// Inserts the filter of `K` again as its entity's owner or team changes, or as the entity
@@ -149,29 +149,29 @@ impl<K: FilteredKind> KindFilter<K> {
     /// that still lives: it applies at the next flush, after a despawn queued before it, and a
     /// despawn removes the owner and team too.
     fn follow(app: &mut App) {
-        KindFilter::<K>::follow_insert::<Owner>(app);
-        KindFilter::<K>::follow_insert::<Team>(app);
+        DataFilter::<K>::follow_insert::<Owner>(app);
+        DataFilter::<K>::follow_insert::<Team>(app);
         app.add_observer(
             |removed: On<'_, '_, Remove, Owner>,
-             units: Query<'_, '_, Option<&Team>, With<KindFilter<K>>>,
+             units: Query<'_, '_, Option<&Team>, With<DataFilter<K>>>,
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok(team) = units.get(removed.entity) {
                     commands
                         .entity(removed.entity)
-                        .try_insert(KindFilter::<K>::new(None, team, &visibility));
+                        .try_insert(DataFilter::<K>::new(None, team, &visibility));
                 }
             },
         );
         app.add_observer(
             |removed: On<'_, '_, Remove, Team>,
-             units: Query<'_, '_, Option<&Owner>, With<KindFilter<K>>>,
+             units: Query<'_, '_, Option<&Owner>, With<DataFilter<K>>>,
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok(owner) = units.get(removed.entity) {
                     commands
                         .entity(removed.entity)
-                        .try_insert(KindFilter::<K>::new(owner, None, &visibility));
+                        .try_insert(DataFilter::<K>::new(owner, None, &visibility));
                 }
             },
         );
@@ -187,7 +187,7 @@ impl<K: FilteredKind> KindFilter<K> {
                 if let Ok((owner, player, team, true)) = units.get(inserted.entity) {
                     commands
                         .entity(inserted.entity)
-                        .try_insert(KindFilter::<K>::of(owner, player, team, &visibility));
+                        .try_insert(DataFilter::<K>::of(owner, player, team, &visibility));
                 }
             },
         );
@@ -205,14 +205,14 @@ impl<K: FilteredKind> KindFilter<K> {
                 if let Ok((owner, player, team, false)) = units.get(added.entity) {
                     commands
                         .entity(added.entity)
-                        .try_insert(KindFilter::<K>::of(owner, player, team, &visibility));
+                        .try_insert(DataFilter::<K>::of(owner, player, team, &visibility));
                 }
             },
         );
     }
 }
 
-impl<K: FilteredKind> VisibilityFilter for KindFilter<K> {
+impl<K: FilteredKind> VisibilityFilter for DataFilter<K> {
     type ClientComponent = Viewer;
     type Scope = K::Scope;
 
@@ -226,55 +226,55 @@ impl<K: FilteredKind> VisibilityFilter for KindFilter<K> {
 
 /// The filters of the kinds whose audience a mode may set, or that only their owner receives.
 #[derive(Debug)]
-pub(crate) struct KindFilters;
+pub(crate) struct DataFilters;
 
-impl KindFilters {
+impl DataFilters {
     /// Registers the filter of every kind whose audience a mode may set or that only its owner
-    /// receives, and, from the lists of `set`, the observers that put a kind's filter on each
+    /// receives, and, from the lists of `set`, the observers that put a data filter on each
     /// entity that gains one of its types: no system adds a filter, so none can forget one.
     pub(crate) fn register(app: &mut App, set: CapabilitySet) {
-        KindFilter::<LifeKind>::register_kind(app);
-        KindFilter::<PoolsKind>::register_kind(app);
-        KindFilter::<ModifiersKind>::register_kind(app);
-        KindFilter::<CooldownsKind>::register_kind(app);
-        KindFilter::<ProgressionKind>::register_kind(app);
-        KindFilter::<InventoryKind>::register_kind(app);
-        KindFilter::<ModeStateKind>::register_kind(app);
-        KindFilter::<ResourcesKind>::register_kind(app);
-        KindFilter::<SupplyKind>::register_kind(app);
-        KindFilter::<QueuesKind>::register_kind(app);
-        KindFilter::<PlayerModifiersKind>::register_kind(app);
-        KindFilter::<PredictionKind>::register_kind(app);
-        KindFilter::<UnitStateOwnerKind>::register_kind(app);
-        KindFilter::<UnitStateTeamKind>::register_kind(app);
-        KindFilter::<UnitStateAllKind>::register_kind(app);
+        DataFilter::<LifeKind>::register_kind(app);
+        DataFilter::<PoolsKind>::register_kind(app);
+        DataFilter::<ModifiersKind>::register_kind(app);
+        DataFilter::<CooldownsKind>::register_kind(app);
+        DataFilter::<ProgressionKind>::register_kind(app);
+        DataFilter::<InventoryKind>::register_kind(app);
+        DataFilter::<ModeStateKind>::register_kind(app);
+        DataFilter::<ResourcesKind>::register_kind(app);
+        DataFilter::<SupplyKind>::register_kind(app);
+        DataFilter::<QueuesKind>::register_kind(app);
+        DataFilter::<PlayerModifiersKind>::register_kind(app);
+        DataFilter::<PredictionKind>::register_kind(app);
+        DataFilter::<UnitStateOwnerKind>::register_kind(app);
+        DataFilter::<UnitStateTeamKind>::register_kind(app);
+        DataFilter::<UnitStateAllKind>::register_kind(app);
         Release::state_types(set, &mut FilterObservers(app));
     }
 }
 
-/// Reads the capabilities' lists for `KindFilters::register`: each type of a kind with a filter
-/// gets the observer that puts its kind's filter on it.
+/// Reads the capabilities' lists for `DataFilters::register`: each type of a kind with a filter
+/// gets the observer that puts its data filter on it.
 #[derive(Debug)]
 struct FilterObservers<'a>(&'a mut App);
 
 impl FilterObservers<'_> {
     fn filter<C: Replication>(&mut self) {
         match C::KIND {
-            DataKind::Life => KindFilter::<LifeKind>::observe::<C>(self.0),
-            DataKind::Pools => KindFilter::<PoolsKind>::observe::<C>(self.0),
-            DataKind::Modifiers => KindFilter::<ModifiersKind>::observe::<C>(self.0),
-            DataKind::Cooldowns => KindFilter::<CooldownsKind>::observe::<C>(self.0),
-            DataKind::Progression => KindFilter::<ProgressionKind>::observe::<C>(self.0),
-            DataKind::Inventory => KindFilter::<InventoryKind>::observe::<C>(self.0),
-            DataKind::ModeState => KindFilter::<ModeStateKind>::observe::<C>(self.0),
-            DataKind::Resources => KindFilter::<ResourcesKind>::observe::<C>(self.0),
-            DataKind::Supply => KindFilter::<SupplyKind>::observe::<C>(self.0),
-            DataKind::Queues => KindFilter::<QueuesKind>::observe::<C>(self.0),
-            DataKind::PlayerModifiers => KindFilter::<PlayerModifiersKind>::observe::<C>(self.0),
-            DataKind::Prediction => KindFilter::<PredictionKind>::observe::<C>(self.0),
-            DataKind::UnitStateOwner => KindFilter::<UnitStateOwnerKind>::observe::<C>(self.0),
-            DataKind::UnitStateTeam => KindFilter::<UnitStateTeamKind>::observe::<C>(self.0),
-            DataKind::UnitStateAll => KindFilter::<UnitStateAllKind>::observe::<C>(self.0),
+            DataKind::Life => DataFilter::<LifeKind>::observe::<C>(self.0),
+            DataKind::Pools => DataFilter::<PoolsKind>::observe::<C>(self.0),
+            DataKind::Modifiers => DataFilter::<ModifiersKind>::observe::<C>(self.0),
+            DataKind::Cooldowns => DataFilter::<CooldownsKind>::observe::<C>(self.0),
+            DataKind::Progression => DataFilter::<ProgressionKind>::observe::<C>(self.0),
+            DataKind::Inventory => DataFilter::<InventoryKind>::observe::<C>(self.0),
+            DataKind::ModeState => DataFilter::<ModeStateKind>::observe::<C>(self.0),
+            DataKind::Resources => DataFilter::<ResourcesKind>::observe::<C>(self.0),
+            DataKind::Supply => DataFilter::<SupplyKind>::observe::<C>(self.0),
+            DataKind::Queues => DataFilter::<QueuesKind>::observe::<C>(self.0),
+            DataKind::PlayerModifiers => DataFilter::<PlayerModifiersKind>::observe::<C>(self.0),
+            DataKind::Prediction => DataFilter::<PredictionKind>::observe::<C>(self.0),
+            DataKind::UnitStateOwner => DataFilter::<UnitStateOwnerKind>::observe::<C>(self.0),
+            DataKind::UnitStateTeam => DataFilter::<UnitStateTeamKind>::observe::<C>(self.0),
+            DataKind::UnitStateAll => DataFilter::<UnitStateAllKind>::observe::<C>(self.0),
             // Every client that holds the entity receives these, and vision decides who holds
             // it; the server's kind is never sent.
             DataKind::Unit | DataKind::Match | DataKind::Server => {
@@ -509,12 +509,12 @@ mod tests {
         // nothing.
         let mut app = App::new();
         app.insert_resource(MatchVisibility(Visibility::DEFAULT));
-        KindFilter::<ProgressionKind>::follow(&mut app);
-        KindFilter::<ProgressionKind>::observe::<Stray>(&mut app);
+        DataFilter::<ProgressionKind>::follow(&mut app);
+        DataFilter::<ProgressionKind>::observe::<Stray>(&mut app);
         let world = app.world_mut();
         let held = |world: &World, entity| {
             world
-                .get::<KindFilter<ProgressionKind>>(entity)
+                .get::<DataFilter<ProgressionKind>>(entity)
                 .map(|filter| (filter.owner, filter.team))
         };
         let (slot, team) = (PlayerSlot::new, Team::new);
@@ -549,7 +549,7 @@ mod tests {
 
     /// Whether each of `viewers` holds what `filter` filters, as replicon asks it for `client`.
     fn held<K: FilteredKind>(
-        filter: &KindFilter<K>,
+        filter: &DataFilter<K>,
         viewers: &[Option<Viewer>],
         client: Entity,
     ) -> Vec<bool> {
@@ -575,9 +575,9 @@ mod tests {
         let viewers = [player(1, 0), player(0, 0), player(2, 1), spectator, None];
         // The defaults: prediction to the owner alone; a team field to its team; life to all.
         let defaults = MatchVisibility(Visibility::DEFAULT);
-        let prediction = KindFilter::<PredictionKind>::new(Some(&owner), Some(&team), &defaults);
-        let team_state = KindFilter::<UnitStateTeamKind>::new(Some(&owner), Some(&team), &defaults);
-        let life = KindFilter::<LifeKind>::new(Some(&owner), Some(&team), &defaults);
+        let prediction = DataFilter::<PredictionKind>::new(Some(&owner), Some(&team), &defaults);
+        let team_state = DataFilter::<UnitStateTeamKind>::new(Some(&owner), Some(&team), &defaults);
+        let life = DataFilter::<LifeKind>::new(Some(&owner), Some(&team), &defaults);
         assert_eq!(
             held(&prediction, &viewers, client),
             [true, false, false, false, false]
@@ -601,8 +601,8 @@ inventory = ["spectators"]
         )
         .unwrap();
         let set = MatchVisibility(*mode.settings());
-        let life = KindFilter::<LifeKind>::new(Some(&owner), Some(&team), &set);
-        let inventory = KindFilter::<InventoryKind>::new(Some(&owner), Some(&team), &set);
+        let life = DataFilter::<LifeKind>::new(Some(&owner), Some(&team), &set);
+        let inventory = DataFilter::<InventoryKind>::new(Some(&owner), Some(&team), &set);
         assert_eq!(
             held(&life, &viewers, client),
             [true, true, false, true, false]
@@ -613,12 +613,12 @@ inventory = ["spectators"]
         );
         // A unit no player owns, as a creep: its team's kind to its team, and nothing of the
         // owner's to anyone.
-        let creep = KindFilter::<PredictionKind>::new(None, Some(&team), &defaults);
+        let creep = DataFilter::<PredictionKind>::new(None, Some(&team), &defaults);
         assert_eq!(
             held(&creep, &viewers, client),
             [false, false, false, false, false]
         );
-        let creep = KindFilter::<UnitStateTeamKind>::new(None, Some(&team), &defaults);
+        let creep = DataFilter::<UnitStateTeamKind>::new(None, Some(&team), &defaults);
         assert_eq!(
             held(&creep, &viewers, client),
             [true, true, false, false, false]

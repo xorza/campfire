@@ -19,7 +19,7 @@ use crate::units::view_column::ViewColumn;
 
 /// The parts of a unit combat reads into its row: whether it is dead, its life and tags, what
 /// it does when it dies, and who struck it recently.
-pub(super) type RowParts = (
+pub(super) type RowReads = (
     Has<Dead>,
     Option<&'static Life>,
     Option<&'static UnitTags>,
@@ -148,7 +148,7 @@ impl CombatColumn {
     /// may be a target, in the core's row; whether it stays when dead, and who struck it recently,
     /// in combat's column.
     pub(super) fn fill_row(
-        parts: ROQueryItem<'_, '_, RowParts>,
+        parts: ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, CombatColumn>,
     ) {
         let (dead, life, tags, on_death, recent) = parts;

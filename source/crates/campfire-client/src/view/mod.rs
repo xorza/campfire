@@ -121,7 +121,7 @@ type NewUnits<'w, 's> = Query<
         Option<&'static UnitType>,
         Option<&'static Facing>,
     ),
-    (BodyUnit, Without<Drawing>, Allow<Unpredicted>),
+    (With<BodyUnit>, Without<Drawing>, Allow<Unpredicted>),
 >;
 
 /// The drawn units the client only receives whose sim place changed.

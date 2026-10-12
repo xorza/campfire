@@ -2,6 +2,8 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::{EntityWorldMut, Mut, World};
 use campfire_sim::{Position, StableId};
 
+use crate::units::body_unit::BodyUnit;
+use crate::units::entity_kind::EntityKind;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::spawn_target::SpawnTarget;
@@ -52,15 +54,25 @@ impl UnitCore {
         }
     }
 
-    /// Spawns the unit in `world` with `parts`, which hold no part of the core, then puts its
-    /// core on, made from the world's books.
+    /// Spawns the unit, a `BodyUnit`, in `world` with `parts`, which hold no part of the core,
+    /// then puts its core on, made from the world's books.
     pub(crate) fn spawn(self, world: &mut World, parts: impl Bundle) -> EntityWorldMut<'_> {
+        self.spawn_as(world, BodyUnit, parts)
+    }
+
+    /// Spawns the unit, of the kind `kind` marks, as `spawn` does.
+    pub(crate) fn spawn_as<K: EntityKind>(
+        self,
+        world: &mut World,
+        kind: K,
+        parts: impl Bundle,
+    ) -> EntityWorldMut<'_> {
         let owned = self.owner.is_some();
         let made = world.resource_scope(|world, mut new_states: Mut<'_, NewUnitStates>| {
             let states = world.resource::<UnitStateBook>();
             self.made(world.get_resource::<TagBook>(), states, &mut new_states)
         });
-        let mut unit = world.spawn(parts);
+        let mut unit = world.spawn((kind, parts));
         debug_assert!(
             !(unit.contains::<StableId>()
                 || unit.contains::<Position>()

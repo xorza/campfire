@@ -8,7 +8,7 @@ use crate::progression::experience::Experience;
 use crate::progression::level_ups::LevelUps;
 use crate::progression::points::Points;
 use crate::progression::progression_api::ProgressionApi;
-use crate::progression::progression_column::{ProgressionColumn, RowParts};
+use crate::progression::progression_column::{ProgressionColumn, RowReads};
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
 
@@ -36,7 +36,7 @@ impl Module for Progression {
         d.resource::<LevelUps>();
         d.callback::<EffectQueues>(Capability::Progression, ProgressionEffect::queue_listed);
         d.book::<TrackBook>();
-        d.column::<ProgressionColumn, RowParts>(ProgressionColumn::fill_row);
+        d.column::<ProgressionColumn, RowReads>(ProgressionColumn::fill_row);
         d.api(ProgressionApi::register);
     }
 

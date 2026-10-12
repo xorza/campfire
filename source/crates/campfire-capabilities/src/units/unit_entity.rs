@@ -3,42 +3,38 @@ use std::any::TypeId;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::{HostRule, OnAny, SimComponent, StableId};
+use campfire_sim::{HostRule, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
-use crate::units::entity_kind::{EntityKind, KindAudience};
-use crate::units::kind_filters::BodyUnit;
+use crate::units::body_unit::BodyUnit;
+use crate::units::delivery_entity::DeliveryEntity;
 
-/// The kind of every unit, a delivery among them. A unit type requires it, so every spawn of a
-/// typed unit gives it; it is state too, so a unit of no type, as a test spawns, stays a unit
-/// through a restore.
+/// Every unit, a delivery among them: the group of the two kinds of unit, `BodyUnit` and
+/// `DeliveryEntity`, which each requires. It is state, as the restore checks of what every unit
+/// holds name it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 pub struct UnitEntity;
 
-impl EntityKind for UnitEntity {
-    const AUDIENCE: KindAudience = KindAudience::Seers;
-    const OWNER_PREDICTS: bool = true;
-    type Only = BodyUnit;
-}
-
+/// A unit of either kind hosts the state of every unit.
 impl HostRule for UnitEntity {
     fn holds(world: &World, entity: Entity) -> bool {
         world.get::<UnitEntity>(entity).is_some()
     }
 
     fn kinds(kinds: &mut Vec<TypeId>) -> bool {
-        kinds.push(TypeId::of::<UnitEntity>());
+        kinds.push(TypeId::of::<BodyUnit>());
+        kinds.push(TypeId::of::<DeliveryEntity>());
         true
     }
 }
 
 impl SimComponent for UnitEntity {
     const NAME: &'static str = "units.unit";
-    type Host = OnAny;
+    type Host = UnitEntity;
 
     // A unit of a named id would stand where a player's or the match's entity is looked for, and
     // be of two kinds.

@@ -21,7 +21,7 @@ use crate::units::view_column::ViewColumn;
 
 /// The parts of a unit navigation reads into its row: the path it is on, whether it walks, and
 /// its body, for its layer.
-pub(super) type RowParts = (
+pub(super) type RowReads = (
     Option<&'static OnPath>,
     Has<MoveStep>,
     Option<&'static Body>,
@@ -137,7 +137,7 @@ impl NavigationColumn {
     /// Fills a row of the script view with the path the unit walks or stands on, whether it walks,
     /// and its layer.
     pub(super) fn fill_row(
-        (path, walks, body): ROQueryItem<'_, '_, RowParts>,
+        (path, walks, body): ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, NavigationColumn>,
     ) {
         let path = path.map(|path| path.get());

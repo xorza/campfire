@@ -1,6 +1,4 @@
-use bevy_ecs::component::Component;
-use bevy_ecs::query::QueryFilter;
-use campfire_sim::HostRule;
+use campfire_sim::KindMarker;
 
 /// Who receives the entities of a kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,12 +9,14 @@ pub enum KindAudience {
     EverySeat,
 }
 
-/// A kind of entity, by its marker: which state types sit on it, as a `HostRule` says, who
-/// receives its entities, and whether its owner's client predicts one. An entity is of the
-/// narrowest kind its markers name: a delivery is a unit, and of its own kind.
-pub trait EntityKind: Component + HostRule {
+/// A kind of entity, by its marker, which each entity of the kind holds and no other: who
+/// receives its entities, whether its owner's client predicts one, and whether its one spawn puts
+/// on the parts the modules declare for it.
+pub trait EntityKind: KindMarker {
     const AUDIENCE: KindAudience;
     const OWNER_PREDICTS: bool;
-    /// The entities of this kind alone, a narrower kind's left out.
-    type Only: QueryFilter + 'static;
+    /// Whether an entity of the kind spawns with the parts the modules declare for it, each made
+    /// from what the world holds then: the match's entity, and each player's. A unit's parts come
+    /// from its kit instead.
+    const DECLARED_PARTS: bool;
 }

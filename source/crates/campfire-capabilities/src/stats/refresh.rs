@@ -20,8 +20,8 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::stat_books::StatBooks;
 use crate::stats::unit_pools::UnitPools;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::body_unit::BodyUnit;
 use crate::units::dead::Dead;
-use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::tag_book::TagBook;
@@ -44,17 +44,7 @@ impl Refresh {
     pub(crate) fn give_parts(
         book: Option<Res<'_, StatBook>>,
         mut commands: Commands<'_, '_>,
-        units: Query<
-            '_,
-            '_,
-            Entity,
-            (
-                With<UnitType>,
-                Without<DeliveryEntity>,
-                Without<UnitStats>,
-                Allow<Unpredicted>,
-            ),
-        >,
+        units: Query<'_, '_, Entity, (With<BodyUnit>, Without<UnitStats>, Allow<Unpredicted>)>,
     ) {
         if book.is_none() {
             return;

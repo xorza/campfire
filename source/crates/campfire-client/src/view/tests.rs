@@ -8,9 +8,7 @@ use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
 use campfire_capabilities::Areas;
-use campfire_capabilities::{
-    DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOrigins, UnitEntity,
-};
+use campfire_capabilities::{DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOrigins};
 use campfire_math::Num;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits};
 use campfire_sim::IdAllocator;
@@ -60,13 +58,13 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     let team = Team::new(0);
     let predicted = app
         .world_mut()
-        .spawn((ids.allocate(), UnitEntity, Position::from((2, 0, 3)), team))
+        .spawn((ids.allocate(), BodyUnit, Position::from((2, 0, 3)), team))
         .id();
     let received = app
         .world_mut()
         .spawn((
             ids.allocate(),
-            UnitEntity,
+            BodyUnit,
             Position::from((0, 0, 0)),
             team,
             Unpredicted,
@@ -141,7 +139,7 @@ fn a_drawing_shows_its_unit_as_it_stands_after_a_rollback() {
         .world_mut()
         .spawn((
             IdAllocator::default().allocate(),
-            UnitEntity,
+            BodyUnit,
             Position::from((0, 0, 0)),
             Team::new(1),
         ))
@@ -243,6 +241,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         .world_mut()
         .spawn((
             IdAllocator::default().allocate(),
+            BodyUnit,
             pos,
             Team::new(0),
             unit_type,

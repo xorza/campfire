@@ -18,7 +18,7 @@ type NewOfKind<'w, 's, K> = Query<
     'w,
     's,
     (Entity, Option<&'static Owner>, Option<&'static SeenBy>),
-    (<K as EntityKind>::Only, Without<Replicate>),
+    (With<K>, Without<Replicate>),
 >;
 
 /// The replicated entities of the kind `K` whose seers changed this tick.
@@ -26,23 +26,18 @@ type SeersChanged<'w, 's, K> = Query<
     'w,
     's,
     (Entity, &'static StableId, &'static SeenBy),
-    (<K as EntityKind>::Only, Changed<SeenBy>, With<Replicate>),
+    (With<K>, Changed<SeenBy>, With<Replicate>),
 >;
 
 /// The replicated entities of the kind `K`, with their owner.
-type OwnedOfKind<'w, 's, K> =
-    Query<'w, 's, (Entity, &'static Owner), (<K as EntityKind>::Only, With<Replicate>)>;
+type OwnedOfKind<'w, 's, K> = Query<'w, 's, (Entity, &'static Owner), (With<K>, With<Replicate>)>;
 
 /// The replicated entities of the kind `K`.
-type ReplicatedOfKind<'w, 's, K> = Query<'w, 's, (), (<K as EntityKind>::Only, With<Replicate>)>;
+type ReplicatedOfKind<'w, 's, K> = Query<'w, 's, (), (With<K>, With<Replicate>)>;
 
 /// The replicated entities of the kind `K` whose owner changed this tick.
-type OwnerChanged<'w, 's, K> = Query<
-    'w,
-    's,
-    (Entity, &'static Owner),
-    (<K as EntityKind>::Only, Changed<Owner>, With<Replicate>),
->;
+type OwnerChanged<'w, 's, K> =
+    Query<'w, 's, (Entity, &'static Owner), (With<K>, Changed<Owner>, With<Replicate>)>;
 
 /// The entities of the kind `K` whose owner changed, or went, this tick, for a kind its owner
 /// predicts. No `Debug`: `RemovedComponents` has none.
@@ -82,7 +77,7 @@ impl KindShows<'_> {
     /// Without vision no entity has `SeenBy`, and every seated client receives every entity. A
     /// spectator stands in the rooms its `Viewer` gives, and any other link with no seat in no
     /// room, so it receives none. What its owner alone receives, a filter of its state's kind
-    /// keeps from every other link ([`KindFilters`](crate::sim_server::kind_filter::KindFilters)).
+    /// keeps from every other link ([`DataFilters`](crate::sim_server::data_filter::DataFilters)).
     fn show<K: EntityKind>(
         rooms: Res<'_, TeamRooms>,
         links: Query<'_, '_, (Entity, &PlayerLink)>,

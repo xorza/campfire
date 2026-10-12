@@ -1,4 +1,4 @@
-use crate::combat::Combat;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 
 use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
@@ -7,10 +7,11 @@ use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
 use campfire_script::rhai::Array;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{EntityIndex, SimComponent, SimTick, SimWorld, SnapshotError};
+use campfire_sim::{EntityIndex, Restoring, SimComponent, SimTick, SimWorld, SnapshotError};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
+use crate::combat::Combat;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::navigation::on_path::OnPath;
 use crate::release::Release;
@@ -23,6 +24,7 @@ use crate::stats::life::Life;
 use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
+use crate::units::entity_kinds::EntityKinds;
 use crate::units::path_id::PathId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
@@ -521,4 +523,31 @@ fn a_type_named_twice_in_one_scope_is_a_logic_error() {
     let data = UnitTypeData::default();
     Units::load_type(&mut game, TypeScope::Package(1), "grunt", &data);
     Units::load_type(&mut game, TypeScope::Package(1), "grunt", &data);
+}
+
+#[test]
+fn an_entity_is_of_the_one_kind_its_marker_names() {
+    let mut game = units_match();
+    let unit = Units::spawn(&mut game, (0, 0, 0), Team::new(0), ());
+    let entity = game.unit_entity(unit);
+    let empty = game.spawn_empty().id();
+    let kinds = game.resource::<EntityKinds>();
+    let body = game.components().component_id::<BodyUnit>();
+    assert_eq!(kinds.of(game.entity(entity)), body);
+    assert_eq!(kinds.of(game.entity(empty)), None);
+    // A restore puts untrusted values in: the hook leaves the rule to the restore checks, and
+    // the body unit's own check refuses a unit of a second kind.
+    let restored = Units::spawn(&mut game, (1, 0, 0), Team::new(0), ());
+    let restored = game.unit_entity(restored);
+    game.insert_resource(Restoring);
+    game.entity_mut(restored).insert(DeliveryEntity);
+    game.remove_resource::<Restoring>();
+    assert!(BodyUnit.check(&game, entity) && !BodyUnit.check(&game, restored));
+    // Outside a restore, a second kind is a logic error.
+    let second = panic::catch_unwind(AssertUnwindSafe(|| {
+        game.entity_mut(entity).insert(DeliveryEntity);
+    }));
+    let message = second.unwrap_err();
+    let message = message.downcast_ref::<String>().unwrap();
+    assert!(message.starts_with("an entity is of one kind"), "{message}");
 }

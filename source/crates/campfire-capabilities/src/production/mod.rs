@@ -15,7 +15,7 @@ use crate::production::node::Node;
 use crate::production::node_book::NodeBook;
 use crate::production::player_supply::PlayerSupply;
 use crate::production::production_api::ProductionApi;
-use crate::production::production_column::{ProductionColumn, RowParts};
+use crate::production::production_column::{ProductionColumn, RowReads};
 use crate::production::production_data::ProductionData;
 use crate::production::rally::Rally;
 use crate::production::requirements::Requirements;
@@ -90,7 +90,7 @@ impl Module for Production {
         d.book::<SupplyCosts>();
         d.book::<BuildSpecs>();
         d.book::<NodeBook>();
-        d.column::<ProductionColumn, RowParts>(ProductionColumn::fill_row);
+        d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
     }
 

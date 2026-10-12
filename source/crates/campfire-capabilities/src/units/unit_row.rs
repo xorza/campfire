@@ -17,7 +17,7 @@ pub(crate) struct UnitRow {
     pub(crate) shape: Shape,
     /// Where it spawned, if it did as a unit of the mode.
     pub(crate) spawn: Option<Position>,
-    pub(crate) unit_type: Option<UnitType>,
+    pub(crate) unit_type: UnitType,
     /// The player who controls it.
     pub(crate) owner: Option<PlayerSlot>,
     /// Whether it is not dead; `combat` fills it, and the next.

@@ -31,7 +31,7 @@ use crate::stats::refresh::Refresh;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stats_api::StatsApi;
 use crate::stats::stats_call::StatsCall;
-use crate::stats::stats_column::{RowParts, StatsColumn};
+use crate::stats::stats_column::{RowReads, StatsColumn};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::action_id::ActionId;
 use crate::units::dead::Dead;
@@ -123,7 +123,7 @@ impl Module for Stats {
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| PlayerModifiers::default());
         d.book::<ModifierBook>();
-        d.column::<StatsColumn, RowParts>(StatsColumn::fill_row);
+        d.column::<StatsColumn, RowReads>(StatsColumn::fill_row);
         d.call_part::<StatsCall>();
         d.api(StatsApi::register);
     }

@@ -615,7 +615,7 @@ mod tests {
 
     use bevy::asset::{AssetApp, AssetPlugin};
     use bevy::time::{TimePlugin, TimeUpdateStrategy};
-    use campfire_capabilities::UnitEntity;
+    use campfire_capabilities::BodyUnit;
     use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position};
 
@@ -651,7 +651,7 @@ mod tests {
             .world_mut()
             .spawn((
                 IdAllocator::default().allocate(),
-                UnitEntity,
+                BodyUnit,
                 pos.unwrap(),
                 Team::new(0),
                 life(600),

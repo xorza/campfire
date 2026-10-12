@@ -17,7 +17,7 @@ use crate::units::view_column::{ViewColumn, ViewColumns};
 use crate::vision::seen_by::SeenBy;
 
 /// The parts of a unit vision reads into its row: the teams that saw it, and its team.
-pub(super) type RowParts = (Option<&'static SeenBy>, Option<&'static Team>);
+pub(super) type RowReads = (Option<&'static SeenBy>, Option<&'static Team>);
 
 /// What vision adds to the script view: the teams that see each unit, a row each.
 #[derive(Debug, Default)]
@@ -82,7 +82,7 @@ impl VisionColumn {
 
     /// Fills a row of the script view with the teams that see the unit.
     pub(super) fn fill_row(
-        parts: ROQueryItem<'_, '_, RowParts>,
+        parts: ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, VisionColumn>,
     ) {
         let seen_by = Self::seen_by(parts, fill.relations);
@@ -92,7 +92,7 @@ impl VisionColumn {
     /// The teams that see `unit`: those the last Vision stage found, or, before it ran, the
     /// unit's vision group under `relations`, as that stage would give it at the least; every
     /// team for an entity with no team, as a match without vision sees.
-    pub(super) fn seen_by(parts: ROQueryItem<'_, '_, RowParts>, relations: &Relations) -> TeamSet {
+    pub(super) fn seen_by(parts: ROQueryItem<'_, '_, RowReads>, relations: &Relations) -> TeamSet {
         match parts {
             (Some(seen), _) => seen.get(),
             (None, Some(&team)) => relations.vision_group(team),

@@ -13,7 +13,7 @@ use campfire_store::internals::SourceFiles;
 use super::*;
 use crate::actions::action_book::ActionBook;
 use crate::orders::ai::Ai;
-use crate::players::kind_parts::KindParts;
+use crate::players::entity_parts::EntityParts;
 use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
 use crate::release::r#match::Match;
@@ -118,7 +118,7 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
         }
     }
     let mut scripted = scripted;
-    scripted.resource_scope(|world, parts: Mut<'_, KindParts<Player>>| {
+    scripted.resource_scope(|world, parts: Mut<'_, EntityParts<Player>>| {
         let mut player = world.spawn_empty();
         parts.put_on(&mut player);
         assert_eq!(

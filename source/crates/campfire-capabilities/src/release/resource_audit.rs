@@ -14,7 +14,6 @@ use crate::declare::callbacks::Callbacks;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::parted_kind::PartedKind;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::geometry::bounds::Bounds;
@@ -23,7 +22,7 @@ use crate::items::shop::Shop;
 use crate::mode::mode_world::ModeWorld;
 use crate::navigation::paths::Paths;
 use crate::navigation::walls::Walls;
-use crate::players::kind_parts::KindParts;
+use crate::players::entity_parts::EntityParts;
 use crate::production::supply_rules::SupplyRules;
 use crate::release::Release;
 use crate::scripts::api_builder::ApiBuilder;
@@ -36,8 +35,9 @@ use crate::stats::life_pool::LifePool;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
 use crate::units::entity_kind::EntityKind;
+use crate::units::entity_kinds::EntityKinds;
 use crate::units::predicting::Predicting;
-use crate::units::row_parts::RowParts;
+use crate::units::row_reads::RowReads;
 use crate::units::tag_book::TagBook;
 use crate::units::view_column::ViewColumn;
 use crate::visibility::OutView;
@@ -150,7 +150,10 @@ impl StateTypes for DeclaredResources {
 
 impl KindVisitor for DeclaredResources {
     fn kind<K: EntityKind>(&mut self) {
-        self.ids.push(TypeId::of::<KindParts<K>>());
+        self.ids.push(TypeId::of::<EntityKinds>());
+        if K::DECLARED_PARTS {
+            self.ids.push(TypeId::of::<EntityParts<K>>());
+        }
     }
 }
 
@@ -191,11 +194,11 @@ impl Declarations for DeclaredResources {
         self.ids.push(TypeId::of::<C>());
     }
 
-    fn column<C: ViewColumn + Default, D: RowParts>(&mut self, _: ColumnFill<D, C>) {}
+    fn column<C: ViewColumn + Default, D: RowReads>(&mut self, _: ColumnFill<D, C>) {}
 
     fn call_part<P: CallPart + Default>(&mut self) {}
 
-    fn part<K: PartedKind, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
+    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 }

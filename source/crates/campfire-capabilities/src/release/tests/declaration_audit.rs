@@ -19,7 +19,6 @@ use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::parted_kind::PartedKind;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
@@ -31,10 +30,13 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
 use crate::state_types::{Declared, StateTypes};
+use crate::units::body_unit::BodyUnit;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::entity_kind::EntityKind;
-use crate::units::row_parts::RowParts;
+use crate::units::row_reads::RowReads;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::view_column::ViewColumn;
+use crate::vision::vision_column::VisionColumn;
 
 /// A type, by its id, with its name for the problems.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +103,10 @@ struct DeclarationAudit {
     parts: Vec<(Named, Named)>,
     calls: Vec<Named>,
     callbacks: Vec<DeclaredCallback>,
+    /// The types the match derives again, which no state holds.
+    derived: Vec<TypeId>,
+    /// Each component a column reads, by type and name.
+    column_reads: Vec<(TypeId, &'static str)>,
 }
 
 impl DeclarationAudit {
@@ -119,8 +125,10 @@ impl DeclarationAudit {
     /// declared once; each state type sits on declared kinds, by its host, by a `host`
     /// declaration when its host takes any entity, or as a kind itself; a pair's holder is a kind
     /// or a state type and its part a state type; a check and a `host` name state types; a book's
-    /// capability is the module's that declares it; a kind's part is a state type of that kind; and
-    /// a callback is its key's owner's, declared once, in a registry a module calls.
+    /// capability is the module's that declares it; a kind's part is a state type of that kind; a
+    /// callback is its key's owner's, declared once, in a registry a module calls; and a column
+    /// reads only declared types, as a restored match's scripts would read another value of one
+    /// no state or derivation holds.
     fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
         let mut once = |what: &str, names: Vec<&'static str>| {
@@ -190,6 +198,11 @@ impl DeclarationAudit {
                 problems.push(format!("{} is no state of {}", ty.name, kind.name));
             }
         }
+        for &(id, name) in &self.column_reads {
+            if self.state_of(id).is_none() && !self.derived.contains(&id) {
+                problems.push(format!("a column reads {name}, not declared"));
+            }
+        }
         for (at, callback) in self.callbacks.iter().enumerate() {
             let (registry, key) = (callback.registry.name, &callback.key);
             if callback.owner != callback.declared_by {
@@ -241,7 +254,9 @@ impl StateTypes for DeclarationAudit {
         self.state::<C>();
     }
 
-    fn derived<C: Component>(&mut self) {}
+    fn derived<C: Component>(&mut self) {
+        self.derived.push(TypeId::of::<C>());
+    }
 
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
         self.state::<C>();
@@ -299,15 +314,16 @@ impl Declarations for DeclarationAudit {
         self.resources.push(type_name::<R>());
     }
 
-    fn column<C: ViewColumn + Default, D: RowParts>(&mut self, _: ColumnFill<D, C>) {
+    fn column<C: ViewColumn + Default, D: RowReads>(&mut self, _: ColumnFill<D, C>) {
         self.columns.push(Named::of::<C>());
+        D::components(&mut self.column_reads);
     }
 
     fn call_part<P: CallPart + Default>(&mut self) {
         self.call_parts.push(Named::of::<P>());
     }
 
-    fn part<K: PartedKind, C: SimComponent>(&mut self, _: fn(&World) -> C) {
+    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, _: fn(&World) -> C) {
         self.parts.push((Named::of::<K>(), Named::of::<C>()));
     }
 
@@ -359,6 +375,10 @@ impl Replication for Stray {
     type Sending = NotSent;
 }
 
+/// A component no module declares, which a test's column reads.
+#[derive(Component, Debug)]
+struct Undeclared;
+
 /// A book a test declares, as the stats' own.
 #[derive(Resource, Debug, Default)]
 struct StrayBook;
@@ -375,7 +395,9 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     // own; and a kind's part, a unit's, needing a type no module declares.
     let mut audit = DeclarationAudit::default();
     audit.module(None);
-    audit.kind::<UnitEntity>();
+    audit.kind::<BodyUnit>();
+    audit.kind::<DeliveryEntity>();
+    audit.component::<UnitEntity>();
     audit.module(Some(Capability::Combat));
     audit.component::<Stray>();
     audit.component::<Stray>();
@@ -384,6 +406,9 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.check::<Player>(|_| Ok(()));
     audit.book::<StrayBook>();
     audit.part::<Player, Stray>(|_| Stray);
+    // A column that reads a type no module declares.
+    let reads_undeclared: ColumnFill<&Undeclared, VisionColumn> = |_, _| {};
+    audit.column::<VisionColumn, &Undeclared>(reads_undeclared);
     // A callback the areas own, twice, in a registry no module calls.
     let queue: QueueListed = |_, _, _, _, _| Ok(());
     audit.callback::<EffectQueues>(Capability::Areas, queue);
@@ -402,6 +427,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
             format!("a check of {player}, not declared"),
             format!("{} is declared by another module", type_name::<StrayBook>()),
             format!("{stray} is no state of {player}"),
+            format!("a column reads {}, not declared", type_name::<Undeclared>()),
             format!("the callback Areas of {queues} is declared by another module"),
             format!("{queues} has a callback no module calls"),
             format!("the callback Areas of {queues} is declared by another module"),

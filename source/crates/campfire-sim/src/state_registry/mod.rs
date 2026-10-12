@@ -18,6 +18,7 @@ use crate::entity_index::EntityIndex;
 use crate::host_rule::HostRule;
 use crate::id_allocator::IdAllocator;
 use crate::position::Position;
+use crate::restoring::Restoring;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::sim_tick::SimTick;
 use crate::sim_world::SimWorld;
@@ -161,7 +162,7 @@ impl StateRegistry {
     /// release changes their format, a type's layout included, as Minecraft's `DataVersion` is:
     /// a snapshot of another is refused, naming both, and the converter from the version before,
     /// which design 02's Saves plans, comes with the first release that raises it.
-    pub const DATA_VERSION: u32 = 9;
+    pub const DATA_VERSION: u32 = 10;
 
     /// A registry with the sim's own state: the entity list, the id allocator, the tick and
     /// positions.
@@ -369,13 +370,30 @@ impl StateRegistry {
             });
         }
 
+        world.insert_resource(Restoring);
+        let restored = self.put_in(world, &bodies);
+        world.remove_resource::<Restoring>();
+        restored?;
+        // Postcard accepts some encodings that are not its own, such as an overlong varint, so
+        // only a second encoding shows that no other bytes restore to this state.
+        let mut canonical = Vec::with_capacity(snapshot.len());
+        self.snapshot(world, &mut canonical);
+        if canonical != snapshot {
+            return Err(SnapshotError::NotCanonical);
+        }
+        Ok(())
+    }
+
+    /// Puts each type's section of `bodies` in `world`, the entities first, and checks the
+    /// state.
+    fn put_in(&self, world: &mut World, bodies: &[&[u8]]) -> Result<(), SnapshotError> {
         // The entities come first, so components find them whatever the order of the names.
-        for (entry, body) in self.entries.iter().zip(&bodies) {
+        for (entry, body) in self.entries.iter().zip(bodies) {
             if entry.name == ENTITIES {
                 (entry.decode)(world, body)?;
             }
         }
-        for (entry, body) in self.entries.iter().zip(&bodies) {
+        for (entry, body) in self.entries.iter().zip(bodies) {
             if entry.name != ENTITIES {
                 (entry.decode)(world, body)?;
             }
@@ -409,13 +427,6 @@ impl StateRegistry {
                 }
                 ForeignCheck::Shape(check) => check(world)?,
             }
-        }
-        // Postcard accepts some encodings that are not its own, such as an overlong varint, so
-        // only a second encoding shows that no other bytes restore to this state.
-        let mut canonical = Vec::with_capacity(snapshot.len());
-        self.snapshot(world, &mut canonical);
-        if canonical != snapshot {
-            return Err(SnapshotError::NotCanonical);
         }
         Ok(())
     }

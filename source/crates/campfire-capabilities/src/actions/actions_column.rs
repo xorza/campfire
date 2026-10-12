@@ -23,7 +23,7 @@ use crate::units::view_column::ViewColumn;
 use crate::values::rank::Rank;
 
 /// The part of a unit the actions read into its row: its slots.
-pub(super) type RowParts = Option<&'static ActionSlots>;
+pub(super) type RowReads = Option<&'static ActionSlots>;
 
 /// What the action pipeline adds to the script view: the match's actions and slot kinds, and each
 /// unit's ability slots, the unit its attacks aim at, and the range of its first weapon, a row
@@ -280,7 +280,7 @@ impl ActionsColumn {
 
     /// Adds a unit's actions to the actions' column of the script view.
     pub(super) fn fill_row(
-        slots: ROQueryItem<'_, '_, RowParts>,
+        slots: ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, ActionsColumn>,
     ) {
         fill.column.push(slots);

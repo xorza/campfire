@@ -16,18 +16,14 @@ use crate::units::units_column::UnitsColumn;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct UnitStateAccess {
     id: StableId,
-    unit_type: Option<UnitType>,
+    unit_type: UnitType,
     /// Its row in the view; none for a unit the call creates.
     row: Option<usize>,
 }
 
 impl UnitStateAccess {
     /// The state of the unit `id` of `unit_type` in row `row` of the view.
-    pub(crate) const fn of_row(
-        id: StableId,
-        unit_type: Option<UnitType>,
-        row: usize,
-    ) -> UnitStateAccess {
+    pub(crate) const fn of_row(id: StableId, unit_type: UnitType, row: usize) -> UnitStateAccess {
         UnitStateAccess {
             id,
             unit_type,
@@ -39,7 +35,7 @@ impl UnitStateAccess {
     pub(crate) const fn of_new(unit: NewUnit) -> UnitStateAccess {
         UnitStateAccess {
             id: unit.id,
-            unit_type: Some(unit.unit_type),
+            unit_type: unit.unit_type,
             row: None,
         }
     }
@@ -65,10 +61,7 @@ impl UnitStateAccess {
         if let Some(row) = self.row {
             return Ok(UnitsColumn::read(view, row, field.at));
         }
-        let unit_type = self
-            .unit_type
-            .expect("a unit the call creates has its type");
-        Ok(UnitsColumn::initial(view, unit_type, field.at))
+        Ok(UnitsColumn::initial(view, self.unit_type, field.at))
     }
 
     /// Writes `value` to the field `name`, for the call to read back and to apply when it ends,

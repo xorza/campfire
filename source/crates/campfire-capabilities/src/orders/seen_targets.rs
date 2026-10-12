@@ -3,7 +3,7 @@ use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 
 use crate::players::on_match::OnMatch;
-use crate::units::kind_filters::UnitFilter;
+use crate::units::entity_filters::UnitFilter;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::vision::team_sight::TeamSight;

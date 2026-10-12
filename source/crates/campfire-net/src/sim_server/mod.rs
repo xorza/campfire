@@ -51,10 +51,10 @@ use crate::net_protocol::{MatchChannel, NetProtocol};
 use crate::pace::PaceSpeed;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
+use crate::sim_server::data_filter::DataFilters;
 use crate::sim_server::door::Door;
 use crate::sim_server::error::RestoreMatchError;
 use crate::sim_server::journal_watch::JournalWatch;
-use crate::sim_server::kind_filter::KindFilters;
 use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::match_visibility::MatchVisibility;
@@ -77,11 +77,11 @@ pub(crate) mod bench;
 pub(crate) mod bot_driver;
 pub(crate) mod checkpoint_thread;
 pub(crate) mod checkpoints;
+pub(crate) mod data_filter;
 pub(crate) mod door;
 pub(crate) mod error;
 pub(crate) mod journal_watch;
 pub(crate) mod key_file;
-pub(crate) mod kind_filter;
 pub(crate) mod kind_shows;
 pub(crate) mod lobby;
 pub(crate) mod match_visibility;
@@ -129,7 +129,7 @@ impl Plugin for SimServer {
             RoomPlugin,
             QuicPlugin,
         ));
-        KindFilters::register(app, self.capabilities);
+        DataFilters::register(app, self.capabilities);
         KindShows::register(app);
         let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
         app.insert_resource(rooms);
@@ -337,7 +337,7 @@ impl SimServer {
         world.insert_resource(Door::new(Offering::new(terms, server)));
     }
 
-    /// Keeps the visibility `terms` carry, which each kind's filter takes its audience from as
+    /// Keeps the visibility `terms` carry, which each data filter takes its audience from as
     /// the match's entities spawn; an error for terms whose visibility does not read.
     fn set_visibility(world: &mut World, terms: &SessionTerms) -> Result<(), TermsError> {
         let visibility = SessionRules::visibility_of(terms)?;

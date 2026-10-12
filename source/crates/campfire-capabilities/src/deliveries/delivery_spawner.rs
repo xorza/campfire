@@ -5,7 +5,7 @@ use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
 
 use crate::units::by_type::ByType;
-use crate::units::kind_filters::UnitFilter;
+use crate::units::entity_filters::UnitFilter;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::tag_book::TagBook;

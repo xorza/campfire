@@ -6,7 +6,7 @@ use crate::actions::ActionsSet;
 use crate::actions::effect_queues::EffectQueues;
 use crate::combat::attacks::Attacks;
 use crate::combat::combat_api::CombatApi;
-use crate::combat::combat_column::{CombatColumn, RowParts};
+use crate::combat::combat_column::{CombatColumn, RowReads};
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvents;
 use crate::combat::combat_hooks::CombatHooks;
@@ -109,7 +109,7 @@ impl Module for Combat {
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();
-        d.column::<CombatColumn, RowParts>(CombatColumn::fill_row);
+        d.column::<CombatColumn, RowReads>(CombatColumn::fill_row);
         d.api(CombatApi::register);
     }
 

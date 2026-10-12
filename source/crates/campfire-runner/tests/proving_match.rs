@@ -79,7 +79,8 @@ fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
 
 /// Asserts that tick `tick` of `fixed`, a match of `set`, failed no script call; that each part a
 /// unit holds is state or derived, as a list declares it: a part none declares would be held by
-/// no hash, snapshot or client; and that each resource is declared, its scratch clear.
+/// no hash, snapshot or client; that each resource is declared, its scratch clear; and that each
+/// entity is of a kind.
 fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
     let world = fixed.game();
     let failures = world.non_send::<ScriptFailures>();
@@ -92,6 +93,8 @@ fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
     assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
     let unlisted = Release::unlisted_resources(set, world, &[TypeId::of::<Session>()]);
     assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
+    let kindless = Release::entities_of_no_kind(world);
+    assert!(kindless.is_empty(), "tick {tick}: {kindless:?}");
 }
 
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {

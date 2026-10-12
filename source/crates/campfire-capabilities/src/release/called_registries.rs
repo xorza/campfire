@@ -10,7 +10,6 @@ use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::parted_kind::PartedKind;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::scripts::api_builder::ApiBuilder;
@@ -18,7 +17,7 @@ use crate::scripts::call_part::CallPart;
 use crate::state_types::replication::Replication;
 use crate::state_types::{Declared, StateTypes};
 use crate::units::entity_kind::EntityKind;
-use crate::units::row_parts::RowParts;
+use crate::units::row_reads::RowReads;
 use crate::units::view_column::ViewColumn;
 
 /// The consumer that gathers each registry of callbacks a module calls or declares a callback in,
@@ -79,11 +78,11 @@ impl Declarations for CalledRegistries {
         self.0.push(TypeId::of::<C>());
     }
 
-    fn column<C: ViewColumn + Default, D: RowParts>(&mut self, _: ColumnFill<D, C>) {}
+    fn column<C: ViewColumn + Default, D: RowReads>(&mut self, _: ColumnFill<D, C>) {}
 
     fn call_part<P: CallPart + Default>(&mut self) {}
 
-    fn part<K: PartedKind, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
+    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 }

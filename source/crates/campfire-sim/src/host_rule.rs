@@ -2,6 +2,7 @@ use std::any::TypeId;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 
@@ -14,6 +15,21 @@ pub trait HostRule: Debug + Send + Sync + 'static {
     /// Adds to `kinds` the kinds it takes, each by the type of its marker; false when it takes
     /// any entity.
     fn kinds(kinds: &mut Vec<TypeId>) -> bool;
+}
+
+/// The marker of a kind of entity, which every entity of the kind holds and no other: it hosts the
+/// state types of its kind.
+pub trait KindMarker: Component + Debug {}
+
+impl<K: KindMarker> HostRule for K {
+    fn holds(world: &World, entity: Entity) -> bool {
+        world.get::<K>(entity).is_some()
+    }
+
+    fn kinds(kinds: &mut Vec<TypeId>) -> bool {
+        kinds.push(TypeId::of::<K>());
+        true
+    }
 }
 
 /// Any entity: a type of `sim`, which knows no kinds, or of a test.

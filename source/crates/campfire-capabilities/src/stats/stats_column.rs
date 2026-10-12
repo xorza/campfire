@@ -32,7 +32,7 @@ use crate::values::rank::Rank;
 use crate::values::stat::Stat;
 
 /// The parts of a unit the stats read into its row.
-pub(super) type RowParts = (
+pub(super) type RowReads = (
     Option<&'static Level>,
     Option<&'static Life>,
     Option<&'static Pools>,
@@ -428,7 +428,7 @@ impl StatsColumn {
 
     /// Adds the unit's level, pools, stats and modifiers to the stats' column of the script view.
     pub(super) fn fill_row(
-        parts: ROQueryItem<'_, '_, RowParts>,
+        parts: ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, StatsColumn>,
     ) {
         let (level, life, pools, stats, modifiers, clocks) = parts;

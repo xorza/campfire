@@ -18,7 +18,7 @@ use crate::units::view_column::ViewColumn;
 
 /// The parts of a unit progression reads into its row: its experience, its level, which is its
 /// `level` track's, and its points.
-pub(super) type RowParts = (
+pub(super) type RowReads = (
     Option<&'static Experience>,
     Option<&'static Level>,
     Option<&'static Points>,
@@ -197,7 +197,7 @@ impl ProgressionColumn {
 
     /// Fills a row of the script view with a unit's tracks, its progress on each, and its points.
     pub(super) fn fill_row(
-        (experience, level, points): ROQueryItem<'_, '_, RowParts>,
+        (experience, level, points): ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, ProgressionColumn>,
     ) {
         fill.column.push(experience, level, points);

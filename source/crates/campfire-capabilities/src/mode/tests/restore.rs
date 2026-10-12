@@ -10,6 +10,7 @@ use crate::players::player_resources::PlayerResources;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::stats::instance::StackEnd;
 use crate::stats::lifetime::{Ends, Lifetime};
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncOwner, SyncTeam, UnitState};
 
 /// Each state type's restore check lets the match's own values through, and refuses one that

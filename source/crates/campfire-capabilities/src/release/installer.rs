@@ -10,17 +10,17 @@ use crate::declare::callbacks::Callbacks;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::parted_kind::PartedKind;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
-use crate::players::kind_parts::KindParts;
+use crate::players::entity_parts::EntityParts;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::ctx::Ctx;
 use crate::state_types::replication::Replication;
 use crate::state_types::{Declared, StateTypes};
 use crate::units::entity_kind::EntityKind;
-use crate::units::row_parts::RowParts;
+use crate::units::entity_kinds::EntityKinds;
+use crate::units::row_reads::RowReads;
 use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 
@@ -98,7 +98,11 @@ impl StateTypes for Installer<'_> {
 
 impl KindVisitor for Installer<'_> {
     fn kind<K: EntityKind>(&mut self) {
-        self.world.init_resource::<KindParts<K>>();
+        let id = self.world.register_component::<K>();
+        self.world.get_resource_or_init::<EntityKinds>().add(id);
+        if K::DECLARED_PARTS {
+            self.world.init_resource::<EntityParts<K>>();
+        }
     }
 }
 
@@ -148,7 +152,7 @@ impl Declarations for Installer<'_> {
             .register(key, callback);
     }
 
-    fn column<C: ViewColumn + Default, D: RowParts>(&mut self, fill: ColumnFill<D, C>) {
+    fn column<C: ViewColumn + Default, D: RowReads>(&mut self, fill: ColumnFill<D, C>) {
         let view = self.world.non_send::<View>().clone();
         view.add_column(C::default());
         view.add_source::<D, C>(self.world, fill);
@@ -160,9 +164,15 @@ impl Declarations for Installer<'_> {
         }
     }
 
-    fn part<K: PartedKind, C: SimComponent>(&mut self, start: fn(&World) -> C) {
+    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, start: fn(&World) -> C) {
+        const {
+            assert!(
+                K::DECLARED_PARTS,
+                "a kind whose entities spawn with declared parts"
+            );
+        }
         self.world
-            .resource_mut::<KindParts<K>>()
+            .resource_mut::<EntityParts<K>>()
             .add(move |entity| {
                 let part = start(entity.world());
                 entity.insert(part);

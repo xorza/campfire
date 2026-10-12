@@ -1,8 +1,8 @@
 //! The players and the match as entities, under every capability: each player's entity and the
 //! resources it holds, the match's entity, and where to find them.
 
+pub(crate) mod entity_parts;
 pub(crate) mod held_out;
-pub(crate) mod kind_parts;
 pub(crate) mod match_entity;
 pub(crate) mod on_match;
 pub(crate) mod out_of_play;
@@ -21,8 +21,8 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module::Module;
+use crate::players::entity_parts::EntityParts;
 use crate::players::held_out::HeldOut;
-use crate::players::kind_parts::KindParts;
 use crate::players::match_entity::MatchEntity;
 use crate::players::out_of_play::OutOfPlay;
 use crate::players::player::Player;
@@ -80,10 +80,10 @@ impl Players {
     /// Spawns the match's entity, then each player's, in slot order, `teams` giving each slot's
     /// team, each with its named id and the parts the installed modules declare for its kind.
     pub(crate) fn spawn_match(world: &mut World, teams: impl Iterator<Item = Team>) {
-        world.resource_scope(|world, parts: Mut<'_, KindParts<MatchEntity>>| {
+        world.resource_scope(|world, parts: Mut<'_, EntityParts<MatchEntity>>| {
             parts.put_on(&mut world.spawn((StableId::MATCH, MatchEntity)));
         });
-        world.resource_scope(|world, parts: Mut<'_, KindParts<Player>>| {
+        world.resource_scope(|world, parts: Mut<'_, EntityParts<Player>>| {
             for (slot, team) in (0..).map(PlayerSlot::new).zip(teams) {
                 MatchEntity::spawn_player_of(world, &parts, slot, team);
             }
@@ -97,7 +97,7 @@ pub(crate) mod internals {
     use campfire_common::PlayerSlot;
 
     use crate::players::Players;
-    use crate::players::kind_parts::KindParts;
+    use crate::players::entity_parts::EntityParts;
     use crate::players::match_entity::MatchEntity;
     use crate::players::player::Player;
     use crate::players::player_resources::PlayerResources;
@@ -132,7 +132,7 @@ pub(crate) mod internals {
         /// 0, with what the installed capabilities put on them and none of each of `resources`
         /// resources, as a mode's start does.
         pub fn spawn(world: &mut World, players: u32, resources: usize) {
-            world.resource_scope(|world, parts: Mut<'_, KindParts<Player>>| {
+            world.resource_scope(|world, parts: Mut<'_, EntityParts<Player>>| {
                 for slot in (0..players).map(PlayerSlot::new) {
                     let player = MatchEntity::spawn_player_of(world, &parts, slot, Team::new(0));
                     world

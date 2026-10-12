@@ -11,11 +11,12 @@ use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
 use crate::units::body::Body;
+use crate::units::entity_filters::UnitFilter;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::row_fill::{FillRow, RowFill, RowSource};
 use crate::units::row_marks::RowMarks;
-use crate::units::row_parts::RowParts;
+use crate::units::row_reads::RowReads;
 use crate::units::source_reads::SourceReads;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
@@ -58,21 +59,24 @@ pub(crate) struct UnitRows {
     columns: ViewColumns,
 }
 
-/// The parts of a unit the core reads into its row.
-type CoreParts = (
-    Option<&'static Position>,
-    Option<&'static Team>,
+/// The parts of a unit the core reads into its row: those every unit spawns with, then the
+/// others.
+type CoreReads = (
+    &'static Position,
+    &'static Team,
+    &'static UnitType,
     Option<&'static Body>,
     Option<&'static SpawnPoint>,
-    Option<&'static UnitType>,
     Option<&'static Owner>,
     Option<&'static UnitTags>,
 );
 
 /// The core's parts of each unit, and the units whose parts changed since the last read.
 struct CoreSource {
-    parts: QueryState<CoreParts>,
-    changed: SystemState<Query<'static, 'static, Entity, <CoreParts as RowParts>::Changed>>,
+    parts: QueryState<CoreReads, UnitFilter>,
+    changed: SystemState<
+        Query<'static, 'static, Entity, (UnitFilter, <CoreReads as RowReads>::Changed)>,
+    >,
 }
 
 /// An entity of the entity index as a read found it: its archetype, which holds the parts it
@@ -267,7 +271,7 @@ impl UnitRows {
 
     /// Adds how a capability fills its column of each row, and its fields of the core row, from
     /// the parts `D` of `world`'s units, after those added before it.
-    pub(crate) fn add_source<D: RowParts, C: ViewColumn>(
+    pub(crate) fn add_source<D: RowReads, C: ViewColumn>(
         &mut self,
         world: &mut World,
         fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_, C>),
@@ -343,8 +347,8 @@ impl CoreSource {
     }
 
     /// The row of unit `id`, `entity` of `world`, whose fields of the core it fills, and whose
-    /// fields of the capabilities above it keeps from `kept`; `None` for an entity with no
-    /// position or team, which is no unit scripts see.
+    /// fields of the capabilities above it keeps from `kept`; `None` for an entity that is no
+    /// unit: a player's or the match's.
     fn row(
         &self,
         world: &World,
@@ -352,13 +356,8 @@ impl CoreSource {
         entity: Entity,
         kept: Option<UnitRow>,
     ) -> Option<UnitRow> {
-        let parts = self
-            .parts
-            .get_manual(world, entity)
-            .expect("the core reads optional parts");
-        let (Some(&pos), Some(&team), body, spawn, unit_type, owner, tags) = parts else {
-            return None;
-        };
+        let (&pos, &team, &unit_type, body, spawn, owner, tags) =
+            self.parts.get_manual(world, entity).ok()?;
         let (alive, targetable) = kept.map_or((true, false), |row| (row.alive, row.targetable));
         Some(UnitRow {
             id,
@@ -368,7 +367,7 @@ impl CoreSource {
             spawn: spawn.map(|spawn| spawn.get()),
             alive,
             targetable,
-            unit_type: unit_type.copied(),
+            unit_type,
             owner: owner.map(|owner| owner.slot()),
             tags: tags.copied().unwrap_or_default(),
         })

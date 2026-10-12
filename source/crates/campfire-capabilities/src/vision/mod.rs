@@ -14,7 +14,7 @@ use crate::vision::seeing::Seeing;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
 use crate::vision::vision_api::VisionApi;
-use crate::vision::vision_column::{RowParts, VisionColumn};
+use crate::vision::vision_column::{RowReads, VisionColumn};
 use crate::vision::vision_grid::VisionGrid;
 
 #[cfg(feature = "internals")]
@@ -50,7 +50,7 @@ impl Module for Vision {
         d.component::<SeenBy>();
         d.component::<Sight>();
         d.book::<ByType<Sight>>();
-        d.column::<VisionColumn, RowParts>(VisionColumn::fill_row);
+        d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
     }
 

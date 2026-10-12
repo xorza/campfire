@@ -14,7 +14,7 @@ use crate::units::view::View;
 
 /// The player who controls a unit, by slot: design 04's control relation, which `orders` and,
 /// later, `character` read. A player may control many units, each of the player's team.
-/// Immutable, so a change of owner is a new one inserted, which every kind's filter follows
+/// Immutable, so a change of owner is a new one inserted, which every data filter follows
 /// (design 14, D17, D18).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]

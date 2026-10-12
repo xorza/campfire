@@ -1,27 +1,24 @@
-use std::any::TypeId;
-
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::With;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_sim::{HostRule, SimComponent, StableId};
+use campfire_sim::{KindMarker, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
-use crate::declare::parted_kind::PartedKind;
-use crate::players::kind_parts::KindParts;
+use crate::players::entity_parts::EntityParts;
 use crate::players::player::Player;
 use crate::players::players_world::PlayersWorld;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
 use crate::units::entity_kind::{EntityKind, KindAudience};
+use crate::units::entity_kinds::EntityKinds;
 use crate::units::team::Team;
 
 /// The entity of the match, of the named id `StableId::MATCH`, which holds the match's state that
 /// clients receive (design 14, D7).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[component(immutable)]
+#[component(immutable, on_add = EntityKinds::one)]
 pub struct MatchEntity;
 
 impl MatchEntity {
@@ -29,7 +26,7 @@ impl MatchEntity {
     /// whose entity spawned: no player is of a match that has none.
     pub(super) fn spawn_player_of(
         world: &mut World,
-        parts: &KindParts<Player>,
+        parts: &EntityParts<Player>,
         slot: PlayerSlot,
         team: Team,
     ) -> Entity {
@@ -43,32 +40,22 @@ impl MatchEntity {
     }
 }
 
-impl PartedKind for MatchEntity {}
+impl KindMarker for MatchEntity {}
 
 impl EntityKind for MatchEntity {
     const AUDIENCE: KindAudience = KindAudience::EverySeat;
     const OWNER_PREDICTS: bool = false;
-    type Only = With<MatchEntity>;
-}
-
-impl HostRule for MatchEntity {
-    fn holds(world: &World, entity: Entity) -> bool {
-        world.get::<MatchEntity>(entity).is_some()
-    }
-
-    fn kinds(kinds: &mut Vec<TypeId>) -> bool {
-        kinds.push(TypeId::of::<MatchEntity>());
-        true
-    }
+    const DECLARED_PARTS: bool = true;
 }
 
 impl SimComponent for MatchEntity {
     const NAME: &'static str = "players.match";
     type Host = MatchEntity;
 
-    // An id not the match's would hide the match's state from where it is looked for.
+    // An id not the match's would hide the match's state from where it is looked for; and an
+    // entity is of one kind.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        world.get::<StableId>(entity) == Some(&StableId::MATCH)
+        world.get::<StableId>(entity) == Some(&StableId::MATCH) && EntityKinds::alone(world, entity)
     }
 }
 

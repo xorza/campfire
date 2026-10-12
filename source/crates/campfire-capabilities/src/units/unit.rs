@@ -100,7 +100,7 @@ impl Unit {
                 field("unit_type", "its unit type's name"),
                 |unit: &mut Unit| {
                     let unit_type = unit.read(|row| row.unit_type);
-                    let name = unit_type.and_then(|unit_type| unit.view.unit_type_name(unit_type));
+                    let name = unit.view.unit_type_name(unit_type);
                     name.map_or(Dynamic::UNIT, Dynamic::from)
                 },
             )
@@ -173,8 +173,8 @@ impl UnitParams {
     /// The param `name`; one the unit's type does not declare fails the call.
     fn get(&self, name: &str) -> Checked<Dynamic> {
         let unit = &self.0;
-        unit.read(|row| row.unit_type)
-            .and_then(|unit_type| unit.view.param_named(unit_type, name))
+        unit.view
+            .param_named(unit.read(|row| row.unit_type), name)
             .ok_or_else(|| ApiError::UnknownParam.fail().into())
     }
 }

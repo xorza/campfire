@@ -116,7 +116,7 @@ fn an_area_is_state_and_restores() {
     };
     let area = Area::new(by, None, Tick::new(9));
     let trigger = AreaTrigger::at(Tick::new(5));
-    let id = Units::spawn_of(
+    let id = Units::spawn_delivery_of(
         &mut game,
         field,
         Position::ORIGIN,

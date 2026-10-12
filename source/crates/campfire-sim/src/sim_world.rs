@@ -103,6 +103,7 @@ pub(crate) mod internals {
     use campfire_schedule::StrictSchedule;
 
     use crate::entity_index::EntityIndex;
+    use crate::restoring::Restoring;
     use crate::sim_tick::SimTick;
     use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick, start_tick};
     use crate::sim_world::SimWorld;
@@ -222,9 +223,12 @@ pub(crate) mod internals {
         }
 
         fn mutate_state(&mut self, name: &str, draws: &mut Draws, mutation: Mutation) -> bool {
-            self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+            self.insert_resource(Restoring);
+            let mutated = self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
                 registry.mutate(world, name, draws, mutation)
-            })
+            });
+            self.remove_resource::<Restoring>();
+            mutated
         }
 
         fn push_input(&mut self, slot: PlayerSlot, payload: &[u8]) {

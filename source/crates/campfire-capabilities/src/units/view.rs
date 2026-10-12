@@ -24,7 +24,7 @@ use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::path_id::PathId;
 use crate::units::row_fill::RowFill;
-use crate::units::row_parts::RowParts;
+use crate::units::row_reads::RowReads;
 use crate::units::tag::Tag;
 use crate::units::target_index::{TargetIndex, TargetQuery};
 use crate::units::team::Team;
@@ -231,7 +231,7 @@ impl View {
     /// Adds how a capability fills its column of each row, and its fields of the core row,
     /// from the parts `D` of `world`'s units, after those added before it. Its column comes
     /// first.
-    pub(crate) fn add_source<D: RowParts, C: ViewColumn>(
+    pub(crate) fn add_source<D: RowReads, C: ViewColumn>(
         &self,
         world: &mut World,
         fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_, C>),

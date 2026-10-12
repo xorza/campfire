@@ -4,7 +4,7 @@ use campfire_sim::{Capability, SimSet};
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::actions_api::ActionsApi;
-use crate::actions::actions_column::{ActionsColumn, RowParts};
+use crate::actions::actions_column::{ActionsColumn, RowReads};
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::holds::Holds;
@@ -102,7 +102,7 @@ impl Module for Actions {
         d.book::<ParamBook>();
         d.book::<EffectLists>();
         d.calls::<EffectQueues>();
-        d.column::<ActionsColumn, RowParts>(ActionsColumn::fill_row);
+        d.column::<ActionsColumn, RowReads>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
     }
 

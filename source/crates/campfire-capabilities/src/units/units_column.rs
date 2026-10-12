@@ -18,7 +18,7 @@ use crate::units::view_column::ViewColumn;
 
 /// The parts of a unit the core reads into its row of script state: its type, which names the
 /// class of each field, and its state of each class.
-pub(super) type StateRowParts = (
+pub(super) type StateRowReads = (
     Option<&'static UnitType>,
     Option<&'static UnitState<SyncNone>>,
     Option<&'static UnitState<SyncOwner>>,
@@ -26,8 +26,8 @@ pub(super) type StateRowParts = (
     Option<&'static UnitState<SyncAll>>,
 );
 
-/// A row's parts of `StateRowParts`, as the view reads them.
-type StateParts<'w, 's> = ROQueryItem<'w, 's, StateRowParts>;
+/// A row's parts of `StateRowReads`, as the view reads them.
+type StateParts<'w, 's> = ROQueryItem<'w, 's, StateRowReads>;
 
 /// What the core adds to the script view for units' script state: the fields each unit type
 /// declares, and each unit's values, a run a row, as the view read them and as the calls of the
@@ -121,15 +121,9 @@ impl UnitsColumn {
     }
 
     /// The field `name` of a unit of `unit_type`; one its type does not declare fails the call.
-    pub(crate) fn field(
-        view: &View,
-        unit_type: Option<UnitType>,
-        name: &str,
-    ) -> Checked<StateField> {
+    pub(crate) fn field(view: &View, unit_type: UnitType, name: &str) -> Checked<StateField> {
         let found = view
-            .column(|column: &UnitsColumn| {
-                unit_type.and_then(|unit_type| column.book.field_named(unit_type, name))
-            })
+            .column(|column: &UnitsColumn| column.book.field_named(unit_type, name))
             .expect("a view of units has their state");
         Ok(found.ok_or_else(|| ApiError::UnknownState.fail())?)
     }
@@ -165,7 +159,7 @@ impl UnitsColumn {
 
     /// Adds a unit's script state to the view's column of it.
     pub(super) fn fill_state(
-        state: ROQueryItem<'_, '_, StateRowParts>,
+        state: ROQueryItem<'_, '_, StateRowReads>,
         fill: &mut RowFill<'_, UnitsColumn>,
     ) {
         fill.column.push(state.0.copied(), state);

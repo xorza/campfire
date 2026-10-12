@@ -19,7 +19,7 @@ use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::forced_moves::ForcedMoves;
 use crate::navigation::navigation_api::NavigationApi;
-use crate::navigation::navigation_column::{NavigationColumn, RowParts};
+use crate::navigation::navigation_column::{NavigationColumn, RowReads};
 use crate::navigation::navigation_effect::NavigationEffect;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
@@ -108,7 +108,7 @@ impl Module for Navigation {
         d.cache::<StaticTrackingRun>();
         d.callback::<EffectQueues>(Capability::Navigation, NavigationEffect::queue_listed);
         d.book::<ByType<Walker>>();
-        d.column::<NavigationColumn, RowParts>(NavigationColumn::fill_row);
+        d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
     }
 

@@ -59,11 +59,10 @@ use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
-use crate::units::delivery_entity::DeliveryEntity;
+use crate::units::body_unit::BodyUnit;
 use crate::units::relations::Relations;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
-use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncAll, SyncNone};
 use crate::units::unit_type::UnitType;
 use crate::units::view::View;
@@ -262,9 +261,7 @@ impl Mode {
             .and_then(TrackBook::level_track);
         Breach::first(world, |entity| {
             let unit = world.entity(entity);
-            unit.contains::<UnitEntity>()
-                && !unit.contains::<DeliveryEntity>()
-                && !book.holds_kit(unit, level_track)
+            unit.contains::<BodyUnit>() && !book.holds_kit(unit, level_track)
         })
     }
 

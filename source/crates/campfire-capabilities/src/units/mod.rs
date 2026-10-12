@@ -19,6 +19,7 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
 use crate::units::body::Body;
+use crate::units::body_unit::BodyUnit;
 use crate::units::dead::Dead;
 use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::facing::Facing;
@@ -42,7 +43,7 @@ use crate::units::unit_ticks::UnitTicks;
 use crate::units::unit_type::UnitType;
 use crate::units::units_api::UnitsApi;
 use crate::units::units_call::UnitsCall;
-use crate::units::units_column::{StateRowParts, UnitsColumn};
+use crate::units::units_column::{StateRowReads, UnitsColumn};
 use crate::units::view::View;
 
 pub(crate) mod action_id;
@@ -51,18 +52,20 @@ pub(crate) mod block;
 pub(crate) mod body;
 pub(crate) mod body_form;
 pub(crate) mod body_grid;
+pub(crate) mod body_unit;
 pub(crate) mod by_type;
 pub(crate) mod collision_data;
 pub(crate) mod dead;
 pub(crate) mod delivery_entity;
 pub(crate) mod engine_tag;
+pub(crate) mod entity_filters;
 pub(crate) mod entity_kind;
+pub(crate) mod entity_kinds;
 pub(crate) mod facing;
 pub(crate) mod filter;
 pub(crate) mod forced_move;
 pub(crate) mod hit_handle;
 pub(crate) mod kept_rows;
-pub(crate) mod kind_filters;
 pub(crate) mod layer;
 pub(crate) mod lifespan;
 pub(crate) mod living_unit;
@@ -77,7 +80,7 @@ pub(crate) mod predicting;
 pub(crate) mod relations;
 pub(crate) mod row_fill;
 pub(crate) mod row_marks;
-pub(crate) mod row_parts;
+pub(crate) mod row_reads;
 
 mod source_reads;
 pub(crate) mod spawn_at;
@@ -141,6 +144,7 @@ impl Module for Units {
     fn declare<D: Declarations>(d: &mut D) {
         Units::kinds(d);
         d.component::<Body>();
+        d.component::<BodyUnit>();
         d.component::<Dead>();
         d.component::<Facing>();
         d.component::<ForcedMove>();
@@ -167,7 +171,7 @@ impl Module for Units {
         d.require::<UnitEntity, Team>();
         d.book::<UnitStateBook>();
         d.book::<TypeOrigins>();
-        d.column::<UnitsColumn, StateRowParts>(UnitsColumn::fill_state);
+        d.column::<UnitsColumn, StateRowReads>(UnitsColumn::fill_state);
         d.call_part::<UnitsCall>();
         d.call_part::<ScriptsCall>();
         d.api(CoreApi::register);
@@ -206,7 +210,7 @@ impl Module for Units {
 impl Units {
     /// Visits each kind of entity of the core's units, which state types name as their host.
     fn kinds<V: KindVisitor>(v: &mut V) {
-        v.kind::<UnitEntity>();
+        v.kind::<BodyUnit>();
         v.kind::<DeliveryEntity>();
     }
 
@@ -296,6 +300,9 @@ pub(crate) mod test_world {
     use crate::stats::stats_column::StatsColumn;
     use crate::units::Units;
     use crate::units::block::Block;
+    use crate::units::body_unit::BodyUnit;
+    use crate::units::delivery_entity::DeliveryEntity;
+    use crate::units::entity_kind::EntityKind;
     use crate::units::tag_book::TagBook;
     use crate::units::tag_data::TagData;
     use crate::units::team::Team;
@@ -334,7 +341,30 @@ pub(crate) mod test_world {
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
-            let pos = pos.into();
+            Units::spawn_as(world, BodyUnit, unit_type, pos.into(), team, parts)
+        }
+
+        /// A delivery of `unit_type` and `team` at `pos`, with `parts`, which make it one,
+        /// spawned as `spawn_of` spawns a unit.
+        pub(crate) fn spawn_delivery_of(
+            world: &mut World,
+            unit_type: UnitType,
+            pos: impl Into<Position>,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
+            Units::spawn_as(world, DeliveryEntity, unit_type, pos.into(), team, parts)
+        }
+
+        /// A unit of the kind `kind` marks, of the next stable id, spawned as `spawn_of` says.
+        fn spawn_as<K: EntityKind>(
+            world: &mut World,
+            kind: K,
+            unit_type: UnitType,
+            pos: Position,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
             let id = world.resource_mut::<IdAllocator>().allocate();
             let core = UnitCore {
                 id,
@@ -343,7 +373,9 @@ pub(crate) mod test_world {
                 team,
                 owner: None,
             };
-            Units::spawn_core(world, core, parts)
+            Units::seal_types(world);
+            core.spawn_as(world, kind, parts);
+            id
         }
 
         /// The unit of `core`, with `parts`, spawned as a mode's unit and a delivery are; the first

@@ -11,21 +11,21 @@ type Part = Box<dyn Fn(&mut EntityWorldMut<'_>) + Send + Sync>;
 /// player's, each made at the spawn from what the world holds then. Derived from the
 /// declarations: a restore takes the parts from its snapshot.
 #[derive(Resource)]
-pub(crate) struct KindParts<K: Send + Sync + 'static> {
+pub(crate) struct EntityParts<K: Send + Sync + 'static> {
     parts: Vec<Part>,
     kind: PhantomData<K>,
 }
 
-impl<K: Send + Sync + 'static> Default for KindParts<K> {
-    fn default() -> KindParts<K> {
-        KindParts {
+impl<K: Send + Sync + 'static> Default for EntityParts<K> {
+    fn default() -> EntityParts<K> {
+        EntityParts {
             parts: Vec::new(),
             kind: PhantomData,
         }
     }
 }
 
-impl<K: Send + Sync + 'static> KindParts<K> {
+impl<K: Send + Sync + 'static> EntityParts<K> {
     /// Adds `part`, which each entity of the kind gets as it spawns.
     pub(crate) fn add(&mut self, part: impl Fn(&mut EntityWorldMut<'_>) + Send + Sync + 'static) {
         self.parts.push(Box::new(part));
@@ -39,8 +39,10 @@ impl<K: Send + Sync + 'static> KindParts<K> {
     }
 }
 
-impl<K: Send + Sync + 'static> fmt::Debug for KindParts<K> {
+impl<K: Send + Sync + 'static> fmt::Debug for EntityParts<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("KindParts").field(&self.parts.len()).finish()
+        f.debug_tuple("EntityParts")
+            .field(&self.parts.len())
+            .finish()
     }
 }
