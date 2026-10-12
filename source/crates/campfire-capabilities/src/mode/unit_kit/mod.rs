@@ -17,7 +17,6 @@ use crate::production::production_data::ProductionData;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::stats::applier::Applier;
-use crate::stats::level::Level;
 use crate::stats::life::Life;
 use crate::stats::lifetime::Hold;
 use crate::stats::meter::Meter;
@@ -25,7 +24,6 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stats_effect::StatsEffect;
-use crate::stats::unit_stats::UnitStats;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
 use crate::units::modifier_id::ModifierId;
@@ -198,24 +196,11 @@ impl UnitKit {
         passive: Option<ModifierId>,
         parts: impl Bundle,
     ) -> Entity {
-        let SpawnAt {
-            id,
-            unit_type,
-            pos,
-            angle,
-            ..
-        } = at;
+        let SpawnAt { id, pos, angle, .. } = at;
         let level_track = world
             .get_resource::<TrackBook>()
             .and_then(TrackBook::level_track);
-        // Its stats as its first refresh derives them, of its type at level 1 with no modifiers, so
-        // a reader in the stage it spawns in finds them.
-        let stats = world
-            .get_resource::<StatBook>()
-            .map_or_else(UnitStats::default, |book| {
-                UnitStats::new(book.base_values(unit_type, Level::default().get()))
-            });
-        let mut unit = at.core(owner).spawn(world, (stats, parts));
+        let mut unit = at.core(owner).spawn(world, parts);
         let at = KitSpawn {
             kit: self,
             level_track,

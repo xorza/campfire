@@ -315,7 +315,7 @@ pub(crate) mod test_world {
             let weapon = TestWeapon {
                 projectile: self.projectile,
                 ..TestWeapon::new(
-                    Filter::of_relations(RelationSet::Enemies),
+                    Filter::of_release_relations(RelationSet::Enemies),
                     ActionRange::Meters(self.range),
                     self.windup,
                 )

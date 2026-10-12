@@ -1,6 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
+use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::world::{DeferredWorld, World};
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
@@ -8,14 +9,20 @@ use crate::scripts::state_decl::synced_state_decl::SyncTo;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
+use crate::units::Units;
+use crate::units::avatar::Avatar;
+use crate::units::tag_book::TagBook;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::UnitStateBook;
+use crate::units::unit_tags::UnitTags;
 use crate::units::view::View;
 
-/// A unit's type, by its place in the match's unit types.
+/// A unit's type, by its place in the match's unit types. Its tags, which it requires, come with
+/// it on every path, a spawn, a restore and a client's replication, as its hook writes them.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[component(immutable)]
+#[component(immutable, on_insert = UnitType::give_tags)]
+#[require(UnitTags)]
 #[serde(transparent)]
 pub struct UnitType(u16);
 
@@ -27,6 +34,28 @@ impl UnitType {
     /// Its place in the match's unit types, from 0.
     pub const fn index(self) -> usize {
         self.0 as usize
+    }
+
+    /// The hook that gives a unit its type's tags, from the tag book, none in a match with none,
+    /// in the place its type requires; and marks it an `Avatar` exactly when they hold `avatar`. Its
+    /// modifiers' grants join them as stats derive them. A type the match did not load has no
+    /// tags, and the restore check refuses it.
+    fn give_tags(mut world: DeferredWorld<'_>, context: HookContext) {
+        let entity = context.entity;
+        let unit_type = *world
+            .get::<UnitType>(entity)
+            .expect("the hook's own component");
+        let tags = UnitTags::at_spawn(world.get_resource::<TagBook>(), unit_type);
+        let avatar = tags.tags.contains(Units::AVATAR.tag());
+        *world
+            .get_mut::<UnitTags>(entity)
+            .expect("a unit type requires its tags") = tags;
+        let marked = world.entity(entity).contains::<Avatar>();
+        if avatar && !marked {
+            world.commands().entity(entity).insert(Avatar);
+        } else if !avatar && marked {
+            world.commands().entity(entity).remove::<Avatar>();
+        }
     }
 }
 

@@ -375,6 +375,7 @@ mod tests {
 
     use campfire_math::Num;
 
+    use crate::release::Release;
     use crate::release::r#match::Match;
     use crate::scripts::error::ParamProblem;
     use crate::scripts::error::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
@@ -450,7 +451,7 @@ mod tests {
         let mut book = ModifierBook::default();
         let load = ModifierLoad {
             scripts: &ScriptBook::default(),
-            types: &mut UnitTypes::default(),
+            types: &mut UnitTypes::new(Release::engine_tags()),
             stat: |_: &_| StatId::new(0),
             rate,
         };

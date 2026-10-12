@@ -353,7 +353,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             amount: 2,
         }),
         ..TestWeapon::new(
-            Filter::of_relations(RelationSet::Enemies),
+            Filter::of_release_relations(RelationSet::Enemies),
             ActionRange::Meters(Num::int(2)),
             Ticks::new(2),
         )

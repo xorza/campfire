@@ -1,13 +1,8 @@
 use std::iter;
 
 use bevy_ecs::component::Component;
-use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{With, Without};
-use bevy_ecs::system::{Commands, Query, Res};
 
 use crate::units::block::Block;
-use crate::units::delivery_entity::DeliveryEntity;
-use crate::units::engine_tag::EngineTag;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
@@ -28,10 +23,10 @@ impl UnitTags {
         tags.map_or_else(TagProperties::default, |tags| tags.properties)
     }
 
-    /// Whether a unit with `tags` gathers: it has the engine's `gathering` tag, which a gather
-    /// under way gives it.
-    pub(crate) fn gathers(tags: Option<&UnitTags>) -> bool {
-        tags.is_some_and(|tags| tags.tags.contains(EngineTag::Gathering.tag()))
+    /// Whether a unit with `tags` passes through each unit that passes too, as a worker in its
+    /// gather loop does.
+    pub(crate) fn passes(tags: Option<&UnitTags>) -> bool {
+        UnitTags::properties_of(tags).passes()
     }
 
     /// Whether a unit with `tags`, under a forced move when `forced`, is kept from `block`: by its
@@ -47,19 +42,6 @@ impl UnitTags {
         book.map_or(UnitTags::default(), |book| {
             book.unit_tags(unit_type, iter::empty())
         })
-    }
-
-    /// Gives each delivery that lacks them, as one a restore brings back, the tags it spawned
-    /// with, as `UnitCore` gives them. A delivery holds no modifier to change them.
-    pub(crate) fn give_delivery_tags(
-        book: Option<Res<'_, TagBook>>,
-        deliveries: Query<'_, '_, (Entity, &UnitType), (With<DeliveryEntity>, Without<UnitTags>)>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        for (entity, &unit_type) in &deliveries {
-            let tags = UnitTags::at_spawn(book.as_deref(), unit_type);
-            commands.entity(entity).insert(tags);
-        }
     }
 }
 

@@ -56,7 +56,7 @@ impl Mine {
             take: NonZeroU32::new(5).unwrap(),
             bounce: Num::int(4),
         };
-        let all = Filter::of_relations(RelationSet::All);
+        let all = Filter::of_release_relations(RelationSet::All);
         let gather = Actions::add_gather(game, spec, all, Num::ONE, Ticks::new(3));
         Mine { gather, mineral }
     }

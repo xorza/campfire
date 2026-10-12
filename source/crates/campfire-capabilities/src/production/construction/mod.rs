@@ -15,6 +15,7 @@ use crate::navigation::Navigation;
 use crate::players::player_resources::PlayerResources;
 use crate::players::players_world::PlayersWorld;
 use crate::players::resource_amount::ResourceAmount;
+use crate::production::Production;
 use crate::production::build_specs::{BuildSpecs, Style};
 use crate::production::build_target::BuildTarget;
 use crate::production::builder::{BuildOrder, Builder};
@@ -28,7 +29,6 @@ use crate::stats::unit_pools::UnitPools;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
-use crate::units::engine_tag::EngineTag;
 use crate::units::owner::Owner;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
@@ -223,7 +223,7 @@ impl Construction {
         let holder = one_holds.then_some(builder);
         let held = Site::new(action, start.rank, gain, paid, holder);
         let status = world.get::<StatusTags>(site).copied().unwrap_or_default();
-        let status = status.turned(EngineTag::Constructing, true);
+        let status = status.turned(Production::CONSTRUCTING, true);
         world.entity_mut(site).insert((held, status));
         let next = stays.then_some(BuildOrder {
             slot: order.slot,
@@ -340,7 +340,7 @@ impl Construction {
             }
             if progressed.complete {
                 commands.entity(entity).remove::<Site>();
-                *status = status.turned(EngineTag::Constructing, false);
+                *status = status.turned(Production::CONSTRUCTING, false);
                 done.push(id);
             }
         }

@@ -11,6 +11,7 @@ use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::effect_names::EffectNames;
 use crate::actions::placement_data::{PlacementData, PlacementRule};
+use crate::areas::Areas;
 use crate::areas::area_spec::AreaSpec;
 use crate::books::Books;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
@@ -34,18 +35,21 @@ use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
+use crate::production::Production;
 use crate::production::build_specs::{NewBuild, PlacementCheck, Style};
 use crate::production::resource_set::ResourceSet;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
+use crate::projectiles::Projectiles;
 use crate::projectiles::projectile_spec::ProjectileSpec;
+use crate::release::Release;
 use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
 use crate::stats::param_table::ParamTable;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
+use crate::units::Units;
 use crate::units::action_id::ActionId;
-use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
@@ -131,6 +135,7 @@ impl<'a> BookBuilder<'a> {
             start += package.scripts.len();
         }
         let mut books = BookParts {
+            types: UnitTypes::new(Release::engine_tags()),
             supply_rules: data.supply,
             ..BookParts::default()
         };
@@ -522,7 +527,7 @@ impl<'a> BookBuilder<'a> {
         }
         if let Some(node) = &file.node {
             let resource = ResourceId::named(resources, node.resource.as_str()).expect(CHECKED);
-            books.types.give_tag(unit_type, EngineTag::Node.tag());
+            books.types.give_tag(unit_type, Production::NODE.tag());
             books.nodes.nodes.set(unit_type, resource);
         }
         if let Some(drop_off) = &file.drop_off {
@@ -530,7 +535,7 @@ impl<'a> BookBuilder<'a> {
                 .resources
                 .iter()
                 .map(|name| ResourceId::named(resources, name.as_str()).expect(CHECKED));
-            books.types.give_tag(unit_type, EngineTag::DropOff.tag());
+            books.types.give_tag(unit_type, Production::DROP_OFF.tag());
             books.nodes.drop_offs.set(unit_type, ResourceSet::of(taken));
         }
     }
@@ -553,9 +558,7 @@ impl<'a> BookBuilder<'a> {
             .expect(CHECKED);
         let mut combat = file.combat.clone();
         if unit.declared.is_none() {
-            self.books
-                .types
-                .give_tag(unit_type, EngineTag::Avatar.tag());
+            self.books.types.give_tag(unit_type, Units::AVATAR.tag());
             if let Some(combat) = &mut combat {
                 combat.on_death = OnDeath::Stay;
             }
@@ -691,12 +694,12 @@ impl<'a> BookBuilder<'a> {
         let scope = TypeScope::of_package(index);
         let unit_type = books.types.named(scope, name.as_str()).expect(CHECKED);
         if let Some(projectile) = &file.projectile {
-            books.types.give_tag(unit_type, EngineTag::Projectile.tag());
+            books.types.give_tag(unit_type, Projectiles::TAG.tag());
             let spec = ProjectileSpec::of(projectile, &books.types, rate);
             books.projectiles.set(unit_type, spec);
         }
         if let Some(area) = &file.area {
-            books.types.give_tag(unit_type, EngineTag::Area.tag());
+            books.types.give_tag(unit_type, Areas::TAG.tag());
             let modifiers = &books.modifiers;
             let modifier = |id: &DeclaredName| modifiers.named(index, id.as_str()).expect(CHECKED);
             let spec =

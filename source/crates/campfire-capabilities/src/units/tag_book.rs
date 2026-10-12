@@ -19,16 +19,22 @@ pub(crate) struct TagBook {
     granting: TagSet,
     /// Each unit type's own tags, by type.
     type_tags: Vec<TagSet>,
+    /// How many of the first tags are the engine's.
+    engine_count: usize,
 }
 
 impl TagBook {
-    /// The book of `tags`, each tag's properties and immunities by its index, and of each unit
-    /// type's own tags.
+    /// The book of `tags`, each tag's properties and immunities by its index, the first
+    /// `engine_count` the engine's, and of each unit type's own tags.
     pub(crate) fn new(
+        engine_count: usize,
         tags: impl IntoIterator<Item = (TagProperties, TagSet)>,
         types: impl IntoIterator<Item = (UnitType, TagSet)>,
     ) -> TagBook {
-        let mut book = TagBook::default();
+        let mut book = TagBook {
+            engine_count,
+            ..TagBook::default()
+        };
         for (properties, immune) in tags {
             if immune != TagSet::default() {
                 let at = book.properties.len();
@@ -50,6 +56,11 @@ impl TagBook {
 
     /// The own tags of `unit_type`, those of its data and of its sections; none for a type the
     /// book was not given.
+    /// How many of the first tags are the engine's.
+    pub(crate) const fn engine_count(&self) -> usize {
+        self.engine_count
+    }
+
     pub(crate) fn own(&self, unit_type: UnitType) -> TagSet {
         self.type_tags
             .get(unit_type.index())
@@ -101,8 +112,8 @@ mod tests {
     use std::panic::{self, AssertUnwindSafe};
 
     use super::*;
+    use crate::release::Release;
     use crate::units::block::Block;
-    use crate::units::engine_tag::EngineTag;
     use crate::units::tag_data::TagData;
     use crate::units::type_scope::TypeScope;
     use crate::units::unit_type_data::UnitTypeData;
@@ -111,7 +122,7 @@ mod tests {
 
     #[test]
     fn a_units_tags_take_their_properties_from_the_modes_data() {
-        let mut types = UnitTypes::default();
+        let mut types = UnitTypes::new(Release::engine_tags());
         let names = ["stunned", "slowed", "slow_immune", "true_sight"];
         let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name));
         // The engine's tags hold the first places, and to declare one finds it.
@@ -119,9 +130,17 @@ mod tests {
             [stunned, slowed, slow_immune, sight].map(Tag::index),
             [7, 8, 9, 10]
         );
-        let engine = EngineTag::ALL.map(|tag| types.declare(tag.name()));
-        assert_eq!(engine, EngineTag::ALL.map(EngineTag::tag));
-        assert_eq!(engine.map(Tag::index), [0, 1, 2, 3, 4, 5, 6]);
+        let release = Release::engine_tags();
+        let engine: Vec<Tag> = release
+            .iter()
+            .map(|tag| types.declare(tag.name()))
+            .collect();
+        let numbers: Vec<Tag> = release.iter().map(|tag| tag.tag()).collect();
+        assert_eq!(engine, numbers);
+        assert_eq!(
+            engine.iter().map(|tag| tag.index()).collect::<Vec<_>>(),
+            [0, 1, 2, 3, 4, 5, 6]
+        );
         assert_eq!(types.declare("tower").index(), 11);
         let tower = UnitTypeData {
             tags: vec![DeclaredName::new("true_sight").unwrap()],

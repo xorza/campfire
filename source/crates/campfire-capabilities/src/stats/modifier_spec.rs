@@ -247,6 +247,7 @@ mod tests {
     use campfire_common::Ticks;
     use campfire_math::Num;
 
+    use crate::release::Release;
     use crate::release::r#match::Match;
     use crate::stats::error::ModifierProblem;
     use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
@@ -277,7 +278,7 @@ mod tests {
 
     #[test]
     fn a_spec_resolves_every_name_of_its_modifier_at_load() {
-        let mut types = UnitTypes::default();
+        let mut types = UnitTypes::new(Release::engine_tags());
         types.declare("rooted");
         let one = Param::Ranked(Ranked::One(Scalar::Int(1)));
         let mut data = ModifierData {

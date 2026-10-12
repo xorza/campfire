@@ -8,12 +8,12 @@ use super::*;
 use crate::actions::Actions;
 use crate::actions::launch_id::LaunchId;
 use crate::areas::area_data::{AreaData, AreaInside};
+use crate::projectiles::Projectiles;
 use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::stats::Stats;
 use crate::stats::modifier_data::ModifierData;
 use crate::units::Units;
-use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
@@ -28,12 +28,15 @@ use crate::values::relation_set::RelationSet;
 
 #[test]
 fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
-    let types = UnitTypes::default();
-    let [projectile, area] = [EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag);
+    let types = UnitTypes::new(Release::engine_tags());
+    let [projectile, area] = [Projectiles::TAG, Areas::TAG].map(EngineTag::tag);
     let parse = |text| Filter::parse(text, &types).unwrap();
     // A relation alone is the filter of its name.
-    assert_eq!(Filter::of_relations(RelationSet::Enemies), parse("enemies"));
-    assert_eq!(Filter::of_relations(RelationSet::All), parse("all"));
+    assert_eq!(
+        Filter::of_release_relations(RelationSet::Enemies),
+        parse("enemies")
+    );
+    assert_eq!(Filter::of_release_relations(RelationSet::All), parse("all"));
     let units = [
         TagSet::default(),
         TagSet::of([projectile]),

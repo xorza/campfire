@@ -16,6 +16,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::state_types::replication::Replication;
 use crate::state_types::{Declared, StateTypes};
+use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
 use crate::units::row_reads::RowReads;
 use crate::units::view_column::ViewColumn;
@@ -83,6 +84,8 @@ impl Declarations for CalledRegistries {
     fn call_part<P: CallPart + Default>(&mut self) {}
 
     fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
+
+    fn engine_tags(&mut self, _: &'static [EngineTag]) {}
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 }

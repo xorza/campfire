@@ -26,6 +26,8 @@ use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::projectiles_api::ProjectilesApi;
 use crate::projectiles::struck_units::StruckUnits;
 use crate::units::by_type::ByType;
+use crate::units::engine_tag::EngineTag;
+use crate::units::tag_properties::TagProperties;
 use crate::units::unit_type::UnitType;
 
 pub(crate) mod flight_state;
@@ -50,6 +52,7 @@ impl Module for Projectiles {
     const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.engine_tags(&[Projectiles::TAG]);
         d.component::<Projectile>();
         d.component::<FlightState>();
         d.resource::<StruckUnits>();
@@ -78,6 +81,10 @@ impl Module for Projectiles {
 }
 
 impl Projectiles {
+    /// The engine tag of projectile types: a filter selects their units only when it names it.
+    pub(crate) const TAG: EngineTag =
+        EngineTag::new(1, "projectile", TagProperties::NONE.with_named_only());
+
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing
     /// projectile at a unit for a homing type, or the fan's projectiles along lines spread evenly
     /// over its spread around the aim, which for an action aimed at a point end there at the
@@ -206,7 +213,6 @@ pub(crate) mod test_world {
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::units::action_id::ActionId;
     use crate::units::by_type::ByType;
-    use crate::units::engine_tag::EngineTag;
     use crate::units::unit_type::UnitType;
     use crate::units::view::View;
     use crate::values::damage_kind::DamageKind;
@@ -221,7 +227,7 @@ pub(crate) mod test_world {
             let view = world.non_send::<View>().clone();
             let spec = {
                 let mut types = view.types_mut();
-                types.give_tag(unit_type, EngineTag::Projectile.tag());
+                types.give_tag(unit_type, Projectiles::TAG.tag());
                 ProjectileSpec::of(data, &types, rate)
             };
             world

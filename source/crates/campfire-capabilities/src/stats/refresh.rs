@@ -1,7 +1,7 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Or, With, Without};
-use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
+use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId, TickRate, Unpredicted};
 
@@ -20,7 +20,6 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::stat_books::StatBooks;
 use crate::stats::unit_pools::UnitPools;
 use crate::stats::unit_stats::UnitStats;
-use crate::units::body_unit::BodyUnit;
 use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
@@ -36,28 +35,9 @@ use crate::units::unit_type::UnitType;
 pub(crate) struct Refresh;
 
 impl Refresh {
-    /// Gives each unit of a type, but a delivery, that lacks them the parts its stats and tags
-    /// derive into, which a restore does not bring back, as they are never state, and a client
-    /// receives with no unit; the refresh after it derives them, as it does a new unit's. A
-    /// delivery has no level to derive stats from, and its tags come back by
-    /// `UnitTags::give_delivery_tags`.
-    pub(crate) fn give_parts(
-        book: Option<Res<'_, StatBook>>,
-        mut commands: Commands<'_, '_>,
-        units: Query<'_, '_, Entity, (With<BodyUnit>, Without<UnitStats>, Allow<Unpredicted>)>,
-    ) {
-        if book.is_none() {
-            return;
-        }
-        for unit in &units {
-            commands
-                .entity(unit)
-                .insert((UnitStats::default(), UnitTags::default()));
-        }
-    }
-
-    /// Derives the stats and tags of every unit whose level or modifiers changed, that is new, or
-    /// that carries a live change, and sets what holds their effect: how far it walks a tick and
+    /// Derives the stats and tags of every unit whose level, modifiers or type changed, as a
+    /// client may receive its type after its level, that is new, or
+    /// that carries a live change of a unit it refreshes, a chain of them whole, and sets what holds their effect: how far it walks a tick and
     /// its pools' maxima, a pool keeping the rule of stats.md. A modifier its tags' immunities
     /// suppress gives no tags and no stats. Each stat is computed for every refreshing unit in the
     /// stat book's order, so a live change reads its source's stats once they are final; a live
@@ -91,6 +71,7 @@ impl Refresh {
                             Changed<Level>,
                             Changed<Modifiers>,
                             Changed<StatusTags>,
+                            Changed<UnitType>,
                             Added<UnitStats>,
                         )>,
                         Allow<Unpredicted>,
@@ -131,10 +112,14 @@ impl Refresh {
         scratch.clear();
         visits.clear();
         visits.extend(units.p0().iter());
-        visits.extend_from_slice(carriers.units());
-        visits.sort_unstable();
-        visits.dedup();
-        carriers.clear();
+        let ids = units.p1();
+        let id_of = |entity| ids.get(entity).ok().map(|(&id, ..)| id);
+        carriers.join_sources(&mut visits, id_of);
+        carriers.forget(
+            &visits,
+            |id| index.get(id).is_some(),
+            |entity| ids.contains(entity),
+        );
         let granting = tag_book
             .as_deref()
             .map_or(TagSet::default(), TagBook::granting);
@@ -163,11 +148,9 @@ impl Refresh {
                 unit_type,
                 level: level.get(),
             };
-            if scratch.add(&book, &modifier_book, unit, modifiers, |tags| {
+            scratch.add(&book, &modifier_book, unit, modifiers, |tags| {
                 takes_effect.takes(tags)
-            }) {
-                carriers.push(entity);
-            }
+            });
         }
         if scratch.units.is_empty() {
             return;
@@ -197,11 +180,14 @@ impl Refresh {
             }
         }
         Refresh::hold_effects(scratch, (&book, &pool_book), life, *rate, &mut units.p4());
-        // The value a live change last had is state, so a replay keeps it; a unit that carries
-        // one refreshes every pass anyway, so the change its write marks starts no refresh.
+        // The value a live change last had is state, so a replay keeps it; its write marks a
+        // change, which refreshes its carrier once more, to the value it now holds.
         let mut holders = units.p5();
         for term in scratch.lives() {
             let entity = scratch.units[term.unit as usize].entity;
+            if let Some(source) = term.source() {
+                carriers.add(source, entity);
+            }
             if let Ok(mut modifiers) = holders.get_mut(entity) {
                 let at = term.share as usize;
                 if modifiers.share_value(at) != term.value {
@@ -209,6 +195,7 @@ impl Refresh {
                 }
             }
         }
+        carriers.sort();
     }
 
     /// Sets what holds the effect of each refreshed unit's stats, `scratch`'s values: how far it

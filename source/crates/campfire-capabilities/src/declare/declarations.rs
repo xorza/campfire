@@ -11,6 +11,7 @@ use crate::declare::scratch::Scratch;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::state_types::StateTypes;
+use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
 use crate::units::row_fill::RowFill;
 use crate::units::row_reads::RowReads;
@@ -67,6 +68,10 @@ pub(crate) trait Declarations: StateTypes + KindVisitor {
     /// `C`, a part of each entity of the kind `K`, which `start` makes as the entity spawns; a
     /// restore checks that every entity of the kind holds one.
     fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, start: fn(&World) -> C);
+
+    /// `tags`, the module's engine tags, which the tag book places after those declared before
+    /// them: each at its number, as the module list gives the numbers.
+    fn engine_tags(&mut self, tags: &'static [EngineTag]);
 
     /// The module's script API, which `register` binds and records.
     fn api(&mut self, register: fn(&mut ApiBuilder<'_>));

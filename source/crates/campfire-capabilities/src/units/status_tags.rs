@@ -8,6 +8,7 @@ use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
 use crate::units::engine_tag::EngineTag;
+use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_entity::UnitEntity;
 
@@ -44,9 +45,13 @@ impl SimComponent for StatusTags {
     const NAME: &'static str = "units.status_tags";
     type Host = UnitEntity;
 
-    // Engine tags alone, which every match declares first.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        self.0.iter().all(|tag| tag.index() < EngineTag::ALL.len())
+    // Engine tags alone, which every match declares first; a match with no tag book has none.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        world
+            .get_resource::<TagBook>()
+            .map_or(self.0 == TagSet::default(), |book| {
+                self.0.iter().all(|tag| tag.index() < book.engine_count())
+            })
     }
 }
 
@@ -58,16 +63,17 @@ impl Replication for StatusTags {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::production::Production;
 
     #[test]
     fn a_turn_changes_its_own_tag_alone() {
-        let site = StatusTags::of([EngineTag::Constructing]);
-        let both = StatusTags::of([EngineTag::Constructing, EngineTag::Gathering]);
-        assert_eq!(site.turned(EngineTag::Gathering, true), both);
-        assert_eq!(both.turned(EngineTag::Gathering, false), site);
-        assert_eq!(site.turned(EngineTag::Constructing, true), site);
+        let site = StatusTags::of([Production::CONSTRUCTING]);
+        let both = StatusTags::of([Production::CONSTRUCTING, Production::GATHERING]);
+        assert_eq!(site.turned(Production::GATHERING, true), both);
+        assert_eq!(both.turned(Production::GATHERING, false), site);
+        assert_eq!(site.turned(Production::CONSTRUCTING, true), site);
         assert_eq!(
-            site.turned(EngineTag::Constructing, false),
+            site.turned(Production::CONSTRUCTING, false),
             StatusTags::default()
         );
     }

@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Has;
-use bevy_ecs::system::{Commands, Local, Query, Res};
+use bevy_ecs::query::{Has, With};
+use bevy_ecs::system::{Commands, Local, Query};
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
@@ -11,11 +11,9 @@ use crate::players::player::Player;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
+use crate::units::avatar::Avatar;
 use crate::units::dead::Dead;
-use crate::units::engine_tag::EngineTag;
 use crate::units::owner::Owner;
-use crate::units::tag_book::TagBook;
-use crate::units::unit_type::UnitType;
 
 /// Marks a player out of play, on its entity (design 14, D16): while it holds avatars and every
 /// one is dead, or while the mode's script holds it out. The server derives it as each tick ends
@@ -36,21 +34,13 @@ impl OutOfPlay {
     /// Marks each player out of play, or no more, where that changed. A client holds the player
     /// entities unpredicted, which no query here reads, so only the server marks them.
     pub(crate) fn refresh(
-        book: Option<Res<'_, TagBook>>,
-        units: Query<'_, '_, (&Owner, &UnitType, Has<Dead>)>,
+        units: Query<'_, '_, (&Owner, Has<Dead>), With<Avatar>>,
         players: Query<'_, '_, (Entity, &Player, Has<HeldOut>, Has<OutOfPlay>)>,
         mut avatars: Local<'_, Vec<Avatars>>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Some(book) = book else {
-            return;
-        };
-        let avatar = EngineTag::Avatar.tag();
         avatars.clear();
-        for (owner, &unit_type, dead) in &units {
-            if !book.own(unit_type).contains(avatar) {
-                continue;
-            }
+        for (owner, dead) in &units {
             let at = owner.slot().index();
             if avatars.len() <= at {
                 avatars.resize(at + 1, Avatars::default());

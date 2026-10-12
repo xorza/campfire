@@ -7,7 +7,9 @@ use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
 use campfire_script::rhai::Array;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{EntityIndex, Restoring, SimComponent, SimTick, SimWorld, SnapshotError};
+use campfire_sim::{
+    EntityIndex, IdAllocator, Restoring, SimComponent, SimTick, SimWorld, SnapshotError,
+};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -26,6 +28,7 @@ use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::entity_kinds::EntityKinds;
 use crate::units::path_id::PathId;
+use crate::units::tag_book::TagBook;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::scalar::Scalar;
@@ -550,4 +553,41 @@ fn an_entity_is_of_the_one_kind_its_marker_names() {
     let message = second.unwrap_err();
     let message = message.downcast_ref::<String>().unwrap();
     assert!(message.starts_with("an entity is of one kind"), "{message}");
+}
+
+#[test]
+fn a_unit_holds_its_types_tags_on_every_path_in_a_match_without_stats() {
+    // A match of the core alone, a unit of a type tagged `creep`: spawned, restored, and given its
+    // state alone, as a client's replication gives it, it holds its type's tag each way.
+    let start = || {
+        let mut game = Match::test(&[], Match::TEST_RATE, None);
+        let creep = Units::tagged_type(&mut game, &["creep"], &[]);
+        let hero = Units::tagged_type(&mut game, &["avatar"], &[]);
+        (game, creep, hero)
+    };
+    let (mut game, creep, hero) = start();
+    let spawned = Units::spawn_of(&mut game, creep, (0, 0, 0), Team::new(0), ());
+    let own = game.resource::<TagBook>().own(creep);
+    assert_eq!(own.iter().count(), 1);
+    let tags = |game: &Match, id| {
+        game.get::<UnitTags>(game.unit_entity(id))
+            .map(|tags| tags.tags)
+    };
+    assert_eq!(tags(&game, spawned), Some(own));
+    let (mut restored, ..) = start();
+    Release::restore_into(&game, &mut restored);
+    assert_eq!(tags(&restored, spawned), Some(own));
+    let id = game.resource_mut::<IdAllocator>().allocate();
+    let received = (id, BodyUnit, creep, Position::ORIGIN, Team::new(0));
+    let received = game.spawn(received).id();
+    assert_eq!(
+        game.get::<UnitTags>(received).map(|tags| tags.tags),
+        Some(own)
+    );
+    // A unit of a type tagged `avatar` is marked an avatar exactly while its type is one.
+    assert!(!game.entity(received).contains::<Avatar>());
+    game.entity_mut(received).insert(hero);
+    assert!(game.entity(received).contains::<Avatar>());
+    game.entity_mut(received).insert(creep);
+    assert!(!game.entity(received).contains::<Avatar>());
 }

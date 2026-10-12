@@ -22,6 +22,8 @@ use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::deliveries::delivering::Delivering;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
+use crate::units::engine_tag::EngineTag;
+use crate::units::tag_properties::TagProperties;
 use crate::units::unit_type::UnitType;
 
 pub(crate) mod area;
@@ -45,6 +47,7 @@ impl Module for Areas {
     const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.engine_tags(&[Areas::TAG]);
         d.component::<Area>();
         d.component::<AreaTrigger>();
         d.scratch::<AreaLaunches>();
@@ -84,6 +87,10 @@ impl Module for Areas {
 }
 
 impl Areas {
+    /// The engine tag of area types: a filter selects their units only when it names it.
+    pub(crate) const TAG: EngineTag =
+        EngineTag::new(2, "area", TagProperties::NONE.with_named_only());
+
     /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it
     /// aimed at, where the unit it aimed at stands, or at `from` for an action that aims at
     /// nothing; nothing for a unit that is gone.
@@ -149,7 +156,7 @@ pub(crate) mod internals {
                 radius,
                 delay: Ticks::new(0),
                 duration: Ticks::new(1),
-                affects: Filter::of_relations(RelationSet::All),
+                affects: Filter::of_release_relations(RelationSet::All),
                 inside: Inside::default(),
             };
             world
@@ -177,7 +184,6 @@ pub(crate) mod test_world {
     use crate::areas::area_spec::AreaSpec;
     use crate::stats::Stats;
     use crate::units::by_type::ByType;
-    use crate::units::engine_tag::EngineTag;
     use crate::units::unit_type::UnitType;
     use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
@@ -200,7 +206,7 @@ pub(crate) mod test_world {
             };
             let spec = {
                 let mut types = view.types_mut();
-                types.give_tag(unit_type, EngineTag::Area.tag());
+                types.give_tag(unit_type, Areas::TAG.tag());
                 AreaSpec::of(data, &types, rate, modifier).expect("an area's time in ticks fits")
             };
             world

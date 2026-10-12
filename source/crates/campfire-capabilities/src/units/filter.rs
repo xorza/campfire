@@ -1,16 +1,13 @@
 use crate::scripts::error::ApiError;
-use crate::units::engine_tag::EngineTag;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::filter_data::{FilterData, FilterSyntax};
 use crate::values::relation::Relation;
 use crate::values::relation_set::RelationSet;
 
-/// The engine tags of delivery units, which a filter leaves out unless it names one.
-const DELIVERY: [EngineTag; 2] = [EngineTag::Projectile, EngineTag::Area];
-
 /// A filter as a match runs it: a set of relations, the tags a unit must have, and those it must
-/// not, among them the tags of delivery units, `projectile` and `area`, but one it must have.
+/// not, among them each tag that a filter selects only when it names it, as a delivery's, but one
+/// it must have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Filter {
     relations: RelationSet,
@@ -41,17 +38,19 @@ impl Filter {
         data: Option<&FilterData>,
         types: &UnitTypes,
     ) -> Result<Filter, ApiError> {
-        data.map_or(Ok(Filter::of_relations(RelationSet::Enemies)), |data| {
-            Filter::resolve(data, types)
-        })
+        data.map_or(
+            Ok(Filter::of_relations(RelationSet::Enemies, types)),
+            |data| Filter::resolve(data, types),
+        )
     }
 
-    /// The filter of `relations` alone: every unit it selects, but delivery units.
-    pub(crate) fn of_relations(relations: RelationSet) -> Filter {
+    /// The filter of `relations` alone: every unit it selects, but those of a tag of `types` that
+    /// a filter selects only when it names it, as deliveries.
+    pub(crate) fn of_relations(relations: RelationSet, types: &UnitTypes) -> Filter {
         Filter {
             relations,
             all: TagSet::default(),
-            none: TagSet::of(DELIVERY.map(EngineTag::tag)),
+            none: types.named_only(),
         }
     }
 
@@ -73,7 +72,7 @@ impl Filter {
                 filter.all = filter.all.with(tag);
             }
         }
-        for tag in DELIVERY.map(EngineTag::tag) {
+        for tag in types.named_only().iter() {
             if !filter.all.contains(tag) {
                 filter.none = filter.none.with(tag);
             }
@@ -85,5 +84,20 @@ impl Filter {
     /// selects for regards it.
     pub(crate) const fn selects(self, relation: Relation, tags: TagSet) -> bool {
         self.relations.selects(relation) && tags.covers(self.all) && !tags.meets(self.none)
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::release::Release;
+    use crate::units::filter::Filter;
+    use crate::units::unit_types::UnitTypes;
+    use crate::values::relation_set::RelationSet;
+
+    impl Filter {
+        /// The filter of `relations` alone, of a match of the release's engine tags.
+        pub(crate) fn of_release_relations(relations: RelationSet) -> Filter {
+            Filter::of_relations(relations, &UnitTypes::new(Release::engine_tags()))
+        }
     }
 }

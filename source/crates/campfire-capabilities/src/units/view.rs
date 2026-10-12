@@ -20,6 +20,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::action_id::ActionId;
+use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::path_id::PathId;
@@ -60,10 +61,12 @@ struct ViewParts {
 }
 
 impl View {
-    pub(crate) fn new(rate: TickRate) -> View {
+    /// The view of a match at `rate`, its names the engine's tags `engine` alone, until the load
+    /// gives the match's.
+    pub(crate) fn new(rate: TickRate, engine: Vec<EngineTag>) -> View {
         View(Rc::new(ViewParts {
             rate,
-            names: RefCell::default(),
+            names: RefCell::new(ViewNames::new(UnitTypes::new(engine))),
             rows: RefCell::default(),
             targets: RefCell::default(),
         }))

@@ -18,10 +18,12 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
+use crate::units::avatar::Avatar;
 use crate::units::body::Body;
 use crate::units::body_unit::BodyUnit;
 use crate::units::dead::Dead;
 use crate::units::delivery_entity::DeliveryEntity;
+use crate::units::engine_tag::EngineTag;
 use crate::units::facing::Facing;
 use crate::units::forced_move::ForcedMove;
 use crate::units::lifespan::Lifespan;
@@ -32,6 +34,7 @@ use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
+use crate::units::tag_properties::TagProperties;
 use crate::units::team::Team;
 use crate::units::type_origins::TypeOrigins;
 use crate::units::unit::Unit;
@@ -47,6 +50,7 @@ use crate::units::units_column::{StateRowReads, UnitsColumn};
 use crate::units::view::View;
 
 pub(crate) mod action_id;
+pub(crate) mod avatar;
 pub(crate) mod bits256;
 pub(crate) mod block;
 pub(crate) mod body;
@@ -142,6 +146,7 @@ impl Module for Units {
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.engine_tags(&[Units::AVATAR]);
         Units::kinds(d);
         d.component::<Body>();
         d.component::<BodyUnit>();
@@ -163,6 +168,7 @@ impl Module for Units {
         d.component::<UnitState<SyncAll>>();
         d.derived::<DeliveryEntity>();
         d.derived::<UnitTags>();
+        d.derived::<Avatar>();
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
         d.check::<Position>(Units::within_bounds);
@@ -192,9 +198,6 @@ impl Module for Units {
         world.add_observer(|_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>| {
             view.refill_next();
         });
-        // A client holds its deliveries unpredicted, so the system finds none there.
-        cx.schedule
-            .add_systems(UnitTags::give_delivery_tags.in_set(SimEdge::Start));
         if cx.scripts() {
             cx.schedule.add_systems((
                 UnitTicks::begin_tick
@@ -208,6 +211,9 @@ impl Module for Units {
 }
 
 impl Units {
+    /// The engine tag of avatars, the units players play as, which `unit.is_avatar` tests.
+    pub const AVATAR: EngineTag = EngineTag::new(0, "avatar", TagProperties::NONE);
+
     /// Visits each kind of entity of the core's units, which state types name as their host.
     fn kinds<V: KindVisitor>(v: &mut V) {
         v.kind::<BodyUnit>();
@@ -230,12 +236,12 @@ impl Units {
         world.non_send_mut::<ScriptHost>().compile(source)
     }
 
-    /// Opens a match for the modules' installs: the script view, and with `budgets`, the script
-    /// host the scripts run in within them, and the context of their calls. A client runs no
-    /// scripts.
-    pub(crate) fn open(world: &mut World, budgets: Option<ScriptBudgets>) {
+    /// Opens a match for the modules' installs: the script view, whose first tags are the
+    /// engine's `engine`, and with `budgets`, the script host the scripts run in within them, and
+    /// the context of their calls. A client runs no scripts.
+    pub(crate) fn open(world: &mut World, budgets: Option<ScriptBudgets>, engine: Vec<EngineTag>) {
         let rate = *world.resource::<TickRate>();
-        let view = View::new(rate);
+        let view = View::new(rate, engine);
         if let Some(budgets) = budgets {
             let ctx = Ctx::new(view.clone());
             let mut host = ScriptHost::new(budgets.limits().per_call);

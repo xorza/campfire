@@ -18,6 +18,7 @@ use crate::scripts::call_part::CallPart;
 use crate::scripts::ctx::Ctx;
 use crate::state_types::replication::Replication;
 use crate::state_types::{Declared, StateTypes};
+use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
 use crate::units::entity_kinds::EntityKinds;
 use crate::units::row_reads::RowReads;
@@ -179,6 +180,8 @@ impl Declarations for Installer<'_> {
             });
         self.registry.require::<K, C>();
     }
+
+    fn engine_tags(&mut self, _: &'static [EngineTag]) {}
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 }

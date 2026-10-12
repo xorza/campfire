@@ -31,6 +31,7 @@ use crate::release::api_binder::ApiBinder;
 use crate::release::called_registries::CalledRegistries;
 use crate::release::capability_rows::CapabilityRows;
 use crate::release::declaring::Declaring;
+use crate::release::engine_tag_list::EngineTagList;
 use crate::release::installing::Installing;
 use crate::release::kinds_only::KindsOnly;
 use crate::release::match_spec::MatchSpec;
@@ -40,12 +41,14 @@ use crate::scripts::script_api::ScriptApi;
 use crate::state_types::StateTypes;
 use crate::stats::Stats;
 use crate::units::Units;
+use crate::units::engine_tag::EngineTag;
 use crate::vision::Vision;
 
 mod api_binder;
 mod called_registries;
 mod capability_rows;
 mod declaring;
+mod engine_tag_list;
 mod installer;
 mod installing;
 mod kinds_only;
@@ -124,6 +127,22 @@ impl Release {
         Ok(set)
     }
 
+    /// Every engine tag the release's modules declare, in the order of their numbers: the first
+    /// tags of every match, whatever its capabilities, so a tag has one number in all.
+    pub fn engine_tags() -> Vec<EngineTag> {
+        let mut list = EngineTagList::default();
+        Release::declare(Release::capabilities(), &mut list);
+        for (at, tag) in list.0.iter().enumerate() {
+            assert_eq!(
+                tag.tag().index(),
+                at,
+                "{} takes its place among the engine tags",
+                tag.name()
+            );
+        }
+        list.0
+    }
+
     /// The script API of the release, recorded as a match's engine binds it, with the names the
     /// engine has before: every capability's, whether a mode declares it or not.
     pub fn script_api() -> ScriptApi {
@@ -188,7 +207,7 @@ impl Release {
         world.insert_resource(set);
         world.insert_resource(spec.out);
         let scripts = spec.budgets.is_some();
-        Units::open(world, spec.budgets);
+        Units::open(world, spec.budgets, Release::engine_tags());
         if scripts {
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
         }

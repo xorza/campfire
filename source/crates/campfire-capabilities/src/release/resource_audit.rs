@@ -34,6 +34,7 @@ use crate::state_types::{Declared, StateTypes};
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
+use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
 use crate::units::entity_kinds::EntityKinds;
 use crate::units::predicting::Predicting;
@@ -199,6 +200,8 @@ impl Declarations for DeclaredResources {
     fn call_part<P: CallPart + Default>(&mut self) {}
 
     fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
+
+    fn engine_tags(&mut self, _: &'static [EngineTag]) {}
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 }

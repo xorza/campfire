@@ -24,7 +24,10 @@ use crate::production::supply_costs::SupplyCosts;
 use crate::production::train_queue::TrainQueue;
 use crate::production::trains::Trains;
 use crate::stats::StatsSet;
+use crate::units::block::Block;
 use crate::units::by_type::ByType;
+use crate::units::engine_tag::EngineTag;
+use crate::units::tag_properties::TagProperties;
 use crate::vision::team_sight::{ByHolding, ByVision, TeamSight};
 
 #[cfg(feature = "internals")]
@@ -78,6 +81,12 @@ impl Module for Production {
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.engine_tags(&[
+            Production::CONSTRUCTING,
+            Production::NODE,
+            Production::DROP_OFF,
+            Production::GATHERING,
+        ]);
         d.component::<TrainQueue>();
         d.derived_sent::<PlayerSupply>();
         d.component::<Rally>();
@@ -113,6 +122,24 @@ impl Module for Production {
 }
 
 impl Production {
+    /// The engine tag of a site, a building under construction: it blocks its attacks, casts and
+    /// uses, so no action of its starts.
+    pub(crate) const CONSTRUCTING: EngineTag = EngineTag::new(
+        3,
+        "constructing",
+        TagProperties::NONE
+            .with_block(Block::Attack)
+            .with_block(Block::Cast)
+            .with_block(Block::Use),
+    );
+    /// The engine tag of node types, which workers gather from.
+    pub(crate) const NODE: EngineTag = EngineTag::new(4, "node", TagProperties::NONE);
+    /// The engine tag of drop-off types, which workers take their loads to.
+    pub(crate) const DROP_OFF: EngineTag = EngineTag::new(5, "drop_off", TagProperties::NONE);
+    /// The engine tag of a worker in its gather loop, which another such worker passes through.
+    pub(crate) const GATHERING: EngineTag =
+        EngineTag::new(6, "gathering", TagProperties::NONE.with_passes());
+
     /// `install`, each placement testing the units `S` sees.
     fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
         let navigation = cx.has(Capability::Navigation);

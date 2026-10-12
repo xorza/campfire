@@ -146,16 +146,10 @@ impl Module for Stats {
                 .chain()
                 .in_set(SimSet::Resolve)
                 .in_set(StatsSet::Hold),
-            (Refresh::give_parts, Refresh::run)
-                .chain()
-                .in_set(SimEdge::Start),
+            Refresh::run.in_set(SimEdge::Start),
         ));
         for stage in SimSet::ALL {
-            schedule.add_systems(
-                (Refresh::give_parts, Refresh::run)
-                    .chain()
-                    .in_set(SimEdge::After(stage)),
-            );
+            schedule.add_systems(Refresh::run.in_set(SimEdge::After(stage)));
         }
     }
 }

@@ -5,9 +5,9 @@ use std::num::NonZeroU32;
 
 use campfire_capabilities::{
     ActionDataField, ActionField, ActionKind, AiError, DeclaredName, EffectData, EffectTo,
-    Effecting, EngineEnum, EngineTag, HealFields, Hook, LaunchFields, MapProblem, Metric,
-    ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields,
-    Release, Scalar, Status, SyncTo, TimeTooLarge, UnitKitError,
+    Effecting, EngineEnum, HealFields, Hook, LaunchFields, MapProblem, Metric, ModeError,
+    ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields, Release, Scalar,
+    Status, SyncTo, TimeTooLarge, UnitKitError,
 };
 use campfire_codec::Toml;
 use campfire_common::MapName;
@@ -927,7 +927,7 @@ static FLAWS: [Flaw; 273] = [
         RIME,
         Edit::Replace(SLOWS, r#"{ purge = { tag = "avatar" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Action(action), tag: EngineTag::Avatar } if action == "fan_of_frost"),
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Action(action), tag } if tag.name() == "avatar" && action == "fan_of_frost"),
     ),
     flaw(
         RIME,
@@ -1712,7 +1712,7 @@ static FLAWS: [Flaw; 273] = [
         UNITS,
         Edit::Replace(r#""tower", "true_sight"]"#, r#""tower", "avatar"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::UnitType(name), tag: EngineTag::Avatar } if name == "tower"),
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::UnitType(name), tag } if tag.name() == "avatar" && name == "tower"),
     ),
     flaw(
         HUSK,
@@ -1723,8 +1723,8 @@ static FLAWS: [Flaw; 273] = [
                 problem,
                 LoadProblem::EngineTag {
                     at: Place::Avatar(_),
-                    tag: EngineTag::Area
-                }
+                    tag
+                } if tag.name() == "area"
             )
         },
     ),
@@ -1732,7 +1732,7 @@ static FLAWS: [Flaw; 273] = [
         RIME,
         Edit::Replace(r#"tags = ["slowed"]"#, r#"tags = ["projectile"]"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Modifier(id), tag: EngineTag::Projectile } if id == "slow"),
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Modifier(id), tag } if tag.name() == "projectile" && id == "slow"),
     ),
     flaw(
         HUSK,

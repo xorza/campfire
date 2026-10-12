@@ -40,6 +40,15 @@ pub(crate) struct ViewNames {
 }
 
 impl ViewNames {
+    /// The names of a match whose types and tags are `types`, before the load and the mode set
+    /// the rest.
+    pub(crate) fn new(types: UnitTypes) -> ViewNames {
+        ViewNames {
+            types,
+            ..ViewNames::default()
+        }
+    }
+
     pub(crate) const fn types(&self) -> &UnitTypes {
         &self.types
     }

@@ -98,7 +98,7 @@ impl Walking {
             });
         let gatherers = bodies
             .iter()
-            .filter(|&(.., tags)| UnitTags::gathers(tags))
+            .filter(|&(.., tags)| UnitTags::passes(tags))
             .map(|(&id, ..)| id);
         steering.read(&statics, still, walking, gatherers);
         let stuck_ticks = rate
@@ -121,7 +121,7 @@ impl Walking {
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
                 stuck: u64::from(progress.track(at, step.get())) >= stuck_ticks,
-                gathering: UnitTags::gathers(tags),
+                gathering: UnitTags::passes(tags),
             };
             if let Some(detour) = steering.steer(planner, &grid, &statics, steered, &route) {
                 route.splice(steering.short(), detour.skipped, detour.reached);
@@ -251,7 +251,7 @@ impl Walking {
                         layer: body.layer(),
                         movable,
                         walking: Self::walks(destination, tags, false),
-                        gathering: UnitTags::gathers(tags),
+                        gathering: UnitTags::passes(tags),
                     },
                 ),
         );

@@ -1,16 +1,20 @@
 use crate::units::block::Block;
 use crate::units::tag_data::TagData;
 
-/// The properties of a set of tags: what they block, and whether they hide their unit or let it
-/// detect hidden units. Each system asks it the one question it needs.
+/// The properties of a set of tags: what they block, whether they hide their unit or let it detect
+/// hidden units, and two that only engine tags hold: whether a filter selects their unit only when
+/// it names one of them, and whether their unit passes through each unit that holds them too.
+/// Each system asks it the one question it needs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct TagProperties(u8);
+pub(crate) struct TagProperties(u16);
 
 impl TagProperties {
     /// No property.
     pub(crate) const NONE: TagProperties = TagProperties(0);
-    const HIDDEN: u8 = 1 << Block::ALL.len();
-    const DETECTS: u8 = TagProperties::HIDDEN << 1;
+    const HIDDEN: u16 = 1 << Block::ALL.len();
+    const DETECTS: u16 = TagProperties::HIDDEN << 1;
+    const NAMED_ONLY: u16 = TagProperties::DETECTS << 1;
+    const PASSES: u16 = TagProperties::NAMED_ONLY << 1;
 
     /// The properties `data` gives a tag.
     pub(crate) fn of(data: &TagData) -> TagProperties {
@@ -44,6 +48,17 @@ impl TagProperties {
         TagProperties(self.0 | TagProperties::DETECTS)
     }
 
+    /// The property of a delivery's tag: a filter selects its unit only when it names it.
+    pub(crate) const fn with_named_only(self) -> TagProperties {
+        TagProperties(self.0 | TagProperties::NAMED_ONLY)
+    }
+
+    /// The property of a gathering worker's tag: its unit passes through each unit that holds it
+    /// too.
+    pub(crate) const fn with_passes(self) -> TagProperties {
+        TagProperties(self.0 | TagProperties::PASSES)
+    }
+
     pub(crate) const fn union(self, other: TagProperties) -> TagProperties {
         TagProperties(self.0 | other.0)
     }
@@ -58,6 +73,14 @@ impl TagProperties {
 
     pub(crate) const fn detects(self) -> bool {
         self.0 & TagProperties::DETECTS != 0
+    }
+
+    pub(crate) const fn named_only(self) -> bool {
+        self.0 & TagProperties::NAMED_ONLY != 0
+    }
+
+    pub(crate) const fn passes(self) -> bool {
+        self.0 & TagProperties::PASSES != 0
     }
 }
 

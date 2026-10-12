@@ -8,7 +8,6 @@ use crate::units::by_type::ByType;
 use crate::units::entity_filters::UnitFilter;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
-use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::unit_core::UnitCore;
 use crate::units::unit_state_book::UnitStateBook;
@@ -21,7 +20,6 @@ pub(crate) struct DeliverySpawner<'w, 's> {
     commands: Commands<'w, 's>,
     ids: ResMut<'w, IdAllocator>,
     index: Res<'w, EntityIndex>,
-    tag_book: Option<Res<'w, TagBook>>,
     states: Res<'w, UnitStateBook>,
     new_states: ResMut<'w, NewUnitStates>,
     sights: Option<Res<'w, ByType<Sight>>>,
@@ -61,7 +59,7 @@ impl DeliverySpawner<'_, '_> {
             team,
             owner: owner.copied(),
         };
-        let parts = core.made(self.tag_book.as_deref(), &self.states, &mut self.new_states);
+        let parts = core.made(&self.states, &mut self.new_states);
         let mut unit = self.commands.spawn(make(id));
         parts.insert_into(&mut unit);
         if let Some(&sight) = self.sights.as_deref().and_then(|book| book.get(unit_type)) {

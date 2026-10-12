@@ -12,6 +12,7 @@ use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::players_world::PlayersWorldCrate;
+use crate::production::Production;
 use crate::production::gather_loop::checked_gather::CheckedGather;
 use crate::production::gather_loop::gather_view::{GatherView, HeldNode};
 use crate::production::gather_loop::step::Step;
@@ -19,7 +20,6 @@ use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeA
 use crate::production::node::Node;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
-use crate::units::engine_tag::EngineTag;
 use crate::units::owner::Owner;
 use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
@@ -365,13 +365,13 @@ impl GatherLoop {
                 .is_some_and(|order| order.step != GatherStep::Ordered);
             match status {
                 Some(mut status) => {
-                    let wanted = status.turned(EngineTag::Gathering, looping);
+                    let wanted = status.turned(Production::GATHERING, looping);
                     status.set_if_neq(wanted);
                 }
                 None if looping => {
                     commands
                         .entity(entity)
-                        .insert(StatusTags::of([EngineTag::Gathering]));
+                        .insert(StatusTags::of([Production::GATHERING]));
                 }
                 None => {}
             }

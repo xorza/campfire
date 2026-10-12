@@ -32,8 +32,10 @@ use crate::state_types::sending::NotSent;
 use crate::state_types::{Declared, StateTypes};
 use crate::units::body_unit::BodyUnit;
 use crate::units::delivery_entity::DeliveryEntity;
+use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
 use crate::units::row_reads::RowReads;
+use crate::units::tag_properties::TagProperties;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::view_column::ViewColumn;
 use crate::vision::vision_column::VisionColumn;
@@ -107,6 +109,8 @@ struct DeclarationAudit {
     derived: Vec<TypeId>,
     /// Each component a column reads, by type and name.
     column_reads: Vec<(TypeId, &'static str)>,
+    /// The engine tags, in the order the modules declare them.
+    engine_tags: Vec<EngineTag>,
 }
 
 impl DeclarationAudit {
@@ -126,8 +130,9 @@ impl DeclarationAudit {
     /// declaration when its host takes any entity, or as a kind itself; a pair's holder is a kind
     /// or a state type and its part a state type; a check and a `host` name state types; a book's
     /// capability is the module's that declares it; a kind's part is a state type of that kind; a
-    /// callback is its key's owner's, declared once, in a registry a module calls; and a column
-    /// reads only declared types, as a restored match's scripts would read another value of one
+    /// callback is its key's owner's, declared once, in a registry a module calls; an engine tag
+    /// is at its number, in the order the modules declare them, under a name of its own; and a
+    /// column reads only declared types, as a restored match's scripts would read another value of one
     /// no state or derivation holds.
     fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
@@ -198,11 +203,37 @@ impl DeclarationAudit {
                 problems.push(format!("{} is no state of {}", ty.name, kind.name));
             }
         }
+        self.engine_tag_problems(&mut problems);
         for &(id, name) in &self.column_reads {
             if self.state_of(id).is_none() && !self.derived.contains(&id) {
                 problems.push(format!("a column reads {name}, not declared"));
             }
         }
+        self.callback_problems(&mut problems);
+        problems
+    }
+
+    /// Each engine tag not at its number, in the order the modules declare them, and each name
+    /// declared twice.
+    fn engine_tag_problems(&self, problems: &mut Vec<String>) {
+        for (at, tag) in self.engine_tags.iter().enumerate() {
+            if tag.tag().index() != at {
+                problems.push(format!(
+                    "the engine tag {} is not at its number",
+                    tag.name()
+                ));
+            }
+            if self.engine_tags[..at]
+                .iter()
+                .any(|other| other.name() == tag.name())
+            {
+                problems.push(format!("the engine tag {} is declared twice", tag.name()));
+            }
+        }
+    }
+
+    /// Each callback not its key's owner's, declared twice, or in a registry no module calls.
+    fn callback_problems(&self, problems: &mut Vec<String>) {
         for (at, callback) in self.callbacks.iter().enumerate() {
             let (registry, key) = (callback.registry.name, &callback.key);
             if callback.owner != callback.declared_by {
@@ -226,7 +257,6 @@ impl DeclarationAudit {
                 problems.push(format!("{registry} has a callback no module calls"));
             }
         }
-        problems
     }
 }
 
@@ -340,6 +370,10 @@ impl Declarations for DeclarationAudit {
         });
     }
 
+    fn engine_tags(&mut self, tags: &'static [EngineTag]) {
+        self.engine_tags.extend_from_slice(tags);
+    }
+
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 }
 
@@ -355,6 +389,20 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.books.len(), 18);
     let core = audit.books.iter().filter(|book| book.capability.is_none());
     assert_eq!(core.count(), 5);
+    // The engine tags keep their numbers while the module list keeps its order.
+    let engine: Vec<&str> = audit.engine_tags.iter().map(|tag| tag.name()).collect();
+    assert_eq!(
+        engine,
+        [
+            "avatar",
+            "projectile",
+            "area",
+            "constructing",
+            "node",
+            "drop_off",
+            "gathering"
+        ]
+    );
 }
 
 /// A state type of no kind, which a test declares.
@@ -374,6 +422,12 @@ impl Replication for Stray {
     const KIND: DataKind = DataKind::Server;
     type Sending = NotSent;
 }
+
+/// Two engine tags a test declares: the first not at its number, and the second of its name.
+const STRAY_TAGS: [EngineTag; 2] = [
+    EngineTag::new(1, "stray", TagProperties::NONE),
+    EngineTag::new(1, "stray", TagProperties::NONE),
+];
 
 /// A component no module declares, which a test's column reads.
 #[derive(Component, Debug)]
@@ -406,6 +460,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.check::<Player>(|_| Ok(()));
     audit.book::<StrayBook>();
     audit.part::<Player, Stray>(|_| Stray);
+    audit.engine_tags(&STRAY_TAGS);
     // A column that reads a type no module declares.
     let reads_undeclared: ColumnFill<&Undeclared, VisionColumn> = |_, _| {};
     audit.column::<VisionColumn, &Undeclared>(reads_undeclared);
@@ -427,6 +482,8 @@ fn each_rule_names_the_declaration_that_breaks_it() {
             format!("a check of {player}, not declared"),
             format!("{} is declared by another module", type_name::<StrayBook>()),
             format!("{stray} is no state of {player}"),
+            "the engine tag stray is not at its number".to_owned(),
+            "the engine tag stray is declared twice".to_owned(),
             format!("a column reads {}, not declared", type_name::<Undeclared>()),
             format!("the callback Areas of {queues} is declared by another module"),
             format!("{queues} has a callback no module calls"),

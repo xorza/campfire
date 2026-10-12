@@ -30,6 +30,7 @@ use crate::stats::stats_data::{StatValue, StatsData};
 use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::body_unit::BodyUnit;
 use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::move_step::MoveStep;
 use crate::units::tag_book::TagBook;
@@ -358,7 +359,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
         (TagProperties::default(), TagSet::of([slowed])),
     ];
     let own = TagSet::of([sight]);
-    game.insert_resource(TagBook::new(effects, [(UnitType::new(0), own)]));
+    game.insert_resource(TagBook::new(0, effects, [(UnitType::new(0), own)]));
     let unit = unit(&mut game, 0);
     game.entity_mut(unit)
         .insert((Modifiers::default(), ModifierClocks::default()));
@@ -750,7 +751,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
             (UnitType::new(0), TagSet::default()),
             (UnitType::new(1), TagSet::of([stunned])),
         ];
-        let book = TagBook::new(effects, own);
+        let book = TagBook::new(0, effects, own);
         game.insert_resource(book);
         // The modifiers the shares below are instances of, 0 and 1.
         let speed = game.resource::<StatBook>();
@@ -771,8 +772,9 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     game.entity_mut(walker).insert(modifiers);
     game.step();
 
-    // Restored into a fresh match, the unit comes back with its state alone; after a tick on
-    // both, its stats and tags are derived again as the original's are, and the hashes agree.
+    // Restored into a fresh match, the unit comes back with its state, and with the parts it
+    // derives at once: its type's tags, and stats, empty until the next refresh; after a tick on
+    // both, they are derived again as the original's are, and the hashes agree.
     let mut snapshot = Vec::new();
     game.snapshot(&mut snapshot);
     let mut restored = start();
@@ -780,7 +782,8 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     restored.restore(&snapshot).unwrap();
     let id = *game.get::<StableId>(walker).unwrap();
     let copy = restored.entity_of(id).unwrap();
-    assert!(restored.get::<UnitStats>(copy).is_none());
+    assert_eq!(restored.get::<UnitStats>(copy), Some(&UnitStats::default()));
+    assert_eq!(restored.get::<UnitTags>(copy), Some(&UnitTags::default()));
     game.step();
     restored.run_schedule(SimUpdate);
     for (world, entity) in [(&game, walker), (&restored, copy)] {
@@ -791,31 +794,30 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     }
     assert_eq!(game.state_hash(), restored.state_hash());
 
-    // A delivery, of type 1 whose own tag is the stun's, keeps the tags it spawned with, as it
-    // has no level to derive them from; one that lost them, as a restore leaves it, takes its
-    // type's again as the next tick starts.
+    // A delivery of type 1, whose own tag is the stun's, inserted with its state alone, as a
+    // restore or a client's replication gives it, holds its type's tags at once, and keeps them,
+    // as it has no level to derive stats or tags from.
     let id = game.resource_mut::<IdAllocator>().allocate();
-    let spawned = UnitTags {
-        tags: TagSet::of([stunned]),
-        ..UnitTags::default()
-    };
     let pos = Position::new(Vec3::ZERO).unwrap();
-    let delivery = (
-        id,
-        UnitType::new(1),
-        pos,
-        Team::new(0),
-        DeliveryEntity,
-        spawned,
-    );
+    let delivery = (id, UnitType::new(1), pos, Team::new(0), DeliveryEntity);
     let bolt = game.spawn(delivery).id();
-    game.step();
     let tags = |game: &Match| game.get::<UnitTags>(bolt).map(|tags| tags.tags);
     assert_eq!(tags(&game), Some(TagSet::of([stunned])));
-    assert!(game.get::<UnitStats>(bolt).is_none());
-    game.entity_mut(bolt).remove::<UnitTags>();
     game.step();
     assert_eq!(tags(&game), Some(TagSet::of([stunned])));
+    assert!(game.get::<UnitStats>(bolt).is_none());
+
+    // A walker received with its level before its type, as a client may receive them: its stats
+    // stay empty while it has no type, and derive as its type arrives, move speed 4.
+    let id = game.resource_mut::<IdAllocator>().allocate();
+    let late = (id, BodyUnit, Level::default(), pos, Team::new(0));
+    let late = game.spawn(late).id();
+    game.step();
+    assert_eq!(game.get::<UnitStats>(late), Some(&UnitStats::default()));
+    game.entity_mut(late).insert(UnitType::new(0));
+    game.step();
+    let speed_of = |game: &Match| game.get::<UnitStats>(late).unwrap().values()[speed.index()];
+    assert_eq!(speed_of(&game), Num::int(4));
 }
 
 #[test]

@@ -374,6 +374,7 @@ impl ModePackages {
         dependencies: &[Dependent],
     ) -> Vec<DeclaredName> {
         let (data, content) = mode;
+        let engine = Release::engine_tags();
         let contents =
             iter::once(content).chain(dependencies.iter().map(|dependent| &dependent.content));
         let modifiers = contents
@@ -398,7 +399,7 @@ impl ModePackages {
             .chain(types)
             .chain(declared)
             .chain(&data.navigation.layers)
-            .filter(|name| EngineTag::named(name.as_str()).is_none())
+            .filter(|name| EngineTag::named(&engine, name.as_str()).is_none())
             .collect();
         names.into_iter().cloned().collect()
     }

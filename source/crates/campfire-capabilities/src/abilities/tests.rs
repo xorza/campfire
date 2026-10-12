@@ -3273,18 +3273,19 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     Release::check_copy(&mut game, &mut copy);
     let vamp = Num::from_bits(1_847_173);
     assert_eq!(veil.values(&game, ward)[1], vamp);
-    // Veil's own spell vamp, and Ward's, are live changes, so both refresh every pass.
+    // Veil's own spell vamp, and Ward's, are live changes of Veil, so both refresh as Veil does.
     let ward_entity = game.unit_entity(ward);
-    let mut carriers = [game.unit_entity(source), ward_entity];
+    let mut carriers = [(source, game.unit_entity(source)), (source, ward_entity)];
     carriers.sort_unstable();
-    assert_eq!(game.resource::<LiveCarriers>().units(), carriers);
-    // Veil goes: the change keeps the value it last had. Read with no source it would fall to
-    // 0.06 alone, 1 006 633 bits.
+    assert_eq!(game.resource::<LiveCarriers>().carried(), carriers);
+    // Veil goes: the change keeps the value it last had, and refreshes no more, as its source
+    // changes no more. Read with no source it would fall to 0.06 alone, 1 006 633 bits.
     let entity = game.unit_entity(source);
     game.despawn(entity);
     game.step();
     Release::check_copy(&mut game, &mut copy);
     assert_eq!(veil.values(&game, ward)[1], vamp);
+    assert_eq!(game.resource::<LiveCarriers>().carried(), []);
     // At no stack it adds nothing, and is no live change that refreshes its unit every pass.
     let dual_path = Stats::modifier(&game, 0, "dual_path").unwrap();
     let mut modifiers = game.get_mut::<Modifiers>(ward_entity).unwrap();
@@ -3292,7 +3293,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     game.step();
     Release::check_copy(&mut game, &mut copy);
     assert_eq!(veil.values(&game, ward)[1], Num::ZERO);
-    assert_eq!(game.resource::<LiveCarriers>().units(), []);
+    assert_eq!(game.resource::<LiveCarriers>().carried(), []);
 }
 
 #[test]

@@ -904,7 +904,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     // attacks; the second's aims only at allies, and its call fails.
     let mut armed = |aim: &str| {
         let weapon = TestWeapon::new(
-            Filter::parse(aim, &UnitTypes::default()).unwrap(),
+            Filter::parse(aim, &UnitTypes::new(Release::engine_tags())).unwrap(),
             ActionRange::Meters(Num::int(20)),
             Ticks::new(2),
         );

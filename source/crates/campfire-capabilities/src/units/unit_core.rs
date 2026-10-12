@@ -7,7 +7,6 @@ use crate::units::entity_kind::EntityKind;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::spawn_target::SpawnTarget;
-use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_states::UnitStates;
@@ -15,7 +14,7 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 
 /// What every unit spawns with, a delivery among them: its stable id, place, type, team and
-/// owner, its type's tags, and its script state. Each spawn path spawns the unit with its own
+/// owner, and its script state; its type gives it its tags. Each spawn path spawns the unit with its own
 /// parts, then puts the core on: a mode's unit its kit after, a delivery its spec before.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct UnitCore {
@@ -31,25 +30,18 @@ pub(crate) struct UnitCore {
 #[derive(Debug)]
 pub(crate) struct MadeCore {
     core: UnitCore,
-    tags: UnitTags,
     states: UnitStates,
 }
 
 impl UnitCore {
-    /// The core's parts: its tags from `tags`, none in a match with no tag book, and its script
-    /// state at its type's defaults from `book`, but what a call wrote to it, which
-    /// `new_states` holds for a unit that spawns after the call that created it.
-    pub(crate) fn made(
-        self,
-        tags: Option<&TagBook>,
-        book: &UnitStateBook,
-        new_states: &mut NewUnitStates,
-    ) -> MadeCore {
+    /// The core's parts: its script state at its type's defaults from `book`, but what a call
+    /// wrote to it, which `new_states` holds for a unit that spawns after the call that created
+    /// it.
+    pub(crate) fn made(self, book: &UnitStateBook, new_states: &mut NewUnitStates) -> MadeCore {
         let mut written = book.initial(self.unit_type);
         new_states.take(self.id, &mut written);
         MadeCore {
             core: self,
-            tags: UnitTags::at_spawn(tags, self.unit_type),
             states: written,
         }
     }
@@ -70,7 +62,7 @@ impl UnitCore {
         let owned = self.owner.is_some();
         let made = world.resource_scope(|world, mut new_states: Mut<'_, NewUnitStates>| {
             let states = world.resource::<UnitStateBook>();
-            self.made(world.get_resource::<TagBook>(), states, &mut new_states)
+            self.made(states, &mut new_states)
         });
         let mut unit = world.spawn((kind, parts));
         debug_assert!(
@@ -97,7 +89,7 @@ impl MadeCore {
             team,
             owner,
         } = self.core;
-        unit.insert_part((id, pos, unit_type, team, self.tags));
+        unit.insert_part((id, pos, unit_type, team));
         if let Some(owner) = owner {
             unit.insert_part(owner);
         }

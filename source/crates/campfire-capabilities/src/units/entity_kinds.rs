@@ -18,11 +18,6 @@ impl EntityKinds {
         }
     }
 
-    /// The marker of `entity`'s kind; none for an entity of no kind.
-    pub(crate) fn of(&self, entity: EntityRef<'_>) -> Option<ComponentId> {
-        self.0.iter().copied().find(|&id| entity.contains_id(id))
-    }
-
     /// How many kinds' markers `entity` holds.
     fn held(&self, entity: EntityRef<'_>) -> usize {
         self.0.iter().filter(|&&id| entity.contains_id(id)).count()
@@ -52,6 +47,21 @@ impl EntityKinds {
             "an entity is of one kind, and {:?} holds {held}",
             context.entity
         );
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::component::ComponentId;
+    use bevy_ecs::world::EntityRef;
+
+    use crate::units::entity_kinds::EntityKinds;
+
+    impl EntityKinds {
+        /// The marker of `entity`'s kind; none for an entity of no kind.
+        pub(crate) fn of(&self, entity: EntityRef<'_>) -> Option<ComponentId> {
+            self.0.iter().copied().find(|&id| entity.contains_id(id))
+        }
     }
 }
 

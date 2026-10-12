@@ -71,7 +71,7 @@ fn two_fields() -> Match {
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
-    let mut types = UnitTypes::default();
+    let mut types = UnitTypes::new(Release::engine_tags());
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"]
         .map(|name| types.load(TypeScope::Mode, 0, name, &UnitTypeData::default()));
     world.insert_resource(types.tag_book(&BTreeMap::new()));
@@ -86,7 +86,7 @@ fn two_fields() -> Match {
         take: NonZeroU32::new(5).unwrap(),
         bounce: Num::int(4),
     };
-    let all = Filter::of_relations(RelationSet::All);
+    let all = Filter::of_release_relations(RelationSet::All);
     let action = Actions::add_gather(&mut world, spec, all, Num::int(16), Ticks::new(3));
 
     let player = Owner::new(PlayerSlot::new(0));

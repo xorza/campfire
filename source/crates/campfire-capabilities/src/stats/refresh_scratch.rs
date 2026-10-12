@@ -54,6 +54,13 @@ pub(crate) struct LiveTerm {
     pub(crate) value: Num,
 }
 
+impl LiveTerm {
+    /// The unit whose live param it reads; none for a change of no source unit.
+    pub(crate) const fn source(&self) -> Option<StableId> {
+        self.source
+    }
+}
+
 impl RefreshScratch {
     /// Empties it for a new refresh.
     pub(crate) fn clear(&mut self) {
@@ -66,7 +73,7 @@ impl RefreshScratch {
 
     /// Adds `unit`, carrying `modifiers`, of which those with a stack whose tags in
     /// `modifier_book` `takes_effect` lets act change its stats, as their changes there say: its
-    /// totals before its live changes, and its live changes. Whether it carries a live change.
+    /// totals before its live changes, and its live changes.
     pub(crate) fn add(
         &mut self,
         book: &StatBook,
@@ -74,12 +81,11 @@ impl RefreshScratch {
         unit: Refreshing,
         modifiers: Option<&Modifiers>,
         takes_effect: impl Fn(TagSet) -> bool,
-    ) -> bool {
+    ) {
         let at = u32::try_from(self.units.len()).expect("units fit u32");
         self.units.push(unit);
         let row = self.totals.len();
         book.totals(unit.unit_type, unit.level, &mut self.totals);
-        let mut live = false;
         let held = modifiers.into_iter().flat_map(Modifiers::iter);
         let mut first_share = 0;
         for instance in held {
@@ -97,7 +103,6 @@ impl RefreshScratch {
                     self.totals[row + spec.stat.index()].change(spec.op, change);
                     continue;
                 };
-                live = true;
                 self.lives.push(LiveTerm {
                     unit: at,
                     stat: spec.stat,
@@ -111,7 +116,6 @@ impl RefreshScratch {
                 });
             }
         }
-        live
     }
 
     /// The live changes, each with the value the last compute gave it.

@@ -1,16 +1,24 @@
-use crate::state_types::data_kind::DataKind;
-use crate::state_types::replication::Replication;
-use crate::state_types::sending::SentPredicted;
-use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
-use campfire_sim::SimComponent;
+use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::world::{DeferredWorld, World};
+use campfire_sim::{Restoring, SimComponent};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// A unit's level, from 1: its type's stats grow with it.
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
+use crate::stats::stat_book::StatBook;
+use crate::stats::unit_stats::UnitStats;
+use crate::units::unit_entity::UnitEntity;
+use crate::units::unit_type::UnitType;
+
+/// A unit's level, from 1: its type's stats grow with it. Its stats, which it requires, exist
+/// exactly when it does, on every path, a spawn, a restore and a client's replication.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[component(on_add = Level::give_stats)]
+#[require(UnitStats)]
 #[serde(transparent)]
 pub struct Level(u32);
 
@@ -25,6 +33,31 @@ impl Level {
 
     pub const fn get(self) -> u32 {
         self.0
+    }
+
+    /// The hook that gives a unit its stats as its first refresh derives them, of its type at its
+    /// level with no modifiers, so a reader in the stage it spawns in finds them. A restore puts
+    /// untrusted values in, and a client may receive the level before the type: each keeps the
+    /// empty stats, which the refresh after it derives, as it does those of every new unit.
+    fn give_stats(mut world: DeferredWorld<'_>, context: HookContext) {
+        if world.contains_resource::<Restoring>() {
+            return;
+        }
+        let entity = context.entity;
+        let (Some(book), Some(&unit_type)) = (
+            world.get_resource::<StatBook>(),
+            world.get::<UnitType>(entity),
+        ) else {
+            return;
+        };
+        let level = world
+            .get::<Level>(entity)
+            .expect("the hook's own component")
+            .0;
+        let stats = UnitStats::new(book.base_values(unit_type, level));
+        *world
+            .get_mut::<UnitStats>(entity)
+            .expect("a level requires its stats") = stats;
     }
 }
 

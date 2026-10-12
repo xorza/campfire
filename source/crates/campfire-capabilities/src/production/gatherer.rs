@@ -122,6 +122,7 @@ mod tests {
     use campfire_sim::{IdAllocator, TickRate};
 
     use super::*;
+    use crate::release::Release;
     use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
 
@@ -130,7 +131,10 @@ mod tests {
         // A match of gold alone: wood, the second of two resources, is not its own.
         let mut world = World::new();
         let names = ["gold", "wood"].map(|name| DeclaredName::new(name).unwrap());
-        let view = View::new(TickRate::new(NonZeroU32::new(30).unwrap()));
+        let view = View::new(
+            TickRate::new(NonZeroU32::new(30).unwrap()),
+            Release::engine_tags(),
+        );
         view.set_mode_names(&[], Arc::from(&names[..1]));
         world.insert_non_send(view);
         let entity = world.spawn_empty().id();

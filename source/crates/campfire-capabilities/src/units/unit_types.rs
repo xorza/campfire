@@ -23,6 +23,8 @@ use crate::values::scalar::Scalar;
 pub(crate) struct UnitTypes {
     /// The name of each tag, by tag: the engine's, then the match's.
     tag_names: NameList,
+    /// The engine's tags, the first of `tag_names`.
+    engine: Vec<EngineTag>,
     types: Vec<TypeEntry>,
     /// Each type's own tags, by type, until the tag book takes them: from then on the book alone
     /// holds them, and a type loaded or tagged later is a bug.
@@ -45,11 +47,19 @@ struct TypeEntry {
     scope: TypeScope,
 }
 
-/// The engine's tags at their places, and no type.
+/// No tag and no type: the names a view holds before a match loads its own.
 impl Default for UnitTypes {
     fn default() -> UnitTypes {
+        UnitTypes::new(Vec::new())
+    }
+}
+
+impl UnitTypes {
+    /// The engine's tags `engine` at their places, as the release lists them, and no type.
+    pub(crate) fn new(engine: Vec<EngineTag>) -> UnitTypes {
         UnitTypes {
-            tag_names: EngineTag::ALL.into_iter().map(EngineTag::name).collect(),
+            tag_names: engine.iter().map(|tag| tag.name()).collect(),
+            engine,
             types: Vec::new(),
             staged_tags: Some(Vec::new()),
             type_names: NameList::default(),
@@ -59,9 +69,16 @@ impl Default for UnitTypes {
             states: NameTable::default(),
         }
     }
-}
 
-impl UnitTypes {
+    /// The engine's tags that a filter selects only when it names one.
+    pub(crate) fn named_only(&self) -> TagSet {
+        let named_only = self
+            .engine
+            .iter()
+            .filter(|tag| tag.properties().named_only());
+        TagSet::of(named_only.map(|tag| tag.tag()))
+    }
+
     /// Loads `data` as the type `name` of `scope`, declared by the package at `package`, which the
     /// package load checked names no other type there, within the most types a match loads: its
     /// tags join the match's, and its params are kept for `unit.params`.
@@ -173,8 +190,11 @@ impl UnitTypes {
     /// the types' own tags, which it takes, once: from then on the book alone holds them, and a
     /// later load or tag of a type fails. A tag neither names has none.
     pub(crate) fn tag_book(&mut self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
-        let tags = self.tag_names.iter().map(|name| {
-            let engine = EngineTag::named(name).map_or(TagProperties::NONE, EngineTag::properties);
+        let tags = self.tag_names.iter().enumerate().map(|(at, name)| {
+            let engine = self
+                .engine
+                .get(at)
+                .map_or(TagProperties::NONE, |tag| tag.properties());
             let Some(data) = data.get(name) else {
                 return (engine, TagSet::default());
             };
@@ -195,7 +215,7 @@ impl UnitTypes {
                 tags,
             )
         });
-        TagBook::new(effects, types)
+        TagBook::new(self.engine.len(), effects, types)
     }
 
     /// The state fields of every type, for the match's book of them.

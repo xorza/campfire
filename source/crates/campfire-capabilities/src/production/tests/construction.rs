@@ -16,7 +16,6 @@ use crate::production::builder::Builder;
 use crate::production::site::Site;
 use crate::stats::life::Life;
 use crate::units::body::Body;
-use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::move_step::MoveStep;
@@ -199,7 +198,7 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
             "tick {tick}"
         );
         let status = *game.part::<StatusTags>(depot);
-        let constructing = StatusTags::of([EngineTag::Constructing]);
+        let constructing = StatusTags::of([Production::CONSTRUCTING]);
         assert_eq!(
             status,
             if tick < 10 {
@@ -399,7 +398,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         .unwrap(),
     };
     let rule = |relation| PlacementCheck {
-        filter: Filter::of_relations(relation),
+        filter: Filter::of_release_relations(relation),
         distance: Num::int(2),
     };
     let cases: [(&str, Rules<'_>, Option<fn(&mut Match)>, i64); 6] = [

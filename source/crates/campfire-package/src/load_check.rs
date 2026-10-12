@@ -7,9 +7,9 @@ use campfire_capabilities::{
     EffectTo, Effecting, EngineTag, EnumRecord, FilterData, HealFields, Hook, ItemData, KindData,
     LaunchFields, MemberKind, Metric, ModifierData, ModifierFields, ModifierProblem, MoveData,
     NameKind, Number, Offers, PackagePath, Param, ParamProblem, PoolId, ProjectileHits,
-    PurgeFields, RangeField, Rank, ResourceId, RestoreFields, Scalar, ScriptApi, ScriptRole, Share,
-    SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackId, TypePlace, UnitTypeData,
-    UnitTypeFile, XpFields,
+    PurgeFields, RangeField, Rank, Release, ResourceId, RestoreFields, Scalar, ScriptApi,
+    ScriptRole, Share, SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackId, TypePlace,
+    UnitTypeData, UnitTypeFile, XpFields,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -45,6 +45,8 @@ pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
     /// The tags a filter may name: every tag the mode's packages name.
     tags: BTreeSet<&'a str>,
+    /// The release's engine tags, which no package gives.
+    engine: Vec<EngineTag>,
     /// The move speed cap, in meters a second.
     cap: Num,
     /// The script API of the release, which every name a script uses must be of.
@@ -82,6 +84,21 @@ struct ScriptUse<'a> {
 }
 
 impl<'a> LoadCheck<'a> {
+    /// The tags a unit type or a modifier at `at` carries: none the engine's, which only the
+    /// engine gives.
+    fn own_tags(&self, tags: &[DeclaredName], at: &Place) -> Result<(), LoadProblem> {
+        match tags
+            .iter()
+            .find_map(|tag| EngineTag::named(&self.engine, tag.as_str()))
+        {
+            Some(tag) => Err(LoadProblem::EngineTag {
+                at: at.clone(),
+                tag,
+            }),
+            None => Ok(()),
+        }
+    }
+
     /// Checks `packages` against the script API `api`; the order the stats refresh computes the
     /// mode's stats in.
     pub(crate) fn run(
@@ -91,11 +108,12 @@ impl<'a> LoadCheck<'a> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
         let names = packages.tag_names();
-        if EngineTag::ALL.len() + names.len() > UnitTypeData::TAG_LIMIT {
+        let engine = Release::engine_tags();
+        if engine.len() + names.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
         let mut tags: BTreeSet<&str> = names.iter().map(DeclaredName::as_str).collect();
-        tags.extend(EngineTag::ALL.map(EngineTag::name));
+        tags.extend(engine.iter().map(|tag| tag.name()));
         // A dependency's delivery types are in its own scope, so they share no name with
         // another package's; an avatar is in the mode's, by its package's name.
         let units = &packages.content.units;
@@ -131,6 +149,7 @@ impl<'a> LoadCheck<'a> {
         let check = LoadCheck {
             packages,
             tags,
+            engine,
             cap: manifest.max_move_speed.get(),
             api,
             rate: TickRate::new(manifest.tick_hz.fastest()),
@@ -476,7 +495,7 @@ impl<'a> LoadCheck<'a> {
         for (id, modifier) in names.modifiers {
             let at = Place::Modifier(id.clone());
             self.require(Capability::Stats, &at)?;
-            own_tags(&modifier.tags, &at)?;
+            self.own_tags(&modifier.tags, &at)?;
             let scaled = modifier.params.values().flat_map(Param::stats);
             self.stats_declared(modifier.stats.keys().chain(scaled), &at)?;
             if let Some(affects) = &modifier.affects {
@@ -1224,7 +1243,7 @@ impl<'a> LoadCheck<'a> {
                 }
                 Effecting::Purge(PurgeFields { tag }) => {
                     self.require(Capability::Stats, &at)?;
-                    own_tags(slice::from_ref(tag), &at)?;
+                    self.own_tags(slice::from_ref(tag), &at)?;
                     if !self.tags.contains(tag.as_str()) {
                         return Err(unknown(NameKind::Tag, tag));
                     }
@@ -1470,7 +1489,7 @@ impl<'a> LoadCheck<'a> {
         modifiers: &BTreeMap<DeclaredName, ModifierData>,
     ) -> Result<(), LoadProblem> {
         self.sections(unit_type, at)?;
-        own_tags(&unit_type.core.tags, at)?;
+        self.own_tags(&unit_type.core.tags, at)?;
         self.body_box(unit_type, at)?;
         if unit_type.delivers() && !unit_type.delivery_only() {
             return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
@@ -2122,18 +2141,6 @@ fn passives_held_once<'p>(
         held.insert(modifier, owner);
     }
     Ok(())
-}
-
-/// The tags a unit type or a modifier at `at` carries: none the engine's, which only the engine
-/// gives.
-fn own_tags(tags: &[DeclaredName], at: &Place) -> Result<(), LoadProblem> {
-    match tags.iter().find_map(|tag| EngineTag::named(tag.as_str())) {
-        Some(tag) => Err(LoadProblem::EngineTag {
-            at: at.clone(),
-            tag,
-        }),
-        None => Ok(()),
-    }
 }
 
 /// `id` is one of `modifiers`.

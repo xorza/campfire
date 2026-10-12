@@ -137,6 +137,7 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
+    use crate::release::Release;
     use crate::release::r#match::Match;
     use crate::scripts::state_value::StateValue;
     use crate::stats::modifier_handle::HandleOf;
@@ -144,7 +145,7 @@ mod tests {
 
     #[test]
     fn a_handle_no_script_holds_serves_the_next_call_again() {
-        let view = View::new(Match::TEST_RATE);
+        let view = View::new(Match::TEST_RATE, Release::engine_tags());
         let carrier = IdAllocator::default().allocate();
         let of = |stacks| HandleOf {
             carrier,
