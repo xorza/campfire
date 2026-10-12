@@ -68,7 +68,7 @@ pub(crate) struct ModeBooksInput<'a> {
 impl ModeBooks {
     /// Puts the books in `world`, a match whose capabilities are installed: the stat and pool
     /// books, the tags' properties, what combat reads, the slot kinds, and the names its scripts
-    /// read. `Mode::install` takes `walkers` and `loadout_ranks` first, calls it, and installs
+    /// read. `Mode::load` takes `walkers` and `loadout_ranks` first, calls it, and installs
     /// the map it gives back for the kinds of `walkers`; a test arena calls it alone, for a match
     /// whose mode runs no script and has no map.
     pub fn install(self, world: &mut World) -> ModeMap {

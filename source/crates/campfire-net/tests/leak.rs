@@ -166,7 +166,7 @@ impl StateTypes for Lists {
         self.push::<C>();
     }
 
-    fn resource<R: SimResource>(&mut self) {}
+    fn resource<R: SimResource + Default>(&mut self) {}
 
     fn sim_component<C: Replication>(&mut self) {
         self.push::<C>();

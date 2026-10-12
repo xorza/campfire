@@ -1,33 +1,22 @@
-/// What a script holds a name on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ApiOwner {
-    Ctx,
-    Unit,
-    NewUnit,
-    Modifier,
-    Hit,
-    Damage,
-    Heal,
-    Position,
-    Vector,
-    GameMap,
-    Marker,
+campfire_common::enum_all! {
+    /// What a script holds a name on.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum ApiOwner {
+        Ctx,
+        Unit,
+        NewUnit,
+        Modifier,
+        Hit,
+        Damage,
+        Heal,
+        Position,
+        Vector,
+        GameMap,
+        Marker,
+    }
+    pub const ALL;
 }
 impl ApiOwner {
-    pub const ALL: [ApiOwner; 11] = [
-        ApiOwner::Ctx,
-        ApiOwner::Unit,
-        ApiOwner::NewUnit,
-        ApiOwner::Modifier,
-        ApiOwner::Hit,
-        ApiOwner::Damage,
-        ApiOwner::Heal,
-        ApiOwner::Position,
-        ApiOwner::Vector,
-        ApiOwner::GameMap,
-        ApiOwner::Marker,
-    ];
-
     /// The owner as the reference titles it.
     pub const fn title(self) -> &'static str {
         match self {

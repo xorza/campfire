@@ -9,6 +9,7 @@ use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_sim::{Position, StableId, Unpredicted};
 
+use crate::declare::cache::Cache;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
@@ -102,3 +103,5 @@ impl StaticsDirty {
         world.add_observer(StaticsDirty::state_removed);
     }
 }
+
+impl Cache for StaticsDirty {}

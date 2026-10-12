@@ -5,7 +5,7 @@ use crate::mode::mode_units::ModeUnits;
 use crate::mode::team_manifest::TeamManifest;
 
 /// What a match of a mode needs, from its packages, with its unit types, abilities and AI loaded
-/// into the match: the input of `Mode::install`.
+/// into the match: the input of `Mode::load`.
 #[derive(Debug)]
 pub struct ModeSetup<'a> {
     /// The mode script, compiled.

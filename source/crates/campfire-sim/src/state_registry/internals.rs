@@ -386,27 +386,21 @@ impl Draws {
     }
 }
 
-/// A change of where a state type's value sits, which a snapshot could hold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mutation {
-    /// One holder loses its value.
-    Remove,
-    /// One holder's value moves to an entity that holds none.
-    Move,
-    /// One holder's value is copied to an entity that holds none.
-    Copy,
-    /// One holder's value, or a resource, with one of its `Some`s, drawn, as `None`: a value of
-    /// its type that a draw rarely makes, as every other part stays as it was.
-    DropOption,
-}
-
-impl Mutation {
-    pub const ALL: [Mutation; 4] = [
-        Mutation::Remove,
-        Mutation::Move,
-        Mutation::Copy,
-        Mutation::DropOption,
-    ];
+campfire_common::enum_all! {
+    /// A change of where a state type's value sits, which a snapshot could hold.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Mutation {
+        /// One holder loses its value.
+        Remove,
+        /// One holder's value moves to an entity that holds none.
+        Move,
+        /// One holder's value is copied to an entity that holds none.
+        Copy,
+        /// One holder's value, or a resource, with one of its `Some`s, drawn, as `None`: a value of
+        /// its type that a draw rarely makes, as every other part stays as it was.
+        DropOption,
+    }
+    pub const ALL;
 }
 
 /// Why a draw does not make a value: a type the state does not hold, or a refusal of its decode.

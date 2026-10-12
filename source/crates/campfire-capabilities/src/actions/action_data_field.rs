@@ -7,43 +7,47 @@ use crate::actions::action_kind::ActionKind;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::script_api::status::Status;
 
-/// A field of an action's data, `[actions.<id>]`: the one table of which kinds of action take
-/// each field, which need it, which capability runs it, and whether the release runs it yet.
-/// The load check and the script API reference both read it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActionDataField {
-    Kind,
-    Script,
-    Targeting,
-    Range,
-    CooldownMs,
-    Cost,
-    WindupMs,
-    ClampToRange,
-    Toggle,
-    Channel,
-    Hold,
-    Charges,
-    Charge,
-    PassiveModifier,
-    PassiveWhileReady,
-    Delivery,
-    Rate,
-    Damage,
-    DamageKind,
-    UnitType,
-    Requires,
-    Construct,
-    StartLife,
-    CancelRefund,
-    Placement,
-    Resource,
-    Take,
-    Bounce,
-    Params,
-    OnResolve,
-    OnHit,
-    OnEnd,
+campfire_common::enum_all! {
+    /// A field of an action's data, `[actions.<id>]`: the one table of which kinds of action take
+    /// each field, which need it, which capability runs it, and whether the release runs it yet.
+    /// The load check and the script API reference both read it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ActionDataField {
+        Kind,
+        Script,
+        Targeting,
+        Range,
+        CooldownMs,
+        Cost,
+        WindupMs,
+        ClampToRange,
+        Toggle,
+        Channel,
+        Hold,
+        Charges,
+        Charge,
+        PassiveModifier,
+        PassiveWhileReady,
+        Delivery,
+        Rate,
+        Damage,
+        DamageKind,
+        UnitType,
+        Requires,
+        Construct,
+        StartLife,
+        CancelRefund,
+        Placement,
+        Resource,
+        Take,
+        Bounce,
+        Params,
+        OnResolve,
+        OnHit,
+        OnEnd,
+    }
+    /// Every field, in the order of the table's rows.
+    pub const ALL;
 }
 
 /// What a kind of action does with a field: takes it or not, needs it, or refuses it.
@@ -76,7 +80,7 @@ struct FieldRule {
 }
 
 /// The table of action fields, a row each, in the order of the fields.
-const TABLE: [FieldRule; 32] = [
+const TABLE: [FieldRule; ActionDataField::ALL.len()] = [
     FieldRule {
         field: ActionDataField::Kind,
         name: "kind",
@@ -303,6 +307,17 @@ const TABLE: [FieldRule; 32] = [
     },
 ];
 
+const _: () = {
+    let mut at = 0;
+    while at < TABLE.len() {
+        assert!(
+            TABLE[at].field as usize == at,
+            "the table's rows follow the fields"
+        );
+        at += 1;
+    }
+};
+
 impl ActionDataField {
     /// The fields `capability` runs, none for the action pipeline's, each by its name with its
     /// status in the script API.
@@ -314,21 +329,6 @@ impl ActionDataField {
             .filter(move |field| field.capability() == capability)
             .map(|field| (field.name(), Status::Runs(ApiVersion::FIRST)))
     }
-
-    /// Every field, in the table's order, which is theirs.
-    pub const ALL: [ActionDataField; TABLE.len()] = {
-        let mut all = [ActionDataField::Kind; TABLE.len()];
-        let mut at = 0;
-        while at < all.len() {
-            assert!(
-                TABLE[at].field as usize == at,
-                "the table's rows follow the fields"
-            );
-            all[at] = TABLE[at].field;
-            at += 1;
-        }
-        all
-    };
 
     const fn rule(self) -> &'static FieldRule {
         &TABLE[self as usize]

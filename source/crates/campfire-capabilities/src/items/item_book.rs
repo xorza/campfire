@@ -64,6 +64,6 @@ impl ItemSpec {
 }
 
 impl Book for ItemBook {
-    const OWNER: Option<Capability> = Some(Capability::Items);
+    const CAPABILITY: Option<Capability> = Some(Capability::Items);
     const SCRIPTS_ONLY: bool = false;
 }

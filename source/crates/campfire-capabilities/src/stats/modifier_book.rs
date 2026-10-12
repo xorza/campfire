@@ -305,7 +305,7 @@ impl ModifierEntry {
 }
 
 impl Book for ModifierBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
+    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 }
 

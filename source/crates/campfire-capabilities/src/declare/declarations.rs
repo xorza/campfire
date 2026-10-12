@@ -3,8 +3,11 @@ use bevy_ecs::world::World;
 use campfire_sim::{Breach, Capability, HostRule, SimComponent};
 
 use crate::declare::book::Book;
+use crate::declare::cache::Cache;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::parted_kind::PartedKind;
+use crate::declare::report::Report;
+use crate::declare::scratch::Scratch;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::state_types::StateTypes;
@@ -16,15 +19,14 @@ use crate::units::view_column::ViewColumn;
 pub(crate) type ColumnFill<D, C> = for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_, C>);
 
 /// What reads the modules' declarations. Each module, the core's and each capability's, declares
-/// through `Declares::declare` all it adds to a match but its systems, the core its kinds of entity
-/// among them, and every consumer reads
-/// the same list: the install, the script API's binding, the network layer's lists of state
-/// types, and the declaration audit. No method has a default, so a new category stops every
-/// consumer until it says what it does with it.
+/// through `Module::declare` all it adds to a match but its systems, the core its kinds of entity
+/// among them, and every consumer reads the same list: the install, the script API's binding,
+/// the network layer's lists of state types, and the declaration audit. No method has a default,
+/// so a new category stops every consumer until it says what it does with it.
 pub(crate) trait Declarations: StateTypes + KindVisitor {
-    /// Starts the declarations of `module`: the core's, `None`, or a capability's, the mode's
-    /// among them.
-    fn module(&mut self, module: Option<Capability>);
+    /// Starts the declarations of the module of `capability`: the core's, `None`, or a
+    /// capability's, the mode's among them.
+    fn module(&mut self, capability: Option<Capability>);
 
     /// Every entity that holds `H` holds `C`, a declared state type, as a restore checks.
     fn require<H: SimComponent, C: SimComponent>(&mut self);
@@ -39,6 +41,15 @@ pub(crate) trait Declarations: StateTypes + KindVisitor {
 
     /// `B`, a book the module reads, empty until the books fill it.
     fn book<B: Book>(&mut self);
+
+    /// `R`, a resource a tick fills and empties.
+    fn scratch<R: Scratch>(&mut self);
+
+    /// `R`, a resource built again from the match's state, its map or its install.
+    fn cache<R: Cache>(&mut self);
+
+    /// `R`, a tick's record for the host.
+    fn report<R: Report>(&mut self);
 
     /// `C`, a column of the script view, which `fill` fills from each unit's parts `D`.
     fn column<C: ViewColumn + Default, D: RowParts>(&mut self, fill: ColumnFill<D, C>);

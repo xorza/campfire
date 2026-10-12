@@ -4,8 +4,9 @@
 //! binding.
 //!
 //! A type enters only when two crates that do not depend on each other both name it, and only
-//! as a plain value: construction, parsing, display and serde, no other logic. The one exception
-//! is, behind `internals`, the allocation audit every crate's `tests/alloc` suite runs on. The
+//! as a plain value: construction, parsing, display and serde, no other logic. The exceptions
+//! are `enum_all!`, which states an enum with the list of its variants, and, behind `internals`,
+//! the allocation audit every crate's `tests/alloc` suite runs on. The
 //! crate depends on nothing but `serde`, `derive_more` and `thiserror`, and, for the audit,
 //! `backtrace`.
 
@@ -15,6 +16,7 @@
 mod alloc_audit;
 mod bytes32;
 mod channel_binding;
+mod enum_all;
 mod exit_status;
 mod fingerprint;
 mod map_name;

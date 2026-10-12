@@ -4,7 +4,7 @@ The engine's capabilities and the core under them. The design is `docs/design/04
 
 ## Where a thing goes
 
-- **Layers.** A module imports only from its layer and below: `LAYERS` in `release/tests.rs`, `a_module_imports_only_from_its_layer_and_below`. A capability's install order and what it builds on are `CAPABILITIES` in `release/mod.rs` and `CapabilitySet::needs` in `declare/capability_set.rs`. A new module gets a row in each, and implements `Declares`: everything it adds but its systems, declared once, which the install, the script API, the network layer and the declaration audit read.
+- **Layers.** A module imports only from its layer and below: `LAYERS` in `release/tests/mod.rs`, `a_module_imports_only_from_its_layer_and_below`. A module implements `Module`, in `declare/module.rs`: its capability, what it builds on (`NEEDS`), everything it adds but its systems, declared once, which the install, the script API, the network layer and the declaration audit read, and the install of its systems. A new module is one entry of `Release::modules`, in `release/mod.rs`, after the modules it builds on.
 - **The core names no capability.** `units`, `scripts`, `players`, `stats`, `actions` and `values` know no capability above them; a capability adds to them through their seams: a column of the script view, a call part, an effect type, a row of the script API.
 - **Roles by name.** A module's effect is `<Module>Effect` in `<module>_effect.rs`, its script view column `<Module>Column` in `<module>_column.rs`, its call part `<Module>Call` in `<module>_call.rs`, its script API `<Module>Api` in `<module>_api.rs`: `each_role_of_a_module_takes_the_modules_name`.
 - **Systems.** A capability's systems are associated functions of unit structs, one struct for each concern in its own file, as `combat/attacks.rs` holds `Attacks`. A column's `fill_row` and its `RowParts` live with the column type. `mod.rs` holds the capability's struct, its `install`, its system sets and its module list, and no system.
@@ -19,12 +19,13 @@ The engine's capabilities and the core under them. The design is `docs/design/04
 ## State
 
 - Every state component is declared once, in its module's `declare`, which the install, the network layer and the script API read, and each module declares only its own: the declaration audit, `release/tests/declaration_audit.rs`, checks the rules between declarations.
+- Every resource of a match is declared by what it is: state, `d.resource`, which the installer puts in at its default; scratch, `d.scratch`, clear between ticks; a cache, `d.cache`, built again from state, the map or the install; a tick's report for the host, `d.report`; or a book, `d.book`. `Release::unlisted_resources`, which the proving match runs after each tick, fails on a resource none names and on a scratch not clear.
 - A restore checks every value as package data is checked, through the state type's required check: a restore gives an error, never a panic. The snapshot tests flip and draw the bytes of whole matches.
 - What can be derived is derived, not state: stats, tags, supply, the pathing grid.
 
 ## Names and scripts
 
-- Text becomes a type where it enters. A lookup of an id by its name is a method whose name ends in `named`, called only by the load or a script call: `LOOKUPS` in `release/tests.rs` lists each, and a new one joins it.
+- Text becomes a type where it enters. A lookup of an id by its name is a method whose name ends in `named`, called only by the load or a script call: `LOOKUPS` in `release/tests/mod.rs` lists each, and a new one joins it.
 - The script API is bound through `ApiBuilder`: `bind` for a member that serves every role, `bind_for` for one that serves some roles, which checks the role before the body runs. `docs/design/08-script-api-reference.md` is generated: write it again with `CAMPFIRE_BLESS=1` and the test `the_reference_is_what_the_registry_writes`.
 - No genre words in production code: a mode names its heroes, lanes and resources in its data. The engine's words are the model's: unit, tag, stat, pool, modifier, action, effect, avatar, spawn group, path, marker.
 
@@ -33,4 +34,4 @@ The engine's capabilities and the core under them. The design is `docs/design/04
 - A new rule of a mode's match joins that mode's scripted match, its event asserted in its own tick: `docs/design/02-engine-core.md`, Testing and diagnostics.
 - A change that moves a golden says why in its commit, with the number that moved. A refactor moves neither column; a layout change moves only the state column.
 - A test that runs a match holds a `LogCheck` through its fixture (here a `Match` from `Match::test`); a warning no test takes fails it.
-- Benches live in `bench.rs` beside what they measure, behind the `bench` feature.
+- Benches live in `bench.rs` beside what they measure, behind the `internals` feature.

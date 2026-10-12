@@ -5,6 +5,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 
+use crate::declare::cache::Cache;
 use crate::geometry::grid::Grid;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::regions::Regions;
@@ -308,6 +309,8 @@ impl Clearance<'_> {
         self.words[cell / 64] & 1 << (cell % 64) == 0
     }
 }
+
+impl Cache for PathingGrid {}
 
 #[cfg(test)]
 mod tests;

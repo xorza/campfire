@@ -105,6 +105,6 @@ impl Default for TrackBook {
 }
 
 impl Book for TrackBook {
-    const OWNER: Option<Capability> = Some(Capability::Progression);
+    const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const SCRIPTS_ONLY: bool = false;
 }

@@ -4,15 +4,18 @@ use std::path::Path;
 
 use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
 use bevy_ecs::component::Component;
-use campfire_sim::Position;
+use bevy_ecs::world::Mut;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_sim::{Position, StateRegistry};
 use campfire_store::InputFile;
 use campfire_store::internals::SourceFiles;
 
 use super::*;
 use crate::actions::action_book::ActionBook;
-use crate::declare::error::CapabilityError;
 use crate::orders::ai::Ai;
+use crate::players::kind_parts::KindParts;
+use crate::players::player::Player;
+use crate::players::player_resources::PlayerResources;
 use crate::release::r#match::Match;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
@@ -22,13 +25,13 @@ use crate::units::view::View;
 
 #[test]
 fn a_set_holds_each_capability_once_with_what_it_builds_on() {
-    let set = CapabilitySet::new(&[Orders, Navigation, Stats, Combat, Vision]).unwrap();
+    let set = Release::capability_set(&[Orders, Navigation, Stats, Combat, Vision]).unwrap();
     assert_eq!(
         set.iter().collect::<Vec<_>>(),
         [Combat, Stats, Orders, Navigation, Vision]
     );
     assert!(set.contains(Orders) && !set.contains(Abilities));
-    assert_eq!(CapabilitySet::new(&[]).unwrap().iter().count(), 0);
+    assert_eq!(Release::capability_set(&[]).unwrap().iter().count(), 0);
     for (declared, error) in [
         (&[Combat, Mode][..], CapabilityError::DeclaresMode),
         (
@@ -68,7 +71,11 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
             },
         ),
     ] {
-        assert_eq!(CapabilitySet::new(declared), Err(error), "{declared:?}");
+        assert_eq!(
+            Release::capability_set(declared),
+            Err(error),
+            "{declared:?}"
+        );
     }
 }
 
@@ -78,7 +85,7 @@ fn installed(declared: &[Capability], budgets: Option<ScriptBudgets>) -> Match {
 }
 
 #[test]
-fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions() {
+fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_players() {
     let all = [Stats, Combat, Navigation, Projectiles, Abilities, Orders];
     let limits = ScriptLimits {
         per_call: NonZeroU64::MIN,
@@ -94,25 +101,54 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions() {
         assert!(world.contains_resource::<ActionBook>());
         assert_eq!(world.contains_resource::<ByType<Ai>>(), scripts);
         assert!(world.get_non_send::<View>().is_some());
+        // With no mode, the match holds the players' state, and a player its parts.
+        let mut types = Vec::new();
+        world
+            .resource::<StateRegistry>()
+            .hash_by_type(world, &mut types);
+        let names: Vec<&str> = types.iter().map(|ty| ty.name).collect();
+        for name in [
+            "players.held_out",
+            "players.match",
+            "players.out_of_play",
+            "players.player",
+            "players.resources",
+        ] {
+            assert!(names.contains(&name), "{name}");
+        }
     }
+    let mut scripted = scripted;
+    scripted.resource_scope(|world, parts: Mut<'_, KindParts<Player>>| {
+        let mut player = world.spawn_empty();
+        parts.put_on(&mut player);
+        assert_eq!(
+            player.get::<PlayerResources>(),
+            Some(&PlayerResources::new(0))
+        );
+    });
     let combat_only = installed(&[Stats, Combat], Some(scripts));
     assert!(combat_only.contains_resource::<ActionBook>());
 }
 
 #[test]
-fn the_table_holds_every_capability_once_after_what_it_builds_on() {
-    for capability in Capability::ALL {
-        let rows: Vec<usize> = (0..CAPABILITIES.len())
-            .filter(|&at| CAPABILITIES[at].capability == capability)
-            .collect();
-        assert_eq!(rows.len(), 1, "{capability:?}");
-        for &needed in CapabilitySet::needs(capability) {
-            let before = CAPABILITIES[..rows[0]]
+fn the_list_holds_each_capability_at_most_once_after_what_it_builds_on() {
+    let rows = Release::rows().0;
+    for (at, row) in rows.iter().enumerate() {
+        let before = &rows[..at];
+        assert!(
+            before
                 .iter()
-                .any(|row| row.capability == needed);
-            assert!(before, "{capability:?} installs before {needed:?}");
+                .all(|other| other.capability != row.capability),
+            "{:?} is listed once",
+            row.capability
+        );
+        for &needed in row.needs {
+            let built = before.iter().any(|other| other.capability == needed);
+            assert!(built, "{:?} installs after {needed:?}", row.capability);
         }
     }
+    // The mode installs above the list.
+    assert!(rows.iter().all(|row| row.capability != Mode));
 }
 
 /// The capability table of design 04, beside this crate.
@@ -154,9 +190,9 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
     every.sort_unstable();
     assert_eq!(named, every);
     built.sort_unstable();
-    let mut installed: Vec<&str> = CAPABILITIES
+    let mut installed: Vec<&str> = Release::rows()
+        .0
         .iter()
-        .filter(|row| row.install.is_some())
         .map(|row| row.capability.name())
         .collect();
     installed.sort_unstable();
@@ -224,9 +260,9 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
         found.map(|&(_, layer)| layer)
     };
     let mut installed = Vec::new();
-    for row in CAPABILITIES.iter().filter(|row| row.install.is_some()) {
+    for row in Release::rows().0 {
         let own = layer(row.capability).expect("an installed capability is a module");
-        for &need in CapabilitySet::needs(row.capability) {
+        for &need in row.needs {
             assert!(
                 installed.contains(&need),
                 "{need:?} before {:?}",

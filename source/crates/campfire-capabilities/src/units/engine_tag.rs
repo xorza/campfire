@@ -2,39 +2,32 @@ use crate::units::block::Block;
 use crate::units::tag::Tag;
 use crate::units::tag_properties::TagProperties;
 
-/// A tag the engine gives and reads, at the same place in every match's tags: packages name it
-/// in filters and in the mode's `[tags]`, but no unit type or modifier of theirs carries it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EngineTag {
-    /// Of avatars, which `unit.is_avatar` tests.
-    Avatar,
-    /// Of projectile types: a filter selects their units only when it names it.
-    Projectile,
-    /// Of area types: a filter selects their units only when it names it.
-    Area,
-    /// Of a site, a building under construction: it blocks its attacks, casts and uses, so no
-    /// action of its starts.
-    Constructing,
-    /// Of node types, which workers gather from.
-    Node,
-    /// Of drop-off types, which workers take their loads to.
-    DropOff,
-    /// Of a worker in its gather loop, which another such worker passes through.
-    Gathering,
+campfire_common::enum_all! {
+    /// A tag the engine gives and reads, at the same place in every match's tags: packages name it
+    /// in filters and in the mode's `[tags]`, but no unit type or modifier of theirs carries it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum EngineTag {
+        /// Of avatars, which `unit.is_avatar` tests.
+        Avatar,
+        /// Of projectile types: a filter selects their units only when it names it.
+        Projectile,
+        /// Of area types: a filter selects their units only when it names it.
+        Area,
+        /// Of a site, a building under construction: it blocks its attacks, casts and uses, so no
+        /// action of its starts.
+        Constructing,
+        /// Of node types, which workers gather from.
+        Node,
+        /// Of drop-off types, which workers take their loads to.
+        DropOff,
+        /// Of a worker in its gather loop, which another such worker passes through.
+        Gathering,
+    }
+    /// In the order of their places, the first of the match's tags.
+    pub const ALL;
 }
 
 impl EngineTag {
-    /// In the order of their places, the first of the match's tags.
-    pub const ALL: [EngineTag; 7] = [
-        EngineTag::Avatar,
-        EngineTag::Projectile,
-        EngineTag::Area,
-        EngineTag::Constructing,
-        EngineTag::Node,
-        EngineTag::DropOff,
-        EngineTag::Gathering,
-    ];
-
     pub const fn name(self) -> &'static str {
         match self {
             EngineTag::Avatar => "avatar",

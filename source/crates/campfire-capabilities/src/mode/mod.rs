@@ -5,7 +5,7 @@ use std::any::Any;
 use std::mem;
 use std::rc::Rc;
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::ImmutableString;
@@ -19,7 +19,8 @@ use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::damage::DamageWeigher;
 use crate::combat::heal::HealWeigher;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
+use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
 use crate::mode::game_map::GameMap;
@@ -35,6 +36,7 @@ use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_state::ModeState;
 use crate::mode::mode_world::ModeWorldCrate;
 use crate::mode::placed_unit::PlacedPath;
+use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
@@ -44,11 +46,9 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::orders::OrdersSet;
 use crate::players::Players;
-use crate::players::held_out::HeldOut;
 use crate::players::match_entity::MatchEntity;
 use crate::players::out_of_play::OutOfPlay;
 use crate::players::player::Player;
-use crate::players::player_resources::PlayerResources;
 use crate::players::players_world::PlayersWorld;
 use crate::production::ProductionSet;
 use crate::progression::track_book::TrackBook;
@@ -120,25 +120,20 @@ pub(crate) mod unit_type_setup;
 #[derive(Debug)]
 pub struct Mode;
 
-impl Declares for Mode {
-    const MODULE: Option<Capability> = Some(Capability::Mode);
+impl Module for Mode {
+    const CAPABILITY: Option<Capability> = Some(Capability::Mode);
+    const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<MatchEnd>();
         d.component::<ModeState<SyncNone>>();
         d.component::<ModeState<SyncAll>>();
         d.resource::<Choices>();
-        d.component::<PlayerResources>();
-        d.component::<Player>();
-        d.component::<HeldOut>();
-        d.component::<OutOfPlay>();
         d.resource::<Timers>();
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
+        d.report::<SaveAsked>();
         d.check::<Player>(Mode::players_seated);
-        d.part::<Player, PlayerResources>(|world| {
-            PlayerResources::new(world.non_send::<View>().resource_count())
-        });
         d.part::<MatchEntity, Relations>(|world| world.non_send::<MatchMode>().relations.clone());
         d.part::<MatchEntity, ModeState<SyncNone>>(|world| {
             world.non_send::<MatchMode>().state_none.clone()
@@ -149,19 +144,44 @@ impl Declares for Mode {
         d.check::<UnitType>(Mode::kits_held);
         d.api(ModeApi::register);
     }
+
+    /// Adds the mode's hooks to a match: in Inputs, the players' mode inputs run
+    /// `on_mode_input`; in Mode, the tick's joins and leaves run `on_player_join` and
+    /// `on_player_leave`, due timers run `on_timer`, the tick's deaths run `on_unit_died`, and the
+    /// levels reached run `on_level_up`. `Mode::load` gives them the mode they run.
+    fn install(cx: &mut InstallCx<'_>) {
+        cx.schedule.add_systems((
+            ModeHooks::mode_inputs
+                .in_set(SimSet::Inputs)
+                .after(UnitsSet::BeginTick)
+                .after(StatsSet::Expire)
+                .after(StatsSet::Regenerate)
+                .after(NavigationSet::TrackStatics)
+                .after(CombatSet::Respawn)
+                .before(OrdersSet::Orders)
+                .before(AbilitiesSet::Toggles)
+                .before(ActionsSet::HoldAtInputs),
+            (
+                ModeHooks::slot_events,
+                ModeHooks::run_timers,
+                ModeHooks::unit_deaths,
+                ModeHooks::level_ups,
+            )
+                .chain()
+                .in_set(SimSet::Mode)
+                .after(ProductionSet::Finish),
+            OutOfPlay::refresh.in_set(SimSet::Vision),
+        ));
+    }
 }
 
 impl Mode {
-    /// Adds the mode of `setup`, whose books the book builder built, to a match whose capabilities
-    /// are installed and whose unit types, abilities and AI are loaded: in Inputs, the players'
-    /// mode inputs run `on_mode_input`; in Mode, the tick's joins and leaves run `on_player_join`
-    /// and `on_player_leave`, due timers run `on_timer`, the tick's deaths run `on_unit_died`, and
-    /// the levels reached run `on_level_up`.
-    /// The map's ground, paths and grid become the match's, and the mode's `[combat]` and
+    /// Loads the mode of `setup`, whose books the book builder built, into a match whose
+    /// capabilities and mode are installed and whose unit types, abilities and AI are loaded: the
+    /// map's ground, paths and grid become the match's, and the mode's `[combat]` and
     /// `calc_damage` combat's.
-    pub(crate) fn install(
+    pub(crate) fn load(
         world: &mut World,
-        schedule: &mut Schedule,
         registry: &StateRegistry,
         setup: ModeSetup<'_>,
         mut books: ModeBooks,
@@ -201,9 +221,6 @@ impl Mode {
         world.insert_resource(paths);
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
-        world.insert_resource(Timers::default());
-        world.insert_resource(UnansweredDeaths::default());
-        world.insert_resource(UnansweredSlotEvents::default());
         let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
@@ -222,28 +239,6 @@ impl Mode {
             let healer = HealWeigher::new(Calls::weigh_heal);
             world.non_send_mut::<CombatHooks>().healer = Some(healer);
         }
-        schedule.add_systems((
-            ModeHooks::mode_inputs
-                .in_set(SimSet::Inputs)
-                .after(UnitsSet::BeginTick)
-                .after(StatsSet::Expire)
-                .after(StatsSet::Regenerate)
-                .after(NavigationSet::TrackStatics)
-                .after(CombatSet::Respawn)
-                .before(OrdersSet::Orders)
-                .before(AbilitiesSet::Toggles)
-                .before(ActionsSet::HoldAtInputs),
-            (
-                ModeHooks::slot_events,
-                ModeHooks::run_timers,
-                ModeHooks::unit_deaths,
-                ModeHooks::level_ups,
-            )
-                .chain()
-                .in_set(SimSet::Mode)
-                .after(ProductionSet::Finish),
-            OutOfPlay::refresh.in_set(SimSet::Vision),
-        ));
     }
 
     /// Whether each slot of the session has its entity, as the mode's start spawns them, so no

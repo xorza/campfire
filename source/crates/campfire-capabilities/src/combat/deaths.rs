@@ -4,6 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_sim::StableId;
 
+use crate::declare::report::Report;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
 
@@ -122,6 +123,8 @@ impl Deaths {
         (0..self.entries.len()).map(|at| self.get(at))
     }
 }
+
+impl Report for Deaths {}
 
 #[cfg(test)]
 mod tests {

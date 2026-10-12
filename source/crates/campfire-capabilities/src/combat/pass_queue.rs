@@ -5,6 +5,7 @@ use campfire_sim::StableId;
 
 use crate::combat::damage::Damage;
 use crate::combat::heal::Heal;
+use crate::declare::scratch::Scratch;
 
 /// The damage and heals of the running tick, which the pass applies in Resolve: those with no
 /// source first, then by their source's stable id, then in the order they were queued; what the
@@ -96,6 +97,12 @@ impl PassEntry {
             PassEntry::Damage(damage) => damage.source,
             PassEntry::Heal(heal) => heal.source,
         }
+    }
+}
+
+impl Scratch for PassQueue {
+    fn is_clear(&self) -> bool {
+        !self.running && self.entries.is_empty() && self.given.is_empty() && self.at == 0
     }
 }
 

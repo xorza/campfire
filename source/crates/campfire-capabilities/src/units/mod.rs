@@ -8,15 +8,11 @@ use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::module::Module;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
-use crate::players::kind_parts::KindParts;
-use crate::players::match_entity::MatchEntity;
-use crate::players::player::Player;
-use crate::players::players_world::PlayersWorld;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -128,8 +124,7 @@ pub(crate) mod view_names;
 /// The core's systems, for the capabilities above it to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum UnitsSet {
-    /// In `SimSet::Inputs`: every pool starts full, and the last tick's writes to units that
-    /// never spawned clear.
+    /// In `SimSet::Inputs`: every pool starts full.
     BeginTick,
 }
 
@@ -139,8 +134,9 @@ pub(crate) enum UnitsSet {
 #[derive(Debug)]
 pub struct Units;
 
-impl Declares for Units {
-    const MODULE: Option<Capability> = None;
+impl Module for Units {
+    const CAPABILITY: Option<Capability> = None;
+    const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         Units::kinds(d);
@@ -149,7 +145,6 @@ impl Declares for Units {
         d.component::<Facing>();
         d.component::<ForcedMove>();
         d.component::<Lifespan>();
-        d.component::<MatchEntity>();
         d.component::<MoveStep>();
         d.sim_component::<Position>();
         d.component::<Owner>();
@@ -165,12 +160,11 @@ impl Declares for Units {
         d.derived::<DeliveryEntity>();
         d.derived::<UnitTags>();
         d.component::<Relations>();
+        d.scratch::<NewUnitStates>();
         d.check::<Position>(Units::within_bounds);
         d.host::<Position, UnitEntity>();
         d.require::<UnitEntity, Position>();
         d.require::<UnitEntity, Team>();
-        d.require::<Player, Team>();
-        d.check::<MatchEntity>(Units::match_spawned);
         d.book::<UnitStateBook>();
         d.book::<TypeOrigins>();
         d.column::<UnitsColumn, StateRowParts>(UnitsColumn::fill_state);
@@ -182,22 +176,12 @@ impl Declares for Units {
         d.api(UnitsApi::register);
         d.api(View::register_queries);
     }
-}
-
-impl Units {
-    /// Visits each kind of entity, which state types name as their host.
-    pub(crate) fn kinds<V: KindVisitor>(v: &mut V) {
-        v.kind::<UnitEntity>();
-        v.kind::<DeliveryEntity>();
-        v.kind::<MatchEntity>();
-        v.kind::<Player>();
-    }
 
     /// Adds the core to a match, on a planar map until the mode sets its own. With scripts, in
-    /// Inputs, every pool starts full and the last tick's failures clear.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    /// Inputs, every pool starts full and the last tick's failures clear, and as the tick ends,
+    /// its writes to units that never spawned drop.
+    fn install(cx: &mut InstallCx<'_>) {
         let world = &mut *cx.world;
-        world.insert_resource(NewUnitStates::default());
         world.insert_resource(Metric::default());
         // The world's bounds until a map's take their place.
         world.insert_resource(Bounds::WORLD);
@@ -213,8 +197,17 @@ impl Units {
                     .in_set(SimSet::Inputs)
                     .in_set(UnitsSet::BeginTick),
                 UnitTicks::end_lifespans.in_set(SimSet::Vision),
+                UnitTicks::drop_unspawned_states.in_set(SimEdge::After(SimSet::Vision)),
             ));
         }
+    }
+}
+
+impl Units {
+    /// Visits each kind of entity of the core's units, which state types name as their host.
+    fn kinds<V: KindVisitor>(v: &mut V) {
+        v.kind::<UnitEntity>();
+        v.kind::<DeliveryEntity>();
     }
 
     /// Whether every unit stands within the match's bounds, as every system keeps it, and as
@@ -228,12 +221,6 @@ impl Units {
         })
     }
 
-    /// Whether the match's entity stands, as every match that started spawns it, so no system
-    /// finds it missing.
-    fn match_spawned(world: &World) -> Result<(), Breach> {
-        Breach::of_match(world.match_entity().is_some())
-    }
-
     /// Compiles `source` in the match's script host, once for every capability that runs it.
     pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
         world.non_send_mut::<ScriptHost>().compile(source)
@@ -245,8 +232,6 @@ impl Units {
     pub(crate) fn open(world: &mut World, budgets: Option<ScriptBudgets>) {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate);
-        world.init_resource::<KindParts<MatchEntity>>();
-        world.init_resource::<KindParts<Player>>();
         if let Some(budgets) = budgets {
             let ctx = Ctx::new(view.clone());
             let mut host = ScriptHost::new(budgets.limits().per_call);

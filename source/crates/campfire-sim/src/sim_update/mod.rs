@@ -18,43 +18,32 @@ use crate::tick_rate::TickRate;
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SimUpdate;
 
-/// The stages of a tick, in this order. Each capability puts its systems into them, and orders
-/// them within a stage against the capabilities it builds on.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SimSet {
-    /// The tick's commands reach the capabilities that own them.
-    Inputs,
-    /// AI of the units due this tick issues orders.
-    Think,
-    /// Current orders run: attack windups, cast starts, path requests.
-    Act,
-    /// Units move.
-    Move,
-    /// The mode's collision backend resolves overlaps.
-    Collide,
-    /// Strikes, hits, projectiles and areas.
-    Hit,
-    /// Damage and modifiers apply, and units die.
-    Resolve,
-    /// Due timers, the capabilities' events, spawns.
-    Mode,
-    /// The mode's vision backend marks what each team may see.
-    Vision,
-}
-
-impl SimSet {
+campfire_common::enum_all! {
+    /// The stages of a tick, in this order. Each capability puts its systems into them, and orders
+    /// them within a stage against the capabilities it builds on.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum SimSet {
+        /// The tick's commands reach the capabilities that own them.
+        Inputs,
+        /// AI of the units due this tick issues orders.
+        Think,
+        /// Current orders run: attack windups, cast starts, path requests.
+        Act,
+        /// Units move.
+        Move,
+        /// The mode's collision backend resolves overlaps.
+        Collide,
+        /// Strikes, hits, projectiles and areas.
+        Hit,
+        /// Damage and modifiers apply, and units die.
+        Resolve,
+        /// Due timers, the capabilities' events, spawns.
+        Mode,
+        /// The mode's vision backend marks what each team may see.
+        Vision,
+    }
     /// Every stage, in the order a tick runs them.
-    pub const ALL: [SimSet; 9] = [
-        SimSet::Inputs,
-        SimSet::Think,
-        SimSet::Act,
-        SimSet::Move,
-        SimSet::Collide,
-        SimSet::Hit,
-        SimSet::Resolve,
-        SimSet::Mode,
-        SimSet::Vision,
-    ];
+    pub const ALL;
 }
 
 /// The gaps of a tick around its stages, for a pass over what came before, such as values derived

@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
-use campfire_sim::{Capability, SimParts, SimWorldBuilder, StateRegistry, Unpredicted};
+use campfire_sim::{Capability, SimParts, SimWorldBuilder, Unpredicted};
 
 use crate::abilities::Abilities;
 use crate::actions::Actions;
@@ -10,9 +10,10 @@ use crate::areas::Areas;
 use crate::combat::Combat;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
+use crate::declare::error::CapabilityError;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::module::ModuleVisitor;
 use crate::deliveries::Deliveries;
 use crate::items::Items;
 use crate::mode::Mode;
@@ -21,11 +22,15 @@ use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_setup::ModeSetup;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
+use crate::players::Players;
 use crate::production::Production;
 use crate::progression::Progression;
 use crate::projectiles::Projectiles;
 use crate::release::api_binder::ApiBinder;
-use crate::release::installer::Installer;
+use crate::release::capability_rows::CapabilityRows;
+use crate::release::declaring::Declaring;
+use crate::release::installing::Installing;
+use crate::release::kinds_only::KindsOnly;
 use crate::release::match_spec::MatchSpec;
 use crate::release::state_only::StateOnly;
 use crate::scripts::api_builder::ApiBuilder;
@@ -36,9 +41,15 @@ use crate::units::Units;
 use crate::vision::Vision;
 
 mod api_binder;
+mod capability_rows;
+mod declaring;
 mod installer;
+mod installing;
+mod kinds_only;
 pub(crate) mod r#match;
 pub(crate) mod match_spec;
+#[cfg(feature = "internals")]
+mod resource_audit;
 mod state_only;
 
 /// The engine's modules as the release runs them: the core, each capability in the order they
@@ -46,64 +57,68 @@ mod state_only;
 #[derive(Debug)]
 pub struct Release;
 
-/// A capability's install into a match, after its declarations.
-type Install = fn(&mut InstallCx<'_>);
-
-/// One row of `CAPABILITIES`: the capability, and how it installs, `None` for one the release
-/// does not run yet and for the mode.
-#[derive(Debug, Clone, Copy)]
-struct Row {
-    capability: Capability,
-    install: Option<Install>,
-}
-
-const fn row(capability: Capability, install: Install) -> Row {
-    Row {
-        capability,
-        install: Some(install),
-    }
-}
-
-const fn planned(capability: Capability) -> Row {
-    Row {
-        capability,
-        install: None,
-    }
-}
-
-/// Every capability once, in the order they install: each after the ones it builds on, and orders
-/// after production and items, whose actions it applies when they are installed. A declared
-/// capability the release does not run yet installs nothing.
-const CAPABILITIES: [Row; Capability::ALL.len()] = [
-    row(Capability::Stats, Stats::install),
-    row(Capability::Progression, Progression::install),
-    row(Capability::Combat, Combat::install),
-    row(Capability::Navigation, Navigation::install),
-    row(Capability::Vision, Vision::install),
-    row(Capability::Projectiles, Projectiles::install),
-    row(Capability::Areas, Areas::install),
-    row(Capability::Abilities, Abilities::install),
-    row(Capability::Production, Production::install),
-    row(Capability::Items, Items::install),
-    row(Capability::Orders, Orders::install),
-    planned(Capability::Character),
-    planned(Capability::Hitboxes),
-    planned(Capability::Physics),
-    planned(Capability::World),
-    planned(Capability::Quests),
-    planned(Capability::Interaction),
-    planned(Capability::Mode),
-];
-
 impl Release {
+    /// Visits, with `v`, every module a match builds with, in the order they install: the core's,
+    /// then each capability after the ones it builds on, and orders after production and items,
+    /// whose actions it applies when they are installed. The mode installs above them, once the
+    /// books are in.
+    fn modules<V: ModuleVisitor>(v: &mut V) {
+        v.module::<Units>();
+        v.module::<Players>();
+        v.module::<Actions>();
+        v.module::<Deliveries>();
+        v.module::<Stats>();
+        v.module::<Progression>();
+        v.module::<Combat>();
+        v.module::<Navigation>();
+        v.module::<Vision>();
+        v.module::<Projectiles>();
+        v.module::<Areas>();
+        v.module::<Abilities>();
+        v.module::<Production>();
+        v.module::<Items>();
+        v.module::<Orders>();
+    }
+
+    /// The capabilities of the list, each with what it builds on.
+    fn rows() -> CapabilityRows {
+        let mut rows = CapabilityRows::default();
+        Release::modules(&mut rows);
+        rows
+    }
+
     /// Every capability the release runs.
     pub fn capabilities() -> CapabilitySet {
-        let runs: Vec<Capability> = CAPABILITIES
+        Release::rows()
+            .0
             .iter()
-            .filter(|row| row.install.is_some())
-            .map(|row| row.capability)
-            .collect();
-        CapabilitySet::new(&runs).expect("the release runs each capability with its needs")
+            .fold(CapabilitySet::CORE, |set, row| set.with(row.capability))
+    }
+
+    /// The set of a mode's `declared` capabilities; an error when one is `mode`, one is declared
+    /// twice, or one lacks a capability it builds on.
+    pub fn capability_set(declared: &[Capability]) -> Result<CapabilitySet, CapabilityError> {
+        let mut set = CapabilitySet::CORE;
+        for &capability in declared {
+            if capability == Capability::Mode {
+                return Err(CapabilityError::DeclaresMode);
+            }
+            if set.contains(capability) {
+                return Err(CapabilityError::Repeated(capability));
+            }
+            set = set.with(capability);
+        }
+        let rows = Release::rows();
+        for capability in set.iter() {
+            if let Some(&needs) = rows
+                .needs(capability)
+                .iter()
+                .find(|&&needs| !set.contains(needs))
+            {
+                return Err(CapabilityError::Needs { capability, needs });
+            }
+        }
+        Ok(set)
     }
 
     /// The script API of the release, recorded as a match's engine binds it, with the names the
@@ -118,16 +133,12 @@ impl Release {
         ScriptApi::release(host, Release::bind_api)
     }
 
-    /// Visits, with `d`, the declarations of a match of `set`: the core's, then each declared
-    /// capability's in the order they install, then the mode's.
+    /// Visits, with `d`, the declarations of a match of `set`: each module's of the list that the
+    /// match runs, in the order they install, then the mode's.
     pub(crate) fn declare<D: Declarations>(set: CapabilitySet, d: &mut D) {
-        Release::core(d);
-        for row in CAPABILITIES {
-            if set.contains(row.capability) {
-                Release::declare_capability(row.capability, d);
-            }
-        }
-        Release::module::<Mode, D>(d);
+        let mut declaring = Declaring::new(set, d);
+        Release::modules(&mut declaring);
+        declaring.declare::<Mode>();
     }
 
     /// Lists, into `types`, the state types of a match of `set`, as its install registers them.
@@ -137,7 +148,7 @@ impl Release {
 
     /// Visits, with `v`, each kind of entity of a match, whatever its capabilities.
     pub fn kinds<V: KindVisitor>(v: &mut V) {
-        Units::kinds(v);
+        Release::declare(Release::capabilities(), &mut KindsOnly(v));
     }
 
     /// Binds into `builder` the script API of every module the release runs.
@@ -145,59 +156,10 @@ impl Release {
         Release::declare(Release::capabilities(), &mut ApiBinder(builder));
     }
 
-    /// Installs the core's module `M`: its declarations, then `install`.
-    fn install_module<M: Declares>(
-        cx: &mut InstallCx<'_>,
-        registry: &mut StateRegistry,
-        install: Install,
-    ) {
-        let (set, scripts) = (cx.set(), cx.scripts());
-        Release::module::<M, _>(&mut Installer::new(cx.world, registry, set, scripts));
-        install(cx);
-    }
-
-    /// Visits the core's declarations.
-    fn core<D: Declarations>(d: &mut D) {
-        Release::module::<Units, D>(d);
-        Release::module::<Actions, D>(d);
-        Release::module::<Deliveries, D>(d);
-    }
-
-    /// Visits the declarations of `capability`; none for one the release does not run yet. The
-    /// match is exhaustive, so a capability with no arm does not compile.
-    fn declare_capability<D: Declarations>(capability: Capability, d: &mut D) {
-        match capability {
-            Capability::Stats => Release::module::<Stats, D>(d),
-            Capability::Progression => Release::module::<Progression, D>(d),
-            Capability::Combat => Release::module::<Combat, D>(d),
-            Capability::Navigation => Release::module::<Navigation, D>(d),
-            Capability::Vision => Release::module::<Vision, D>(d),
-            Capability::Projectiles => Release::module::<Projectiles, D>(d),
-            Capability::Areas => Release::module::<Areas, D>(d),
-            Capability::Abilities => Release::module::<Abilities, D>(d),
-            Capability::Production => Release::module::<Production, D>(d),
-            Capability::Items => Release::module::<Items, D>(d),
-            Capability::Orders => Release::module::<Orders, D>(d),
-            Capability::Character
-            | Capability::Hitboxes
-            | Capability::Physics
-            | Capability::World
-            | Capability::Quests
-            | Capability::Interaction
-            | Capability::Mode => {}
-        }
-    }
-
-    /// Visits the declarations of `M`, after the mark of its start.
-    fn module<M: Declares, D: Declarations>(d: &mut D) {
-        d.module(M::MODULE);
-        M::declare(d);
-    }
-
     /// Builds the match of `spec` in the world, a new world: prepares it for the sim, and
-    /// installs the core, then each capability the release runs, each after the ones it builds
-    /// on, its declarations, then its install. A match that ended runs no stage. The world then
-    /// holds the match whole: its schedule, its state registry, and its capabilities.
+    /// installs each module of the list the match runs, in order, its declarations, then its
+    /// install. A match that ended runs no stage. The world then holds the match whole: its
+    /// schedule, its state registry, and its capabilities.
     pub fn build(world: &mut World, spec: MatchSpec) {
         if spec.predicting {
             Unpredicted::register(world);
@@ -222,18 +184,7 @@ impl Release {
         }
         MatchEnd::stop_stages(schedule);
         let mut cx = InstallCx::new(world, schedule, set, scripts, spec.predicting);
-        Release::install_module::<Units>(&mut cx, registry, Units::install);
-        Release::install_module::<Actions>(&mut cx, registry, Actions::install);
-        Release::install_module::<Deliveries>(&mut cx, registry, Deliveries::install);
-        for row in CAPABILITIES {
-            if let Some(install) = row.install
-                && set.contains(row.capability)
-            {
-                let mut installer = Installer::new(cx.world, registry, set, scripts);
-                Release::declare_capability(row.capability, &mut installer);
-                install(&mut cx);
-            }
-        }
+        Release::modules(&mut Installing::new(&mut cx, registry));
         #[cfg(feature = "internals")]
         if spec.unbuilt {
             sim.leave_unbuilt();
@@ -242,8 +193,8 @@ impl Release {
         sim.build();
     }
 
-    /// Installs the mode of `setup` into the match the world holds, once the capabilities'
-    /// books are in place but the mode's own, `books`: its declarations, then its install.
+    /// Installs the mode into the match the world holds, once the capabilities' books are in
+    /// place but the mode's own, `books`: its declarations and systems, then the mode of `setup`.
     pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, books: ModeBooks) {
         let set = *world.resource::<CapabilitySet>();
         let mut sim = SimWorldBuilder::reopen(world);
@@ -252,8 +203,9 @@ impl Release {
             schedule,
             registry,
         } = sim.parts();
-        Release::module::<Mode, _>(&mut Installer::new(world, registry, set, true));
-        Mode::install(world, schedule, registry, setup, books);
+        let mut cx = InstallCx::new(world, schedule, set, true, false);
+        Installing::new(&mut cx, registry).install::<Mode>();
+        Mode::load(world, registry, setup, books);
         sim.build();
     }
 }
@@ -271,6 +223,7 @@ pub(crate) mod internals {
 
     use crate::declare::capability_set::CapabilitySet;
     use crate::release::Release;
+    use crate::release::resource_audit::DeclaredResources;
     use crate::state_types::replication::Replication;
     use crate::state_types::{Declared, StateTypes};
 
@@ -318,7 +271,7 @@ pub(crate) mod internals {
             self.push::<C>();
         }
 
-        fn resource<R: SimResource>(&mut self) {}
+        fn resource<R: SimResource + Default>(&mut self) {}
 
         fn sim_component<C: Replication>(&mut self) {
             self.push::<C>();
@@ -326,6 +279,18 @@ pub(crate) mod internals {
     }
 
     impl Release {
+        /// The names of the resources of `world`, a match of `set`, that no declaration names,
+        /// `host`'s own aside, then, while the match runs, of each scratch resource not clear: a
+        /// resource none declares may carry from tick to tick what no hash, snapshot or restore
+        /// holds.
+        pub fn unlisted_resources(
+            set: CapabilitySet,
+            world: &World,
+            host: &[TypeId],
+        ) -> Vec<String> {
+            DeclaredResources::audit(set, world, host)
+        }
+
         /// The names of the component types a unit of `world`, an entity with a stable id, holds
         /// or held, that no list of the capabilities `set` declares as state or as derived, sorted:
         /// each a part of a unit that no hash, snapshot or client holds. The stable id is the

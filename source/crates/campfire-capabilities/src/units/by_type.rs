@@ -43,7 +43,7 @@ impl<T: Send + Sync + 'static> Default for ByType<T> {
 }
 
 impl<T: PerType> Book for ByType<T> {
-    const OWNER: Option<Capability> = T::OWNER;
+    const CAPABILITY: Option<Capability> = T::CAPABILITY;
     const SCRIPTS_ONLY: bool = T::SCRIPTS_ONLY;
 }
 

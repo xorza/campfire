@@ -53,7 +53,7 @@ pub trait StateTypes: Sized {
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self);
 
     /// `R`, a resource, which no client receives (design 14, D6).
-    fn resource<R: SimResource>(&mut self);
+    fn resource<R: SimResource + Default>(&mut self);
 
     /// `C`, as its type sends it.
     fn component<C: Replication>(&mut self) {
@@ -92,7 +92,7 @@ impl StateTypes for StateRegistry {
 
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {}
 
-    fn resource<R: SimResource>(&mut self) {
+    fn resource<R: SimResource + Default>(&mut self) {
         self.register_resource::<R>();
     }
 

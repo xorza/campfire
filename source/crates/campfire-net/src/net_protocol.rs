@@ -153,7 +153,7 @@ impl StateTypes for Replicated<'_> {
             .replicate_with(WireCodec::component());
     }
 
-    fn resource<R: SimResource>(&mut self) {}
+    fn resource<R: SimResource + Default>(&mut self) {}
 
     fn sim_component<C: Replication>(&mut self) {
         self.component::<C>();
@@ -183,7 +183,7 @@ mod tests {
                 tick_duration: Duration::from_millis(50),
             });
             app.add_plugins(NetProtocol {
-                capabilities: CapabilitySet::new(declared).unwrap(),
+                capabilities: Release::capability_set(declared).unwrap(),
             });
             let registry = app.world().resource::<ComponentRegistry>();
             [

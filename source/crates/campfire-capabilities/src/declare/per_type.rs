@@ -4,7 +4,7 @@ use campfire_sim::Capability;
 /// a book.
 pub(crate) trait PerType: Send + Sync + 'static {
     /// The capability that declares the book; none for the core.
-    const OWNER: Option<Capability>;
+    const CAPABILITY: Option<Capability>;
     /// Whether only a match that runs scripts reads the book.
     const SCRIPTS_ONLY: bool;
 }

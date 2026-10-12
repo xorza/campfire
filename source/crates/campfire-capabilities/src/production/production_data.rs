@@ -12,6 +12,6 @@ pub struct ProductionData {
 }
 
 impl PerType for ProductionData {
-    const OWNER: Option<Capability> = Some(Capability::Production);
+    const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }

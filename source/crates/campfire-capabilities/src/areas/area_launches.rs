@@ -1,6 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::{Position, StableId};
 
+use crate::declare::scratch::Scratch;
 use crate::deliveries::delivering::Delivering;
 use crate::units::unit_type::UnitType;
 
@@ -18,4 +19,10 @@ pub(crate) struct AreaLaunch {
     pub(crate) pos: Position,
     pub(crate) unit_type: UnitType,
     pub(crate) aimed: Option<StableId>,
+}
+
+impl Scratch for AreaLaunches {
+    fn is_clear(&self) -> bool {
+        self.0.is_empty()
+    }
 }

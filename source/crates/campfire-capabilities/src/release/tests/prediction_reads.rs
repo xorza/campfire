@@ -8,7 +8,6 @@ use bevy_ecs::component::{ComponentId, Immutable, Mutable};
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
 use bevy_ecs::schedule::Schedules;
 use bevy_ecs::system::System;
-use bevy_ecs::world::Mut;
 use campfire_common::SegmentSeed;
 use campfire_sim::{SimResource, SimUpdate};
 
@@ -74,7 +73,7 @@ impl StateTypes for Classes<'_> {
         self.of::<C>(Held::Of(C::KIND));
     }
 
-    fn resource<R: SimResource>(&mut self) {}
+    fn resource<R: SimResource + Default>(&mut self) {}
 
     fn sim_component<C: Replication>(&mut self) {
         self.of::<C>(Held::Of(C::KIND));

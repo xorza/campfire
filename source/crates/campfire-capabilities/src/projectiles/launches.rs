@@ -5,6 +5,7 @@ use campfire_sim::{Position, StableId};
 
 use campfire_math::Num;
 
+use crate::declare::scratch::Scratch;
 use crate::projectiles::projectile::Flight;
 use crate::units::action_id::ActionId;
 use crate::units::unit_type::UnitType;
@@ -87,5 +88,11 @@ impl Launches {
     pub(crate) fn clear(&mut self) {
         self.launches.clear();
         self.casts = 0;
+    }
+}
+
+impl Scratch for Launches {
+    fn is_clear(&self) -> bool {
+        self.launches.is_empty() && self.casts == 0
     }
 }

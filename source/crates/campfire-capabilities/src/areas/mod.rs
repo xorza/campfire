@@ -15,8 +15,8 @@ use crate::areas::areas_api::AreasApi;
 use crate::areas::areas_effect::AreasEffect;
 use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::deliveries::DeliverySet;
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::delivering::Delivering;
@@ -40,31 +40,30 @@ pub(crate) mod areas_effect;
 #[derive(Debug)]
 pub struct Areas;
 
-impl Declares for Areas {
-    const MODULE: Option<Capability> = Some(Capability::Areas);
+impl Module for Areas {
+    const CAPABILITY: Option<Capability> = Some(Capability::Areas);
+    const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<Area>();
         d.component::<AreaTrigger>();
+        d.scratch::<AreaLaunches>();
         d.book::<ByType<AreaSpec>>();
         d.api(AreasApi::register);
     }
-}
 
-impl Areas {
     /// Adds areas to a match. In Hit, after projectiles fly, each area due triggers, and its
     /// reaches and its end run their action's `on_hit` and `on_end`, or its launch's; after the
     /// tick's projectiles launch, its areas land. In Resolve, the areas the damage pass launched
     /// land, and then, before stats hold their modifiers, each area lists those it holds on the
     /// units inside. A launch queues as an effect of `areas`. A predicting client predicts no
     /// delivery, so it triggers none.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         let predicting = cx.predicting();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world
             .resource_mut::<Deliverers>()
             .register_area(Areas::deliver);
-        world.insert_resource(AreaLaunches::default());
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Areas, AreasEffect::queue_listed);
@@ -86,7 +85,9 @@ impl Areas {
                 .before(StatsSet::Hold),
         ));
     }
+}
 
+impl Areas {
     /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it
     /// aimed at, where the unit it aimed at stands, or at `from` for an action that aims at
     /// nothing; nothing for a unit that is gone.

@@ -8,7 +8,7 @@ use crate::state_registry::CopyQuery;
 /// once as a world starts recording its changes, so a copy builds no query and matches only the
 /// archetypes new since the last.
 #[derive(Resource, Default)]
-pub(super) struct CopyQueries(Vec<Option<Box<CopyQuery>>>);
+pub(crate) struct CopyQueries(Vec<Option<Box<CopyQuery>>>);
 
 impl CopyQueries {
     pub(super) fn push(&mut self, query: Option<Box<CopyQuery>>) {

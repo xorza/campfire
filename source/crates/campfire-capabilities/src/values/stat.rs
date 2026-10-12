@@ -20,15 +20,16 @@ pub enum Stat {
 #[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DeclaredStat(DeclaredName);
 
-/// A stat a capability reads, whatever the mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum EngineStat {
-    MoveSpeed,
+campfire_common::enum_all! {
+    /// A stat a capability reads, whatever the mode.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum EngineStat {
+        MoveSpeed,
+    }
+    pub const ALL;
 }
 
 impl EngineStat {
-    pub const ALL: [EngineStat; 1] = [EngineStat::MoveSpeed];
-
     /// The stat named `name`.
     pub fn named(name: &str) -> Option<EngineStat> {
         EngineStat::ALL.into_iter().find(|stat| stat.name() == name)

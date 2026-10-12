@@ -7,21 +7,24 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::units::lifespan::Lifespan;
 use crate::units::new_unit_states::NewUnitStates;
 
-/// The core's systems that bound each tick: the state of one tick cleared as it starts, and the
-/// timed lives that end with it.
+/// The core's systems that bound each tick: what a tick used cleared as it starts, the timed
+/// lives that end with it, and the writes it left to units that never spawned.
 #[derive(Debug)]
 pub(super) struct UnitTicks;
 
 impl UnitTicks {
-    /// Clears, as each tick starts, the script budgets' use, the failures recorded, and the new
-    /// units' states.
+    /// Clears, as each tick starts, the script budgets' use and the failures recorded.
     pub(super) fn begin_tick(
         mut budgets: ResMut<'_, ScriptBudgets>,
         mut failures: NonSendMut<'_, ScriptFailures>,
-        mut new_states: ResMut<'_, NewUnitStates>,
     ) {
         budgets.begin_tick();
         failures.clear();
+    }
+
+    /// Drops, as each tick ends, the writes of its calls to units they made that never spawned:
+    /// a unit takes its writes as it spawns within the tick.
+    pub(super) fn drop_unspawned_states(mut new_states: ResMut<'_, NewUnitStates>) {
         new_states.clear();
     }
 

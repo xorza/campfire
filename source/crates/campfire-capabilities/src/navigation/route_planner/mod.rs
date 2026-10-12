@@ -1,6 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
+use crate::declare::cache::Cache;
 use crate::geometry::grid::Grid;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::Clearance;
@@ -558,6 +559,8 @@ impl RoutePlanner {
         u32::try_from(cell).expect("a grid has at most 2²² cells")
     }
 }
+
+impl Cache for RoutePlanner {}
 
 #[cfg(test)]
 pub(crate) mod internals {

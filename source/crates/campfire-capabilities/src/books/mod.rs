@@ -163,14 +163,15 @@ mod tests {
 
     use super::*;
     use crate::orders::ai::Ai;
+    use crate::release::Release;
     use crate::stats::modifier_book::ModifierBook;
     use crate::units::by_type::ByType;
 
     #[test]
     fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
-        let stats = CapabilitySet::new(&[Capability::Stats]).unwrap();
-        let none = CapabilitySet::new(&[]).unwrap();
-        let orders = CapabilitySet::new(&[
+        let stats = Release::capability_set(&[Capability::Stats]).unwrap();
+        let none = Release::capability_set(&[]).unwrap();
+        let orders = Release::capability_set(&[
             Capability::Stats,
             Capability::Combat,
             Capability::Navigation,

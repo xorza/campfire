@@ -2,8 +2,8 @@ use campfire_sim::Capability;
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::LevelUps;
 use crate::progression::points::Points;
@@ -26,8 +26,9 @@ pub(crate) mod track_set;
 #[derive(Debug)]
 pub struct Progression;
 
-impl Declares for Progression {
-    const MODULE: Option<Capability> = Some(Capability::Progression);
+impl Module for Progression {
+    const CAPABILITY: Option<Capability> = Some(Capability::Progression);
+    const NEEDS: &'static [Capability] = &[Capability::Stats];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<Experience>();
@@ -37,13 +38,10 @@ impl Declares for Progression {
         d.column::<ProgressionColumn, RowParts>(ProgressionColumn::fill_row);
         d.api(ProgressionApi::register);
     }
-}
 
-impl Progression {
     /// Adds progression to a match, with no track until the mode loads its own.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         let world = &mut *cx.world;
-        world.insert_resource(LevelUps::default());
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Progression, ProgressionEffect::queue_listed);

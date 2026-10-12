@@ -1,11 +1,20 @@
+use std::any::TypeId;
 use std::{fmt, mem, thread};
 
+use bevy_ecs::entity_disabling::DefaultQueryFilters;
 use bevy_ecs::schedule::{Schedule, Schedules};
 use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
 
+use crate::entity_index::EntityIndex;
+use crate::id_allocator::IdAllocator;
+use crate::sim_rng::SimRng;
+use crate::sim_tick::SimTick;
 use crate::sim_update::SimUpdate;
+use crate::state_changes::StateChanges;
 use crate::state_registry::StateRegistry;
+use crate::state_registry::copy_queries::CopyQueries;
+use crate::tick_inputs::TickInputs;
 use crate::tick_rate::TickRate;
 
 /// A sim's world as it is built: the sim's resources in place, and the tick's schedule and the
@@ -34,6 +43,27 @@ pub struct SimParts<'a> {
     pub world: &'a mut World,
     pub schedule: &'a mut Schedule,
     pub registry: &'a mut StateRegistry,
+}
+
+impl SimWorldBuilder<'_> {
+    /// The resources a match holds of its own, whatever its modules install: the sim's, those a
+    /// server's state registry puts in as it tracks the state's changes, and Bevy's world and
+    /// schedules.
+    pub fn sim_resources() -> [TypeId; 11] {
+        [
+            TypeId::of::<SimTick>(),
+            TypeId::of::<TickRate>(),
+            TypeId::of::<SimRng>(),
+            TypeId::of::<IdAllocator>(),
+            TypeId::of::<EntityIndex>(),
+            TypeId::of::<TickInputs>(),
+            TypeId::of::<StateRegistry>(),
+            TypeId::of::<StateChanges>(),
+            TypeId::of::<CopyQueries>(),
+            TypeId::of::<Schedules>(),
+            TypeId::of::<DefaultQueryFilters>(),
+        ]
+    }
 }
 
 impl<'w> SimWorldBuilder<'w> {
@@ -172,7 +202,7 @@ mod tests {
     use std::panic;
 
     use super::*;
-    use crate::sim_tick::SimTick;
+    use crate::state_registry::state_delta::StateDelta;
 
     const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
@@ -198,6 +228,20 @@ mod tests {
         assert!(!held(builder.world()));
         builder.build();
         assert!(held(&world));
+
+        // A match of no module, its changes tracked, holds the sim's own resources alone.
+        world
+            .resource::<StateRegistry>()
+            .clone()
+            .track(&mut world, &mut StateDelta::default());
+        let mut held: Vec<TypeId> = world
+            .iter_resources()
+            .filter_map(|(info, _)| info.type_id())
+            .collect();
+        let mut own = SimWorldBuilder::sim_resources().to_vec();
+        held.sort_unstable();
+        own.sort_unstable();
+        assert_eq!(held, own);
 
         // A builder dropped before `build` would leave its world with no schedule: it panics.
         let dropped = panic::catch_unwind(|| {

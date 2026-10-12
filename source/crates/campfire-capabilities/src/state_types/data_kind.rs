@@ -1,73 +1,55 @@
 use crate::state_types::recipients::Recipients;
 
-/// A group of a match's state that the rules send to clients as one: each kind has its own
-/// audience, `audience`, so a state type of one kind goes to one set of clients.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DataKind {
-    /// A unit's public state: its type, team, owner, place, body, level, death, destination and
-    /// the action under way.
-    Unit,
-    /// A unit's life pool.
-    Life,
-    /// A unit's other pools.
-    Pools,
-    /// A unit's modifiers, which an aura's carrier shows to the units it reaches.
-    Modifiers,
-    /// Each of a unit's action slots' ready tick, charges and toggle.
-    Cooldowns,
-    /// A unit's experience and points.
-    Progression,
-    /// A unit's inventory.
-    Inventory,
-    /// The match's public state, on the match's entity and each player's: the teams' relations,
-    /// the match's end, the players' slots.
-    Match,
-    /// The mode's script state fields of `sync = "all"`, on the match's entity.
-    ModeState,
-    /// A player's resources, on its entity.
-    Resources,
-    /// A player's supply: what its units and queued trains use, and its cap.
-    Supply,
-    /// A producer's train queue.
-    Queues,
-    /// The modifiers a player holds for its units, on its entity.
-    PlayerModifiers,
-    /// What only the owner's prediction reads: a unit's spawn point, route, progress, modifiers'
-    /// clocks and respawn.
-    Prediction,
-    /// A unit's script state fields of `sync = "owner"`.
-    UnitStateOwner,
-    /// A unit's script state fields of `sync = "team"`.
-    UnitStateTeam,
-    /// A unit's script state fields of `sync = "all"`.
-    UnitStateAll,
-    /// State no client receives.
-    Server,
+campfire_common::enum_all! {
+    /// A group of a match's state that the rules send to clients as one: each kind has its own
+    /// audience, `audience`, so a state type of one kind goes to one set of clients.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum DataKind {
+        /// A unit's public state: its type, team, owner, place, body, level, death, destination and
+        /// the action under way.
+        Unit,
+        /// A unit's life pool.
+        Life,
+        /// A unit's other pools.
+        Pools,
+        /// A unit's modifiers, which an aura's carrier shows to the units it reaches.
+        Modifiers,
+        /// Each of a unit's action slots' ready tick, charges and toggle.
+        Cooldowns,
+        /// A unit's experience and points.
+        Progression,
+        /// A unit's inventory.
+        Inventory,
+        /// The match's public state, on the match's entity and each player's: the teams' relations,
+        /// the match's end, the players' slots.
+        Match,
+        /// The mode's script state fields of `sync = "all"`, on the match's entity.
+        ModeState,
+        /// A player's resources, on its entity.
+        Resources,
+        /// A player's supply: what its units and queued trains use, and its cap.
+        Supply,
+        /// A producer's train queue.
+        Queues,
+        /// The modifiers a player holds for its units, on its entity.
+        PlayerModifiers,
+        /// What only the owner's prediction reads: a unit's spawn point, route, progress,
+        /// modifiers' clocks and respawn.
+        Prediction,
+        /// A unit's script state fields of `sync = "owner"`.
+        UnitStateOwner,
+        /// A unit's script state fields of `sync = "team"`.
+        UnitStateTeam,
+        /// A unit's script state fields of `sync = "all"`.
+        UnitStateAll,
+        /// State no client receives.
+        Server,
+    }
+    /// Every kind, in the order the enum declares them, which the session's terms keep.
+    pub const ALL;
 }
 
 impl DataKind {
-    /// Every kind, in the order the enum declares them, which the session's terms keep.
-    pub const ALL: [DataKind; 18] = [
-        DataKind::Unit,
-        DataKind::Life,
-        DataKind::Pools,
-        DataKind::Modifiers,
-        DataKind::Cooldowns,
-        DataKind::Progression,
-        DataKind::Inventory,
-        DataKind::Match,
-        DataKind::ModeState,
-        DataKind::Resources,
-        DataKind::Supply,
-        DataKind::Queues,
-        DataKind::PlayerModifiers,
-        DataKind::Prediction,
-        DataKind::UnitStateOwner,
-        DataKind::UnitStateTeam,
-        DataKind::UnitStateAll,
-        DataKind::Server,
-    ];
-
     /// Its name in a mode's `[visibility]` and a host's settings.
     pub const fn name(self) -> &'static str {
         match self {

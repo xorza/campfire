@@ -14,10 +14,12 @@ use serde::{Deserialize, Serialize};
 use crate::actions::capability_does::CapabilityDoes;
 use crate::actions::effect_queues::EffectQueues;
 use crate::declare::book::Book;
-use crate::declare::capability_set::CapabilitySet;
+use crate::declare::cache::Cache;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::parted_kind::PartedKind;
+use crate::declare::report::Report;
+use crate::declare::scratch::Scratch;
 use crate::players::player::Player;
 use crate::release::Release;
 use crate::release::r#match::Match;
@@ -61,25 +63,27 @@ struct State {
     kinds: Option<Vec<TypeId>>,
 }
 
-/// A book as declared: its type, its owner, and the module that declares it.
+/// A book as declared: its type, its capability, and the capability of the module that declares
+/// it.
 #[derive(Debug)]
-struct Declaring {
+struct DeclaredBook {
     ty: Named,
-    owner: Option<Capability>,
-    module: Option<Capability>,
+    capability: Option<Capability>,
+    declared_by: Option<Capability>,
 }
 
 /// Every declaration of the modules it visits.
 #[derive(Debug, Default)]
 struct DeclarationAudit {
-    module: Option<Capability>,
+    /// The capability of the module whose declarations it visits.
+    capability: Option<Capability>,
     kinds: Vec<TypeId>,
     states: Vec<State>,
     resources: Vec<&'static str>,
     requires: Vec<(Named, Named)>,
     hosts: Vec<(Named, Option<Vec<TypeId>>)>,
     checks: Vec<Named>,
-    books: Vec<Declaring>,
+    books: Vec<DeclaredBook>,
     columns: Vec<Named>,
     call_parts: Vec<Named>,
     parts: Vec<(Named, Named)>,
@@ -101,7 +105,7 @@ impl DeclarationAudit {
     /// declared once; each state type sits on declared kinds, by its host, by a `host`
     /// declaration when its host takes any entity, or as a kind itself; a pair's holder is a kind
     /// or a state type and its part a state type; a check and a `host` name state types; a book's
-    /// owner is the module that declares it; and a kind's part is a state type of that kind.
+    /// capability is the module's that declares it; and a kind's part is a state type of that kind.
     fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
         let mut once = |what: &str, names: Vec<&'static str>| {
@@ -159,7 +163,7 @@ impl DeclarationAudit {
             }
         }
         for book in &self.books {
-            if book.owner != book.module {
+            if book.capability != book.declared_by {
                 problems.push(format!("{} is declared by another module", book.ty.name));
             }
         }
@@ -205,7 +209,7 @@ impl StateTypes for DeclarationAudit {
         self.state::<C>();
     }
 
-    fn resource<R: SimResource>(&mut self) {
+    fn resource<R: SimResource + Default>(&mut self) {
         self.resources.push(R::NAME);
     }
 
@@ -221,8 +225,8 @@ impl KindVisitor for DeclarationAudit {
 }
 
 impl Declarations for DeclarationAudit {
-    fn module(&mut self, module: Option<Capability>) {
-        self.module = module;
+    fn module(&mut self, capability: Option<Capability>) {
+        self.capability = capability;
     }
 
     fn require<H: SimComponent, C: SimComponent>(&mut self) {
@@ -238,11 +242,23 @@ impl Declarations for DeclarationAudit {
     }
 
     fn book<B: Book>(&mut self) {
-        self.books.push(Declaring {
+        self.books.push(DeclaredBook {
             ty: Named::of::<B>(),
-            owner: B::OWNER,
-            module: self.module,
+            capability: B::CAPABILITY,
+            declared_by: self.capability,
         });
+    }
+
+    fn scratch<R: Scratch>(&mut self) {
+        self.resources.push(type_name::<R>());
+    }
+
+    fn cache<R: Cache>(&mut self) {
+        self.resources.push(type_name::<R>());
+    }
+
+    fn report<R: Report>(&mut self) {
+        self.resources.push(type_name::<R>());
     }
 
     fn column<C: ViewColumn + Default, D: RowParts>(&mut self, _: ColumnFill<D, C>) {
@@ -265,12 +281,12 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     let mut audit = DeclarationAudit::default();
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
-    // The audit read every module: the core's four kinds, the stats' and the mode's parts of a
+    // The audit read every module: the core's four kinds, the stats' and the players' parts of a
     // player, the mode's three of the match, and the 18 books, 5 of the core's.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 5);
     assert_eq!(audit.books.len(), 18);
-    let core = audit.books.iter().filter(|book| book.owner.is_none());
+    let core = audit.books.iter().filter(|book| book.capability.is_none());
     assert_eq!(core.count(), 5);
 }
 
@@ -297,7 +313,7 @@ impl Replication for Stray {
 struct StrayBook;
 
 impl Book for StrayBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
+    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 }
 
@@ -343,7 +359,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
 
 /// `capability` and each it builds on, those first.
 fn with_needs(capability: Capability, into: &mut Vec<Capability>) {
-    for &need in CapabilitySet::needs(capability) {
+    for &need in Release::rows().needs(capability) {
         with_needs(need, into);
     }
     if !into.contains(&capability) {
@@ -354,10 +370,13 @@ fn with_needs(capability: Capability, into: &mut Vec<Capability>) {
 #[test]
 fn each_listed_effect_queues_in_the_capability_it_names() {
     for does in CapabilityDoes::one_of_each() {
-        let owner = does.capability();
+        let capability = does.capability();
         let mut declared = Vec::new();
-        with_needs(owner, &mut declared);
+        with_needs(capability, &mut declared);
         let game = Match::client(&declared);
-        assert!(game.resource::<EffectQueues>().holds(owner), "{owner:?}");
+        assert!(
+            game.resource::<EffectQueues>().holds(capability),
+            "{capability:?}"
+        );
     }
 }

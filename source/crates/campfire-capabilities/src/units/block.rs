@@ -1,28 +1,22 @@
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-/// What a tag can stop its unit doing, or being: moving, the actions of a group, being chosen
-/// as a target, taking damage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Block {
-    Move,
-    Attack,
-    Cast,
-    Use,
-    Target,
-    Damage,
+campfire_common::enum_all! {
+    /// What a tag can stop its unit doing, or being: moving, the actions of a group, being chosen
+    /// as a target, taking damage.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Block {
+        Move,
+        Attack,
+        Cast,
+        Use,
+        Target,
+        Damage,
+    }
+    pub const ALL;
 }
 
 impl Block {
-    pub const ALL: [Block; 6] = [
-        Block::Move,
-        Block::Attack,
-        Block::Cast,
-        Block::Use,
-        Block::Target,
-        Block::Damage,
-    ];
-
     /// Each block's name, in the order of `ALL`.
     const NAMES: [&'static str; Block::ALL.len()] = {
         let mut names = [""; Block::ALL.len()];

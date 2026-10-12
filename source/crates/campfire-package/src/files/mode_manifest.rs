@@ -1,6 +1,10 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{ApiVersion, CapabilitySet, ScriptLimits, Speed, TeamManifest};
+use campfire_capabilities::{
+    ApiVersion, CapabilitySet, Release, ScriptLimits, Speed, TeamManifest,
+};
+use campfire_sim::Capability;
+use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::files::backends::Backends;
@@ -45,7 +49,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
             version: Version,
             api: ApiVersion,
             language: Language,
-            capabilities: CapabilitySet,
+            capabilities: Vec<Capability>,
             tick_hz: TickRange,
             teams: Vec<TeamManifest>,
             backends: Backends,
@@ -62,7 +66,8 @@ impl<'de> Deserialize<'de> for ModeManifest {
                 api: fields.api,
                 language: fields.language,
             },
-            capabilities: fields.capabilities,
+            capabilities: Release::capability_set(&fields.capabilities)
+                .map_err(D::Error::custom)?,
             tick_hz: fields.tick_hz,
             teams: fields.teams,
             backends: fields.backends,

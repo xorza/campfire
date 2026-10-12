@@ -7,8 +7,8 @@ use campfire_common::Ticks;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
 
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::players::player::Player;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
@@ -108,8 +108,9 @@ pub(crate) enum StatsSet {
     Hold,
 }
 
-impl Declares for Stats {
-    const MODULE: Option<Capability> = Some(Capability::Stats);
+impl Module for Stats {
+    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
+    const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<PlayerModifiers>();
@@ -117,6 +118,8 @@ impl Declares for Stats {
         d.component::<Modifiers>();
         d.component::<ModifierClocks>();
         d.component::<Pools>();
+        d.scratch::<HeldModifiers>();
+        d.cache::<LiveCarriers>();
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| PlayerModifiers::default());
         d.book::<ModifierBook>();
@@ -124,16 +127,13 @@ impl Declares for Stats {
         d.call_part::<StatsCall>();
         d.api(StatsApi::register);
     }
-}
 
-impl Stats {
     /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,
     /// every unit whose level or modifiers changed, or that is new, has its stats and states
     /// derived again, and the components that hold their effect follow them; as each tick
     /// starts, the living units' pools regenerate. With no stat book, as before a mode loads one,
     /// nothing changes.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
-        cx.world.insert_resource(HeldModifiers::default());
+    fn install(cx: &mut InstallCx<'_>) {
         cx.world.insert_resource(LiveCarriers::default());
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
@@ -158,7 +158,9 @@ impl Stats {
             );
         }
     }
+}
 
+impl Stats {
     /// Ends the applications of the modifiers `carrier` holds that grant `tag`: an instance no
     /// hold keeps ends, and one a passive, an aura, an area or a player holds stays, as its holder
     /// would apply it again.

@@ -1,38 +1,31 @@
 use campfire_quic::AppCode;
 use serde::{Deserialize, Serialize};
 
-/// Why Campfire ends a link, which `quic` carries as an `AppCode` and the peer reads back (design
-/// 15, D10).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u32)]
-pub enum CloseCode {
-    /// The player left the match.
-    Left = AppCode::FIRST,
-    /// A newer login of the player took the slot.
-    Superseded,
-    /// The server refused the player's input message.
-    InputRefused,
-    /// The server's copy of the player's chain is not the client's.
-    ChainRewritten,
-    /// The session's terms do not fit the client, which cannot play it.
-    SessionRefused,
-    /// The client sent no answer to the server's offer within its window.
-    Unanswered,
-    /// The server refused the client's join, which its log names.
-    JoinRefused,
+campfire_common::enum_all! {
+    /// Why Campfire ends a link, which `quic` carries as an `AppCode` and the peer reads back
+    /// (design 15, D10).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[repr(u32)]
+    pub enum CloseCode {
+        /// The player left the match.
+        Left = AppCode::FIRST,
+        /// A newer login of the player took the slot.
+        Superseded,
+        /// The server refused the player's input message.
+        InputRefused,
+        /// The server's copy of the player's chain is not the client's.
+        ChainRewritten,
+        /// The session's terms do not fit the client, which cannot play it.
+        SessionRefused,
+        /// The client sent no answer to the server's offer within its window.
+        Unanswered,
+        /// The server refused the client's join, which its log names.
+        JoinRefused,
+    }
+    const ALL;
 }
 
 impl CloseCode {
-    const ALL: [CloseCode; 7] = [
-        CloseCode::Left,
-        CloseCode::Superseded,
-        CloseCode::InputRefused,
-        CloseCode::ChainRewritten,
-        CloseCode::SessionRefused,
-        CloseCode::Unanswered,
-        CloseCode::JoinRefused,
-    ];
-
     pub const fn app(self) -> AppCode {
         AppCode::new(self as u32)
     }

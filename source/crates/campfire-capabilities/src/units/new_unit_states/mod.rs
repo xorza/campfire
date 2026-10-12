@@ -1,13 +1,14 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::StableId;
 
+use crate::declare::scratch::Scratch;
 use crate::units::unit_states::UnitStates;
 use crate::units::units_call::StateWrite;
 
 /// The script state that calls wrote to units they created which spawn later in the tick, as
 /// deliveries do: each write, in the order the calls made them. Not state: a unit takes its
 /// writes as it spawns within the tick, and the writes to one that never spawned clear as the
-/// next tick begins.
+/// tick ends.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct NewUnitStates(Vec<StateWrite>);
 
@@ -25,6 +26,12 @@ impl NewUnitStates {
 
     pub(crate) fn clear(&mut self) {
         self.0.clear();
+    }
+}
+
+impl Scratch for NewUnitStates {
+    fn is_clear(&self) -> bool {
+        self.0.is_empty()
     }
 }
 

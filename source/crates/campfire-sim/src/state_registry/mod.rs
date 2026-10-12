@@ -33,7 +33,7 @@ use crate::unpredicted::Unpredicted;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod breach;
-mod copy_queries;
+pub(crate) mod copy_queries;
 pub(crate) mod error;
 mod hash_sink;
 pub(crate) mod state_delta;

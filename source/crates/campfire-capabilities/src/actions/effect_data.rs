@@ -54,11 +54,14 @@ pub enum MoveData {
     },
 }
 
-/// The effects the design names that the release does not run yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlannedEffect {
-    Loot,
-    Noise,
+campfire_common::enum_all! {
+    /// The effects the design names that the release does not run yet.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PlannedEffect {
+        Loot,
+        Noise,
+    }
+    pub const ALL;
 }
 
 /// Whom an effect applies to.
@@ -227,8 +230,6 @@ impl Effecting {
 }
 
 impl PlannedEffect {
-    pub const ALL: [PlannedEffect; 2] = [PlannedEffect::Loot, PlannedEffect::Noise];
-
     /// The effect's key in data.
     pub const fn name(self) -> &'static str {
         match self {

@@ -11,8 +11,8 @@ use crate::actions::holds::Holds;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::slot_times::SlotTimes;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::stats::StatsSet;
 use crate::stats::param_book::ParamBook;
 
@@ -90,8 +90,9 @@ pub(crate) enum ActionsSet {
     HoldAtStrike,
 }
 
-impl Declares for Actions {
-    const MODULE: Option<Capability> = None;
+impl Module for Actions {
+    const CAPABILITY: Option<Capability> = None;
+    const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<ActionSlots>();
@@ -103,22 +104,22 @@ impl Declares for Actions {
         d.column::<ActionsColumn, RowParts>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
     }
-}
 
-impl Actions {
     /// Adds the actions to a match whose core is installed, with none loaded yet, and, in a match
     /// with combat, the holds of every action: its charges as each tick starts, and its passives
     /// then and as each stage that changes ranks or cooldowns ends. A match with no combat holds
     /// none, as every action's unit target is one combat finds; the start of an action is the
     /// abilities'.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         cx.world.insert_resource(SlotKinds::default());
         cx.world.insert_resource(EffectQueues::default());
         if cx.has(Capability::Combat) {
             Actions::schedule(cx.schedule);
         }
     }
+}
 
+impl Actions {
     fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
             Holds::hold_charges

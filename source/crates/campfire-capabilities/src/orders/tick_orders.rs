@@ -1,9 +1,11 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::system::ResMut;
 use campfire_common::PlayerSlot;
 use campfire_sim::{StableId, TickInputs};
 
+use crate::declare::scratch::Scratch;
 use crate::orders::order::{Action, Order};
 
 /// The orders of the tick's inputs, decoded once as the tick starts, in input order; a body that
@@ -42,12 +44,17 @@ pub(crate) struct TickOrder<'a> {
 }
 
 impl TickOrders {
-    /// Reads the orders of `inputs` in place of the last tick's, but those of each player
-    /// `refused` names.
+    /// Empties the orders once the tick's inputs ran, which read them all, keeping the buffers.
+    pub(crate) fn empty(mut orders: ResMut<'_, TickOrders>) {
+        orders.orders.clear();
+        orders.units.clear();
+        orders.sent.clear();
+    }
+
+    /// Reads the orders of `inputs`, but those of each player `refused` names, into the buffers
+    /// the last tick emptied.
     pub(crate) fn read(&mut self, inputs: &TickInputs, refused: impl Fn(PlayerSlot) -> bool) {
-        self.orders.clear();
-        self.units.clear();
-        self.sent.clear();
+        debug_assert!(self.is_clear(), "the last tick emptied its orders");
         for command in inputs.commands(Order::CAPABILITY) {
             if refused(command.slot) {
                 continue;
@@ -83,5 +90,11 @@ impl TickOrders {
             action: stored.action,
             units: &self.units[stored.units.start as usize..stored.units.end as usize],
         })
+    }
+}
+
+impl Scratch for TickOrders {
+    fn is_clear(&self) -> bool {
+        self.orders.is_empty() && self.units.is_empty() && self.sent.is_empty()
     }
 }

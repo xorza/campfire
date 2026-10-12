@@ -29,6 +29,6 @@ impl NodeBook {
 }
 
 impl Book for NodeBook {
-    const OWNER: Option<Capability> = Some(Capability::Production);
+    const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }

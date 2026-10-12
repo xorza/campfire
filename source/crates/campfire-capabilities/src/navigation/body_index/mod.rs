@@ -6,6 +6,7 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::declare::cache::Cache;
 use crate::geometry::body_box::BodyBox;
 use crate::geometry::cell_levels::CellLevels;
 use crate::geometry::grid::Grid;
@@ -439,6 +440,8 @@ impl Buckets {
         }
     }
 }
+
+impl Cache for BodyIndex {}
 
 #[cfg(test)]
 mod tests;

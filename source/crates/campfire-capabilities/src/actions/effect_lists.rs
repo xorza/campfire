@@ -283,7 +283,7 @@ fn position(len: usize) -> u32 {
 }
 
 impl Book for EffectLists {
-    const OWNER: Option<Capability> = None;
+    const CAPABILITY: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = true;
 }
 

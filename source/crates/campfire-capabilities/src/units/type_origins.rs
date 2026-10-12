@@ -48,6 +48,6 @@ impl TypeOrigins {
 }
 
 impl Book for TypeOrigins {
-    const OWNER: Option<Capability> = None;
+    const CAPABILITY: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 }

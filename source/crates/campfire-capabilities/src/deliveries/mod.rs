@@ -6,8 +6,9 @@ use campfire_sim::{Capability, Position, SimSet, StableId};
 
 use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
+use crate::declare::scratch::Scratch;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::deliveries_api::DeliveriesApi;
@@ -42,11 +43,48 @@ pub(crate) enum DeliverySet {
     Trigger,
 }
 
-impl Declares for Deliveries {
-    const MODULE: Option<Capability> = None;
+impl Module for Deliveries {
+    const CAPABILITY: Option<Capability> = None;
+    const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.scratch::<Deliveries>();
         d.api(DeliveriesApi::register);
+    }
+
+    /// Adds the deliveries' hooks to a match of a capability that delivers: after the
+    /// `DeliverySet`s, before attacks pay their toggles and strike.
+    fn install(cx: &mut InstallCx<'_>) {
+        let delivers = [
+            Capability::Projectiles,
+            Capability::Areas,
+            Capability::Abilities,
+        ];
+        if !delivers.into_iter().any(|capability| cx.has(capability)) {
+            return;
+        }
+        cx.world.insert_resource(Deliverers::default());
+        cx.schedule.configure_sets(
+            (DeliverySet::Fly, DeliverySet::Trigger)
+                .chain()
+                .in_set(SimSet::Hit)
+                .before(CombatSet::Pay),
+        );
+        if cx.scripts() {
+            cx.schedule.add_systems(
+                DeliveryHooks::deliver
+                    .in_set(SimSet::Hit)
+                    .after(DeliverySet::Trigger)
+                    .before(CombatSet::Pay),
+            );
+        } else {
+            cx.schedule.add_systems(
+                DeliveryHooks::end
+                    .in_set(SimSet::Hit)
+                    .after(DeliverySet::Trigger)
+                    .before(CombatSet::Pay),
+            );
+        }
     }
 }
 
@@ -81,40 +119,10 @@ impl Deliveries {
             hit,
         });
     }
+}
 
-    /// Adds the deliveries' hooks to a match of a capability that delivers: after the
-    /// `DeliverySet`s, before attacks pay their toggles and strike.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
-        let delivers = [
-            Capability::Projectiles,
-            Capability::Areas,
-            Capability::Abilities,
-        ];
-        if !delivers.into_iter().any(|capability| cx.has(capability)) {
-            return;
-        }
-        cx.world.insert_resource(Deliveries::default());
-        cx.world.insert_resource(Deliverers::default());
-        cx.schedule.configure_sets(
-            (DeliverySet::Fly, DeliverySet::Trigger)
-                .chain()
-                .in_set(SimSet::Hit)
-                .before(CombatSet::Pay),
-        );
-        if cx.scripts() {
-            cx.schedule.add_systems(
-                DeliveryHooks::deliver
-                    .in_set(SimSet::Hit)
-                    .after(DeliverySet::Trigger)
-                    .before(CombatSet::Pay),
-            );
-        } else {
-            cx.schedule.add_systems(
-                DeliveryHooks::end
-                    .in_set(SimSet::Hit)
-                    .after(DeliverySet::Trigger)
-                    .before(CombatSet::Pay),
-            );
-        }
+impl Scratch for Deliveries {
+    fn is_clear(&self) -> bool {
+        self.delivered.is_empty() && self.ended.is_empty()
     }
 }

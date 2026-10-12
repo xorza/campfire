@@ -10,8 +10,8 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::delivery::{Delivery, DeliveryShape};
 use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::deliveries::DeliverySet;
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::delivering::Delivering;
@@ -45,32 +45,30 @@ pub(crate) mod struck_units;
 #[derive(Debug)]
 pub struct Projectiles;
 
-impl Declares for Projectiles {
-    const MODULE: Option<Capability> = Some(Capability::Projectiles);
+impl Module for Projectiles {
+    const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
+    const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<Projectile>();
         d.component::<FlightState>();
         d.resource::<StruckUnits>();
+        d.scratch::<Launches>();
         d.require::<Projectile, FlightState>();
         d.book::<ByType<ProjectileSpec>>();
         d.api(ProjectilesApi::register);
     }
-}
 
-impl Projectiles {
     /// Adds projectiles to a match. In Hit, before attacks strike, each projectile flies a step,
     /// and its hits and its end run their action's `on_hit` and `on_end`; after attacks strike
     /// and casts resolve, the tick's launches take off, and fly from the next tick. A predicting
     /// client predicts no delivery, so it flies none.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         let predicting = cx.predicting();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world
             .resource_mut::<Deliverers>()
             .register_projectile(Projectiles::deliver);
-        world.insert_resource(Launches::default());
-        world.insert_resource(StruckUnits::default());
         schedule.add_systems((
             Launching::take_shots.in_set(CombatSet::Fire),
             Launching::launch.in_set(CombatSet::Launch),
@@ -79,7 +77,9 @@ impl Projectiles {
             schedule.add_systems(Flying::fly.in_set(DeliverySet::Fly));
         }
     }
+}
 
+impl Projectiles {
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing
     /// projectile at a unit for a homing type, or the fan's projectiles along lines spread evenly
     /// over its spread around the aim, which for an action aimed at a point end there at the

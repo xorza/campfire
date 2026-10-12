@@ -6,6 +6,7 @@ use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta};
 use super::*;
 use crate::actions::slot_times::{SlotCharges, SlotTimes};
 use crate::orders::next_think::NextThink;
+use crate::players::player_resources::PlayerResources;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::stats::instance::StackEnd;
 use crate::stats::lifetime::{Ends, Lifetime};

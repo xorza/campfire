@@ -11,8 +11,8 @@ use campfire_sim::{Capability, Keyed, Position, SimEdge, SimSet, SimTick, Stable
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::geometry::grid::Grid;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
@@ -30,7 +30,7 @@ use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
 use crate::navigation::routing::Routing;
 use crate::navigation::static_changes::StaticChanges;
-use crate::navigation::static_tracking::StaticTracking;
+use crate::navigation::static_tracking::{StaticTracking, StaticTrackingRun};
 use crate::navigation::statics_dirty::StaticsDirty;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
@@ -90,8 +90,9 @@ pub(crate) enum NavigationSet {
 #[derive(Debug)]
 pub struct Navigation;
 
-impl Declares for Navigation {
-    const MODULE: Option<Capability> = Some(Capability::Navigation);
+impl Module for Navigation {
+    const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
+    const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<Destination>();
@@ -99,21 +100,15 @@ impl Declares for Navigation {
         d.component::<OnPath>();
         d.component::<Route>();
         d.component::<Progress>();
+        d.scratch::<StaticChanges>();
+        d.cache::<StaticsDirty>();
+        d.cache::<BodyIndex>();
+        d.cache::<PathingGrid>();
+        d.cache::<RoutePlanner>();
+        d.cache::<StaticTrackingRun>();
         d.book::<ByType<Walker>>();
         d.column::<NavigationColumn, RowParts>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
-    }
-}
-
-impl Navigation {
-    /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
-    pub fn walker(step: MoveStep) -> impl Bundle {
-        (
-            step,
-            Destination::default(),
-            Route::default(),
-            Progress::default(),
-        )
     }
 
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
@@ -121,12 +116,13 @@ impl Navigation {
     /// routes to their destinations, straight lines until the map gives a pathing grid, then the
     /// forced moves move theirs; in Collide, overlapping living bodies part; after Collide, each
     /// unit that walks stands within the bounds again.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.insert_resource(Paths::default());
         world.insert_resource(BodyIndex::new(Shape::MAX_BOUND));
-        world.insert_resource(StaticChanges::default());
         StaticsDirty::install(world);
+        let run = world.register_system(StaticTracking::track_static_bodies);
+        world.insert_resource(StaticTrackingRun(run));
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Navigation, NavigationEffect::queue_listed);
@@ -149,6 +145,18 @@ impl Navigation {
                 .in_set(SimSet::Collide),
             Walking::keep_in_bounds.in_set(SimEdge::After(SimSet::Collide)),
         ));
+    }
+}
+
+impl Navigation {
+    /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
+    pub fn walker(step: MoveStep) -> impl Bundle {
+        (
+            step,
+            Destination::default(),
+            Route::default(),
+            Progress::default(),
+        )
     }
 
     /// Sets the destination of the unit of `entity`, which walks, to `target`, leaving one that
@@ -189,8 +197,9 @@ impl Navigation {
     /// collision can hold the walker between two. With no pathing grid, the box pushes it out
     /// as collision would.
     pub(crate) fn make_room(world: &mut World, entity: Entity) {
+        let run = world.resource::<StaticTrackingRun>().0;
         world
-            .run_system_cached(StaticTracking::track_static_bodies)
+            .run_system(run)
             .expect("the static bodies' tracking runs on any world");
         let unit = world.entity(entity);
         let pos = *unit.get::<Position>().expect("a unit has a place");

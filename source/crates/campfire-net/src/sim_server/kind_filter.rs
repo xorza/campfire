@@ -312,7 +312,7 @@ impl StateTypes for FilterObservers<'_> {
         self.filter::<C>();
     }
 
-    fn resource<R: SimResource>(&mut self) {}
+    fn resource<R: SimResource + Default>(&mut self) {}
 
     fn sim_component<C: Replication>(&mut self) {
         self.component::<C>();
@@ -401,7 +401,7 @@ mod tests {
                 .filter(|&capability| capability != Capability::Mode)
                 .collect();
             let mut kinds = Kinds::default();
-            Release::state_types(CapabilitySet::new(&declared).unwrap(), &mut kinds);
+            Release::state_types(Release::capability_set(&declared).unwrap(), &mut kinds);
             kinds
         }
 
@@ -454,7 +454,7 @@ mod tests {
             self.push::<C>();
         }
 
-        fn resource<R: SimResource>(&mut self) {}
+        fn resource<R: SimResource + Default>(&mut self) {}
 
         fn sim_component<C: Replication>(&mut self) {
             self.component::<C>();

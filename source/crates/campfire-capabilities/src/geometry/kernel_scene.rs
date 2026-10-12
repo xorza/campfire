@@ -8,17 +8,19 @@ pub struct KernelScene {
     rng: Rng,
 }
 
-/// How close a kernel case's units stand: crowded into 40 m square, or spread over 120 m square.
-#[derive(Debug, Clone, Copy)]
-pub enum Density {
-    Crowded,
-    Spread,
+campfire_common::enum_all! {
+    /// How close a kernel case's units stand: crowded into 40 m square, or spread over 120 m
+    /// square.
+    #[derive(Debug, Clone, Copy)]
+    pub enum Density {
+        Crowded,
+        Spread,
+    }
+    /// Both, for a kernel whose cost grows with how close its units stand.
+    pub const ALL;
 }
 
 impl Density {
-    /// Both, for a kernel whose cost grows with how close its units stand.
-    pub const ALL: [Density; 2] = [Density::Crowded, Density::Spread];
-
     /// The case's name.
     pub const fn name(self) -> &'static str {
         match self {

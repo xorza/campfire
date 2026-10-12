@@ -9,8 +9,8 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_times::SlotTimes;
 use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
 use crate::items::item_holds::ItemHolds;
@@ -38,21 +38,20 @@ pub(crate) enum ItemsSet {
     HoldAtInputs,
 }
 
-impl Declares for Items {
-    const MODULE: Option<Capability> = Some(Capability::Items);
+impl Module for Items {
+    const CAPABILITY: Option<Capability> = Some(Capability::Items);
+    const NEEDS: &'static [Capability] = &[Capability::Stats];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<Inventory>();
         d.book::<ItemBook>();
         d.api(ItemsApi::register);
     }
-}
 
-impl Items {
     /// Adds items to a match, on stats: an empty item book until the mode's books fill it, the
     /// inventories its units carry, as state, and the modifiers their items hold, as each tick
     /// starts once the trades are in, and in Resolve once a use may have spent an item.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world
             .get_resource_or_init::<CastSpends>()

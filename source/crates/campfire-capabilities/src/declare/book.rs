@@ -8,13 +8,13 @@ use crate::declare::capability_set::CapabilitySet;
 /// holds the two to agree.
 pub(crate) trait Book: Resource + Default {
     /// The capability that declares it; none for the core.
-    const OWNER: Option<Capability>;
+    const CAPABILITY: Option<Capability>;
     /// Whether only a match that runs scripts reads it, so a client holds none.
     const SCRIPTS_ONLY: bool;
 
     /// Whether a match of the capabilities `set`, which runs scripts when `scripts` says, holds
     /// it: one of its owner's, as it reads it.
     fn held(set: CapabilitySet, scripts: bool) -> bool {
-        Self::OWNER.is_none_or(|owner| set.contains(owner)) && (scripts || !Self::SCRIPTS_ONLY)
+        set.runs(Self::CAPABILITY) && (scripts || !Self::SCRIPTS_ONLY)
     }
 }

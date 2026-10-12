@@ -70,7 +70,7 @@ impl Requirements {
 }
 
 impl Book for Requirements {
-    const OWNER: Option<Capability> = Some(Capability::Production);
+    const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }
 

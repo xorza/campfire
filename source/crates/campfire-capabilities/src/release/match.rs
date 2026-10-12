@@ -101,7 +101,6 @@ pub(crate) mod test_matches {
     use crate::actions::slot_kind_data::SlotKindData;
     use crate::actions::slot_kinds::SlotKinds;
     use crate::combat::Combat;
-    use crate::declare::capability_set::CapabilitySet;
     use crate::players::Players;
     use crate::release::Release;
     use crate::release::r#match::Match;
@@ -135,7 +134,7 @@ pub(crate) mod test_matches {
             rate: TickRate,
             budgets: Option<ScriptBudgets>,
         ) -> Match {
-            let set = CapabilitySet::new(declared).expect("a test declares a valid set");
+            let set = Release::capability_set(declared).expect("a test declares a valid set");
             let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set);
             Match::test_of(match budgets {
                 Some(budgets) => spec.script_budgets(budgets),
@@ -178,7 +177,7 @@ pub(crate) mod test_matches {
         /// A predicting client's match at `TEST_RATE` of `declared`, as `client` gives it: each
         /// of its sim's queries skips the units it holds as the server sent them, `Unpredicted`.
         pub(crate) fn predicting(declared: &[Capability]) -> Match {
-            let set = CapabilitySet::new(declared).expect("a test declares a valid set");
+            let set = Release::capability_set(declared).expect("a test declares a valid set");
             let spec = MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
                 .capabilities(set)
                 .predicting();

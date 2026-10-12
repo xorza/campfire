@@ -5,10 +5,13 @@ use bevy_ecs::world::World;
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, StateRegistry};
 
 use crate::declare::book::Book;
+use crate::declare::cache::Cache;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::parted_kind::PartedKind;
+use crate::declare::report::Report;
+use crate::declare::scratch::Scratch;
 use crate::players::kind_parts::KindParts;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
@@ -79,8 +82,9 @@ impl StateTypes for Installer<'_> {
 
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {}
 
-    fn resource<R: SimResource>(&mut self) {
+    fn resource<R: SimResource + Default>(&mut self) {
         self.registry.resource::<R>();
+        self.world.insert_resource(R::default());
     }
 
     fn sim_component<C: Replication>(&mut self) {
@@ -89,7 +93,9 @@ impl StateTypes for Installer<'_> {
 }
 
 impl KindVisitor for Installer<'_> {
-    fn kind<K: EntityKind>(&mut self) {}
+    fn kind<K: EntityKind>(&mut self) {
+        self.world.init_resource::<KindParts<K>>();
+    }
 }
 
 impl Declarations for Installer<'_> {
@@ -112,6 +118,14 @@ impl Declarations for Installer<'_> {
             self.world.insert_resource(B::default());
         }
     }
+
+    fn scratch<R: Scratch>(&mut self) {
+        self.world.insert_resource(R::default());
+    }
+
+    fn cache<R: Cache>(&mut self) {}
+
+    fn report<R: Report>(&mut self) {}
 
     fn column<C: ViewColumn + Default, D: RowParts>(&mut self, fill: ColumnFill<D, C>) {
         let view = self.world.non_send::<View>().clone();

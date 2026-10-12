@@ -2,6 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
+use crate::declare::scratch::Scratch;
 use crate::units::action_id::ActionId;
 use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
@@ -26,4 +27,10 @@ pub(crate) struct Shot {
     pub(crate) amount: Num,
     pub(crate) kind: DamageKind,
     pub(crate) roll: Num,
+}
+
+impl Scratch for Shots {
+    fn is_clear(&self) -> bool {
+        self.0.is_empty()
+    }
 }

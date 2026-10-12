@@ -13,8 +13,8 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::items::inventory::Inventory;
 use crate::stats::StatsSet;
 use crate::units::block::Block;
@@ -40,11 +40,52 @@ pub(crate) enum AbilitiesSet {
     Toggles,
 }
 
-impl Declares for Abilities {
-    const MODULE: Option<Capability> = Some(Capability::Abilities);
+impl Module for Abilities {
+    const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
+    const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.api(AbilitiesApi::register);
+    }
+
+    /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
+    /// before the tick's projectiles launch, due casts resolve: the delivery, the cost, the
+    /// cooldown and the script's effects apply together, or none of them. A dash an instant cast
+    /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
+    /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
+    /// only cools down, as the server's does.
+    fn install(cx: &mut InstallCx<'_>) {
+        let scripts = cx.scripts();
+        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
+        world.init_resource::<CastSpends>();
+        schedule.add_systems(
+            Casts::start_casts
+                .in_set(SimSet::Act)
+                .in_set(ActionsSet::Start),
+        );
+        if !scripts {
+            schedule.add_systems(
+                (Casts::predict_casts, Channels::predict_channels)
+                    .chain()
+                    .in_set(SimSet::Hit)
+                    .after(CombatSet::Fire)
+                    .before(CombatSet::Launch),
+            );
+            return;
+        }
+        schedule.add_systems((
+            (Casts::resolve_casts, Channels::run_channels)
+                .chain()
+                .in_set(SimSet::Hit)
+                .after(CombatSet::Fire)
+                .before(CombatSet::Launch),
+            Toggles::run_toggles
+                .in_set(SimSet::Inputs)
+                .in_set(AbilitiesSet::Toggles)
+                .after(StatsSet::Regenerate)
+                .after(CombatSet::Respawn)
+                .before(ActionsSet::HoldAtInputs),
+        ));
     }
 }
 
@@ -79,46 +120,6 @@ impl Abilities {
     fn second(rate: TickRate) -> Ticks {
         rate.ticks(1000)
             .expect("a second counts in ticks at every rate")
-    }
-
-    /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
-    /// before the tick's projectiles launch, due casts resolve: the delivery, the cost, the
-    /// cooldown and the script's effects apply together, or none of them. A dash an instant cast
-    /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
-    /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
-    /// only cools down, as the server's does.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.scripts();
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.init_resource::<CastSpends>();
-        schedule.add_systems(
-            Casts::start_casts
-                .in_set(SimSet::Act)
-                .in_set(ActionsSet::Start),
-        );
-        if !scripts {
-            schedule.add_systems(
-                (Casts::predict_casts, Channels::predict_channels)
-                    .chain()
-                    .in_set(SimSet::Hit)
-                    .after(CombatSet::Fire)
-                    .before(CombatSet::Launch),
-            );
-            return;
-        }
-        schedule.add_systems((
-            (Casts::resolve_casts, Channels::run_channels)
-                .chain()
-                .in_set(SimSet::Hit)
-                .after(CombatSet::Fire)
-                .before(CombatSet::Launch),
-            Toggles::run_toggles
-                .in_set(SimSet::Inputs)
-                .in_set(AbilitiesSet::Toggles)
-                .after(StatsSet::Regenerate)
-                .after(CombatSet::Respawn)
-                .before(ActionsSet::HoldAtInputs),
-        ));
     }
 }
 

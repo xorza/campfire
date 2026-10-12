@@ -22,8 +22,8 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::shots::Shots;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::scripts::ctx::Ctx;
 use crate::stats::StatsSet;
 use crate::stats::life::Life;
@@ -93,8 +93,9 @@ pub(crate) enum CombatSet {
     Die,
 }
 
-impl Declares for Combat {
-    const MODULE: Option<Capability> = Some(Capability::Combat);
+impl Module for Combat {
+    const CAPABILITY: Option<Capability> = Some(Capability::Combat);
+    const NEEDS: &'static [Capability] = &[Capability::Stats];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<Kept>();
@@ -102,26 +103,25 @@ impl Declares for Combat {
         d.component::<OnDeath>();
         d.component::<RecentAttackers>();
         d.component::<Respawn>();
+        d.scratch::<PassQueue>();
+        d.scratch::<Shots>();
+        d.report::<Deaths>();
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();
         d.column::<CombatColumn, RowParts>(CombatColumn::fill_row);
         d.api(CombatApi::register);
     }
-}
 
-impl Combat {
     /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act,
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
     /// go, after the Mode stage saw them. A unit's despawn and its attackers are the server's: a
     /// predicting client despawns no unit, and forgets no attacker it never held.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         let scripts = cx.scripts();
         let predicting = cx.predicting();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.insert_resource(PassQueue::default());
-        world.insert_resource(Shots::default());
         world.insert_resource(Deaths::default());
         world
             .resource_mut::<EffectQueues>()

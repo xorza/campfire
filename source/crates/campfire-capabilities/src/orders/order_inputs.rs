@@ -9,6 +9,7 @@ use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::targets::Targets;
+use crate::declare::scratch::Scratch;
 use crate::geometry::bounds::Bounds;
 use crate::navigation::destination::Destination;
 use crate::navigation::group_box::GroupBox;
@@ -203,5 +204,11 @@ impl OrderInputs {
             let resets = order.apply(parts, &bounds, now);
             debug_assert!(!resets, "a player orders no reset");
         }
+    }
+}
+
+impl Scratch for PlayerOrders {
+    fn is_clear(&self) -> bool {
+        self.0.is_empty()
     }
 }

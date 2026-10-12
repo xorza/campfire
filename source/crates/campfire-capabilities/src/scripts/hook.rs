@@ -3,61 +3,39 @@ use serde::Deserialize;
 
 use crate::scripts::script_role::ScriptRole;
 
-/// A hook the engine calls in a script, by name: every hook of the script API, whether the
-/// release calls it yet or not, so the package load checks know them all. It reads back from
-/// its `Debug` name, as a log writes it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum Hook {
-    OnResolve,
-    OnHit,
-    OnEnd,
-    OnChannelTick,
-    OnInterrupt,
-    OnInterval,
-    OnAttack,
-    OnAttackHit,
-    OnDamageTaken,
-    OnKill,
-    OnTakedown,
-    OnMatchStart,
-    OnModeInput,
-    OnTimer,
-    OnPlayerJoin,
-    OnPlayerLeave,
-    OnUnitDied,
-    CalcDamage,
-    CalcHeal,
-    OnThink,
-    OnLevelUp,
-    OnGenerate,
+campfire_common::enum_all! {
+    /// A hook the engine calls in a script, by name: every hook of the script API, whether the
+    /// release calls it yet or not, so the package load checks know them all. It reads back from
+    /// its `Debug` name, as a log writes it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+    pub enum Hook {
+        OnResolve,
+        OnHit,
+        OnEnd,
+        OnChannelTick,
+        OnInterrupt,
+        OnInterval,
+        OnAttack,
+        OnAttackHit,
+        OnDamageTaken,
+        OnKill,
+        OnTakedown,
+        OnMatchStart,
+        OnModeInput,
+        OnTimer,
+        OnPlayerJoin,
+        OnPlayerLeave,
+        OnUnitDied,
+        CalcDamage,
+        CalcHeal,
+        OnThink,
+        OnLevelUp,
+        OnGenerate,
+    }
+    pub const ALL;
 }
 
 impl Hook {
-    pub const ALL: [Hook; 22] = [
-        Hook::OnResolve,
-        Hook::OnHit,
-        Hook::OnEnd,
-        Hook::OnChannelTick,
-        Hook::OnInterrupt,
-        Hook::OnInterval,
-        Hook::OnAttack,
-        Hook::OnAttackHit,
-        Hook::OnDamageTaken,
-        Hook::OnKill,
-        Hook::OnTakedown,
-        Hook::OnMatchStart,
-        Hook::OnModeInput,
-        Hook::OnTimer,
-        Hook::OnPlayerJoin,
-        Hook::OnPlayerLeave,
-        Hook::OnUnitDied,
-        Hook::CalcDamage,
-        Hook::CalcHeal,
-        Hook::OnThink,
-        Hook::OnLevelUp,
-        Hook::OnGenerate,
-    ];
-
     /// The prefixes that mark a script function as a hook: one with either that is no hook of
     /// the API is a misspelling, not a helper.
     pub const PREFIXES: [&'static str; 2] = ["on_", "calc_"];

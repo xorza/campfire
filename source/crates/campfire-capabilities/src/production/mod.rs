@@ -3,8 +3,8 @@ use campfire_sim::{Capability, SimSet};
 
 use crate::actions::ActionsSet;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::navigation::NavigationSet;
 use crate::production::build_specs::BuildSpecs;
 use crate::production::builder::Builder;
@@ -73,8 +73,9 @@ pub(crate) enum ProductionSet {
     Finish,
 }
 
-impl Declares for Production {
-    const MODULE: Option<Capability> = Some(Capability::Production);
+impl Module for Production {
+    const CAPABILITY: Option<Capability> = Some(Capability::Production);
+    const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<TrainQueue>();
@@ -92,9 +93,7 @@ impl Declares for Production {
         d.column::<ProductionColumn, RowParts>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
     }
-}
 
-impl Production {
     /// Adds production to a match: in Act, after the other orders start, ordered trains pass their
     /// checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains
     /// whose time ended spawn. With navigation, which tests a box for room and walks a worker,
@@ -104,14 +103,16 @@ impl Production {
     /// player's supply and a node's end are the server's: a predicting client derives neither,
     /// as it holds only the units its team sees. A build's placement tests the units the server's
     /// vision sees, or, on a predicting client, the units it holds.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         if cx.predicting() {
             Production::install_by::<ByHolding>(cx);
         } else {
             Production::install_by::<ByVision>(cx);
         }
     }
+}
 
+impl Production {
     /// `install`, each placement testing the units `S` sees.
     fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
         let navigation = cx.has(Capability::Navigation);

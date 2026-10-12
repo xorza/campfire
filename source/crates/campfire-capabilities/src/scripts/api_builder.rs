@@ -34,7 +34,7 @@ pub(crate) struct ApiBuilder<'a> {
     host: &'a mut ScriptHost,
     api: &'a mut ScriptApi,
     /// The capability whose module binds, none for the core's and the mode's.
-    owner: Option<Capability>,
+    capability: Option<Capability>,
 }
 
 impl<'a> ApiBuilder<'a> {
@@ -42,24 +42,24 @@ impl<'a> ApiBuilder<'a> {
         ApiBuilder {
             host,
             api,
-            owner: None,
+            capability: None,
         }
     }
 
-    /// Starts the API of `module`: the core's, `None`, or a capability's. The mode's names are
-    /// the core's, as every match has a mode.
-    pub(crate) fn module(&mut self, module: Option<Capability>) {
-        self.owner = module.filter(|&capability| capability != Capability::Mode);
+    /// Starts the API of the module of `capability`: the core's, `None`, or a capability's. The
+    /// mode's names are the core's, as every match has a mode.
+    pub(crate) fn module(&mut self, capability: Option<Capability>) {
+        self.capability = capability.filter(|&capability| capability != Capability::Mode);
     }
 
     /// `spec`, of the binding module's capability unless it names another.
     fn owned(&self, mut spec: MemberSpec) -> MemberSpec {
         assert!(
-            self.owner.is_none() || spec.capability != self.owner,
+            self.capability.is_none() || spec.capability != self.capability,
             "`{}` names the capability of the module that binds it",
             spec.name
         );
-        spec.capability = spec.capability.or(self.owner);
+        spec.capability = spec.capability.or(self.capability);
         spec
     }
 
@@ -200,7 +200,7 @@ impl<'a> ApiBuilder<'a> {
         runs: &[&'static str],
         planned: &[&'static str],
     ) -> &mut Self {
-        self.api.record_data(table, runs, planned, self.owner);
+        self.api.record_data(table, runs, planned, self.capability);
         self
     }
 
@@ -211,7 +211,7 @@ impl<'a> ApiBuilder<'a> {
     ) -> &mut Self {
         for (name, status) in fields {
             self.api
-                .record_field(DataTable::Action, name, status, self.owner);
+                .record_field(DataTable::Action, name, status, self.capability);
         }
         self
     }

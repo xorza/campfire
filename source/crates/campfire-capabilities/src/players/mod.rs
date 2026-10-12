@@ -15,12 +15,21 @@ pub(crate) mod resource_id;
 
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
-use campfire_sim::StableId;
+use campfire_sim::{Breach, Capability, StableId};
 
+use crate::declare::declarations::Declarations;
+use crate::declare::install_cx::InstallCx;
+use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::module::Module;
+use crate::players::held_out::HeldOut;
 use crate::players::kind_parts::KindParts;
 use crate::players::match_entity::MatchEntity;
+use crate::players::out_of_play::OutOfPlay;
 use crate::players::player::Player;
+use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::PlayersWorld;
 use crate::units::team::Team;
+use crate::units::view::View;
 
 /// The players and the match as entities: what spawns them, under every capability.
 #[derive(Debug)]
@@ -33,7 +42,41 @@ use crate::units::team::Team;
 )]
 pub struct Players;
 
+impl Module for Players {
+    const CAPABILITY: Option<Capability> = None;
+    const NEEDS: &'static [Capability] = &[];
+
+    fn declare<D: Declarations>(d: &mut D) {
+        Players::kinds(d);
+        d.component::<MatchEntity>();
+        d.component::<Player>();
+        d.component::<HeldOut>();
+        d.component::<OutOfPlay>();
+        d.component::<PlayerResources>();
+        d.require::<Player, Team>();
+        d.check::<MatchEntity>(Players::match_spawned);
+        d.part::<Player, PlayerResources>(|world| {
+            PlayerResources::new(world.non_send::<View>().resource_count())
+        });
+    }
+
+    fn install(_: &mut InstallCx<'_>) {}
+}
+
 impl Players {
+    /// Visits the kinds of the players' and the match's entities, which state types name as
+    /// their host.
+    fn kinds<V: KindVisitor>(v: &mut V) {
+        v.kind::<MatchEntity>();
+        v.kind::<Player>();
+    }
+
+    /// Whether the match's entity stands, as every match that started spawns it, so no system
+    /// finds it missing.
+    fn match_spawned(world: &World) -> Result<(), Breach> {
+        Breach::of_match(world.match_entity().is_some())
+    }
+
     /// Spawns the match's entity, then each player's, in slot order, `teams` giving each slot's
     /// team, each with its named id and the parts the installed modules declare for its kind.
     pub(crate) fn spawn_match(world: &mut World, teams: impl Iterator<Item = Team>) {

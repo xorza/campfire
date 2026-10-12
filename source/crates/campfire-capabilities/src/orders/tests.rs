@@ -24,7 +24,6 @@ use crate::actions::slot_times::SlotTimes;
 use crate::actions::test_world::TestWeapon;
 use crate::combat::on_death::OnDeath;
 use crate::combat::test_world::Armed;
-use crate::declare::capability_set::CapabilitySet;
 use crate::geometry::grid::Grid;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::{ItemBook, ItemSpec};
@@ -1588,7 +1587,7 @@ fn production_and_items_add_their_order_actions_only_where_they_are_declared() {
         let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
         let world = Match::new(
             MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
-                .capabilities(CapabilitySet::new(declared).unwrap())
+                .capabilities(Release::capability_set(declared).unwrap())
                 .script_budgets(budgets),
         );
         let schedules = world.resource::<Schedules>();

@@ -1,3 +1,4 @@
+use crate::declare::report::Report;
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
 
@@ -18,3 +19,5 @@ impl SaveAsked {
         self.at
     }
 }
+
+impl Report for SaveAsked {}

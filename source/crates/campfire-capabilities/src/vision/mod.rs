@@ -3,8 +3,8 @@ use bevy_ecs::world::World;
 use campfire_sim::{Capability, SimSet};
 
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::geometry::grid::Grid;
 use crate::geometry::polygon::Polygon;
 use crate::units::by_type::ByType;
@@ -41,8 +41,9 @@ pub(crate) mod vision_groups;
 #[derive(Debug)]
 pub struct Vision;
 
-impl Declares for Vision {
-    const MODULE: Option<Capability> = Some(Capability::Vision);
+impl Module for Vision {
+    const CAPABILITY: Option<Capability> = Some(Capability::Vision);
+    const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.resource::<Reveals>();
@@ -52,22 +53,21 @@ impl Declares for Vision {
         d.column::<VisionColumn, RowParts>(VisionColumn::fill_row);
         d.api(VisionApi::register);
     }
-}
 
-impl Vision {
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
     /// teams that see it, with the reveals under way. A match sees nothing until its mode gives
     /// the grid. The sights of the delivery types, which no kit holds, are a book of their own.
     /// What a team sees is the server's: a predicting client holds the units its team sees, as
     /// the server sends them, and reveals nothing.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         if !cx.predicting() {
             cx.schedule.add_systems(Seeing::see.in_set(SimSet::Vision));
         }
-        cx.world.insert_resource(Reveals::default());
     }
+}
 
+impl Vision {
     /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's order,
     /// and the number of its teams.
     pub fn load_grid(world: &mut World, grid: Grid, brush: &[Polygon], teams: usize) {

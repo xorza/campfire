@@ -1,7 +1,9 @@
 use bevy_ecs::query::{Added, Allow, Changed, Or, With, Without};
-use bevy_ecs::system::{Local, Query, ResMut};
+use bevy_ecs::resource::Resource;
+use bevy_ecs::system::{Local, Query, ResMut, SystemId};
 use campfire_sim::{Position, StableId, Unpredicted};
 
+use crate::declare::cache::Cache;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::static_changes::StaticChanges;
@@ -37,6 +39,13 @@ type ChangedStatics<'w, 's> = Query<
 /// The static bodies the static index and the pathing grid hold, and their changes.
 #[derive(Debug)]
 pub(super) struct StaticTracking;
+
+/// The tracking of the static bodies as a system of its own, which a spawn runs out of the
+/// schedule, as `Navigation::make_room` does. Each install registers it again.
+#[derive(Resource, Debug, Clone, Copy)]
+pub(super) struct StaticTrackingRun(pub(super) SystemId);
+
+impl Cache for StaticTrackingRun {}
 
 impl StaticTracking {
     /// Gives the static index and the pathing grid the static bodies: the living units that cannot

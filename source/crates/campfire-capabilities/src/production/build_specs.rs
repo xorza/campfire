@@ -149,7 +149,7 @@ impl BuildSpec<'_> {
 }
 
 impl Book for BuildSpecs {
-    const OWNER: Option<Capability> = Some(Capability::Production);
+    const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }
 

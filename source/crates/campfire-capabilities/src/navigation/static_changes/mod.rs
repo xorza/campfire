@@ -1,6 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
+use crate::declare::scratch::Scratch;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::segment::Segment;
 use crate::navigation::walker::Walker;
@@ -47,6 +48,12 @@ impl StaticChanges {
     pub(crate) fn clear(&mut self) {
         self.added.clear();
         self.removed = false;
+    }
+}
+
+impl Scratch for StaticChanges {
+    fn is_clear(&self) -> bool {
+        self.added.is_empty() && !self.removed
     }
 }
 

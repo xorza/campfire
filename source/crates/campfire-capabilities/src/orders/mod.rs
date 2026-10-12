@@ -2,14 +2,14 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::{Capability, SimSet};
+use campfire_sim::{Capability, SimEdge, SimSet};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
 use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
-use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::declare::module::Module;
 use crate::geometry::bounds::Bounds;
 use crate::items::ItemsSet;
 use crate::orders::ai::Ai;
@@ -59,18 +59,19 @@ pub(crate) enum OrdersSet {
 #[derive(Debug)]
 pub struct Orders;
 
-impl Declares for Orders {
-    const MODULE: Option<Capability> = Some(Capability::Orders);
+impl Module for Orders {
+    const CAPABILITY: Option<Capability> = Some(Capability::Orders);
+    const NEEDS: &'static [Capability] = &[Capability::Combat, Capability::Navigation];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<NextThink>();
         d.component::<Resetting>();
+        d.scratch::<PlayerOrders>();
+        d.scratch::<TickOrders>();
         d.book::<ByType<Ai>>();
         d.api(OrdersApi::register);
     }
-}
 
-impl Orders {
     /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
     /// are learned, and, with production, trains are cancelled and rally points set, and, with
     /// items, on the server, items trade; in Think, the resets whose units arrived end, then the
@@ -80,22 +81,22 @@ impl Orders {
     /// installed. Without the core's scripts, as on a client, no unit thinks and no item trades.
     /// An order's targets are checked as the server's vision sees them, or, on a predicting
     /// client, as the units it holds.
-    pub(crate) fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_>) {
         if cx.predicting() {
             Orders::install_by::<ByHolding>(cx);
         } else {
             Orders::install_by::<ByVision>(cx);
         }
     }
+}
 
+impl Orders {
     /// `install`, each order's targets checked as `S` sees them.
     fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
         let production = cx.has(Capability::Production);
         let items = cx.has(Capability::Items);
         let scripts = cx.scripts();
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.init_resource::<PlayerOrders>();
-        world.init_resource::<TickOrders>();
+        let schedule = &mut *cx.schedule;
         schedule.add_systems((
             (
                 OrderInputs::read_orders,
@@ -112,6 +113,7 @@ impl Orders {
                 .chain()
                 .in_set(SimSet::Act)
                 .before(CombatSet::Attack),
+            TickOrders::empty.in_set(SimEdge::After(SimSet::Inputs)),
         ));
         schedule.configure_sets(
             OrdersSet::Orders

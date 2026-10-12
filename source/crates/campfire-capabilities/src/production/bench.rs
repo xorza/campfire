@@ -12,7 +12,6 @@ use crate::actions::Actions;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::slot_kind::SlotKind;
-use crate::declare::capability_set::CapabilitySet;
 use crate::navigation::destination::Destination;
 use crate::players::Players;
 use crate::players::players_world::PlayersWorld;
@@ -21,6 +20,7 @@ use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production::node::Node;
 use crate::production::node_book::NodeBook;
 use crate::production::resource_set::ResourceSet;
+use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::release::match_spec::MatchSpec;
 use crate::units::body::Body;
@@ -65,7 +65,7 @@ pub(crate) fn gather(c: &mut Criterion) {
 fn two_fields() -> Match {
     let rate = TickRate::new(NonZeroU32::new(30).unwrap());
     // A match without navigation runs no gather, as only navigation tests a box for room.
-    let set = CapabilitySet::new(&[Capability::Production, Capability::Navigation]).unwrap();
+    let set = Release::capability_set(&[Capability::Production, Capability::Navigation]).unwrap();
     let mut world = Match::new(MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set));
 
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();

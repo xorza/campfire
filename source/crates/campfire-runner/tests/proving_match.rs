@@ -1,6 +1,8 @@
 //! The proving match plays through every capability with no failed call, and proves what it is
 //! there to prove: each capability it names takes part.
 
+use std::any::TypeId;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
 use campfire_capabilities::{
@@ -9,9 +11,9 @@ use campfire_capabilities::{
     TeamSet, TrainQueue,
 };
 use campfire_math::Num;
-use campfire_runner::SessionWorld;
 use campfire_runner::internals::MatchBuild;
 use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, MatchUnits, ProvingMatch};
+use campfire_runner::{Session, SessionWorld};
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 
@@ -75,9 +77,9 @@ fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
     (id, world.entity_ref_of(id).unwrap())
 }
 
-/// Asserts that tick `tick` of `fixed`, a match of `set`, failed no script call, and
-/// that each part a unit holds is state or derived, as a list declares it: a part none declares
-/// would be held by no hash, snapshot or client.
+/// Asserts that tick `tick` of `fixed`, a match of `set`, failed no script call; that each part a
+/// unit holds is state or derived, as a list declares it: a part none declares would be held by
+/// no hash, snapshot or client; and that each resource is declared, its scratch clear.
 fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
     let world = fixed.game();
     let failures = world.non_send::<ScriptFailures>();
@@ -87,6 +89,8 @@ fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
         failures.get()
     );
     let unlisted = Release::unlisted_components(set, world);
+    assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
+    let unlisted = Release::unlisted_resources(set, world, &[TypeId::of::<Session>()]);
     assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
 }
 

@@ -1,3 +1,4 @@
+use crate::declare::cache::Cache;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 
@@ -23,3 +24,5 @@ impl LiveCarriers {
         self.0.push(entity);
     }
 }
+
+impl Cache for LiveCarriers {}

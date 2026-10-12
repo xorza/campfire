@@ -10,14 +10,18 @@ pub struct Pace {
     speed: AtomicU8,
 }
 
-/// A local match's game speed: the tick length is the session's over the speed.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum PaceSpeed {
-    Half,
-    #[default]
-    Normal,
-    Double,
-    Quadruple,
+campfire_common::enum_all! {
+    /// A local match's game speed: the tick length is the session's over the speed.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub enum PaceSpeed {
+        Half,
+        #[default]
+        Normal,
+        Double,
+        Quadruple,
+    }
+    /// Every speed, slowest first.
+    pub const ALL;
 }
 
 impl Default for Pace {
@@ -48,14 +52,6 @@ impl Pace {
 }
 
 impl PaceSpeed {
-    /// Every speed, slowest first.
-    pub const ALL: [PaceSpeed; 4] = [
-        PaceSpeed::Half,
-        PaceSpeed::Normal,
-        PaceSpeed::Double,
-        PaceSpeed::Quadruple,
-    ];
-
     /// The speed's place in `ALL`.
     const fn place(self) -> u8 {
         match self {

@@ -1,6 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::StableId;
 
+use crate::declare::scratch::Scratch;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::values::rank::Rank;
@@ -20,4 +21,10 @@ pub(crate) struct Held {
     pub(crate) source: Option<StableId>,
     pub(crate) action: Option<ActionId>,
     pub(crate) rank: Rank,
+}
+
+impl Scratch for HeldModifiers {
+    fn is_clear(&self) -> bool {
+        self.0.is_empty()
+    }
 }
