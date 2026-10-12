@@ -340,7 +340,7 @@ pub(crate) mod internals {
     use std::cell::RefMut;
 
     use crate::actions::cost_target::CostTarget;
-    use crate::scripts::error::ApiError;
+    use crate::scripts::error::UnknownName;
     use crate::stats::stat_id::StatId;
     use crate::stats::stats_column::StatsColumn;
     use crate::units::filter::Filter;
@@ -352,7 +352,7 @@ pub(crate) mod internals {
 
     impl View {
         /// The run-time form of `filter`, its tag among those of the match's unit types.
-        pub(crate) fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, ApiError> {
+        pub(crate) fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
             Filter::resolve(filter, self.names().types())
         }
 

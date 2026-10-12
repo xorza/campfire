@@ -3,9 +3,9 @@ use std::path::Path;
 use std::{fmt, iter};
 
 use campfire_capabilities::{
-    ActionData, BookInput, BookKind, BookPackage, Books, DeclaredName, EngineTag, MapData,
-    ModeData, PackageContent, PackagePath, Param, Release, ScriptBook, StatGraph, StatId,
-    UnitTypeData,
+    ActionData, BookInput, BookKind, BookPackage, Books, DeclaredName, EdgeError, EngineTag,
+    MapData, ModeData, PackageContent, PackagePath, Release, ScriptBook, StatGraph, StatId,
+    UnitTypeData, UnknownName,
 };
 use campfire_common::{Fingerprint, MapName};
 use campfire_script::{ScriptHost, ScriptId};
@@ -14,6 +14,7 @@ use campfire_sim::{Capability, TickRate};
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
+use crate::error::place::Place;
 use crate::error::{LoadError, PackageRef, StoreError};
 use crate::file_index::FileIndex;
 use crate::files::manifest::Manifest;
@@ -323,28 +324,44 @@ impl ModePackages {
     /// Which stats each live stat change reads and which it changes, across the modifiers of the
     /// mode and of each package it depends on: a change that reads a param its modifier, or else
     /// an action of a way that applies it, declares as a scaling table reads each stat the table
-    /// names.
-    pub(crate) fn stat_graph(&self) -> StatGraph {
+    /// names. An error names a stat the mode does not have, where the package gives it.
+    pub(crate) fn stat_graph(&self) -> Result<StatGraph, LoadError> {
         let mut graph = StatGraph::new(self.data.stats.keys().cloned());
         for view in self.packages() {
             let content = view.content;
             let ways = self.modifier_ways(view);
+            let fail = |at, name: UnknownName| {
+                let UnknownName { of, name } = name;
+                let problem = LoadProblem::Unknown { at, name, of };
+                LoadError::of(&view.package.header.name, problem)
+            };
             for (id, modifier) in &content.modifiers {
-                let by: Vec<&ActionData> = ways.actions_of(id.as_str(), &content.actions).collect();
+                let by: Vec<(&DeclaredName, &ActionData)> =
+                    ways.actions_of(id.as_str(), &content.actions).collect();
                 for (changed, change) in &modifier.stats {
                     let Some(name) = change.value.param() else {
                         continue;
                     };
-                    let own = modifier.params.get(name);
+                    let own = modifier.params.get(name).map(|param| (None, param));
                     let applied = by.iter().filter(|_| own.is_none());
-                    let applied = applied.filter_map(|action| action.params.get(name));
-                    for read in own.into_iter().chain(applied).flat_map(Param::stats) {
-                        graph.add(read, changed);
+                    let applied = applied
+                        .filter_map(|&(action, data)| Some((Some(action), data.params.get(name)?)));
+                    for (action, param) in own.into_iter().chain(applied) {
+                        for read in param.stats() {
+                            graph.add(read, changed).map_err(|error| match error {
+                                EdgeError::Read(name) if let Some(action) = action => {
+                                    fail(Place::Action(action.clone()), name)
+                                }
+                                EdgeError::Read(name) | EdgeError::Changed(name) => {
+                                    fail(Place::Modifier(id.clone()), name)
+                                }
+                            })?;
+                        }
                     }
                 }
             }
         }
-        graph
+        Ok(graph)
     }
 
     /// The ranks of each action `types` place in their slots: those of the slot kind it sits in.

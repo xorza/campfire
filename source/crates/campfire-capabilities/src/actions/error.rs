@@ -1,3 +1,8 @@
+use thiserror::Error;
+
+use crate::scripts::error::UnknownName;
+use crate::values::error::TimeTooLarge;
+
 /// A capability field of an action that the release runs, which does not give a value of its
 /// kind at a rank: a whole number of milliseconds or of a pool the mode declares, or a range of
 /// meters that is not negative, and never through a scaling param.
@@ -15,4 +20,14 @@ pub enum ActionField {
     Channel,
     /// Its charge's most: whole milliseconds, not 0.
     Charge,
+}
+
+/// Why an action's data does not load into a match: a time too large to count in ticks at its
+/// rate, or a name the match does not have.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub(crate) enum ActionError {
+    #[error(transparent)]
+    Time(#[from] TimeTooLarge),
+    #[error(transparent)]
+    Unknown(#[from] UnknownName),
 }

@@ -60,8 +60,10 @@ pub(crate) struct ModeBooksInput<'a> {
     pub(crate) types: &'a mut UnitTypes,
     pub(crate) walkers: &'a ByType<Walker>,
     pub(crate) stats: StatBook,
-    /// The life pool, none when the mode names none.
+    pub(crate) pools: PoolBook,
+    /// The life pool, none when the mode names none, and what `[combat]` binds beside it.
     pub(crate) life: Option<PoolId>,
+    pub(crate) bindings: Option<CombatBindings>,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
     /// The names of its pools, its players' resources, its damage kinds and its layers.
@@ -120,7 +122,9 @@ impl ModeBooks {
             types,
             walkers,
             stats,
+            pools,
             life,
+            bindings,
             loadout_ranks,
             names,
             map,
@@ -138,8 +142,8 @@ impl ModeBooks {
             }
         }
         ModeBooks {
-            pools: PoolBook::new(&data.pools, names.pools, &stats),
-            bindings: life.map(|_| CombatBindings::new(&data.combat, &stats)),
+            pools,
+            bindings,
             life,
             tags: types.tag_book(&data.tags),
             stats,

@@ -24,62 +24,13 @@ Every batch moves the engine toward one shape, and each item names the part it b
 | Script members, hooks and data tables | `d.api` | today |
 
 - **A kind is a marker,** one on each entity; a kind's parts are declared (F25); a derived part comes by a hook of the part it derives from.
-- **A name is resolved once,** at the load: one table of names for each id, `Names`, a builder that is the check of what it resolves (F23), a script argument resolved by its type, `ScriptArg`.
+- **A name is resolved once,** at the load: one table of names for each id, `Names`, a builder that is the check of what it resolves, a script argument resolved by its type, `ScriptArg`.
 - **One word, one meaning:** module, owner, kind, part, callback (`Hook` is the scripts' alone), `*File`, `*Data`, `*Spec`, `*Book`, which the release tests hold.
 - **A pass visits what changed:** no query state, structural change or allocation per item on a hot path (F27 to F29, F33, I1), and a fact fixed at install is a fact of the schedule (F39).
 
 So a new capability is one entry of the list; a new state type its type and one `d.component`; a new section of a unit type a `DataSection`, its owner's data record and a `d.part`; a new effect an `Effect` and a `d.callback`. The declaration audit and the release tests fail on each piece left out.
 
-## 1. Load, then trust
-
-`package`, `capabilities`' books. Before the books' path and the unit parts are written, so each builder is written once in the checked form, and resolves through the `Names` tables.
-
-### F23. Load, then trust
-
-(`capabilities`, `package`.) The builders `expect` what `campfire-package/src/load_check.rs` (2,288 lines) checked: 40 `expect(CHECKED)` in `books/book_builder.rs`, and 28 `expect("the load …")` in 21 other files. The two copies of each rule can drift: a check the load loses becomes a panic at the build.
-
-```rust
-// stats/pool_book.rs:31
-let index = |stat| book.named(stat).expect("the load checked the pools' stats");
-
-// load_check.rs:1379, the same rule
-self.stats_declared(iter::once(&pool.max).chain(&pool.regen), &at)?;
-```
-
-A builder that resolves a name, through its `Names` table, is the check of that name: it returns the case that fails, and the load check drops its copy. The book build already returns `BookError`:
-
-```rust
-// stats/pool_book.rs
-pub(crate) fn new(
-    pools: &BTreeMap<DeclaredName, PoolData>,
-    names: Arc<Names<PoolId>>,
-    book: &StatBook,
-) -> Result<PoolBook, BookError> {
-    let index = |pool: &DeclaredName, stat: &Stat| {
-        book.named(stat).ok_or_else(|| BookError::PoolStat {
-            pool: pool.clone(),
-            stat: stat.clone(),
-        })
-    };
-    let stats = pools
-        .iter()
-        .map(|(name, pool)| {
-            Ok(PoolStats {
-                max: index(name, &pool.max)?,
-                regen: pool.regen.as_ref().map(|regen| index(name, regen)).transpose()?,
-            })
-        })
-        .collect::<Result<Vec<_>, BookError>>()?;
-    Ok(PoolBook {
-        names,
-        pools: stats,
-    })
-}
-```
-
-A rule between packages, which no single builder sees, stays in the load check. An `expect` that a capability is installed, as `EffectQueues::of` holds, is a rule of the match, not of the data, and stays. Check: `every_flaw_of_a_package_fails_its_load_with_its_own_problem` passes with each flaw's problem, now from the builder where it moved.
-
-## 2. Books
+## 1. Books
 
 `capabilities`: `books`, `mode`, `declare`, `stats`, `actions`, `navigation`, `units`. One path for every piece of package data a match holds.
 
@@ -109,7 +60,7 @@ impl Declarations for BookFill<'_> {
 
 Every type above becomes a book; fixtures load through the same walk; a guard on a book's presence, as `contains_resource::<StatBook>()` (`stats/mod.rs:190`), becomes a check of an empty book. The resource audit's list of the books not declared yet (`release/resource_audit.rs`) goes, and so does the role test's list of the `*Book` types that are no books yet (`BOOKS_TO_DECLARE`, `release/tests/mod.rs`). Check: a book built and not declared, or declared and not built, panics at install; no golden moves.
 
-## 3. A unit's parts by declaration
+## 2. A unit's parts by declaration
 
 `capabilities`: `mode`'s kit, `books`, `declare`, and each capability that gives a unit a part; `runner`'s arena. A unit takes its parts as the player and the match take theirs: each capability declares them.
 
@@ -135,7 +86,7 @@ Slots become a part `actions` declares; a unit's stats come with its `Level`; it
 
 (`capabilities`: `mode`, `production`'s tests; `runner`.) Four spawns stand for "as the mode spawns", in two orders of arguments: `ModeUnits::spawn(world, type, pos, team, parts)` (`mode/mode_units.rs:30`), which repeats `ModeSpec::spawn`; the arena's, which keeps `ModeUnits` in the world as a non-send `ArenaUnits` (`runner/src/harness/arena.rs:57-71`, `137`); `Mode::spawn_typed(world, name, team, pos)` through the `Spawner` (`mode/mod.rs:338`); and the test-only `Units::spawn(world, pos, team, parts)`. Three tests of production install `Spawner`s of their own that skip the kit (`production/tests/mod.rs:90`, `gathering.rs:459`, `construction.rs:93`): units no production path makes. `ModeUnits` builds the one `Spawner`, which `Mode::install` and `MatchBuild::arena` both install; `Arena::spawn` calls `Mode::spawn_typed(world, name, pos, team, parts)`, one order; `ArenaUnits` goes; the production tests load their unit types as data and spawn through it. Check: no golden moves.
 
-## 4. Navigation
+## 3. Navigation
 
 `capabilities`: `navigation`, `deliveries`, `projectiles`. Each navigation pass reads and writes only the units it changes.
 
@@ -204,9 +155,9 @@ Check: the teleport tests pass unchanged; no golden moves.
 
 (`capabilities`: `navigation`.) `Walking::steer` sorts every living walker by stable id (`navigation/walking.rs:108-109`), then skips those that do not walk, wait for a route or have nothing ahead; `Walking::collide` calls `get_mut` on every collider (`walking.rs:269`), statics among them, though `Collider::part` never moves a body that cannot be pushed (`collider/mod.rs:139-149`). `steer` filters by the three tests before its sort; `collide` writes back only the colliders that `contacts` names, their indices sorted and deduplicated in a scratch buffer. The same units in the same order of stable ids, and the writes use `set_if_neq`. Check: the goldens do not move.
 
-## 5. Read, then write
+## 4. Read, then write
 
-`capabilities`: `combat`, `abilities`, `progression`, `items`, `units`, `mode`. Before batch 6, which edits the damage pass and the attacks again.
+`capabilities`: `combat`, `abilities`, `progression`, `items`, `units`, `mode`. Before batch 5, which edits the damage pass and the attacks again.
 
 ### F29. No resource scope on a hot path
 
@@ -226,7 +177,7 @@ world
 
 `DamagePass::deal` reads first, into a scratch list the pass keeps, the attackers the index no longer holds, then writes. `Channels::predict_channels` then needs no `&mut World`, and becomes a system of queries, which takes one of the eight exclusive systems out of the prediction test's `EXCLUSIVE` (the issue log, **Core**). Check: no golden moves.
 
-## 6. The action pipeline's seams
+## 5. The action pipeline's seams
 
 `capabilities`: `actions`, `combat`, `projectiles`, `stats`, `items`, `abilities`, `areas`, `mode`, `orders`, `production`, `declare`, every module's install, the declaration audit; `sim`'s stages. What `actions` owns, one fixed order of steps in each stage, and each module's sets declared with their place and their order. No golden moves.
 
@@ -342,9 +293,9 @@ impl Callbacks for GrantSources {
 
 The pass runs where a source's answer changes today: as each tick starts, after Hit's casts and attacks, after Resolve, and at the tick's end; each run visits only the units whose source or modifiers changed, and those `ReadyWaits` keeps. Two sources that grant one modifier from one source unit share one hold, as two items do; the load still refuses a modifier that two kinds of source grant. Check: no golden moves.
 
-## 7. Commands to their owners
+## 6. Commands to their owners
 
-`capabilities`: `orders`, `items`, `production`, `progression`; `client`; the session log's format version. After batch 6, as both change what `orders` orders against.
+`capabilities`: `orders`, `items`, `production`, `progression`; `client`; the session log's format version. After batch 5, as both change what `orders` orders against.
 
 ### F32. Each capability owns its commands
 
@@ -356,9 +307,9 @@ The pass runs where a source's answer changes today: as each tick starts, after 
 
 The commands' bytes in a session log change, so the log format's version rises. Check: the goldens' state and behaviour columns do not move.
 
-## 8. One grid of units
+## 7. One grid of units
 
-`capabilities`: `units`, `actions`' targets, `projectiles`, `areas`, `stats`' held pass, `navigation`'s `make_room`. After batch 6, whose grants settle what `HeldPass` keeps. The grid is a cache, `d.cache`.
+`capabilities`: `units`, `actions`' targets, `projectiles`, `areas`, `stats`' held pass, `navigation`'s `make_room`. After batch 5, whose grants settle what `HeldPass` keeps. The grid is a cache, `d.cache`.
 
 ### F33. One grid of units, rebuilt when units move
 
@@ -373,7 +324,7 @@ grid.current(&units, this_run).visit_near(pos, radius, |body| {
 
 `Navigation::make_room` asks the grid for the walkers a new box overlaps, in place of F27's scan of every walker. Each reader already runs an exact test of reach and sorts its results (`area_life.rs:90`, `held_pass.rs:174`, `flights.rs`), so a wider set of candidates adds only ones the exact test refuses, and the result is the same bit for bit. `TargetIndex`, the script view's index over rows, stays apart, as its order of visits is the grid's. The broadphase (`navigation/broadphase.rs:28-41`) sorts a four-field entry where `BodyGrid` packs one number per entry: the step takes `BodyGrid`'s form for both. Check: the goldens do not move.
 
-## 9. State types and their lists
+## 8. State types and their lists
 
 `capabilities`: `state_types`, `release`; `net`'s replication. What each reader of the state types handles, and each list of them stated once. No golden moves.
 
@@ -385,7 +336,7 @@ grid.current(&units, this_run).visit_near(pos, radius, |body| {
 
 (`net`.) A data kind is listed in five places: `filtered_kinds!` (`net/src/sim_server/kind_filter.rs:49`), the register calls (`:235-249`), `FilterObservers`' match (`:261`), the test's asserts (`:477`) and `DataKind::ALL`. The macro generates the registration, the exhaustive dispatch with its arm of unfiltered kinds, and the test's list, and `enum_all!` keeps `DataKind::ALL` complete. Each filtered kind's `Add` observer inserts its `KindFilter<K>` by command, a move between archetypes for each kind at every spawn on the server: a required component with a closed default, whose `on_add` hook writes its value in place, adds it in the spawn's move, once replicon's `on_insert` observer is checked against it. Check: the leak test passes.
 
-## 10. The script call's runtime
+## 9. The script call's runtime
 
 `capabilities`: `scripts`, `units`' view and columns, `mode`'s state, `stats`' call. What a script call costs and how its parts are kept, with the view's copy of the match.
 
@@ -427,7 +378,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`; **Core**, and Foundations.) Each script batch reads every unit again, 14.2 % of a 3v3 match's time. Before the Zero Hour import multiplies the units. Its direction: a batch reads again only the rows whose parts changed since the last, by the change filter each column's `RowReads` already gives and its list of what it reads, `RowReads::components`; the columns' half of F37 lands with it. A bench session the user starts measures it.
 
-## 11. Run conditions
+## 10. Run conditions
 
 `capabilities`, every system the batches above leave. A sweep, last of the refactorings, over what the schedule can hold at install.
 
@@ -435,7 +386,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`.) "Return if the book is missing" is written by hand in systems (`stats/refresh.rs:59`, `137`, `268`; `stats/held_pass.rs:117-119`; `actions/holds.rs:74-80`; `vision/seeing.rs:53`; `production/player_supply.rs:47`; `players/out_of_play.rs:44`), and `navigation/walking.rs:80-85` pairs two `Option`s of the map's pathing grid and planner with an `expect`; `pay_attack_toggles` returns at once on a client (`combat/attacks.rs:194`), though the install knows it predicts (`combat/mod.rs:121`); the mode's hooks check its hook set each tick (`mode/mode_hooks.rs:44`, `171`), which the install knows (`mode/mod.rs:207`). After F24 a declared book is always present, empty until a mode loads, so a guard for a missing book goes, and an empty book gives no work; a structure the map may lack, as the pathing grid with its planner, is taken by `If<(Res<PathingGrid>, ResMut<RoutePlanner>)>`, Bevy 0.19's parameter that skips a system while it is missing; a client's schedule leaves `pay_attack_toggles` out; the mode schedules only the hooks it defines, and the clear of `LevelUps` becomes a system of its own. A system skipped for a missing parameter keeps its last run, so its first run after the book arrives sees every change since the build: each system is checked for that, and the goldens and the archetype shuffle test hold it.
 
-## 12. Match records and replays
+## 11. Match records and replays
 
 `runner`, `verifier`; the tests of `runner` and `net`. How a test builds a match, records it and replays its log, in one form each.
 
@@ -455,7 +406,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`runner`, `common`.) A zero seed, `MatchBuild::spec`, `Match::new` and `install_mode` are written three times (`runner/src/session/mod.rs:112-117`, `match_build/mod.rs:121-126`, `match_build/bench.rs:40-44`), and `MatchBuild` is `pub` only for the internals, with an `expect(unreachable_pub)`. A production `MatchBuild::restore_target(packages, rate, players)` serves all three, the internals add only the `LogCheck`, `SegmentSeed::ZERO` replaces the repeated zero seed, and the lint's suppression goes.
 
-## 13. The session's host
+## 12. The session's host
 
 `net`, `server`, `client`, `runner`. Its code stays in `net`, which hosts every session (design 02), and the operating system's clock and randomness travel as one value.
 
@@ -479,13 +430,13 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`net`, `server`, `client`.) `clock: fn() -> u64` and `entropy: fn(&mut [u8; 32])` travel as two function pointers through some ten types (`SimClient`, `net/src/sim_client/mod.rs:104-106`; `ServerSetup`; `LocalServerSetup`, `local_server/mod.rs:123-125`; `Offering`, `JoinState`, `ServerSigner`, `KeyFile`, `SessionDir::abort`, `server/src/opening/mod.rs:119`). A function pointer holds no state, so the tests' settable clock lives in two `thread_local!`s (`net/src/harness/in_process_match/mod.rs:73-80`, `net/src/sim_client/join_state/tests.rs:16-22`), which the style rules refuse. `Os` (`net/src/os.rs`) becomes a value, `Os { clock: Clock, entropy: Entropy }`, where `Clock` is `System` or `Manual(Arc<AtomicU64>)`; every setup holds one `os: Os`, and the harness keeps the `Arc` as it keeps its pace. Both thread-locals go.
 
-## 14. The shop
+## 13. The shop
 
 `capabilities`: `items`; `package`; `packages/test/moba`. Slice 2 starts here. A shop becomes a unit, then the shop's reader, an item's price and the items' names are built on it once, and the 3v3's golden moves once.
 
-**Slice 2, wide bodies, uses, the shop and gravity,** batches 14 to 18. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
+**Slice 2, wide bodies, uses, the shop and gravity,** batches 13 to 17. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
 
-**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 13 and F44 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book (F24), its part (F25), and an `Effect` with its callback, `d.callback`, for each new effect.
+**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 12 and F44 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book (F24), its part (F25), and an `Effect` with its callback, `d.callback`, for each new effect.
 
 ### M1. Shops as units
 
@@ -495,7 +446,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `package`, `packages/test/moba`; D8.) `name` on item types and the MOBA's names; a public reader of the shop, an item's price for a unit, whether a unit stands where it can buy, and an action's targeting. A player's resources reach it on its player entity, `PlayerResources::of_player`. Check: a price less held components as computed by hand; an item type with no `name`, or one a locale lacks, fails its load.
 
-## 15. The client's shop
+## 14. The client's shop
 
 `client`. I2 gives the view tests' units their types before S2 changes the client.
 
@@ -507,9 +458,9 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`client`; D9, D10, D11.) Bevy's UI features; the shop panel, the inventory bar, keys 1 to 6, and every cast key aimed as its action takes. Check: the key's target for an action of each targeting; the panel's dimmed items for an avatar alive out of a shop, too poor and with no room; the user buys a ward, places it at a point with its key, sells an item and swaps two slots.
 
-## 16. Use and the graph
+## 15. Use and the graph
 
-`capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. F44 moves the group of an inventory's slots into `actions`, and U1 adds the `use` kind, whose actions block as `use` too: one batch settles which actions a `use` block stops. F44 comes after batches 4 to 8, which leave only the true edges; M2 reads the code as F44's graph test does.
+`capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. F44 moves the group of an inventory's slots into `actions`, and U1 adds the `use` kind, whose actions block as `use` too: one batch settles which actions a `use` block stops. F44 comes after batches 3 to 7, which leave only the true edges; M2 reads the code as F44's graph test does.
 
 ### F44. The capability graph in one table
 
@@ -547,7 +498,7 @@ fn a_capability_imports_exactly_what_it_needs_or_uses() {
 }
 ```
 
-The `abilities ↔ items` cycle goes with two moves. `CastSpends`, a registry of callbacks with no item in it, moves into `actions`. The slot kind of an inventory, the one fact `abilities` reads of it, moves out of `Inventory` into a state type of `actions`, which `items` puts on with the inventory. It is not U1's `uses = { kind }`, the slot that holds a use under way, whose action blocks as `use` by its own kind, so the two share batch 16 and not a name:
+The `abilities ↔ items` cycle goes with two moves. `CastSpends`, a registry of callbacks with no item in it, moves into `actions`. The slot kind of an inventory, the one fact `abilities` reads of it, moves out of `Inventory` into a state type of `actions`, which `items` puts on with the inventory. It is not U1's `uses = { kind }`, the slot that holds a use under way, whose action blocks as `use` by its own kind, so the two share batch 15 and not a name:
 
 ```rust
 // actions/use_group.rs
@@ -580,7 +531,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`capabilities`: the release tests.) A test reads the crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
 
-## 17. The shrine
+## 16. The shrine
 
 `packages/test/moba`, `client`. I3 fixes the 3v3's `hero_died` before U2 adds the shrine to the scripted match, whose golden would pin the failure.
 
@@ -592,7 +543,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`packages/test/moba`, `client`; D6.) The shrine, its action, `shrine_blessing` and `shrine_spent` in design 07 and the 3v3 package; a right click on a unit the avatar may use orders the use; the channel bar. Check: the scripted match has a hero use the shrine and the team's heroes take the blessing, and a second hero's use cut by a hit; the user holds a use on the shrine in the client.
 
-## 18. Gravity
+## 17. Gravity
 
 `capabilities`: `projectiles`; `package`; `packages/test/moba`; `client`. Slice 2's last step: the user then plays slice 2.
 
@@ -600,7 +551,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`capabilities`, `package`, `packages/test/moba`; D12.) The falling flight; `gravity` past planned, refused with `homing` or not positive; a grenade of the MOBA's items, which arcs to its point. Check: the points of a flight on each metric at its launch, its peak and its end as computed by hand, the planar one back at its launch height at its end; a spatial one hits a unit its chord meets and not one its straight line would; the client draws the grenade's arc.
 
-## 19. Test time
+## 18. Test time
 
 `package`, `runner`, and the code each test spends its time in. Before the matches they play grow again.
 
@@ -608,7 +559,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`package`, `runner`; **Package**, **Runner**.) Four tests run at or past the bound of 1 s for a test alone: `mode_package::every_flaw_of_a_package_fails_its_load_with_its_own_problem`, `resume::the_3v3_match_resumes_from_each_checkpoint_to_the_same_hashes`, and the proving match's `a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics` and `a_snapshot_restores_and_a_flawed_one_never_panics`. Find where each spends its time, and bring each within its bound, or into `source/.config/nextest.toml` with the reason it takes longer.
 
-## 20. Queues and capacities
+## 19. Queues and capacities
 
 `capabilities`: `production`, `actions`; `package`; `docs/design/11`. Train, research and supply in one form, before the Zero Hour skirmish, so its rules package and golden are made once, on the general model.
 
@@ -620,9 +571,9 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`capabilities`: `production`; `package`.) One `[supply]` counter serves StarCraft alone. The mode declares `[capacities.<name>] max`; a unit type gives `capacity = { <name> = { uses, provides } }`. Each is derived as supply is now, a pass over the owned units and the queues when a tick's first check needs it, so it keeps no sum and never drifts (design 11, D5). A queued action or a build lists the capacities it checks. Supply becomes one capacity; power, population and housing are more. Scripts read `ctx.capacity_used(player, name)` and `ctx.capacity_max(player, name)`.
 
-## 21. Work and haul
+## 20. Work and haul
 
-`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 20, whose queued actions a production chain uses.
+`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 19, whose queued actions a production chain uses.
 
 ### M5. One work mechanism
 
@@ -634,7 +585,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 The snapshot tests sweep the new state types of M3 to M6 as they sweep the skirmish's (design 11, D14).
 
-## 22. The genre proofs
+## 21. The genre proofs
 
 Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, and M10, the Hive mode, after them.
 
@@ -663,7 +614,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 | M7, M9 | Does not move: the defaults keep today's rule | Does not move |
 | M8 | Does not move in a mode with no `[player] slots` | Does not move |
 
-## 23. The network
+## 22. The network
 
 `quic`, `net`. After the issue log's **Quic** item on the endpoint's benches, which sets N1's cap.
 
@@ -677,7 +628,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 
 Then the network's Research items of the issue log as they show; then P1 to P4, P3 only as D14 of design 15 lets it.
 
-## 24. Planned
+## 23. Planned
 
 ### P1. LAN listing
 

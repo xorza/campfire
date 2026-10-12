@@ -158,21 +158,23 @@ impl ParamBook {
 }
 
 impl ParamTables {
-    /// Adds the params of the next action, each stat at its id `stat` gives; its run.
-    pub(crate) fn push_action(
+    /// Adds the params of the next action, each stat at its id `stat` gives; its run, or the
+    /// error `stat` gives for a stat.
+    pub(crate) fn push_action<E>(
         &mut self,
         params: &BTreeMap<DeclaredName, Param>,
-        stat: impl Fn(&Stat) -> StatId,
-    ) -> usize {
+        stat: impl Fn(&Stat) -> Result<StatId, E>,
+    ) -> Result<usize, E> {
         self.actions.push(params, stat)
     }
 
-    /// Adds the params of the next modifier, each stat at its id `stat` gives; its run.
-    pub(crate) fn push_modifier(
+    /// Adds the params of the next modifier, each stat at its id `stat` gives; its run, or the
+    /// error `stat` gives for a stat.
+    pub(crate) fn push_modifier<E>(
         &mut self,
         params: &BTreeMap<DeclaredName, Param>,
-        stat: impl Fn(&Stat) -> StatId,
-    ) -> usize {
+        stat: impl Fn(&Stat) -> Result<StatId, E>,
+    ) -> Result<usize, E> {
         self.modifiers.push(params, stat)
     }
 }
@@ -185,6 +187,7 @@ impl Book for ParamBook {
 #[cfg(test)]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
+    use std::convert::Infallible;
     use std::sync::Arc;
 
     use crate::stats::param_book::ParamBook;
@@ -200,7 +203,9 @@ pub(crate) mod internals {
             params: &BTreeMap<DeclaredName, Param>,
             stat: impl Fn(&Stat) -> StatId,
         ) -> usize {
-            Arc::make_mut(&mut self.0).push_action(params, stat)
+            let Ok(run) = Arc::make_mut(&mut self.0)
+                .push_action(params, |name| Ok::<_, Infallible>(stat(name)));
+            run
         }
 
         /// Adds the params of the next modifier, each stat at its id `stat` gives; its run.
@@ -209,7 +214,9 @@ pub(crate) mod internals {
             params: &BTreeMap<DeclaredName, Param>,
             stat: impl Fn(&Stat) -> StatId,
         ) -> usize {
-            Arc::make_mut(&mut self.0).push_modifier(params, stat)
+            let Ok(run) = Arc::make_mut(&mut self.0)
+                .push_modifier(params, |name| Ok::<_, Infallible>(stat(name)));
+            run
         }
     }
 }

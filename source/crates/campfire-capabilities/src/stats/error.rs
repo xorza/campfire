@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::scripts::error::UnknownName;
 use crate::values::declared_name::DeclaredName;
 
 /// Why a modifier does not load.
@@ -16,9 +17,29 @@ pub enum ModifierProblem {
     Negative,
 }
 
-/// The modifier `modifier` of a package does not load, for `problem`.
+/// Why a modifier's spec does not build: a problem of its values, or a name the match does not
+/// have.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub(crate) enum SpecError {
+    #[error(transparent)]
+    Problem(#[from] ModifierProblem),
+    #[error(transparent)]
+    Unknown(#[from] UnknownName),
+}
+
+/// Why an edge does not join a stat graph: the stat a change reads, or the stat it changes, is
+/// not one of the graph's.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum EdgeError {
+    #[error("the read stat: {0}")]
+    Read(UnknownName),
+    #[error("the changed stat: {0}")]
+    Changed(UnknownName),
+}
+
+/// The modifier `modifier` of a package does not load, for `error`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModifierError {
     pub(crate) modifier: DeclaredName,
-    pub(crate) problem: ModifierProblem,
+    pub(crate) error: SpecError,
 }

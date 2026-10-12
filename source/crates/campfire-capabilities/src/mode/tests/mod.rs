@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 use std::slice;
+use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
@@ -23,6 +24,7 @@ use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::targeting::Targeting;
+use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::heal::{Heal, HealCause};
 use crate::combat::mode_combat_data::ModeCombatData;
@@ -93,6 +95,7 @@ use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::player_modifiers::PlayerModifiers;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
@@ -786,20 +789,27 @@ fn start_match_setup(
     }
     let books = {
         let view = game.non_send::<View>();
-        let stats = StatBook::new(&files.data.stats, [], Num::int(10));
+        let stats = StatBook::new(&files.data.stats, Num::int(10));
         let relations = &files.data.relations;
         let unit_type = |name: &str| view.names().unit_types().named((TypeScope::Mode, name));
         let data = &files.data;
         let mode_names = ModeNames::of(data);
         let layers = &mode_names.layers;
         let map = ModeMap::resolve(&files.map, &files.teams, relations, layers, unit_type).unwrap();
+        let stat = |stat: &Stat| stats.named(stat).ok_or(stat.clone());
+        let pools = Arc::clone(&mode_names.pools);
+        let pools = PoolBook::new(&data.pools, pools, |_, held| stat(held)).unwrap();
+        let life = data.combat.life_pool(&mode_names.pools).unwrap();
+        let bindings = life.map(|_| CombatBindings::new(&data.combat, stat).unwrap());
         ModeBooks::build(ModeBooksInput {
             data,
             unit_types: &setup.units.unit_types,
             types: &mut view.types_mut(),
             walkers: &walkers,
             stats,
-            life: data.combat.life_pool(&mode_names.pools),
+            pools,
+            life,
+            bindings,
             loadout_ranks: data.loadout_ranks(),
             names: mode_names,
             map,

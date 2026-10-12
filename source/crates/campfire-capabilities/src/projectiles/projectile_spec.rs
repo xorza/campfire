@@ -3,6 +3,7 @@ use campfire_sim::TickRate;
 
 use crate::declare::per_type::PerType;
 use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
+use crate::scripts::error::UnknownName;
 use crate::units::filter::Filter;
 use crate::units::unit_types::UnitTypes;
 use campfire_sim::Capability;
@@ -22,16 +23,18 @@ pub(crate) struct ProjectileSpec {
 }
 
 impl ProjectileSpec {
-    /// The spec of `data`, which the package load checked: its speed a tick at `rate`, and
-    /// what it hits among the tags of `types`.
-    pub(crate) fn of(data: &ProjectileData, types: &UnitTypes, rate: TickRate) -> ProjectileSpec {
+    /// The spec of `data`: its speed a tick at `rate`, and what it hits among the tags of
+    /// `types`; an error for a filter of a tag `types` lacks.
+    pub(crate) fn of(
+        data: &ProjectileData,
+        types: &UnitTypes,
+        rate: TickRate,
+    ) -> Result<ProjectileSpec, UnknownName> {
         let hits = match &data.hits {
             ProjectileHits::Nothing => None,
-            ProjectileHits::Units(filter) => {
-                Some(Filter::resolve(filter, types).expect("the load checked the filter's tags"))
-            }
+            ProjectileHits::Units(filter) => Some(Filter::resolve(filter, types)?),
         };
-        ProjectileSpec {
+        Ok(ProjectileSpec {
             speed: data
                 .speed
                 .checked_div_int(i64::from(rate.hz().get()))
@@ -42,7 +45,7 @@ impl ProjectileSpec {
             stop_on_hit: data.stop_on_hit,
             once_per_cast: data.once_per_cast,
             hits,
-        }
+        })
     }
 }
 

@@ -798,7 +798,7 @@ fn load_damage_stats(world: &mut World) {
     let rules: BTreeMap<_, _> = [&heal, &attack, &other]
         .map(|stat| (stat.clone(), StatRule::default()))
         .into();
-    let book = StatBook::new(&rules, [], Num::int(10));
+    let book = StatBook::new(&rules, Num::int(10));
     let health = DeclaredName::new("health").unwrap();
     let combat = ModeCombatData {
         life: Some(health.clone()),
@@ -810,8 +810,9 @@ fn load_damage_stats(world: &mut World) {
         ..ModeCombatData::default()
     };
     let pools: Names<PoolId> = [health.as_str()].into_iter().collect();
-    world.insert_resource(LifePool(combat.life_pool(&pools).unwrap()));
-    world.insert_resource(CombatBindings::new(&combat, &book));
+    world.insert_resource(LifePool(combat.life_pool(&pools).unwrap().unwrap()));
+    let bindings = CombatBindings::new(&combat, |stat| book.named(stat).ok_or(stat.clone()));
+    world.insert_resource(bindings.unwrap());
     Stats::load_book(world, book);
 }
 

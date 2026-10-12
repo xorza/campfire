@@ -6,8 +6,9 @@ use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
+use crate::scripts::error::UnknownName;
 use crate::scripts::state_value::StateValue;
-use crate::stats::error::ModifierProblem;
+use crate::stats::error::{ModifierProblem, SpecError};
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_state_field::ModifierStateField;
 use crate::stats::stat_id::StatId;
@@ -16,6 +17,7 @@ use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
+use crate::values::filter_data::FilterData;
 use crate::values::number::Number;
 use crate::values::stat::Stat;
 
@@ -92,15 +94,15 @@ pub(crate) struct SpecNames<'a, S, M> {
 }
 
 impl ModifierSpec {
-    /// The spec of `data`, its names resolved by `names`, which the package load checked; a
-    /// value past what a number holds, or a time too large to count in ticks, fails.
+    /// The spec of `data`, its names resolved by `names`; a value past what a number holds, a
+    /// time too large to count in ticks, or a name the match does not have, fails.
     pub(crate) fn of<S, M>(
         data: &ModifierData,
         names: &SpecNames<'_, S, M>,
-    ) -> Result<ModifierSpec, ModifierProblem>
+    ) -> Result<ModifierSpec, SpecError>
     where
-        S: Fn(&Stat) -> StatId,
-        M: Fn(&str) -> ModifierId,
+        S: Fn(&Stat) -> Result<StatId, UnknownName>,
+        M: Fn(&str) -> Result<ModifierId, UnknownName>,
     {
         let number = |number: &Number| SpecNumber::of(number, &data.params);
         let time = |field: &Option<Number>| {
@@ -110,20 +112,18 @@ impl ModifierSpec {
                 .transpose()
         };
         let stats = data.stats.iter().map(|(stat, change)| {
-            Ok(SpecChange {
-                stat: (names.stat)(stat),
+            Ok::<_, SpecError>(SpecChange {
+                stat: (names.stat)(stat)?,
                 op: change.op,
                 value: number(&change.value)?,
             })
         });
-        let filter = |filter| {
-            Filter::resolve(filter, names.types).expect("the load checked the modifier's filters")
-        };
+        let filter = |filter: &FilterData| Filter::resolve(filter, names.types);
         let aura = data.aura.as_ref().map(|aura| {
-            Ok::<_, ModifierProblem>(AuraSpec {
+            Ok::<_, SpecError>(AuraSpec {
                 radius: number(&aura.radius)?,
-                affects: filter(&aura.affects),
-                modifier: (names.modifier)(aura.modifier.as_str()),
+                affects: filter(&aura.affects)?,
+                modifier: (names.modifier)(aura.modifier.as_str())?,
             })
         });
         Ok(ModifierSpec {
@@ -135,7 +135,7 @@ impl ModifierSpec {
             stats: stats.collect::<Result<_, _>>()?,
             shield: data.shield.as_ref().map(number).transpose()?,
             aura: aura.transpose()?,
-            affects: data.affects.as_ref().map(filter),
+            affects: data.affects.as_ref().map(filter).transpose()?,
             fields: data
                 .state
                 .iter()
@@ -249,7 +249,9 @@ mod tests {
 
     use crate::release::Release;
     use crate::release::r#match::Match;
-    use crate::stats::error::ModifierProblem;
+    use crate::scripts::error::UnknownName;
+    use crate::scripts::name_kind::NameKind;
+    use crate::stats::error::{ModifierProblem, SpecError};
     use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
     use crate::stats::modifier_spec::{
         AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
@@ -317,13 +319,18 @@ mod tests {
         };
         let rate = Match::TEST_RATE;
         let stats = ["armor", "move_speed"].map(|stat| Stat::named(stat).unwrap());
+        let stat = |stat: &Stat| {
+            let at = stats.iter().position(|at| at == stat);
+            at.map(StatId::new)
+                .ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
+        };
         let names = SpecNames {
-            stat: |stat: &Stat| StatId::new(stats.iter().position(|at| at == stat).unwrap()),
+            stat,
             types: &types,
             rate,
             modifier: |modifier: &str| {
                 assert_eq!(modifier, "chill");
-                ModifierId::new(7)
+                Ok(ModifierId::new(7))
             },
         };
         let filter = |text| Filter::parse(text, &types).unwrap();
@@ -363,12 +370,71 @@ mod tests {
         // 2³⁹ is past what a number holds, with 24 bits of fraction in 64; a negative time does
         // not count in ticks.
         data.shield = Some(Number::Value(Scalar::Int(1 << 39)));
-        assert_eq!(
-            ModifierSpec::of(&data, &names),
-            Err(ModifierProblem::Overflow)
-        );
+        let overflow = Err(SpecError::Problem(ModifierProblem::Overflow));
+        assert_eq!(ModifierSpec::of(&data, &names), overflow);
         data.shield = None;
         data.interval_ms = Some(Number::Value(Scalar::Int(-1)));
-        assert_eq!(ModifierSpec::of(&data, &names), Err(ModifierProblem::Time));
+        let time = Err(SpecError::Problem(ModifierProblem::Time));
+        assert_eq!(ModifierSpec::of(&data, &names), time);
+    }
+
+    #[test]
+    fn a_spec_fails_on_a_name_the_match_does_not_have() {
+        // The match has the stat armor, the tag rooted and the modifier chill.
+        let mut types = UnitTypes::new(Release::engine_tags());
+        types.declare("rooted");
+        let armor = Stat::named("armor").unwrap();
+        let names = SpecNames {
+            stat: |stat: &Stat| {
+                let found = (*stat == armor).then(|| StatId::new(0));
+                found.ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
+            },
+            types: &types,
+            rate: Match::TEST_RATE,
+            modifier: |modifier: &str| {
+                let found = (modifier == "chill").then(|| ModifierId::new(0));
+                found.ok_or_else(|| UnknownName::new(NameKind::Modifier, modifier))
+            },
+        };
+        let change = StatChange {
+            op: StatOp::Add,
+            value: Number::Value(Scalar::Int(1)),
+        };
+        let aura = |modifier: &str| AuraData {
+            radius: Number::Value(Scalar::Int(2)),
+            affects: FilterData::parse("enemies").unwrap(),
+            modifier: name(modifier),
+        };
+        let known = ModifierData {
+            stats: BTreeMap::from([(armor.clone(), change.clone())]),
+            aura: Some(aura("chill")),
+            affects: Some(FilterData::parse("allies:rooted").unwrap()),
+            ..ModifierData::default()
+        };
+        assert!(ModifierSpec::of(&known, &names).is_ok());
+        let speed = Stat::named("attack_speed").unwrap();
+        let cases = [
+            ModifierData {
+                aura: Some(aura("frost")),
+                ..known.clone()
+            },
+            ModifierData {
+                stats: BTreeMap::from([(speed, change)]),
+                ..known.clone()
+            },
+            ModifierData {
+                affects: Some(FilterData::parse("allies:frozen").unwrap()),
+                ..known.clone()
+            },
+        ];
+        let unknown = [
+            (NameKind::Modifier, "frost"),
+            (NameKind::Stat, "attack_speed"),
+            (NameKind::Filter, "allies:frozen"),
+        ];
+        for (data, (of, name)) in cases.iter().zip(unknown) {
+            let fails = Err(SpecError::Unknown(UnknownName::new(of, name)));
+            assert_eq!(ModifierSpec::of(data, &names), fails);
+        }
     }
 }

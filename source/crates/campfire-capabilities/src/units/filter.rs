@@ -1,7 +1,7 @@
 use campfire_script::rhai::ImmutableString;
 
 use crate::scripts::arg_ctx::ArgCtx;
-use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::error::{ApiError, Checked, UnknownName};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_arg::ScriptArg;
 use crate::units::tag_set::TagSet;
@@ -26,16 +26,18 @@ impl Filter {
     pub(crate) fn parse(text: &str, types: &UnitTypes) -> Result<Filter, ApiError> {
         let syntax = FilterSyntax::parse(text).ok_or(ApiError::Unknown(NameKind::Filter))?;
         let terms = syntax.tags().map(|term| (term.name, term.negated));
-        Filter::of(syntax.relations, terms, types)
+        Filter::of(syntax.relations, terms, types).ok_or(ApiError::Unknown(NameKind::Tag))
     }
 
-    /// The run-time form of `filter`, with its tags among the match's.
-    pub(crate) fn resolve(filter: &FilterData, types: &UnitTypes) -> Result<Filter, ApiError> {
+    /// The run-time form of `filter`, data's, with its tags among the match's; an error that
+    /// names the filter for a tag the match does not have.
+    pub(crate) fn resolve(filter: &FilterData, types: &UnitTypes) -> Result<Filter, UnknownName> {
         let terms = filter
             .tags
             .iter()
             .map(|tag| (tag.name.as_str(), tag.negated));
         Filter::of(filter.relations, terms, types)
+            .ok_or_else(|| UnknownName::new(NameKind::Filter, filter))
     }
 
     /// The run-time form of `data`, as `resolve` gives it, or with none, the filter of enemies
@@ -43,7 +45,7 @@ impl Filter {
     pub(crate) fn resolve_or_enemies(
         data: Option<&FilterData>,
         types: &UnitTypes,
-    ) -> Result<Filter, ApiError> {
+    ) -> Result<Filter, UnknownName> {
         data.map_or(
             Ok(Filter::of_relations(RelationSet::Enemies, types)),
             |data| Filter::resolve(data, types),
@@ -60,21 +62,20 @@ impl Filter {
         }
     }
 
+    /// The filter of `relations` and of `terms`, each a tag's name and whether it is negated,
+    /// among the tags of `types`; none for a tag `types` lacks.
     fn of<'a>(
         relations: RelationSet,
         terms: impl Iterator<Item = (&'a str, bool)>,
         types: &UnitTypes,
-    ) -> Result<Filter, ApiError> {
+    ) -> Option<Filter> {
         let mut filter = Filter {
             relations,
             all: TagSet::default(),
             none: TagSet::default(),
         };
         for (name, negated) in terms {
-            let tag = types
-                .tags()
-                .named(name)
-                .ok_or(ApiError::Unknown(NameKind::Tag))?;
+            let tag = types.tags().named(name)?;
             if negated {
                 filter.none = filter.none.with(tag);
             } else {
@@ -86,7 +87,7 @@ impl Filter {
                 filter.none = filter.none.with(tag);
             }
         }
-        Ok(filter)
+        Some(filter)
     }
 
     /// Whether it selects a unit with `tags` of a team regarded with `relation`, as the unit it

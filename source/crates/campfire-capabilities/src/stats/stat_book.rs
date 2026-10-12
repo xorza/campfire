@@ -5,6 +5,8 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
+use crate::scripts::error::UnknownName;
+use crate::scripts::name_kind::NameKind;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stat_totals::StatTotals;
@@ -43,13 +45,9 @@ struct Growth {
 }
 
 impl StatBook {
-    /// The book of the stats `rules` declares, for unit types `types`, each with its `stats`
-    /// section, under the cap `max_move_speed`.
-    pub(crate) fn new<'a>(
-        rules: &BTreeMap<Stat, StatRule>,
-        types: impl IntoIterator<Item = (UnitType, &'a StatsData)>,
-        max_move_speed: Num,
-    ) -> StatBook {
+    /// The book of the stats `rules` declares, with no unit type's values yet, under the cap
+    /// `max_move_speed`.
+    pub(crate) fn new(rules: &BTreeMap<Stat, StatRule>, max_move_speed: Num) -> StatBook {
         let names: Names<StatId> = rules.keys().map(Stat::name).collect();
         let count = names.len();
         let stats_len = u16::try_from(count).expect("stats fit u16");
@@ -59,31 +57,40 @@ impl StatBook {
                 engine[*stat as usize] = Some(at);
             }
         }
-        let mut growth = Vec::new();
-        for (unit_type, data) in types {
-            let first = unit_type.index() * count;
-            if growth.len() < first + count {
-                growth.resize(first + count, None);
-            }
-            for (stat, value) in &data.0 {
-                let Some(at) = names.named(stat.name()) else {
-                    continue;
-                };
-                growth[first + at.index()] = Some(Growth {
-                    base: value.base,
-                    per_level: value.per_level,
-                });
-            }
-        }
         StatBook {
             order: (0..count).map(StatId::new).collect(),
             names: Arc::new(names),
             rules: rules.values().copied().collect(),
             engine,
-            growth,
+            growth: Vec::new(),
             positions: (0..stats_len).collect(),
             max_move_speed,
         }
+    }
+
+    /// Gives `unit_type` the values of its `stats` section; an error, which gives it none, for a
+    /// stat the book does not hold.
+    pub(crate) fn add_type(
+        &mut self,
+        unit_type: UnitType,
+        stats: &StatsData,
+    ) -> Result<(), UnknownName> {
+        if let Some(stat) = stats.0.keys().find(|stat| self.named(stat).is_none()) {
+            return Err(UnknownName::new(NameKind::Stat, stat.name()));
+        }
+        let count = self.names.len();
+        let first = unit_type.index() * count;
+        if self.growth.len() < first + count {
+            self.growth.resize(first + count, None);
+        }
+        for (stat, value) in &stats.0 {
+            let at = self.named(stat).expect("each stat was found above");
+            self.growth[first + at.index()] = Some(Growth {
+                base: value.base,
+                per_level: value.per_level,
+            });
+        }
+        Ok(())
     }
 
     /// The book with the stats in `order`, a permutation of their places, as a stat graph of

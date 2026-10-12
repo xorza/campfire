@@ -21,12 +21,14 @@ use crate::actions::launch_id::LaunchId;
 use crate::actions::lists_of::ListsOf;
 use crate::declare::book::Book;
 use crate::scripts::error::CallError;
+use crate::scripts::error::UnknownName;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::stats_effect::StatsEffect;
 use crate::units::action_id::ActionId;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::view::View;
+use crate::values::number::Number;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, by
 /// action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`, and by launch id
@@ -49,8 +51,14 @@ pub(crate) struct EffectSpec {
 impl EffectListBook {
     /// Adds the lists of `action`, which loaded last, from `data`, which the package load
     /// checked, their names resolved by `names`: `on_resolve`, `on_hit` and `on_end`, and the
-    /// lists each launch of them holds, however deep.
-    pub(crate) fn push(&mut self, action: ActionId, data: &ActionData, names: &impl EffectNames) {
+    /// lists each launch of them holds, however deep; an error for a name the match does not
+    /// have, which fails the whole load.
+    pub(crate) fn push(
+        &mut self,
+        action: ActionId,
+        data: &ActionData,
+        names: &impl EffectNames,
+    ) -> Result<(), UnknownName> {
         if self.runs.len() <= action.index() {
             self.runs.resize(action.index() + 1, [0..0, 0..0, 0..0]);
         }
@@ -59,101 +67,111 @@ impl EffectListBook {
             .iter_mut()
             .zip([&data.on_resolve, &data.on_hit, &data.on_end])
         {
-            *run = self.append(list, names);
+            *run = self.append(list, names)?;
         }
         self.runs[action.index()] = runs;
+        Ok(())
     }
 
     /// Appends `list`, its names resolved by `names`, after the lists its launches hold, so its
     /// own effects lie together; its run.
-    fn append(&mut self, list: &[EffectData], names: &impl EffectNames) -> Range<u32> {
+    fn append(
+        &mut self,
+        list: &[EffectData],
+        names: &impl EffectNames,
+    ) -> Result<Range<u32>, UnknownName> {
         let resolved: Vec<EffectSpec> = list
             .iter()
-            .map(|effect| EffectSpec {
-                does: self.resolve(&effect.does, names),
-                to: effect.to,
+            .map(|effect| {
+                Ok(EffectSpec {
+                    does: self.resolve(&effect.does, names)?,
+                    to: effect.to,
+                })
             })
-            .collect();
+            .collect::<Result<_, UnknownName>>()?;
         let start = position(self.effects.len());
         self.effects.extend(resolved);
-        start..position(self.effects.len())
+        Ok(start..position(self.effects.len()))
     }
 
     /// What `does` does, its names resolved by `names`; a launch's lists appended first.
-    fn resolve(&mut self, does: &DoesData, names: &impl EffectNames) -> DoesSpec {
-        let amount = |number| Amount::of(number, names);
+    fn resolve(
+        &mut self,
+        does: &DoesData,
+        names: &impl EffectNames,
+    ) -> Result<DoesSpec, UnknownName> {
+        let amount = |number: &Number| Amount::of(number, names);
+        let maybe = |number: &Option<Number>| number.as_ref().map(amount).transpose();
         let of_capability = match does {
             DoesData::Modifier(ModifierFields { id, duration_ms }) => {
-                return DoesSpec::Modifier {
-                    id: names.modifier(id),
-                    duration_ms: duration_ms.as_ref().map(amount),
-                };
+                return Ok(DoesSpec::Modifier {
+                    id: names.modifier(id)?,
+                    duration_ms: maybe(duration_ms)?,
+                });
             }
             DoesData::Purge(PurgeFields { tag }) => {
-                return DoesSpec::Purge {
-                    tag: names.tag(tag),
-                };
+                return Ok(DoesSpec::Purge {
+                    tag: names.tag(tag)?,
+                });
             }
             DoesData::Spawn(SpawnFields {
                 unit_type,
                 duration_ms,
             }) => {
-                return DoesSpec::Spawn {
-                    unit_type: names.package_type(unit_type),
-                    duration_ms: duration_ms.as_ref().map(amount),
-                };
+                return Ok(DoesSpec::Spawn {
+                    unit_type: names.package_type(unit_type)?,
+                    duration_ms: maybe(duration_ms)?,
+                });
             }
             DoesData::Damage(DamageFields {
                 amount: dealt,
                 kind,
             }) => CapabilityDoesSpec::Damage {
-                amount: amount(dealt),
-                kind: names.damage_kind(kind),
+                amount: amount(dealt)?,
+                kind: names.damage_kind(kind)?,
             },
             DoesData::Heal(HealFields { amount: healed }) => CapabilityDoesSpec::Heal {
-                amount: amount(healed),
+                amount: amount(healed)?,
             },
             DoesData::Restore(RestoreFields {
                 pool,
                 amount: restored,
             }) => CapabilityDoesSpec::Restore {
-                pool: names.pool(pool),
-                amount: amount(restored),
+                pool: names.pool(pool)?,
+                amount: amount(restored)?,
             },
             DoesData::Xp(XpFields {
                 track,
                 amount: given,
             }) => CapabilityDoesSpec::Xp {
-                track: names.track(track),
-                amount: amount(given),
+                track: names.track(track)?,
+                amount: amount(given)?,
             },
             DoesData::Launch(LaunchFields {
                 area,
                 on_hit,
                 on_end,
             }) => {
-                let lists = [self.append(on_hit, names), self.append(on_end, names)];
+                let area = names.package_type(area)?;
+                let lists = [self.append(on_hit, names)?, self.append(on_end, names)?];
                 let launch = LaunchId(position(self.launches.len()));
                 self.launches.push(lists);
-                CapabilityDoesSpec::Launch {
-                    area: names.package_type(area),
-                    launch,
-                }
+                CapabilityDoesSpec::Launch { area, launch }
             }
             DoesData::Move(MoveData::Dash { to, speed }) => CapabilityDoesSpec::Dash {
                 to: *to,
-                speed: amount(speed),
+                speed: amount(speed)?,
             },
             DoesData::Move(MoveData::KnockBack { from, distance, ms }) => {
                 CapabilityDoesSpec::KnockBack {
                     from: *from,
-                    distance: amount(distance),
-                    ms: amount(ms),
+                    distance: amount(distance)?,
+                    ms: amount(ms)?,
                 }
             }
             DoesData::Planned(_) => unreachable!("the load refuses a planned effect"),
         };
-        DoesSpec::Capability(of_capability)
+        Ok(DoesSpec::Capability(of_capability))
     }
 
     /// The list of `of` that runs before its `hook`: an action's `on_resolve`, `on_hit` or

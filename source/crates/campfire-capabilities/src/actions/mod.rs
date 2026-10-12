@@ -241,13 +241,16 @@ pub(crate) mod test_world {
     use crate::actions::delivery::{Delivery, DeliveryShape};
     use crate::actions::effect_list_book::EffectListBook;
     use crate::actions::effect_names::EffectNames;
+    use crate::actions::error::ActionError;
     use crate::actions::fan::Fan;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
     use crate::players::resource_amount::ResourceAmount;
     use crate::projectiles::projectile_spec::ProjectileSpec;
+    use crate::scripts::error::UnknownName;
     use crate::scripts::hook_set::HookSet;
+    use crate::scripts::name_kind::NameKind;
     use crate::scripts::script_book::ScriptBook;
     use crate::stats::Stats;
     use crate::stats::modifier_book::ModifierBook;
@@ -267,7 +270,6 @@ pub(crate) mod test_world {
     use crate::units::view::View;
     use crate::values::damage_kind::DamageKind;
     use crate::values::declared_name::DeclaredName;
-    use crate::values::error::TimeTooLarge;
     use crate::values::filter_data::FilterData;
     use crate::values::param::Param;
     use crate::values::stat::Stat;
@@ -360,7 +362,9 @@ pub(crate) mod test_world {
             let view = world.non_send::<View>().clone();
             let mut lists = world.remove_resource::<EffectListBook>().unwrap();
             let names = MatchEffectNames::new(world, &view, action, package);
-            lists.push(action, data, &names);
+            lists
+                .push(action, data, &names)
+                .expect("a test's effect lists name what its match has");
             world.insert_resource(lists);
         }
 
@@ -375,7 +379,7 @@ pub(crate) mod test_world {
             data: &ActionData,
             script: Option<ScriptId>,
             ranks: u8,
-        ) -> Result<ActionId, TimeTooLarge> {
+        ) -> Result<ActionId, ActionError> {
             let rate = *world.resource::<TickRate>();
             let view = world.non_send::<View>().clone();
             let names = MatchNames::new(world, &view, world.resource::<ModifierBook>());
@@ -491,58 +495,60 @@ pub(crate) mod test_world {
     }
 
     impl EffectNames for MatchEffectNames<'_> {
-        fn param(&self, name: &DeclaredName) -> usize {
+        fn param(&self, name: &DeclaredName) -> Result<usize, UnknownName> {
             self.world
                 .resource::<ParamBook>()
                 .actions()
                 .named(self.action.index(), name.as_str())
-                .expect("the load checked an effect's param")
+                .ok_or_else(|| UnknownName::new(NameKind::Param, name))
         }
 
-        fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
+        fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
             self.view
                 .names()
                 .damage_kinds
                 .named(name.as_str())
-                .expect("the load checked an effect's damage kind")
+                .ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
         }
 
-        fn pool(&self, name: &DeclaredName) -> PoolId {
+        fn pool(&self, name: &DeclaredName) -> Result<PoolId, UnknownName> {
             let pools = self
                 .view
                 .column(|column: &StatsColumn| column.pool_names().named(name.as_str()));
-            pools.flatten().expect("the load checked an effect's pool")
+            pools
+                .flatten()
+                .ok_or_else(|| UnknownName::new(NameKind::Pool, name))
         }
 
-        fn modifier(&self, name: &DeclaredName) -> ModifierId {
+        fn modifier(&self, name: &DeclaredName) -> Result<ModifierId, UnknownName> {
             Stats::modifier(self.world, self.package, name.as_str())
-                .expect("the load checked an effect's modifier")
+                .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
         }
 
-        fn track(&self, name: &DeclaredName) -> TrackId {
+        fn track(&self, name: &DeclaredName) -> Result<TrackId, UnknownName> {
             self.view
                 .names()
                 .tracks
                 .named(name.as_str())
-                .expect("the load checked an effect's track")
+                .ok_or_else(|| UnknownName::new(NameKind::Track, name))
         }
 
-        fn tag(&self, name: &DeclaredName) -> Tag {
+        fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
             self.view
                 .names()
                 .types()
                 .tags()
                 .named(name.as_str())
-                .expect("the load checked an effect's tag")
+                .ok_or_else(|| UnknownName::new(NameKind::Tag, name))
         }
 
-        fn package_type(&self, name: &DeclaredName) -> UnitType {
+        fn package_type(&self, name: &DeclaredName) -> Result<UnitType, UnknownName> {
             let scope = TypeScope::of_package(self.package);
             self.view
                 .names()
                 .unit_types()
                 .named((scope, name.as_str()))
-                .expect("the load checked an effect's unit type")
+                .ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
         }
     }
 
@@ -570,39 +576,39 @@ pub(crate) mod test_world {
     }
 
     impl ActionNames for MatchNames<'_> {
-        fn stat(&self, stat: &Stat) -> StatId {
+        fn stat(&self, stat: &Stat) -> Result<StatId, UnknownName> {
             self.view
                 .stat_index(stat)
-                .expect("the load checked the stats")
+                .ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
         }
 
-        fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
+        fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
             self.view
                 .names()
                 .damage_kinds
                 .named(name.as_str())
-                .expect("the load checked the damage kind")
+                .ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
         }
 
         fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
             self.view.cost_target(name.as_str())
         }
 
-        fn filter(&self, filter: &FilterData) -> Filter {
-            self.view
-                .resolve_filter(filter)
-                .expect("the load checked the filter's tags")
+        fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
+            self.view.resolve_filter(filter)
         }
 
-        fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
+        fn modifier(&self, package: u16, name: &DeclaredName) -> Result<ModifierId, UnknownName> {
             self.modifiers
                 .names()
                 .named((package, name.as_str()))
-                .expect("the load checked the modifier")
+                .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
         }
 
         fn homes(&self, package: u16, name: &DeclaredName) -> bool {
-            let unit_type = self.unit_type(package, name);
+            let unit_type = self
+                .unit_type(package, name)
+                .expect("a test loads it first");
             let specs = self.world.resource::<ByType<ProjectileSpec>>();
             specs
                 .get(unit_type)
@@ -610,13 +616,13 @@ pub(crate) mod test_world {
                 .homing
         }
 
-        fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {
+        fn unit_type(&self, package: u16, name: &DeclaredName) -> Result<UnitType, UnknownName> {
             let scope = TypeScope::of_package(package);
             self.view
                 .names()
                 .unit_types()
                 .named((scope, name.as_str()))
-                .expect("a test loads an action's unit type before the action")
+                .ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
         }
     }
 }

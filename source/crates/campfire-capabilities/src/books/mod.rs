@@ -33,6 +33,7 @@ use crate::values::declared_name::DeclaredName;
 pub(crate) mod book_builder;
 pub(crate) mod book_input;
 pub(crate) mod book_parts;
+pub(crate) mod book_place;
 pub(crate) mod error;
 pub(crate) mod mode_inputs;
 pub(crate) mod package_content;
@@ -68,7 +69,7 @@ impl Books {
     /// The books of `input`, which the package load checked; an error for what the check does
     /// not see and the books cannot hold.
     pub fn build(input: &BookInput<'_>) -> Result<Books, BookError> {
-        BookBuilder::new(input).build()
+        BookBuilder::new(input)?.build()
     }
 
     /// Checks that the mode's map can be walked by the kinds of its unit types that walk, as

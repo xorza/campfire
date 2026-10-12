@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use crate::mode::mode_data::ModeData;
 use crate::players::resource_id::ResourceId;
+use crate::scripts::error::UnknownName;
+use crate::scripts::name_kind::NameKind;
 use crate::stats::pool_id::PoolId;
 use crate::units::body_form::BodyForm;
 use crate::units::collision_data::CollisionData;
@@ -44,14 +46,22 @@ impl ModeNames {
         }
     }
 
-    /// The body of a unit type of `collision`, if it has the section: on the layer it names,
-    /// which the load checked the mode declares, or on the first.
-    pub(crate) fn form(&self, collision: Option<&CollisionData>) -> Option<BodyForm> {
-        let collision = collision?;
-        let layer = collision.layer.as_ref().map_or(Layer::FIRST, |name| {
-            let layer = self.layers.named(name.as_str());
-            layer.expect("the load checked the layer")
-        });
-        Some(collision.form.on(layer))
+    /// The body of a unit type of `collision`, if it has the section: on the layer it names, or
+    /// on the first; an error for a layer the mode does not declare.
+    pub(crate) fn form(
+        &self,
+        collision: Option<&CollisionData>,
+    ) -> Result<Option<BodyForm>, UnknownName> {
+        let Some(collision) = collision else {
+            return Ok(None);
+        };
+        let layer = match &collision.layer {
+            Some(name) => self
+                .layers
+                .named(name.as_str())
+                .ok_or_else(|| UnknownName::new(NameKind::Layer, name))?,
+            None => Layer::FIRST,
+        };
+        Ok(Some(collision.form.on(layer)))
     }
 }

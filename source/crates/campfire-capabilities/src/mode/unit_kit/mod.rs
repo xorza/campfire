@@ -112,7 +112,9 @@ impl UnitKit {
         } = sections;
         let values = book.base_values(unit_type, 1);
         let given = |stat: &Stat| {
-            let id = book.named(stat).expect("the load checked the stats");
+            let id = book
+                .named(stat)
+                .expect("the pool book resolved each pool's stats");
             book.gives(unit_type, id).then_some(id)
         };
         let mut maxes = Vec::new();

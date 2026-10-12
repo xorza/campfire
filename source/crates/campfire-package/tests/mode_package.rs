@@ -394,7 +394,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 273] = [
+static FLAWS: [Flaw; 275] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -2530,6 +2530,23 @@ static FLAWS: [Flaw; 273] = [
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Action(action), name } if action == "recruit" && name == "drill"),
     },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\nrequires = { units = [\"keep\"] }\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "recruit" && name == "keep"),
+    },
+    // A unit type's passive is a modifier of its package.
+    flaw(
+        UNITS,
+        Edit::Set("units.tower.passive", r#""warden_blesing""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::UnitType(unit_type), name } if unit_type == "tower" && name == "warden_blesing"),
+    ),
     flaw(
         HUSK,
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nrequires = {}\n"),

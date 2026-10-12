@@ -1,6 +1,8 @@
 use serde::Deserialize;
 
 use crate::scripts::data_section::DataSection;
+use crate::scripts::error::UnknownName;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::stats::pool_id::PoolId;
 use crate::values::damage_kind::DamageKind;
@@ -38,15 +40,16 @@ impl ModeCombatData {
     /// The most damage kinds it declares.
     pub const DAMAGE_KIND_LIMIT: usize = DamageKind::LIMIT;
 
-    /// The id among `pools` of the life pool it names, which the load checked `pools` declares;
-    /// `None` when it names none.
-    pub fn life_pool(&self, pools: &Names<PoolId>) -> Option<PoolId> {
-        let life = self.life.as_ref()?;
-        Some(
-            pools
-                .named(life.as_str())
-                .expect("the load checked the life pool"),
-        )
+    /// The id among `pools` of the life pool it names; `None` when it names none, and an error
+    /// for a pool `pools` does not hold.
+    pub fn life_pool(&self, pools: &Names<PoolId>) -> Result<Option<PoolId>, UnknownName> {
+        let Some(life) = &self.life else {
+            return Ok(None);
+        };
+        let pool = pools.named(life.as_str());
+        Ok(Some(
+            pool.ok_or_else(|| UnknownName::new(NameKind::Pool, life))?,
+        ))
     }
 
     /// Every stat its rules read.

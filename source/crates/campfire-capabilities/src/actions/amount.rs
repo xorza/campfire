@@ -1,6 +1,7 @@
 use campfire_math::Num;
 
 use crate::actions::effect_names::EffectNames;
+use crate::scripts::error::UnknownName;
 use crate::scripts::frame::Frame;
 use crate::stats::stats_call::StatsCall;
 use crate::values::number::Number;
@@ -14,16 +15,17 @@ pub(crate) enum Amount {
 }
 
 impl Amount {
-    /// `number`, its param resolved by `names`, which the load checked a sim number.
-    pub(super) fn of(number: &Number, names: &impl EffectNames) -> Amount {
-        match number {
+    /// `number`, which the load checked a sim number, its param resolved by `names`; an error
+    /// for a param its action does not declare.
+    pub(super) fn of(number: &Number, names: &impl EffectNames) -> Result<Amount, UnknownName> {
+        Ok(match number {
             Number::Value(value) => Amount::Value(
                 value
                     .to_num()
                     .expect("the load checked each number of an effect list"),
             ),
-            Number::Param(reference) => Amount::Param(names.param(&reference.param)),
-        }
+            Number::Param(reference) => Amount::Param(names.param(&reference.param)?),
+        })
     }
 
     /// Its value in `frame`, a call of its action: 0 for a scaling param below zero, which its

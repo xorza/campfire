@@ -1,3 +1,4 @@
+use crate::scripts::error::UnknownName;
 use crate::stats::pool_id::PoolId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
@@ -6,17 +7,18 @@ use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 
-/// The match's ids of the names an action's effect lists give, which the package load checked:
-/// what an action's lists resolve them by, in a match's world or in the load's builder.
+/// The match's ids of the names an action's effect lists give: what an action's lists resolve
+/// them by, in a match's world or in the load's builder; an error for a name the match does not
+/// have.
 pub(crate) trait EffectNames {
     /// The place among the action's params of the param `name`.
-    fn param(&self, name: &DeclaredName) -> usize;
-    fn damage_kind(&self, name: &DeclaredName) -> DamageKind;
-    fn pool(&self, name: &DeclaredName) -> PoolId;
+    fn param(&self, name: &DeclaredName) -> Result<usize, UnknownName>;
+    fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName>;
+    fn pool(&self, name: &DeclaredName) -> Result<PoolId, UnknownName>;
     /// The modifier `name` of the action's package.
-    fn modifier(&self, name: &DeclaredName) -> ModifierId;
-    fn track(&self, name: &DeclaredName) -> TrackId;
-    fn tag(&self, name: &DeclaredName) -> Tag;
+    fn modifier(&self, name: &DeclaredName) -> Result<ModifierId, UnknownName>;
+    fn track(&self, name: &DeclaredName) -> Result<TrackId, UnknownName>;
+    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName>;
     /// The unit type `name` of the action's package: a launch's area type, or one a spawn makes.
-    fn package_type(&self, name: &DeclaredName) -> UnitType;
+    fn package_type(&self, name: &DeclaredName) -> Result<UnitType, UnknownName>;
 }

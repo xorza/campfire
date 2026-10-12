@@ -55,7 +55,8 @@ fn kit_of<'a>(
         (MOVE_SPEED, StatRule::default()),
     ]);
     let rate = TickRate::new(NonZeroU32::new(hz).unwrap());
-    let book = StatBook::new(&rules, [(TYPE, stats)], decimal("6.0"));
+    let mut book = StatBook::new(&rules, decimal("6.0"));
+    book.add_type(TYPE, stats).unwrap();
     let sections = KitSections {
         combat,
         pools,
@@ -123,7 +124,8 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
     assert_eq!(kit.life, None);
     // Nor in a mode that declares no move speed among its stats, as a mode with no stats does.
     let rules = BTreeMap::from([(health.clone(), StatRule::default())]);
-    let book = StatBook::new(&rules, [(TYPE, &still)], decimal("6.0"));
+    let mut book = StatBook::new(&rules, decimal("6.0"));
+    book.add_type(TYPE, &still).unwrap();
     let sections = KitSections {
         combat: None,
         pools: [],

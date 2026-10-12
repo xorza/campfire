@@ -8,7 +8,9 @@ use campfire_sim::{Capability, TickRate};
 
 use crate::declare::book::Book;
 use crate::scripts::error::ParamProblem;
+use crate::scripts::error::UnknownName;
 use crate::scripts::hook_set::HookSet;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_role::ScriptRole;
 use crate::stats::application::{Application, NewInstance};
@@ -77,7 +79,7 @@ impl ModifierBook {
     /// Loads `modifiers`, sorted by name, as those of `package`, after every modifier of an
     /// earlier package or name, their names resolved through `load`; an aura names a modifier
     /// of its own package. A modifier that does not load fails them all.
-    pub(crate) fn load<S: Fn(&Stat) -> StatId>(
+    pub(crate) fn load<S: Fn(&Stat) -> Result<StatId, UnknownName>>(
         &mut self,
         load: ModifierLoad<'_, S>,
         package: u16,
@@ -116,20 +118,20 @@ impl ModifierBook {
             modifier: |name: &str| {
                 let at = modifiers.binary_search_by(|modifier| modifier.name.as_str().cmp(name));
                 match at {
-                    Ok(at) => ModifierBook::id_at(start + at),
+                    Ok(at) => Ok(ModifierBook::id_at(start + at)),
                     Err(_) => self
                         .names
                         .named((package, name))
-                        .expect("the load checked the aura's modifier"),
+                        .ok_or_else(|| UnknownName::new(NameKind::Modifier, name)),
                 }
             },
         };
         let specs = modifiers
             .iter()
             .map(|modifier| {
-                ModifierSpec::of(modifier.data, &names).map_err(|problem| ModifierError {
+                ModifierSpec::of(modifier.data, &names).map_err(|error| ModifierError {
                     modifier: modifier.name.clone(),
-                    problem,
+                    error,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -365,6 +367,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::convert::Infallible;
 
     use campfire_math::Num;
 
@@ -386,6 +389,7 @@ mod tests {
     use crate::values::rank::Rank;
     use crate::values::ranked::Ranked;
     use crate::values::scalar::Scalar;
+    use crate::values::stat::Stat;
 
     fn name(text: &str) -> DeclaredName {
         DeclaredName::new(text).unwrap()
@@ -445,7 +449,7 @@ mod tests {
         let load = ModifierLoad {
             scripts: &ScriptBook::default(),
             types: &mut UnitTypes::new(Release::engine_tags()),
-            stat: |_: &_| StatId::new(0),
+            stat: |_: &_| Ok(StatId::new(0)),
             rate,
         };
         let modifiers = data.each_ref().map(|(name, data)| PackageModifier {
@@ -455,9 +459,10 @@ mod tests {
         });
         book.load(load, 0, &modifiers).unwrap();
         let mut tables = ParamTables::default();
-        tables.push_action(&action, |_| StatId::new(0));
+        let stat = |_: &Stat| Ok::<_, Infallible>(StatId::new(0));
+        tables.push_action(&action, stat).unwrap();
         for (_, data) in &data {
-            tables.push_modifier(&data.params, |_| StatId::new(0));
+            tables.push_modifier(&data.params, stat).unwrap();
         }
         let params = ParamBook::new(tables);
         let ways = |action, rank| -> Vec<Option<ParamProblem>> {

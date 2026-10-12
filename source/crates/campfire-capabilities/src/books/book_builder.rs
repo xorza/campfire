@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::mem;
+use std::sync::Arc;
 
 use campfire_script::ScriptId;
 
@@ -10,15 +11,19 @@ use crate::actions::action_parts::ActionParts;
 use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::effect_names::EffectNames;
+use crate::actions::error::ActionError;
 use crate::actions::placement_data::{PlacementData, PlacementRule};
 use crate::areas::Areas;
 use crate::areas::area_spec::AreaSpec;
+use crate::areas::error::AreaError;
 use crate::books::Books;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::book_parts::BookParts;
+use crate::books::book_place::BookPlace;
 use crate::books::error::BookError;
 use crate::books::type_place::TypePlace;
 use crate::books::unit_type_data::UnitTypeData;
+use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
 use crate::items::item_book::{ItemBook, ItemSpec};
@@ -43,13 +48,18 @@ use crate::progression::track_set::TrackSet;
 use crate::projectiles::Projectiles;
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::release::Release;
+use crate::scripts::error::UnknownName;
+use crate::scripts::name_kind::NameKind;
+use crate::stats::error::{ModifierError, SpecError};
 use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
 use crate::stats::param_table::ParamTable;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
+use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
@@ -69,6 +79,9 @@ use crate::values::stat::Stat;
 /// What the package load checked, which the builder trusts.
 const CHECKED: &str = "the load checked it";
 
+/// A unit type the builder looks up by the name it declared it by.
+const DECLARED: &str = "the builder declared each unit type";
+
 /// Builds a match's books from its packages, in the order a match loads them: the tags, the
 /// tracks and every package's modifiers first; then every package's unit types, by name; then
 /// each package's actions and the unit types' parts, the mode's, then each dependency's.
@@ -78,6 +91,8 @@ pub(crate) struct BookBuilder<'a> {
     books: BookParts,
     /// The mode's stats, for every unit type, which every stat the packages name resolves by.
     stats: StatBook,
+    /// The mode's pools, each with its stats.
+    pools: PoolBook,
     /// The mode's pools, players' resources, damage kinds and layers.
     names: ModeNames,
     /// The life pool, none when the mode names none.
@@ -124,12 +139,17 @@ impl<'f> Standing<'f> {
         self.declared
             .map_or(TypePlace::Avatar, |name| TypePlace::Declared(name.clone()))
     }
+
+    fn at(&self) -> BookPlace {
+        BookPlace::UnitType(self.place())
+    }
 }
 
 impl<'a> BookBuilder<'a> {
     /// The builder of `input`'s books, its tags and unit types declared, in the order their ids
-    /// follow, and its stat book built for them.
-    pub(crate) fn new(input: &'a BookInput<'a>) -> BookBuilder<'a> {
+    /// follow, and its stat and pool books built for them; an error for a name the mode does not
+    /// declare.
+    pub(crate) fn new(input: &'a BookInput<'a>) -> Result<BookBuilder<'a>, BookError> {
         let data = input.data;
         let mut script_starts = Vec::with_capacity(input.packages.len());
         let mut start = 0;
@@ -149,15 +169,35 @@ impl<'a> BookBuilder<'a> {
             BookBuilder::declare_types(&mut books.types, index, package);
         }
         let names = ModeNames::of(data);
-        BookBuilder {
+        let life = data.combat.life_pool(&names.pools);
+        let life = life.map_err(|name| BookError::unknown(0, BookPlace::Combat, name))?;
+        let stats = BookBuilder::stat_book(input, &books.types)?;
+        let pools = PoolBook::new(&data.pools, Arc::clone(&names.pools), |pool, stat| {
+            let at = BookPlace::Pool(pool.clone());
+            BookBuilder::stat_in(&stats, 0, at, stat)
+        })?;
+        Ok(BookBuilder {
             input,
-            stats: BookBuilder::stat_book(input, &books.types),
+            stats,
+            pools,
             books,
-            life: data.combat.life_pool(&names.pools),
+            life,
             names,
             loadout_ranks: data.loadout_ranks(),
             script_starts,
-        }
+        })
+    }
+
+    /// The id of `stat`, which data at `at` of the package at `package` names; an error for a
+    /// stat the mode does not declare.
+    fn stat_in(
+        book: &StatBook,
+        package: u16,
+        at: BookPlace,
+        stat: &Stat,
+    ) -> Result<StatId, BookError> {
+        let found = book.named(stat);
+        found.ok_or_else(|| BookError::unknown(package, at, UnknownName::new(NameKind::Stat, stat)))
     }
 
     pub(crate) fn build(mut self) -> Result<Books, BookError> {
@@ -174,7 +214,7 @@ impl<'a> BookBuilder<'a> {
                 BookKind::Mode => {
                     let ranks = self.slotted_ranks(units.values());
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
-                    self.books.items = self.item_book(index, package, &actions);
+                    self.books.items = self.item_book(index, package, &actions)?;
                     self.package_units(index, units, &actions)?;
                 }
                 BookKind::Avatar(unit) => {
@@ -202,7 +242,12 @@ impl<'a> BookBuilder<'a> {
         let types = &parts.types;
         let standing = |name: &str| {
             let stands = mode_units.get(name).is_some_and(|file| !file.delivers());
-            stands.then(|| types.types().named((TypeScope::Mode, name)).expect(CHECKED))
+            stands.then(|| {
+                types
+                    .types()
+                    .named((TypeScope::Mode, name))
+                    .expect(DECLARED)
+            })
         };
         let data = input.data;
         let map = ModeMap::resolve(
@@ -217,14 +262,23 @@ impl<'a> BookBuilder<'a> {
         let shop = data
             .shop
             .as_ref()
-            .map(|shop| BookBuilder::shop(shop, items, &self.names.resources, &map));
+            .map(|shop| BookBuilder::shop(shop, items, &self.names.resources, &map))
+            .transpose()
+            .map_err(|name| BookError::unknown(0, BookPlace::Shop, name))?;
+        let stats = &self.stats;
+        let bindings = CombatBindings::new(&data.combat, |stat| {
+            BookBuilder::stat_in(stats, 0, BookPlace::Combat, stat)
+        })?;
+        let bindings = self.life.map(|_| bindings);
         let mode = ModeBooks::build(ModeBooksInput {
             data,
             unit_types: &parts.units.unit_types,
             types: &mut parts.types,
             walkers: &parts.walkers,
             stats: self.stats,
+            pools: self.pools,
             life: self.life,
+            bindings,
             loadout_ranks: self.loadout_ranks,
             names: self.names,
             map,
@@ -233,58 +287,70 @@ impl<'a> BookBuilder<'a> {
         Ok(Books { parts, mode })
     }
 
-    /// The item book of the mode package `package`, at `index`, its actions `actions`.
+    /// The item book of the mode package `package`, at `index`, its actions `actions`; an error
+    /// for a name the mode does not have.
     fn item_book(
         &self,
         index: u16,
         package: &BookPackage<'_>,
         actions: &BTreeMap<&str, ActionId>,
-    ) -> ItemBook {
+    ) -> Result<ItemBook, BookError> {
         let items = &package.content.items;
         let ids: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
-        let id = |name: &DeclaredName| ids.named(name.as_str()).expect(CHECKED);
         let resources = &self.names.resources;
-        let specs = items.values().map(|item| ItemSpec {
-            cost: item
-                .cost
-                .iter()
-                .map(|(resource, &amount)| ResourceAmount {
-                    resource: resources.named(resource.as_str()).expect(CHECKED),
-                    amount: i64::from(amount),
+        let names = self.names(index, None);
+        let mut specs = Vec::with_capacity(items.len());
+        for (name, item) in items {
+            let spec = || {
+                let cost = item.cost.iter().map(|(resource, &amount)| {
+                    let found = resources.named(resource.as_str());
+                    Ok(ResourceAmount {
+                        resource: found
+                            .ok_or_else(|| UnknownName::new(NameKind::Resource, resource))?,
+                        amount: i64::from(amount),
+                    })
+                });
+                let components = item.components.iter().map(|component| {
+                    let found = ids.named(component.as_str());
+                    found.ok_or_else(|| UnknownName::new(NameKind::Item, component))
+                });
+                let modifiers = item.modifiers.iter();
+                let modifiers =
+                    modifiers.map(|modifier| ActionNames::modifier(&names, index, modifier));
+                let action = item.action.as_ref().map(|action| {
+                    let found = actions.get(action.as_str()).copied();
+                    found.ok_or_else(|| UnknownName::new(NameKind::Ability, action))
+                });
+                Ok(ItemSpec {
+                    cost: cost.collect::<Result<_, UnknownName>>()?,
+                    components: components.collect::<Result<_, UnknownName>>()?,
+                    stack: item.stack,
+                    uses: item.uses,
+                    modifiers: modifiers.collect::<Result<_, UnknownName>>()?,
+                    action: action.transpose()?,
                 })
-                .collect(),
-            components: item.components.iter().map(id).collect(),
-            stack: item.stack,
-            uses: item.uses,
-            modifiers: item
-                .modifiers
-                .iter()
-                .map(|modifier| {
-                    let modifiers = &self.books.modifiers;
-                    modifiers
-                        .names()
-                        .named((index, modifier.as_str()))
-                        .expect(CHECKED)
-                })
-                .collect(),
-            action: item.action.as_ref().map(|action| actions[action.as_str()]),
-        });
-        let specs = specs.collect();
-        ItemBook::new(ids, specs)
+            };
+            let at = BookPlace::Item(name.clone());
+            specs.push(spec().map_err(|name| BookError::unknown(index, at, name))?);
+        }
+        Ok(ItemBook::new(ids, specs))
     }
 
     /// The mode's shop of `data`, selling `items` by id, for one of `resources`, at the regions of
-    /// `map`'s markers with its tag, each for the marker's team.
+    /// `map`'s markers with its tag, each for the marker's team; an error for a name the mode
+    /// does not have.
     fn shop(
         data: &ShopData,
         items: &Names<ItemId>,
         resources: &Names<ResourceId>,
         map: &ModeMap,
-    ) -> Shop {
-        let sells = data
-            .items
-            .iter()
-            .map(|name| items.named(name.as_str()).expect(CHECKED));
+    ) -> Result<Shop, UnknownName> {
+        let sells = data.items.iter().map(|name| {
+            items
+                .named(name.as_str())
+                .ok_or_else(|| UnknownName::new(NameKind::Item, name))
+        });
+        let sells = sells.collect::<Result<_, UnknownName>>()?;
         let places = map
             .markers
             .iter()
@@ -293,32 +359,43 @@ impl<'a> BookBuilder<'a> {
                 team: marker.team.expect(CHECKED),
                 region: marker.region.expect(CHECKED),
             });
-        let resource = resources.named(data.resource.as_str()).expect(CHECKED);
-        Shop::new(sells.collect(), resource, places.collect(), data.sell_share)
+        let found = resources.named(data.resource.as_str());
+        let resource = found.ok_or_else(|| UnknownName::new(NameKind::Resource, &data.resource))?;
+        Ok(Shop::new(
+            sells,
+            resource,
+            places.collect(),
+            data.sell_share,
+        ))
     }
 
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`
     /// section, refreshed in the input's order: each package's types that stand, in its scope,
-    /// and each avatar, in the mode's.
-    fn stat_book(input: &BookInput<'_>, types: &UnitTypes) -> StatBook {
-        let standing = (0..).zip(&input.packages).flat_map(|(index, package)| {
+    /// and each avatar, in the mode's; an error for a stat the mode does not declare.
+    fn stat_book(input: &BookInput<'_>, types: &UnitTypes) -> Result<StatBook, BookError> {
+        let mut book = StatBook::new(&input.data.stats, input.max_move_speed.get());
+        for (index, package) in (0..).zip(&input.packages) {
             let units = package.content.units.iter();
             let declared = units
                 .filter(|(_, file)| !file.delivers())
-                .map(move |(name, file)| (TypeScope::of_package(index), name.as_str(), file));
+                .map(|(name, file)| Standing::declared(index, name, file));
             let avatar = match package.kind {
-                BookKind::Avatar(unit) => Some((TypeScope::Mode, package.name, unit)),
+                BookKind::Avatar(unit) => Some(Standing::avatar(package.name, unit)),
                 BookKind::Mode | BookKind::Loadout | BookKind::Rules => None,
             };
-            declared.chain(avatar)
-        });
-        let setups = standing.filter_map(|(scope, name, file)| {
-            let unit_type = types.types().named((scope, name)).expect(CHECKED);
-            Some((unit_type, file.stats.as_ref()?))
-        });
-        let max_move_speed = input.max_move_speed.get();
-        StatBook::new(&input.data.stats, setups, max_move_speed)
-            .with_order(input.stat_order.to_vec())
+            for unit in declared.chain(avatar) {
+                let Some(stats) = &unit.file.stats else {
+                    continue;
+                };
+                let unit_type = types
+                    .types()
+                    .named((unit.scope, unit.name))
+                    .expect(DECLARED);
+                book.add_type(unit_type, stats)
+                    .map_err(|name| BookError::unknown(index, unit.at(), name))?;
+            }
+        }
+        Ok(book.with_order(input.stat_order.to_vec()))
     }
 
     /// Declares the unit types of the package at `index` in the order its own load reads them,
@@ -358,21 +435,30 @@ impl<'a> BookBuilder<'a> {
         let load = ModifierLoad {
             scripts: input.scripts,
             types: &mut books.types,
-            stat: |stat: &Stat| stats.named(stat).expect(CHECKED),
+            stat: |stat: &Stat| {
+                stats
+                    .named(stat)
+                    .ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
+            },
             rate: input.rate,
         };
-        books
-            .modifiers
-            .load(load, index, &modifiers)
-            .map_err(|error| BookError::Modifier {
-                package: index,
-                modifier: error.modifier,
-                problem: error.problem,
-            })?;
+        books.modifiers.load(load, index, &modifiers).map_err(
+            |ModifierError { modifier, error }| match error {
+                SpecError::Problem(problem) => BookError::Modifier {
+                    package: index,
+                    modifier,
+                    problem,
+                },
+                SpecError::Unknown(name) => {
+                    BookError::unknown(index, BookPlace::Modifier(modifier), name)
+                }
+            },
+        )?;
         for modifier in &modifiers {
             books.params.push_modifier(&modifier.data.params, |stat| {
-                stats.named(stat).expect(CHECKED)
-            });
+                let at = BookPlace::Modifier(modifier.name.clone());
+                BookBuilder::stat_in(stats, index, at, stat)
+            })?;
         }
         Ok(())
     }
@@ -407,52 +493,68 @@ impl<'a> BookBuilder<'a> {
     ) -> Result<ActionId, BookError> {
         let script = data.script.as_ref().map(|path| self.script(index, path));
         let names = self.names(index, None);
+        let at = || BookPlace::Action(id.clone());
         let parts =
             ActionParts::of(data, index, ranks, self.input.rate, &names).map_err(|error| {
-                BookError::Action {
-                    package: index,
-                    action: id.clone(),
-                    error,
+                match error {
+                    ActionError::Time(error) => BookError::Action {
+                        package: index,
+                        action: id.clone(),
+                        error,
+                    },
+                    ActionError::Unknown(name) => BookError::unknown(index, at(), name),
                 }
             })?;
         let action =
             self.books
                 .actions
                 .load(self.input.scripts, index, id.as_str(), data, script, parts);
-        self.build_spec(index, action, data);
-        self.requirements(index, action, data);
+        self.build_spec(index, id, action, data)?;
+        self.requirements(index, action, data)
+            .map_err(|name| BookError::unknown(index, at(), name))?;
         let stats = &self.stats;
-        let run = self
-            .books
-            .params
-            .push_action(&data.params, |stat| stats.named(stat).expect(CHECKED));
+        let run = self.books.params.push_action(&data.params, |stat| {
+            BookBuilder::stat_in(stats, index, at(), stat)
+        })?;
         debug_assert_eq!(run, action.index(), "one run of params per ability");
         if !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty()) {
             let mut effects = mem::take(&mut self.books.effects);
-            effects.push(action, data, &self.names(index, Some(action)));
+            let pushed = effects.push(action, data, &self.names(index, Some(action)));
             self.books.effects = effects;
+            pushed.map_err(|name| BookError::unknown(index, at(), name))?;
         }
         Ok(action)
     }
 
-    /// The build spec of `action`, of the package at `index`, when its `data` constructs: its
-    /// style, its form, its life and refund at the start, and its placement rules.
-    fn build_spec(&mut self, index: u16, action: ActionId, data: &ActionData) {
+    /// The build spec of `action`, `id` of the package at `index`, when its `data` constructs: its
+    /// style, its form, its life and refund at the start, and its placement rules; an error for a
+    /// name the match does not have.
+    fn build_spec(
+        &mut self,
+        index: u16,
+        id: &DeclaredName,
+        action: ActionId,
+        data: &ActionData,
+    ) -> Result<(), BookError> {
         let Some(construct) = &data.construct else {
-            return;
+            return Ok(());
         };
         let books = &mut self.books;
         let types = &books.types;
-        let check = |rule: &PlacementRule| PlacementCheck {
-            filter: Filter::resolve(&rule.filter, types).expect(CHECKED),
-            distance: rule.distance,
+        let check = |rule: &PlacementRule| {
+            Ok(PlacementCheck {
+                filter: Filter::resolve(&rule.filter, types)?,
+                distance: rule.distance,
+            })
         };
         let placement = data.placement.as_ref();
         let rules = |of: fn(&PlacementData) -> &[PlacementRule]| {
-            placement.map_or_else(Vec::new, |placement| {
-                of(placement).iter().map(check).collect()
-            })
+            placement.map_or_else(
+                || Ok(Vec::new()),
+                |placement| of(placement).iter().map(check).collect(),
+            )
         };
+        let at = |place| move |name| BookError::unknown(index, place, name);
         let style = match construct {
             ConstructData::Alone => Style::Alone,
             ConstructData::Builder => Style::Builder,
@@ -461,37 +563,48 @@ impl<'a> BookBuilder<'a> {
         let package = &self.input.packages[usize::from(index)];
         let building = data.unit_type.as_ref().expect(CHECKED);
         let collision = package.content.units[building].collision.as_ref();
+        let place = BookPlace::UnitType(TypePlace::Declared(building.clone()));
         let build = NewBuild {
-            form: self.names.form(collision).expect(CHECKED),
+            form: self
+                .names
+                .form(collision)
+                .map_err(at(place))?
+                .expect(CHECKED),
             style,
             start_life: data.start_life,
             refund: data.cancel_refund.unwrap_or(Share::ALL),
-            near: rules(|placement| &placement.near),
-            away: rules(|placement| &placement.away),
+            near: rules(|placement| &placement.near).map_err(at(BookPlace::Action(id.clone())))?,
+            away: rules(|placement| &placement.away).map_err(at(BookPlace::Action(id.clone())))?,
         };
         books.builds.push(action, build);
+        Ok(())
     }
 
     /// What `action`, of the package at `index`, requires of its caster's player, when its
-    /// `data` requires anything: unit types it owns and modifiers it holds.
-    fn requirements(&mut self, index: u16, action: ActionId, data: &ActionData) {
+    /// `data` requires anything: unit types it owns and modifiers it holds; an error for a name
+    /// the package does not have.
+    fn requirements(
+        &mut self,
+        index: u16,
+        action: ActionId,
+        data: &ActionData,
+    ) -> Result<(), UnknownName> {
         let Some(requires) = &data.requires else {
-            return;
+            return Ok(());
         };
-        let books = &mut self.books;
-        let (types, modifiers) = (&books.types, &books.modifiers);
-        let scope = TypeScope::of_package(index);
-        let units = requires
+        let names = self.names(index, None);
+        let units: Vec<UnitType> = requires
             .units
             .iter()
-            .map(|name| types.types().named((scope, name.as_str())).expect(CHECKED));
-        let held = requires.modifiers.iter().map(|name| {
-            modifiers
-                .names()
-                .named((index, name.as_str()))
-                .expect(CHECKED)
-        });
-        books.requirements.push(action, units, held);
+            .map(|name| ActionNames::unit_type(&names, index, name))
+            .collect::<Result<_, UnknownName>>()?;
+        let held: Vec<ModifierId> = requires
+            .modifiers
+            .iter()
+            .map(|name| ActionNames::modifier(&names, index, name))
+            .collect::<Result<_, UnknownName>>()?;
+        self.books.requirements.push(action, units, held);
+        Ok(())
     }
 
     /// The names an action of the package at `package` resolves, with `action`'s params when it
@@ -529,9 +642,14 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// Production's parts of `unit_type`, of `file`: its queue, its supply, and what it is as a
-    /// node and as a drop-off, each tagged.
-    fn production(&mut self, unit_type: UnitType, file: &UnitTypeData) {
+    /// node and as a drop-off, each tagged; an error for a resource the mode does not declare.
+    fn production(&mut self, unit_type: UnitType, file: &UnitTypeData) -> Result<(), UnknownName> {
         let resources = &self.names.resources;
+        let resource = |name: &DeclaredName| {
+            resources
+                .named(name.as_str())
+                .ok_or_else(|| UnknownName::new(NameKind::Resource, name))
+        };
         let books = &mut self.books;
         if let Some(production) = file.production {
             books.producers.set(unit_type, production);
@@ -540,18 +658,17 @@ impl<'a> BookBuilder<'a> {
             books.supplies.set(unit_type, supply);
         }
         if let Some(node) = &file.node {
-            let resource = resources.named(node.resource.as_str()).expect(CHECKED);
+            let resource = resource(&node.resource)?;
             books.types.give_tag(unit_type, Production::NODE.tag());
             books.nodes.nodes.set(unit_type, resource);
         }
         if let Some(drop_off) = &file.drop_off {
-            let taken = drop_off
-                .resources
-                .iter()
-                .map(|name| resources.named(name.as_str()).expect(CHECKED));
+            let taken = drop_off.resources.iter().map(resource);
+            let taken = taken.collect::<Result<Vec<ResourceId>, UnknownName>>()?;
             books.types.give_tag(unit_type, Production::DROP_OFF.tag());
             books.nodes.drop_offs.set(unit_type, ResourceSet::of(taken));
         }
+        Ok(())
     }
 
     /// The unit type `unit` that stands, of the package at `index`, whose slots hold the package's
@@ -570,7 +687,9 @@ impl<'a> BookBuilder<'a> {
             .types
             .types()
             .named((unit.scope, unit.name))
-            .expect(CHECKED);
+            .expect(DECLARED);
+        let unknown = |name| BookError::unknown(index, unit.at(), name);
+        let body = self.names.form(file.collision.as_ref()).map_err(unknown)?;
         let mut combat = file.combat.clone();
         if unit.declared.is_none() {
             self.books.types.give_tag(unit_type, Units::AVATAR.tag());
@@ -579,14 +698,14 @@ impl<'a> BookBuilder<'a> {
             }
         }
         self.ai(index, unit, unit_type)?;
-        let kit = self.kit(index, unit, unit_type, combat.as_ref())?;
-        self.production(unit_type, file);
-        self.walker(unit_type, file);
+        let kit = self.kit(index, unit, unit_type, combat.as_ref(), body)?;
+        self.production(unit_type, file).map_err(unknown)?;
+        self.walker(unit_type, file, body);
         let setup = UnitTypeSetup {
             unit_type,
             kit,
-            actions: self.slot_actions(file, actions),
-            passive: self.passive(index, file),
+            actions: self.slot_actions(file, actions).map_err(unknown)?,
+            passive: self.passive(index, file).map_err(unknown)?,
         };
         self.books.units.unit_types.push(setup);
         Ok(())
@@ -610,23 +729,43 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The kit of `unit`, of the package at `index`, `unit_type`, with `combat`, its combat
-    /// section as the type spawns with it.
+    /// section as the type spawns with it, and `body`, the body of its `collision` section; an
+    /// error for a name the mode does not declare.
     fn kit(
         &self,
         index: u16,
         unit: Standing<'_>,
         unit_type: UnitType,
         combat: Option<&CombatData>,
+        body: Option<BodyForm>,
     ) -> Result<UnitKit, BookError> {
         let (file, data) = (unit.file, self.input.data);
-        let pools = file.pools.iter().map(|pool| {
-            let id = self.names.pools.named(pool.as_str()).expect(CHECKED);
-            (id, &data.pools[pool].max)
+        let unknown = |name| BookError::unknown(index, unit.at(), name);
+        let pools: Vec<(PoolId, &Stat)> = file
+            .pools
+            .iter()
+            .map(|pool| {
+                let id = self.names.pools.named(pool.as_str());
+                let id = id.ok_or_else(|| UnknownName::new(NameKind::Pool, pool))?;
+                Ok((id, &data.pools[pool].max))
+            })
+            .collect::<Result<_, UnknownName>>()
+            .map_err(unknown)?;
+        let names = self.names(index, None);
+        let tracks: Vec<TrackId> = file
+            .tracks
+            .iter()
+            .map(|track| names.track(track))
+            .collect::<Result<_, UnknownName>>()
+            .map_err(unknown)?;
+        let inventory = file.inventory.as_ref().map(|inventory| {
+            let kind = data.slots.names().named(inventory.kind.as_str());
+            Ok(InventorySpec {
+                slots: inventory.slots,
+                kind: kind.ok_or_else(|| UnknownName::new(NameKind::SlotKind, &inventory.kind))?,
+            })
         });
-        let tracks = TrackSet::of(file.tracks.iter().map(|track| {
-            let tracks = self.books.tracks.as_ref().expect(CHECKED);
-            tracks.names().named(track.as_str()).expect(CHECKED)
-        }));
+        let inventory = inventory.transpose().map_err(unknown)?;
         let package = &self.input.packages[usize::from(index)];
         let slotted = |kind| {
             let mut slotted = file.slots.values().flatten();
@@ -636,20 +775,13 @@ impl<'a> BookBuilder<'a> {
             combat,
             pools,
             vision: file.vision.as_ref(),
-            body: self.names.form(file.collision.as_ref()),
-            tracks,
+            body,
+            tracks: TrackSet::of(tracks),
             production: file.production.as_ref(),
             builds: slotted(ActionKind::Build),
             node: file.node.as_ref().map(|node| node.amount),
             gathers: slotted(ActionKind::Gather),
-            inventory: file.inventory.as_ref().map(|inventory| InventorySpec {
-                slots: inventory.slots,
-                kind: data
-                    .slots
-                    .names()
-                    .named(inventory.kind.as_str())
-                    .expect(CHECKED),
-            }),
+            inventory,
         };
         let rate = self.input.rate;
         UnitKit::new(&self.stats, unit_type, sections, self.life, rate).map_err(|error| {
@@ -661,26 +793,27 @@ impl<'a> BookBuilder<'a> {
         })
     }
 
-    /// The kind of walker of `unit_type`, of `file`, when it walks.
-    fn walker(&mut self, unit_type: UnitType, file: &UnitTypeData) {
+    /// The kind of walker of `unit_type`, of `file` and of `body`, the body of its `collision`
+    /// section, when it walks.
+    fn walker(&mut self, unit_type: UnitType, file: &UnitTypeData, body: Option<BodyForm>) {
         if file.walks() {
-            let form = self.names.form(file.collision.as_ref());
-            let walker = Walker::of_form(form).expect("a unit type that walks has no box");
+            let walker = Walker::of_form(body).expect("a unit type that walks has no box");
             self.books.walkers.set(unit_type, walker);
         }
     }
 
     /// The actions in the slots of `file`, of the package's `actions`, kind after kind, each at
-    /// its kind's first rank.
+    /// its kind's first rank; an error for a kind the mode does not declare.
     fn slot_actions(
         &self,
         file: &UnitTypeData,
         actions: &BTreeMap<&str, ActionId>,
-    ) -> Vec<SlotAction> {
+    ) -> Result<Vec<SlotAction>, UnknownName> {
         let slots = &self.input.data.slots;
         let mut held = Vec::new();
         for (kind, ids) in &file.slots {
-            let kind = slots.names().named(kind.as_str()).expect(CHECKED);
+            let named = slots.names().named(kind.as_str());
+            let kind = named.ok_or_else(|| UnknownName::new(NameKind::SlotKind, kind))?;
             let rank = slots.first_rank(kind);
             held.extend(ids.iter().map(|id| SlotAction {
                 kind,
@@ -689,18 +822,17 @@ impl<'a> BookBuilder<'a> {
             }));
         }
         held.sort_by_key(|action| action.kind);
-        held
+        Ok(held)
     }
 
-    /// The passive of `file`, a modifier of the package at `index`, when it has one.
-    fn passive(&self, index: u16, file: &UnitTypeData) -> Option<ModifierId> {
-        let passive = file.passive.as_ref()?;
-        let modifier = self
-            .books
-            .modifiers
-            .names()
-            .named((index, passive.as_str()));
-        Some(modifier.expect(CHECKED))
+    /// The passive of `file`, a modifier of the package at `index`, when it has one; an error
+    /// for a modifier the package does not have.
+    fn passive(&self, index: u16, file: &UnitTypeData) -> Result<Option<ModifierId>, UnknownName> {
+        let names = self.names(index, None);
+        let passive = file.passive.as_ref();
+        passive
+            .map(|name| ActionNames::modifier(&names, index, name))
+            .transpose()
     }
 
     /// The projectile or area type `name` of `file`, of the package at `index`, in the scope its
@@ -719,27 +851,28 @@ impl<'a> BookBuilder<'a> {
             .types
             .types()
             .named((scope, name.as_str()))
-            .expect(CHECKED);
+            .expect(DECLARED);
+        let at = || BookPlace::UnitType(TypePlace::Declared(name.clone()));
         if let Some(projectile) = &file.projectile {
             books.types.give_tag(unit_type, Projectiles::TAG.tag());
-            let spec = ProjectileSpec::of(projectile, &books.types, rate);
+            let spec = ProjectileSpec::of(projectile, &books.types, rate)
+                .map_err(|unknown| BookError::unknown(index, at(), unknown))?;
             books.projectiles.set(unit_type, spec);
         }
         if let Some(area) = &file.area {
             books.types.give_tag(unit_type, Areas::TAG.tag());
             let modifiers = &books.modifiers;
             let modifier = |id: &DeclaredName| {
-                modifiers
-                    .names()
-                    .named((index, id.as_str()))
-                    .expect(CHECKED)
+                let modifier = modifiers.names().named((index, id.as_str()));
+                modifier.ok_or_else(|| UnknownName::new(NameKind::Modifier, id))
             };
             let spec =
-                AreaSpec::of(area, &books.types, rate, modifier).map_err(|TimeTooLarge| {
-                    BookError::AreaTime {
+                AreaSpec::of(area, &books.types, rate, modifier).map_err(|error| match error {
+                    AreaError::Time(TimeTooLarge) => BookError::AreaTime {
                         package: index,
                         unit_type: name.clone(),
-                    }
+                    },
+                    AreaError::Unknown(unknown) => BookError::unknown(index, at(), unknown),
                 })?;
             books.areas.set(unit_type, spec);
         }
@@ -788,13 +921,15 @@ struct BuildNames<'b> {
 }
 
 impl ActionNames for BuildNames<'_> {
-    fn stat(&self, stat: &Stat) -> StatId {
-        self.stats.named(stat).expect(CHECKED)
+    fn stat(&self, stat: &Stat) -> Result<StatId, UnknownName> {
+        self.stats
+            .named(stat)
+            .ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
     }
 
-    fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
-        let kinds = &self.names.damage_kinds;
-        kinds.named(name.as_str()).expect(CHECKED)
+    fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
+        let kind = self.names.damage_kinds.named(name.as_str());
+        kind.ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
     }
 
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
@@ -802,23 +937,19 @@ impl ActionNames for BuildNames<'_> {
         CostTarget::named(&names.pools, &names.resources, name.as_str())
     }
 
-    fn filter(&self, filter: &FilterData) -> Filter {
-        Filter::resolve(filter, self.types).expect(CHECKED)
+    fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
+        Filter::resolve(filter, self.types)
     }
 
-    fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
-        self.modifiers
-            .names()
-            .named((package, name.as_str()))
-            .expect(CHECKED)
+    fn modifier(&self, package: u16, name: &DeclaredName) -> Result<ModifierId, UnknownName> {
+        let modifier = self.modifiers.names().named((package, name.as_str()));
+        modifier.ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
     }
 
-    fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {
+    fn unit_type(&self, package: u16, name: &DeclaredName) -> Result<UnitType, UnknownName> {
         let scope = TypeScope::of_package(package);
-        self.types
-            .types()
-            .named((scope, name.as_str()))
-            .expect(CHECKED)
+        let unit_type = self.types.types().named((scope, name.as_str()));
+        unit_type.ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
     }
 
     fn homes(&self, package: u16, name: &DeclaredName) -> bool {
@@ -829,36 +960,42 @@ impl ActionNames for BuildNames<'_> {
 }
 
 impl EffectNames for BuildNames<'_> {
-    fn param(&self, name: &DeclaredName) -> usize {
+    fn param(&self, name: &DeclaredName) -> Result<usize, UnknownName> {
         let action = self.action.expect("an effect list is of an action");
-        self.params
-            .named(action.index(), name.as_str())
-            .expect(CHECKED)
+        let param = self.params.named(action.index(), name.as_str());
+        param.ok_or_else(|| UnknownName::new(NameKind::Param, name))
     }
 
-    fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
+    fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
         ActionNames::damage_kind(self, name)
     }
 
-    fn pool(&self, name: &DeclaredName) -> PoolId {
-        self.names.pools.named(name.as_str()).expect(CHECKED)
+    fn pool(&self, name: &DeclaredName) -> Result<PoolId, UnknownName> {
+        self.names
+            .pools
+            .named(name.as_str())
+            .ok_or_else(|| UnknownName::new(NameKind::Pool, name))
     }
 
-    fn modifier(&self, name: &DeclaredName) -> ModifierId {
+    fn modifier(&self, name: &DeclaredName) -> Result<ModifierId, UnknownName> {
         ActionNames::modifier(self, self.package, name)
     }
 
-    fn track(&self, name: &DeclaredName) -> TrackId {
-        self.tracks
-            .and_then(|tracks| tracks.names().named(name.as_str()))
-            .expect(CHECKED)
+    fn track(&self, name: &DeclaredName) -> Result<TrackId, UnknownName> {
+        let track = self
+            .tracks
+            .and_then(|tracks| tracks.names().named(name.as_str()));
+        track.ok_or_else(|| UnknownName::new(NameKind::Track, name))
     }
 
-    fn tag(&self, name: &DeclaredName) -> Tag {
-        self.types.tags().named(name.as_str()).expect(CHECKED)
+    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
+        self.types
+            .tags()
+            .named(name.as_str())
+            .ok_or_else(|| UnknownName::new(NameKind::Tag, name))
     }
 
-    fn package_type(&self, name: &DeclaredName) -> UnitType {
+    fn package_type(&self, name: &DeclaredName) -> Result<UnitType, UnknownName> {
         self.unit_type(self.package, name)
     }
 }

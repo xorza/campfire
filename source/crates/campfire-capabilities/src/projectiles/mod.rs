@@ -220,8 +220,7 @@ pub(crate) mod test_world {
 
     impl Projectiles {
         /// Makes `unit_type` a projectile type of `data`, tagged `projectile`, its speed a tick at
-        /// the match's rate, which the package load checked: its `hits` filter names tags of the
-        /// match's.
+        /// the match's rate: its `hits` filter names tags of the match's.
         pub(crate) fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
             let rate = *world.resource::<TickRate>();
             let view = world.non_send::<View>().clone();
@@ -229,6 +228,7 @@ pub(crate) mod test_world {
                 let mut types = view.types_mut();
                 types.give_tag(unit_type, Projectiles::TAG.tag());
                 ProjectileSpec::of(data, &types, rate)
+                    .expect("a test's projectile hits tags its match has")
             };
             world
                 .resource_mut::<ByType<ProjectileSpec>>()

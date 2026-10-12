@@ -1,3 +1,6 @@
+use crate::scripts::error::UnknownName;
+use crate::scripts::name_kind::NameKind;
+use crate::stats::error::EdgeError;
 use crate::stats::stat_id::StatId;
 use crate::values::stat::Stat;
 
@@ -25,20 +28,22 @@ impl StatGraph {
         }
     }
 
-    /// Adds that a change of `changed` reads `read`; both are stats of the graph, which the load
-    /// checked.
-    pub fn add(&mut self, read: &Stat, changed: &Stat) {
-        let at = |stat| {
-            let at = self.stats.binary_search(stat).expect("a stat of the mode");
-            u16::try_from(at).expect("stats fit u16")
-        };
-        let edge = StatEdge {
-            read: at(read),
-            changed: at(changed),
-        };
+    /// Adds that a change of `changed` reads `read`; an error for the first of `changed` and
+    /// `read` that is not a stat of the graph.
+    pub fn add(&mut self, read: &Stat, changed: &Stat) -> Result<(), EdgeError> {
+        let changed = self.place(changed).map_err(EdgeError::Changed)?;
+        let read = self.place(read).map_err(EdgeError::Read)?;
+        let edge = StatEdge { read, changed };
         if let Err(place) = self.edges.binary_search(&edge) {
             self.edges.insert(place, edge);
         }
+        Ok(())
+    }
+
+    fn place(&self, stat: &Stat) -> Result<u16, UnknownName> {
+        let at = self.stats.binary_search(stat).ok();
+        let at = at.ok_or_else(|| UnknownName::new(NameKind::Stat, stat.name()))?;
+        Ok(u16::try_from(at).expect("stats fit u16"))
     }
 
     /// The stats in an order where each comes after every stat a change of it reads, the lowest
@@ -79,19 +84,33 @@ mod tests {
             ["armor", "power", "vamp"].map(|name| Stat::named(name).unwrap());
         let mut graph = StatGraph::new([armor.clone(), power.clone(), vamp.clone()]);
         assert_eq!(graph.order(), Ok([0, 1, 2].map(StatId::new).to_vec()));
-        graph.add(&vamp, &armor);
-        graph.add(&power, &vamp);
-        graph.add(&power, &vamp);
+        graph.add(&vamp, &armor).unwrap();
+        graph.add(&power, &vamp).unwrap();
+        graph.add(&power, &vamp).unwrap();
         assert_eq!(graph.order(), Ok([1, 2, 0].map(StatId::new).to_vec()));
+        // A stat the graph does not hold adds no edge: the changed one is named first.
+        let mana = Stat::named("mana").unwrap();
+        let unknown = UnknownName::new(NameKind::Stat, "mana");
+        let refused = graph.clone();
+        assert_eq!(
+            graph.add(&mana, &armor),
+            Err(EdgeError::Read(unknown.clone()))
+        );
+        assert_eq!(
+            graph.add(&armor, &mana),
+            Err(EdgeError::Changed(unknown.clone()))
+        );
+        assert_eq!(graph.add(&mana, &mana), Err(EdgeError::Changed(unknown)));
+        assert_eq!(graph, refused);
         // Power reading armor closes a loop through all three; a stat reading itself is one.
         let mut looped = graph.clone();
-        looped.add(&armor, &power);
+        looped.add(&armor, &power).unwrap();
         assert_eq!(
             looped.order(),
             Err(vec![armor.clone(), power, vamp.clone()])
         );
         let mut own = StatGraph::new([armor.clone(), vamp]);
-        own.add(&armor, &armor);
+        own.add(&armor, &armor).unwrap();
         assert_eq!(own.order(), Err(vec![armor]));
     }
 }

@@ -1,8 +1,10 @@
 use thiserror::Error;
 
+use crate::books::book_place::BookPlace;
 use crate::books::type_place::TypePlace;
 use crate::mode::error::{ModeError, UnitKitError};
 use crate::orders::error::AiError;
+use crate::scripts::error::UnknownName;
 use crate::stats::error::ModifierProblem;
 use crate::values::declared_name::DeclaredName;
 use crate::values::error::TimeTooLarge;
@@ -52,4 +54,19 @@ pub enum BookError {
     /// The mode's teams, relations or map name what the mode does not have.
     #[error(transparent)]
     Mode(ModeError),
+    /// Data at `at` names what the mode or its packages do not have.
+    #[error("{at}")]
+    Unknown {
+        package: u16,
+        at: BookPlace,
+        #[source]
+        name: UnknownName,
+    },
+}
+
+impl BookError {
+    /// The error of `name`, which data at `at` of the package at `package` gives.
+    pub(crate) const fn unknown(package: u16, at: BookPlace, name: UnknownName) -> BookError {
+        BookError::Unknown { package, at, name }
+    }
 }

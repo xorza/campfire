@@ -25,6 +25,7 @@ use crate::actions::effect_data::{
     DamageFields, DoesData, EffectData, EffectTo, LaunchFields, ModifierFields, MoveData,
     PurgeFields, RestoreFields, XpFields,
 };
+use crate::actions::error::ActionError;
 use crate::actions::error::ActionField;
 use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::kind_data::KindData;
@@ -1780,7 +1781,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     }
     // What only a match's rate decides: i64::MAX ms counts in no tick.
     let forever = load(&mut game, "forever", &forever, LASH_OUT);
-    assert_eq!(forever, Err(TimeTooLarge));
+    assert_eq!(forever, Err(ActionError::Time(TimeTooLarge)));
     assert_eq!(
         load(&mut game, "lash_out", &lash_out(), LASH_OUT),
         Ok(ActionId::new(0))
@@ -2667,7 +2668,8 @@ fn weapon_match() -> (Match, UnitType) {
     let rules: BTreeMap<_, _> = scaling_stats()
         .map(|stat| (stat, StatRule::default()))
         .into();
-    let book = StatBook::new(&rules, [(fighter, &growth)], Num::int(6));
+    let mut book = StatBook::new(&rules, Num::int(6));
+    book.add_type(fighter, &growth).unwrap();
     Stats::load_book(&mut game, book);
     let bolt = Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeCore::default());
     let flight = ProjectileData {
@@ -3085,7 +3087,8 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     let rules: BTreeMap<_, _> = scaling_stats()
         .map(|stat| (stat, StatRule::default()))
         .into();
-    let book = StatBook::new(&rules, [(caster_type, &growth)], Num::int(6));
+    let mut book = StatBook::new(&rules, Num::int(6));
+    book.add_type(caster_type, &growth).unwrap();
     Stats::load_book(&mut game, book);
     let boost = changing(
         &[("attack_damage", int(20)), ("ability_power", int(40))],
@@ -3171,13 +3174,14 @@ impl Veil {
         let growth = StatsData([(attack_damage.clone(), growth)].into());
         let [spell_vamp, armor] = ["spell_vamp", "armor"].map(|name| Stat::named(name).unwrap());
         let mut graph = StatGraph::new(scaling_stats());
-        graph.add(&attack_damage, &spell_vamp);
-        graph.add(&spell_vamp, &armor);
+        graph.add(&attack_damage, &spell_vamp).unwrap();
+        graph.add(&spell_vamp, &armor).unwrap();
         let rules: BTreeMap<_, _> = scaling_stats()
             .map(|stat| (stat, StatRule::default()))
             .into();
-        let book = StatBook::new(&rules, [(veil_type, &growth)], Num::int(6))
-            .with_order(graph.order().unwrap());
+        let mut book = StatBook::new(&rules, Num::int(6));
+        book.add_type(veil_type, &growth).unwrap();
+        let book = book.with_order(graph.order().unwrap());
         let place = |stat: &Stat| book.named(stat).unwrap().index();
         let places = [&attack_damage, &spell_vamp, &armor].map(place);
         Stats::load_book(game, book);

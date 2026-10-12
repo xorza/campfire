@@ -397,7 +397,7 @@ pub(crate) mod test_world {
                 let load = ModifierLoad {
                     scripts,
                     types: &mut types,
-                    stat: |stat: &Stat| places[stat],
+                    stat: |stat: &Stat| Ok(places[stat]),
                     rate: *world.resource::<TickRate>(),
                 };
                 let modifier = PackageModifier {
@@ -429,7 +429,7 @@ pub(crate) mod test_world {
         /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool stats;
         /// the pools its scripts name stay named.
         pub(crate) fn load_rules(world: &mut World, rules: &BTreeMap<Stat, StatRule>) {
-            Stats::load_book(world, StatBook::new(rules, [], Num::MAX));
+            Stats::load_book(world, StatBook::new(rules, Num::MAX));
         }
 
         /// Adds the params of `action`, the one the match's action book loaded last, each stat at
@@ -470,7 +470,7 @@ pub(crate) mod test_world {
                 .into_iter()
                 .map(|stat| {
                     let book = world.resource::<StatBook>();
-                    (stat, book.named(stat).expect("the load checked the stats"))
+                    (stat, book.named(stat).expect("a test names its stats"))
                 })
                 .collect()
         }

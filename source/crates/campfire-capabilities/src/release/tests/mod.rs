@@ -313,12 +313,11 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// types take them, or in the load, which resolves the packages' names once; but the one marked,
 /// which runs as a modifier applies. The test fails when a lookup appears and when one listed
 /// here is gone.
-const LOOKUPS: [(&str, &str); 42] = [
+const LOOKUPS: [(&str, &str); 40] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "named"),
-    ("combat/combat_bindings.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
     ("mode/map_data.rs", "named"),
     ("mode/mode_books.rs", "named"),
@@ -327,7 +326,6 @@ const LOOKUPS: [(&str, &str); 42] = [
     ("mode/mode_names.rs", "named"),
     ("mode/unit_kit/mod.rs", "named"),
     ("stats/modifier_book.rs", "named"),
-    ("stats/pool_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
     ("units/unit_types.rs", "named"),
     ("values/stat.rs", "named"),

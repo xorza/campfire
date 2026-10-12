@@ -36,6 +36,7 @@ pub(crate) mod area_spec;
 pub(crate) mod area_trigger;
 pub(crate) mod areas_api;
 pub(crate) mod areas_effect;
+pub(crate) mod error;
 
 /// The `areas` capability: area units, which actions deliver. It builds on combat, which a match
 /// installs too.
@@ -182,6 +183,8 @@ pub(crate) mod test_world {
     use crate::areas::Areas;
     use crate::areas::area_data::AreaData;
     use crate::areas::area_spec::AreaSpec;
+    use crate::scripts::error::UnknownName;
+    use crate::scripts::name_kind::NameKind;
     use crate::stats::Stats;
     use crate::units::by_type::ByType;
     use crate::units::unit_type::UnitType;
@@ -190,8 +193,8 @@ pub(crate) mod test_world {
 
     impl Areas {
         /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in
-        /// ticks at the match's rate, rounded up, which the package load checked: its `affects`
-        /// filter names tags of the match's, and its `inside` modifiers of the package.
+        /// ticks at the match's rate, rounded up: its `affects` filter names tags of the match's,
+        /// and its `inside` modifiers of the package.
         pub(crate) fn load_type(
             world: &mut World,
             unit_type: UnitType,
@@ -202,12 +205,13 @@ pub(crate) mod test_world {
             let view = world.non_send::<View>().clone();
             let modifier = |name: &DeclaredName| {
                 Stats::modifier(world, package, name.as_str())
-                    .expect("the load checked an area's modifiers")
+                    .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
             };
             let spec = {
                 let mut types = view.types_mut();
                 types.give_tag(unit_type, Areas::TAG.tag());
-                AreaSpec::of(data, &types, rate, modifier).expect("an area's time in ticks fits")
+                AreaSpec::of(data, &types, rate, modifier)
+                    .expect("a test's area holds in ticks and names what its match has")
             };
             world
                 .resource_mut::<ByType<AreaSpec>>()

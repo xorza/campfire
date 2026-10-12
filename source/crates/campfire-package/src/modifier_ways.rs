@@ -105,15 +105,15 @@ impl<'a> ModifierWays<'a> {
         self.ways.get(id).into_iter().flatten()
     }
 
-    /// The actions of `actions` that apply modifier `id`, one for each of its ways with an
-    /// action.
+    /// The actions of `actions` that apply modifier `id`, each by its id, one for each of its
+    /// ways with an action.
     pub(crate) fn actions_of<'m>(
         &self,
         id: &str,
         actions: &'m BTreeMap<DeclaredName, ActionData>,
-    ) -> impl Iterator<Item = &'m ActionData> {
+    ) -> impl Iterator<Item = (&'m DeclaredName, &'m ActionData)> {
         self.of_modifier(id).filter_map(|way| match way {
-            Way::Action(action) => actions.get(action),
+            Way::Action(action) => actions.get_key_value(action),
             Way::NoAction => None,
         })
     }

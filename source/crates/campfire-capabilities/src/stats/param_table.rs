@@ -49,29 +49,37 @@ struct StatRatio {
 
 impl ParamTable {
     /// Adds a run of `params`, each stat a scaling table names at its place `stat` gives, and
-    /// gives its index. Every value is a number, which the load checked.
-    pub(crate) fn push(
+    /// gives its index; the error `stat` gives for a stat, which adds no run. Every value is a
+    /// number, which the load checked.
+    pub(crate) fn push<E>(
         &mut self,
         params: &BTreeMap<DeclaredName, Param>,
-        stat: impl Fn(&Stat) -> StatId,
-    ) -> usize {
+        stat: impl Fn(&Stat) -> Result<StatId, E>,
+    ) -> Result<usize, E> {
         let mut values = Vec::with_capacity(params.len());
+        let kept = self.ratios.len();
         for (name, param) in params {
             let value = match param {
                 Param::Ranked(ranked) => ParamValue::Ranked(ranked.clone()),
                 Param::Scaling(scaling) => {
                     let first = self.ratios.len();
-                    let whole = scaling.ratios.iter().map(|(name, &ratio)| StatRatio {
-                        stat: stat(name),
-                        ratio,
-                        bonus: false,
-                    });
-                    let bonus = scaling.bonus.iter().map(|(name, &ratio)| StatRatio {
-                        stat: stat(name),
-                        ratio,
-                        bonus: true,
-                    });
-                    self.ratios.extend(whole.chain(bonus));
+                    let whole = scaling
+                        .ratios
+                        .iter()
+                        .map(|(name, &ratio)| (name, ratio, false));
+                    let bonus = scaling
+                        .bonus
+                        .iter()
+                        .map(|(name, &ratio)| (name, ratio, true));
+                    for (name, ratio, bonus) in whole.chain(bonus) {
+                        match stat(name) {
+                            Ok(stat) => self.ratios.push(StatRatio { stat, ratio, bonus }),
+                            Err(error) => {
+                                self.ratios.truncate(kept);
+                                return Err(error);
+                            }
+                        }
+                    }
                     ParamValue::Scaled(Scaled {
                         base: scaling.base.clone(),
                         per_level: scaling.per_level,
@@ -82,7 +90,7 @@ impl ParamTable {
             };
             values.push((name.as_str(), value));
         }
-        self.params.push(values)
+        Ok(self.params.push(values))
     }
 
     /// The place of param `name` in run `run`.
@@ -156,6 +164,8 @@ impl ParamTable {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
+
     use super::*;
     use crate::stats::stat_book::StatBook;
     use crate::units::unit_type::UnitType;
@@ -178,11 +188,11 @@ mod tests {
             let name = DeclaredName::new("p").unwrap();
             let params = BTreeMap::from([(name, Param::Scaling(scaling))]);
             let mut table = ParamTable::default();
-            let at = |stat: &Stat| StatId::new(usize::from(*stat == armor));
-            assert_eq!(table.push(&params, at), 0);
+            let at = |stat: &Stat| Ok::<_, Infallible>(StatId::new(usize::from(*stat == armor)));
+            assert_eq!(table.push(&params, at), Ok(0));
             table
         };
-        let book = StatBook::new(&BTreeMap::new(), [], Num::ONE);
+        let book = StatBook::new(&BTreeMap::new(), Num::ONE);
         let read = |table: &ParamTable, stats: [Num; 2]| {
             let source = ParamSource::new(&book, UnitType::new(0), 1, &stats);
             match table.value(0, 0, Rank::FIRST, Some(&source)) {
@@ -202,5 +212,30 @@ mod tests {
         assert_eq!(read(&wide, [Num::MAX, Num::MAX]), Num::int(3));
         assert_eq!(read(&wide, [Num::MAX, Num::ZERO]), Num::MAX);
         assert_eq!(read(&wide, [Num::ZERO, Num::MAX]), Num::MIN);
+    }
+
+    #[test]
+    fn a_run_with_a_stat_its_resolver_refuses_is_not_added() {
+        // Armor resolves to place 0, power to none: the second run's ratios, armor's then
+        // power's, stop at power, and the first run's one ratio is all the table holds.
+        let [armor, power] = ["armor", "power"].map(|name| Stat::named(name).unwrap());
+        let run = |ratios: &[&Stat]| {
+            let scaling = Scaling {
+                base: Ranked::One(Num::ZERO),
+                per_level: Num::ZERO,
+                bonus: BTreeMap::new(),
+                ratios: ratios
+                    .iter()
+                    .map(|&stat| (stat.clone(), Num::ONE))
+                    .collect(),
+            };
+            BTreeMap::from([(DeclaredName::new("p").unwrap(), Param::Scaling(scaling))])
+        };
+        let at = |stat: &Stat| (*stat == armor).then(|| StatId::new(0)).ok_or(stat.clone());
+        let mut table = ParamTable::default();
+        assert_eq!(table.push(&run(&[&armor]), at), Ok(0));
+        assert_eq!(table.push(&run(&[&armor, &power]), at), Err(power));
+        assert!(table.has_run(0) && !table.has_run(1));
+        assert_eq!(table.ratios.len(), 1);
     }
 }

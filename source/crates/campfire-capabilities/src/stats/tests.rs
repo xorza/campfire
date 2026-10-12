@@ -128,17 +128,17 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
 /// stats, with a move speed cap of 6.
 fn stat_match(types: &[StatsData]) -> Match {
     let mut game = Match::client(&[Capability::Stats]);
-    let types: Vec<_> = types
-        .iter()
-        .map(|data| {
-            let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
-            (unit_type, data)
-        })
-        .collect();
-    let book = StatBook::new(&rules(), types, Num::int(6));
+    let mut book = StatBook::new(&rules(), Num::int(6));
+    for data in types {
+        let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
+        book.add_type(unit_type, data).unwrap();
+    }
     let pools = pools();
     let names = Arc::new(pools.keys().map(DeclaredName::as_str).collect());
-    let pools = PoolBook::new(&pools, names, &book);
+    let pools = PoolBook::new(&pools, names, |_, stat| {
+        book.named(stat).ok_or(stat.clone())
+    });
+    let pools = pools.unwrap();
     Stats::load_books(&mut game, book, pools);
     game
 }
@@ -603,7 +603,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     // Before any system builds its queries, as a predicting client registers it, so that a unit
     // it holds can be marked below.
     Unpredicted::register(&mut game);
-    let book = StatBook::new(&rules(), [], Num::int(6));
+    let book = StatBook::new(&rules(), Num::int(6));
     Stats::load_books(&mut game, book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
     let presence = AuraData {
@@ -706,7 +706,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = Match::server(&[Capability::Stats], scripts);
-    let book = StatBook::new(&rules(), [], Num::int(6));
+    let book = StatBook::new(&rules(), Num::int(6));
     Stats::load_books(&mut game, book, PoolBook::default());
     Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
     let id = Units::spawn(

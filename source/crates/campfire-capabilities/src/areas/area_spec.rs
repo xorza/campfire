@@ -3,7 +3,9 @@ use campfire_math::Num;
 use campfire_sim::TickRate;
 
 use crate::areas::area_data::AreaData;
+use crate::areas::error::AreaError;
 use crate::declare::per_type::PerType;
+use crate::scripts::error::UnknownName;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_types::UnitTypes;
@@ -32,27 +34,26 @@ pub(crate) struct Inside {
 }
 
 impl AreaSpec {
-    /// The spec of `data`, which the package load checked: its times in ticks at `rate`, rounded
-    /// up, what it reaches among the tags of `types`, and its `inside` modifiers as `modifier`
-    /// finds them; an error when a time does not count in ticks.
+    /// The spec of `data`: its times in ticks at `rate`, rounded up, what it reaches among the
+    /// tags of `types`, and its `inside` modifiers as `modifier` finds them; an error for a time
+    /// that does not count in ticks, or a name the match does not have.
     pub(crate) fn of(
         data: &AreaData,
         types: &UnitTypes,
         rate: TickRate,
-        modifier: impl Fn(&DeclaredName) -> ModifierId,
-    ) -> Result<AreaSpec, TimeTooLarge> {
-        let affects = Filter::resolve_or_enemies(data.affects.as_ref(), types);
-        let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier);
+        modifier: impl Fn(&DeclaredName) -> Result<ModifierId, UnknownName>,
+    ) -> Result<AreaSpec, AreaError> {
+        let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier).transpose();
         let ticks = |ms| rate.ticks(ms).ok_or(TimeTooLarge);
         Ok(AreaSpec {
             radius: data.radius,
             delay: ticks(data.delay_ms)?,
             duration: ticks(data.duration_ms)?,
-            affects: affects.expect("the load checked the filter's tags"),
+            affects: Filter::resolve_or_enemies(data.affects.as_ref(), types)?,
             inside: Inside {
-                caster: inside(&data.inside.caster),
-                allies: inside(&data.inside.allies),
-                enemies: inside(&data.inside.enemies),
+                caster: inside(&data.inside.caster)?,
+                allies: inside(&data.inside.allies)?,
+                enemies: inside(&data.inside.enemies)?,
             },
         })
     }

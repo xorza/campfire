@@ -1,6 +1,8 @@
 use std::str::FromStr;
 
 use super::*;
+use crate::scripts::error::UnknownName;
+use crate::scripts::name_kind::NameKind;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
 use crate::units::unit_type::UnitType;
@@ -28,7 +30,8 @@ fn a_stat_grows_by_its_per_level_from_level_1() {
     let rules = [&move_speed, &armor, &attack_damage, &health]
         .map(|stat| (stat.clone(), StatRule::default()));
     let unit_type = UnitType::new(0);
-    let book = StatBook::new(&BTreeMap::from(rules), [(unit_type, &stats)], Num::MAX);
+    let mut book = StatBook::new(&BTreeMap::from(rules), Num::MAX);
+    book.add_type(unit_type, &stats).unwrap();
     // 472 + 84 × 2 at level 3; 47 + 3.8 at level 2; 18 at any level; a stat the type does not
     // give is 0.
     let at =
@@ -37,6 +40,17 @@ fn a_stat_grows_by_its_per_level_from_level_1() {
     assert_eq!(at(2, &attack_damage), Num::from_str("50.8").unwrap());
     assert_eq!(at(7, &armor), Num::from_int(18).unwrap());
     assert_eq!(at(1, &move_speed), Num::ZERO);
-    let gives = |stat: &Stat| book.gives(unit_type, book.named(stat).unwrap());
-    assert!(gives(&health) && !gives(&move_speed));
+    let gives = |unit_type, stat: &Stat| book.gives(unit_type, book.named(stat).unwrap());
+    assert!(gives(unit_type, &health) && !gives(unit_type, &move_speed));
+    // A type with a stat the book does not hold gets none of its values, its health among them.
+    let mana = Stat::named("mana").unwrap();
+    let other = UnitType::new(1);
+    let mut unknown = stats.clone();
+    unknown.0.insert(mana, value(Num::ONE, Num::ZERO));
+    assert_eq!(
+        book.add_type(other, &unknown),
+        Err(UnknownName::new(NameKind::Stat, "mana"))
+    );
+    let gives = |unit_type, stat: &Stat| book.gives(unit_type, book.named(stat).unwrap());
+    assert!(!gives(other, &health) && gives(unit_type, &health));
 }

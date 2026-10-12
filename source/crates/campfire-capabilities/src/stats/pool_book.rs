@@ -5,10 +5,10 @@ use bevy_ecs::resource::Resource;
 
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::names::Names;
+use crate::values::stat::Stat;
 
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
 /// of its regen. Package data, not state.
@@ -27,24 +27,28 @@ pub(crate) struct PoolStats {
 }
 
 impl PoolBook {
-    /// The book of `pools`, named `names`, whose stats the load checked `book` declares.
-    pub(crate) fn new(
+    /// The book of `pools`, named `names`, each pool's stats resolved by `stat`, given the pool;
+    /// the first error `stat` gives.
+    pub(crate) fn new<E>(
         pools: &BTreeMap<DeclaredName, PoolData>,
         names: Arc<Names<PoolId>>,
-        book: &StatBook,
-    ) -> PoolBook {
+        stat: impl Fn(&DeclaredName, &Stat) -> Result<StatId, E>,
+    ) -> Result<PoolBook, E> {
         assert_eq!(names.len(), pools.len(), "a pool has a name");
-        let index = |stat| book.named(stat).expect("the load checked the pools' stats");
-        PoolBook {
+        let pools = pools.iter().map(|(name, pool)| {
+            Ok(PoolStats {
+                max: stat(name, &pool.max)?,
+                regen: pool
+                    .regen
+                    .as_ref()
+                    .map(|regen| stat(name, regen))
+                    .transpose()?,
+            })
+        });
+        Ok(PoolBook {
             names,
-            pools: pools
-                .values()
-                .map(|pool| PoolStats {
-                    max: index(&pool.max),
-                    regen: pool.regen.as_ref().map(index),
-                })
-                .collect(),
-        }
+            pools: pools.collect::<Result<_, E>>()?,
+        })
     }
 
     /// The pools' names, by id.
