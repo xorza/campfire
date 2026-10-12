@@ -54,7 +54,7 @@ Planned. Smoke, closed doors and walls built during a match block sight while th
 
 ## Network
 
-Each unit goes to the clients whose group sees it, and leaves them when no longer seen; hidden information never reaches a client.
+Each unit goes to the clients whose group sees it, and leaves them when no longer seen; hidden information never reaches a client. What each group sees and each unit's sight stay the server's: a predicting client reveals nothing, and takes each unit it holds as seen ([Replication audiences](../14-replication-audiences.md), D12).
 
 ## Cost
 

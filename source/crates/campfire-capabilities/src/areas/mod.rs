@@ -56,8 +56,10 @@ impl Areas {
     /// reaches and its end run their action's `on_hit` and `on_end`, or its launch's; after the
     /// tick's projectiles launch, its areas land. In Resolve, the areas the damage pass launched
     /// land, and then, before stats hold their modifiers, each area lists those it holds on the
-    /// units inside. A launch queues as an effect of `areas`.
+    /// units inside. A launch queues as an effect of `areas`. A predicting client predicts no
+    /// delivery, so it triggers none.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let predicting = cx.predicting();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world
             .resource_mut::<Deliverers>()
@@ -66,8 +68,10 @@ impl Areas {
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Areas, AreasEffect::queue_listed);
+        if !predicting {
+            schedule.add_systems(AreaLife::trigger.in_set(DeliverySet::Trigger));
+        }
         schedule.add_systems((
-            AreaLife::trigger.in_set(DeliverySet::Trigger),
             AreaLife::land
                 .in_set(SimSet::Hit)
                 .after(CombatSet::Launch)

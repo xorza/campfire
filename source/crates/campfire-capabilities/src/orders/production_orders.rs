@@ -18,6 +18,7 @@ use crate::production::train_queue::TrainQueue;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
+use crate::vision::team_sight::TeamSight;
 
 /// The tick's orders that cancel a train or a build, or set a rally.
 #[derive(Debug)]
@@ -34,7 +35,7 @@ impl ProductionOrders {
     /// despawns the site, with no death. A refund that would carry an amount past an `i64` refuses
     /// its cancel. A rally sets the producer's rally point, a point taken into the bounds, or a
     /// unit its player's vision group sees, or clears it; a rally to another unit is ignored.
-    pub(super) fn apply_production_orders(
+    pub(super) fn apply_production_orders<S: TeamSight>(
         (tick, bounds, orders, index): (
             Res<'_, SimTick>,
             Res<'_, Bounds>,
@@ -54,7 +55,7 @@ impl ProductionOrders {
                 Has<Dead>,
             ),
         >,
-        visible: SeenTargets<'_, '_>,
+        visible: SeenTargets<'_, '_, S>,
         mut commands: Commands<'_, '_>,
         (mut refund, mut cancelled): (Local<'_, Vec<ResourceAmount>>, Local<'_, Vec<Entity>>),
     ) {

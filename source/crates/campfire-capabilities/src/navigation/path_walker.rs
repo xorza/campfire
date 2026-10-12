@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::SentPredicted;
 use crate::units::unit_entity::UnitEntity;
 use crate::values::engine_enum::EngineEnum;
 use crate::values::script_enum::ScriptEnum;
@@ -101,8 +101,8 @@ impl SimComponent for PathWalker {
 }
 
 impl Replication for PathWalker {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+    const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentPredicted;
 }
 
 #[cfg(test)]

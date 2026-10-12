@@ -70,36 +70,39 @@ impl Dying {
         }
     }
 
-    /// Brings back each dead unit whose respawn is due, at its spawn point with full pools and no
-    /// one on record as its attacker.
+    /// Brings back each dead unit whose respawn is due, at its spawn point with full pools.
     pub(super) fn respawn(
         tick: Res<'_, SimTick>,
         mut commands: Commands<'_, '_>,
         mut dead: Query<
             '_,
             '_,
-            (
-                Entity,
-                &Respawn,
-                &SpawnPoint,
-                UnitPools,
-                &mut Position,
-                Option<&mut RecentAttackers>,
-            ),
+            (Entity, &Respawn, &SpawnPoint, UnitPools, &mut Position),
             With<Dead>,
         >,
     ) {
         let now = tick.start();
-        for (entity, respawn, spawn, mut pools, mut position, attackers) in &mut dead {
+        for (entity, respawn, spawn, mut pools, mut position) in &mut dead {
             if respawn.at > now {
                 continue;
             }
             pools.fill();
             *position = spawn.get();
-            if let Some(mut attackers) = attackers {
+            commands.entity(entity).remove::<(Dead, Respawn)>();
+        }
+    }
+
+    /// Takes off the record each attacker of a dead unit whose respawn is due, so it comes back
+    /// with none.
+    pub(super) fn forget_attackers(
+        tick: Res<'_, SimTick>,
+        mut dead: Query<'_, '_, (&Respawn, &mut RecentAttackers), With<Dead>>,
+    ) {
+        let now = tick.start();
+        for (respawn, mut attackers) in &mut dead {
+            if respawn.at <= now {
                 attackers.clear();
             }
-            commands.entity(entity).remove::<(Dead, Respawn)>();
         }
     }
 }

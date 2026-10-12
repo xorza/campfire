@@ -18,10 +18,14 @@ use crate::orders::resetting::Resetting;
 use crate::orders::seen_targets::SeenTargets;
 use crate::orders::tick_orders::TickOrders;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
+use crate::players::out_of_play::OutOfPlay;
+use crate::players::player_rows::PlayerRows;
 use crate::production::build_target::BuildTarget;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
+use crate::visibility::OutView;
+use crate::vision::team_sight::TeamSight;
 
 /// The orders the tick's inputs give, in input order, each checked as a player's order needs, for
 /// `apply_player_orders` to apply. Not state: it empties within the tick.
@@ -50,8 +54,16 @@ pub(super) struct OrderInputs;
 
 impl OrderInputs {
     /// Reads the orders of the tick's inputs, once, for each system of orders that applies them.
-    pub(super) fn read_orders(inputs: Res<'_, TickInputs>, mut orders: ResMut<'_, TickOrders>) {
-        orders.read(&inputs);
+    /// In a session whose players out of play see what a spectator sees, an order of a player
+    /// out of play is dropped: it would act on what its team does not see (design 14, D16).
+    pub(super) fn read_orders(
+        inputs: Res<'_, TickInputs>,
+        out_view: Res<'_, OutView>,
+        out: PlayerRows<'_, '_, OutOfPlay>,
+        mut orders: ResMut<'_, TickOrders>,
+    ) {
+        let spectating = *out_view == OutView::Spectators;
+        orders.read(&inputs, |slot| spectating && out.of_slot(slot).is_some());
     }
 
     /// Checks each order of the tick, in input order, so a later order in the tick wins, for each
@@ -62,7 +74,7 @@ impl OrderInputs {
     /// none, and an order whose unit target its player's vision group does not see: a client can
     /// send anything. A move to two units or more that walk moves them as
     /// a group: each walks to its own goal by the group's box, as one party, the order's.
-    pub(super) fn check_player_orders(
+    pub(super) fn check_player_orders<S: TeamSight>(
         (tick, bounds, orders, index): (
             Res<'_, SimTick>,
             Res<'_, Bounds>,
@@ -70,7 +82,7 @@ impl OrderInputs {
             Res<'_, EntityIndex>,
         ),
         book: Res<'_, ActionBook>,
-        (targets, visible): (Targets<'_, '_>, SeenTargets<'_, '_>),
+        (targets, visible): (Targets<'_, '_>, SeenTargets<'_, '_, S>),
         units: Query<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
         mut checked: ResMut<'_, PlayerOrders>,
         mut movers: Local<'_, Vec<Mover>>,

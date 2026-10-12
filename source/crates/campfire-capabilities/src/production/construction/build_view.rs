@@ -37,12 +37,13 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::values::relation::Relation;
+use crate::vision::team_sight::TeamSight;
 
 /// What a build order reads of the match: the books, the players' resources and modifiers, the
 /// life pool, the placement, the builders, the sites, and the living, complete units the players
 /// own.
 #[derive(SystemParam, Debug)]
-pub(crate) struct BuildView<'w, 's> {
+pub(crate) struct BuildView<'w, 's, S: TeamSight> {
     pub(super) tick: Res<'w, SimTick>,
     pub(super) index: Res<'w, EntityIndex>,
     pub(super) book: Res<'w, ActionBook>,
@@ -52,7 +53,7 @@ pub(crate) struct BuildView<'w, 's> {
     pub(super) resources: PlayerRows<'w, 's, PlayerResources>,
     pub(super) life: Option<Res<'w, LifePool>>,
     pub(super) modifiers: PlayerRows<'w, 's, PlayerModifiers>,
-    pub(super) placement: Placement<'w, 's>,
+    pub(super) placement: Placement<'w, 's, S>,
     pub(super) builders: Query<
         'w,
         's,
@@ -106,7 +107,7 @@ pub(super) struct Placed {
     pub(super) body: Body,
 }
 
-impl BuildView<'_, '_> {
+impl<S: TeamSight> BuildView<'_, '_, S> {
     /// Fills `held` with the living, complete units the players own, by type.
     pub(super) fn held(&self, held: &mut Vec<Held>) {
         let units = self.owned.iter().map(|(&unit_type, owner)| Held {

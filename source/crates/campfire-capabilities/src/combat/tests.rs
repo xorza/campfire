@@ -772,6 +772,11 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     game.insert_parts(hero, Respawn { at: at_tick });
     game.run_until(10);
     assert!(game.try_part::<Dead>(hero).is_some());
+    let attackers = |game: &Match| {
+        game.try_part::<RecentAttackers>(hero)
+            .map(|r| r.iter().count())
+    };
+    assert_eq!(attackers(&game), Some(1));
     game.run_until(11);
     assert!(game.try_part::<Dead>(hero).is_none() && game.try_part::<Respawn>(hero).is_none());
     assert_eq!(
@@ -779,11 +784,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         Some(Position::from((-3, 0, 2)))
     );
     assert_eq!(Stats::health(&game, hero), 30);
-    assert_eq!(
-        game.try_part::<RecentAttackers>(hero)
-            .map(|r| r.iter().count()),
-        Some(0)
-    );
+    assert_eq!(attackers(&game), Some(0));
     assert_eq!(Attack::of(&game, attacker).target(), None);
 }
 

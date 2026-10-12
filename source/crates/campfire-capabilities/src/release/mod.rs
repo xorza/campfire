@@ -214,13 +214,14 @@ impl Release {
             registry,
         } = sim.parts();
         world.insert_resource(set);
+        world.insert_resource(spec.out);
         let scripts = spec.budgets.is_some();
         Units::open(world, spec.budgets);
         if scripts {
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
         }
         MatchEnd::stop_stages(schedule);
-        let mut cx = InstallCx::new(world, schedule, set, scripts);
+        let mut cx = InstallCx::new(world, schedule, set, scripts, spec.predicting);
         Release::install_module::<Units>(&mut cx, registry, Units::install);
         Release::install_module::<Actions>(&mut cx, registry, Actions::install);
         Release::install_module::<Deliveries>(&mut cx, registry, Deliveries::install);

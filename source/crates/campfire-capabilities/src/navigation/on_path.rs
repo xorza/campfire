@@ -7,15 +7,16 @@ use serde::{Deserialize, Serialize};
 use crate::navigation::paths::Paths;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::SentOnce;
 use crate::units::path_id::PathId;
 use crate::units::unit_entity::UnitEntity;
 
 /// The path a unit belongs to: the one a structure guards, or the one a `PathWalker` walks.
 /// `unit.path` reads it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[component(immutable)]
 #[serde(transparent)]
-pub(crate) struct OnPath(PathId);
+pub struct OnPath(PathId);
 
 impl OnPath {
     pub(crate) const fn new(path: PathId) -> OnPath {
@@ -38,6 +39,6 @@ impl SimComponent for OnPath {
 }
 
 impl Replication for OnPath {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+    const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentOnce;
 }

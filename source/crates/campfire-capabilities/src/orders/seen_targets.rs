@@ -6,24 +6,23 @@ use crate::players::on_match::OnMatch;
 use crate::units::kind_filters::UnitFilter;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
-use crate::vision::seen_by::SeenBy;
+use crate::vision::team_sight::TeamSight;
 use crate::vision::vision_grid::VisionGrid;
 
-/// The units a player's order may aim at: those its vision group sees as the order applies, as
-/// the last Vision stage found them, so a stable id never tells a client what its group does not
-/// see; every unit in a match with no vision grid. A player's units play on its team, so the
-/// team of the unit it orders names its group. A client asks of the units it holds and does not
-/// predict too, where the server last had them.
+/// The units a player's order may aim at: those its vision group sees as the order applies, by
+/// `S`, so a stable id never tells a client what its group does not see; every unit in a match
+/// with no vision grid. A player's units play on its team, so the team of the unit it orders
+/// names its group. A client asks of the units it holds and does not predict too, where the
+/// server last had them.
 #[derive(SystemParam, Debug)]
-pub(crate) struct SeenTargets<'w, 's> {
+pub(crate) struct SeenTargets<'w, 's, S: TeamSight> {
     index: Res<'w, EntityIndex>,
     grid: Option<Res<'w, VisionGrid>>,
     relations: OnMatch<'w, 's, Relations>,
-    units:
-        Query<'w, 's, (&'static Team, Option<&'static SeenBy>), (UnitFilter, Allow<Unpredicted>)>,
+    units: Query<'w, 's, (&'static Team, <S as TeamSight>::Seen), (UnitFilter, Allow<Unpredicted>)>,
 }
 
-impl SeenTargets<'_, '_> {
+impl<S: TeamSight> SeenTargets<'_, '_, S> {
     /// Whether the vision group of `team` sees `target`; no group sees a unit that is gone. A
     /// unit that spawned after the last Vision stage, as one does before the match's first, is
     /// seen by its own group alone.
@@ -38,9 +37,6 @@ impl SeenTargets<'_, '_> {
         if self.grid.is_none() {
             return true;
         }
-        match seen {
-            Some(seen) => seen.get().contains(team),
-            None => self.relations.get().vision_group(own).contains(team),
-        }
+        S::sees(seen, team).unwrap_or_else(|| self.relations.get().vision_group(own).contains(team))
     }
 }

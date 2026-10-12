@@ -61,8 +61,10 @@ impl Declares for Projectiles {
 impl Projectiles {
     /// Adds projectiles to a match. In Hit, before attacks strike, each projectile flies a step,
     /// and its hits and its end run their action's `on_hit` and `on_end`; after attacks strike
-    /// and casts resolve, the tick's launches take off, and fly from the next tick.
+    /// and casts resolve, the tick's launches take off, and fly from the next tick. A predicting
+    /// client predicts no delivery, so it flies none.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        let predicting = cx.predicting();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world
             .resource_mut::<Deliverers>()
@@ -70,10 +72,12 @@ impl Projectiles {
         world.insert_resource(Launches::default());
         world.insert_resource(StruckUnits::default());
         schedule.add_systems((
-            Flying::fly.in_set(DeliverySet::Fly),
             Launching::take_shots.in_set(CombatSet::Fire),
             Launching::launch.in_set(CombatSet::Launch),
         ));
+        if !predicting {
+            schedule.add_systems(Flying::fly.in_set(DeliverySet::Fly));
+        }
     }
 
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing

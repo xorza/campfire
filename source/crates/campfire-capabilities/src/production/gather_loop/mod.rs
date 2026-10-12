@@ -2,8 +2,8 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
-use bevy_ecs::world::World;
-use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId};
+use bevy_ecs::world::{Mut, World};
+use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
@@ -138,7 +138,8 @@ impl GatherLoop {
     }
 
     /// Frees each node whose holder no longer gathers it: dead, gone, or of a loop that ended or
-    /// went elsewhere.
+    /// went elsewhere. A client frees none, as it holds every node as the server sent it, whose
+    /// holder is the server's word.
     fn free_left_nodes(
         world: &mut World,
         workers: &mut Gatherers,
@@ -192,8 +193,9 @@ impl GatherLoop {
                 (order.node.node == id).then_some((since, worker_id, worker))
             })
             .min_by_key(|&(since, worker_id, _)| (since, worker_id));
-        let mut node = world.get_mut::<Node>(entity).expect("a node to free");
-        node.hold(first.map(|(_, worker_id, _)| worker_id));
+        if let Some(mut node) = GatherLoop::node_mut(world, entity) {
+            node.hold(first.map(|(_, worker_id, _)| worker_id));
+        }
         if let Some((_, _, worker)) = first {
             let mut gatherer = world.get_mut::<Gatherer>(worker).expect("a waiting worker");
             let order = gatherer.order().expect("a waiting worker's loop");
@@ -246,10 +248,9 @@ impl GatherLoop {
             Step::Take(node) => {
                 Navigation::go_to(world, entity, None);
                 let id = *world.get::<StableId>(entity).expect("a worker has an id");
-                world
-                    .get_mut::<Node>(node)
-                    .expect("a node to take")
-                    .hold(Some(id));
+                if let Some(mut node) = GatherLoop::node_mut(world, node) {
+                    node.hold(Some(id));
+                }
                 set(world, with(GatherStep::Gathering { since: now }));
             }
             Step::Collect(node) => GatherLoop::collect(world, workers, entity, order, node),
@@ -264,7 +265,8 @@ impl GatherLoop {
     }
 
     /// Ends the gather of the worker of `entity`, in its loop `order`, at the node of `node`: it
-    /// carries what it takes, sets out for a drop-off, and frees the node.
+    /// carries what it takes, sets out for a drop-off, and frees the node. A client takes nothing
+    /// from a node it holds as the server sent it: its worker carries what the take would take.
     fn collect(
         world: &mut World,
         workers: &mut Gatherers,
@@ -278,10 +280,13 @@ impl GatherLoop {
         let Some(KindSpec::Gather(spec)) = action.map(|action| action.kind) else {
             panic!("a worker's loop is of its gather");
         };
-        let taken = world
-            .get_mut::<Node>(node)
-            .expect("a node gathered")
-            .take(spec.take);
+        let taken = match GatherLoop::node_mut(world, node) {
+            Some(mut held) => held.take(spec.take),
+            None => world
+                .get::<Node>(node)
+                .expect("a node gathered")
+                .taken(spec.take),
+        };
         let mut gatherer = world.get_mut::<Gatherer>(entity).expect("a worker");
         gatherer.carry(Some(Load {
             resource: spec.resource,
@@ -293,6 +298,16 @@ impl GatherLoop {
         }));
         let id = *world.get::<StableId>(node).expect("a node has an id");
         GatherLoop::free(world, workers, node, id);
+    }
+
+    /// The node of `entity` to write; none on a client for a node it holds as the server sent
+    /// it, whose amount and holder are the server's word, as a client writes nothing of one
+    /// (design 14, D11).
+    fn node_mut(world: &mut World, entity: Entity) -> Option<Mut<'_, Node>> {
+        if world.entity(entity).contains::<Unpredicted>() {
+            return None;
+        }
+        Some(world.get_mut::<Node>(entity).expect("a node"))
     }
 
     /// Joins the load of the worker of `entity`, which its player's resources take, to them, and

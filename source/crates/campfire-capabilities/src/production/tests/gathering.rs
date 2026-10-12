@@ -140,6 +140,29 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     assert_eq!([at(19), at(20)], [(10, None), (12, None)]);
     assert_eq!(Production::gather_step(&game, worker), None);
     assert_eq!(game.part::<Gatherer>(worker).load(), None);
+
+    // On a predicting client, which holds the mineral as the server sent it: its worker takes the
+    // mineral and carries 5 of it from tick 4 as the server's does, and the mineral keeps its 12
+    // and its holder, none, the server's word.
+    let mut client = Match::predicting(&ORDERING);
+    let shop = Shop::place(&mut client);
+    let mine = Mine::place(&mut client, shop);
+    shop.hall(&mut client, halves(0, 0));
+    let node = mine.mineral(&mut client, halves(0, 12), 12);
+    client.insert_parts(node, Unpredicted);
+    let worker = mine.worker(&mut client, halves(1, 6), 0);
+    Production::gather_at(&mut client, &[worker], node);
+    let mut loads = Vec::new();
+    for _ in 1..=4 {
+        client.step();
+        loads.push(client.part::<Gatherer>(worker).load());
+    }
+    let five = Some(Load {
+        resource: shop.gold,
+        amount: 5,
+    });
+    assert_eq!(loads, [None, None, None, five]);
+    assert_eq!(*client.part::<Node>(node), Node::new(12));
 }
 
 #[test]

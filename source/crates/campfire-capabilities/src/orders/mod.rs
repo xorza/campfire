@@ -27,6 +27,7 @@ use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::production::ProductionSet;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
+use crate::vision::team_sight::{ByHolding, ByVision, TeamSight};
 
 pub(crate) mod ai;
 pub(crate) mod ai_data;
@@ -77,7 +78,18 @@ impl Orders {
     /// chase their targets. It builds on the core `Units` installs, on combat and on navigation,
     /// and installs after production and items, whose actions it applies only when they are
     /// installed. Without the core's scripts, as on a client, no unit thinks and no item trades.
+    /// An order's targets are checked as the server's vision sees them, or, on a predicting
+    /// client, as the units it holds.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        if cx.predicting() {
+            Orders::install_by::<ByHolding>(cx);
+        } else {
+            Orders::install_by::<ByVision>(cx);
+        }
+    }
+
+    /// `install`, each order's targets checked as `S` sees them.
+    fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
         let production = cx.has(Capability::Production);
         let items = cx.has(Capability::Items);
         let scripts = cx.scripts();
@@ -87,7 +99,7 @@ impl Orders {
         schedule.add_systems((
             (
                 OrderInputs::read_orders,
-                OrderInputs::check_player_orders,
+                OrderInputs::check_player_orders::<S>,
                 OrderInputs::apply_player_orders,
                 LearnOrders::learn_ranks,
             )
@@ -109,7 +121,7 @@ impl Orders {
         ));
         if production {
             schedule.add_systems(
-                ProductionOrders::apply_production_orders
+                ProductionOrders::apply_production_orders::<S>
                     .in_set(SimSet::Inputs)
                     .in_set(OrdersSet::Orders)
                     .after(LearnOrders::learn_ranks),
@@ -129,7 +141,7 @@ impl Orders {
                 .in_set(OrdersSet::Orders)
                 .after(LearnOrders::learn_ranks);
             if production {
-                schedule.add_systems(trade.after(ProductionOrders::apply_production_orders));
+                schedule.add_systems(trade.after(ProductionOrders::apply_production_orders::<S>));
             } else {
                 schedule.add_systems(trade);
             }

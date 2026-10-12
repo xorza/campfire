@@ -19,8 +19,9 @@ use crate::units::unit_type::UnitType;
 
 /// Marks a player out of play, on its entity (design 14, D16): while it holds avatars and every
 /// one is dead, or while the mode's script holds it out. The server derives it as each tick ends
-/// and sends it to every client, as who is out of play is the match's public state; no hash or
-/// snapshot holds it.
+/// and sends it to every client, as who is out of play is the match's public state. A player out
+/// of play that sees what a spectator sees gives no order, so the hash and the snapshot hold it:
+/// a restore refuses the orders the run it restores refused.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutOfPlay;
 
@@ -76,7 +77,7 @@ impl SimComponent for OutOfPlay {
     const NAME: &'static str = "players.out_of_play";
     type Host = Player;
 
-    // Derived, so no snapshot holds one for a restore to check.
+    // A mark, which holds nothing; the tick's end derives it again.
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }

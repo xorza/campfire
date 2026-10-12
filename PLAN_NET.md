@@ -6,13 +6,13 @@ Every planned piece of network work, in one place: the QUIC transport (`quic`), 
 
 The items below, in the order they are done; each line says why it stands where it does.
 
-1. **Slice 3**, A3, A5 and A6, the next slice the user plays ([Workflow](AGENTS.md#workflow)); slice 2, in [PLAN.md](PLAN.md), goes on from S1 after it.
+1. **Slice 3**, whose steps are done: it ends as the user plays it ([Workflow](AGENTS.md#workflow)); slice 2, in [PLAN.md](PLAN.md), goes on from S1 after it.
 2. **N3**, limits for each address: after A3, whose spectators count among the seats it bounds by.
 3. **R2**, the bench of the endpoint, then the cap of new connections it sets: on the same path as N3, the thread's new connections.
 4. **N4**, UPnP behind a host firewall.
 5. **R1**, the send queue: its rate model and its size.
 6. **H1** to **H5**, each as a slice touches its code.
-7. **R3** and **R4** as they show; then **P1** to **P4**, **P3** only as D14 of design 15 lets it.
+7. **R3**, **R4** and **R6** as they show; then **P1** to **P4**, **P3** only as D14 of design 15 lets it.
 
 ## Ready
 
@@ -23,11 +23,7 @@ The items below, in the order they are done; each line says why it stands where 
 
 The user sees their own gold, experience and cooldowns in the HUD, and another team's pools and cooldowns are on no client of theirs; a spectator watches the match, through all fog or one team's; a mode's `[visibility]` that shows every hero's items to all shows them; and a host that lets dead players watch the other team gives a dead hero's player that view until it respawns. The design is [Replication audiences](docs/design/14-replication-audiences.md); each step folds its rules into the design 04 file of each capability it changes, and into design 03's script state. The D numbers of this section are design 14's.
 
-1. **A6. Prediction** (`capabilities`, `net`; D5, D11, D12): what a predicting client does with the state types the owner of the units it predicts does not hold, as D12's test, `release::tests::prediction_reads`, lists them in `AWAITING`. Decided, both by type: the owner also receives the types its prediction reads, `OnDeath`, `StatusTags`, `Builder`, `Gatherer`, `Site`, `PathWalker` and `OnPath`, of the kind `prediction`; a predicting client builds no system that computes the server's own state, `Seeing::see`, `PlayerSupply::refresh`, `OutOfPlay::refresh`, `Dying::despawn_dead`, `Dying::respawn`'s attackers, `GatherLoop::despawn_empty_nodes`, `Flying::fly` and `AreaLife::trigger`; `SeenBy` stays the server's, and the server refuses each order of a player out of play with `out = "spectators"`, which its client predicts as refused; D12's test takes a read of a player's entity through the owner of a unit the client predicts as the owner's. Check: the test's `AWAITING` is empty.
-
-What its steps fix, with the work each step takes beside its own:
-
-- **A6.** A predicting client's schedule reads 39 times a type its client does not hold, the server's or another player's: a client's own unit that holds one on the server is predicted as if it held none ([Replication audiences](docs/design/14-replication-audiences.md), D12).
+Its steps are done; the slice ends as the user plays it in the client.
 
 ## Decide
 
@@ -38,6 +34,7 @@ What its steps fix, with the work each step takes beside its own:
 - **R2. The endpoint's benches** (`quic`). No bench measures the frame's two systems, the thread's batch, or the frame's waits for the mutex, nor a flood of handshakes from many addresses: what a handshake costs the thread under the mutex, and how long a batch of them holds the frame, which sets how many new connections a pass takes ([QUIC transport](docs/design/15-quic-transport.md), D14). No pass bounds its new connections.
 - **R3. The thread's allocations** (`quic`). The thread allocates under the mutex at times `quinn-proto`'s random numbers choose: 8 times at a connection's first key update, within its first 1,000 packets, and once when the packet numbers a connection received first hold three ranges, as each packet number a sender skips leaves a gap until the ranges before it are acknowledged. A read also allocates a new arena when `RecvBatch`'s ring comes back to an arena that a message slice Lightyear keeps still holds.
 - **R4. The LAN check's restart** (`lan-check`). The check starts bot 1 again as soon as the server logs bot 1's first order, while the other bot's order of the same stamp may still be on its way, and it fails an order that misses its stamp tick. In CI run 37523961750 on Ubuntu, attempt 1, the server logged bot 1's order stamped 20 at 20:13:55.960; bot 0 sent its own at 55.971, and the server logged it at 56.086, 115 ms later, in tick 21; the new bot 1 process started in that window and joined at 56.108. On a runner of 4 cores, the new process's start shares them with the server and bot 0.
+- **R6. The exclusive systems a client predicts with** (`capabilities`). D12's test, `release::tests::prediction_reads`, reads no access of an exclusive system, as Bevy gives one none, so it does not check what eight systems of a predicting client read: `Channels::predict_channels`, `Attacks::attack_events`, `DamagePass::run`, `ModifierIntervals::run_intervals`, `DeliveryHooks::end`, `Construction::start_builds`, `GatherLoop::run` and `Trains::finish_trains`, each through `QueryState`, `SystemState` or the world ([Replication audiences](docs/design/14-replication-audiences.md), D12). The test names them in `EXCLUSIVE`, and fails on another.
 
 ## Session hosting in `net`
 

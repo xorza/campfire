@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::SentPredicted;
 use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -37,9 +37,14 @@ impl Node {
         self.holder = holder;
     }
 
+    /// What a take of `take` takes: `take`, or what is left.
+    pub(crate) fn taken(self, take: NonZeroU32) -> u32 {
+        take.get().min(self.amount)
+    }
+
     /// Takes `take` from what it holds, or what is left: what was taken.
     pub(crate) fn take(&mut self, take: NonZeroU32) -> u32 {
-        let taken = take.get().min(self.amount);
+        let taken = self.taken(take);
         self.amount -= taken;
         taken
     }
@@ -56,6 +61,6 @@ impl SimComponent for Node {
 }
 
 impl Replication for Node {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+    const KIND: DataKind = DataKind::Unit;
+    type Sending = SentPredicted;
 }

@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use bevy_ecs::query::{Has, Without};
+use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_sim::Position;
+use campfire_sim::{Position, Unpredicted};
 
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
@@ -18,12 +18,13 @@ use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation::Relation;
-use crate::vision::seen_by::SeenBy;
+use crate::vision::team_sight::TeamSight;
 
 /// What a placement tests a building's box against: the bounds, the walls, the static bodies,
-/// and the living units, the walkers among them and what each team sees of them.
+/// and the living units, the walkers among them and what each team sees of them, by `S`. A
+/// client tests the units it holds and does not predict too, where the server last had them.
 #[derive(SystemParam, Debug)]
-pub(crate) struct Placement<'w, 's> {
+pub(crate) struct Placement<'w, 's, S: TeamSight> {
     bounds: Res<'w, Bounds>,
     walls: Option<Res<'w, Walls>>,
     statics: Res<'w, BodyIndex>,
@@ -38,13 +39,13 @@ pub(crate) struct Placement<'w, 's> {
             &'static Team,
             Option<&'static UnitTags>,
             Has<MoveStep>,
-            Option<&'static SeenBy>,
+            <S as TeamSight>::Seen,
         ),
-        Without<Dead>,
+        (Without<Dead>, Allow<Unpredicted>),
     >,
 }
 
-impl Placement<'_, '_> {
+impl<S: TeamSight> Placement<'_, '_, S> {
     /// Whether `body`, the box of `spec`'s building, may stand at `pos` for a builder of `team`:
     /// it lies within the bounds, and its inside shares no point with a wall of its layer, a
     /// static body of its layer, or the body on its layer of a walker that is not of a team
@@ -86,7 +87,7 @@ impl Placement<'_, '_> {
                     Shape::Box(other) => boxed.overlaps(pos, &other, other_pos),
                 };
                 let friendly = self.relations.get().between(team, other_team) == Relation::Friendly;
-                let sees = seen.is_none_or(|seen| seen.get().contains(team));
+                let sees = S::sees(seen, team).unwrap_or(true);
                 inside && !friendly && sees
             });
         !blocked

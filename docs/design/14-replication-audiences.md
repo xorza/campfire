@@ -2,12 +2,6 @@
 
 Who receives each part of the state, and how a mode and its host set it. Design 04 gives each capability's network data a default audience: all who see a unit, its team, or its owner; design 03 gives each script state field its `sync`. A mode sets the rules between players, as League of Legends shows a hero's items to all and Zero Hour a player's money to no other player; the host sets what spectators and dead players see, as Counter-Strike's server overrides its game mode's `mp_forcecamera` and a Dota 2 lobby's host admits spectators ([Spectating](../research/spectating.md)).
 
-What the code still lacks of design 04:
-
-| Data | Design 04 | Code |
-| --- | --- | --- |
-| What a predicting client reads | only what it holds (D12) | 39 reads of a type its client does not hold, the server's or another player's, which `release::tests::prediction_reads` lists in `AWAITING` |
-
 Each mistake of this kind is impossible to write or fails at once: the compiler requires a kind on each state type, the load checks the mode's audiences, the server checks the host's settings as it starts, every consumer reads one list of state types, and tests compare what each client holds with what it may hold.
 
 ## Decisions
@@ -19,14 +13,14 @@ Each mistake of this kind is impossible to write or fails at once: the compiler 
 
   | Kind | Holds |
   | --- | --- |
-  | `unit` | A unit's public state: type, team, owner, place, body, level, death, destination, the action under way |
+  | `unit` | A unit's public state: type, team, owner, place, body, level, death, destination, the action under way, its status tags, a node's amount and holder |
   | `life` | The life pool |
   | `pools` | The other pools |
   | `modifiers` | A unit's modifiers |
   | `cooldowns` | Each slot's ready tick, charges, and the tick a toggle that is on pays next |
   | `progression` | Experience and points |
   | `inventory` | A unit's inventory |
-  | `prediction` | What only the owner's prediction reads: route, progress, modifiers' clocks, spawn point, respawn |
+  | `prediction` | What only the owner's prediction reads: route, progress, modifiers' clocks, spawn point, respawn, what becomes of it at its death, the path it walks and its place on it, a builder's order, a worker's loop, a site's progress |
   | `resources`, `supply`, `queues`, `player_modifiers` | A player's |
   | `match` | The match's public state: the teams' relations, its end, who is out of play |
   | `mode_state` | The mode's script state fields |
@@ -69,7 +63,7 @@ Each mistake of this kind is impossible to write or fails at once: the compiler 
 
 ### Players out of play
 
-- **D16. A player out of play sees what its team sees, or what a spectator sees.** A player is out of play while it holds avatars and every one is dead, or while the mode's script holds it out, `ctx.set_out(player, bool)`, as an eliminated or a defeated player is: the script's hold is `HeldOut` on its player entity (D7), the server's alone, and the server derives `OutOfPlay` there as each tick ends, of the kind `match`, which every client receives as it changes, as supply is (D9). A player of no avatar, as in Zero Hour, is out of play only as its mode's script holds it out. `out = "team"`, the default, changes nothing, as `mp_forcecamera 1`; `out = "spectators"`, as `mp_forcecamera 0`, makes it a spectator to each entity of another team, with the spectators' fog and audiences. As it plays again, the server removes what it held of the other teams' entities, as a unit leaves vision. Its link's `Viewer` carries whether it is out, inserted again as `OutOfPlay` comes and goes, so each kind's filter and its rooms follow it (D10): out, it stands in its team's room and the spectators', every room with `all`, every team's with `teams`, as `all` holds every entity in the spectators' room once a spectator or a player out of play may see so. What it sees is live, so it can tell its allies who still play: the default is `team`. A black screen until the round ends, `mp_forcecamera 2`, is a picture the client draws.
+- **D16. A player out of play sees what its team sees, or what a spectator sees.** A player is out of play while it holds avatars and every one is dead, or while the mode's script holds it out, `ctx.set_out(player, bool)`, as an eliminated or a defeated player is: the script's hold is `HeldOut` on its player entity (D7), the server's alone, and the server derives `OutOfPlay` there as each tick ends, of the kind `match`, which every client receives as it changes. With `out = "spectators"` the server ignores each order of a player out of play, which would act on what its team does not see, and its client predicts it ignored, so the hash and the snapshot hold `OutOfPlay`: a restore ignores the orders the run it restores ignored, and the session's terms give the setting to the server, the verifier and the client alike. A player of no avatar, as in Zero Hour, is out of play only as its mode's script holds it out. `out = "team"`, the default, changes nothing, as `mp_forcecamera 1`; `out = "spectators"`, as `mp_forcecamera 0`, makes it a spectator to each entity of another team, with the spectators' fog and audiences. As it plays again, the server removes what it held of the other teams' entities, as a unit leaves vision. Its link's `Viewer` carries whether it is out, inserted again as `OutOfPlay` comes and goes, so each kind's filter and its rooms follow it (D10): out, it stands in its team's room and the spectators', every room with `all`, every team's with `teams`, as `all` holds every entity in the spectators' room once a spectator or a player out of play may see so. What it sees is live, so it can tell its allies who still play: the default is `team`. A black screen until the round ends, `mp_forcecamera 2`, is a picture the client draws.
 
 ### Where state lives
 
@@ -87,7 +81,7 @@ Each mistake of this kind is impossible to write or fails at once: the compiler 
 ### What a client predicts
 
 - **D11. A client derives each derived component for every unit whose inputs it holds.** `UnitStats` derives from a unit's type, level and modifiers and its player's modifiers, which reach every client that holds the unit by default, so the client derives it for each such unit, and an aura's numbers resolve as the server's do; D5 holds for a mode that hides them. It derives a unit's stats and tags, and writes nothing else of a unit it holds as the server sent it; and a unit spawns with its type's stats at level 1, as its first refresh derives them, so a reader in the stage it spawns in finds them.
-- **D12. Prediction reads only what its client holds.** A test walks the client's prediction schedule and checks that each component a system reads is derived on the client, or of a kind whose default audience holds every client that holds the entity (`unit`, `match`, `life`, `modifiers`, `player_modifiers`, `mode_state`, `unit_state_all`), or read on the client's predicted units alone, `Without<Unpredicted>`, whose owner holds every kind but `server`. It names the system and the type of each failure. Its world is built as a client's, by the match spec's `predicting`, which puts `Unpredicted`'s filter in place before any system's query is made: a query takes the default filters as it is made, so one made before would read every unit a client holds.
+- **D12. Prediction reads only what its client holds.** A test walks the client's prediction schedule and checks that each component a system reads is derived on the client, or of a kind whose default audience holds every client that holds the entity (`unit`, `match`, `life`, `modifiers`, `player_modifiers`, `mode_state`, `unit_state_all`), or read on the client's predicted units alone, `Without<Unpredicted>`, whose owner holds every kind but `server`, or of a player's entity, `resources`, `supply` and `player_modifiers`, which a system reads through the owner of a unit and so, on a client, of a unit it predicts: its own player's. It names the system and the type of each failure. Its world is built as a client's, by the match spec's `predicting`, which puts `Unpredicted`'s filter in place before any system's query is made: a query takes the default filters as it is made, so one made before would read every unit a client holds. So that each read passes, the state a client's own unit holds and its prediction reads goes to the owner, of the kind `prediction`: what becomes of it at its death, the path it walks and its place on it, a builder's order, a worker's loop and a site's progress; and what every client derives each unit's tags from, or gathers by, is `unit`: the status tags, `constructing` and `gathering`, and a node's amount and holder, which a client reads and writes none of. A predicting client builds no system that computes the server's own state: vision's `see`, a player's supply, out of play, the despawn of the dead and of an empty node, the forgetting of a respawned unit's attackers, a delivery's flight and its trigger. What each team sees, `SeenBy`, stays the server's: a client holds only the units its team sees, so its checks of an order's target and of a placement take each unit it holds as seen, the units it does not predict among them, where the server last had them. Bevy gives an exclusive system no access to read, so the test names each exclusive system a client builds, and fails on one it does not name.
 
 ### The checks
 

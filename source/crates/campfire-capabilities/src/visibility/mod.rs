@@ -1,3 +1,5 @@
+use bevy_ecs::resource::Resource;
+
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::recipients::Recipients;
 use crate::visibility::error::{VisibilityDecodeError, VisibilityError};
@@ -16,8 +18,9 @@ pub enum SpectatorFog {
     Teams,
 }
 
-/// What a player out of play sees of the other teams (design 14, D16).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// What a player out of play sees of the other teams (design 14, D16). A match holds its
+/// session's as a resource: a player that sees what a spectator sees gives no order.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OutView {
     /// What its team sees.
     Team,

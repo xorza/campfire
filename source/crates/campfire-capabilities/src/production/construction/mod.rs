@@ -35,6 +35,7 @@ use crate::units::spawner::Spawner;
 use crate::units::status_tags::StatusTags;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
+use crate::vision::team_sight::TeamSight;
 
 pub(crate) mod build_view;
 pub(crate) mod building_at;
@@ -68,8 +69,8 @@ impl Construction {
     /// apply, as it applies: a point's build passes its action's checks, its requirements and
     /// its placement against the match as it stands, and a site's is a living site of the same
     /// building and player; one that fails ends, and pays nothing.
-    pub(crate) fn check_builds(
-        mut parts: ParamSet<'_, '_, (BuildView<'_, '_>, Query<'_, '_, &mut Builder>)>,
+    pub(crate) fn check_builds<S: TeamSight>(
+        mut parts: ParamSet<'_, '_, (BuildView<'_, '_, S>, Query<'_, '_, &mut Builder>)>,
         (mut changed, mut held): (Local<'_, Vec<Entity>>, Local<'_, Vec<Held>>),
     ) {
         changed.clear();
@@ -108,10 +109,10 @@ impl Construction {
     /// stand in; its life starts at `start_life` of its maximum, rounded down, at least the least
     /// amount above 0. Each build sees the sites the builds before it placed. An `alone` build's
     /// order then ends; another's builds its site.
-    pub(crate) fn start_builds(
+    pub(crate) fn start_builds<S: TeamSight>(
         world: &mut World,
         builders: &mut QueryState<(Entity, &StableId, &Builder), Without<Dead>>,
-        view: &mut SystemState<BuildView<'_, '_>>,
+        view: &mut SystemState<BuildView<'_, '_, S>>,
         (mut order, mut held, mut paid): (
             Local<'_, Ordered>,
             Local<'_, Vec<Held>>,

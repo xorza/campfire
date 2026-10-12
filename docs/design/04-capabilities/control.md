@@ -17,7 +17,8 @@ Move, attack, an action (by its slot, with a target), stop, hold (planned), foll
 - **Queues** (planned): an order waits behind the current ones (shift-click).
 - **Groups:** a command names its units in increasing stable id, and each that its player controls carries it out; an empty list, one out of order or one that names a unit twice is ignored. A move to many units moves them as a group sharing one route ([Groups](navigation.md#groups)); formations and flow fields come later.
 - **Stop:** a unit ends what it has under way, an attack, a cast in its windup or walking in range, or a charge, with nothing spent; cuts a channel; drops its target and destination; leaves its path. A train queue stays.
-- **Out of sight.** An order's unit target is one its player's group sees as the order applies, any unit in a match with no `vision`; an order at any other is ignored, so a stable id never tells a client what its group does not see.
+- **Out of sight.** An order's unit target is one its player's group sees as the order applies, any unit in a match with no `vision`; an order at any other is ignored, so a stable id never tells a client what its group does not see. A predicting client takes each unit it holds as seen, as the server sends it only those; what each group sees stays the server's ([Replication audiences](../14-replication-audiences.md), D12).
+- **Out of play.** In a session whose players out of play see what a spectator sees, `out = "spectators"`, each order of a player out of play is ignored, as it would act on what its group does not see; its client predicts it ignored ([Replication audiences](../14-replication-audiences.md), D16).
 - **Kept behind a block.** An order a tag blocks waits, and runs when the block ends ([Tags](stats.md#tags)).
 
 ### AI

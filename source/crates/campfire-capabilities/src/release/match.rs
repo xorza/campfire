@@ -135,17 +135,20 @@ pub(crate) mod test_matches {
             rate: TickRate,
             budgets: Option<ScriptBudgets>,
         ) -> Match {
-            let log = LogCheck::start();
             let set = CapabilitySet::new(declared).expect("a test declares a valid set");
             let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set);
+            Match::test_of(match budgets {
+                Some(budgets) => spec.script_budgets(budgets),
+                None => spec,
+            })
+        }
+
+        /// The match of `spec`, as `test_unstarted` gives it.
+        fn test_of(spec: MatchSpec) -> Match {
+            let log = LogCheck::start();
+            let set = spec.set;
             let mut world = World::new();
-            Release::build(
-                &mut world,
-                match budgets {
-                    Some(budgets) => spec.script_budgets(budgets),
-                    None => spec,
-                },
-            );
+            Release::build(&mut world, spec);
             // A match installs the book its package load read; a test fills one as it compiles.
             world.insert_resource(ScriptBook::default());
             // A mode declares the kinds its units' slots are of: here one, whose one rank comes
@@ -170,6 +173,18 @@ pub(crate) mod test_matches {
         /// runs scripts.
         pub(crate) fn client(declared: &[Capability]) -> Match {
             Match::test(declared, Match::TEST_RATE, None)
+        }
+
+        /// A predicting client's match at `TEST_RATE` of `declared`, as `client` gives it: each
+        /// of its sim's queries skips the units it holds as the server sent them, `Unpredicted`.
+        pub(crate) fn predicting(declared: &[Capability]) -> Match {
+            let set = CapabilitySet::new(declared).expect("a test declares a valid set");
+            let spec = MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
+                .capabilities(set)
+                .predicting();
+            let mut started = Match::test_of(spec);
+            Players::start_without_mode(&mut started, [], 0);
+            started
         }
 
         /// A server's match at `TEST_RATE` of `declared`, running scripts within `budgets`.

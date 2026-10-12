@@ -156,7 +156,7 @@ An order names an action and a target ([Orders](control.md#orders)); a `characte
 
 ## Network
 
-A unit's slots and the action under way go to everyone who sees it; its `SlotTimes` to the owner, or the team, as the mode sets ([Replication audiences](../14-replication-audiences.md), `cooldowns`). Projectiles and areas replicate as units. A client predicts the start of its own actions; their effects come from the server.
+A unit's slots and the action under way go to everyone who sees it; its `SlotTimes` to the owner, or the team, as the mode sets ([Replication audiences](../14-replication-audiences.md), `cooldowns`). Projectiles and areas replicate as units. A client predicts the start of its own actions; their effects come from the server, and it flies no projectile and triggers no area.
 
 ## Cost
 

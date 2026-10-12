@@ -64,6 +64,8 @@ impl Session {
         SessionRules::of(packages)
             .check(&header.terms)
             .map_err(StartError::Terms)?;
+        let visibility = SessionRules::visibility_of(&header.terms)
+            .expect("terms the rules admit carry a visibility that reads");
         if seeds.last() < log.segment() {
             return Err(StartError::Seed(SeedError::NotRevealed));
         }
@@ -81,7 +83,8 @@ impl Session {
         }
         let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         let rate = TickRate::new(header.terms.tick_hz);
-        Release::build(world, MatchBuild::spec(packages, seed, rate, players));
+        let spec = MatchBuild::spec(packages, seed, rate, players).out_view(visibility.out());
+        Release::build(world, spec);
         MatchBuild::install_mode(packages, world, players);
         let saves = packages.data().saves;
         let autosave = saves

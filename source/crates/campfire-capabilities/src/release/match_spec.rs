@@ -3,9 +3,10 @@ use campfire_sim::TickRate;
 
 use crate::declare::capability_set::CapabilitySet;
 use crate::scripts::script_budgets::ScriptBudgets;
+use crate::visibility::OutView;
 
-/// What a match is built of: its tick rate and seed, its capabilities, and the budgets of its
-/// scripts.
+/// What a match is built of: its tick rate and seed, its capabilities, the budgets of its
+/// scripts, and what its players out of play see.
 #[derive(Debug, Clone)]
 #[must_use = "a spec builds nothing until a match is built of it"]
 pub struct MatchSpec {
@@ -17,6 +18,7 @@ pub struct MatchSpec {
     /// Whether a client predicts the match: its sim's queries skip the units it holds as the
     /// server sent them.
     pub(crate) predicting: bool,
+    pub(crate) out: OutView,
     /// Whether the tick's schedule leaves out Bevy's automatic sync points, for the ambiguity
     /// check that sees every pair only a sync point keeps in order.
     #[cfg(any(test, feature = "internals"))]
@@ -37,6 +39,7 @@ impl MatchSpec {
             set: CapabilitySet::CORE,
             budgets: None,
             predicting: false,
+            out: OutView::Team,
             #[cfg(any(test, feature = "internals"))]
             without_sync_points: false,
             #[cfg(any(test, feature = "internals"))]
@@ -57,6 +60,12 @@ impl MatchSpec {
             budgets: Some(budgets),
             ..self
         }
+    }
+
+    /// The match of a session whose players out of play see as `out` says, as its terms carry it;
+    /// `OutView::Team` until the spec says otherwise.
+    pub fn out_view(self, out: OutView) -> MatchSpec {
+        MatchSpec { out, ..self }
     }
 
     /// The match a client predicts: each of its sim's queries skips the units the client holds

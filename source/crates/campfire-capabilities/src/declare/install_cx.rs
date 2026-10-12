@@ -7,12 +7,13 @@ use campfire_sim::Capability;
 use crate::declare::capability_set::CapabilitySet;
 
 /// What a module's install reads and changes: the match's world and schedule, the capabilities
-/// the match declares, and whether it runs scripts.
+/// the match declares, whether it runs scripts, and whether a client predicts it.
 pub(crate) struct InstallCx<'a> {
     pub(crate) world: &'a mut World,
     pub(crate) schedule: &'a mut Schedule,
     set: CapabilitySet,
     scripts: bool,
+    predicting: bool,
 }
 
 impl<'a> InstallCx<'a> {
@@ -21,12 +22,14 @@ impl<'a> InstallCx<'a> {
         schedule: &'a mut Schedule,
         set: CapabilitySet,
         scripts: bool,
+        predicting: bool,
     ) -> InstallCx<'a> {
         InstallCx {
             world,
             schedule,
             set,
             scripts,
+            predicting,
         }
     }
 
@@ -44,6 +47,12 @@ impl<'a> InstallCx<'a> {
     pub(crate) const fn scripts(&self) -> bool {
         self.scripts
     }
+
+    /// Whether a client predicts the match: it builds no system that computes the server's own
+    /// state, which reaches it from the server (design 14, D12).
+    pub(crate) const fn predicting(&self) -> bool {
+        self.predicting
+    }
 }
 
 impl fmt::Debug for InstallCx<'_> {
@@ -51,6 +60,7 @@ impl fmt::Debug for InstallCx<'_> {
         f.debug_struct("InstallCx")
             .field("set", &self.set)
             .field("scripts", &self.scripts)
+            .field("predicting", &self.predicting)
             .finish_non_exhaustive()
     }
 }

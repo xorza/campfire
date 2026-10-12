@@ -1,10 +1,10 @@
 use std::slice;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Changed, Without};
+use bevy_ecs::query::{Allow, Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_common::{PlayerSlot, Ticks};
-use campfire_sim::{EntityIndex, Position, SimTick, StableId};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 
 use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
@@ -35,6 +35,7 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 
 /// What the gather loop reads of the match: the books, the workers, the nodes and the drop-offs.
+/// A client reads the nodes it holds as the server sent them, as it predicts none.
 #[derive(SystemParam, Debug)]
 pub(crate) struct GatherView<'w, 's> {
     pub(super) tick: Res<'w, SimTick>,
@@ -58,7 +59,7 @@ pub(crate) struct GatherView<'w, 's> {
             &'static Team,
             Option<&'static UnitTags>,
         ),
-        Without<Dead>,
+        (Without<Dead>, Allow<Unpredicted>),
     >,
     pub(super) drop_offs: Query<
         'w,

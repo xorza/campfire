@@ -88,6 +88,7 @@ pub(crate) mod match_visibility;
 pub(crate) mod offering;
 pub(crate) mod player_link;
 pub(crate) mod receipts;
+pub(crate) mod scope_union;
 pub(crate) mod seats;
 pub(crate) mod server_bots;
 pub(crate) mod server_dir;

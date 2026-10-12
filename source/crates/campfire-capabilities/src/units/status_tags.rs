@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::SentPredicted;
 use crate::units::engine_tag::EngineTag;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_entity::UnitEntity;
@@ -51,8 +51,8 @@ impl SimComponent for StatusTags {
 }
 
 impl Replication for StatusTags {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+    const KIND: DataKind = DataKind::Unit;
+    type Sending = SentPredicted;
 }
 
 #[cfg(test)]

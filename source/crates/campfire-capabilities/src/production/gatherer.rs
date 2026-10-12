@@ -9,14 +9,14 @@ use crate::players::players_world::PlayersWorldCrate;
 use crate::players::resource_id::ResourceId;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::SentPredicted;
 use crate::units::unit_entity::UnitEntity;
 
 /// A unit that gathers, as one whose slots hold a gather: its gather loop, none while it has
 /// none, the load it carries, which it keeps when its loop ends, and the node it gathered last,
 /// which it goes back to after a return of its load.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Gatherer {
+pub struct Gatherer {
     order: Option<GatherOrder>,
     load: Option<Load>,
     last: Option<NodeAt>,
@@ -109,8 +109,8 @@ impl SimComponent for Gatherer {
 }
 
 impl Replication for Gatherer {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+    const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentPredicted;
 }
 
 #[cfg(test)]

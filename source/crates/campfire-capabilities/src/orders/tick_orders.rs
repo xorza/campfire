@@ -42,12 +42,16 @@ pub(crate) struct TickOrder<'a> {
 }
 
 impl TickOrders {
-    /// Reads the orders of `inputs` in place of the last tick's.
-    pub(crate) fn read(&mut self, inputs: &TickInputs) {
+    /// Reads the orders of `inputs` in place of the last tick's, but those of each player
+    /// `refused` names.
+    pub(crate) fn read(&mut self, inputs: &TickInputs, refused: impl Fn(PlayerSlot) -> bool) {
         self.orders.clear();
         self.units.clear();
         self.sent.clear();
         for command in inputs.commands(Order::CAPABILITY) {
+            if refused(command.slot) {
+                continue;
+            }
             let start = self.units.len();
             let Some(action) = Order::decode_into(command.body, &mut self.units) else {
                 continue;

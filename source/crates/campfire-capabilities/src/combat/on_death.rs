@@ -1,6 +1,6 @@
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::SentOnce;
 use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// What becomes of a unit when it dies, as its unit type says: in data, `stay` or `despawn`.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[component(immutable)]
 #[serde(rename_all = "snake_case")]
 pub enum OnDeath {
     /// It stays, dead, for the mode to respawn, as avatars do.
@@ -30,6 +31,6 @@ impl SimComponent for OnDeath {
 }
 
 impl Replication for OnDeath {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+    const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentOnce;
 }

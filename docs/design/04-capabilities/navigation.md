@@ -82,7 +82,7 @@ In Collide, each pair of living bodies on one layer that overlap as the stage st
 
 ## Network
 
-Positions go to everyone who sees the unit. A client predicts its own units' routes, steps and collisions with the units that cannot walk, and continues a forced move it learned of.
+Positions go to everyone who sees the unit. A client predicts its own units' routes, steps and collisions with the units that cannot walk, and continues a forced move it learned of. The path a unit walks and its place on it go to its owner, of the kind `prediction` ([Replication audiences](../14-replication-audiences.md), D12).
 
 ## Cost
 

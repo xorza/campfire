@@ -114,9 +114,11 @@ impl Combat {
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
-    /// go, after the Mode stage saw them.
+    /// go, after the Mode stage saw them. A unit's despawn and its attackers are the server's: a
+    /// predicting client despawns no unit, and forgets no attacker it never held.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
         let scripts = cx.scripts();
+        let predicting = cx.predicting();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.insert_resource(PassQueue::default());
         world.insert_resource(Shots::default());
@@ -168,8 +170,16 @@ impl Combat {
             Dying::respawn
                 .in_set(SimSet::Inputs)
                 .in_set(CombatSet::Respawn),
-            Dying::despawn_dead.in_set(SimSet::Vision),
         ));
+        if !predicting {
+            schedule.add_systems((
+                Dying::forget_attackers
+                    .in_set(SimSet::Inputs)
+                    .in_set(CombatSet::Respawn)
+                    .before(Dying::respawn),
+                Dying::despawn_dead.in_set(SimSet::Vision),
+            ));
+        }
     }
 }
 

@@ -88,7 +88,7 @@ After one damage, its events run in the table's order, for every damage that rea
 
 ## Network
 
-A unit's `Life`, visible modifiers and animation go to everyone who sees it; its `Pools` to the owner, or the team, as the mode sets ([Replication audiences](../14-replication-audiences.md), `life` and `pools`). Damage and deaths appear on a client only as the server confirms them; a client predicts the start of its own attacks, not their damage.
+A unit's `Life`, visible modifiers and animation go to everyone who sees it; its `Pools` to the owner, or the team, as the mode sets ([Replication audiences](../14-replication-audiences.md), `life` and `pools`). Damage and deaths appear on a client only as the server confirms them; a client predicts the start of its own attacks, not their damage. What becomes of a unit at its death goes to its owner, of the kind `prediction`; its recent attackers stay the server's, and only the server despawns the dead and forgets a respawned unit's attackers ([Replication audiences](../14-replication-audiences.md), D12).
 
 ## Cost
 

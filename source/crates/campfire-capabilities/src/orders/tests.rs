@@ -9,7 +9,7 @@ use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptError;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Command, IdAllocator, Position, SimUpdate, StableId};
+use campfire_sim::{Command, IdAllocator, Position, SimUpdate, StableId, Unpredicted};
 use serde::Deserialize;
 
 use super::*;
@@ -42,6 +42,8 @@ use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
 use crate::orders::order::{Action, Order};
 use crate::players::Players;
+use crate::players::out_of_play::OutOfPlay;
+use crate::players::players_world::PlayersWorld;
 use crate::players::players_world::PlayersWorldCrate;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -73,6 +75,7 @@ use crate::values::package_path::PackagePath;
 use crate::values::rank::Rank;
 use crate::values::scalar::Scalar;
 use crate::values::share::Share;
+use crate::visibility::OutView;
 use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
 
@@ -226,15 +229,17 @@ fn orders_match_with_paths(paths: Paths) -> Match {
     orders_match_with(paths, limits)
 }
 
+/// The capabilities of an orders match.
+const ORDERS: [Capability; 4] = [
+    Capability::Stats,
+    Capability::Combat,
+    Capability::Navigation,
+    Capability::Orders,
+];
+
 fn orders_match_with(paths: Paths, limits: ScriptLimits) -> Match {
     let scripts = ScriptBudgets::new(limits, 2);
-    let declared = [
-        Capability::Stats,
-        Capability::Combat,
-        Capability::Navigation,
-        Capability::Orders,
-    ];
-    let mut game = Match::server(&declared, scripts);
+    let mut game = Match::server(&ORDERS, scripts);
     game.insert_resource(paths);
     game
 }
@@ -324,21 +329,27 @@ fn a_hero_walks_to_its_players_target() {
     );
 }
 
+/// The heroes of `TwoHeroes`, placed into `game`, the first with its weapon in slot 0 and a train
+/// in slot 1.
+fn trainer(game: &mut Match) -> TwoHeroes {
+    let heroes = TwoHeroes::place(game);
+    let train = Actions::add_train(game, UnitType::new(0), Ticks::ZERO, None);
+    let entity = game.unit_entity(heroes.first);
+    let mut unit = game.entity_mut(entity);
+    let (mut slots, mut times) = unit
+        .get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
+        .unwrap();
+    slots.grant(&mut times, SlotKind::new(0), &[train], Some(Rank::FIRST));
+    heroes
+}
+
 #[test]
 fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     let mut game = orders_match();
     let TwoHeroes {
         first: hero,
         second: other,
-    } = TwoHeroes::place(&mut game);
-    // Its weapon in slot 0, and a train in slot 1.
-    let train = Actions::add_train(&mut game, UnitType::new(0), Ticks::ZERO, None);
-    let entity = game.unit_entity(hero);
-    let mut unit = game.entity_mut(entity);
-    let (mut slots, mut times) = unit
-        .get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
-        .unwrap();
-    slots.grant(&mut times, SlotKind::new(0), &[train], Some(Rank::FIRST));
+    } = trainer(&mut game);
     let ordered = |game: &Match| game.part::<ActionSlots>(hero).in_progress();
     let slot = |slot| {
         Order::payload(&[Order::one(
@@ -397,6 +408,17 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     game.insert_parts(other, SeenBy::new(TeamSet::of(Team::new(0))));
     game.step_with(&[(PlayerSlot::new(0), &at_unit(other))]);
     assert_eq!(ordered(&game), Some(aimed(other)));
+
+    // A predicting client holds only what its team sees, and takes each unit it holds as seen:
+    // the train at the other hero, which no team's vision sees and which the client holds as the
+    // server sent it, takes its target, where the server above dropped it.
+    let mut client = Match::predicting(&ORDERS);
+    let TwoHeroes { second: held, .. } = trainer(&mut client);
+    assert_eq!(held, other);
+    Vision::fog_grid(&mut client, 1);
+    client.insert_parts(held, (SeenBy::new(TeamSet::NONE), Unpredicted));
+    client.step_with(&[(PlayerSlot::new(0), &at_unit(held))]);
+    assert_eq!(ordered(&client), Some(aimed(held)));
 }
 
 #[test]
@@ -466,6 +488,34 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         game.part::<Destination>(second).get(),
         Some(Position::new(Vec3::new(Position::BOUND, Num::int(2), Num::ZERO)).unwrap())
     );
+
+    // Player 0 out of play: its order applies while it sees what its team sees, the default, and
+    // none does once it sees what a spectator sees; player 1's applies either way.
+    assert_eq!(*game.resource::<OutView>(), OutView::Team);
+    Players::spawn(&mut game, 2, 0);
+    let out = game.player_entity(PlayerSlot::new(0)).unwrap();
+    game.entity_mut(out).insert(OutOfPlay);
+    let destination = |game: &Match, unit| game.part::<Destination>(unit).get();
+    for (view, x) in [(OutView::Team, 3_i16), (OutView::Spectators, 6)] {
+        game.insert_resource(view);
+        let before = destination(&game, first);
+        game.step_with(&[
+            (PlayerSlot::new(0), &move_to(first, x.into(), 3)),
+            (PlayerSlot::new(1), &move_to(second, x.into(), 3)),
+        ]);
+        let ordered = Some(Position::from((x, 0, 3)));
+        let first_to = if view == OutView::Team {
+            ordered
+        } else {
+            before
+        };
+        assert_eq!(destination(&game, first), first_to, "{view:?}");
+        assert_eq!(
+            destination(&game, second),
+            Some(Position::from((x, 2, 3))),
+            "{view:?}"
+        );
+    }
 }
 
 #[test]
@@ -1547,7 +1597,7 @@ fn production_and_items_add_their_order_actions_only_where_they_are_declared() {
             .map(|(_, system)| system.name().to_string())
             .collect();
         ["apply_production_orders", "trade_items"]
-            .map(|wanted| names.iter().any(|name| name.ends_with(wanted)))
+            .map(|wanted| names.iter().any(|name| name.contains(wanted)))
     };
     let orders = [
         Capability::Stats,

@@ -6,7 +6,7 @@ use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
+use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId, Unpredicted};
 use serde::Serialize;
 
 use crate::actions::Actions;
@@ -50,16 +50,19 @@ fn shop_match() -> Match {
     shop_match_of(&[Capability::Production])
 }
 
-/// A shop's match with the orders that cancel its trains and set its rally points, and the
-/// capabilities they build on.
+/// The capabilities of an ordering match: production, the orders that cancel its trains and set
+/// its rally points, and the capabilities they build on.
+const ORDERING: [Capability; 5] = [
+    Capability::Stats,
+    Capability::Combat,
+    Capability::Navigation,
+    Capability::Orders,
+    Capability::Production,
+];
+
+/// A shop's match of `ORDERING`.
 fn ordering_match() -> Match {
-    shop_match_of(&[
-        Capability::Stats,
-        Capability::Combat,
-        Capability::Navigation,
-        Capability::Orders,
-        Capability::Production,
-    ])
+    shop_match_of(&ORDERING)
 }
 
 /// A match of `declared`, with production among them.

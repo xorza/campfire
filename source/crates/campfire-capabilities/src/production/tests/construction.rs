@@ -513,6 +513,20 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     let at = |id| *game.part::<Position>(id);
     assert_eq!([at(hidden), at(friend)], [halves(1, 3), halves(-1, -3)]);
 
+    // On a predicting client, an enemy walker in the box that it holds as the server sent it
+    // refuses, though no team's vision sees it, which passes on the server, as the hidden enemy
+    // above: the client holds what its team sees, where the server last had it.
+    let mut game = Match::predicting(&ORDERING);
+    let shop = Shop::place(&mut game);
+    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let seen = Some(TeamSet::NONE);
+    let enemy = Production::yard_walker(&mut game, halves(1, 1), Team::new(1), seen);
+    game.insert_parts(enemy, Unpredicted);
+    let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
+    Production::build_at(&mut game, builder, 0, 0);
+    assert_eq!((shop.depots(&game), shop.gold(&game)), (vec![], 100));
+    assert_eq!(Production::order_of(&game, builder), None);
+
     // A wall over x −1 to 1 from z 1.25 to 3 holds the centers (±0.5, 1.5) and (±0.5, 2.5): a
     // walker in the box at (0.5, 0.75) goes past it to the nearest cell clear of both, (1.5, 1.5),
     // √1.0625 m off, its center 0.5 m from the wall's edge and √0.5 m from the box's corner.

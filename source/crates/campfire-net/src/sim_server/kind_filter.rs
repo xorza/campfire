@@ -10,15 +10,17 @@ use bevy_ecs::query::{Has, With};
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
 use campfire_capabilities::{
-    CapabilitySet, DataKind, Declared, Experience, Inventory, Life, ModeState, ModifierClocks,
-    Modifiers, Owner, Player, PlayerModifiers, PlayerResources, PlayerSupply, Points, Pools,
-    Progress, Recipients, Release, Replication, Respawn, Route, SlotTimes, SpawnPoint, StateTypes,
-    SyncAll, SyncOwner, SyncTeam, Team, TrainQueue, UnitState,
+    Builder, CapabilitySet, DataKind, Declared, Experience, Gatherer, Inventory, Life, ModeState,
+    ModifierClocks, Modifiers, OnDeath, OnPath, Owner, PathWalker, Player, PlayerModifiers,
+    PlayerResources, PlayerSupply, Points, Pools, Progress, Recipients, Release, Replication,
+    Respawn, Route, Site, SlotTimes, SpawnPoint, StateTypes, SyncAll, SyncOwner, SyncTeam, Team,
+    TrainQueue, UnitState,
 };
 use campfire_common::PlayerSlot;
 use campfire_sim::SimResource;
 
 use crate::sim_server::match_visibility::MatchVisibility;
+use crate::sim_server::scope_union::ScopeUnion;
 use crate::sim_server::viewer::Viewer;
 
 /// A kind of state whose audience a mode may set, or that the owner alone receives, and the
@@ -68,7 +70,10 @@ filtered_kinds! {
     /// The modifiers a player holds for its units.
     PlayerModifiersKind: PlayerModifiers = SingleComponent<PlayerModifiers>;
     /// What only the owner's prediction reads.
-    PredictionKind: Prediction = (SpawnPoint, Route, Progress, ModifierClocks, Respawn);
+    PredictionKind: Prediction = ScopeUnion<
+        (SpawnPoint, Route, Progress, ModifierClocks, Respawn),
+        (OnDeath, Builder, Gatherer, Site, PathWalker, OnPath),
+    >;
     /// A unit's script state fields of `sync = "owner"`.
     UnitStateOwnerKind: UnitStateOwner = SingleComponent<UnitState<SyncOwner>>;
     /// A unit's script state fields of `sync = "team"`.
@@ -354,6 +359,14 @@ mod tests {
     impl<C: Component> TypeList for SingleComponent<C> {
         fn type_ids() -> Vec<TypeId> {
             vec![TypeId::of::<C>()]
+        }
+    }
+
+    impl<A: TypeList, B: TypeList> TypeList for ScopeUnion<A, B> {
+        fn type_ids() -> Vec<TypeId> {
+            let mut ids = A::type_ids();
+            ids.extend(B::type_ids());
+            ids
         }
     }
 

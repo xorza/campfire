@@ -27,6 +27,7 @@ pub(crate) mod seen_by;
 pub(crate) mod sight;
 pub(crate) mod sight_cache;
 pub(crate) mod sight_maps;
+pub(crate) mod team_sight;
 pub(crate) mod vision_api;
 pub(crate) mod vision_column;
 pub(crate) mod vision_data;
@@ -58,8 +59,12 @@ impl Vision {
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
     /// teams that see it, with the reveals under way. A match sees nothing until its mode gives
     /// the grid. The sights of the delivery types, which no kit holds, are a book of their own.
+    /// What a team sees is the server's: a predicting client holds the units its team sees, as
+    /// the server sends them, and reveals nothing.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
-        cx.schedule.add_systems(Seeing::see.in_set(SimSet::Vision));
+        if !cx.predicting() {
+            cx.schedule.add_systems(Seeing::see.in_set(SimSet::Vision));
+        }
         cx.world.insert_resource(Reveals::default());
     }
 

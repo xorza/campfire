@@ -12,7 +12,7 @@ use crate::players::players_world::PlayersWorldCrate;
 use crate::players::resource_amount::ResourceAmount;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::SentPredicted;
 use crate::units::action_id::ActionId;
 use crate::units::unit_entity::UnitEntity;
 use crate::values::rank::Rank;
@@ -139,8 +139,8 @@ impl SimComponent for Site {
 }
 
 impl Replication for Site {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+    const KIND: DataKind = DataKind::Prediction;
+    type Sending = SentPredicted;
 }
 
 /// A snapshot is untrusted, so a progress or a gain below 0 fails to decode.

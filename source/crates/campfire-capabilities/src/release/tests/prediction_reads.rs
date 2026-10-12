@@ -1,5 +1,6 @@
 //! Design 14's D12: a predicting client's schedule reads, on a unit it holds as the server sent
-//! it, only what it derives itself or what reaches every client that holds the unit.
+//! it, only what it derives itself or what reaches every client that holds the unit, and builds
+//! no system that computes the server's own state.
 
 use std::collections::BTreeMap;
 
@@ -95,50 +96,58 @@ fn reads(access: &FilteredAccess, unpredicted: ComponentId) -> Option<(Vec<Compo
     Some((reads, predicted))
 }
 
-/// The reads that wait on the question of `PLAN_NET_QUESTIONS.md`, A6: what a predicting
-/// client does with the state types the owner of the units it predicts does not hold, the server's
-/// and those of another player's entity. The test fails on a read this list lacks, and on one it
-/// names that is gone, so no new read joins them while the question stands.
-const AWAITING: [&str; 39] = [
-    "abilities::casts::Casts::predict_casts reads players::player_resources::PlayerResources (Of(Resources))",
-    "abilities::casts::Casts::start_casts reads players::player_resources::PlayerResources (Of(Resources))",
-    "areas::area_life::AreaLife::trigger reads areas::area_trigger::AreaTrigger (Of(Server))",
-    "combat::attacks::Attacks::start_attacks reads players::player_resources::PlayerResources (Of(Resources))",
-    "combat::attacks::Attacks::strike reads players::player_resources::PlayerResources (Of(Resources))",
-    "combat::dying::Dying::despawn_dead reads combat::on_death::OnDeath (Of(Server))",
-    "combat::dying::Dying::die reads combat::on_death::OnDeath (Of(Server))",
-    "combat::dying::Dying::respawn reads combat::recent_attackers::RecentAttackers (Of(Server))",
-    "navigation::routing::Routing::route_units reads navigation::path_walker::PathWalker (Of(Server))",
-    "orders::destinations::Destinations::follow_paths reads navigation::on_path::OnPath (Of(Server))",
-    "orders::destinations::Destinations::follow_paths reads navigation::path_walker::PathWalker (Of(Server))",
-    "orders::order_inputs::OrderInputs::apply_player_orders reads navigation::path_walker::PathWalker (Of(Server))",
-    "orders::order_inputs::OrderInputs::apply_player_orders reads production::builder::Builder (Of(Server))",
-    "orders::order_inputs::OrderInputs::apply_player_orders reads production::gatherer::Gatherer (Of(Server))",
-    "orders::order_inputs::OrderInputs::check_player_orders reads vision::seen_by::SeenBy (Of(Server))",
-    "orders::production_orders::ProductionOrders::apply_production_orders reads players::player_resources::PlayerResources (Of(Resources))",
-    "orders::production_orders::ProductionOrders::apply_production_orders reads production::site::Site (Of(Server))",
-    "orders::production_orders::ProductionOrders::apply_production_orders reads vision::seen_by::SeenBy (Of(Server))",
-    "production::construction::Construction::check_builds reads players::player_resources::PlayerResources (Of(Resources))",
-    "production::construction::Construction::check_builds reads production::builder::Builder (Of(Server))",
-    "production::construction::Construction::check_builds reads production::site::Site (Of(Server))",
-    "production::construction::Construction::check_builds reads vision::seen_by::SeenBy (Of(Server))",
-    "production::construction::Construction::forget_dead_builds reads production::builder::Builder (Of(Server))",
-    "production::construction::Construction::progress_sites reads production::builder::Builder (Of(Server))",
-    "production::construction::Construction::progress_sites reads production::site::Site (Of(Server))",
-    "production::construction::Construction::progress_sites reads units::status_tags::StatusTags (Of(Server))",
-    "production::gather_loop::GatherLoop::check_gathers reads players::player_resources::PlayerResources (Of(Resources))",
-    "production::gather_loop::GatherLoop::check_gathers reads production::gatherer::Gatherer (Of(Server))",
-    "production::gather_loop::GatherLoop::check_gathers reads production::node::Node (Of(Server))",
-    "production::gather_loop::GatherLoop::despawn_empty_nodes reads production::node::Node (Of(Server))",
-    "production::gather_loop::GatherLoop::tag_gatherers reads production::gatherer::Gatherer (Of(Server))",
-    "production::gather_loop::GatherLoop::tag_gatherers reads units::status_tags::StatusTags (Of(Server))",
-    "production::player_supply::PlayerSupply::refresh reads production::site::Site (Of(Server))",
-    "production::trains::Trains::start_trains reads players::player_resources::PlayerResources (Of(Resources))",
-    "production::trains::Trains::start_trains reads production::site::Site (Of(Server))",
-    "projectiles::flying::Flying::fly reads projectiles::flight_state::FlightState (Of(Server))",
-    "stats::refresh::Refresh::run reads units::status_tags::StatusTags (Of(Server))",
-    "vision::seeing::Seeing::see reads vision::seen_by::SeenBy (Of(Server))",
-    "vision::seeing::Seeing::see reads vision::sight::Sight (Of(Server))",
+/// Whether a client's own player holds a type of `kind` on its entity: a system reads a player's
+/// entity through the owner of a unit, and the client predicts only its own player's units, so
+/// it reads its own player's (design 14, D12).
+const fn of_own_player(kind: DataKind) -> bool {
+    matches!(
+        kind,
+        DataKind::Resources | DataKind::Supply | DataKind::PlayerModifiers
+    )
+}
+
+/// The systems that compute the server's own state, which a predicting client does not build;
+/// the mode's `OutOfPlay::refresh`, which no client installs, among them.
+const SERVER_ONLY: [&str; 7] = [
+    "areas::area_life::AreaLife::trigger",
+    "combat::dying::Dying::despawn_dead",
+    "combat::dying::Dying::forget_attackers",
+    "production::gather_loop::GatherLoop::despawn_empty_nodes",
+    "production::player_supply::PlayerSupply::refresh",
+    "projectiles::flying::Flying::fly",
+    "vision::seeing::Seeing::see",
+];
+
+/// The names of the systems of the sim's schedule in `world`, built unbuilt.
+fn system_names(world: &mut World) -> Vec<String> {
+    let mut schedules = world.resource_mut::<Schedules>();
+    let schedule = schedules.get_mut(SimUpdate).expect("the sim's schedule");
+    let systems = &schedule.graph_mut().systems;
+    let mut names: Vec<String> = systems
+        .iter()
+        .map(|(_, system, _)| {
+            system
+                .name()
+                .to_string()
+                .replace("campfire_capabilities::", "")
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// The exclusive systems a predicting client builds: Bevy gives an exclusive system no access,
+/// so the check cannot read what each reads. The test fails on one this list lacks, and on one
+/// it names that is gone, so no new one joins them unchecked (`PLAN_NET.md`, R6).
+const EXCLUSIVE: [&str; 8] = [
+    "abilities::channels::Channels::predict_channels",
+    "combat::attacks::Attacks::attack_events",
+    "combat::damage_pass::DamagePass::run",
+    "combat::modifier_intervals::ModifierIntervals::run_intervals",
+    "deliveries::delivery_hooks::DeliveryHooks::end",
+    "production::construction::Construction::start_builds<vision::team_sight::ByHolding>",
+    "production::gather_loop::GatherLoop::run",
+    "production::trains::Trains::finish_trains",
 ];
 
 #[test]
@@ -147,7 +156,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     let mut world = World::new();
     let rate = Match::TEST_RATE;
     let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set);
-    Release::build(&mut world, spec.predicting().unbuilt());
+    Release::build(&mut world, spec.clone().predicting().unbuilt());
     let unpredicted = world.register_component::<Unpredicted>();
     let mut classes = Classes {
         world: &mut world,
@@ -155,10 +164,11 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     };
     Release::state_types(set, &mut classes);
     let types = classes.types;
-    // Each read of a type a client holds of no unit it does not predict, by system, and each
-    // system whose reads no list can name.
+    // Each read of a type a client holds of no unit it does not predict, by system, each system
+    // whose reads no list can name, and each exclusive system.
     let mut failures = Vec::new();
     let mut unbounded = Vec::new();
+    let mut exclusive = Vec::new();
     // Each type read on units a client does not predict, which shows the check reads what it
     // means to.
     let mut read_unpredicted = Vec::new();
@@ -170,6 +180,9 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
             let mut accesses = Vec::new();
             let system = systems.get_mut(key).unwrap();
             let name = system.name().to_string();
+            if system.is_exclusive() {
+                exclusive.push(name.replace("campfire_capabilities::", ""));
+            }
             accesses.push(system.initialize(world));
             for condition in systems.get_conditions_mut(key).into_iter().flatten() {
                 accesses.push(condition.condition.initialize(world));
@@ -193,7 +206,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
                     let reaches = match held {
                         Held::Derived => true,
                         Held::Of(kind) if predicted => kind.is_sent(),
-                        Held::Of(kind) => kind.audience() == Recipients::ALL,
+                        Held::Of(kind) => kind.audience() == Recipients::ALL || of_own_player(kind),
                     };
                     if !reaches {
                         let read = format!("{name} reads {type_name} ({held:?})");
@@ -210,7 +223,21 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     }
     failures.sort();
     failures.dedup();
-    assert_eq!(failures, AWAITING);
+    assert_eq!(failures, Vec::<String>::new());
+    exclusive.sort();
+    exclusive.dedup();
+    assert_eq!(exclusive, EXCLUSIVE);
+    // The server builds each system that computes its own state, and the client none.
+    let mut server = World::new();
+    Release::build(&mut server, spec.unbuilt());
+    let (client, server) = (system_names(&mut world), system_names(&mut server));
+    for name in SERVER_ONLY {
+        assert_eq!(
+            [&server, &client].map(|names| names.iter().any(|built| built == name)),
+            [true, false],
+            "{name}"
+        );
+    }
     unbounded.sort();
     unbounded.dedup();
     assert_eq!(unbounded, Vec::<String>::new());

@@ -25,6 +25,7 @@ use crate::production::train_queue::TrainQueue;
 use crate::production::trains::Trains;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
+use crate::vision::team_sight::{ByHolding, ByVision, TeamSight};
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -99,9 +100,22 @@ impl Production {
     /// whose time ended spawn. With navigation, which tests a box for room and walks a worker,
     /// construction and gathering too: in Inputs, the build and gather orders that changed are
     /// checked; in Act, after the trains, builds start and workers run their loops; in Mode,
-    /// before the trains finish, sites grow; as the tick ends, the nodes that ran out despawn.
+    /// before the trains finish, sites grow; as the tick ends, the nodes that ran out despawn. A
+    /// player's supply and a node's end are the server's: a predicting client derives neither,
+    /// as it holds only the units its team sees. A build's placement tests the units the server's
+    /// vision sees, or, on a predicting client, the units it holds.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
+        if cx.predicting() {
+            Production::install_by::<ByHolding>(cx);
+        } else {
+            Production::install_by::<ByVision>(cx);
+        }
+    }
+
+    /// `install`, each placement testing the units `S` sees.
+    fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
         let navigation = cx.has(Capability::Navigation);
+        let predicting = cx.predicting();
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
             Trains::start_trains
@@ -110,12 +124,14 @@ impl Production {
             Trains::finish_trains
                 .in_set(SimSet::Mode)
                 .in_set(ProductionSet::Finish),
-            PlayerSupply::refresh.in_set(SimSet::Vision),
         ));
+        if !predicting {
+            schedule.add_systems(PlayerSupply::refresh.in_set(SimSet::Vision));
+        }
         // A build places a box, which only navigation tests for room, and a worker walks.
         if navigation {
             schedule.add_systems((
-                (Construction::check_builds, GatherLoop::check_gathers)
+                (Construction::check_builds::<S>, GatherLoop::check_gathers)
                     .chain()
                     .in_set(SimSet::Inputs)
                     .in_set(ProductionSet::CheckBuilds)
@@ -124,7 +140,7 @@ impl Production {
                     .after(ActionsSet::HoldAtInputs),
                 (
                     Construction::forget_dead_builds,
-                    Construction::start_builds,
+                    Construction::start_builds::<S>,
                     GatherLoop::run,
                     GatherLoop::tag_gatherers,
                 )
@@ -134,8 +150,10 @@ impl Production {
                 Construction::progress_sites
                     .in_set(SimSet::Mode)
                     .before(ProductionSet::Finish),
-                GatherLoop::despawn_empty_nodes.in_set(SimSet::Vision),
             ));
+            if !predicting {
+                schedule.add_systems(GatherLoop::despawn_empty_nodes.in_set(SimSet::Vision));
+            }
         }
     }
 }

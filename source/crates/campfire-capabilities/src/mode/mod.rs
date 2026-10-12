@@ -131,7 +131,7 @@ impl Declares for Mode {
         d.component::<PlayerResources>();
         d.component::<Player>();
         d.component::<HeldOut>();
-        d.derived_sent::<OutOfPlay>();
+        d.component::<OutOfPlay>();
         d.resource::<Timers>();
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
