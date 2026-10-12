@@ -101,12 +101,13 @@ impl Orders {
                 .in_set(SimSet::Act)
                 .before(CombatSet::Attack),
         ));
-        schedule.configure_sets((
-            ActionsSet::HoldAtInputs.after(OrdersSet::Orders),
-            ItemsSet::HoldAtInputs.after(OrdersSet::Orders),
-            ProductionSet::CheckBuilds.after(OrdersSet::Orders),
-            OrdersSet::Orders.after(AbilitiesSet::Toggles),
-        ));
+        schedule.configure_sets(
+            OrdersSet::Orders
+                .after(AbilitiesSet::Toggles)
+                .before(ActionsSet::HoldAtInputs)
+                .before(ItemsSet::HoldAtInputs)
+                .before(ProductionSet::CheckBuilds),
+        );
         if production {
             schedule.add_systems(
                 ProductionOrders::apply_production_orders

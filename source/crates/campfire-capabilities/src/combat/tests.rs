@@ -10,6 +10,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimComponent, SimRng, StableId};
 
 use super::*;
+use crate::actions::Actions;
 use crate::actions::action_book::internals::TestWeapon;
 use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{ActionSlot, ActionSlots};

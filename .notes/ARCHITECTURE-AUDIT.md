@@ -4,65 +4,7 @@ The structural recommendations of the architecture audit of `source/` that are n
 
 One policy holds across the items: **what can be forgotten is a type or a trait method with no default.** A rule that no type can hold is held by a type that makes the right way the short one, a test where one can see the breach, and review.
 
-## 1. Each module orders only its own sets
-
-`orders` configures three other modules' sets, and `combat` two of `actions`', and schedules `actions`' systems for it:
-
-```rust
-// orders/mod.rs:104
-schedule.configure_sets((
-    ActionsSet::HoldAtInputs.after(OrdersSet::Orders),
-    ItemsSet::HoldAtInputs.after(OrdersSet::Orders),
-    ProductionSet::CheckBuilds.after(OrdersSet::Orders),
-    OrdersSet::Orders.after(AbilitiesSet::Toggles),
-));
-
-// combat/mod.rs:135
-ActionsSet::HoldAtResolve
-    .after(CombatSet::Damage)
-    .before(CombatSet::Die),
-ActionsSet::HoldAtStrike
-    .after(CombatSet::Pay)
-    .before(CombatSet::Strike),
-// combat/mod.rs:150
-Actions::schedule(schedule);
-```
-
-Each module configures its own sets alone, against the public sets of the modules it builds on, as a Bevy plugin orders its systems against the plugins it depends on. An edge is the same edge from either end, so the higher module names it on its own set:
-
-```rust
-// orders/mod.rs
-schedule.configure_sets(
-    OrdersSet::Orders
-        .after(AbilitiesSet::Toggles)
-        .before(ActionsSet::HoldAtInputs)
-        .before(ItemsSet::HoldAtInputs)
-        .before(ProductionSet::CheckBuilds),
-);
-
-// combat/mod.rs
-CombatSet::Damage.before(ActionsSet::HoldAtResolve),
-CombatSet::Die
-    .after(ActionsSet::HoldAtResolve)
-    .before(StatsSet::Hold),
-CombatSet::Pay
-    .in_set(SimSet::Hit)
-    .before(ActionsSet::HoldAtStrike),
-CombatSet::Strike.after(ActionsSet::HoldAtStrike),
-
-// actions/mod.rs: the holds are actions', which decide when they run
-pub(crate) fn install(cx: &mut InstallCx<'_>) {
-    cx.world.insert_resource(SlotKinds::default());
-    cx.world.insert_resource(EffectQueues::default());
-    if cx.has(Capability::Combat) {
-        Actions::schedule(cx.schedule);
-    }
-}
-```
-
-A shared phase enum chained once in the installer is not the fix: its phases would name the capabilities' concerns in the core, and each phase edge orders pairs that never touch, so parallelism goes.
-
-## 2. One book of sights
+## 1. One book of sights
 
 A mode's unit takes its sight from its kit, and a delivery from `ByType<Sight>`, which the books fill for the delivery types alone; both read the same `vision` section of a unit type's file:
 
@@ -94,7 +36,7 @@ impl Sight {
 }
 ```
 
-## 3. The script view reads units by their kind
+## 2. The script view reads units by their kind
 
 `UnitRows` takes any entity of the entity index with a position and a team for a unit, where every other reader of units filters by the `UnitEntity` kind:
 
@@ -146,7 +88,7 @@ let (&pos, &team, body, spawn, unit_type, owner, tags) =
 
 `UnitType` stays optional until the issue log's **Runner** item on test units spawned with no unit type is fixed.
 
-## 4. Two rules the declaration audit lacks
+## 3. Two rules the declaration audit lacks
 
 The declaration audit (`release/tests/declaration_audit.rs`) checks the declarations against each other, but neither of these:
 
@@ -224,61 +166,7 @@ for (id, entity) in world.resource::<EntityIndex>().iter() {
 }
 ```
 
-## 5. The log stays out of the runner
-
-`SessionWorld::run_session_tick` logs `ScriptCallFailed`, and `runner` defines it as a `LogEvent`, while design 02 lets only the binaries, `net` and `verifier` log:
-
-```rust
-// runner/src/session/session_world.rs:113
-self.run_schedule(SimUpdate);
-if let Some(failures) = self.get_non_send::<ScriptFailures>() {
-    for failure in failures.get() {
-        ScriptCallFailed {
-            tick,
-            unit: failure.id,
-            hook: failure.hook,
-            error: ErrorReport::of(&failure.error).to_string(),
-        }
-        .log();
-    }
-}
-```
-
-`run_session_tick` runs the tick and logs nothing. `ScriptCallFailed` moves to `net/src/events/`, and the server logs the failures of each tick it runs live. A replay, a restore and the verifier run the server's calls again, which the server logged once. The runner's tests that take the event from the log read `ScriptFailures` instead.
-
-```rust
-// runner/src/session/session_world.rs
-fn run_session_tick(&mut self) {
-    // … the segment's seed and the tick's inputs, as now
-    self.run_schedule(SimUpdate);
-}
-
-// net/src/events/script_call_failed.rs
-impl ScriptCallFailed {
-    /// Logs each script call that failed in tick `tick`, which `world` just ran.
-    pub(crate) fn log_tick(world: &World, tick: Tick) {
-        let Some(failures) = world.get_non_send::<ScriptFailures>() else {
-            return;
-        };
-        for failure in failures.get() {
-            ScriptCallFailed {
-                tick,
-                unit: failure.id,
-                hook: failure.hook,
-                error: ErrorReport::of(&failure.error).to_string(),
-            }
-            .log();
-        }
-    }
-}
-
-// net/src/sim_server/mod.rs:594
-let tick = world.resource::<SimTick>().start();
-world.run_session_tick();
-ScriptCallFailed::log_tick(world, tick);
-```
-
-## 6. Layers without cycles, and imports within the needs
+## 4. Layers without cycles, and imports within the needs
 
 The layer test (`a_module_imports_only_from_its_layer_and_below`, `release/tests/mod.rs`) rejects imports from a higher layer only. Within a layer, modules import each other both ways: `units ↔ scripts` and `units ↔ players` in layer 1, `abilities ↔ items` in layer 5 (`items/mod.rs:6` imports `CastSpends`; `abilities/mod.rs`, `casts.rs`, `channels.rs` and `toggles.rs` import `Inventory`). And `CapabilitySet::needs` disagrees with the imports of production code:
 
@@ -361,7 +249,7 @@ let group = kind.map_or(Block::Cast, |kind| UseSlots::group(use_slots, kind));
 
 The cycles of layer 1 need a design for each pair: what `units` takes from `scripts` and from `players`, and whether it moves down or the two modules merge.
 
-## 7. Load, then trust
+## 5. Load, then trust
 
 The builders `expect` what `campfire-package/src/load_check.rs` (2,288 lines) checked: 40 `expect(CHECKED)` in `books/book_builder.rs`, and 28 `expect("the load …")` in 21 other files of production code. The two copies of each rule can drift: a check the load loses becomes a panic at the build.
 
@@ -408,7 +296,7 @@ pub(crate) fn new(
 
 A rule between packages, which no single builder sees, stays in the load check. An `expect` that a capability is installed, as `EffectQueues::of` holds, is a rule of the match, not of the data, and stays.
 
-## 8. One hero lookup in the tests
+## 6. One hero lookup in the tests
 
 `MatchUnits::hero` finds a player's hero, and the proving match repeats its filter:
 
@@ -437,9 +325,9 @@ fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
 }
 ```
 
-## 9. Navigation's queries for one entity
+## 7. Navigation's queries for one entity
 
-`NavigationEffect::put` builds a `QueryState` to read one entity, which allocates, and `make_room` calls it once for each walker its box overlaps. `teleport` builds another and scans every projectile, and is why `navigation` imports `projectiles` (§6):
+`NavigationEffect::put` builds a `QueryState` to read one entity, which allocates, and `make_room` calls it once for each walker its box overlaps. `teleport` builds another and scans every projectile, and is why `navigation` imports `projectiles` (§4):
 
 ```rust
 // navigation/navigation_effect.rs:155
@@ -491,7 +379,11 @@ world.add_observer(
 
 ## Order
 
-1. §3 and §4's kinds rule, with the issue log's **Runner** item on test units with no unit type.
-2. §5 and §1, each small and alone.
-3. §2, §8 and §9.
-4. §4's column rule, §6 and §7 as slices touch them.
+The items in the order they are done; each line says why it stands where it does.
+
+1. **The issue log's Runner item** on test units with no unit type, **then §2**, **then §3's kinds rule**: §2 leaves out of the script view every entity with no `UnitEntity`, so the test units must spawn as units first; the kinds rule then holds what §2 takes as given.
+2. **§1** and **§6**: small, alone, each in one module or one test.
+3. **§7** before §4: the observer takes `navigation`'s import of `projectiles` away, so §4's table loses a row.
+4. **§3's column rule**: a new method of `RowParts`, which every column's parts implement through the tuples, and the audit's own check.
+5. **§4**, the uses and the two moves out of the `abilities ↔ items` cycle: a change of state types, `UseSlots`, and a new layer rule that fails on each import it does not allow, so it goes once the items above it are in. The layer-1 cycles wait for their own design.
+6. **§5** last, as slices touch the books: the largest, every builder and the load check, and no other item depends on it.

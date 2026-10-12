@@ -106,16 +106,20 @@ impl Declares for Actions {
 }
 
 impl Actions {
-    /// Adds the actions to a match whose core is installed, with none loaded yet.
+    /// Adds the actions to a match whose core is installed, with none loaded yet, and, in a match
+    /// with combat, the holds of every action: its charges as each tick starts, and its passives
+    /// then and as each stage that changes ranks or cooldowns ends. A match with no combat holds
+    /// none, as every action's unit target is one combat finds; the start of an action is the
+    /// abilities'.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
         cx.world.insert_resource(SlotKinds::default());
         cx.world.insert_resource(EffectQueues::default());
+        if cx.has(Capability::Combat) {
+            Actions::schedule(cx.schedule);
+        }
     }
 
-    /// Adds to `schedule` the holds of every action: its charges as each tick starts, and its
-    /// passives then and as each stage that changes ranks or cooldowns ends. Combat calls it, as
-    /// every action's unit target is one combat finds; the start of an action is the abilities'.
-    pub(crate) fn schedule(schedule: &mut Schedule) {
+    fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
             Holds::hold_charges
                 .in_set(SimSet::Inputs)

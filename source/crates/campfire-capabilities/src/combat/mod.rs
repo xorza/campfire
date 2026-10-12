@@ -2,8 +2,8 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_math::RngStream;
 use campfire_sim::{Capability, SimSet};
 
+use crate::actions::ActionsSet;
 use crate::actions::effect_queues::EffectQueues;
-use crate::actions::{Actions, ActionsSet};
 use crate::combat::attacks::Attacks;
 use crate::combat::combat_api::CombatApi;
 use crate::combat::combat_column::{CombatColumn, RowParts};
@@ -135,19 +135,19 @@ impl Combat {
         schedule.configure_sets((
             CombatSet::Fire.in_set(SimSet::Hit).after(CombatSet::Strike),
             CombatSet::Launch.in_set(SimSet::Hit).after(CombatSet::Fire),
-            CombatSet::Die.before(StatsSet::Hold),
             CombatSet::Attack
                 .in_set(SimSet::Act)
                 .before(ActionsSet::Start),
-            ActionsSet::HoldAtResolve
-                .after(CombatSet::Damage)
-                .before(CombatSet::Die),
-            CombatSet::Pay.in_set(SimSet::Hit).before(CombatSet::Strike),
-            ActionsSet::HoldAtStrike
-                .after(CombatSet::Pay)
+            CombatSet::Damage.before(ActionsSet::HoldAtResolve),
+            CombatSet::Die
+                .after(ActionsSet::HoldAtResolve)
+                .before(StatsSet::Hold),
+            CombatSet::Pay
+                .in_set(SimSet::Hit)
+                .before(ActionsSet::HoldAtStrike)
                 .before(CombatSet::Strike),
+            CombatSet::Strike.after(ActionsSet::HoldAtStrike),
         ));
-        Actions::schedule(schedule);
         schedule.add_systems((
             Attacks::start_attacks.in_set(CombatSet::Attack),
             Attacks::pay_attack_toggles.in_set(CombatSet::Pay),
