@@ -7,6 +7,7 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::ScopeError;
 use crate::delegation::seed_contribution::SeedContribution;
+use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
@@ -24,11 +25,12 @@ fn terms() -> SessionTerms {
         max_payload_len: 64,
         max_inputs_per_tick: 4,
         seed_commitment: SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
-        release: "0.1.0".to_owned(),
+        release: EngineRelease::new(0, 1, 0),
         mode: Fingerprint::new([5; 32]),
         map: MapName::new("lane").unwrap(),
         dependencies: vec![Fingerprint::new([4; 32])],
         slots: vec![SlotPlan::Player],
+        visibility: Vec::new(),
     }
 }
 

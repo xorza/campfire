@@ -64,8 +64,17 @@ impl FixedSession {
         rules: InputRules,
         plan: Vec<SlotPlan>,
     ) -> FixedSession {
-        let terms = SessionRules::of(&packages)
-            .terms(server_key(), SEED_CHAIN.commitment(), tick_hz, rules, plan)
+        let session_rules = SessionRules::of(&packages);
+        let visibility = session_rules.visibility().settings();
+        let terms = session_rules
+            .terms(
+                server_key(),
+                SEED_CHAIN.commitment(),
+                tick_hz,
+                rules,
+                plan,
+                visibility,
+            )
             .unwrap();
         FixedSession { packages, terms }
     }

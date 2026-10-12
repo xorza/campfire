@@ -9,7 +9,7 @@ use crate::units::team::Team;
 pub struct TeamSet(Bits256);
 
 impl TeamSet {
-    pub(crate) const NONE: TeamSet = TeamSet(Bits256::NONE);
+    pub const NONE: TeamSet = TeamSet(Bits256::NONE);
     pub const ALL: TeamSet = TeamSet(Bits256::ALL);
 
     #[must_use]
@@ -32,6 +32,12 @@ impl TeamSet {
         self.0
             .iter()
             .map(|index| Team::new(u8::try_from(index).expect("a team's bit fits its index")))
+    }
+}
+
+impl FromIterator<Team> for TeamSet {
+    fn from_iter<I: IntoIterator<Item = Team>>(teams: I) -> TeamSet {
+        teams.into_iter().fold(TeamSet::NONE, TeamSet::with)
     }
 }
 

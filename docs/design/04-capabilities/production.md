@@ -73,7 +73,7 @@ Selection and control groups are client-side; a unit a `rally`, `build` or `gath
 
 ## Network
 
-A player's queues, supply and resources go to that player, or as the mode sets, as components of its player entity; loads and sites as their units' ([Replication audiences](../14-replication-audiences.md), D7).
+A player's supply and resources go to that player, or as the mode sets, as components of its player entity: the server derives supply as each tick ends and sends it, as a client holds only the units it sees. A train queue goes the same way as a component of its producer, of the kind `queues`; loads and sites as their units' ([Replication audiences](../14-replication-audiences.md), D7, D9).
 
 ## Cost
 

@@ -394,7 +394,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 271] = [
+static FLAWS: [Flaw; 273] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1457,6 +1457,26 @@ static FLAWS: [Flaw; 271] = [
         Edit::Replace("late_join = true", "late_join = false"),
         MODE,
         |problem| matches!(problem, LoadProblem::BotTakeoverWithoutLateJoin),
+    ),
+    // `[visibility]`: a name no setting has; a recipient life's audience holds whatever the
+    // mode says.
+    flaw(
+        MODE_DATA,
+        Edit::Set("visibility.fog", r#""all""#),
+        MODE,
+        |problem| read_fails(problem, "data/mode.toml", r#""fog" is no setting"#),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Set("visibility.life", r#"["allies"]"#),
+        MODE,
+        |problem| {
+            read_fails(
+                problem,
+                "data/mode.toml",
+                "no mode adds allies to the audience of life, or takes them from it",
+            )
+        },
     ),
     // The match has no owner or team for a mode field to sync to.
     flaw(

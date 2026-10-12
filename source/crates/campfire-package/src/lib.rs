@@ -72,7 +72,3 @@ pub use crate::zero_hour::terrain::{
     TerrainParts, TextureClass,
 };
 pub use crate::zero_hour::terrain_atlas::TerrainAtlas;
-
-/// The tag of this engine release: what a session's terms name, so a replay runs the code that
-/// recorded it.
-pub const RELEASE: &str = env!("CARGO_PKG_VERSION");

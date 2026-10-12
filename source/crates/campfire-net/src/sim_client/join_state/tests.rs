@@ -5,7 +5,7 @@ use campfire_common::{Fingerprint, MapName, TlsKey};
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
-use campfire_protocol::{ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan};
+use campfire_protocol::{ConnectChallenge, EngineRelease, InputHash, Receipt, SeedChain, SlotPlan};
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
@@ -47,7 +47,14 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
         tls_key: TlsKey::new([3; 32]),
         tick_hz,
     };
-    JoinState::new(TestKey::of(1), server, false, lane_rules(), clock)
+    JoinState::new(
+        TestKey::of(1),
+        server,
+        JoinRole::Play,
+        false,
+        lane_rules(),
+        clock,
+    )
 }
 
 /// Session key 2, whose randomness is all 6s.
@@ -57,13 +64,15 @@ fn signer() -> Signer {
 
 /// Terms the client can play, with `change` applied.
 fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
-    let mut terms = lane_rules()
+    let rules = lane_rules();
+    let mut terms = rules
         .terms(
             x_only(8),
             SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),
             TICK_HZ,
             InputRules::LAN,
             vec![SlotPlan::Player; 2],
+            rules.visibility().settings(),
         )
         .unwrap();
     change(&mut terms);
@@ -97,8 +106,8 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
         ),
         (
             TICK_HZ,
-            |terms| terms.release = "0.0.9".to_owned(),
-            TermsMismatch::Terms(TermsError::OtherRelease("0.0.9".to_owned())),
+            |terms| terms.release = EngineRelease::new(0, 0, 9),
+            TermsMismatch::Terms(TermsError::OtherRelease(EngineRelease::new(0, 0, 9))),
         ),
         (
             TICK_HZ,

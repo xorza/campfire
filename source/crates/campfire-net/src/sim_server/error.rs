@@ -22,6 +22,9 @@ pub enum JoinError {
     /// A newer login of the player took the link's seat.
     #[error("a newer login of the player took the seat")]
     Superseded,
+    /// Every spectator's place the session admits is taken.
+    #[error("every spectator's place is taken")]
+    NoSpectatorPlace,
 }
 
 /// Why a session a stop ended does not restore its match.

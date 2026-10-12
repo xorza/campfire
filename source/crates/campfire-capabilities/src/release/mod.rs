@@ -247,6 +247,10 @@ pub(crate) mod internals {
             self.push::<C>();
         }
 
+        fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+            self.push::<C>();
+        }
+
         fn resource<R: SimResource>(&mut self) {}
 
         fn sim_component<C: Replication>(&mut self) {

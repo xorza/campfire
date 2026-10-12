@@ -8,6 +8,7 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::{DelegationError, ScopeError};
 use crate::delegation::seed_contribution::SeedContribution;
+use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
 use crate::input_hash::InputHash;
 use crate::seed_chain::SeedChain;
@@ -25,7 +26,9 @@ const TICK_HZ: NonZeroU32 = NonZeroU32::new(300).unwrap();
 /// Two segments: the root `[5; 32]` is segment 1's seed, and its hash segment 0's.
 const SEED_CHAIN: SeedChain = SeedChain::new([5; 32], NonZeroU32::new(2).unwrap());
 const CONTRIBUTIONS: [[u8; 32]; 2] = [[6; 32], [7; 32]];
-const RELEASE: &str = "0.1.0";
+const RELEASE: EngineRelease = EngineRelease::new(0, 1, 0);
+/// What the terms carry of the visibility, which the protocol does not read.
+const VISIBILITY: [u8; 3] = [7, 0, 1];
 const MODE: Fingerprint = Fingerprint::new([51; 32]);
 const DEPENDENCIES: [Fingerprint; 2] = [Fingerprint::new([52; 32]), Fingerprint::new([53; 32])];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
@@ -69,11 +72,12 @@ fn terms() -> SessionTerms {
         max_payload_len: MAX_PAYLOAD_LEN,
         max_inputs_per_tick: MAX_INPUTS_PER_TICK,
         seed_commitment: SEED_CHAIN.commitment(),
-        release: RELEASE.to_owned(),
+        release: RELEASE,
         mode: MODE,
         map: MapName::new("lane").unwrap(),
         dependencies: DEPENDENCIES.to_vec(),
         slots: vec![SlotPlan::Player; 2],
+        visibility: VISIBILITY.to_vec(),
     }
 }
 
@@ -626,7 +630,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
 
     // The session id hashes the terms, so a change to any of them leaves every delegation
     // naming another session.
-    let changes: [fn(&mut SessionTerms); 13] = [
+    let changes: [fn(&mut SessionTerms); 15] = [
         |terms| terms.server_key = x_only(42),
         |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
         |terms| terms.max_input_delay = Ticks::new(terms.max_input_delay.get() + 1),
@@ -634,12 +638,14 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.max_payload_len += 1,
         |terms| terms.max_inputs_per_tick += 1,
         |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
-        |terms| terms.release.push('1'),
+        |terms| terms.release = EngineRelease::new(0, 1, 1),
         |terms| terms.mode = Fingerprint::new([50; 32]),
         |terms| terms.map = MapName::new("lanes").unwrap(),
         |terms| terms.dependencies[1] = Fingerprint::new([54; 32]),
         |terms| terms.dependencies.swap(0, 1),
         |terms| terms.slots[1] = SlotPlan::Bot,
+        |terms| terms.visibility[1] = 1,
+        |terms| terms.visibility.push(0),
     ];
     for (at, change) in changes.into_iter().enumerate() {
         let mut other = header();
@@ -659,7 +665,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     // The id, as design 05 spells it.
     let mut spelled = Hasher::new();
     spelled
-        .update(b"campfire/session-id/v2")
+        .update(b"campfire/session-id/v3")
         .update(&server_key().serialize())
         .update(&300_u32.to_le_bytes())
         .update(&2_u64.to_le_bytes())
@@ -678,7 +684,10 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         .update(&[53; 32])
         // 2 slots, each a player's.
         .update(&2_u64.to_le_bytes())
-        .update(&[0, 0]);
+        .update(&[0, 0])
+        // The visibility's 3 bytes, after their length.
+        .update(&3_u64.to_le_bytes())
+        .update(&VISIBILITY);
     assert_eq!(session_id().as_bytes(), spelled.finalize().as_bytes());
 }
 
@@ -766,7 +775,7 @@ fn frame(
     tail: &[Sent<'_>],
     revealed: Option<ServerSeed>,
 ) -> Vec<u8> {
-    let mut bytes = b"campfire/session-log/v3".to_vec();
+    let mut bytes = b"campfire/session-log/v4".to_vec();
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
@@ -775,11 +784,12 @@ fn frame(
     put(&mut bytes, &terms.max_payload_len);
     put(&mut bytes, &terms.max_inputs_per_tick);
     put(&mut bytes, &terms.seed_commitment);
-    put(&mut bytes, terms.release.as_str());
+    put(&mut bytes, &terms.release.to_string());
     put(&mut bytes, &terms.mode);
     put(&mut bytes, &terms.map);
     put(&mut bytes, &terms.dependencies);
     put(&mut bytes, &terms.slots);
+    put(&mut bytes, &terms.visibility);
     put(&mut bytes, &u32::try_from(header.slots.len()).unwrap());
     for start in &header.slots {
         put(&mut bytes, &start.plan().code());
@@ -895,7 +905,7 @@ fn a_log_file_has_its_layout() {
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
-        &b"campfire/session-log/v3"[..],
+        &b"campfire/session-log/v4"[..],
         // The terms, and no session id: it is their hash.
         &server_key().serialize(),
         // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
@@ -914,6 +924,8 @@ fn a_log_file_has_its_layout() {
         &[53; 32],
         // The plan of 2 slots, each a player's.
         &[2, 0, 0],
+        // The visibility's 3 bytes, after their length.
+        &[3, 7, 0, 1],
         // 2 slots, each a player's start, 0, and the delegation's JSON as a length and UTF-8.
         &[2, 0],
         &varint(first.json().len()),
@@ -938,7 +950,7 @@ fn a_log_file_has_its_layout() {
     assert_eq!(encoded(&log), expected);
 
     // A rate of 0 ticks a second does not decode.
-    let tick_at = b"campfire/session-log/v3".len() + 32;
+    let tick_at = b"campfire/session-log/v4".len() + 32;
     let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
     assert!(matches!(
         SessionLog::decode(&zero_rate),
@@ -997,7 +1009,7 @@ fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
         SessionLog::decode(&bytes).map(|log| log.next_tick()),
         Ok(Tick::new(1))
     );
-    let tag = b"campfire/session-log/v3".len();
+    let tag = b"campfire/session-log/v4".len();
     for at in 0..bytes.len() {
         let expected = if at < tag {
             LogError::NotLog

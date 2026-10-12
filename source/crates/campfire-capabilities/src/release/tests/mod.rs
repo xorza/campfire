@@ -164,10 +164,11 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 
 /// The layer of each module of the crate, lowest first: a module imports from its own layer
 /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-const LAYERS: [(&str, u8); 23] = [
+const LAYERS: [(&str, u8); 24] = [
     ("values", 0),
     ("geometry", 0),
     ("state_types", 0),
+    ("visibility", 1),
     ("declare", 1),
     ("units", 1),
     ("scripts", 1),
@@ -274,7 +275,7 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// call, which resolves the names it is given once, or in the load, which resolves the
 /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
 /// when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 72] = [
+const LOOKUPS: [(&str, &str); 74] = [
     // The load.
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "cost_target_named"),
@@ -290,6 +291,9 @@ const LOOKUPS: [(&str, &str); 72] = [
     ("scripts/script_api/mod.rs", "sorted_named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/pool_book.rs", "named"),
+    // The load, and the host's settings as the server starts.
+    ("visibility/mode_visibility.rs", "named"),
+    ("visibility/setting.rs", "named"),
     // The load, and a filter a script names.
     ("units/filter.rs", "tag_named"),
     ("values/filter_data.rs", "named"),

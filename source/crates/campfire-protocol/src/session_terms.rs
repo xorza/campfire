@@ -6,12 +6,13 @@ use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::Delegation;
+use crate::engine_release::EngineRelease;
 use crate::seed_commitment::SeedCommitment;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
-const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v2";
+const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v3";
 
 /// The most bytes postcard writes for a `u64`, and for a `u32` or a length.
 const VARINT_64: u64 = 10;
@@ -47,7 +48,7 @@ pub struct SessionTerms {
     /// sessions share an id.
     pub seed_commitment: SeedCommitment,
     /// The tag of the engine release the session runs on.
-    pub release: String,
+    pub release: EngineRelease,
     /// The fingerprint of the mode package.
     pub mode: Fingerprint,
     /// The mode's map the session plays.
@@ -56,14 +57,19 @@ pub struct SessionTerms {
     pub dependencies: Vec<Fingerprint>,
     /// How the server opens each slot the session plays, by slot.
     pub slots: Vec<SlotPlan>,
+    /// Who receives each kind of the session's state, as the mode and its host set it: the bytes
+    /// `capabilities`' `Visibility` encodes, which the protocol carries and does not read.
+    pub visibility: Vec<u8>,
 }
 
 impl SessionTerms {
     /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max
     /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
     /// ‖ mode fingerprint ‖ u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency
-    /// fingerprints ‖ u64 slot count ‖ u8 per slot, its plan's code)`, integers little-endian.
+    /// fingerprints ‖ u64 slot count ‖ u8 per slot, its plan's code ‖ u64 visibility length ‖
+    /// visibility)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
+        let release = self.release.to_string();
         let mut hasher = Hasher::new();
         hasher
             .update(SESSION_ID_DOMAIN)
@@ -74,8 +80,8 @@ impl SessionTerms {
             .update(&self.max_payload_len.to_le_bytes())
             .update(&self.max_inputs_per_tick.to_le_bytes())
             .update(self.seed_commitment.as_bytes())
-            .update(&len(self.release.len()).to_le_bytes())
-            .update(self.release.as_bytes())
+            .update(&len(release.len()).to_le_bytes())
+            .update(release.as_bytes())
             .update(self.mode.as_bytes())
             .update(&len(self.map.as_str().len()).to_le_bytes())
             .update(self.map.as_str().as_bytes())
@@ -87,6 +93,9 @@ impl SessionTerms {
         for plan in &self.slots {
             hasher.update(&[plan.code()]);
         }
+        hasher
+            .update(&len(self.visibility.len()).to_le_bytes())
+            .update(&self.visibility);
         SessionId::new(*hasher.finalize().as_bytes())
     }
 
@@ -119,7 +128,10 @@ impl SessionTerms {
             .checked_add(2 * HASH + SIGNATURE + SLACK)?;
         let terms = len(self.dependencies.len())
             .checked_mul(HASH)?
-            .checked_add(len(self.release.len()) + len(self.map.as_str().len()) + SLACK)?;
+            .checked_add(
+                len(self.release.to_string().len()) + len(self.map.as_str().len()) + SLACK,
+            )?
+            .checked_add(len(self.visibility.len()))?;
         let header = slots.checked_mul(delegation + SLACK)?.checked_add(terms)?;
         Some(packet.max(server).max(checkpoint).max(header))
     }

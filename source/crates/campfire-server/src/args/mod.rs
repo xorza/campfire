@@ -2,13 +2,15 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use campfire_capabilities::{HostVisibility, SettingValue};
 use campfire_common::MapName;
 use campfire_net::{OrderScript, OrderScriptReadError, ServerBots, SessionTimes, SlotBotFile};
 use clap::Parser;
 
 /// What the command line names: the data directory, how long after its journal's last write a
-/// session a stop ended restores, the server's bots, the mode to open and its map, the address to
-/// listen on, and whether the server asks its router to forward the port.
+/// session a stop ended restores, the server's bots, the mode to open and its map, what the host
+/// sets of a new session's visibility, the address to listen on, and whether the server asks its
+/// router to forward the port.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) data: PathBuf,
@@ -17,6 +19,7 @@ pub(crate) struct Args {
     pub(crate) takeover: Option<PathBuf>,
     pub(crate) mode: PathBuf,
     pub(crate) map: Option<MapName>,
+    pub(crate) host: HostVisibility,
     pub(crate) address: SocketAddr,
     pub(crate) port_map: bool,
 }
@@ -44,6 +47,14 @@ pub(crate) struct CommandLine {
     /// The mode's map the session plays; the mode's only map when it has one
     #[arg(long, value_name = "NAME")]
     map: Option<MapName>,
+    /// A visibility setting the mode leaves to the host, as name=value: a kind's recipients that a
+    /// mode may set, separated by commas (allies, enemies, spectators); spectators=all or teams;
+    /// out=team or spectators
+    #[arg(long = "visibility", value_name = "SETTING=VALUE")]
+    visibility: Vec<SettingValue>,
+    /// The most links with no slot a new session admits
+    #[arg(long, value_name = "COUNT", default_value_t = 0)]
+    spectators: u32,
     /// Ask no router to forward the port; a player outside then joins through a port the host
     /// forwards by hand
     #[arg(long)]
@@ -67,6 +78,10 @@ impl Args {
             takeover: line.takeover,
             mode: line.mode,
             map: line.map,
+            host: HostVisibility {
+                settings: line.visibility,
+                max_spectators: line.spectators,
+            },
             address: line.address,
             port_map: !line.no_port_map,
         }

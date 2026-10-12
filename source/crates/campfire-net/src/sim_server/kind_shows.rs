@@ -77,11 +77,12 @@ impl KindShows<'_> {
     /// changes: the link of an owner with no seat predicts nothing, nor does any for an entity
     /// that loses its owner, and the client that predicted it takes it as the server sends it,
     /// unpredicted. An entity whose kind vision limits stands in the rooms of the teams that see
-    /// it, from the tick it replicates in, and again as they change, so a client never receives one its team did not see: a
-    /// projectile shows where it flies, not where its source stands. Without vision no entity has
-    /// `SeenBy`, and every seated client receives every entity; a link with no seat stands in no
-    /// room, and receives none. What its owner alone receives, a filter of its state's kind keeps
-    /// from every other link ([`KindFilters`](crate::sim_server::kind_filter::KindFilters)).
+    /// it, from the tick it replicates in, and again as they change, so a client never receives
+    /// one its team did not see: a projectile shows where it flies, not where its source stands.
+    /// Without vision no entity has `SeenBy`, and every seated client receives every entity. A
+    /// spectator stands in the rooms its `Viewer` gives, and any other link with no seat in no
+    /// room, so it receives none. What its owner alone receives, a filter of its state's kind
+    /// keeps from every other link ([`KindFilters`](crate::sim_server::kind_filter::KindFilters)).
     fn show<K: EntityKind>(
         rooms: Res<'_, TeamRooms>,
         links: Query<'_, '_, (Entity, &PlayerLink)>,

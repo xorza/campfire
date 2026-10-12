@@ -18,9 +18,9 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{
-    AfterLeave, Applied, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError, ServerInput,
-    ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
-    SlotPlan, SnapshotFingerprint, Taken,
+    AfterLeave, Applied, EngineRelease, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError,
+    ServerInput, ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange,
+    SlotChangeKind, SlotPlan, SnapshotFingerprint, Taken,
 };
 use campfire_runner::internals::{
     FixedMatch, FixedSession, HarnessWorldInternals, HashTrail, Moba3v3,
@@ -725,10 +725,10 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         Replay::new(log, &store).err()
     };
     let refused = [
-        other(|terms| terms.release = "0.0.9".to_owned()),
+        other(|terms| terms.release = EngineRelease::new(0, 0, 9)),
         // Another release first: its packages need not read in this one.
         other(|terms| {
-            terms.release = "0.0.9".to_owned();
+            terms.release = EngineRelease::new(0, 0, 9);
             terms.mode = Fingerprint::new([0; 32]);
         }),
         other(|terms| terms.mode = Fingerprint::new([0; 32])),
@@ -746,7 +746,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
                 Some(StartError::Packages(StoreError::MissingDependency(dependency))),
                 Some(StartError::Packages(StoreError::DependencyCount)),
                 Some(StartError::Terms(TermsError::TickRate(hz))),
-            ] if release == "0.0.9" && dependency == "hero-runner" && hz.get() == 60
+            ] if *release == EngineRelease::new(0, 0, 9) && dependency == "hero-runner" && hz.get() == 60
         ),
         "{refused:?}"
     );

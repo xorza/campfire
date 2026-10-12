@@ -130,6 +130,7 @@ use crate::values::ranked::Ranked;
 use crate::values::relation::Relation;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
+use crate::visibility::mode_visibility::ModeVisibility;
 use crate::vision::vision_grid::VisionGrid;
 
 /// 10 ticks a second: 100 ms is a tick.
@@ -610,6 +611,7 @@ fn mode_files() -> ModeFiles {
             players: PlayersData::default(),
             saves: SavesData::default(),
             supply: None,
+            visibility: ModeVisibility::default(),
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),

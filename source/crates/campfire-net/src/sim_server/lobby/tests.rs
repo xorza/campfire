@@ -2,6 +2,7 @@ use std::mem;
 use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
+use campfire_capabilities::{DataKind, OutView, Setting, SpectatorFog, VisibilityError};
 use campfire_common::{ChannelBinding, MapName};
 use campfire_package::PackageDir;
 use campfire_protocol::internals::TestKey;
@@ -12,7 +13,7 @@ use campfire_protocol::{
 use lightyear::prelude::{PeerId, RemoteId, Tick};
 
 use super::*;
-use crate::join::Join;
+use crate::join::{Join, JoinRole};
 use crate::order_script::OrderScript;
 use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
@@ -43,6 +44,7 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
             takeover: None,
         },
         open: open.iter().copied().map(PlayerSlot::new).collect(),
+        host: HostVisibility::default(),
         server: ServerSetup {
             key: TestKey::server(),
             times: SessionTimes::DEFAULT,
@@ -64,6 +66,36 @@ fn the_lobby_plans_each_slot_once_and_leaves_one_to_a_player() {
     assert_eq!(plan(&[1, 1], &[]), Err(LobbyError::SlotNamedTwice(slot(1))));
     assert_eq!(plan(&[1], &[1]), Err(LobbyError::SlotNamedTwice(slot(1))));
     assert_eq!(plan(&[0], &[1]), Err(LobbyError::NoPlayer));
+}
+
+#[test]
+fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
+    // The lane mode sets no visibility: it leaves its host the spectators' fog and what a player
+    // out of play sees, and no kind.
+    let hosted = |settings: &[&str], max_spectators| {
+        let mut setup = setup(&[], &[]);
+        setup.host = HostVisibility {
+            settings: settings.iter().map(|text| text.parse().unwrap()).collect(),
+            max_spectators,
+        };
+        Lobby::new(setup).map(|lobby| Visibility::decode(&lobby.terms().visibility).unwrap())
+    };
+    let visibility = hosted(&["spectators=teams", "out=spectators"], 2).unwrap();
+    assert_eq!(visibility.spectators(), SpectatorFog::Teams);
+    assert_eq!(visibility.out(), OutView::Spectators);
+    assert_eq!(visibility.max_spectators(), 2);
+    assert_eq!(hosted(&[], 0), Ok(Visibility::DEFAULT));
+    let inventory = Setting::Kind(DataKind::Inventory);
+    assert_eq!(
+        hosted(&["inventory=allies"], 0),
+        Err(LobbyError::Visibility(VisibilityError::NotLeft(inventory)))
+    );
+    assert_eq!(
+        hosted(&["out=spectators", "out=team"], 0),
+        Err(LobbyError::Visibility(VisibilityError::Repeated(
+            Setting::Out
+        )))
+    );
 }
 
 /// What a lobby's players join with: the terms their delegations grant, and the challenge it
@@ -116,6 +148,7 @@ impl Joining {
                 &ChannelBinding::new([binding; 32]),
                 &[0; 32],
             ),
+            role: JoinRole::Play,
         }
     }
 

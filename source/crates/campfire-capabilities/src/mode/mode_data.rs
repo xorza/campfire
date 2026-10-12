@@ -23,6 +23,7 @@ use crate::units::tag_data::TagData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
+use crate::visibility::mode_visibility::ModeVisibility;
 
 /// The mode's `data/mode.toml`, but its script, which its package's load resolves, and its
 /// actions, modifiers and item types, which its package's content holds: its player inputs, its
@@ -77,6 +78,9 @@ pub struct ModeData {
     pub saves: SavesData,
     /// Whether it counts supply, and its most.
     pub supply: Option<SupplyRules>,
+    /// Who receives each kind of its state, and what it leaves to the host.
+    #[serde(default)]
+    pub visibility: ModeVisibility,
 }
 
 impl ModeData {

@@ -13,6 +13,7 @@ use crate::production::gather_loop::GatherLoop;
 use crate::production::gatherer::Gatherer;
 use crate::production::node::Node;
 use crate::production::node_book::NodeBook;
+use crate::production::player_supply::PlayerSupply;
 use crate::production::production_api::ProductionApi;
 use crate::production::production_column::{ProductionColumn, RowParts};
 use crate::production::production_data::ProductionData;
@@ -40,6 +41,7 @@ pub(crate) mod node;
 pub(crate) mod node_book;
 pub(crate) mod node_data;
 pub(crate) mod placement;
+pub(crate) mod player_supply;
 pub(crate) mod production_api;
 pub(crate) mod production_books;
 pub(crate) mod production_column;
@@ -76,6 +78,7 @@ impl Declares for Production {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<TrainQueue>();
+        d.derived_sent::<PlayerSupply>();
         d.component::<Rally>();
         d.component::<Builder>();
         d.component::<Site>();
@@ -108,6 +111,7 @@ impl Production {
             Trains::finish_trains
                 .in_set(SimSet::Mode)
                 .in_set(ProductionSet::Finish),
+            PlayerSupply::refresh.in_set(SimSet::Vision),
         ));
         // A build places a box, which only navigation tests for room, and a worker walks.
         if navigation {

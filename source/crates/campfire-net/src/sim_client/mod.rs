@@ -7,12 +7,12 @@ use bevy_ecs::observer::On;
 use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::{not, resource_exists};
+use bevy_ecs::schedule::common_conditions::{not, resource_exists, resource_exists_and_changed};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{
-    Dead, MatchEnd, MatchSpec, Order, PlayerUnits, PlayersWorld, ReleaseWorld,
+    Dead, MatchEnd, MatchSpec, Order, PlayerUnits, PlayersWorld, ReleaseWorld, TeamSet,
 };
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::{ErrorReport, LogEvent};
@@ -49,6 +49,7 @@ use crate::faults::Faults;
 use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::join::Join;
+use crate::join::JoinRole;
 use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
@@ -61,6 +62,8 @@ use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
+use crate::watch_start::WatchStart;
+use crate::watch_teams::WatchTeams;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -90,6 +93,8 @@ pub struct SimClient {
     /// This session's key, which the delegation lets sign the player's inputs.
     pub session_key: Keypair,
     pub server: ServerPin,
+    /// Whether the player plays a slot or watches.
+    pub role: JoinRole,
     /// Whether the server runs on a thread of the client's process, the only one that loads a
     /// save.
     pub local: bool,
@@ -118,6 +123,12 @@ impl Default for Verifier {
 /// link no more. The server logs the leave at once, and ends the link.
 #[derive(Resource, Debug)]
 pub struct LeaveRequest;
+
+/// A spectator's choice of the teams whose views it watches together, in a session whose
+/// spectators watch teams' views: the client tells the server as it starts to watch, again after
+/// each rejoin, and as the choice changes.
+#[derive(Resource, Debug, Clone, Copy)]
+pub struct WatchRequest(pub TeamSet);
 
 /// The player's save commands, which a local server takes, sent while the client plays.
 #[derive(Resource, Debug, Default)]
@@ -178,6 +189,7 @@ impl Plugin for SimClient {
         world.insert_resource(JoinState::new(
             self.main_key,
             self.server,
+            self.role,
             self.local,
             SessionRules::of(packages),
             self.clock,
@@ -206,9 +218,11 @@ impl Plugin for SimClient {
             retry_link,
             send_leave.run_if(resource_exists::<LeaveRequest>),
             send_saves,
+            send_watch_request.run_if(resource_exists_and_changed::<WatchRequest>),
             answer_offer,
             receive_dismissed,
             receive_match_start,
+            receive_watch_start,
             receive_receipt,
         )
             .chain_ignore_deferred();
@@ -390,6 +404,46 @@ fn receive_dismissed(
             entity: client,
             code: code.app(),
         });
+    }
+}
+
+/// Tells the server the teams a spectator watches, as its choice changes while it watches.
+fn send_watch_request(
+    mut sender: Single<'_, '_, &mut MessageSender<WatchTeams>, With<Client>>,
+    state: Res<'_, JoinState>,
+    request: Res<'_, WatchRequest>,
+) {
+    if state.watching().is_some() {
+        sender.send::<JoinChannel>(WatchTeams(request.0));
+    }
+}
+
+/// Watches the match the server's start names, for a client that answered to watch, and tells
+/// the server the teams it chose, as each join starts it on every team's; see
+/// `JoinState::watch`.
+fn receive_watch_start(
+    mut links: Query<
+        '_,
+        '_,
+        (
+            &mut MessageReceiver<WatchStart>,
+            &mut MessageSender<WatchTeams>,
+        ),
+        With<Client>,
+    >,
+    mut state: ResMut<'_, JoinState>,
+    request: Option<Res<'_, WatchRequest>>,
+) {
+    for (mut receiver, mut sender) in &mut links {
+        for start in receiver.receive() {
+            if !state.watch(start) {
+                continue;
+            }
+            info!(first = start.first.get(), "watching the match");
+            if let Some(request) = &request {
+                sender.send::<JoinChannel>(WatchTeams(request.0));
+            }
+        }
     }
 }
 

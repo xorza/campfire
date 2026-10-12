@@ -1,5 +1,7 @@
 use std::num::NonZeroU32;
 
+use campfire_capabilities::VisibilityDecodeError;
+use campfire_protocol::EngineRelease;
 use thiserror::Error;
 
 /// Why session terms do not name a session of a mode's packages on this release. Terms come from
@@ -7,8 +9,8 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TermsError {
     /// The terms name another engine release than this one.
-    #[error("the session runs on engine release {0:?}, not this one")]
-    OtherRelease(String),
+    #[error("the session runs on engine release {0}, not this one")]
+    OtherRelease(EngineRelease),
     /// The packages are another mode than the one the terms name.
     #[error("the mode is not the one the session names")]
     OtherMode,
@@ -24,4 +26,10 @@ pub enum TermsError {
     /// The terms plan `slots` slots, none or more than the `most` the mode's teams have.
     #[error("{slots} slots, and the mode's teams have {most}")]
     Slots { slots: u64, most: u64 },
+    /// The visibility the terms carry does not read.
+    #[error("the visibility")]
+    Visibility(#[source] VisibilityDecodeError),
+    /// The visibility the terms carry sets what the mode does not leave to the host.
+    #[error("the visibility sets what the mode does not leave to the host")]
+    OtherVisibility,
 }

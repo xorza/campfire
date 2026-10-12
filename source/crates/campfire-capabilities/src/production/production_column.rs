@@ -7,7 +7,7 @@ use campfire_script::rhai::INT;
 
 use crate::production::gatherer::Gatherer;
 use crate::production::site::Site;
-use crate::production::supply::PlayerSupply;
+use crate::production::supply::SupplySums;
 use crate::production::supply_costs::{SupplyCosts, UnitSupply};
 use crate::production::supply_rules::SupplyRules;
 use crate::production::train_queue::TrainQueue;
@@ -110,7 +110,7 @@ impl ProductionColumn {
     pub(crate) fn supply(view: &View, slot: PlayerSlot) -> Option<ReadSupply> {
         view.column(|column: &ProductionColumn| {
             let rules = column.rules?;
-            let mut total = PlayerSupply::default();
+            let mut total = SupplySums::default();
             let rows = column.rows.now().iter();
             for row in rows.filter(|row| row.owner == Some(slot)) {
                 total.add(row.counted);

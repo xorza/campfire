@@ -5,7 +5,7 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::{Outcome, ServerInput};
-use campfire_runner::{Session, SessionWorld};
+use campfire_runner::{Session, SessionWorld, StartError};
 use campfire_sim::{SimWorld, StateRegistry};
 use campfire_store::{DurableError, InputFile, PathError};
 use lightyear::prelude::LocalTimeline;
@@ -106,6 +106,8 @@ impl SimServerWorld for World {
         } = restored;
         let terms = log.header().terms.clone();
         SimServer::bound_frames(self, &terms);
+        SimServer::set_visibility(self, &terms)
+            .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
         let ticks = log.next_tick();
         let slots = log.slot_count();
         let seeds = private.seed_chain.seeds();

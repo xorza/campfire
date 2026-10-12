@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
+use campfire_capabilities::DeclaredName;
 use campfire_common::{MapName, PlayerSlot, TlsKey};
 use campfire_net::SlotBotFile;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
@@ -12,11 +13,13 @@ use crate::args::error::{ServerAddressError, ServerBotError};
 mod error;
 
 /// What the command line names: the orders file a bot plays, the player's key file, the data
-/// directory, the mode to play and its map, and the server: as its listing gives it, or a local
-/// one.
+/// directory, whether the player watches and the teams it watches, the mode to play and its map,
+/// and the server: as its listing gives it, or a local one.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) bot: Option<PathBuf>,
+    pub(crate) spectate: bool,
+    pub(crate) watch: Vec<DeclaredName>,
     pub(crate) key: Option<PathBuf>,
     pub(crate) data: Option<PathBuf>,
     pub(crate) mode: PathBuf,
@@ -58,6 +61,13 @@ pub(crate) struct CommandLine {
     /// Plays the mode alone on a local server, a thread of the client's process
     #[arg(long, requires = "data")]
     local: bool,
+    /// Watches the session as a spectator, with no slot
+    #[arg(long, conflicts_with_all = ["local", "bot"])]
+    spectate: bool,
+    /// A team whose view the spectator watches, in a session whose spectators watch teams' views;
+    /// every team's together without one
+    #[arg(long, value_name = "TEAM", requires = "spectate", value_parser = CommandLine::team)]
+    watch: Vec<DeclaredName>,
     /// A bot of the local server, in a slot other than the player's 0
     #[arg(
         long = "server-bot",
@@ -108,6 +118,8 @@ impl Args {
         };
         Args {
             bot: line.bot,
+            spectate: line.spectate,
+            watch: line.watch,
             key: line.key,
             data: line.data,
             mode: line.mode,
@@ -128,6 +140,11 @@ impl CommandLine {
             return Err(ServerAddressError::NoPort);
         }
         Ok(address)
+    }
+
+    /// The team `text` names, as the mode's teams are named.
+    fn team(text: &str) -> Result<DeclaredName, &'static str> {
+        DeclaredName::new(text).ok_or("no team's name")
     }
 
     /// The server bot `text` names; an error for a bot in slot 0, which the client plays.

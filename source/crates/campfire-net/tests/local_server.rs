@@ -12,8 +12,8 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_common::MapName;
 use campfire_net::{
-    JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace, PendingSaves,
-    SaveCommand, ServerDir, SessionDir, SimClient, SimClientWorld,
+    JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace,
+    PendingSaves, SaveCommand, ServerDir, SessionDir, SimClient, SimClientWorld,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
@@ -51,6 +51,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         main_key: TestKey::of(1),
         session_key: TestKey::of(2),
         server: server.pin(),
+        role: JoinRole::Play,
         local: true,
         packages,
         clock: || 1_700_000_000,
