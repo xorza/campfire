@@ -8,27 +8,7 @@ One policy holds across the steps: **what can be forgotten is a type or a trait 
 
 Its steps are done ([Replication audiences](docs/design/14-replication-audiences.md)); it ends as the user plays it in the client ([Workflow](AGENTS.md#workflow)).
 
-## 2. Decisions
-
-No code: each blocks a batch below, which names it. Each gives its options, the recommended one first.
-
-### Q1. Production's redesign before the skirmish
-
-M3 to M6 change the model the Zero Hour skirmish plays. A: M3 to M6, then the skirmish, so its golden is made once (recommended). B: the skirmish on today's model, its golden made again after M3 to M6.
-
-### Q2. Shops as units, and when
-
-M1 makes a shop a unit with a `shop` section, where today a mode has one `[shop]` at markers ([items](docs/design/04-capabilities/items.md)). Slice 2's S1 and S2 build the shop's public reader and the client's panel on the mode's `[shop]` (design 13, D8 to D10), so M1 after slice 2 builds them twice. A: M1 in batch 11, before S1, the 3v3's fountain a unit with a `shop` section, its golden moved once (recommended). B: slice 2 on the mode's `[shop]`, and M1 later with the reference game, S1's reader and S2's panel changed then. C: no M1.
-
-### Q3. Haul's scope
-
-A: full haul, a unit's own stock and production chains (recommended: M10's Hive mode needs chains). B: gather as now, with a sink that is a unit: it costs less, serves the skirmish and a delivery game, and no chain.
-
-### Q4. The player as an actor
-
-M8 gives each player slot a player unit, which holds the player's actions. Design 14 already gives each player a player entity, of the kind `Player`, which holds its resources and its modifiers and reaches its owner. A: M8's player unit, a unit with no body beside the player entity: it holds the actions, pays from the player entity's resources, takes a stable id only in a mode with `[player] slots`, so other matches keep their ids and goldens, and is seen by its own team as a unit is (recommended: the whole action pipeline serves it as it is). B: the player entity itself acts, a second kind of actor that every check of the pipeline must know.
-
-## 3. The test guards
+## 2. The test guards
 
 `store`, `runner`, `capabilities`, `package`, `protocol`, each in its tests. First, as every batch after it is checked by goldens that must not move, and today a run with `CAMPFIRE_BLESS=0` writes them again.
 
@@ -72,7 +52,7 @@ fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
 }
 ```
 
-## 4. Units by their kind
+## 3. Units by their kind
 
 `capabilities`: `units`, the declaration audit. Both steps change what the script view reads and what the declaration audit holds of it; the MOBA arena's units now spawn with types, so no unit of a match falls out of the view. No golden moves.
 
@@ -194,7 +174,7 @@ for &(id, name) in &self.column_reads {
 
 Check: `each_rule_names_the_declaration_that_breaks_it` gains a column that reads an undeclared type.
 
-## 5. Spawn and teleport
+## 4. Spawn and teleport
 
 `capabilities`: `vision`, `mode`'s kit, `books`, `deliveries`, `navigation`, `projectiles`. Both steps change what a unit takes as it spawns or moves at once, and how a delivery learns of it; F6 takes `navigation`'s import of `projectiles` out of F12's table. No golden moves.
 
@@ -287,9 +267,9 @@ world.add_observer(
 
 Check: the teleport tests pass unchanged; no golden moves.
 
-## 6. A unit's derived parts
+## 5. A unit's derived parts
 
-`capabilities`: `units`' tags, `declare`, `stats`' refresh. `Refresh::give_parts` gives a new unit both its tags and its stats: F7 moves the tags' places to declarations, and I1 fixes the stats it gives a unit with no level, before batches 18 and 19 add kinds of unit with pools.
+`capabilities`: `units`' tags, `declare`, `stats`' refresh. `Refresh::give_parts` gives a new unit both its tags and its stats: F7 moves the tags' places to declarations, and I1 fixes the stats it gives a unit with no level, before batches 17 and 18 add kinds of unit with pools.
 
 ### F7. Engine tags by declaration
 
@@ -311,7 +291,7 @@ Check: the tags keep their numbers while the install order stays; no golden move
 
 (`capabilities`; **Stats**.) `Refresh::regenerate` panics on a unit of a type with a pool and no `Level` (`stats/refresh.rs:277`). Find whether a client can hold a unit's type and pools before its `Level`, and make the empty `UnitStats` that `Refresh::give_parts` gives either filled or never indexed. Before M3 to M6, which add pools to new kinds of unit.
 
-## 7. The action pipeline's seams
+## 6. The action pipeline's seams
 
 `capabilities`: `actions`, `combat`, `projectiles`, `stats`, `items`, `abilities`. Both steps change what `actions` owns: its sub-stages, its delivery requests, and the one pass that grants a source's modifiers. No golden moves.
 
@@ -341,9 +321,9 @@ pub(crate) struct GrantSources(Vec<Wanted>);
 
 The pass runs where a source's answer changes today: as each tick starts, after Hit's casts and attacks, after Resolve, and at the tick's end; each run visits only the units whose source or modifiers changed, and those `ReadyWaits` keeps. Two sources that grant one modifier from one source unit share one hold, as two items do; the load still refuses a modifier that two kinds of source grant. Check: no golden moves.
 
-## 8. Commands to their owners
+## 7. Commands to their owners
 
-`capabilities`: `orders`, `items`, `production`, `progression`; `client`; the session log's format version. After batch 7, as both change what `orders` orders against.
+`capabilities`: `orders`, `items`, `production`, `progression`; `client`; the session log's format version. After batch 6, as both change what `orders` orders against.
 
 ### F10. Each capability owns its commands
 
@@ -355,9 +335,9 @@ The pass runs where a source's answer changes today: as each tick starts, after 
 
 The commands' bytes in a session log change, so the log format's version rises. Check: the goldens' state and behaviour columns do not move.
 
-## 9. Load, then trust
+## 8. Load, then trust
 
-`package`, `capabilities`' books. Before batches 11, 18 and 19 write new builders, so they are written once in the checked form.
+`package`, `capabilities`' books. Before batches 10, 17 and 18 write new builders, so they are written once in the checked form.
 
 ### F11. Load, then trust
 
@@ -403,7 +383,7 @@ pub(crate) fn new(
 
 A rule between packages, which no single builder sees, stays in the load check. An `expect` that a capability is installed, as `EffectQueues::of` holds, is a rule of the match, not of the data, and stays. Check: `every_flaw_of_a_package_fails_its_load_with_its_own_problem` passes with each flaw's problem, now from the builder where it moved.
 
-## 10. The session's host
+## 9. The session's host
 
 `net`, `server`, `client`, `runner`. Its code stays in `net`, which hosts every session (design 02); independent of the batches around it, here as the refactorings end.
 
@@ -427,23 +407,23 @@ A rule between packages, which no single builder sees, stays in the load check. 
 
 (`net`.) The match's end is logged ad hoc on the server and on the client (`net/src/sim_client/mod.rs:558`), and the client logs a death ad hoc though `UnitDied` exists: a `MatchEnded` event, and `UnitDied` on both ends.
 
-## 11. The shop
+## 10. The shop
 
-`capabilities`: `items`; `package`; `packages/test/moba`. Slice 2 starts here. With Q2's A, a shop becomes a unit, then the shop's reader, an item's price and the items' names are built on it once; with B, M1 moves to batch 20.
+`capabilities`: `items`; `package`; `packages/test/moba`. Slice 2 starts here. A shop becomes a unit, then the shop's reader, an item's price and the items' names are built on it once, and the 3v3's golden moves once.
 
-**Slice 2, wide bodies, uses, the shop and gravity**, batches 11 to 15. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
+**Slice 2, wide bodies, uses, the shop and gravity**, batches 10 to 14. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
 
 The steps M1 to M10 are a proposal for review: each one's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: F6 to F10 and F12 take its couplings, and M1 to M10 open its closed sets.
 
 ### M1. Shops as units
 
-(`capabilities`: `items`; `package`; `packages/test/moba`; Q2.) A unit type's `shop = { items, resource, reach, buyers }` makes a unit a shop: `reach` a radius by the reach rule, `buyers` a filter, which may select the dead, so League of Legends' rule is data. The mode's `[shop]` and its markers go; the 3v3's fountain is a unit with a `shop` section. Warcraft III's shops are units, as a courier or a market is. Check: the 3v3's golden moves by the new unit's id alone.
+(`capabilities`: `items`; `package`; `packages/test/moba`.) A unit type's `shop = { items, resource, reach, buyers }` makes a unit a shop: `reach` a radius by the reach rule, `buyers` a filter, which may select the dead, so League of Legends' rule is data. The mode's `[shop]` and its markers go; the 3v3's fountain is a unit with a `shop` section. Warcraft III's shops are units, as a courier or a market is. Check: the 3v3's golden moves by the new unit's id alone.
 
 ### S1. Names and readers
 
 (`capabilities`, `package`, `packages/test/moba`; D8.) `name` on item types and the MOBA's names; a public reader of the shop, an item's price for a unit, whether a unit stands where it can buy, and an action's targeting. A player's resources reach it on its player entity, `PlayerResources::of_player`. Check: a price less held components as computed by hand; an item type with no `name`, or one a locale lacks, fails its load.
 
-## 12. The client's shop
+## 11. The client's shop
 
 `client`. I2 gives the view tests' units their types before S2 changes the client.
 
@@ -455,9 +435,9 @@ The steps M1 to M10 are a proposal for review: each one's decisions move into `d
 
 (`client`; D9, D10, D11.) Bevy's UI features; the shop panel, the inventory bar, keys 1 to 6, and every cast key aimed as its action takes. Check: the key's target for an action of each targeting; the panel's dimmed items for an avatar alive out of a shop, too poor and with no room; the user buys a ward, places it at a point with its key, sells an item and swaps two slots.
 
-## 13. Use and the graph
+## 12. Use and the graph
 
-`capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. F12 moves the group of an inventory's slots into `actions`, and U1 adds the `use` kind, whose actions block as `use` too: one batch settles which actions a `use` block stops. F12 comes after batches 5 to 8, which leave only the true edges; M2 reads the code as F12's graph test does.
+`capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. F12 moves the group of an inventory's slots into `actions`, and U1 adds the `use` kind, whose actions block as `use` too: one batch settles which actions a `use` block stops. F12 comes after batches 4 to 7, which leave only the true edges; M2 reads the code as F12's graph test does.
 
 ### F12. The capability graph in one table
 
@@ -497,7 +477,7 @@ fn a_capability_imports_exactly_what_it_needs_or_uses() {
 }
 ```
 
-The `abilities ↔ items` cycle goes with two moves. `CastSpends`, a registry of hooks with no item in it, moves into `actions`. The slot kind of an inventory, the one fact `abilities` reads of it, moves out of `Inventory` into a state type of `actions`, which `items` puts on with the inventory. It is not U1's `uses = { kind }`, the slot that holds a use under way, whose action blocks as `use` by its own kind, so the two share batch 13 and not a name:
+The `abilities ↔ items` cycle goes with two moves. `CastSpends`, a registry of hooks with no item in it, moves into `actions`. The slot kind of an inventory, the one fact `abilities` reads of it, moves out of `Inventory` into a state type of `actions`, which `items` puts on with the inventory. It is not U1's `uses = { kind }`, the slot that holds a use under way, whose action blocks as `use` by its own kind, so the two share batch 12 and not a name:
 
 ```rust
 // actions/use_group.rs
@@ -530,7 +510,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`capabilities`: the release tests.) A test reads the crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
 
-## 14. The shrine
+## 13. The shrine
 
 `packages/test/moba`, `client`. I3 fixes the 3v3's `hero_died` before U2 adds the shrine to the scripted match, whose golden would pin the failure.
 
@@ -542,7 +522,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`packages/test/moba`, `client`; D6.) The shrine, its action, `shrine_blessing` and `shrine_spent` in design 07 and the 3v3 package; a right click on a unit the avatar may use orders the use; the channel bar. Check: the scripted match has a hero use the shrine and the team's heroes take the blessing, and a second hero's use cut by a hit; the user holds a use on the shrine in the client.
 
-## 15. Gravity
+## 14. Gravity
 
 `capabilities`: `projectiles`; `package`; `packages/test/moba`; `client`. Slice 2's last step: the user then plays slice 2.
 
@@ -550,7 +530,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`capabilities`, `package`, `packages/test/moba`; D12.) The falling flight; `gravity` past planned, refused with `homing` or not positive; a grenade of the MOBA's items, which arcs to its point. Check: the points of a flight on each metric at its launch, its peak and its end as computed by hand, the planar one back at its launch height at its end; a spatial one hits a unit its chord meets and not one its straight line would; the client draws the grenade's arc.
 
-## 16. Test time
+## 15. Test time
 
 `package`, `runner`, and the code each test spends its time in. Before the matches they play grow again.
 
@@ -558,7 +538,7 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`package`, `runner`; **Package**, **Runner**.) Four tests run at or past the bound of 1 s for a test alone: `mode_package::every_flaw_of_a_package_fails_its_load_with_its_own_problem`, `resume::the_3v3_match_resumes_from_each_checkpoint_to_the_same_hashes`, and the proving match's `a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics` and `a_snapshot_restores_and_a_flawed_one_never_panics`. Find where each spends its time, and bring each within its bound, or into `source/.config/nextest.toml` with the reason it takes longer.
 
-## 17. The script view's copy
+## 16. The script view's copy
 
 `capabilities`: `units`, `scripts`. Before the Zero Hour import multiplies the units it copies.
 
@@ -566,9 +546,9 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`capabilities`; **Core**, and Foundations.) Each script batch reads every unit again, 14.2 % of a 3v3 match's time. Before the Zero Hour import multiplies the units.
 
-## 18. Queues and capacities
+## 17. Queues and capacities
 
-`capabilities`: `production`, `actions`; `package`; `docs/design/11`. Train, research and supply in one form, before the Zero Hour skirmish's match and golden (Q1).
+`capabilities`: `production`, `actions`; `package`; `docs/design/11`. Train, research and supply in one form, before the Zero Hour skirmish, so its rules package and golden are made once, on the general model.
 
 ### M3. Queued actions with any output
 
@@ -578,9 +558,9 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 (`capabilities`: `production`; `package`.) One `[supply]` counter serves StarCraft alone. The mode declares `[capacities.<name>] max`; a unit type gives `capacity = { <name> = { uses, provides } }`. Each is derived as supply is now, a pass over the owned units and the queues when a tick's first check needs it, so it keeps no sum and never drifts (design 11, D5). A queued action or a build lists the capacities it checks. Supply becomes one capacity; power, population and housing are more. Scripts read `ctx.capacity_used(player, name)` and `ctx.capacity_max(player, name)`.
 
-## 19. Work and haul
+## 18. Work and haul
 
-`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 18, whose queued actions a production chain uses.
+`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 17, whose queued actions a production chain uses.
 
 ### M5. One work mechanism
 
@@ -588,11 +568,11 @@ The layer test also refuses a cycle within a layer. The cycles of layer 1 wait i
 
 ### M6. Haul
 
-(`capabilities`: `production`; `package`; Q3.) Gather fills only a player resource, from a node to a drop-off. A unit type's `stock = { <resource> = { amount, max } }` gives a unit its own amounts. `gather` becomes `haul`: `from` filters units with stock of the resource, a node being one with no `max`; `to` filters units that take it; `take` is the most one trip carries; `windup_ms` the time at the source. A sink's section names where it takes: `drop_off = { resources, into = "player" }` is today's drop-off, `into = "stock"` adds to its own stock within its `max`. The loop, its wait, its `bounce` and its tie rules stay. A production chain is a queued action (M3) with a `stock_cost` from its producer's own stock and a `stock = { resource, amount }` effect: a smelter turns ore into bars. A cost from stock is its own field, as `cost` names pools and player resources, and a stock's resource shares a player resource's name. RimWorld's haul jobs and The Settlers' carriers move goods this way.
+(`capabilities`: `production`; `package`.) Gather fills only a player resource, from a node to a drop-off. A unit type's `stock = { <resource> = { amount, max } }` gives a unit its own amounts. `gather` becomes `haul`: `from` filters units with stock of the resource, a node being one with no `max`; `to` filters units that take it; `take` is the most one trip carries; `windup_ms` the time at the source. A sink's section names where it takes: `drop_off = { resources, into = "player" }` is today's drop-off, `into = "stock"` adds to its own stock within its `max`. The loop, its wait, its `bounce` and its tie rules stay. A production chain is a queued action (M3) with a `stock_cost` from its producer's own stock and a `stock = { resource, amount }` effect: a smelter turns ore into bars. A cost from stock is its own field, as `cost` names pools and player resources, and a stock's resource shares a player resource's name. RimWorld's haul jobs and The Settlers' carriers move goods this way.
 
 The snapshot tests sweep the new state types of M3 to M6 as they sweep the skirmish's (design 11, D14).
 
-## 20. The genre proofs
+## 19. The genre proofs
 
 Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, and M10, the Hive mode, after them.
 
@@ -602,7 +582,7 @@ Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, 
 
 ### M8. The player as an actor
 
-(`capabilities`: `units`, `players`, `actions`; `package`; Q4.) With Q4's A, each player slot gets a player unit with no body and no pools, so it collides with nothing and takes no damage; the engine tag `player`, which a filter selects only when it names it, as it treats `projectile`, `area` and `item`; its own team sees it, so its owner receives its cooldowns and charges; it stands at the centre of the map's bounds, which no rule reads, as its actions aim with global range. Its actions run through the pipeline as it is, and pay from its player entity's resources: tower defense's placement, Generals' powers and card play need no second pipeline. Unreal's GAS gives the PlayerState an ability system for this. A `build` action of the player unit places a site with no builder's walk.
+(`capabilities`: `units`, `players`, `actions`; `package`.) Each player slot gets a player unit beside its player entity of design 14, which keeps the player's resources and modifiers: a unit with no body and no pools, so it collides with nothing and takes no damage; the engine tag `player`, which a filter selects only when it names it, as it treats `projectile`, `area` and `item`; its own team sees it, so its owner receives its cooldowns and charges; it stands at the centre of the map's bounds, which no rule reads, as its actions aim with global range. Its actions run through the pipeline as it is, and pay from its player entity's resources: tower defense's placement, Generals' powers and card play need no second pipeline. Unreal's GAS gives the PlayerState an ability system for this. A `build` action of the player unit places a site with no builder's walk. A player unit takes a stable id only in a mode with `[player] slots`, so other matches keep their ids and goldens.
 
 ### M9. Movement that spends
 
@@ -621,7 +601,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 | M7, M9 | Does not move: the defaults keep today's rule | Does not move |
 | M8 | Does not move in a mode with no `[player] slots` | Does not move |
 
-## 21. The network
+## 20. The network
 
 `quic`, `net`. After the issue log's **Quic** item on the endpoint's benches, which sets N1's cap.
 
@@ -635,7 +615,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 
 Then the network's Research items of the issue log as they show; then P1 to P4, P3 only as D14 of design 15 lets it.
 
-## 22. Planned
+## 21. Planned
 
 ### P1. LAN listing
 
