@@ -16,8 +16,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Has, With};
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    DataKind, Dead, Declared, HostVisibility, Owner, Player, PlayerResources, Recipients, Release,
-    Replication, SeenBy, StateTypes, Team, TeamSet, Visibility,
+    DataKind, Dead, Declared, HeldOut, HostVisibility, OutView, Owner, Player, PlayerResources,
+    PlayersWorld, Recipients, Release, Replication, SeenBy, SpectatorFog, StateTypes, Team,
+    TeamSet, Visibility,
 };
 use campfire_common::{MapName, PlayerSlot};
 use campfire_net::internals::{End, InProcessMatch, MatchSetup};
@@ -60,25 +61,32 @@ const PICKS: [&str; 6] = [
 /// How a client views the match, as the test knows it, not as the server's links say.
 #[derive(Debug, Clone, Copy)]
 enum Role {
+    /// The player of `slot`, of `team`; `out` while it is out of play in a session whose players
+    /// out of play see the other teams as spectators do (design 14, D16).
     Player {
         slot: PlayerSlot,
         team: Team,
+        out: bool,
     },
     /// A spectator of every unit, or of the views of `teams` together.
-    Spectator {
-        teams: Option<TeamSet>,
-    },
+    Spectator { teams: Option<TeamSet> },
 }
 
 impl Role {
-    /// Whether it holds an entity its team, or the teams it watches, see as `seen` says: one with
-    /// no `SeenBy` reaches every client, as the player and match entities do (design 14, D1).
-    fn sees(self, seen: Option<&SeenBy>) -> bool {
+    /// Whether it holds an entity its team, or the teams it watches, see as `seen` says, in a
+    /// session of `visibility`: one with no `SeenBy` reaches every client, as the player and match
+    /// entities do (design 14, D1); a player out of play also sees what the spectators' fog
+    /// shows, every unit or every team's view.
+    fn sees(self, seen: Option<&SeenBy>, visibility: &Visibility) -> bool {
         let Some(seen) = seen else {
             return true;
         };
+        let any = seen.get().teams().next().is_some();
         match self {
-            Role::Player { team, .. } => seen.get().contains(team),
+            Role::Player { team, out, .. } => {
+                seen.get().contains(team)
+                    || (out && (visibility.spectators() == SpectatorFog::All || any))
+            }
             Role::Spectator { teams: None } => true,
             Role::Spectator { teams: Some(teams) } => {
                 seen.get().teams().any(|team| teams.contains(team))
@@ -89,7 +97,7 @@ impl Role {
     /// Whether it receives `kind` on an entity of `owner` and `team`, in a session of
     /// `visibility`: the owner every kind but the server's, the others as the kind's audience
     /// holds them, each an ally of its own team and of an entity of none, an enemy of another, or
-    /// a spectator (design 14, D1).
+    /// a spectator (design 14, D1); a player out of play a spectator of another team's entity.
     fn receives(
         self,
         kind: DataKind,
@@ -102,8 +110,12 @@ impl Role {
         }
         let recipient = match self {
             Role::Player { slot, .. } if Some(slot) == owner => return true,
-            Role::Player { team: own, .. } if team.is_some_and(|team| team != own) => {
-                Recipients::ENEMIES
+            Role::Player { team: own, out, .. } if team.is_some_and(|team| team != own) => {
+                if out {
+                    Recipients::SPECTATORS
+                } else {
+                    Recipients::ENEMIES
+                }
             }
             Role::Player { .. } => Recipients::ALLIES,
             Role::Spectator { .. } => Recipients::SPECTATORS,
@@ -198,6 +210,9 @@ struct LeakCheck {
     client_ids: Vec<Vec<ComponentId>>,
     /// Each failure, as the client, the entity and the type name it.
     failures: Vec<String>,
+    /// Whether each player's client held an entity its team did not see, as one out of play does
+    /// with `out = "spectators"`.
+    beyond_team: [bool; PLAYERS],
     /// The kinds a client held on an entity it does not own, and those withheld from one that
     /// held the entity: what shows each audience was set as the run means.
     held_by_other: Vec<DataKind>,
@@ -223,6 +238,22 @@ fn short_3v3(visibility: &str) -> ModePackages {
         data,
         "first_wave_ms = 60000",
         "first_wave_ms = 1000",
+    );
+    // Gale's player, of the north, out of play for 3 s from the pick's end, alive.
+    let script = "modes/3v3/scripts/mode.rhai";
+    edit(
+        &mut files,
+        script,
+        "        ctx.state.phase = \"play\";\n",
+        "        ctx.state.phase = \"play\";\n        ctx.set_out(1, true);\n        \
+         ctx.timer(\"back_in\", 3000, false, ());\n",
+    );
+    edit(
+        &mut files,
+        script,
+        "    } else if name == \"wave\" {",
+        "    } else if name == \"back_in\" {\n        ctx.set_out(1, false);\n    \
+         } else if name == \"wave\" {",
     );
     let map = "modes/3v3/map/two_lanes/map.toml";
     for (team, from, to) in [("north", -60, -28), ("south", 60, -22)] {
@@ -286,6 +317,7 @@ impl LeakCheck {
             .map(|client| Role::Player {
                 slot: PlayerSlot::new(u32::try_from(client).unwrap()),
                 team: local.team(client),
+                out: false,
             })
             .collect();
         for &teams in spectators {
@@ -338,6 +370,7 @@ impl LeakCheck {
             server_ids,
             client_ids,
             failures: Vec::new(),
+            beyond_team: [false; PLAYERS],
             held_by_other: Vec::new(),
             withheld: Vec::new(),
         }
@@ -362,6 +395,7 @@ impl LeakCheck {
     /// visibility admit it, and notes each failure.
     fn check(&mut self) {
         let tick = self.local.next_tick(End::Server);
+        self.mark_out();
         let server = self.local.server_mut().world_mut();
         let mut query = server.query_filtered::<(
             Entity,
@@ -399,7 +433,13 @@ impl LeakCheck {
             let world = self.local.client(client).world();
             let server = self.local.server().world();
             for (&id, shown) in &shown {
-                let sees = role.sees(shown.seen.as_ref());
+                let sees = role.sees(shown.seen.as_ref(), &self.visibility);
+                if let Role::Player { team, .. } = role
+                    && sees
+                    && shown.seen.is_some_and(|seen| !seen.get().contains(team))
+                {
+                    self.beyond_team[client] = true;
+                }
                 let Some(&(entity, unpredicted)) = held.get(&id) else {
                     if sees {
                         self.failures
@@ -450,6 +490,26 @@ impl LeakCheck {
                 self.failures.push(format!(
                     "tick {tick}: client {client} holds {id:?}, which the server does not show"
                 ));
+            }
+        }
+    }
+
+    /// Marks each player out of play while its hero is dead or the script holds it out, in a
+    /// session whose players out of play see as spectators (design 14, D16): the test's own
+    /// reading of the server's state, not the server's `OutOfPlay`.
+    fn mark_out(&mut self) {
+        let sees_as_spectator = self.visibility.out() == OutView::Spectators;
+        for client in 0..PLAYERS {
+            let world = self.local.server().world();
+            let hero = world
+                .resource::<EntityIndex>()
+                .get(self.local.avatar(client));
+            let dead = hero.is_some_and(|hero| world.entity(hero).contains::<Dead>());
+            let slot = PlayerSlot::new(u32::try_from(client).unwrap());
+            let player = world.player_entity(slot).unwrap();
+            let held = world.entity(player).contains::<HeldOut>();
+            if let Role::Player { out, .. } = &mut self.roles[client] {
+                *out = (dead || held) && sees_as_spectator;
             }
         }
     }
@@ -536,5 +596,10 @@ mod scripted_match {
         assert!(extreme.held_by_other.contains(&DataKind::Resources));
         assert!(extreme.withheld.contains(&DataKind::Life));
         assert!(extreme.holds_resources_of(1, 0) && extreme.holds_resources_of(4, 0));
+        // Out of play, the south's dead hero's player and Gale's, whom the script held out alive,
+        // held what their teams did not see; in the defaults, which keep a player out of play to
+        // its team's view, no player did.
+        assert_eq!(extreme.beyond_team, [false, true, false, true]);
+        assert_eq!(defaults.beyond_team, [false; PLAYERS]);
     }
 }

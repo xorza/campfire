@@ -53,10 +53,7 @@ fn view_as_player(mut world: DeferredWorld<'_>, context: HookContext) {
     let link = *world
         .get::<PlayerLink>(context.entity)
         .expect("on_insert runs on an entity with a PlayerLink");
-    let viewer = Viewer::Player {
-        slot: link.slot(),
-        team: link.team(),
-    };
+    let viewer = Viewer::of_player(&world, link.slot(), link.team());
     world.commands().entity(context.entity).insert(viewer);
 }
 

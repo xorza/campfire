@@ -387,6 +387,14 @@ impl ModeApi {
                 ModeApi::add_resource(ctx, player, name, amount)
             },
         )
+        .bind_for(
+            MemberSpec::mode_call(
+                "set_out",
+                &[&["player", "out"]],
+                "holds `player` out of play while `out`, as when every avatar it holds is dead",
+            ),
+            |ctx: &mut Ctx, player: INT, out: bool| ModeApi::set_out(ctx, player, out),
+        )
         .bind(
             MemberSpec::call(
                 "set_relation",
@@ -766,6 +774,13 @@ impl ModeApi {
             return Err(ApiError::SelfRelation.fail().into());
         }
         ctx.queue(ModeEffect::SetRelation { a, b, relation })
+    }
+
+    /// Queues `player` held out of play, or no more.
+    fn set_out(ctx: &Ctx, player: INT, out: bool) -> Checked<()> {
+        let book = ModeBook::of_or_fail(ctx)?;
+        let slot = book.teams.player(player)?;
+        ctx.queue(ModeEffect::SetOut { slot, out })
     }
 
     fn add_resource(ctx: &Ctx, player: INT, name: &str, amount: INT) -> Checked<()> {

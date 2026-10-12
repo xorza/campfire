@@ -188,6 +188,8 @@ fn on_mode_input(ctx, player, name, value) {
     } else if name == "fail" {
         ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
         throw value;
+    } else if name == "out" {
+        ctx.set_out(player, value == "on");
     } else if name == "phase" {
         ctx.state.phase = 5;
     } else if name == "probe" {
@@ -573,6 +575,7 @@ fn mode_files() -> ModeFiles {
                 ("fail", InputType::String),
                 ("phase", InputType::String),
                 ("probe", InputType::String),
+                ("out", InputType::String),
             ]
             .map(|(name, kind)| (DeclaredName::new(name).unwrap(), kind))
             .into(),

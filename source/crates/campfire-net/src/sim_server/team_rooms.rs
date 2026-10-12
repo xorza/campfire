@@ -1,18 +1,22 @@
 use bevy_ecs::resource::Resource;
-use campfire_capabilities::{SeenBy, SpectatorFog, Team, TeamSet, Visibility};
+use campfire_capabilities::{OutView, SeenBy, SpectatorFog, Team, TeamSet, Visibility};
 use lightyear::prelude::{RoomAllocator, RoomId, Rooms};
 
 /// A Lightyear room for each team: a unit stands in the rooms of the teams that see it, and a
 /// seated link in its team's, so Lightyear sends a link exactly the units its team sees, from
 /// the moment it sits, and nothing to a link with no seat. A spectator stands in the rooms of the
 /// teams it watches, or, in a session whose spectators see every unit, in the room every entity
-/// stands in then (design 14, D15).
+/// stands in then (design 14, D15); a player out of play who sees as a spectator does, in its
+/// team's and the spectators' (D16).
 #[derive(Resource, Debug)]
 pub(crate) struct TeamRooms {
     /// By team index, for every index a team may take.
     rooms: Vec<RoomId>,
     everything: RoomId,
-    /// Whether the session's spectators see every unit, so every entity stands in `everything`.
+    /// What the session's spectators see.
+    fog: SpectatorFog,
+    /// Whether a link may see as a spectator that sees every unit, so every entity stands in
+    /// `everything`.
     spectators_see_everything: bool,
 }
 
@@ -23,15 +27,18 @@ impl TeamRooms {
         TeamRooms {
             rooms,
             everything: allocator.allocate(),
+            fog: SpectatorFog::All,
             spectators_see_everything: false,
         }
     }
 
-    /// Puts every entity that replicates from now on in the room of the spectators that see
-    /// every unit, in a session of `visibility` that admits such spectators.
+    /// Takes the spectators' fog of `visibility`, and puts every entity that replicates from now
+    /// on in the room of the spectators that see every unit, in a session where a spectator, or a
+    /// player out of play, may see so.
     pub(crate) fn set_spectators(&mut self, visibility: &Visibility) {
-        self.spectators_see_everything =
-            visibility.spectators() == SpectatorFog::All && visibility.max_spectators() > 0;
+        self.fog = visibility.spectators();
+        let watched = visibility.max_spectators() > 0 || visibility.out() == OutView::Spectators;
+        self.spectators_see_everything = self.fog == SpectatorFog::All && watched;
     }
 
     /// The room of a spectator that sees every unit.
@@ -42,6 +49,17 @@ impl TeamRooms {
     /// The room of the link seated in `team`.
     pub(crate) fn of(&self, team: Team) -> Rooms {
         Rooms::single(self.rooms[team.index()])
+    }
+
+    /// The rooms of a player of `team` out of play who sees as a spectator does: its team's and
+    /// the spectators', every unit's, or every team's view.
+    pub(crate) fn out_of_play(&self, team: Team) -> Rooms {
+        match self.fog {
+            SpectatorFog::All => {
+                Rooms::from([self.rooms[team.index()], self.everything].into_iter())
+            }
+            SpectatorFog::Teams => self.watching(TeamSet::ALL),
+        }
     }
 
     /// The rooms of a spectator that watches `teams`.

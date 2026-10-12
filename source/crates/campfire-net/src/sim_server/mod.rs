@@ -70,6 +70,7 @@ use crate::sim_server::session_journal::SessionJournal;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::tick_hashes::TickHashes;
+use crate::sim_server::viewer::Viewer;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -181,6 +182,7 @@ impl Plugin for SimServer {
         );
         app.add_systems(Update, Spectators::choose_teams);
         app.add_observer(Spectators::leave);
+        Viewer::follow_out_of_play(app);
         app.add_systems(Last, Dismissing::tell);
         app.add_systems(
             PostUpdate,
