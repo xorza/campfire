@@ -41,7 +41,7 @@ What its steps fix, with the work each step takes beside its own:
 
 ## Session hosting in `net`
 
-The [architecture audit](.notes/ARCHITECTURE-AUDIT.md)'s items that change `net`, from §5 and its single sources; their code stays in `net`, which hosts every session (design 02). The audiences' single source and the release are A3's.
+The architecture audit's items that change `net`: the session's host and its single sources; their code stays in `net`, which hosts every session (design 02). The audiences' single source and the release are A3's.
 
 - **H1. Server compositions.** The task pool, time, states and `SimServer` setup appears three times (`server/src/main.rs:234`, `net/src/local/local_server/mod.rs:327`, `net/src/harness/in_process_match/mod.rs:332`): `SimServer::app(tick, &ModePackages) -> App` holds it, and the server's edges to `capabilities` and `sim`, each used once, go.
 - **H2. Restore glue.** The server's `Restore` and net's `PendingRestore` have the same fields and body: one type in net.
