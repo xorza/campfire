@@ -875,6 +875,90 @@ fn a_free_function_that_takes_a_world_first_is_a_system() {
     assert_eq!(found, Vec::<String>::new());
 }
 
+/// Each trait `text` declares that the world rule refuses, by its line and name: a test trait
+/// on the world, `<Module>WorldTest`; a crate's internals trait on it,
+/// `<Module>WorldCrateInternals`; and a module's trait on `Match`, `<Module>Match` or
+/// `<Module>MatchInternals`, as a match a module builds comes from the module's type.
+fn refused_traits(text: &str) -> Vec<(usize, &str)> {
+    const REFUSED: [&str; 4] = [
+        "WorldTest",
+        "WorldCrateInternals",
+        "Match",
+        "MatchInternals",
+    ];
+    let mut found = Vec::new();
+    for (line, code) in text.lines().enumerate() {
+        let mut code = code.trim_start();
+        if let Some(rest) = code.strip_prefix("pub") {
+            let rest = rest.strip_prefix('(').map_or(rest, |inner| {
+                inner.split_once(')').map_or(inner, |(_, after)| after)
+            });
+            code = rest.trim_start();
+        }
+        let Some(rest) = code.strip_prefix("trait ") else {
+            continue;
+        };
+        let end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        let name = &rest[..end];
+        let refused = REFUSED
+            .iter()
+            .any(|suffix| name.len() > suffix.len() && name.ends_with(suffix));
+        if refused {
+            found.push((line + 1, name));
+        }
+    }
+    found
+}
+
+#[test]
+fn no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match() {
+    // Design 02's world rule: a world trait holds the whole match and the fast access to a
+    // module's systems, for other crates, its own crate, or the tests and benches of any crate;
+    // a test's verbs belong to its fixture or its capability's type, and a match a module builds
+    // to the module's type. Test code counts, as these traits lived in it; this file holds a
+    // source of each form for the check's own test.
+    let mut found = Vec::new();
+    let own = "crates/campfire-common/src/tests.rs";
+    for file in sources().into_iter().filter(|file| file.path != own) {
+        for (line, name) in refused_traits(&file.text) {
+            found.push(format!("{}:{line} {name}", file.path));
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn the_world_rule_finds_each_trait_it_refuses() {
+    // Each refused form, at any visibility; the world traits it keeps, a trait named `Match`
+    // alone and a type of such a name are none.
+    let text = "pub trait UnitsWorldTest {}
+\
+        pub(crate) trait ActionsWorldCrateInternals {}
+\
+        \x20   trait SessionMatch: Sized {}
+\
+        pub(super) trait HarnessMatchInternals {}
+\
+        pub trait SimWorld {}
+pub(crate) trait PlayersWorldCrate {}
+\
+        pub trait SimWorldInternals {}
+trait Match {}
+pub struct ScriptedMatch;
+";
+    assert_eq!(
+        refused_traits(text),
+        [
+            (1, "UnitsWorldTest"),
+            (2, "ActionsWorldCrateInternals"),
+            (3, "SessionMatch"),
+            (4, "HarnessMatchInternals"),
+        ]
+    );
+}
+
 #[test]
 fn the_world_rule_finds_each_function_that_takes_a_world_first() {
     // A free function and methods, of each form of a reference to a world, their visibility

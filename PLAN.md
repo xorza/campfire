@@ -6,9 +6,7 @@ The steps of the current slice ([Workflow](AGENTS.md#workflow)), in order, open 
 
 The rule of [Structural rules](docs/design/02-engine-core.md#structural-rules): a world trait keeps the whole match and the fast access to a module's singleton or index; the match's content goes to the module's capability type, a value or a view made from the world to its own type, and a match a module builds to the module's type. A world method knows no fixture. Each step ends with the check chain over the workspace, as public names move.
 
-3. **W3. One spawn for the tests** (`capabilities`): the tests' spawns become one spawn, or keep their helpers with one parameter order; see [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#w3-one-spawn-for-the-tests).
-5. **W5. Net, verifier, client and checks** (`net`, `verifier`, `client`, `campfire-lan-check`): `SimServer::restore_match`, `SimClient::spawn` and `Faults::apply`; `SimServerWorld` keeps the hosted session's lifecycle; every caller of a moved function.
-6. **W6. The world rule test** (`common`): beside the free function that takes the world, which it refuses already, it refuses a `*WorldTest`, `*WorldCrateInternals` or `<Module>Match` trait. Check: the test names each form it refuses, on a source of each.
+1. **W3. One spawn for the tests** (`capabilities`): the tests' spawns become one spawn, or keep their helpers with one parameter order; see [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#w3-one-spawn-for-the-tests).
 
 ## Slice 2 — Wide bodies, uses, the shop and gravity
 
