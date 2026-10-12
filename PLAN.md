@@ -8,7 +8,7 @@ One policy holds across the steps: **what can be forgotten is a type or a trait 
 
 Every batch moves the engine toward one shape, and each item names the part it builds.
 
-- **A module is one entry of one list.** Each module, the core's `units`, `players`, `actions` and `deliveries`, each capability and the mode, implements `Module`: its capability, its needs and its uses, `declare` and `install`, none with a default (F44 adds the uses). `install` holds only its systems and their sets; all else a module adds is a declaration.
+- **A module is one entry of one list.** Each module, the core's `units`, `players`, `actions` and `deliveries`, each capability and the mode, implements `Module`: its capability, its needs and its uses, `declare` and `install`, none with a default (F44 adds the uses). `install` holds only its systems, each in one of its module's declared sets (F45); all else a module adds is a declaration.
 - **What a module adds is declared once,** and one walk of the declarations serves the installer, the script API's binder, the network's lists of state types and the declaration audit:
 
 | What | Declaration | Item |
@@ -16,6 +16,7 @@ Every batch moves the engine toward one shape, and each item names the part it b
 | A state type, a state resource | `d.component`, `d.resource` | today |
 | A resource that is not state: clear between ticks, built again, or a tick's report for the host | `d.scratch`, `d.cache`, `d.report` | today |
 | Callbacks a lower module calls | `d.callback` | F11 |
+| A system set's stage or edge, and its order against other modules' sets | `d.sets` | F45 |
 | A part every entity of a kind starts with | `d.part` | today, F25 |
 | Engine tags | `d.engine_tags` | F17 |
 | Package data a match holds | `d.book` | F24 |
@@ -521,7 +522,7 @@ world
 
 ## 10. The action pipeline's seams
 
-`capabilities`: `actions`, `combat`, `projectiles`, `stats`, `items`, `abilities`, `areas`, `mode`, `orders`, `production`, `sim`'s stages. What `actions` owns, and one fixed order of steps in each stage. No golden moves.
+`capabilities`: `actions`, `combat`, `projectiles`, `stats`, `items`, `abilities`, `areas`, `mode`, `orders`, `production`, `declare`, every module's install, the declaration audit; `sim`'s stages. What `actions` owns, one fixed order of steps in each stage, and each module's sets declared with their place and their order. No golden moves.
 
 ### F30. Action anchors and the delivery seam
 
@@ -533,7 +534,85 @@ world
 
 Each capability's needs then are what its code needs: `vision` the core; `areas` and `abilities` `stats`, whose pools and modifiers they change; `projectiles` the core; `orders` `navigation`. F44 states them. Check: no golden moves; the archetype shuffle test and the schedule build's check of conflicts pass.
 
-The anchors are the action pipeline's own steps, which every capability that acts orders against: the core names them, and they name no capability. Inputs keeps each module's own sets, ordered against the sets of the modules it builds on, as the module order of e43f95af holds them: one chained enum of every stage's steps would name the capabilities' concerns, `Toggles`, `Orders`, `ModeInputs`, in the core, against F17's rule, and order every pair of its steps, which never touch, so the schedule's parallelism goes. The mode, the top of the list, orders against eight capabilities' sets, each a use F44 states.
+The anchors are the action pipeline's own steps, which every capability that acts orders against: the core names them, and they name no capability. Inputs keeps each module's own sets, ordered against the sets of the modules it builds on, as F45 declares them: one chained enum of every stage's steps would name the capabilities' concerns, `Toggles`, `Orders`, `ModeInputs`, in the core, against F17's rule, and order every pair of its steps, though most never touch, so no order would show which pairs must keep it. The mode, the top of the list, orders against eight capabilities' sets, each a use F44 states.
+
+### F45. Each module's sets declared with their place and order
+
+(`capabilities`: `declare`, every module's install and system sets, the release tests; `sim`'s stage test.) A system names its stage and its order against other modules' sets by hand: 93 `.after` and `.before` and 88 `.in_set` on single systems, against 5 `configure_sets`. The same anchors come again system after system (`ActionsSet::HoldAtInputs` 5 times, `StatsSet::Regenerate` 4, `CombatSet::Launch` 4), the mode's `mode_inputs` carries nine constraints (`mode/mod.rs`), and `abilities` writes the order of Hit twice, for the server's casts and for a client's (`abilities/mod.rs`). No check holds a copy to the others, or an order to the module's needs. Bevy's practice is to order sets and put systems in them; a set's place and order become a declaration:
+
+```rust
+// declare/module_set.rs
+/// A module's system set: its place in the sim schedule and its order against other modules'
+/// sets, stated once. Each method matches every variant, so a new step does not compile until it
+/// has both.
+pub(crate) trait ModuleSet: SystemSet + Copy {
+    /// The capability of the module that owns it; `None` for the core's.
+    const CAPABILITY: Option<Capability>;
+    /// Every variant, from `enum_all!`.
+    const ALL: &'static [Self];
+
+    /// The stage or the edge it runs in.
+    fn place(self) -> SimPlace;
+
+    /// The sets it runs after and before, each recorded with its module's capability.
+    fn order(self, o: &mut SetOrder);
+}
+
+// abilities/mod.rs
+impl ModuleSet for AbilitiesSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
+    const ALL: &'static [AbilitiesSet] = &AbilitiesSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            AbilitiesSet::Toggles => SimPlace::Stage(SimSet::Inputs),
+            AbilitiesSet::Resolve => SimPlace::Stage(SimSet::Hit),
+        }
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            AbilitiesSet::Toggles => {
+                o.after(StatsSet::Regenerate)
+                    .after(CombatSet::Respawn)
+                    .before(ActionsSet::HoldAtInputs);
+            }
+            AbilitiesSet::Resolve => {
+                o.after(ActionsSet::Deliver).before(ActionsSet::Launch);
+            }
+        }
+    }
+}
+
+fn declare<D: Declarations>(d: &mut D) {
+    d.sets::<AbilitiesSet>();
+    d.api(AbilitiesApi::register);
+}
+
+fn install(cx: &mut InstallCx<'_>) {
+    // …
+    schedule.add_systems(Casts::start_casts.in_set(ActionsSet::Start));
+    if !cx.scripts() {
+        let predict = (Casts::predict_casts, Channels::predict_channels).chain();
+        schedule.add_systems(predict.in_set(AbilitiesSet::Resolve));
+        return;
+    }
+    schedule.add_systems((
+        (Casts::resolve_casts, Channels::run_channels)
+            .chain()
+            .in_set(AbilitiesSet::Resolve),
+        Toggles::run_toggles.in_set(AbilitiesSet::Toggles),
+    ));
+}
+```
+
+- A system names one set of its own module or of an anchor, and orders within its module by `.chain()` alone; it names no stage, edge or other module's set.
+- `sim` gains `SimPlace`, a stage or an edge, the one home a set names.
+- `Declarations::sets` has no default. The installer, which gains the schedule `InstallCx` holds, configures each variant in its place and order; `combat`'s `configure_sets` and every set configured in an install go. The declaration audit records each set with its place and the capability of each set it orders against, and fails on a set two modules declare; F44 checks the capabilities.
+- What the install knows stays a plain `if` in `install`, which chooses the systems that go in, as F39 asks: scripts, prediction and the declared capabilities.
+- `systems_outside_stages` (`sim/src/sim_world.rs`) becomes the test that each game system sits in a declared module set, an anchor among them.
+
+Check: no golden moves; the schedule build's check of conflicts, the archetype shuffle test and `every_order_the_proving_match_relies_on_is_stated` pass.
 
 ### F31. One grant mechanism
 
@@ -730,7 +809,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `docs/design/04-capabilities/00-overview.md`.) The graph's needs and the install order are one list of modules, `Release::modules`; the overview's layers stay in prose. `each_capability_installs_after_the_lower_layers_it_builds_on` ties the first two to the layer table (`LAYERS`, `release/tests/mod.rs`); no test ties them to the imports. The layer test rejects imports from a higher layer only: within a layer, `units ↔ scripts` and `units ↔ players` in layer 1 and `abilities ↔ items` in layer 5 import each other (`items/mod.rs:6` imports `CastSpends`; four `abilities` files import `Inventory`).
 
-A capability's edge to another is a need, without which it does not run, or a use, which it reads when the match has it, each read guarded by `cx.has`: production runs without navigation, with no gathering. The table holds both, and the test holds it symmetric: each import of another capability is a need or a use, and each need and use is imported.
+A capability's edge to another is a need, without which it does not run, or a use, which it reads when the match has it, each read guarded by `cx.has`: production runs without navigation, with no gathering. The table holds both, and the test holds it symmetric: each import of another capability is a need or a use, and each need and use is imported. The order of the schedule keeps to the same edges: each set a module's sets order against, as F45's declarations record it, is the core's, the module's own, or of a need or a use.
 
 ```rust
 // declare/module.rs: beside `CAPABILITY` and `NEEDS`
