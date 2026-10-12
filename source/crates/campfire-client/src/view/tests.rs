@@ -7,13 +7,13 @@ use bevy::ecs::world::World;
 use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
-use campfire_capabilities::internals::AreasWorldInternals;
+use campfire_capabilities::Areas;
 use campfire_capabilities::{
     DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOrigins, UnitEntity,
 };
 use campfire_math::Num;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits};
-use campfire_sim::{IdAllocator, SimWorld};
+use campfire_sim::IdAllocator;
 
 use super::*;
 use crate::view::unit_looks::ModelParts;
@@ -26,7 +26,7 @@ fn view() -> App {
     app.init_asset::<StandardMaterial>();
     app.init_resource::<EntityIndex>();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
-    app.world_mut().register_unpredicted();
+    Unpredicted::register(app.world_mut());
     app.add_plugins(View);
     app.update();
     app
@@ -291,9 +291,11 @@ fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
     .collect();
     let (unit_type, _) = origins.iter().next().unwrap();
     // An area 2.5 m wide at (3, −4).
-    let area = app
-        .world_mut()
-        .standing_area(unit_type, Num::from_bits(5 << (Num::FRAC_BITS - 1)));
+    let area = Areas::standing(
+        app.world_mut(),
+        unit_type,
+        Num::from_bits(5 << (Num::FRAC_BITS - 1)),
+    );
     let lies = app
         .world_mut()
         .spawn((

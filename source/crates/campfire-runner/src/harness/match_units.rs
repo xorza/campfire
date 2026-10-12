@@ -6,10 +6,15 @@ use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 /// The units of a running match, as a scripted player or a test names them by role.
 #[derive(Debug, Clone, Copy)]
 pub struct MatchUnits<'a> {
-    pub(super) world: &'a World,
+    world: &'a World,
 }
 
 impl<'a> MatchUnits<'a> {
+    /// The units of `world`, a running match.
+    pub const fn of(world: &'a World) -> MatchUnits<'a> {
+        MatchUnits { world }
+    }
+
     pub const fn world(self) -> &'a World {
         self.world
     }
@@ -44,6 +49,16 @@ impl<'a> MatchUnits<'a> {
             .world
             .get::<Position>(entity)
             .expect("a unit stands somewhere")
+    }
+
+    /// The units that stand at `x`, `z` on the ground, by stable id.
+    pub fn standing_at(self, x: i64, z: i64) -> Vec<StableId> {
+        let at =
+            Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).expect("a map point");
+        self.all()
+            .filter(|(_, unit)| unit.get::<Position>() == Some(&at))
+            .map(|(id, _)| id)
+            .collect()
     }
 
     /// Whether player `slot` owns `unit`.

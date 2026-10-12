@@ -11,6 +11,7 @@ use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
 use crate::players::player::Player;
 use crate::stats::applier::Applier;
+use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::HeldModifiers;
 use crate::stats::held_pass::HeldPass;
 use crate::stats::level::Level;
@@ -22,18 +23,22 @@ use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_book::ParamBook;
+use crate::stats::param_source::ParamSource;
 use crate::stats::player_modifiers::PlayerModifiers;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh::Refresh;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stats_api::StatsApi;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::{RowParts, StatsColumn};
-use crate::stats::stats_world::StatsWorldCrate;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::action_id::ActionId;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
+use crate::units::view::View;
+use crate::values::rank::Rank;
 
 pub(crate) mod application;
 pub(crate) mod applier;
@@ -162,7 +167,7 @@ impl Stats {
             return;
         };
         let book = world.resource::<ModifierBook>().clone();
-        if let Some(mut carried) = world.carried_mut(entity) {
+        if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.purge(|id| book.tags(id).contains(tag));
         }
     }
@@ -186,14 +191,16 @@ impl Stats {
             return;
         }
         let book = world.resource::<ModifierBook>();
-        let source = applier.source.and_then(|source| world.param_source(source));
+        let source = applier
+            .source
+            .and_then(|source| ParamSource::of(world, source));
         let params = world.resource::<ParamBook>();
         let param = |place: &ParamPlace| {
             let (action, rank) = (applier.action, applier.rank);
             params.modifier_param(id, action, rank, place, source.as_ref())
         };
         let application = book.application(id, applier, duration, now, rate, param);
-        if let Some(mut carried) = world.carried_mut(entity) {
+        if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.apply(application);
         }
     }
@@ -205,7 +212,7 @@ impl Stats {
         source: Option<StableId>,
     ) {
         let entity = world.entity_of(carrier);
-        if let Some(mut carried) = entity.and_then(|entity| world.carried_mut(entity)) {
+        if let Some(mut carried) = entity.and_then(|entity| CarriedMut::of(world, entity)) {
             carried.remove(id, source);
         }
     }
@@ -219,8 +226,258 @@ impl Stats {
         }
         let now = world.resource::<SimTick>().start();
         let entity = world.entity_of(data.carrier);
-        if let Some(mut carried) = entity.and_then(|entity| world.carried_mut(entity)) {
+        if let Some(mut carried) = entity.and_then(|entity| CarriedMut::of(world, entity)) {
             carried.write(data.id, data.source, data.stacks, &data.state, now);
+        }
+    }
+
+    /// Gives the match the mode's stat book and pool book, whose names its scripts read.
+    pub(crate) fn load_books(world: &mut World, book: StatBook, pools: PoolBook) {
+        let view = world.non_send::<View>();
+        StatsColumn::share_stat_names(view, book.names());
+        StatsColumn::share_pool_names(view, pools.names());
+        world.insert_resource(book);
+        world.insert_resource(pools);
+    }
+
+    /// `has_way` of the match's books at its rate.
+    pub(crate) fn modifier_has_way(
+        world: &World,
+        id: ModifierId,
+        action: Option<ActionId>,
+        rank: Rank,
+    ) -> bool {
+        let (book, params) = (
+            world.resource::<ModifierBook>(),
+            world.resource::<ParamBook>(),
+        );
+        book.has_way(id, action, rank, params, *world.resource::<TickRate>())
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_sim::{SimWorld, StableId};
+
+    use crate::stats::Stats;
+    use crate::stats::applier::Applier;
+    use crate::stats::lifetime::Hold;
+    use crate::stats::modifier_book::ModifierBook;
+    use crate::stats::modifiers::Modifiers;
+    use crate::stats::stats_effect::StatsEffect;
+    use crate::units::action_id::ActionId;
+    use crate::units::modifier_id::ModifierId;
+    use crate::values::rank::Rank;
+
+    impl Stats {
+        /// The modifier `name` of `package`, as the match loaded it.
+        pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
+            world.resource::<ModifierBook>().named(package, name)
+        }
+
+        /// Gives `target` the modifier `id` from `source`, by `action` at `rank`, and a passive when
+        /// `passive`, as an application in the running tick would.
+        pub fn give_modifier(
+            world: &mut World,
+            target: StableId,
+            id: ModifierId,
+            from: Option<(StableId, Option<ActionId>, u8)>,
+            passive: bool,
+        ) {
+            let (source, action, rank) = from.map_or((None, None, 1), |(source, action, rank)| {
+                (Some(source), action, rank)
+            });
+            let rank = Rank::new(rank).expect("a modifier is given at a rank");
+            let applier = Applier {
+                source,
+                action,
+                rank,
+                hold: passive.then_some(Hold::Passive),
+            };
+            let add = StatsEffect::Add {
+                target,
+                id,
+                duration: None,
+            };
+            add.apply_by(world, applier);
+        }
+
+        /// The modifiers `id` carries, each with its source, in their order.
+        pub fn carried_modifiers(
+            world: &World,
+            id: StableId,
+        ) -> Vec<(ModifierId, Option<StableId>)> {
+            let entity = world.entity_of(id).expect("a unit of the match");
+            world
+                .get::<Modifiers>(entity)
+                .into_iter()
+                .flat_map(Modifiers::iter)
+                .map(|instance| (instance.id, instance.source))
+                .collect()
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use std::collections::BTreeMap;
+
+    use bevy_ecs::world::{Mut, World};
+    use campfire_math::Num;
+    use campfire_script::ScriptId;
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{StableId, TickRate};
+
+    use crate::scripts::ctx::Ctx;
+    use crate::scripts::script_book::ScriptBook;
+    use crate::stats::Stats;
+    use crate::stats::life::Life;
+    use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
+    use crate::stats::modifier_data::ModifierData;
+    use crate::stats::param_book::ParamBook;
+    use crate::stats::pool_book::PoolBook;
+    use crate::stats::stat_book::StatBook;
+    use crate::stats::stat_id::StatId;
+    use crate::stats::stat_op::StatOp;
+    use crate::stats::stat_rule::StatRule;
+    use crate::stats::stats_call::StatsCall;
+    use crate::stats::stats_column::StatsColumn;
+    use crate::units::action_id::ActionId;
+    use crate::units::modifier_id::ModifierId;
+    use crate::units::tag_set::TagSet;
+    use crate::units::view::View;
+    use crate::values::declared_name::DeclaredName;
+    use crate::values::param::Param;
+    use crate::values::stat::Stat;
+
+    impl Stats {
+        /// The life unit `id` has left, a whole amount.
+        pub(crate) fn health(world: &World, id: StableId) -> i64 {
+            world
+                .part::<Life>(id)
+                .current()
+                .to_int()
+                .expect("a whole amount of life")
+        }
+
+        /// Adds to the match's books a modifier of no params, script, times or state that changes
+        /// each stat of `changes` by its op, by a value its instances hold, and grants `tags`:
+        /// what a test's instances are instances of. Its id, after every modifier before it.
+        pub(crate) fn push_modifier_changes(
+            world: &mut World,
+            changes: &[(StatId, StatOp)],
+            tags: TagSet,
+        ) -> ModifierId {
+            let id = world
+                .resource_mut::<ModifierBook>()
+                .push_changes(changes, tags);
+            Stats::load_modifier_params(world, id, &BTreeMap::new(), |_| StatId::new(0));
+            id
+        }
+
+        /// Loads `data` as the modifier `name` of `package`: 0 the mode, then each package it
+        /// depends on, in its manifest's order, with its compiled `script` exactly when its data
+        /// names one. Modifiers load by package, then name.
+        pub(crate) fn load_modifier(
+            world: &mut World,
+            package: u16,
+            name: &str,
+            data: &ModifierData,
+            script: Option<ScriptId>,
+        ) {
+            let name = DeclaredName::new(name).expect("a modifier's name is a name");
+            world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
+                let scripts = world.resource::<ScriptBook>();
+                let view = world.non_send::<View>();
+                let places = Stats::stat_places(world, data.stats.keys());
+                let mut types = view.types_mut();
+                let load = ModifierLoad {
+                    scripts,
+                    types: &mut types,
+                    stat: |stat: &Stat| places[stat],
+                    rate: *world.resource::<TickRate>(),
+                };
+                let modifier = PackageModifier {
+                    name: &name,
+                    data,
+                    script,
+                };
+                book.load(load, package, &[modifier])
+                    .expect("a test's modifier loads");
+            });
+            let book = world.resource::<ModifierBook>();
+            let id = book
+                .named(package, name.as_str())
+                .expect("the modifier loaded");
+            StatsColumn::share_modifiers(world.non_send::<View>(), book.clone());
+            let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
+            Stats::load_modifier_params(world, id, &data.params, |stat| places[stat]);
+        }
+
+        /// Gives a match with no mode the stat book `book`, with no pool stats; the pools its
+        /// scripts name stay named.
+        pub(crate) fn load_book(world: &mut World, book: StatBook) {
+            StatsColumn::share_stat_names(world.non_send::<View>(), book.names());
+            world.insert_resource(book);
+            world.insert_resource(PoolBook::default());
+        }
+
+        /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool stats;
+        /// the pools its scripts name stay named.
+        pub(crate) fn load_rules(world: &mut World, rules: &BTreeMap<Stat, StatRule>) {
+            Stats::load_book(world, StatBook::new(rules, [], Num::MAX));
+        }
+
+        /// Adds the params of `action`, the one the match's action book loaded last, each stat at
+        /// its place `stat` gives.
+        pub(crate) fn load_action_params(
+            world: &mut World,
+            action: ActionId,
+            params: &BTreeMap<DeclaredName, Param>,
+            stat: impl Fn(&Stat) -> StatId,
+        ) {
+            let run = world.resource_mut::<ParamBook>().push_action(params, stat);
+            assert_eq!(run, action.index(), "one run of params per action");
+            Stats::share_params(world);
+        }
+
+        /// Adds the params of `modifier`, the one the match's modifier book loaded last, each stat
+        /// at its place `stat` gives.
+        pub(crate) fn load_modifier_params(
+            world: &mut World,
+            modifier: ModifierId,
+            params: &BTreeMap<DeclaredName, Param>,
+            stat: impl Fn(&Stat) -> StatId,
+        ) {
+            let run = world
+                .resource_mut::<ParamBook>()
+                .push_modifier(params, stat);
+            assert_eq!(run, modifier.index(), "one run of params per modifier");
+            Stats::share_params(world);
+        }
+
+        /// The place of each of `stats` in the match's book, which a world that names no stat
+        /// need not have.
+        pub(crate) fn stat_places<'s>(
+            world: &World,
+            stats: impl IntoIterator<Item = &'s Stat>,
+        ) -> BTreeMap<&'s Stat, StatId> {
+            stats
+                .into_iter()
+                .map(|stat| {
+                    let book = world.resource::<StatBook>();
+                    (stat, book.named(stat).expect("the load checked the stats"))
+                })
+                .collect()
+        }
+
+        /// Gives the match's script frame, when it has one, the param book as it is now.
+        fn share_params(world: &World) {
+            if let Some(ctx) = world.get_non_send::<Ctx>() {
+                let params = world.resource::<ParamBook>().clone();
+                StatsCall::share_params(&mut ctx.frame(), params);
+            }
         }
     }
 }

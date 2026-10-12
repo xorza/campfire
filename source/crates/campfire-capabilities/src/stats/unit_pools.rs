@@ -1,8 +1,11 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryData;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 
 use crate::stats::life::Life;
+use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
@@ -95,6 +98,12 @@ impl<'a> PoolMeters<'a> {
     pub(crate) fn affords(&self, cost: &PoolCost) -> bool {
         cost.iter()
             .all(|(pool, amount)| self.current(pool).is_some_and(|current| current >= amount))
+    }
+
+    /// The pools of the unit of `entity`, the life pool the match's.
+    pub fn of(world: &World, entity: Entity) -> PoolMeters<'_> {
+        let life_pool = world.get_resource::<LifePool>().map(|life| life.0);
+        PoolMeters::new(life_pool, world.get(entity), world.get(entity))
     }
 }
 

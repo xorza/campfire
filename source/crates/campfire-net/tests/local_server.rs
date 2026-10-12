@@ -13,7 +13,7 @@ use bevy_time::TimePlugin;
 use campfire_common::MapName;
 use campfire_net::{
     JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace,
-    PendingSaves, SaveCommand, ServerDir, SessionDir, SimClient, SimClientWorld,
+    PendingSaves, SaveCommand, ServerDir, SessionDir, SimClient,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
@@ -63,7 +63,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     });
     client.finish();
     client.cleanup();
-    let entity = client.world_mut().spawn_client();
+    let entity = SimClient::spawn(client.world_mut());
     client
         .world_mut()
         .entity_mut(entity)

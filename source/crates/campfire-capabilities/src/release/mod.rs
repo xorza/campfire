@@ -1,7 +1,8 @@
 use std::num::NonZeroU64;
 
+use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
-use campfire_sim::{Capability, StateRegistry};
+use campfire_sim::{Capability, SimParts, SimWorldBuilder, StateRegistry};
 
 use crate::abilities::Abilities;
 use crate::actions::Actions;
@@ -15,6 +16,9 @@ use crate::declare::kind_visitor::KindVisitor;
 use crate::deliveries::Deliveries;
 use crate::items::Items;
 use crate::mode::Mode;
+use crate::mode::match_end::MatchEnd;
+use crate::mode::mode_books::ModeBooks;
+use crate::mode::mode_setup::ModeSetup;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
 use crate::production::Production;
@@ -22,6 +26,7 @@ use crate::progression::Progression;
 use crate::projectiles::Projectiles;
 use crate::release::api_binder::ApiBinder;
 use crate::release::installer::Installer;
+use crate::release::match_spec::MatchSpec;
 use crate::release::state_only::StateOnly;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::ScriptApi;
@@ -34,7 +39,6 @@ mod api_binder;
 mod installer;
 pub(crate) mod r#match;
 pub(crate) mod match_spec;
-pub(crate) mod release_world;
 mod state_only;
 
 /// The engine's modules as the release runs them: the core, each capability in the order they
@@ -189,6 +193,60 @@ impl Release {
         d.module(M::MODULE);
         M::declare(d);
     }
+
+    /// Builds the match of `spec` in the world, a new world: prepares it for the sim, and
+    /// installs the core, then each capability the release runs, each after the ones it builds
+    /// on, its declarations, then its install. A match that ended runs no stage. The world then
+    /// holds the match whole: its schedule, its state registry, and its capabilities.
+    pub fn build(world: &mut World, spec: MatchSpec) {
+        let mut sim = SimWorldBuilder::new(world, spec.seed, spec.rate);
+        #[cfg(any(test, feature = "internals"))]
+        if spec.without_sync_points {
+            sim.without_sync_points();
+        }
+        let set = spec.set;
+        let SimParts {
+            world,
+            schedule,
+            registry,
+        } = sim.parts();
+        world.insert_resource(set);
+        let scripts = spec.budgets.is_some();
+        Units::open(world, spec.budgets);
+        if scripts {
+            ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
+        }
+        MatchEnd::stop_stages(schedule);
+        let mut cx = InstallCx::new(world, schedule, set, scripts);
+        Release::install_module::<Units>(&mut cx, registry, Units::install);
+        Release::install_module::<Actions>(&mut cx, registry, Actions::install);
+        Release::install_module::<Deliveries>(&mut cx, registry, Deliveries::install);
+        for row in CAPABILITIES {
+            if let Some(install) = row.install
+                && set.contains(row.capability)
+            {
+                let mut installer = Installer::new(cx.world, registry, set, scripts);
+                Release::declare_capability(row.capability, &mut installer);
+                install(&mut cx);
+            }
+        }
+        sim.build();
+    }
+
+    /// Installs the mode of `setup` into the match the world holds, once the capabilities'
+    /// books are in place but the mode's own, `books`: its declarations, then its install.
+    pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, books: ModeBooks) {
+        let set = *world.resource::<CapabilitySet>();
+        let mut sim = SimWorldBuilder::reopen(world);
+        let SimParts {
+            world,
+            schedule,
+            registry,
+        } = sim.parts();
+        Release::module::<Mode, _>(&mut Installer::new(world, registry, set, true));
+        Mode::install(world, schedule, registry, setup, books);
+        sim.build();
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]
@@ -283,6 +341,81 @@ pub(crate) mod internals {
             names.sort_unstable();
             names.dedup();
             names
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::world::World;
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{SimWorld, SnapshotError, StateCopy, StateRegistry};
+
+    use crate::players::players_world::PlayersWorld;
+    use crate::release::Release;
+    use crate::units::Units;
+    use crate::units::test_world::TestUnitType;
+
+    impl Release {
+        /// Restores its state into `fresh`, a match that loaded the same books, as a restore does; the
+        /// error that refuses it, if one does. A match whose spawns sealed its unit types seals
+        /// `fresh`'s, which loads the same type of its own.
+        pub(crate) fn refusal_into(world: &World, fresh: &mut World) -> Option<SnapshotError> {
+            if let Some(&own) = world.get_resource::<TestUnitType>() {
+                Units::seal_types(fresh);
+                assert_eq!(
+                    fresh.get_resource::<TestUnitType>(),
+                    Some(&own),
+                    "the fresh match loaded the same types"
+                );
+            }
+            Release::clear(fresh);
+            let mut snapshot = Vec::new();
+            world.snapshot(&mut snapshot);
+            fresh.restore(&snapshot).err()
+        }
+
+        /// Despawns the match's entity it started with, as a restore takes a world of no entity.
+        pub(crate) fn clear(world: &mut World) {
+            if let Some(entity) = world.match_entity() {
+                world.despawn(entity);
+            }
+        }
+
+        /// Restores its state into `fresh`, a match that loaded the same books, as a restore does, and
+        /// asserts that the two hash the same.
+        pub(crate) fn restore_into(world: &World, fresh: &mut World) {
+            assert_eq!(
+                Release::refusal_into(world, fresh),
+                None,
+                "a match's own snapshot restores"
+            );
+            assert_eq!(
+                fresh.state_hash(),
+                world.state_hash(),
+                "the restored match hashes as the match"
+            );
+        }
+
+        /// Brings `copy`, a copy of the match's state, up to the match, and checks that every state
+        /// type of it hashes as the match's own.
+        pub(crate) fn check_copy(world: &mut World, copy: &mut StateCopy) {
+            copy.follow(world);
+            let (mut copied, mut own) = (Vec::new(), Vec::new());
+            let registry = world.resource::<StateRegistry>();
+            registry.hash_by_type(copy.world(), &mut copied);
+            registry.hash_by_type(world, &mut own);
+            let differ: Vec<&str> = copied
+                .iter()
+                .zip(&own)
+                .filter(|(copied, own)| copied.hash != own.hash)
+                .map(|(copied, _)| copied.name)
+                .collect();
+            assert!(
+                differ.is_empty(),
+                "the copy differs before tick {}: {differ:?}",
+                world.now().get()
+            );
         }
     }
 }

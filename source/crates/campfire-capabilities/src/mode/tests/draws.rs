@@ -30,20 +30,26 @@ fn on_input(ctx, player, name, value) {
     let entries = [10, 20, 30];
     let draw = |rng: &mut Rng| format!("{} {};", entries[rng.pick(3)], rng.chance(Num::HALF));
     // Two calls in one tick draw on from one sequence; the next tick's call from a new one.
-    game.tick_inputs(&[(0, input("probe", "draw")), (1, input("probe", "draw"))]);
+    Mode::tick_inputs(
+        &mut game,
+        &[(0, input("probe", "draw")), (1, input("probe", "draw"))],
+    );
     let mut rng = mode_sequence(&game);
     let first = format!("{}{}", draw(&mut rng), draw(&mut rng));
-    assert_eq!(game.field("kind"), StateValue::Text(first.clone()));
-    game.tick_inputs(&[(0, input("probe", "draw"))]);
+    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(first.clone()));
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "draw"))]);
     let second = draw(&mut mode_sequence(&game));
     assert_eq!(
-        game.field("kind"),
+        Mode::field(&game, "kind"),
         StateValue::Text(format!("{first}{second}"))
     );
-    assert_eq!(game.failures(), []);
+    assert_eq!(Mode::failures(&game), []);
     // A chance of 0 never comes true, and one of 1 always does.
-    game.tick_inputs(&[(0, input("probe", "edges"))]);
-    assert_eq!(game.field("kind"), StateValue::Text("false true".into()));
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "edges"))]);
+    assert_eq!(
+        Mode::field(&game, "kind"),
+        StateValue::Text("false true".into())
+    );
     // A probability outside 0 to 1, and a pick from nothing, fail the call.
     let refused = [
         ("below", ApiError::NotAProbability),
@@ -51,7 +57,7 @@ fn on_input(ctx, player, name, value) {
         ("empty", ApiError::EmptyPick),
     ];
     for (value, error) in refused {
-        game.tick_inputs(&[(0, input("probe", value))]);
-        assert_eq!(game.failures(), [FailureKind::Api(error)], "{value}");
+        Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);
+        assert_eq!(Mode::failures(&game), [FailureKind::Api(error)], "{value}");
     }
 }

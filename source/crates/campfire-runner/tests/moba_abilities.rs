@@ -9,17 +9,18 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
-use campfire_capabilities::internals::{self, Arms, CombatWorldInternals, StatsWorldInternals};
+use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
     Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
     Life, Match, ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner,
     PackagePath, Param, Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers, Scalar,
-    Scaling, SeenBy, SlotKind, SlotTimes, Stat, StatsWorld, Targeting, Team, UnitEntity,
+    Scaling, SeenBy, SlotKind, SlotTimes, Stat, Targeting, Team, UnitEntity,
 };
+use campfire_capabilities::{Combat, PoolMeters, Stats};
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_package::{AvatarData, PackageDir, PackageFiles};
-use campfire_runner::internals::{HarnessMatchInternals, HarnessWorldInternals};
+use campfire_runner::internals::Arena;
 use campfire_sim::{IdAllocator, Position, SimWorld, StableId, TickRate};
 
 /// The MOBA's 30 ticks a second.
@@ -37,43 +38,40 @@ fn abilities(name: &str) -> AvatarData {
     let path = PackagePath::parse("data/avatar.toml").unwrap();
     hero(name).read_data(&path).unwrap()
 }
-/// The 3v3's books at 30 ticks a second for one player, with no mode: no `calc_damage` weighs a
+/// The 3v3's books with no mode: no `calc_damage` weighs a
 /// hit, so each one lands as its ability deals it.
-fn arena() -> Match {
-    arena_at(RATE)
-}
-
-/// The same at `rate`.
-fn arena_at(rate: TickRate) -> Match {
-    Match::arena(&PackageDir::workspace("test/moba/modes/3v3"), rate, 1)
+fn arena() -> Arena {
+    Arena::load(&PackageDir::workspace("test/moba/modes/3v3"))
 }
 
 /// A unit of 500 health on `team` at `x` meters along x that stays when it dies, with `parts`, and
 /// with `mana` and `energy` pools of those maxima, when not 0; with no slots unless `parts` hold
 /// some.
 fn spawn_with(
+    arena: &Arena,
     game: &mut Match,
-    team: u8,
     x: i64,
+    team: Team,
     pools: (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
     let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
-    spawn_at(game, team, pos, pools, parts)
+    spawn_at(arena, game, pos, team, pools, parts)
 }
 
 /// A unit as `spawn_with` gives, at `pos`.
 fn spawn_at(
+    arena: &Arena,
     game: &mut Match,
-    team: u8,
     pos: Position,
+    team: Team,
     (mana, energy): (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
     let pools: Vec<_> = [("mana", mana), ("energy", energy)]
         .into_iter()
         .filter(|&(_, max)| max > 0)
-        .map(|(pool, max)| (game.arena_pool(pool), Num::int(max)))
+        .map(|(pool, max)| (arena.pool(pool), Num::int(max)))
         .collect();
     let id = game.resource_mut::<IdAllocator>().allocate();
     let combat = (
@@ -81,7 +79,7 @@ fn spawn_at(
         OnDeath::Stay,
         RecentAttackers::default(),
     );
-    let mut unit = game.spawn((id, UnitEntity, pos, Team::new(team), combat, parts));
+    let mut unit = game.spawn((id, UnitEntity, pos, team, combat, parts));
     if !pools.is_empty() {
         unit.insert(Pools::new(pools).unwrap());
     }
@@ -90,18 +88,18 @@ fn spawn_at(
 }
 
 /// A unit of 500 health and no other pool, as `spawn_with` gives.
-fn spawn(game: &mut Match, team: u8, x: i64, parts: impl Bundle) -> StableId {
-    spawn_with(game, team, x, (0, 0), parts)
+fn spawn(arena: &Arena, game: &mut Match, x: i64, team: Team, parts: impl Bundle) -> StableId {
+    spawn_with(arena, game, x, team, (0, 0), parts)
 }
 
-fn health(game: &Match, id: StableId) -> i64 {
-    pool(game, id, "health").round()
+fn health(arena: &Arena, game: &Match, id: StableId) -> i64 {
+    pool(arena, game, id, "health").round()
 }
 
-fn pool(game: &Match, id: StableId, name: &str) -> Num {
+fn pool(arena: &Arena, game: &Match, id: StableId, name: &str) -> Num {
     let entity = game.entity_of(id).unwrap();
-    let meters = game.pool_meters(entity);
-    meters.current(game.arena_pool(name)).unwrap()
+    let meters = PoolMeters::of(game, entity);
+    meters.current(arena.pool(name)).unwrap()
 }
 
 /// Gives `id` a weapon of `damage` within 2 m, its windup of no ticks, every `period` ticks.
@@ -123,6 +121,7 @@ const fn cast(id: StableId, target: ActionTarget) -> Order {
 
 /// Player 0's unit with `action` at `rank` in its one slot, and `mana` and `energy`.
 fn caster(
+    arena: &Arena,
     game: &mut Match,
     action: ActionId,
     rank: u8,
@@ -131,12 +130,12 @@ fn caster(
 ) -> StableId {
     let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed();
     let player = Owner::new(PlayerSlot::new(0));
-    spawn_with(game, 0, 0, pools, (player, slots, parts))
+    spawn_with(arena, game, 0, Team::new(0), pools, (player, slots, parts))
 }
 
 /// The modifiers `id` carries, each with its source.
 fn carried(game: &Match, id: StableId) -> Vec<(ModifierId, Option<StableId>)> {
-    game.carried_modifiers(id)
+    Stats::carried_modifiers(game, id)
 }
 
 /// How many projectiles the match holds.
@@ -228,41 +227,49 @@ fn every_moba_ability_reads_into_the_schema() {
 
 #[test]
 fn lash_out_from_its_package_hits_exactly() {
-    let mut game = arena();
-    let lash_out = game.arena_action("hero-husk", "lash_out");
-    let caster = caster(&mut game, lash_out, 3, (100, 0), ());
-    let near = spawn(&mut game, 1, 3, ());
-    let far = spawn(&mut game, 1, 4, ());
-    game.arena_tick(0, &[cast(caster, ActionTarget::None)]);
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let lash_out = arena.action(&game, "hero-husk", "lash_out");
+    let caster = caster(&arena, &mut game, lash_out, 3, (100, 0), ());
+    let near = spawn(&arena, &mut game, 3, Team::new(1), ());
+    let far = spawn(&arena, &mut game, 4, Team::new(1), ());
+    arena.tick(&mut game, 0, &[cast(caster, ActionTarget::None)]);
     // Rank 3 deals 125 within 3.5 m: 500 → 375 at 3 m, and nothing at 4 m.
-    assert_eq!(health(&game, near), 375);
-    assert_eq!(health(&game, far), 500);
+    assert_eq!(health(&arena, &game, near), 375);
+    assert_eq!(health(&arena, &game, far), 500);
 }
 
 #[test]
 fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself() {
-    let mut game = arena();
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
     let player = Owner::new(PlayerSlot::new(0));
-    let blade = spawn(&mut game, 0, 0, (player, Modifiers::default()));
-    let dummy = spawn(&mut game, 1, 1, ());
-    let twin_cut = game.arena_modifier("hero-kensho", "twin_cut");
-    game.give_modifier(blade, twin_cut, Some((blade, None, 1)), true);
+    let blade = spawn(
+        &arena,
+        &mut game,
+        0,
+        Team::new(0),
+        (player, Modifiers::default()),
+    );
+    let dummy = spawn(&arena, &mut game, 1, Team::new(1), ());
+    let twin_cut = arena.modifier(&game, "hero-kensho", "twin_cut");
+    Stats::give_modifier(&mut game, blade, twin_cut, Some((blade, None, 1)), true);
     // 20 an attack, every 10 ticks from tick 0, so 7 within 4 s are consecutive: 6 by tick 50,
     // 500 − 120; the 7th, in tick 60, hits twice, − 40; its extra hit counts for nothing, so
     // the next 6 take 120 by tick 120, and the 14th, in tick 130, hits twice, − 40.
     arm(&mut game, blade, 20, 10);
-    game.arena_tick(0, &[attack(blade, dummy)]);
-    let mut healths = vec![health(&game, dummy)];
+    arena.tick(&mut game, 0, &[attack(blade, dummy)]);
+    let mut healths = vec![health(&arena, &game, dummy)];
     for _ in 1..=130 {
-        game.arena_step();
-        healths.push(health(&game, dummy));
+        arena.step(&mut game);
+        healths.push(health(&arena, &game, dummy));
     }
     let at = |tick: usize| healths[tick];
     assert_eq!([at(50), at(60), at(120), at(130)], [380, 340, 220, 180]);
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
@@ -287,70 +294,79 @@ fn toggled(game: &Match, id: StableId) -> bool {
 
 #[test]
 fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
-    let mut game = arena();
-    let chill = game.arena_action("hero-rime", "chill_arrows");
-    let hold = game.arena_modifier("hero-rime", "chill_arrows");
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let chill = arena.action(&game, "hero-rime", "chill_arrows");
+    let hold = arena.modifier(&game, "hero-rime", "chill_arrows");
     let player = Owner::new(PlayerSlot::new(0));
     // Rime with 20 mana, a weapon of 10 every 10 ticks; an enemy beside her.
-    let rime = spawn_with(&mut game, 0, 0, (20, 0), (player, Modifiers::default()));
-    let enemy = spawn(&mut game, 1, 1, Modifiers::default());
+    let rime = spawn_with(
+        &arena,
+        &mut game,
+        0,
+        Team::new(0),
+        (20, 0),
+        (player, Modifiers::default()),
+    );
+    let enemy = spawn(&arena, &mut game, 1, Team::new(1), Modifiers::default());
     arm_with(&mut game, rime, chill, 10, 10);
-    let mana = |game: &Match| pool(game, rime, "mana").round();
+    let mana = |game: &Match| pool(&arena, game, rime, "mana").round();
     let holds = |game: &Match| carried(game, rime).contains(&(hold, Some(rime)));
     // Tick 0: on, at no cost but its toggle's, and its hold from that tick's Resolve.
-    game.arena_tick(0, &[cast(rime, ActionTarget::None)]);
+    arena.tick(&mut game, 0, &[cast(rime, ActionTarget::None)]);
     assert_eq!(
         (toggled(&game, rime), holds(&game), mana(&game)),
         (true, true, 20)
     );
     // Each attack pays 8 as it goes off, in ticks 1 and 11: 4 are left. The third, in tick 21,
     // cannot pay: the toggle turns off before it, and its hold with it.
-    game.arena_tick(0, &[attack(rime, enemy)]);
+    arena.tick(&mut game, 0, &[attack(rime, enemy)]);
     for _ in 2..=11 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     assert_eq!((toggled(&game, rime), mana(&game)), (true, 4));
     for _ in 12..=21 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     assert_eq!(
         (toggled(&game, rime), holds(&game), mana(&game)),
         (false, false, 4)
     );
-    assert_eq!(health(&game, enemy), 470);
+    assert_eq!(health(&arena, &game, enemy), 470);
     // On again, then a second cast turns it off as it starts, at no cost.
-    game.arena_tick(0, &[cast(rime, ActionTarget::None)]);
+    arena.tick(&mut game, 0, &[cast(rime, ActionTarget::None)]);
     assert!(toggled(&game, rime));
-    game.arena_tick(0, &[cast(rime, ActionTarget::None)]);
+    arena.tick(&mut game, 0, &[cast(rime, ActionTarget::None)]);
     assert_eq!((toggled(&game, rime), mana(&game)), (false, 4));
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
-    let mut game = arena();
-    let dread = game.arena_action("hero-husk", "dread");
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let dread = arena.action(&game, "hero-husk", "dread");
     // Husk with 20 mana; an enemy of 500 health 2 m away, inside Dread's 3 m.
-    let husk = caster(&mut game, dread, 1, (20, 0), Modifiers::default());
-    let enemy = spawn(&mut game, 1, 2, ());
-    let mana = |game: &Match| pool(game, husk, "mana").round();
+    let husk = caster(&arena, &mut game, dread, 1, (20, 0), Modifiers::default());
+    let enemy = spawn(&arena, &mut game, 2, Team::new(1), ());
+    let mana = |game: &Match| pool(&arena, game, husk, "mana").round();
     // On in tick 0. It pays 8 at each whole second, in ticks 30 and 60: 4 are left. Its hold's
     // interval of 1000 ms deals 1.5% of the enemy's 500 health in ticks 30 and 60. In tick 90 it
     // cannot pay: it turns off before its hold's interval, which deals nothing more.
-    game.arena_tick(0, &[cast(husk, ActionTarget::None)]);
+    arena.tick(&mut game, 0, &[cast(husk, ActionTarget::None)]);
     let mut seen = Vec::new();
     for tick in 1..=95 {
-        game.arena_step();
+        arena.step(&mut game);
         if [30, 60, 90].contains(&tick) {
             seen.push((
                 tick,
                 toggled(&game, husk),
                 mana(&game),
-                pool(&game, enemy, "health"),
+                pool(&arena, &game, enemy, "health"),
             ));
         }
     }
@@ -367,26 +383,34 @@ fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
         ]
     );
     // On again, it ends as Husk dies.
-    game.arena_tick(0, &[cast(husk, ActionTarget::None)]);
+    arena.tick(&mut game, 0, &[cast(husk, ActionTarget::None)]);
     assert!(toggled(&game, husk));
-    game.queue_damage(None, husk, Num::int(1000), "true");
-    game.arena_step();
-    game.arena_step();
+    Combat::queue_damage(&mut game, None, husk, Num::int(1000), "true");
+    arena.step(&mut game);
+    arena.step(&mut game);
     assert!(!toggled(&game, husk));
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn kenshos_still_mind_heals_each_half_second_of_its_channel_and_guards_him_while_it_runs() {
-    let mut game = arena();
-    let still_mind = game.arena_action("hero-kensho", "still_mind");
-    let guard = game.arena_modifier("hero-kensho", "still_mind");
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let still_mind = arena.action(&game, "hero-kensho", "still_mind");
+    let guard = arena.modifier(&game, "hero-kensho", "still_mind");
     // Kensho with 100 mana, and 300 of his 500 health lost.
-    let kensho = caster(&mut game, still_mind, 1, (100, 0), Modifiers::default());
+    let kensho = caster(
+        &arena,
+        &mut game,
+        still_mind,
+        1,
+        (100, 0),
+        Modifiers::default(),
+    );
     let entity = game.entity_of(kensho).unwrap();
     let life = *game.get::<Life>(entity).unwrap();
     game.entity_mut(entity)
@@ -395,16 +419,16 @@ fn kenshos_still_mind_heals_each_half_second_of_its_channel_and_guards_him_while
     // Cast in tick 0, for 50 mana. The channel runs from tick 1 for 5000 ms, 150 ticks, and
     // ticks each 500 ms, 15 ticks: in ticks 16 to 151, ten times, each 20 at rank 1 with no
     // ability power. It guards him from tick 0's Resolve until it ends in tick 151.
-    game.arena_tick(0, &[cast(kensho, ActionTarget::None)]);
+    arena.tick(&mut game, 0, &[cast(kensho, ActionTarget::None)]);
     assert_eq!(
-        (pool(&game, kensho, "mana"), guarded(&game)),
+        (pool(&arena, &game, kensho, "mana"), guarded(&game)),
         (Num::int(50), true)
     );
     let mut healed = Vec::new();
     for tick in 1..=152 {
-        game.arena_step();
+        arena.step(&mut game);
         if [15, 16, 150, 151].contains(&tick) {
-            healed.push((tick, pool(&game, kensho, "health"), guarded(&game)));
+            healed.push((tick, pool(&arena, &game, kensho, "health"), guarded(&game)));
         }
     }
     let at = |left: i64| Num::int(left);
@@ -418,60 +442,64 @@ fn kenshos_still_mind_heals_each_half_second_of_its_channel_and_guards_him_while
         ]
     );
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
-    let mut game = arena();
-    let action = game.arena_action("hero-veil", "dusk_mark");
-    let dusk_mark = game.arena_modifier("hero-veil", "dusk_mark");
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let action = arena.action(&game, "hero-veil", "dusk_mark");
+    let dusk_mark = arena.modifier(&game, "hero-veil", "dusk_mark");
     let player = Owner::new(PlayerSlot::new(0));
-    let veil = spawn_with(&mut game, 0, 0, (0, 200), player);
-    let energy = game.arena_pool("energy");
+    let veil = spawn_with(&arena, &mut game, 0, Team::new(0), (0, 200), player);
+    let energy = arena.pool("energy");
     let entity = game.entity_of(veil).unwrap();
     let pools = *game.get::<Pools>(entity).unwrap();
     game.entity_mut(entity)
         .insert(internals::spent(pools, energy, Num::int(100)));
-    let other = spawn(&mut game, 0, 0, player);
-    let marked = spawn(&mut game, 1, 1, Modifiers::default());
+    let other = spawn(&arena, &mut game, 0, Team::new(0), player);
+    let marked = spawn(&arena, &mut game, 1, Team::new(1), Modifiers::default());
     let marks = |game: &Match| !carried(game, marked).is_empty();
     let from = Some((veil, Some(action), 2));
-    game.give_modifier(marked, dusk_mark, from, false);
+    Stats::give_modifier(&mut game, marked, dusk_mark, from, false);
     arm(&mut game, other, 30, 100);
     arm(&mut game, veil, 30, 100);
     // Another unit's attack of 30 in tick 0 leaves the mark.
-    game.arena_tick(0, &[attack(other, marked)]);
-    assert_eq!((health(&game, marked), marks(&game)), (470, true));
+    arena.tick(&mut game, 0, &[attack(other, marked)]);
+    assert_eq!((health(&arena, &game, marked), marks(&game)), (470, true));
     // Veil's attack of 30 in tick 1 detonates it at rank 2: 70 more, and 25 energy back, from 100
     // to 125. The detonation is Dusk Mark's own damage, and the mark is gone: it detonates once.
-    game.arena_tick(0, &[attack(veil, marked)]);
-    assert_eq!((health(&game, marked), marks(&game)), (370, false));
-    assert_eq!(pool(&game, veil, "energy"), Num::int(125));
+    arena.tick(&mut game, 0, &[attack(veil, marked)]);
+    assert_eq!((health(&arena, &game, marked), marks(&game)), (370, false));
+    assert_eq!(pool(&arena, &game, veil, "energy"), Num::int(125));
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each() {
-    let mut game = arena();
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
     // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
     assert_eq!(
         abilities("rime").content.actions["fan_of_frost"].script,
         None
     );
-    let fan = game.arena_action("hero-rime", "fan_of_frost");
-    let caster = caster(&mut game, fan, 1, (100, 0), ());
+    let fan = arena.action(&game, "hero-rime", "fan_of_frost");
+    let caster = caster(&arena, &mut game, fan, 1, (100, 0), ());
     // Seven arrows from the origin, 57.5° apart from the first to the last, around +x: at 0°,
     // ±9.583°, ±19.167° and ±28.75°, each 0.4 m wide, so a body of no radius within 0.2 m of an
     // arrow's path is in reach, up to the 12 m of the range.
-    let enemy = |game: &mut Match, at| spawn_at(game, 1, at, (0, 0), Modifiers::default());
+    let enemy = |game: &mut Match, at| {
+        spawn_at(&arena, game, at, Team::new(1), (0, 0), Modifiers::default())
+    };
     // 1 m out on +x, 1 · sin 9.583° = 0.166 m from the arrows beside the middle one: three
     // arrows reach it in the same tick, and the cast hits it once.
     let near = enemy(&mut game, milli(1000, 0));
@@ -484,12 +512,23 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let beyond = [4104, -4104].map(|z| enemy(&mut game, milli(11_807, z)));
     // 6 m out at ±4.78°, between two arrows: 0.50 m from each.
     let between = [500, -500].map(|z| enemy(&mut game, milli(5980, z)));
-    let ally = spawn_at(&mut game, 0, milli(5000, 0), (0, 0), Modifiers::default());
+    let ally = spawn_at(
+        &arena,
+        &mut game,
+        milli(5000, 0),
+        Team::new(0),
+        (0, 0),
+        Modifiers::default(),
+    );
 
-    game.arena_tick(0, &[cast(caster, ActionTarget::Point(milli(10_000, 0)))]);
+    arena.tick(
+        &mut game,
+        0,
+        &[cast(caster, ActionTarget::Point(milli(10_000, 0)))],
+    );
     // The cast resolves after its windup of 8 ticks, and the arrows fly 0.5 m a tick for 24.
     for _ in 0..40 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     assert_eq!(projectiles(&mut game), 0);
 
@@ -497,27 +536,28 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let slowed = |id: StableId| !carried(&game, id).is_empty();
     let hit = [near, far, outer[0], outer[1]];
     let missed = [beyond[0], beyond[1], between[0], between[1], ally];
-    assert_eq!(hit.map(|unit| health(&game, unit)), [460; 4]);
-    assert_eq!(missed.map(|unit| health(&game, unit)), [500; 5]);
+    assert_eq!(hit.map(|unit| health(&arena, &game, unit)), [460; 4]);
+    assert_eq!(missed.map(|unit| health(&arena, &game, unit)), [500; 5]);
     assert_eq!(hit.map(slowed), [true; 4]);
     assert_eq!(missed.map(slowed), [false; 5]);
-    assert_eq!(pool(&game, caster, "mana"), Num::int(40));
+    assert_eq!(pool(&arena, &game, caster, "mana"), Num::int(40));
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
-    let mut game = arena();
-    game.load_arena_vision(2);
-    let snow_owl = game.arena_action("hero-rime", "snow_owl");
-    let caster = caster(&mut game, snow_owl, 1, (0, 0), ());
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    arena.load_vision(&mut game, 2);
+    let snow_owl = arena.action(&game, "hero-rime", "snow_owl");
+    let caster = caster(&arena, &mut game, snow_owl, 1, (0, 0), ());
     // An enemy at (10, 0): its cell's center (10.5, 0.5) is √12.5 ≈ 3.54 m from the point, within
     // the owl's sight of 4 m and its linger's radius of 4 m; the caster has no sight of its own.
-    let enemy = spawn(&mut game, 1, 10, ());
+    let enemy = spawn(&arena, &mut game, 10, Team::new(1), ());
     let seen = |game: &Match| {
         let entity = game.entity_of(enemy).unwrap();
         game.get::<SeenBy>(entity)
@@ -534,43 +574,44 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
     // a tick, 7 829 367 bits rounded, from tick 1. Fifteen steps are 7 bits short of 7 m, and the
     // sixteenth ends it on the point, where its `on_end` runs.
     let point = Position::new(Vec3::new(Num::int(7), Num::ZERO, Num::ZERO)).unwrap();
-    game.arena_tick(0, &[cast(caster, ActionTarget::Point(point))]);
+    arena.tick(&mut game, 0, &[cast(caster, ActionTarget::Point(point))]);
     assert!(!seen(&game));
     for _ in 1..=15 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     let short = Num::from_bits(15 * 7_829_367);
     assert_eq!(short, Num::int(7) - Num::from_bits(7));
     let flying = Position::new(Vec3::new(short, Num::ZERO, Num::ZERO)).unwrap();
     assert_eq!(owls(&mut game), [flying]);
-    game.arena_step();
+    arena.step(&mut game);
     assert_eq!(owls(&mut game), []);
     // Its `on_end` in tick 16 reveals 4 m round the point for 5000 ms, 150 ticks: the Vision
     // stages of ticks 16 to 165, with the owl gone.
     assert!(seen(&game));
     for _ in 17..=165 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     assert!(seen(&game));
-    game.arena_step();
+    arena.step(&mut game);
     assert!(!seen(&game));
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
-    let mut game = arena();
-    game.load_arena_vision(3);
-    let farsight = game.arena_action("player-spells", "farsight");
-    let caster = caster(&mut game, farsight, 1, (0, 0), ());
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    arena.load_vision(&mut game, 3);
+    let farsight = arena.action(&game, "player-spells", "farsight");
+    let caster = caster(&arena, &mut game, farsight, 1, (0, 0), ());
     // Revealed 6 m round (20, 0): the cell of (25, 0), its center (25.5, 0.5) √30.5 ≈ 5.52 m
     // off, and not that of (26, 0), at (26.5, 0.5) √42.5 ≈ 6.52 m off. Team 2 sees neither.
-    let near = spawn(&mut game, 1, 25, ());
-    let far = spawn(&mut game, 1, 26, ());
+    let near = spawn(&arena, &mut game, 25, Team::new(1), ());
+    let far = spawn(&arena, &mut game, 26, Team::new(1), ());
     let seen = |game: &Match, id: StableId| {
         let entity = game.entity_of(id).unwrap();
         let teams = game.get::<SeenBy>(entity).unwrap().get();
@@ -578,21 +619,21 @@ fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
     };
     // It resolves at once, in tick 0, and reveals for 5000 ms, 150 ticks: ticks 0 to 149.
     let point = Position::new(Vec3::new(Num::int(20), Num::ZERO, Num::ZERO)).unwrap();
-    game.arena_tick(0, &[cast(caster, ActionTarget::Point(point))]);
+    arena.tick(&mut game, 0, &[cast(caster, ActionTarget::Point(point))]);
     assert_eq!(
         [near, far].map(|unit| seen(&game, unit)),
         [[true, false], [false; 2]]
     );
     for _ in 1..=149 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     assert_eq!(seen(&game, near), [true, false]);
-    game.arena_step();
+    arena.step(&mut game);
     assert_eq!(seen(&game, near), [false; 2]);
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
@@ -608,57 +649,76 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
 
 /// Cinder's Eruption at `rate`, which erupts in tick `erupts`.
 fn erupt_at(rate: TickRate, erupts: u64) {
-    let mut game = arena_at(rate);
-    let eruption = game.arena_action("hero-cinder", "eruption");
-    let kindle = game.arena_modifier("hero-cinder", "kindle");
-    let caster = caster(&mut game, eruption, 1, (100, 0), ());
+    let arena = arena();
+    let mut game = arena.start(rate, 1);
+    let eruption = arena.action(&game, "hero-cinder", "eruption");
+    let kindle = arena.modifier(&game, "hero-cinder", "kindle");
+    let caster = caster(&arena, &mut game, eruption, 1, (100, 0), ());
     // The area lands on (6, 0, 0), of radius 2.4, and these bodies have no radius: one on the
     // centre and one 2.4 m out are in reach, one 2.401 m out is not, and an ally is never hit.
-    let enemy = |game: &mut Match, at| spawn_at(game, 1, at, (0, 0), Modifiers::default());
+    let enemy = |game: &mut Match, at| {
+        spawn_at(&arena, game, at, Team::new(1), (0, 0), Modifiers::default())
+    };
     let center = enemy(&mut game, milli(6000, 0));
     let edge = enemy(&mut game, milli(8400, 0));
     let beyond = enemy(&mut game, milli(6000, 2401));
     let burning = enemy(&mut game, milli(6000, 1000));
-    let ally = spawn_at(&mut game, 0, milli(6000, 0), (0, 0), Modifiers::default());
+    let ally = spawn_at(
+        &arena,
+        &mut game,
+        milli(6000, 0),
+        Team::new(0),
+        (0, 0),
+        Modifiers::default(),
+    );
     let from = Some((caster, Some(eruption), 1));
-    game.give_modifier(burning, kindle, from, false);
+    Stats::give_modifier(&mut game, burning, kindle, from, false);
 
-    game.arena_tick(0, &[cast(caster, ActionTarget::Point(milli(6000, 0)))]);
+    arena.tick(
+        &mut game,
+        0,
+        &[cast(caster, ActionTarget::Point(milli(6000, 0)))],
+    );
     let units = [center, edge, beyond, burning, ally];
     for _ in 1..erupts {
-        game.arena_step();
+        arena.step(&mut game);
     }
-    assert_eq!(units.map(|unit| health(&game, unit)), [500; 5], "{rate:?}");
+    assert_eq!(
+        units.map(|unit| health(&arena, &game, unit)),
+        [500; 5],
+        "{rate:?}"
+    );
     assert_eq!(areas(&mut game), 1);
-    game.arena_step();
+    arena.step(&mut game);
     // Rank 1 deals 75, and 1.25 × 75 = 93.75 to a unit ablaze: 500 → 406.25. Each unit hit is
     // ablaze after, and the area ends with its eruption.
     assert_eq!(
-        units.map(|unit| health(&game, unit)),
+        units.map(|unit| health(&arena, &game, unit)),
         [425, 425, 500, 406, 500],
         "{rate:?}"
     );
     let ablaze = |unit| carried(&game, unit) == [(kindle, Some(caster))];
     assert_eq!(units.map(ablaze), [true, true, false, true, false]);
     assert_eq!(areas(&mut game), 0);
-    assert_eq!(pool(&game, caster, "mana"), Num::int(30));
+    assert_eq!(pool(&arena, &game, caster, "mana"), Num::int(30));
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
-    let mut game = arena();
-    let chain_fire = game.arena_action("hero-cinder", "chain_fire");
-    let caster = caster(&mut game, chain_fire, 1, (100, 0), ());
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let chain_fire = arena.action(&game, "hero-cinder", "chain_fire");
+    let caster = caster(&arena, &mut game, chain_fire, 1, (100, 0), ());
     // Two enemies 4 m apart, within the 5 m of a bounce. The arena has no map, so its Vision
     // stage never runs: each is seen by every team, as a bounce picks among what its caster's
     // team sees.
-    let near = spawn(&mut game, 1, 4, internals::seen_by_all());
-    let far = spawn(&mut game, 1, 8, internals::seen_by_all());
+    let near = spawn(&arena, &mut game, 4, Team::new(1), internals::seen_by_all());
+    let far = spawn(&arena, &mut game, 8, Team::new(1), internals::seen_by_all());
     let projectiles = |game: &mut Match| -> Vec<u64> {
         let mut query = game.query::<(&Projectile, &StableId)>();
         query.iter(game).map(|(_, id)| id.get()).collect()
@@ -669,14 +729,14 @@ fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
     // tick 13. Each hit deals 150 at rank 1 and, with its type's 4 bounces left and counting
     // down, picks the one other enemy in reach: 4 bounces after the first hit, each 4 m and 13
     // ticks, alternating, ids 4 to 7. The last hit, with none left, bounces no more.
-    game.arena_tick(0, &[cast(caster, ActionTarget::Unit(near))]);
+    arena.tick(&mut game, 0, &[cast(caster, ActionTarget::Unit(near))]);
     let mut flown = Vec::new();
     let mut hits = Vec::new();
     let mut last = [500, 500];
     for tick in 1..=80 {
         flown.extend(projectiles(&mut game));
-        game.arena_step();
-        let now = [near, far].map(|unit| health(&game, unit));
+        arena.step(&mut game);
+        let now = [near, far].map(|unit| health(&arena, &game, unit));
         if now != last {
             hits.push((tick, now));
             last = now;
@@ -696,21 +756,31 @@ fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
         ]
     );
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_while_it_lasts() {
-    let mut game = arena();
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
     assert_eq!(abilities("veil").content.actions["smoke_ring"].script, None);
-    let ring = game.arena_action("hero-veil", "smoke_ring");
-    let cover = game.arena_modifier("hero-veil", "smoke_ring_cover");
-    let slow = game.arena_modifier("hero-veil", "smoke_ring_slow");
-    let caster = caster(&mut game, ring, 1, (0, 100), Modifiers::default());
-    let unit = |game: &mut Match, team, x| spawn_with(game, team, x, (0, 0), Modifiers::default());
+    let ring = arena.action(&game, "hero-veil", "smoke_ring");
+    let cover = arena.modifier(&game, "hero-veil", "smoke_ring_cover");
+    let slow = arena.modifier(&game, "hero-veil", "smoke_ring_slow");
+    let caster = caster(&arena, &mut game, ring, 1, (0, 100), Modifiers::default());
+    let unit = |game: &mut Match, team, x| {
+        spawn_with(
+            &arena,
+            game,
+            x,
+            Team::new(team),
+            (0, 0),
+            Modifiers::default(),
+        )
+    };
     // The ring lands where Veil stands, of radius 3: an enemy 2 m and one 3 m away are inside,
     // one 4 m away is not, and an ally inside gets nothing, as the ring names no `allies`.
     let near = unit(&mut game, 1, 2);
@@ -729,32 +799,32 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
 
     // The cast resolves at once and the ring lands in tick 0; it holds its modifiers from that
     // tick's Resolve. It lasts 8000 ms, 240 ticks, and ends in tick 240.
-    game.arena_tick(0, &[cast(caster, ActionTarget::None)]);
+    arena.tick(&mut game, 0, &[cast(caster, ActionTarget::None)]);
     assert_eq!(held(&game), inside);
-    assert_eq!(pool(&game, caster, "energy"), Num::int(20));
+    assert_eq!(pool(&arena, &game, caster, "energy"), Num::int(20));
     // The near enemy steps out to 4 m: its slow ends in the next tick's Resolve.
     for _ in 1..100 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     let entity = game.entity_of(near).unwrap();
     *game.get_mut::<Position>(entity).unwrap() =
         Position::new(Vec3::new(Num::int(4), Num::ZERO, Num::ZERO)).unwrap();
-    game.arena_step();
+    arena.step(&mut game);
     let mut left = inside.clone();
     left[1] = vec![];
     assert_eq!(held(&game), left);
     for _ in 101..240 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     assert_eq!(held(&game), left);
     assert_eq!(areas(&mut game), 1);
-    game.arena_step();
+    arena.step(&mut game);
     assert_eq!(held(&game), [vec![], vec![], vec![], vec![], vec![]]);
     assert_eq!(areas(&mut game), 0);
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
@@ -778,22 +848,23 @@ fn forced(game: &Match, id: StableId) -> (Num, Option<ForcedMove>) {
 
 #[test]
 fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it() {
-    let mut game = arena();
-    let night_step = game.arena_action("hero-veil", "night_step");
-    let veil = caster(&mut game, night_step, 1, (0, 200), walker());
-    let enemy = spawn(&mut game, 1, 6, body());
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let night_step = arena.action(&game, "hero-veil", "night_step");
+    let veil = caster(&arena, &mut game, night_step, 1, (0, 200), walker());
+    let enemy = spawn(&arena, &mut game, 6, Team::new(1), body());
 
     // It resolves at once in tick 0, and its dash of 22 m a second goes 22/30 m a tick, s, from
     // tick 1, until the bodies of half a meter touch, 1 m apart. Six steps leave 6 − 6s = 1.6 m,
     // within 1 + s; the seventh, in tick 7, ends the dash on 5 m, and its `on_end` deals rank 1's
     // 100 magic, with no ability power, in that tick.
-    game.arena_tick(0, &[cast(veil, ActionTarget::Unit(enemy))]);
+    arena.tick(&mut game, 0, &[cast(veil, ActionTarget::Unit(enemy))]);
     for _ in 1..=6 {
-        game.arena_step();
+        arena.step(&mut game);
     }
     let (x, dash) = forced(&game, veil);
     let step = Num::int(22).checked_div_int(30).unwrap();
-    assert_eq!((x, health(&game, enemy)), (step * 6, 500));
+    assert_eq!((x, health(&arena, &game, enemy)), (step * 6, 500));
     assert!(matches!(
         dash,
         Some(ForcedMove::Dash {
@@ -801,36 +872,47 @@ fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it(
             ..
         })
     ));
-    game.arena_step();
+    arena.step(&mut game);
     assert_eq!(forced(&game, veil), (Num::int(5), None));
-    assert_eq!(health(&game, enemy), 400);
+    assert_eq!(health(&arena, &game, enemy), 400);
     for _ in 0..30 {
-        game.arena_step();
+        arena.step(&mut game);
     }
-    assert_eq!(health(&game, enemy), 400);
+    assert_eq!(health(&arena, &game, enemy), 400);
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }
 
 #[test]
 fn husks_grasping_wraps_pulls_him_to_the_enemy_hit_and_its_pull_delivers_nothing() {
-    let mut game = arena();
-    let wraps = game.arena_action("hero-husk", "grasping_wraps");
-    let husk = caster(&mut game, wraps, 1, (200, 0), walker());
-    let enemy = spawn(&mut game, 1, 5, (body(), Modifiers::default()));
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let wraps = arena.action(&game, "hero-husk", "grasping_wraps");
+    let husk = caster(&arena, &mut game, wraps, 1, (200, 0), walker());
+    let enemy = spawn(
+        &arena,
+        &mut game,
+        5,
+        Team::new(1),
+        (body(), Modifiers::default()),
+    );
 
     // The cast resolves after its windup of 250 ms, 8 ticks, and its wraps fly 20/30 m a tick
     // from tick 9, 1.6 m wide: they reach the enemy's body once their front comes within 0.8 +
     // 0.5 m of its center, in their sixth step, tick 14. Its `on_hit` deals rank 1's 80, stuns,
     // and pulls Husk at 18 m a second: a dash from the delivery's hit, not from `on_resolve`, so
     // it delivers no action and its end runs no `on_end`.
-    game.arena_tick(0, &[cast(husk, ActionTarget::Point(milli(5000, 0)))]);
+    arena.tick(
+        &mut game,
+        0,
+        &[cast(husk, ActionTarget::Point(milli(5000, 0)))],
+    );
     let mut pulled = None;
     for tick in 1..=40 {
-        game.arena_step();
+        arena.step(&mut game);
         if pulled.is_none() && forced(&game, husk).1.is_some() {
             pulled = Some((tick, forced(&game, husk).1.unwrap()));
         }
@@ -840,10 +922,10 @@ fn husks_grasping_wraps_pulls_him_to_the_enemy_hit_and_its_pull_delivers_nothing
     assert!(matches!(pull, ForcedMove::Dash { delivers: None, .. }));
     // The pull ends with the bodies touching, Husk on 4 m, and the enemy took the hit alone.
     assert_eq!(forced(&game, husk), (Num::int(4), None));
-    assert_eq!(health(&game, enemy), 420);
+    assert_eq!(health(&arena, &game, enemy), 420);
     assert!(
-        game.arena_failures().is_empty(),
+        arena.failures(&game).is_empty(),
         "{:?}",
-        game.arena_failures()
+        arena.failures(&game)
     );
 }

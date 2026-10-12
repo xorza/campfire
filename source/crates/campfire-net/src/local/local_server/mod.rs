@@ -263,7 +263,7 @@ impl LocalServer {
         } = world
             .remove_resource::<PendingRestore>()
             .expect("a restore runs while one waits");
-        if let Err(error) = world.restore_match(session, &packages, &server, bots) {
+        if let Err(error) = SimServer::restore_match(world, session, &packages, &server, bots) {
             error!(error = %ErrorReport::of(&error), "the local session does not restore after its load");
             world.write_message(AppExit::error());
         }

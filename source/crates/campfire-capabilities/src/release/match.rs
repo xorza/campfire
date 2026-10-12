@@ -6,8 +6,8 @@ use campfire_log::internals::LogCheck;
 use campfire_sim::StateRegistry;
 
 use crate::declare::capability_set::CapabilitySet;
+use crate::release::Release;
 use crate::release::match_spec::MatchSpec;
-use crate::release::release_world::ReleaseWorld;
 
 /// A match in a world of its own, which campfire holds wherever no `App` must: a test's, a
 /// bench's, a verifier's. It is its world, whose traits give its operations: the release's build,
@@ -26,7 +26,7 @@ impl Match {
     /// The match of `spec`, built in a new world.
     pub fn new(spec: MatchSpec) -> Match {
         let mut world = World::new();
-        world.build_match(spec);
+        Release::build(&mut world, spec);
         Match {
             world,
             #[cfg(any(test, feature = "internals"))]
@@ -34,7 +34,7 @@ impl Match {
         }
     }
 
-    /// The match in `world`, which `ReleaseWorld::build_match` built, as a session's start
+    /// The match in `world`, which `Release::build` built, as a session's start
     /// builds it from its log.
     pub fn from_built(world: World) -> Match {
         assert!(
@@ -100,12 +100,12 @@ pub(crate) mod test_matches {
 
     use crate::actions::slot_kind_data::SlotKindData;
     use crate::actions::slot_kinds::SlotKinds;
-    use crate::combat::combat_world::test_world::CombatWorldTest;
+    use crate::combat::Combat;
     use crate::declare::capability_set::CapabilitySet;
-    use crate::players::players_world::internals::PlayersWorldInternals;
+    use crate::players::Players;
+    use crate::release::Release;
     use crate::release::r#match::Match;
     use crate::release::match_spec::MatchSpec;
-    use crate::release::release_world::ReleaseWorld;
     use crate::scripts::script_book::ScriptBook;
     use crate::scripts::script_budgets::ScriptBudgets;
     use crate::stats::pool_id::PoolId;
@@ -125,7 +125,7 @@ pub(crate) mod test_matches {
             budgets: Option<ScriptBudgets>,
         ) -> Match {
             let mut started = Match::test_unstarted(declared, rate, budgets);
-            started.start_without_mode([], 0);
+            Players::start_without_mode(&mut started, [], 0);
             started
         }
 
@@ -139,10 +139,13 @@ pub(crate) mod test_matches {
             let set = CapabilitySet::new(declared).expect("a test declares a valid set");
             let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set);
             let mut world = World::new();
-            world.build_match(match budgets {
-                Some(budgets) => spec.script_budgets(budgets),
-                None => spec,
-            });
+            Release::build(
+                &mut world,
+                match budgets {
+                    Some(budgets) => spec.script_budgets(budgets),
+                    None => spec,
+                },
+            );
             // A match installs the book its package load read; a test fills one as it compiles.
             world.insert_resource(ScriptBook::default());
             // A mode declares the kinds its units' slots are of: here one, whose one rank comes
@@ -155,7 +158,7 @@ pub(crate) mod test_matches {
                 world.insert_resource(SlotKinds(vec![basic]));
             }
             if set.contains(Capability::Combat) {
-                world.bind_life(PoolId::FIRST);
+                Combat::bind_life(&mut world, PoolId::FIRST);
             }
             Match {
                 world,

@@ -1,11 +1,13 @@
+use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
+use campfire_common::ExitStatus;
 
-use crate::faults::fault::Fault;
-use crate::faults::faults_world::FaultsWorldCrate;
+use crate::faults::fault::{Fault, FaultPolicy};
+use crate::sim_client::receipt_writer::ReceiptWriter;
+use crate::sim_server::journal_watch::JournalWatch;
 
 pub(crate) mod fault;
-pub(crate) mod faults_world;
 
 /// The one surface of the workers' failures, on a server and on a client: each worker's failure
 /// reaches it with its source, and `apply` acts on each as the table of policies says, in place
@@ -24,9 +26,38 @@ impl Faults {
 
     /// A client's system: applies the faults of the frame, and exits as they say.
     pub(crate) fn watch(world: &mut World) {
-        if let Some(exit) = world.apply_faults() {
+        if let Some(exit) = Faults::apply(world) {
             world.write_message(exit);
         }
+    }
+
+    /// Takes the failures of the session's workers, the journal's and the receipt writer's,
+    /// with those reported, and applies each policy: logs each, and gives the exit of a server
+    /// one of them ends.
+    pub(crate) fn apply(world: &mut World) -> Option<AppExit> {
+        let mut gathered = Vec::new();
+        if let Some(error) = world
+            .get_resource::<JournalWatch>()
+            .and_then(|journal| journal.0.take_failure())
+        {
+            gathered.push(Fault::Journal(error));
+        }
+        if let Some(writer) = world.get_resource::<ReceiptWriter>() {
+            gathered.extend(writer.failures().into_iter().map(Fault::Receipt));
+        }
+        let mut faults = world.resource_mut::<Faults>();
+        faults.pending.extend(gathered);
+        let mut exit = None;
+        for fault in faults.pending.drain(..) {
+            fault.log();
+            match fault.source().policy() {
+                FaultPolicy::EndServer => {
+                    exit = Some(AppExit::from_code(ExitStatus::Storage.code()));
+                }
+                FaultPolicy::Log => {}
+            }
+        }
+        exit
     }
 }
 

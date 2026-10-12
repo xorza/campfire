@@ -15,7 +15,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_call::{ActionCall, ResolvedCast};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::actions_world::ActionsWorldCrate;
+use crate::actions::effect_lists::EffectLists;
 use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::lists_of::ListsOf;
 use crate::actions::purse::Purse;
@@ -490,7 +490,8 @@ impl Casts {
         ctx: &Ctx,
         prepared: &mut Prepared,
     ) -> Result<(), CallError> {
-        batch.world().queue_effect_list(
+        EffectLists::queue(
+            batch.world(),
             ListsOf::Action(prepared.action),
             Hook::OnResolve,
             &mut ctx.frame(),

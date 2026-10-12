@@ -20,7 +20,7 @@ use crate::mode::roster::Roster;
 use crate::mode::slot_action::SlotAction;
 use crate::mode::unit_kit::UnitKit;
 use crate::mode::unit_kit::kit_part::{KitPart, KitSpawn};
-use crate::navigation::navigation_world::NavigationWorldCrate;
+use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
@@ -277,7 +277,7 @@ impl ModeBook {
             add.apply_by(world, applier);
         }
         if boxed {
-            world.make_room(entity);
+            Navigation::make_room(world, entity);
         }
         entity
     }

@@ -11,7 +11,7 @@ use crate::actions::payer::Payer;
 use crate::actions::slot_times::SlotTimes;
 use crate::combat::combat_world::CombatWorld;
 use crate::geometry::metric::Metric;
-use crate::navigation::navigation_world::NavigationWorldCrate;
+use crate::navigation::Navigation;
 use crate::players::player_resources::PlayerResources;
 use crate::players::players_world::PlayersWorld;
 use crate::players::resource_amount::ResourceAmount;
@@ -135,10 +135,10 @@ impl Construction {
                 .expect("a build view is always valid")
                 .step(entity, &held);
             match step {
-                Step::Walk(to) => world.go_to(entity, Some(to)),
-                Step::Build => world.go_to(entity, None),
+                Step::Walk(to) => Navigation::go_to(world, entity, Some(to)),
+                Step::Build => Navigation::go_to(world, entity, None),
                 Step::Take(site) => {
-                    world.go_to(entity, None);
+                    Navigation::go_to(world, entity, None);
                     let id = *world.get::<StableId>(entity).expect("a builder has an id");
                     let mut held = world.get_mut::<Site>(site).expect("a site to take");
                     held.hold(id);
@@ -148,7 +148,7 @@ impl Construction {
                     builder.set(None);
                 }
                 Step::Start(start) => {
-                    world.go_to(entity, None);
+                    Navigation::go_to(world, entity, None);
                     Construction::spawn_site(world, entity, start, &mut paid);
                 }
             }

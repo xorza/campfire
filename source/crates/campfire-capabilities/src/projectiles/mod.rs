@@ -38,7 +38,6 @@ pub(crate) mod projectile_data;
 pub(crate) mod projectile_spec;
 pub(crate) mod projectiles_api;
 pub(crate) mod projectiles_effect;
-pub(crate) mod projectiles_world;
 pub(crate) mod struck_units;
 
 /// The `projectiles` capability: projectile units, which ranged attacks fire and actions
@@ -189,6 +188,91 @@ impl Projectiles {
             id.is_none() || launches.len() == before + 1,
             "a script's id is one flight's"
         );
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::world::World;
+    use campfire_math::{Num, Vec3};
+    use campfire_sim::{EntityIndex, Position, StableId, TickRate};
+
+    use crate::projectiles::Projectiles;
+    use crate::projectiles::launches::{Launch, LaunchPayload, Launches};
+    use crate::projectiles::projectile::{Flight, Payload, Projectile};
+    use crate::projectiles::projectile_data::ProjectileData;
+    use crate::projectiles::projectile_spec::ProjectileSpec;
+    use crate::units::action_id::ActionId;
+    use crate::units::by_type::ByType;
+    use crate::units::engine_tag::EngineTag;
+    use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
+    use crate::values::damage_kind::DamageKind;
+    use crate::values::rank::Rank;
+
+    impl Projectiles {
+        /// Makes `unit_type` a projectile type of `data`, tagged `projectile`, its speed a tick at
+        /// the match's rate, which the package load checked: its `hits` filter names tags of the
+        /// match's.
+        pub(crate) fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
+            let rate = *world.resource::<TickRate>();
+            let view = world.non_send::<View>().clone();
+            let spec = {
+                let mut types = view.types_mut();
+                types.give_tag(unit_type, EngineTag::Projectile.tag());
+                ProjectileSpec::of(data, &types, rate)
+            };
+            world
+                .resource_mut::<ByType<ProjectileSpec>>()
+                .set(unit_type, spec);
+        }
+
+        /// Launches a projectile of the line type `unit_type` from `source` at the origin along
+        /// +x, carrying 10 damage, from the next tick.
+        pub(crate) fn fire_line(world: &mut World, source: StableId, unit_type: UnitType) {
+            let range = world
+                .resource::<ByType<ProjectileSpec>>()
+                .get(unit_type)
+                .unwrap()
+                .range
+                .unwrap();
+            world.resource_mut::<Launches>().push(Launch {
+                id: None,
+                source,
+                from: Position::ORIGIN,
+                unit_type,
+                flight: Flight::line(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO), range, None),
+                payload: LaunchPayload::Attack {
+                    action: ActionId::new(0),
+                    rank: Rank::FIRST,
+                    amount: Num::int(10),
+                    kind: DamageKind::new(0),
+                    roll: Num::ZERO,
+                },
+            });
+        }
+
+        /// The roll each projectile carries, by stable id.
+        pub(crate) fn rolls(world: &World) -> Vec<Num> {
+            let projectiles = world.resource::<EntityIndex>().iter();
+            projectiles
+                .filter_map(|(_, entity)| world.get::<Projectile>(entity))
+                .map(|projectile| match projectile.payload() {
+                    Payload::Attack { roll, .. } => roll,
+                    Payload::Action { .. } => panic!("an attack's projectile"),
+                })
+                .collect()
+        }
+
+        /// Where each projectile is, by stable id.
+        pub(crate) fn projectiles(world: &World) -> Vec<Position> {
+            world
+                .resource::<EntityIndex>()
+                .iter()
+                .filter(|&(_, entity)| world.get::<Projectile>(entity).is_some())
+                .map(|(_, entity)| *world.get::<Position>(entity).unwrap())
+                .collect()
+        }
     }
 }
 

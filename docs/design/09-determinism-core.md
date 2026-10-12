@@ -10,6 +10,7 @@ Numbers, vectors, randomness, stable ids and the state hash: the base every resu
 - **D4. `proptest` for tests, `criterion` behind `bench`,** each added with the first code that uses it. Differential tests find rounding cases no table lists; the worst tick must be measured.
 - **D5. One BLAKE3 hash per component type, then a hash over those.** The first divergence names its component type at once.
 - **D6. No `fixed` or `fixed_analytics`; own parser, constants and trig.** `fixed` rounds `*` toward −∞ and its constants down; `fixed_analytics` reaches 48 ulp in `atan2`. Own series at high internal precision stay within 0.501 ulp over the tests' sweeps.
+- **D7. `From` only where every value converts exactly; `TryFrom` where one can fail.** As the Rust API guidelines' C-CONV says: `Num` from each integer type its range holds whole, `i8` to `i32` and `u8` to `u32`; `Vec3` from a triple, a tuple or an array, of such values or of `Num`; `Position` from a triple of `i16`, as every `i16` lies within ±2²⁰, so a literal past the bound does not compile. `i64` and `u64` to `Num`, and `Vec3` to `Position`, are `TryFrom`. No conversion panics: `Num::int` stays the `const` constructor of a literal. An identity, `Team`, `PlayerSlot`, `Tick`, `Ticks`, `StableId`, has no `From` of its integer, which has no meaning of its own; a pair has none to a `Position`, as its axes are not known; and no float converts.
 
 ## Design
 

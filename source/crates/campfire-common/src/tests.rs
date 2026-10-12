@@ -721,41 +721,6 @@ fn the_dependency_and_name_checks_fail_on_what_breaks_them() {
     );
 }
 
-/// The functions visible past their module that take a world first and are no system: install
-/// machinery, which takes the world, the schedule and the registry together, and constructors
-/// of types that keep queries over the world, as Bevy's `SystemState::new` is (design 02, the
-/// world rule), by their file and their owner's and their own name.
-const WORLD_FIRST: [(&str, &str); 7] = [
-    (
-        "crates/campfire-capabilities/src/declare/install_cx.rs",
-        "InstallCx::new",
-    ),
-    (
-        "crates/campfire-capabilities/src/mode/mod.rs",
-        "Mode::install",
-    ),
-    (
-        "crates/campfire-capabilities/src/units/player_units.rs",
-        "HeldPlayerUnits::new",
-    ),
-    (
-        "crates/campfire-capabilities/src/units/row_fill.rs",
-        "RowSource::new",
-    ),
-    (
-        "crates/campfire-sim/src/sim_update/mod.rs",
-        "SimUpdate::prepare",
-    ),
-    (
-        "crates/campfire-sim/src/sim_world_builder.rs",
-        "SimWorldBuilder::new",
-    ),
-    (
-        "crates/campfire-sim/src/sim_world_builder.rs",
-        "SimWorldBuilder::reopen",
-    ),
-];
-
 /// A function whose first parameter is a world: its line, its name with its owner's, as
 /// `Owner::name`, or alone for a free function, and whether code past its module may call it.
 #[derive(Debug, PartialEq, Eq)]
@@ -884,10 +849,10 @@ fn named_as_value(text: &str, name: &str) -> bool {
 }
 
 #[test]
-fn a_function_that_takes_a_world_first_is_a_system_or_a_step_of_its_module() {
-    // Design 02's world rule: what acts on a match is a method of a world trait. A function
-    // past its module that takes the world first is a system or a function a table holds, named
-    // as a value, or one `WORLD_FIRST` lists.
+fn a_free_function_that_takes_a_world_first_is_a_system() {
+    // Design 02's world rule: what acts on the match's content is a function of its module's
+    // type, and a value made from the world a constructor of its own. A free function past its
+    // module that takes the world first is a system or a function a table holds, named as a value.
     let sources = sources();
     let production: Vec<(&str, &str)> = sources
         .iter()
@@ -895,27 +860,103 @@ fn a_function_that_takes_a_world_first_is_a_system_or_a_step_of_its_module() {
         .collect();
     let mut found = Vec::new();
     for &(path, code) in &production {
-        for function in world_first(code).into_iter().filter(|f| f.visible) {
-            let listed = WORLD_FIRST.contains(&(path, function.name.as_str()));
+        let free = world_first(code)
+            .into_iter()
+            .filter(|f| f.visible && !f.name.contains("::"));
+        for function in free {
             let valued = production
                 .iter()
                 .any(|&(_, text)| named_as_value(text, &function.name));
-            if !listed && !valued {
+            if !valued {
                 found.push(format!("{path}:{} {}", function.line, function.name));
             }
         }
     }
     assert_eq!(found, Vec::<String>::new());
-    for (path, name) in WORLD_FIRST {
-        let (_, code) = production
+}
+
+/// Each trait `text` declares that the world rule refuses, by its line and name: a test trait
+/// on the world, `<Module>WorldTest`; a crate's internals trait on it,
+/// `<Module>WorldCrateInternals`; and a module's trait on `Match`, `<Module>Match` or
+/// `<Module>MatchInternals`, as a match a module builds comes from the module's type.
+fn refused_traits(text: &str) -> Vec<(usize, &str)> {
+    const REFUSED: [&str; 4] = [
+        "WorldTest",
+        "WorldCrateInternals",
+        "Match",
+        "MatchInternals",
+    ];
+    let mut found = Vec::new();
+    for (line, code) in text.lines().enumerate() {
+        let mut code = code.trim_start();
+        if let Some(rest) = code.strip_prefix("pub") {
+            let rest = rest.strip_prefix('(').map_or(rest, |inner| {
+                inner.split_once(')').map_or(inner, |(_, after)| after)
+            });
+            code = rest.trim_start();
+        }
+        let Some(rest) = code.strip_prefix("trait ") else {
+            continue;
+        };
+        let end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        let name = &rest[..end];
+        let refused = REFUSED
             .iter()
-            .find(|&&(file, _)| file == path)
-            .unwrap_or_else(|| panic!("{path}"));
-        assert!(
-            world_first(code).iter().any(|f| f.name == name),
-            "{path}: {name}"
-        );
+            .any(|suffix| name.len() > suffix.len() && name.ends_with(suffix));
+        if refused {
+            found.push((line + 1, name));
+        }
     }
+    found
+}
+
+#[test]
+fn no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match() {
+    // Design 02's world rule: a world trait holds the whole match and the fast access to a
+    // module's systems, for other crates, its own crate, or the tests and benches of any crate;
+    // a test's verbs belong to its fixture or its capability's type, and a match a module builds
+    // to the module's type. Test code counts, as these traits lived in it; this file holds a
+    // source of each form for the check's own test.
+    let mut found = Vec::new();
+    let own = "crates/campfire-common/src/tests.rs";
+    for file in sources().into_iter().filter(|file| file.path != own) {
+        for (line, name) in refused_traits(&file.text) {
+            found.push(format!("{}:{line} {name}", file.path));
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn the_world_rule_finds_each_trait_it_refuses() {
+    // Each refused form, at any visibility; the world traits it keeps, a trait named `Match`
+    // alone and a type of such a name are none.
+    let text = "pub trait UnitsWorldTest {}
+\
+        pub(crate) trait ActionsWorldCrateInternals {}
+\
+        \x20   trait SessionMatch: Sized {}
+\
+        pub(super) trait HarnessMatchInternals {}
+\
+        pub trait SimWorld {}
+pub(crate) trait PlayersWorldCrate {}
+\
+        pub trait SimWorldInternals {}
+trait Match {}
+pub struct ScriptedMatch;
+";
+    assert_eq!(
+        refused_traits(text),
+        [
+            (1, "UnitsWorldTest"),
+            (2, "ActionsWorldCrateInternals"),
+            (3, "SessionMatch"),
+            (4, "HarnessMatchInternals"),
+        ]
+    );
 }
 
 #[test]

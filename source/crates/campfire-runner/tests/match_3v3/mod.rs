@@ -7,10 +7,12 @@
 //! content's units and values, so a change to the content changes it, by design. It plays a
 //! match long enough for every hero to learn its ultimate, and takes several seconds.
 
+use campfire_capabilities::{Life, Respawn};
+use campfire_sim::internals::SimWorldInternals;
 mod showcase;
 
 use bevy_ecs::world::World;
-use campfire_capabilities::internals::StatsWorldInternals;
+use campfire_capabilities::Stats;
 use campfire_capabilities::{
     ActionSlot, ActionSlots, Dead, Deaths, Level, Match, ModeParam, ModeWorld, Owner, PathWalker,
     Points, Rank, Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
@@ -18,15 +20,14 @@ use campfire_capabilities::{
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::SessionLog;
-use campfire_runner::internals::{
-    CopyCheck, FixedMatch, Golden, HarnessWorldInternals, HashTrail, Moba3v3,
-};
-use campfire_runner::{SessionMatch, SessionWorld};
+use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, HashTrail, Moba3v3};
+use campfire_runner::internals::{MatchUnits, ScriptedMode};
+use campfire_runner::{Session, SessionWorld};
 use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
 
 use crate::match_3v3::showcase::Showcase;
-use crate::moba::MobaWorldTest;
+use crate::moba::{gold, level_xp};
 
 /// The ticks of the skirmish: the pick, the skirmish, the camp, and the first 400 ticks of the
 /// first waves' fight, which begins in tick 2803.
@@ -129,7 +130,7 @@ fn hero_of(run: &Run, slot: u32) -> StableId {
 }
 
 /// The mode param `name` of the MOBA, a number of milliseconds.
-fn param_ms(moba: &Moba3v3, name: &str) -> u64 {
+fn param_ms(moba: &ScriptedMode<Moba3v3>, name: &str) -> u64 {
     let ModeParam::Value(Scalar::Int(ms)) = moba.packages().data().params[name] else {
         panic!("{name} is a whole number");
     };
@@ -158,7 +159,7 @@ fn units(game: &Match) -> Vec<Unit> {
 
 /// A match of `TICKS` ticks in which each player picks a hero and two spells before tick 0, and
 /// then plays as the MOBA's script says.
-fn run(moba: &Moba3v3) -> Run {
+fn run(moba: &ScriptedMode<Moba3v3>) -> Run {
     let mut fixed = moba.start();
     let mut copy = CopyCheck::new(fixed.game_mut());
     let game = fixed.game();
@@ -186,12 +187,16 @@ fn run(moba: &Moba3v3) -> Run {
             "tick {tick}: {:?}",
             failures.get()
         );
-        deaths.extend(game.resource::<Deaths>().iter().map(|death| Death {
-            tick,
-            id: death.fallen.id,
-            killer: death.killer,
-            assisters: death.assisters.to_vec(),
-            respawn: game.respawn_at(death.fallen.id),
+        deaths.extend(game.resource::<Deaths>().iter().map(|death| {
+            Death {
+                tick,
+                id: death.fallen.id,
+                killer: death.killer,
+                assisters: death.assisters.to_vec(),
+                respawn: game
+                    .try_part::<Respawn>(death.fallen.id)
+                    .map(|respawn| respawn.at),
+            }
         }));
         if tick == pick_end {
             at_pick_end = units(game);
@@ -219,31 +224,32 @@ fn run(moba: &Moba3v3) -> Run {
 impl Seen {
     /// Reads what tick `tick` of the 3v3 of `moba`, which `world` just ran, shows of the
     /// rules the script plays out.
-    fn read(&mut self, world: &World, moba: &Moba3v3, tick: u64) {
-        let units = world.match_units();
+    fn read(&mut self, world: &World, moba: &ScriptedMode<Moba3v3>, tick: u64) {
+        let units = MatchUnits::of(world);
         let heroes = [0, 1, 2, 3, 4, 5].map(|slot| units.hero(slot));
         let [_, gale, husk, kensho, ..] = heroes;
         let target = |unit| {
             let entity = world.entity_of(unit).unwrap();
             world.get::<ActionSlots>(entity).unwrap().attack_target()
         };
-        let xp = || heroes.map(|hero| world.level_xp(moba, hero)).to_vec();
+        let xp = || heroes.map(|hero| level_xp(moba, world, hero)).to_vec();
         if [1400, 1401].contains(&tick) {
             let spells = moba
                 .packages()
                 .packages()
                 .position(|view| view.package.header.name == "player-spells");
             let spells = u16::try_from(spells.unwrap()).unwrap();
-            let haste = world.modifier_named(spells, "haste").unwrap();
-            let carried = world.carried_modifiers(husk);
+            let haste = Stats::modifier(world, spells, "haste").unwrap();
+            let carried = Stats::carried_modifiers(world, husk);
             self.hasted.push(carried.iter().any(|&(id, _)| id == haste));
         }
         if (1878..=1880).contains(&tick) {
-            self.gale.push(world.life_of(gale));
+            self.gale.push(world.part::<Life>(gale).current());
         }
         if (2190..2220).contains(&tick) {
             let tower = units.spawned_at(-42, 16);
-            self.tower.push((target(tower), world.life_of(kensho)));
+            self.tower
+                .push((target(tower), world.part::<Life>(kensho).current()));
         }
         if tick == 2312 {
             self.xp_after_skirmish = xp();
@@ -267,7 +273,7 @@ impl Seen {
         }
         if tick == SKIRMISH - 1 {
             self.gold = (0..Moba3v3::PLAYERS)
-                .map(|slot| world.gold(moba, slot))
+                .map(|slot| gold(moba, world, slot))
                 .collect();
         }
     }
@@ -309,7 +315,7 @@ mod scripted_match {
 
 /// The match's state at its end, its scripts, and its units at the pick's end and as the first
 /// wave spawns; the unit type of the first wave's melee creeps.
-fn assert_start(moba: &Moba3v3, run: &Run) -> UnitType {
+fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run) -> UnitType {
     let world = run.fixed.game();
     // State in the order of its fields' names.
     let packages = moba.packages();
@@ -559,12 +565,12 @@ fn assert_learning(run: &Run) {
 
 /// The match `game`, which recorded `trail`, its log replayed from its file, gives its hash
 /// after every tick and ends where it ended.
-pub(crate) fn assert_replays(moba: &Moba3v3, game: &Match, trail: &HashTrail) {
+pub(crate) fn assert_replays(moba: &ScriptedMode<Moba3v3>, game: &Match, trail: &HashTrail) {
     let mut file = Vec::new();
     game.session().log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
     let mut replay =
-        Match::start_session(decoded.rewound(), Moba3v3::seeds(), moba.packages()).unwrap();
+        Session::start_match(decoded.rewound(), Moba3v3::seeds(), moba.packages()).unwrap();
     let mut replayed = HashTrail::default();
     for _ in trail.totals() {
         replay.run_tick_alone();

@@ -85,7 +85,6 @@ pub use crate::sim_client::client_layout::ClientLayout;
 pub use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
 pub use crate::sim_client::join_state::{JoinState, Loss};
 pub use crate::sim_client::server_pin::ServerPin;
-pub use crate::sim_client::sim_client_world::SimClientWorld;
 pub use crate::sim_client::{LeaveRequest, PendingOrders, PendingSaves, SimClient, WatchRequest};
 pub use crate::sim_server::SimServer;
 pub use crate::sim_server::checkpoints::error::SaveRefusal;

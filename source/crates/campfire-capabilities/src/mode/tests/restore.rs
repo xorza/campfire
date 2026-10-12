@@ -1,11 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_common::Tick;
-use campfire_sim::{HostRule, SnapshotError, StateDelta};
+use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta};
 
 use super::*;
 use crate::actions::slot_times::{SlotCharges, SlotTimes};
-use crate::navigation::on_path::OnPath;
 use crate::orders::next_think::NextThink;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::stats::instance::StackEnd;
@@ -17,7 +16,7 @@ use crate::units::unit_state::{SyncOwner, SyncTeam, UnitState};
 #[test]
 fn a_restore_check_refuses_what_the_match_lacks() {
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    let grunt = game.entity_by_id(2);
+    let grunt = Mode::entity_by_id(&game, 2);
     // The grunt holds strike, as a unit holds the times of the slots it holds.
     let strike = game.resource::<ActionBook>().named(0, "strike");
     let strike = ActionSlots::new([(strike.unwrap(), SlotKind::new(0), Rank::new(1))]);
@@ -124,7 +123,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
 #[test]
 fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     let game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    let grunt = game.entity_by_id(2);
+    let grunt = Mode::entity_by_id(&game, 2);
     // The match's entity and each player's stand at their named ids, of a player the session
     // has; a unit stands at an allocated id.
     let match_entity = game.match_entity().unwrap();
@@ -279,7 +278,7 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
 #[test]
 fn a_restore_keeps_each_time_within_the_limit() {
     let game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    let grunt = game.entity_by_id(2);
+    let grunt = Mode::entity_by_id(&game, 2);
     let unit = *game.get::<StableId>(grunt).unwrap();
     let past = Tick::new(Tick::LIMIT.get() + 1);
     for (at, holds) in [(Tick::LIMIT, true), (past, false)] {
@@ -306,8 +305,8 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     // A modifier of the book, with a value for its one change and no state, as the fighter's is;
     // not one the book lacks, nor one of other state or another count of changes.
-    let fighter = game.stat_grunt(0, &[("armor", Num::int(1))]);
-    let fighter = game.entity_by_id(fighter.get());
+    let fighter = Mode::stat_grunt(&mut game, Team::new(0), &[("armor", Num::int(1))]);
+    let fighter = Mode::entity_by_id(&game, fighter.get());
     let modifiers = game.get::<Modifiers>(fighter).unwrap();
     assert!(modifiers.check(&game, fighter));
     assert!(
@@ -343,7 +342,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     assert!(!modifiers_of(applied(unknown, vec![one], Vec::new())).check(&game, fighter));
     // Rally reads its action's `ward`, which an instance of it from no action lacks; its next
     // application would fail.
-    let rally = game.modifier_named(0, "rally").unwrap();
+    let rally = Stats::modifier(&game, 0, "rally").unwrap();
     assert!(!modifiers_of(applied(rally, Vec::new(), Vec::new())).check(&game, fighter));
     assert!(!modifiers_of(applied(modifier, Vec::new(), Vec::new())).check(&game, fighter));
     let state = vec![StateValue::Bool(true)];
@@ -388,7 +387,9 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     held.add(ModifierId::new(0));
     let hosted = <PlayerModifiers as SimComponent>::Host::holds;
     assert!(
-        held.check(&game, player) && hosted(&game, player) && !hosted(&game, game.entity_by_id(0))
+        held.check(&game, player)
+            && hosted(&game, player)
+            && !hosted(&game, Mode::entity_by_id(&game, 0))
     );
     held.add(ModifierId::new(u16::MAX));
     assert!(!held.check(&game, player));
@@ -417,13 +418,13 @@ fn on_timer(ctx, name, data) {
 fn on_unit_died(ctx, unit, killer, assisters) {}
 "#;
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    game.tick_inputs(&[]);
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
+    Mode::tick_inputs(&mut game, &[]);
     let mut delta = StateDelta::default();
     game.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
         registry.track(world, &mut delta);
     });
-    game.tick_inputs(&[]);
+    Mode::tick_inputs(&mut game, &[]);
     let changed = game.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
         registry.changes(world, &mut delta);
         registry.changed_types(world, &delta)

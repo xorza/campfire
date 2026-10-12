@@ -1,5 +1,6 @@
 use campfire_codec::{Binary, Toml};
 use campfire_math::Num;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimComponent};
 use serde::Serialize;
 
@@ -7,9 +8,10 @@ use super::*;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
+use crate::release::Release;
 use crate::release::r#match::Match;
-use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::stats::level::Level;
+use crate::units::Units;
 use crate::units::team::Team;
 use crate::units::track_id::TrackId;
 use crate::units::view::View;
@@ -157,10 +159,15 @@ fn experience_is_state_and_restores() {
     experience.add(track(0), Num::int(150), &book, Some(&mut level));
     experience.add(track(1), Num::int(10), &book, None);
     points.gain(1);
-    let id = game.spawn_unit(Position::ORIGIN, Team::new(0), (level, experience, points));
+    let id = Units::spawn(
+        &mut game,
+        Position::ORIGIN,
+        Team::new(0),
+        (level, experience, points),
+    );
     let mut restored = Match::client(&declared);
     tracks(&mut restored);
-    game.restore_into(&mut restored);
+    Release::restore_into(&game, &mut restored);
     assert_eq!(restored.part::<Experience>(id), game.part::<Experience>(id));
     assert_eq!(restored.part::<Level>(id).get(), 2);
     assert_eq!(restored.part::<Points>(id).get(), 2);
@@ -168,7 +175,8 @@ fn experience_is_state_and_restores() {
     // spawn, and points on it fail the check.
     let valor = TrackSet::of([track(1)]);
     assert_eq!(Points::at_spawn(valor, book.level_track()), None);
-    let held = game.spawn_unit(
+    let held = Units::spawn(
+        &mut game,
         Position::ORIGIN,
         Team::new(0),
         (Experience::new(valor, book.level_track()), points),

@@ -10,7 +10,6 @@ use campfire_sim::Position;
 use criterion::{Criterion, Throughput};
 
 use crate::harness::fixed_match::FixedMatch;
-use crate::harness::harness_world::HarnessWorldInternals;
 use crate::harness::moba_3v3::Moba3v3;
 
 /// A later read of a tick finds one unit in this many changed.
@@ -27,7 +26,7 @@ impl ViewScene {
     fn new() -> ViewScene {
         let mut fixed = Moba3v3::load().start();
         let world = fixed.game_mut();
-        world.crowd_creeps();
+        Moba3v3::crowd_creeps(world);
         let units = world
             .query_filtered::<Entity, (With<Position>, With<Team>)>()
             .iter(world)

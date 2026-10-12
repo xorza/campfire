@@ -1,56 +1,26 @@
 use bevy_app::AppExit;
-use bevy_ecs::world::{Mut, World};
-use bevy_time::{Real, Time};
-use campfire_common::{PlayerSlot, Tick};
+use bevy_ecs::world::World;
+use campfire_common::Tick;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_package::ModePackages;
-use campfire_protocol::{Outcome, ServerInput};
-use campfire_runner::{Session, SessionWorld, StartError};
-use campfire_sim::{SimWorld, StateRegistry};
-use campfire_store::{DurableError, InputFile, PathError};
-use lightyear::prelude::LocalTimeline;
+use campfire_protocol::Outcome;
+use campfire_runner::{Session, SessionWorld};
+use campfire_sim::SimWorld;
+use campfire_store::{DurableError, PathError};
 use tracing::error;
 
 use crate::events::session_written::SessionWritten;
 use crate::faults::Faults;
 use crate::faults::fault::Fault;
-use crate::faults::faults_world::FaultsWorldCrate;
 use crate::match_clock::MatchClock;
-use crate::sim_server::bot_driver::BotDriver;
+use crate::sim_server::Reload;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
-use crate::sim_server::error::RestoreMatchError;
-use crate::sim_server::journal_watch::JournalWatch;
-use crate::sim_server::receipts::Receipts;
-use crate::sim_server::seats::Seats;
-use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::server_signer::ServerSigner;
-use crate::sim_server::session_dir::{RestoredSession, SessionDir, SessionFiles};
-use crate::sim_server::tick_hashes::TickHashes;
-use crate::sim_server::{self, FrameStart, Reload, SimServer};
+use crate::sim_server::session_dir::SessionDir;
 
 /// What the sim server module gives a world, for every crate.
 pub trait SimServerWorld {
-    /// Restores the match of `restored`, a session a crash or a failed journal ended, of the mode
-    /// `packages` holds, on the server of `server`: builds it from the snapshot of the latest
-    /// checkpoint whose record the log holds, or from tick 0 with none, and replays its log from
-    /// there to the tick the server stopped before, keeping each tick's state hash while the
-    /// world holds `TickHashes`; a checkpoint begun with no record is taken again as the replay
-    /// reaches its boundary, and one due at the last boundary, as a save the mode asked for,
-    /// begins there. It logs `Disconnected` for each slot a player controls, whose grace
-    /// period runs from then, and runs the match on from the next fixed tick, so the ticks the
-    /// stop lost take no time in the sim. The journal goes on from its last record, and
-    /// `JournalWatch` watches it. No client is linked: the players come back through the door.
-    fn restore_match(
-        &mut self,
-        restored: RestoredSession,
-        packages: &ModePackages,
-        server: &ServerSetup,
-        bots: ServerBots,
-    ) -> Result<(), RestoreMatchError>;
-
     /// Whether every slot a player controlled has left, and no player holds a link: a session
     /// that started then ends.
     fn players_gone(&self) -> bool;
@@ -91,82 +61,6 @@ pub trait SimServerWorld {
 }
 
 impl SimServerWorld for World {
-    fn restore_match(
-        &mut self,
-        restored: RestoredSession,
-        packages: &ModePackages,
-        server: &ServerSetup,
-        bots: ServerBots,
-    ) -> Result<(), RestoreMatchError> {
-        let RestoredSession {
-            private,
-            log,
-            files: SessionFiles { journal, snapshots },
-            ..
-        } = restored;
-        let terms = log.header().terms.clone();
-        SimServer::bound_frames(self, &terms);
-        SimServer::set_visibility(self, &terms)
-            .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
-        let ticks = log.next_tick();
-        let slots = log.slot_count();
-        let seeds = private.seed_chain.seeds();
-        let latest = log
-            .checkpoints()
-            .last()
-            .map(|record| (record.segment, record.snapshot));
-        if let Some((segment, fingerprint)) = latest {
-            let snapshot = InputFile::read(
-                &snapshots.file(fingerprint),
-                StateRegistry::MAX_SNAPSHOT_LEN,
-            )
-            .map_err(RestoreMatchError::ReadSnapshot)?;
-            self.resume_session(log.rewound(), seeds, packages, segment, &snapshot)
-                .map_err(RestoreMatchError::Resume)?;
-        } else {
-            self.start_session(log.rewound(), seeds, packages)
-                .map_err(RestoreMatchError::Start)?;
-        }
-        self.insert_resource(JournalWatch(journal.watch()));
-        self.session_mut().resume_journal(Box::new(journal));
-        let signer = ServerSigner::new(server.key, server.entropy);
-        loop {
-            Checkpoints::take_again(self, &snapshots, &signer)
-                .map_err(RestoreMatchError::WriteSnapshot)?;
-            if self.session().log().next_tick() >= ticks {
-                break;
-            }
-            self.run_tick_alone();
-            if self.contains_resource::<TickHashes>() {
-                sim_server::record_hash(self);
-            }
-        }
-        SimServer::open_door(self, terms, server, None);
-        Checkpoints::start(self, snapshots, signer);
-        // The stop may have come after the tick before this boundary, before the save it made due
-        // here began.
-        Checkpoints::begin(self);
-        let players: Vec<PlayerSlot> = self.resource::<Session>().log().player_slots().collect();
-        self.resource_scope(|world, mut session: Mut<'_, Session>| {
-            let signer = world.resource::<ServerSigner>();
-            for &slot in &players {
-                signer
-                    .serve(&mut session, ServerInput::Disconnected { slot })
-                    .expect("the server's own input holds");
-            }
-        });
-        let now = self.resource::<Time<Real>>().elapsed();
-        self.insert_resource(Seats::gone(slots, players.into_iter(), now));
-        self.insert_resource(Receipts::new(slots));
-        let next = self.resource::<Session>().log().next_tick();
-        let start = self.resource::<LocalTimeline>().tick() + 1;
-        self.insert_resource(MatchClock::resumed(start, next));
-        self.insert_resource(FrameStart(next));
-        let driver = BotDriver::new(bots, next, self);
-        self.insert_resource(driver);
-        Ok(())
-    }
-
     fn players_gone(&self) -> bool {
         Door::empty(self)
     }
@@ -211,7 +105,7 @@ impl SimServerWorld for World {
     }
 
     fn exit_due(&mut self, stop: bool) -> Option<AppExit> {
-        if let Some(exit) = self.apply_faults() {
+        if let Some(exit) = Faults::apply(self) {
             return Some(exit);
         }
         if !self.contains_resource::<MatchClock>() {
@@ -224,7 +118,7 @@ impl SimServerWorld for World {
             let outcome = self.outcome();
             if let Err(error) = self.end_session(outcome) {
                 self.resource_mut::<Faults>().report(Fault::Snapshot(error));
-                return self.apply_faults();
+                return Faults::apply(self);
             }
         }
         let session = self.resource::<Session>();

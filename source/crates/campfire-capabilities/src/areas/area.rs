@@ -12,7 +12,7 @@ use crate::deliveries::delivering::Delivering;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
-use crate::stats::stats_world::StatsWorldCrate;
+use crate::stats::Stats;
 use crate::units::by_type::ByType;
 use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::unit_type::UnitType;
@@ -75,7 +75,7 @@ impl SimComponent for Area {
                 .get_resource::<EffectLists>()
                 .is_some_and(|lists| lists.has_launch(launch))
         });
-        let applies = |modifier| world.modifier_has_way(modifier, Some(action), rank);
+        let applies = |modifier| Stats::modifier_has_way(world, modifier, Some(action), rank);
         let holds = |spec: &AreaSpec| spec.inside.modifiers().all(applies);
         by && launched && spec.is_some_and(holds)
     }

@@ -6,7 +6,6 @@ use campfire_sim::{SimTick, SimWorld};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::actions_world::ActionsWorldCrate;
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::lists_of::ListsOf;
 use crate::deliveries::Deliveries;
@@ -95,7 +94,8 @@ impl DeliveryHooks {
                 };
                 let pool = Pool::of(owner);
                 batch.hook_call(start, hook, Some(by.source), |batch| {
-                    batch.world().queue_effect_list(
+                    EffectLists::queue(
+                        batch.world(),
                         of,
                         hook,
                         &mut ctx.frame(),

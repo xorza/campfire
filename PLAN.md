@@ -2,6 +2,14 @@
 
 The steps of the current slice ([Workflow](AGENTS.md#workflow)), in order, open items only: remove a step when it is done. Each step ends with the check chain passing for the crates it touches, and a stop for review. The slice ends when the user plays it in the client. Slice 3, replication audiences, comes first, in the order of [PLAN_NET.md](PLAN_NET.md), after the network steps that order puts before it; slice 2 goes on from S1 after it.
 
+## Refactor — conversions by value
+
+The rule of [Determinism core](docs/design/09-determinism-core.md), D7, and the tests' rule of [Testing](docs/design/02-engine-core.md#testing-and-diagnostics): `From` where every value converts exactly, `TryFrom` where one can fail, and the tests' helpers take `impl Into`. Each step ends with the check chain over the workspace.
+
+1. **C1. Numbers, vectors and positions** (`math`, `sim`): `From<i8 | u8 | i16 | u16 | i32 | u32> for Num`, and `TryFrom<i64 | u64>` with an error of the range; `From<(X, Y, Z)>` and `From<[T; 3]> for Vec3`, each `Into<Num>`; `From<(i16, i16, i16)>` and `From<[i16; 3]> for Position`, and `TryFrom<Vec3>` with an error of the bound, `Position::new` its `const` form. Check: each conversion's value as computed by hand, at each source type's least and greatest value; `TryFrom` at the last value it takes and the first it refuses, ±2³⁹ for `Num` and ±2²⁰ for `Position`.
+2. **C2. Targets and test data** (`capabilities`): `From<Position>` and `From<StableId> for ActionTarget`; `From` of the value each of `Scalar`, `Number` and `Ranked<T>` wraps. Check: each conversion gives its variant.
+3. **C3. The tests' helpers** (`capabilities`, `runner`, `net`, `verifier`, `client`): the capability types' test functions, the fixtures and the harness take `impl Into<Position>` and `impl Into<Num>`; the 33 copies of `at`, `ground`, `half` and `point` go, and their calls name the value. A pure refactor: the tests pass as they are.
+
 ## Slice 2 — Wide bodies, uses, the shop and gravity
 
 The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.

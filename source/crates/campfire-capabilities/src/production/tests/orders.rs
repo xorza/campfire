@@ -1,16 +1,15 @@
 use super::*;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
-use crate::navigation::navigation_world::NavigationWorldCrate;
+use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::orders::order::Action;
 use crate::production::rally_target::RallyTarget;
 use crate::units::body::Body;
-use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
 use crate::units::team_set::TeamSet;
+use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
-use crate::vision::vision_world::test_world::VisionWorldTest;
 
 /// The ground point at `x` and `z` half meters.
 fn half(x: i64, z: i64) -> Position {
@@ -22,10 +21,10 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     // Player 0 holds 0 gold; its barracks queues three trains of 4 ticks, pushed at tick 0, that
     // paid 10, 20 and 30 gold: the head is done at time 4.
     let mut game = ordering_match();
-    let shop = game.shop();
+    let shop = Shop::place(&mut game);
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    game.spawn_players(1, 1);
-    let train = game.add_train(shop.grunt, Ticks::new(4), None);
+    Players::spawn(&mut game, 1, 1);
+    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(4), None);
     let mut queue = TrainQueue::default();
     for paid in [10, 20, 30] {
         let queued = Queued {
@@ -41,23 +40,35 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
         queue.push(queued, &[amount], Tick::new(0));
     }
     let player = PlayerSlot::new(0);
-    let producer = game.allocate_id();
-    game.producer(producer, 1, 10, Some(player), train, queue);
+    let producer = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        producer,
+        10,
+        Team::new(1),
+        Some(player),
+        train,
+        queue,
+    );
     let held = |game: &Match| {
         let amount = game.player_resources(player).unwrap().amount(gold);
-        (amount, game.queued(producer), game.spawns().len())
+        (
+            amount,
+            game.part::<TrainQueue>(producer).entries().len(),
+            shop.spawns(game).len(),
+        )
     };
     let cancel = |place| Action::CancelTrain { place };
     // Tick 0: the entry behind the head gives back its 20; the head keeps its time. Another
     // player's cancel, and one past the queue's end, do nothing.
-    game.tick_ordering(0, producer, cancel(1));
+    Production::tick_ordering(&mut game, 0, producer, cancel(1));
     assert_eq!(held(&game), (20, 2, 0));
-    game.tick_ordering(1, producer, cancel(0));
-    game.tick_ordering(0, producer, cancel(2));
+    Production::tick_ordering(&mut game, 1, producer, cancel(0));
+    Production::tick_ordering(&mut game, 0, producer, cancel(2));
     assert_eq!(held(&game), (20, 2, 0));
     // Tick 3: the head gives back its 10, and the last starts at time 3, to be done at time 7,
     // the end of tick 6, not at time 4.
-    game.tick_ordering(0, producer, cancel(0));
+    Production::tick_ordering(&mut game, 0, producer, cancel(0));
     assert_eq!(held(&game), (30, 1, 0));
     for tick in 4..=6 {
         assert_eq!(held(&game).2, 0, "tick {tick}");
@@ -81,7 +92,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     game.insert_parts(producer, queue);
     let mut resources = game.player_resources_mut(player).unwrap();
     resources.add(gold, i64::MAX - 35).unwrap();
-    game.tick_ordering(0, producer, cancel(0));
+    Production::tick_ordering(&mut game, 0, producer, cancel(0));
     assert_eq!(held(&game), (i64::MAX - 5, 1, 1));
 }
 
@@ -92,26 +103,44 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     // nearest the point of the box nearest the rally point; a cell is open to it when its center
     // is at least 0.5 m from the box. A tie goes to the lower cell, row by row from (−10, −10).
     let mut game = ordering_match();
-    let shop = game.shop();
+    let shop = Shop::place(&mut game);
     let bounds = Bounds::new([Num::int(-10); 2], [Num::int(10); 2]).unwrap();
     let walker = Walker {
         layer: Layer::FIRST,
         radius: Num::HALF,
     };
     game.insert_resource(bounds);
-    game.load_pathing(Grid::new(Num::ONE, bounds).unwrap(), &[], vec![walker]);
+    Navigation::load_pathing(
+        &mut game,
+        Grid::new(Num::ONE, bounds).unwrap(),
+        &[],
+        vec![walker],
+    );
     let mut walkers = ByType::default();
     walkers.set(shop.grunt, walker);
     game.insert_resource(walkers);
-    let train = game.add_train(shop.grunt, Ticks::ZERO, None);
+    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
-    let producer = game.allocate_id();
-    game.producer(producer, 1, 0, Some(player), train, TrainQueue::default());
+    let producer = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        producer,
+        0,
+        Team::new(1),
+        Some(player),
+        train,
+        TrainQueue::default(),
+    );
     let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
         .unwrap()
         .at(Num::ZERO);
     game.insert_parts(producer, body);
-    let flag = game.spawn_unit(half(0, 12), Team::new(1), Body::new(Num::HALF).unwrap());
+    let flag = Units::spawn(
+        &mut game,
+        half(0, 12),
+        Team::new(1),
+        Body::new(Num::HALF).unwrap(),
+    );
     let rally = |target| Action::Rally {
         target: Some(target),
     };
@@ -139,10 +168,10 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         (None, half(0, 0), None),
     ];
     for (at, (target, place, walks)) in cases.into_iter().enumerate() {
-        game.tick_ordering(0, producer, Action::Rally { target });
-        game.order_train(producer);
+        Production::tick_ordering(&mut game, 0, producer, Action::Rally { target });
+        Production::order_train(&mut game, producer);
         game.step();
-        let spawned = game.spawned()[at];
+        let spawned = Shop::spawned(&game)[at];
         assert_eq!(spawned.at.pos, place, "{target:?}");
         let entity = game.entity_of(spawned.at.id).unwrap();
         let destination = game.get::<Destination>(entity).unwrap().get();
@@ -150,27 +179,32 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     }
     // A unit that died rallies nothing: the grunt spawns at its producer, and stands.
     game.insert_parts(flag, Dead);
-    game.tick_ordering(0, producer, rally(RallyTarget::Unit(flag)));
-    game.order_train(producer);
+    Production::tick_ordering(&mut game, 0, producer, rally(RallyTarget::Unit(flag)));
+    Production::order_train(&mut game, producer);
     game.step();
-    let spawned = game.spawned()[4];
+    let spawned = Shop::spawned(&game)[4];
     assert_eq!(spawned.at.pos, half(0, 0));
 
     // With a vision grid, a rally to a unit of team 0 at (0, 6) that the producer's team 1 does
     // not see is ignored: the dead flag stays its rally, and the grunt spawns at its producer.
     // Once team 1 sees it, the rally takes it, as the living flag's did.
-    game.fog_grid(2);
-    let watch = game.spawn_unit(half(0, 12), Team::new(0), Body::new(Num::HALF).unwrap());
+    Vision::fog_grid(&mut game, 2);
+    let watch = Units::spawn(
+        &mut game,
+        half(0, 12),
+        Team::new(0),
+        Body::new(Num::HALF).unwrap(),
+    );
     let team0 = TeamSet::of(Team::new(0));
     for (at, (seers, place)) in [(team0, half(0, 0)), (team0.with(Team::new(1)), half(-1, 3))]
         .into_iter()
         .enumerate()
     {
         game.insert_parts(watch, SeenBy::new(seers));
-        game.tick_ordering(0, producer, rally(RallyTarget::Unit(watch)));
-        game.order_train(producer);
+        Production::tick_ordering(&mut game, 0, producer, rally(RallyTarget::Unit(watch)));
+        Production::order_train(&mut game, producer);
         game.step();
-        let spawned = game.spawned()[5 + at];
+        let spawned = Shop::spawned(&game)[5 + at];
         assert_eq!(spawned.at.pos, place, "{seers:?}");
     }
 }

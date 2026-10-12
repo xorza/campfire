@@ -1,3 +1,5 @@
+use campfire_sim::internals::SimWorldInternals;
+
 use super::*;
 use crate::players::players_world::PlayersWorldCrate;
 use crate::production::gatherer::{Gatherer, Load};
@@ -14,7 +16,7 @@ fn on_mode_input(ctx, player, name, value) {
 }
 ";
     let mut game = mode_match(picker, ScriptLimits::ROOMY);
-    game.tick_inputs(&[(0, input("hero", "hero-x"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     // A grunt for 30 mana and 5 gold, in 300 ms, 3 ticks at 10 a second.
     let int = |value| Ranked::One(Number::Value(Scalar::Int(value)));
     let cost = ["mana", "gold"].map(|name| DeclaredName::new(name).unwrap());
@@ -25,7 +27,7 @@ fn on_mode_input(ctx, player, name, value) {
         unit_type: Some(DeclaredName::new("grunt").unwrap()),
         ..blink_data()
     };
-    let train = game.load_action(0, "train_grunt", &train, None, 1).unwrap();
+    let train = Actions::load(&mut game, 0, "train_grunt", &train, None, 1).unwrap();
     // Hero X becomes a producer of a queue of 2, with 100 mana, and its player holds 15 gold.
     let mut owned = game.query_filtered::<Entity, With<Owner>>();
     let producer = owned.single(&game).unwrap();
@@ -82,7 +84,7 @@ fn on_mode_input(ctx, player, name, value) {
         if ordered {
             order(&mut game);
         }
-        game.tick_inputs(&[]);
+        Mode::tick_inputs(&mut game, &[]);
         assert_eq!(paid(&game), expected, "tick {at}");
         assert_eq!(trained(&mut game), made, "tick {at}");
     }
@@ -100,7 +102,7 @@ fn on_mode_input(ctx, player, name, value) {
             .entries()
             .is_empty()
     );
-    assert_eq!(game.failures(), []);
+    assert_eq!(Mode::failures(&game), []);
 }
 
 #[test]
@@ -122,7 +124,7 @@ fn on_mode_input(ctx, player, name, value) {
 "#;
     // Hero X uses 2 and gives 6, of a most of 5; a grunt uses 1.
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    game.tick_inputs(&[(0, input("hero", "hero-x"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     let view = game.non_send::<View>().clone();
     let named = |name: &str| view.unit_type_named(name).unwrap();
     let (hero, grunt) = (named("hero-x"), named("grunt"));
@@ -153,7 +155,7 @@ fn on_mode_input(ctx, player, name, value) {
     {
         let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
         let parts = (Owner::new(PlayerSlot::new(slot)), UnitStats::default());
-        let id = game.spawn_unit_of(grunt, pos, Team::new(0), parts);
+        let id = Units::spawn_of(&mut game, grunt, pos, Team::new(0), parts);
         if dead {
             game.insert_parts(id, Dead);
         }
@@ -167,22 +169,25 @@ fn on_mode_input(ctx, player, name, value) {
         }
     }
     // Player 0 uses 2 + 1 + 1 = 4 of a cap of 6 at most 5; player 1 uses 1 of none.
-    game.tick_inputs(&[(0, input("phase", "read"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
     assert_eq!(
-        (game.field("count"), game.field("seen")),
+        (Mode::field(&game, "count"), Mode::field(&game, "seen")),
         (StateValue::Int(4), StateValue::Int(5))
     );
-    game.tick_inputs(&[(1, input("phase", "read"))]);
+    Mode::tick_inputs(&mut game, &[(1, input("phase", "read"))]);
     assert_eq!(
-        (game.field("count"), game.field("seen")),
+        (Mode::field(&game, "count"), Mode::field(&game, "seen")),
         (StateValue::Int(1), StateValue::Int(0))
     );
     // The loads by stable id, 0, 7, 0 and 0, two digits each: ((0·100 + 7)·100 + 0)·100 + 0.
-    game.tick_inputs(&[(0, input("phase", "load"))]);
-    assert_eq!(game.field("count"), StateValue::Int(70_000));
-    assert_eq!(game.failures(), []);
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "load"))]);
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(70_000));
+    assert_eq!(Mode::failures(&game), []);
     // A mode that counts no supply fails the call.
     ProductionColumn::share(&view, None, SupplyCosts::default());
-    game.tick_inputs(&[(0, input("phase", "read"))]);
-    assert_eq!(game.failures(), [FailureKind::Api(ApiError::NoSupply)]);
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
+    assert_eq!(
+        Mode::failures(&game),
+        [FailureKind::Api(ApiError::NoSupply)]
+    );
 }

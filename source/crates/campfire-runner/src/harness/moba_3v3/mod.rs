@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+use bevy_ecs::world::World;
+use campfire_capabilities::Mode;
+use campfire_capabilities::internals::{Density, KernelScene};
 use campfire_capabilities::{
     Action, ActionSlots, Dead, InputValue, Inventory, ItemId, Life, ModeInput, Order, PathWalker,
     Team,
@@ -14,18 +17,11 @@ use crate::harness::fixed_match::FixedMatch;
 use crate::harness::fixed_session::FixedSession;
 use crate::harness::match_units::MatchUnits;
 use crate::harness::scripted::{Aim, Plan, Scripted, TICK_HZ};
+use crate::harness::scripted_mode::ScriptedMode;
 use crate::input_rules::InputRules;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-
-/// The MOBA 3v3 as its packages hold it, at its slowest rate, which plays a match in the
-/// fewest ticks, with six players of fixed keys.
-#[derive(Debug)]
-pub struct Moba3v3 {
-    session: FixedSession,
-    script: Vec<Scripted<ReferencePlan>>,
-}
 
 /// The hero each slot picks.
 const HEROES: [&str; 6] = [
@@ -37,9 +33,11 @@ const HEROES: [&str; 6] = [
     "hero-veil",
 ];
 
-/// What a 3v3 player orders, by the role of the units it names.
+/// The MOBA 3v3 as its packages hold it, at its slowest rate, which plays a match in the
+/// fewest ticks, with six players of fixed keys. Its plan is what a 3v3 player orders, by the
+/// role of the units it names.
 #[derive(Debug, Clone, Copy)]
-enum ReferencePlan {
+pub enum Moba3v3 {
     /// The hero walks to a point.
     Move { x: i64, z: i64 },
     /// The hero attacks the unit that spawned at a point: a camp's, or a structure.
@@ -65,6 +63,9 @@ enum ReferencePlan {
     /// The hero swaps its inventory slots `from` and `to`.
     Swap { from: u8, to: u8 },
 }
+
+/// The creep types of the 3v3's waves, which a crowd's units take in turn.
+const CREEPS: [&str; 2] = ["melee_creep", "caster_creep"];
 
 /// How far from a hero a creep it farms stands at most, in meters.
 const FARM_REACH: i64 = 10;
@@ -115,33 +116,33 @@ const RECALL: u64 = 12_200;
 ///   learn in the tick finds no point; Veil's ultimate needs level 6, and she learns Dusk Mark
 ///   instead; Rime learns Fan of Frost while she is dead. None of these abilities holds a
 ///   passive, and no hero casts one.
-const SKIRMISH: [Scripted<ReferencePlan>; 45] = {
-    let mut script = [Scripted::new(1200, 0, ReferencePlan::Move { x: -2, z: -26 }); 45];
+const SKIRMISH: [Scripted<Moba3v3>; 45] = {
+    let mut script = [Scripted::new(1200, 0, Moba3v3::Move { x: -2, z: -26 }); 45];
     let moves = [
-        Scripted::new(1200, 1, ReferencePlan::Move { x: 2, z: -26 }),
-        Scripted::new(1200, 4, ReferencePlan::Move { x: 0, z: -20 }),
-        Scripted::new(1200, 3, ReferencePlan::Move { x: -38, z: 12 }),
-        Scripted::new(1200, 5, ReferencePlan::Move { x: 38, z: 8 }),
+        Scripted::new(1200, 1, Moba3v3::Move { x: 2, z: -26 }),
+        Scripted::new(1200, 4, Moba3v3::Move { x: 0, z: -20 }),
+        Scripted::new(1200, 3, Moba3v3::Move { x: -38, z: 12 }),
+        Scripted::new(1200, 5, Moba3v3::Move { x: 38, z: 8 }),
         Scripted::new(1200, 2, cast(HASTE, Aim::Nothing)),
-        Scripted::new(1201, 2, ReferencePlan::Move { x: -34, z: 4 }),
-        Scripted::new(1700, 0, ReferencePlan::AttackHero { slot: 4 }),
-        Scripted::new(1700, 1, ReferencePlan::AttackHero { slot: 4 }),
-        Scripted::new(1700, 4, ReferencePlan::AttackHero { slot: 1 }),
+        Scripted::new(1201, 2, Moba3v3::Move { x: -34, z: 4 }),
+        Scripted::new(1700, 0, Moba3v3::AttackHero { slot: 4 }),
+        Scripted::new(1700, 1, Moba3v3::AttackHero { slot: 4 }),
+        Scripted::new(1700, 4, Moba3v3::AttackHero { slot: 1 }),
         Scripted::new(1880, 1, cast(MEND, Aim::Nothing)),
-        Scripted::new(1880, 0, ReferencePlan::Move { x: -36, z: 10 }),
-        Scripted::new(2000, 4, ReferencePlan::Move { x: -18, z: 24 }),
-        Scripted::new(2160, 2, ReferencePlan::AttackHero { slot: 3 }),
-        Scripted::new(2225, 0, ReferencePlan::Move { x: -30, z: -6 }),
-        Scripted::new(2240, 0, ReferencePlan::Move { x: -38, z: -8 }),
+        Scripted::new(1880, 0, Moba3v3::Move { x: -36, z: 10 }),
+        Scripted::new(2000, 4, Moba3v3::Move { x: -18, z: 24 }),
+        Scripted::new(2160, 2, Moba3v3::AttackHero { slot: 3 }),
+        Scripted::new(2225, 0, Moba3v3::Move { x: -30, z: -6 }),
+        Scripted::new(2240, 0, Moba3v3::Move { x: -38, z: -8 }),
         Scripted::new(2320, 3, attack_at(SOUTH_CAMP)),
-        Scripted::new(2500, 3, ReferencePlan::Move { x: -18, z: 30 }),
+        Scripted::new(2500, 3, Moba3v3::Move { x: -18, z: 30 }),
         Scripted::new(2650, 3, attack_at(SOUTH_CAMP)),
         Scripted::new(2650, 4, attack_at(SOUTH_CAMP)),
-        Scripted::new(1200, 0, ReferencePlan::Learn { slot: FIRST }),
-        Scripted::new(1200, 0, ReferencePlan::Learn { slot: SECOND }),
-        Scripted::new(1200, 5, ReferencePlan::Learn { slot: ULTIMATE }),
-        Scripted::new(1201, 5, ReferencePlan::Learn { slot: FIRST }),
-        Scripted::new(1900, 4, ReferencePlan::Learn { slot: SECOND }),
+        Scripted::new(1200, 0, Moba3v3::Learn { slot: FIRST }),
+        Scripted::new(1200, 0, Moba3v3::Learn { slot: SECOND }),
+        Scripted::new(1200, 5, Moba3v3::Learn { slot: ULTIMATE }),
+        Scripted::new(1201, 5, Moba3v3::Learn { slot: FIRST }),
+        Scripted::new(1900, 4, Moba3v3::Learn { slot: SECOND }),
     ];
     let mut at = 0;
     while at < moves.len() {
@@ -159,20 +160,20 @@ const SKIRMISH: [Scripted<ReferencePlan>; 45] = {
     script
 };
 
-const fn attack_at((x, z): (i64, i64)) -> ReferencePlan {
-    ReferencePlan::AttackSpawnedAt { x, z }
+const fn attack_at((x, z): (i64, i64)) -> Moba3v3 {
+    Moba3v3::AttackSpawnedAt { x, z }
 }
 
-const fn walk_to((x, z): (i64, i64)) -> ReferencePlan {
-    ReferencePlan::Move { x, z }
+const fn walk_to((x, z): (i64, i64)) -> Moba3v3 {
+    Moba3v3::Move { x, z }
 }
 
-const fn farm_at((x, z): (i64, i64)) -> ReferencePlan {
-    ReferencePlan::Farm { x, z }
+const fn farm_at((x, z): (i64, i64)) -> Moba3v3 {
+    Moba3v3::Farm { x, z }
 }
 
-const fn cast(slot: u8, aim: Aim) -> ReferencePlan {
-    ReferencePlan::Cast { slot, aim }
+const fn cast(slot: u8, aim: Aim) -> Moba3v3 {
+    Moba3v3::Cast { slot, aim }
 }
 
 impl Moba3v3 {
@@ -188,7 +189,7 @@ impl Moba3v3 {
     /// allow; the walk home, the shop, and the showcase, in which each hero uses its items and
     /// casts each of its abilities, one cast every `CAST_EVERY` ticks. `item` names an
     /// item.
-    fn script(item: &impl Fn(&str) -> ItemId) -> Vec<Scripted<ReferencePlan>> {
+    fn script(item: &impl Fn(&str) -> ItemId) -> Vec<Scripted<Moba3v3>> {
         let mut script = SKIRMISH.to_vec();
         for stamp in (FARM..RECALL).step_by(FARM_EVERY) {
             script.extend(
@@ -199,14 +200,14 @@ impl Moba3v3 {
         }
         for stamp in (LEARN..Moba3v3::SHOWCASE).step_by(LEARN_EVERY) {
             for slot in 0..Moba3v3::PLAYERS {
-                let ultimate = ReferencePlan::Learn { slot: ULTIMATE };
+                let ultimate = Moba3v3::Learn { slot: ULTIMATE };
                 script.push(Scripted::new(stamp, slot, ultimate));
-                script.push(Scripted::new(stamp, slot, ReferencePlan::LearnBasic));
+                script.push(Scripted::new(stamp, slot, Moba3v3::LearnBasic));
             }
         }
         for slot in 0..Moba3v3::PLAYERS {
             let z = if slot < 3 { -60 } else { 60 };
-            script.push(Scripted::new(RECALL, slot, ReferencePlan::Move { x: 0, z }));
+            script.push(Scripted::new(RECALL, slot, Moba3v3::Move { x: 0, z }));
         }
         let buys = [
             (2, "cloth_armor"),
@@ -224,21 +225,17 @@ impl Moba3v3 {
         ];
         for (slot, name) in buys {
             let item = item(name);
-            script.push(Scripted::new(
-                Moba3v3::SHOP,
-                slot,
-                ReferencePlan::Buy { item },
-            ));
+            script.push(Scripted::new(Moba3v3::SHOP, slot, Moba3v3::Buy { item }));
         }
         script.push(Scripted::new(
             Moba3v3::SHOP,
             5,
-            ReferencePlan::Swap { from: 0, to: 1 },
+            Moba3v3::Swap { from: 0, to: 1 },
         ));
         script.push(Scripted::new(
             Moba3v3::SHOP + 1,
             5,
-            ReferencePlan::Sell { slot: 1 },
+            Moba3v3::Sell { slot: 1 },
         ));
         for (slot, post) in (0..).zip(ARENA) {
             script.push(Scripted::new(Moba3v3::SHOP + 2, slot, walk_to(post)));
@@ -260,10 +257,10 @@ impl Moba3v3 {
     /// Rime and Veil. Veil and Gale cast all theirs first, before the others' blows could fell
     /// them; Rime strikes Husk with Chill Arrows on, then walks back to her place, which
     /// ends her attack.
-    fn showcase(item: &impl Fn(&str) -> ItemId) -> Vec<(u32, ReferencePlan)> {
+    fn showcase(item: &impl Fn(&str) -> ItemId) -> Vec<(u32, Moba3v3)> {
         let hero = |slot| Aim::Hero { slot };
         let at = |slot| Aim::HeroPoint { slot };
-        let using = |name, aim| ReferencePlan::Use {
+        let using = |name, aim| Moba3v3::Use {
             item: item(name),
             aim,
         };
@@ -288,7 +285,7 @@ impl Moba3v3 {
             (0, cast(FIRST, at(3))),
             (2, cast(SECOND, Aim::Nothing)),
             (4, cast(FIRST, Aim::Nothing)),
-            (4, ReferencePlan::AttackHero { slot: 2 }),
+            (4, Moba3v3::AttackHero { slot: 2 }),
             (3, cast(FIRST, hero(0))),
             (4, walk_to(ARENA[4])),
             (0, cast(SECOND, at(4))),
@@ -308,20 +305,29 @@ impl Moba3v3 {
         ]
     }
 
-    pub fn load() -> Moba3v3 {
+    pub fn load() -> ScriptedMode<Moba3v3> {
         let players = usize::try_from(Moba3v3::PLAYERS).expect("6 fits usize");
         Moba3v3::planned(vec![SlotPlan::Player; players])
     }
 
     /// The MOBA 3v3 with its slots opened as `plan` says.
-    pub fn planned(plan: Vec<SlotPlan>) -> Moba3v3 {
+    pub fn planned(plan: Vec<SlotPlan>) -> ScriptedMode<Moba3v3> {
         let packages = ModePackages::from_dir(&Moba3v3::dir(), &Moba3v3::map()).unwrap();
         let items = &packages.packages().next().expect("a mode").content.items;
         let item = |name: &str| ItemId::named(items, name).expect("an item of the 3v3");
         let script = Moba3v3::script(&item);
-        Moba3v3 {
-            session: FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan),
-            script,
+        let session = FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan);
+        ScriptedMode::new(session, script)
+    }
+
+    /// Spawns `KernelScene::UNITS` of the 3v3's creeps into `world`, on both teams in turn by
+    /// pairs, at the crowded scene's points, which lie within its map.
+    pub fn crowd_creeps(world: &mut World) {
+        let mut scene = KernelScene::new(13);
+        for unit in 0..KernelScene::UNITS {
+            let pos = Position::new(scene.point(Density::Crowded.span())).unwrap();
+            let team = Team::new(u8::from(unit % 4 >= 2));
+            Mode::spawn_typed(world, CREEPS[unit % 2], team, pos);
         }
     }
 
@@ -335,21 +341,17 @@ impl Moba3v3 {
         MapName::new("two_lanes").unwrap()
     }
 
-    pub const fn packages(&self) -> &ModePackages {
-        self.session.packages()
-    }
-
     /// Every segment's seed, as the server knows them.
     pub const fn seeds() -> ServerSeeds {
         FixedSession::seeds()
     }
+}
 
-    /// A match at tick 0, in which each player and each bot picked a hero, in slot order, and
-    /// two spells; an open slot picked nothing.
-    pub fn start(&self) -> FixedMatch {
-        let mut fixed = self.session.start();
-        let plan = &self.session.terms().slots;
-        for ((slot, hero), plan) in (0..).zip(HEROES).zip(plan) {
+impl Plan for Moba3v3 {
+    /// Each player and each bot picks a hero, in slot order, and two spells; an open slot picks
+    /// nothing.
+    fn start(fixed: &mut FixedMatch, slots: &[SlotPlan]) {
+        for ((slot, hero), plan) in (0..).zip(HEROES).zip(slots) {
             let payload = ModeInput::payload(&[
                 ModeInput {
                     name: "hero",
@@ -375,52 +377,43 @@ impl Moba3v3 {
                 SlotPlan::Open => {}
             }
         }
-        fixed
     }
 
-    /// Runs tick `tick` of `fixed`: first sends the scripted players' orders stamped for it,
-    /// then runs it.
-    pub fn play_tick(&self, fixed: &mut FixedMatch, tick: u64) {
-        Scripted::play_tick(&self.script, fixed, tick);
-    }
-}
-
-impl Plan for ReferencePlan {
     fn order(self, units: MatchUnits<'_>, slot: u32) -> Order {
         let hero = units.hero(slot);
         let action = match self {
-            ReferencePlan::Move { x, z } => Action::Move {
+            Moba3v3::Move { x, z } => Action::Move {
                 x: Num::int(x),
                 z: Num::int(z),
             },
-            ReferencePlan::AttackSpawnedAt { x, z } => Action::Attack {
+            Moba3v3::AttackSpawnedAt { x, z } => Action::Attack {
                 target: units.spawned_at(x, z),
             },
-            ReferencePlan::AttackHero { slot } => Action::Attack {
+            Moba3v3::AttackHero { slot } => Action::Attack {
                 target: units.hero(slot),
             },
-            ReferencePlan::Cast { slot, aim } => Action::Slot {
+            Moba3v3::Cast { slot, aim } => Action::Slot {
                 slot,
                 target: aim.target(units),
             },
-            ReferencePlan::Use { item, aim } => Action::Slot {
+            Moba3v3::Use { item, aim } => Action::Slot {
                 slot: INVENTORY + carried_at(units, hero, item),
                 target: aim.target(units),
             },
-            ReferencePlan::Learn { slot } => Action::Learn { slot },
-            ReferencePlan::LearnBasic => Action::Learn {
+            Moba3v3::Learn { slot } => Action::Learn { slot },
+            Moba3v3::LearnBasic => Action::Learn {
                 slot: fewest_ranks(units, hero),
             },
-            ReferencePlan::Farm { x, z } => weakest_creep(units, hero).map_or(
+            Moba3v3::Farm { x, z } => weakest_creep(units, hero).map_or(
                 Action::Move {
                     x: Num::int(x),
                     z: Num::int(z),
                 },
                 |target| Action::Attack { target },
             ),
-            ReferencePlan::Buy { item } => Action::Buy { item },
-            ReferencePlan::Sell { slot } => Action::Sell { slot },
-            ReferencePlan::Swap { from, to } => Action::Swap { from, to },
+            Moba3v3::Buy { item } => Action::Buy { item },
+            Moba3v3::Sell { slot } => Action::Sell { slot },
+            Moba3v3::Swap { from, to } => Action::Swap { from, to },
         };
         Order::one(hero, action)
     }

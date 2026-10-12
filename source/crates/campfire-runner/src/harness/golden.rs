@@ -2,8 +2,9 @@ use std::env;
 use std::fmt::{self, Write as _};
 use std::path::PathBuf;
 
+use campfire_capabilities::PoolMeters;
 use campfire_capabilities::{
-    Dead, Deaths, Match, Owner, PlayersWorld, PoolId, ResourceId, ScriptFailures, StatsWorld, Team,
+    Dead, Deaths, Match, Owner, PlayersWorld, PoolId, ResourceId, ScriptFailures, Team,
 };
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::ErrorReport;
@@ -85,7 +86,7 @@ impl Golden {
                 .get::<Owner>()
                 .map_or(u32::MAX, |owner| owner.slot().get());
             bytes.extend_from_slice(&owner.to_le_bytes());
-            let meters = game.pool_meters(entity);
+            let meters = PoolMeters::of(game, entity);
             for pool in (0..).map_while(PoolId::new) {
                 if let Some(current) = meters.current(pool) {
                     bytes.push(u8::try_from(pool.index()).expect("a pool index fits u8"));

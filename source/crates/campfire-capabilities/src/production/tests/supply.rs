@@ -15,10 +15,11 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     // Player 0's barracks gives 4 of a most of 10; a grunt uses 3, and trains in 2 ticks: one
     // ordered in tick t joins at time t and spawns at time t + 2, the end of tick t + 1.
     let mut game = shop_match();
-    let shop = game.shop();
-    let train = game.add_train(shop.grunt, Ticks::new(2), None);
+    let shop = Shop::place(&mut game);
+    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(2), None);
     let (grunt, barracks, depot) = (shop.grunt, shop.barracks, shop.depot);
-    game.count_supply(
+    Production::count_supply(
+        &mut game,
         10,
         &[
             (grunt, supply(3, 0)),
@@ -27,16 +28,27 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
         ],
     );
     let player = PlayerSlot::new(0);
-    game.spawn_players(1, 0);
-    let producer = game.allocate_id();
-    game.producer(producer, 1, 10, Some(player), train, TrainQueue::default());
+    Players::spawn(&mut game, 1, 0);
+    let producer = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        producer,
+        10,
+        Team::new(1),
+        Some(player),
+        train,
+        TrainQueue::default(),
+    );
     // Each tick's end leaves the queue's length, the spawns, and the supply the player's entity
     // shows: what is used, and the cap.
     let step = |game: &mut Match, queued: usize, spawned: usize, supply: (u64, u64), tick: u64| {
-        game.order_train(producer);
+        Production::order_train(game, producer);
         game.step();
         assert_eq!(
-            (game.queued(producer), game.spawns().len()),
+            (
+                game.part::<TrainQueue>(producer).entries().len(),
+                shop.spawns(game).len()
+            ),
             (queued, spawned),
             "tick {tick}"
         );
@@ -50,16 +62,16 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     step(&mut game, 0, 1, (3, 4), 1);
     // A depot gives 4 more, a cap of 8: tick 2, 3 + 3 joins; tick 3, 9 of 8 does not, and the
     // second spawns.
-    let first_depot = game.owned(depot, player);
+    let first_depot = Production::owned(&mut game, depot, player);
     step(&mut game, 1, 1, (6, 8), 2);
     step(&mut game, 0, 2, (6, 8), 3);
     // The depot dies: a cap of 4 below the 6 used kills nothing, and stops trains; a depot no
     // player owns gives nothing.
     game.insert_parts(first_depot, Dead);
-    game.spawn_unit_of(depot, at(0), Team::new(1), ());
+    Units::spawn_of(&mut game, depot, at(0), Team::new(1), ());
     step(&mut game, 0, 2, (6, 4), 4);
     assert!(
-        game.spawned()
+        Shop::spawned(&game)
             .iter()
             .all(|spawn| spawn.owner == Some(player))
     );
@@ -67,8 +79,8 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     // 9 + 3 of 10 does not.
     let entity = game.unit_entity(first_depot);
     game.entity_mut(entity).remove::<Dead>();
-    game.owned(depot, player);
-    game.owned(depot, player);
+    Production::owned(&mut game, depot, player);
+    Production::owned(&mut game, depot, player);
     step(&mut game, 1, 2, (9, 10), 5);
     step(&mut game, 0, 3, (9, 10), 6);
     step(&mut game, 0, 3, (9, 10), 7);
@@ -78,9 +90,10 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
 fn a_dead_producers_queue_holds_its_supply_and_its_own_cost_does_not_count() {
     // A barracks that uses 2 and gives 5, whose queue holds two grunts of 3.
     let mut game = shop_match();
-    let shop = game.shop();
-    let train = game.add_train(shop.grunt, Ticks::new(9), None);
-    game.count_supply(
+    let shop = Shop::place(&mut game);
+    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(9), None);
+    Production::count_supply(
+        &mut game,
         10,
         &[(shop.grunt, supply(3, 0)), (shop.barracks, supply(2, 5))],
     );
@@ -98,30 +111,42 @@ fn a_dead_producers_queue_holds_its_supply_and_its_own_cost_does_not_count() {
 fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     // The train needs a living forge of its player's, and its player's modifier 0.
     let mut game = shop_match();
-    let shop = game.shop();
-    let train = game.add_train(shop.grunt, Ticks::new(5), None);
+    let shop = Shop::place(&mut game);
+    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(5), None);
     let drill = ModifierId::new(0);
     let mut requirements = Requirements::default();
     requirements.push(train, [shop.forge], [drill]);
     game.insert_resource(requirements);
     // A match of production alone, whose players hold no modifiers until one is given them.
-    game.spawn_players(2, 0);
+    Players::spawn(&mut game, 2, 0);
     let entity = game.player_entity(PlayerSlot::new(0)).unwrap();
     let given = PlayerModifiers::default();
     game.entity_mut(entity).insert(given);
     let player = PlayerSlot::new(0);
-    let producer = game.allocate_id();
-    game.producer(producer, 1, 10, Some(player), train, TrainQueue::default());
+    let producer = Production::allocate_id(&mut game);
+    shop.producer(
+        &mut game,
+        producer,
+        10,
+        Team::new(1),
+        Some(player),
+        train,
+        TrainQueue::default(),
+    );
     let step = |game: &mut Match, queued: usize, tick: u64| {
-        game.order_train(producer);
+        Production::order_train(game, producer);
         game.step();
-        assert_eq!(game.queued(producer), queued, "tick {tick}");
+        assert_eq!(
+            game.part::<TrainQueue>(producer).entries().len(),
+            queued,
+            "tick {tick}"
+        );
     };
     // Neither: refused. Another player's forge, and a forge but no modifier: refused.
     step(&mut game, 0, 0);
-    game.owned(shop.forge, PlayerSlot::new(1));
+    Production::owned(&mut game, shop.forge, PlayerSlot::new(1));
     step(&mut game, 0, 1);
-    let forge = game.owned(shop.forge, player);
+    let forge = Production::owned(&mut game, shop.forge, player);
     step(&mut game, 0, 2);
     // Both: it joins.
     let held = game.player_modifiers_mut(player);

@@ -2,7 +2,7 @@ use campfire_capabilities::Match;
 use campfire_common::Tick;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{Checkpoint, SeedError, SessionLog, SnapshotFingerprint};
-use campfire_runner::{Session, SessionMatch, SessionWorld, StartError};
+use campfire_runner::{Session, SessionWorld, StartError};
 use campfire_sim::SimWorld;
 
 use crate::replay::error::{ReplayError, SnapshotCheckError};
@@ -35,7 +35,7 @@ impl Replay {
         let packages = Session::packages(store, terms)?;
         let ticks = published.next_tick();
         Ok(Replay {
-            game: Match::start_session(published.rewound(), seeds, &packages)?,
+            game: Session::start_match(published.rewound(), seeds, &packages)?,
             packages,
             ticks,
         })

@@ -1,5 +1,6 @@
 use bevy_ecs::world::{Mut, World};
 
+use crate::entity_index::EntityIndex;
 use crate::state_registry::StateRegistry;
 use crate::state_registry::state_delta::StateDelta;
 
@@ -14,9 +15,17 @@ pub struct StateCopy {
 }
 
 impl StateCopy {
-    /// The copy `world` holds, `delta` the last copy into it.
-    pub(crate) const fn of(world: World, delta: StateDelta) -> StateCopy {
-        StateCopy { world, delta }
+    /// A copy of the state of `world`, which from then on records its changes for the copy to
+    /// follow.
+    pub fn of(world: &mut World) -> StateCopy {
+        let mut delta = StateDelta::default();
+        let mut copy = World::new();
+        copy.init_resource::<EntityIndex>();
+        world.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+            registry.track(world, &mut delta);
+            registry.apply(&delta, &mut copy);
+        });
+        StateCopy { world: copy, delta }
     }
 
     /// Brings the copy up to the state of `world`, the world it copies.

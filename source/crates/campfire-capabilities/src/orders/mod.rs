@@ -38,7 +38,6 @@ pub(crate) mod next_think;
 pub(crate) mod order;
 pub(crate) mod order_inputs;
 pub(crate) mod orders_api;
-pub(crate) mod orders_world;
 pub(crate) mod production_orders;
 pub(crate) mod resetting;
 pub(crate) mod seen_targets;
@@ -150,6 +149,143 @@ impl Orders {
             .expect("an ordered unit stands");
         if order.apply(parts, &bounds, now) {
             unit.insert(Resetting);
+        }
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_script::ScriptId;
+    use campfire_sim::TickRate;
+
+    use crate::orders::Orders;
+    use crate::orders::ai::Ai;
+    use crate::orders::ai_data::AiData;
+    use crate::orders::error::AiError;
+    use crate::scripts::script_book::ScriptBook;
+    use crate::units::by_type::ByType;
+    use crate::units::unit_type::UnitType;
+
+    impl Orders {
+        /// Gives `unit_type` its AI, with its compiled script: the think period in milliseconds
+        /// becomes whole ticks at the match's rate, rounded up, and at least one.
+        pub fn load_ai(
+            world: &mut World,
+            unit_type: UnitType,
+            data: &AiData,
+            script: ScriptId,
+        ) -> Result<(), AiError> {
+            let rate = *world.resource::<TickRate>();
+            let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
+            world.resource_mut::<ByType<Ai>>().set(unit_type, ai);
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::world::World;
+    use campfire_common::{PlayerSlot, Tick};
+    use campfire_math::Num;
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{Position, StableId};
+
+    use crate::actions::action_slots::ActionSlots;
+    use crate::actions::in_progress::InProgress;
+    use crate::actions::slot_times::SlotTimes;
+    use crate::combat::internals::Armed;
+    use crate::items::inventory::{Inventory, ItemStack};
+    use crate::navigation::Navigation;
+    use crate::orders::Orders;
+    use crate::orders::ai_data::AiData;
+    use crate::players::players_world::PlayersWorld;
+    use crate::players::resource_id::ResourceId;
+    use crate::scripts::script_failures::ScriptFailures;
+    use crate::units::Units;
+    use crate::units::move_step::MoveStep;
+    use crate::units::owner::Owner;
+    use crate::units::team::Team;
+    use crate::units::unit_type::UnitType;
+    use crate::units::unit_type_data::UnitTypeData;
+    use crate::values::declared_name::DeclaredName;
+    use crate::values::package_path::PackagePath;
+    use crate::values::scalar::Scalar;
+
+    impl Orders {
+        /// A unit type of `tags` and `params`, and with the AI script `ai` when it has one, thinking
+        /// every 250 ms.
+        pub(crate) fn ai_type(
+            world: &mut World,
+            tags: &[&str],
+            params: &[(&str, Scalar)],
+            ai: Option<&str>,
+        ) -> UnitType {
+            let data = UnitTypeData::of(tags, params);
+            let unit_type = Units::load_next_type(world, &data);
+            if let Some(source) = ai {
+                let ai = AiData {
+                    ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+                    think_ms: 250,
+                };
+                let script = Units::compile_hooked(world, source).unwrap();
+                Orders::load_ai(world, unit_type, &ai, script).unwrap();
+            }
+            unit_type
+        }
+
+        /// Runs a tick, and checks that no script call failed in it.
+        pub(crate) fn think(world: &mut World, inputs: &[(PlayerSlot, &[u8])]) {
+            world.step_with(inputs);
+            let failures = world.non_send::<ScriptFailures>().calls();
+            assert_eq!(failures, []);
+        }
+
+        /// When the attack it winds up strikes, if one winds up.
+        pub(crate) fn strikes_at(world: &World, id: StableId) -> Option<Tick> {
+            world
+                .part::<ActionSlots>(id)
+                .in_progress()
+                .and_then(InProgress::resolves_at)
+        }
+
+        /// When its weapon may attack again.
+        pub(crate) fn ready_at(world: &World, id: StableId) -> Tick {
+            world.part::<SlotTimes>(id).slot(0).unwrap().ready_at
+        }
+
+        /// Player 0's gold.
+        pub(crate) fn gold(world: &World) -> i64 {
+            let resources = world.player_resources(PlayerSlot::new(0));
+            let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+            resources.unwrap().amount(gold)
+        }
+
+        /// The items of `id`'s inventory, slot by slot, each by its book's index and its count.
+        pub(crate) fn carried(world: &World, id: StableId) -> Vec<Option<(usize, u32)>> {
+            let inventory = world.try_part::<Inventory>(id).unwrap();
+            let carried = |slot: &Option<ItemStack>| {
+                slot.map(|carried| (carried.item.index(), carried.count.get()))
+            };
+            inventory.slots().iter().map(carried).collect()
+        }
+
+        /// A hero of `slot` that walks a meter a tick.
+        pub(crate) fn hero(
+            world: &mut World,
+            pos: Position,
+            team: Team,
+            slot: u32,
+            combatant: Armed,
+        ) -> StableId {
+            let combatant = combatant.bundle(world);
+            let parts = (
+                combatant,
+                Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
+                Owner::new(PlayerSlot::new(slot)),
+            );
+            Units::spawn(world, pos, team, parts)
         }
     }
 }

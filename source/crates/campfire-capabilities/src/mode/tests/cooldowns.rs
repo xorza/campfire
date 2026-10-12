@@ -1,4 +1,5 @@
 use campfire_common::Tick;
+use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
 use crate::actions::slot_times::SlotTimes;
@@ -29,8 +30,8 @@ fn on_input(ctx, player, name, value) {
 "#;
     let mut game = picking_match(cutter, ScriptLimits::ROOMY);
     // Hero X holds `strike` in its basic slot 0; hero Y does not hold it.
-    let x = game.pick(0, "hero-x");
-    game.pick(2, "hero-y");
+    let x = Mode::pick(&mut game, 0, "hero-x");
+    Mode::pick(&mut game, 2, "hero-y");
     let ready = |game: &Match| {
         let times = game.get::<SlotTimes>(x).unwrap();
         times.slot(0).unwrap().ready_at.get()
@@ -40,15 +41,15 @@ fn on_input(ctx, player, name, value) {
     game.get_mut::<SlotTimes>(x)
         .unwrap()
         .cool_down(0, Tick::new(start + 50));
-    game.tick_inputs(&[(0, input("probe", "cut"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "cut"))]);
     assert_eq!(ready(&game), start + 40);
     // A tick later 39 are left; half of them is 19.5, which rounds up to 20 kept.
-    game.tick_inputs(&[(0, input("probe", "half"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "half"))]);
     assert_eq!(ready(&game), start + 1 + 20);
     // A cut past what is left makes it ready in the call's tick, no earlier.
-    game.tick_inputs(&[(0, input("probe", "all"))]);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "all"))]);
     assert_eq!(ready(&game), start + 2);
-    assert_eq!(game.failures(), []);
+    assert_eq!(Mode::failures(&game), []);
     let refused = [
         ("unknown", ApiError::UnknownAbility),
         ("unheld", ApiError::NotHeld),
@@ -57,7 +58,7 @@ fn on_input(ctx, player, name, value) {
         ("share", ApiError::NotAFraction),
     ];
     for (value, error) in refused {
-        game.tick_inputs(&[(0, input("probe", value))]);
-        assert_eq!(game.failures(), [FailureKind::Api(error)], "{value}");
+        Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);
+        assert_eq!(Mode::failures(&game), [FailureKind::Api(error)], "{value}");
     }
 }

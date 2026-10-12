@@ -1,4 +1,6 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::StableId;
@@ -164,6 +166,16 @@ impl<'w> CarriedMut<'w> {
             self.clocks.set_changed();
         }
     }
+
+    /// The modifiers and clocks of `entity`; none when it carries none.
+    pub(crate) fn of(world: &mut World, entity: Entity) -> Option<CarriedMut<'_>> {
+        let (modifiers, clocks) = world
+            .get_entity_mut(entity)
+            .ok()?
+            .into_components_mut::<(&mut Modifiers, &mut ModifierClocks)>()
+            .ok()?;
+        Some(CarriedMut::new(modifiers, clocks))
+    }
 }
 
 /// Both components, past change detection.
@@ -176,7 +188,6 @@ struct Parts<'a> {
 #[cfg(test)]
 mod tests {
     use bevy_ecs::change_detection::DetectChanges;
-    use bevy_ecs::world::World;
     use campfire_common::Ticks;
 
     use super::*;
@@ -184,7 +195,6 @@ mod tests {
     use crate::stats::lifetime::{Ends, Lifetime};
     use crate::stats::modifier_clocks::Interval;
     use crate::stats::modifier_data::Reapply;
-    use crate::stats::stats_world::StatsWorldCrate;
     use crate::values::rank::Rank;
 
     #[test]
@@ -261,7 +271,7 @@ mod tests {
         ];
         for (operation, expected) in cases {
             world.clear_trackers();
-            operation(&mut world.carried_mut(unit).unwrap());
+            operation(&mut CarriedMut::of(&mut world, unit).unwrap());
             assert_eq!(changed(&world), expected);
         }
         assert_eq!(world.get::<Modifiers>(unit).unwrap().len(), 0);

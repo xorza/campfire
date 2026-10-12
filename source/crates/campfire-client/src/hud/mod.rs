@@ -617,7 +617,7 @@ mod tests {
     use bevy::time::{TimePlugin, TimeUpdateStrategy};
     use campfire_capabilities::UnitEntity;
     use campfire_math::Num;
-    use campfire_sim::{IdAllocator, Position, SimWorld};
+    use campfire_sim::{IdAllocator, Position};
 
     use super::*;
     use crate::view::View;
@@ -631,7 +631,7 @@ mod tests {
         app.init_asset::<StandardMaterial>();
         app.init_resource::<EntityIndex>();
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
-        app.world_mut().register_unpredicted();
+        Unpredicted::register(app.world_mut());
         app.add_plugins((View, Hud));
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());

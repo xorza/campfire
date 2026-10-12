@@ -18,7 +18,6 @@ pub(crate) mod points;
 pub(crate) mod progression_api;
 pub(crate) mod progression_column;
 pub(crate) mod progression_effect;
-pub(crate) mod progression_world;
 pub(crate) mod track_book;
 pub(crate) mod track_data;
 pub(crate) mod track_set;
@@ -48,6 +47,29 @@ impl Progression {
         world
             .resource_mut::<EffectQueues>()
             .register(Capability::Progression, ProgressionEffect::queue_listed);
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use std::collections::BTreeMap;
+
+    use bevy_ecs::world::World;
+
+    use crate::progression::Progression;
+    use crate::progression::progression_column::ProgressionColumn;
+    use crate::progression::track_book::TrackBook;
+    use crate::progression::track_data::TrackData;
+    use crate::units::view::View;
+    use crate::values::declared_name::DeclaredName;
+
+    impl Progression {
+        /// Loads the mode's `tracks`, which the package load checked, into the match.
+        pub(crate) fn load_tracks(world: &mut World, tracks: &BTreeMap<DeclaredName, TrackData>) {
+            let book = TrackBook::new(tracks);
+            ProgressionColumn::share(world.non_send::<View>(), book.clone());
+            world.insert_resource(book);
+        }
     }
 }
 

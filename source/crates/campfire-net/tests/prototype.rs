@@ -6,13 +6,13 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::EntityRef;
-use campfire_capabilities::internals::{StatsWorldInternals, UnitsWorldInternals};
 use campfire_capabilities::{
-    Action, ActionSlots, Bounds, CombatWorld, DashTo, Dead, Destination, ForcedMove, Life, Match,
+    Action, ActionSlots, Bounds, CombatWorld, DashTo, Dead, Destination, ForcedMove, Life,
     MatchResult, Metric, ModeState, ModeWorld, Modifiers, MoveStep, Order, Owner, PlayerResources,
     PlayersWorld, PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue,
     SyncAll, SyncNone, Team, UnitsWorld,
 };
+use campfire_capabilities::{Stats, Units};
 use campfire_common::{MapName, PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
@@ -24,7 +24,7 @@ use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::internals::HashTrail;
-use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_runner::{Session, SessionWorld};
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use lightyear::prelude::{
     Client, Connected, Link, MessageSender, Predicted, PredictionManager, PredictionTarget,
@@ -148,7 +148,7 @@ fn server_and_replay_agree_on_every_tick() {
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
         let seed = decoded.revealed_seeds().unwrap();
-        let mut replay = Match::start_session(decoded.rewound(), seed, local.packages()).unwrap();
+        let mut replay = Session::start_match(decoded.rewound(), seed, local.packages()).unwrap();
         let mut replayed = HashTrail::default();
         for _ in live.totals() {
             replay.run_tick_alone();
@@ -438,8 +438,8 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
     let avatar = local.avatar(0);
     for name in ["slow", "stun"] {
         let world = local.server_mut().world_mut();
-        let modifier = world.modifier_named(0, name).unwrap();
-        world.give_modifier(avatar, modifier, None, false);
+        let modifier = Stats::modifier(world, 0, name).unwrap();
+        Stats::give_modifier(world, avatar, modifier, None, false);
         let mut frames = 0;
         while !carries(local.client(0)) {
             local.step();
@@ -516,10 +516,12 @@ fn the_client_takes_the_relations_a_script_sets() {
     }
     assert_eq!(relations(local.client(0)), Some(Relations::default()));
     let (west, east) = (Team::new(0), Team::new(1));
-    local
-        .server_mut()
-        .world_mut()
-        .set_relation(west, east, Relation::Neutral);
+    Units::set_relation(
+        local.server_mut().world_mut(),
+        west,
+        east,
+        Relation::Neutral,
+    );
     // The server sends them in its frame of the next step, and the client takes them in the step
     // after.
     local.step();

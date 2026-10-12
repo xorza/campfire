@@ -224,8 +224,7 @@ impl RestoredSession {
         let ticks = self.log.next_tick();
         let seeds = self.private.seed_chain.seeds();
         let mut world = World::new();
-        world
-            .start_session(self.log.rewound(), seeds, packages)
+        Session::start(&mut world, self.log.rewound(), seeds, packages)
             .map_err(AbortError::Start)?;
         world
             .session_mut()

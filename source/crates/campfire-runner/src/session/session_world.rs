@@ -1,56 +1,18 @@
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{MatchEnd, MatchResult, ModeWorld, ScriptFailures};
-use campfire_common::Tick;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_package::ModePackages;
-use campfire_protocol::{
-    Checkpoint, Outcome, ServerSeeds, SessionLog, SessionResult, SlotChangeKind,
-    SnapshotFingerprint,
-};
+use campfire_protocol::{Checkpoint, Outcome, SessionResult, SlotChangeKind, SnapshotFingerprint};
 use campfire_sim::{
     SimRng, SimTick, SimUpdate, SimWorld, SlotEvent, SlotEventKind, TickInput, TickInputs,
 };
 
 use crate::events::script_call_failed::ScriptCallFailed;
 use crate::session::Session;
-use crate::session::error::{ResultMismatch, ResumeError, StartError};
+use crate::session::error::ResultMismatch;
 
 /// What a session gives the world that runs its match: a bare one on a verifier, Lightyear's on
 /// a server.
 pub trait SessionWorld {
-    /// Prepares the world, a new one, for the match of `log`'s header, of the mode `packages`
-    /// holds, at the header's tick rate and with the randomness of the first segment's seed of
-    /// `seeds` and the players' contributions; starts the match; and inserts the session, which
-    /// records into `log` from its first tick. An error when the terms name another release,
-    /// mode or dependencies than this release and `packages`, a tick rate outside the mode's
-    /// range, or more slots than the mode's teams have, when `seeds` are not the seeds of the
-    /// chain the header commits to or do not reach the last segment of `log`, when a change of
-    /// a slot's controller the log holds, as a published log replayed does, breaks the mode's
-    /// `[players]`, or when the packages do not load into the match.
-    fn start_session(
-        &mut self,
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
-    ) -> Result<(), StartError>;
-
-    /// Prepares the world, a new one, for the match of `log`, rewound to replay its ticks, from
-    /// the checkpoint of it that starts `segment`, as a restore does: builds the match as
-    /// `start_session` does, but starts no mode, as the state is the checkpoint's `snapshot`;
-    /// and seals the log's ticks before the checkpoint without running them, so the next tick
-    /// the session runs is the checkpoint's. An error as `start_session` gives one, and when the
-    /// log holds no such checkpoint, when `snapshot` is not the one the checkpoint
-    /// fingerprints, when it does not restore, or restores to another state hash than the
-    /// checkpoint's.
-    fn resume_session(
-        &mut self,
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
-        segment: u32,
-        snapshot: &[u8],
-    ) -> Result<(), ResumeError>;
-
     /// The session of the match.
     fn session(&self) -> &Session;
 
@@ -96,55 +58,6 @@ pub trait SessionWorld {
 }
 
 impl SessionWorld for World {
-    fn start_session(
-        &mut self,
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
-    ) -> Result<(), StartError> {
-        assert_eq!(
-            log.next_tick(),
-            Tick::new(0),
-            "a session starts before its first tick"
-        );
-        let session = Session::build(self, log, seeds, packages, 0)?;
-        self.start_mode().map_err(StartError::MatchStart)?;
-        self.insert_resource(session);
-        Ok(())
-    }
-
-    fn resume_session(
-        &mut self,
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
-        segment: u32,
-        snapshot: &[u8],
-    ) -> Result<(), ResumeError> {
-        assert_eq!(
-            log.next_tick(),
-            Tick::new(0),
-            "a resumed log replays from its first tick"
-        );
-        let record = log
-            .checkpoints()
-            .find(|record| record.segment == segment)
-            .ok_or(ResumeError::NoCheckpoint)?;
-        let (tick, state_hash) = (record.tick, record.state_hash);
-        if SnapshotFingerprint::of(snapshot) != record.snapshot {
-            return Err(ResumeError::Fingerprint);
-        }
-        let mut session =
-            Session::build(self, log, seeds, packages, segment).map_err(ResumeError::Start)?;
-        self.restore(snapshot).map_err(ResumeError::Snapshot)?;
-        if self.state_hash() != state_hash {
-            return Err(ResumeError::StateHash);
-        }
-        session.log.seal_until(tick);
-        self.insert_resource(session);
-        Ok(())
-    }
-
     fn session(&self) -> &Session {
         self.resource::<Session>()
     }

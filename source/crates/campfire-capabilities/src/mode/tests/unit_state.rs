@@ -36,7 +36,7 @@ fn on_mode_input(ctx, player, name, value) {
 }
 "#;
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    game.tick_inputs(&[(1, input("probe", "spawn"))]);
+    Mode::tick_inputs(&mut game, &[(1, input("probe", "spawn"))]);
     let grunt = |game: &Match| {
         let grunt_type = game.non_send::<View>().unit_type_named("grunt").unwrap();
         let grunts = game
@@ -59,21 +59,30 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(grunt(&game), at(2));
     // In one tick, the first call reads 2, writes 5 and then 6, and reads 6 back; the second
     // reads 6, as the first call's writes applied when it ended.
-    game.tick_inputs(&[(1, input("probe", "write")), (1, input("probe", "read"))]);
-    assert_eq!(game.failures(), []);
-    let [_, seen, count, inputs] = game.tracked_state();
+    Mode::tick_inputs(
+        &mut game,
+        &[(1, input("probe", "write")), (1, input("probe", "read"))],
+    );
+    assert_eq!(Mode::failures(&game), []);
+    let [_, seen, count, inputs] = Mode::tracked_state(&game);
     assert_eq!([seen, count, inputs], [2, 6, 6].map(StateValue::Int));
     assert_eq!(grunt(&game), at(6));
     // A call that fails writes nothing; a field the type does not declare, and a value of
     // another type, fail the call.
-    game.tick_inputs(&[
-        (1, input("probe", "fail")),
-        (1, input("probe", "unknown")),
-        (1, input("probe", "wrong")),
-    ]);
+    Mode::tick_inputs(
+        &mut game,
+        &[
+            (1, input("probe", "fail")),
+            (1, input("probe", "unknown")),
+            (1, input("probe", "wrong")),
+        ],
+    );
     let refused = [ApiError::UnknownState, ApiError::WrongStateType].map(FailureKind::Api);
-    assert_eq!(game.failures()[1..], refused);
-    assert!(matches!(game.failures()[0], FailureKind::Raised(None)));
+    assert_eq!(Mode::failures(&game)[1..], refused);
+    assert!(matches!(
+        Mode::failures(&game)[0],
+        FailureKind::Raised(None)
+    ));
     assert_eq!(grunt(&game), at(6));
     // A snapshot holds the values: a fresh match it restores into holds them too.
     let mut fresh = mode_match(script, ScriptLimits::ROOMY);
@@ -85,12 +94,12 @@ fn on_mode_input(ctx, player, name, value) {
     for entity in placed {
         fresh.despawn(entity);
     }
-    game.restore_into(&mut fresh);
+    Release::restore_into(&game, &mut fresh);
     assert_eq!(grunt(&fresh), at(6));
     // A unit a call spawns is a handle whose state the call writes and reads back, at its type's
     // defaults but what it wrote; the unit spawns with what it wrote.
-    game.tick_inputs(&[(1, input("probe", "spawn_marked"))]);
-    assert_eq!(game.failures(), []);
+    Mode::tick_inputs(&mut game, &[(1, input("probe", "spawn_marked"))]);
+    assert_eq!(Mode::failures(&game), []);
     let marked = (
         vec![StateValue::Int(2)],
         vec![StateValue::Text("new".to_owned())],

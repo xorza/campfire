@@ -23,7 +23,7 @@ use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
-use crate::units::units_world::UnitsWorldCrate;
+use crate::units::tag_effect::TagEffect;
 
 /// Runs modifier scripts' hooks for the combat events.
 #[derive(Debug)]
@@ -122,7 +122,7 @@ impl ModifierHooks {
         {
             let book = world.resource::<ModifierBook>();
             let defines = |id| book.get(id).hooks.contains(hook);
-            let takes_effect = world.tag_effect(entity);
+            let takes_effect = TagEffect::of(world, entity);
             heard.extend(
                 modifiers
                     .iter()

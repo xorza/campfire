@@ -6,13 +6,13 @@ use bevy_ecs::world::World;
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimComponent, SimRng, StableId};
 
 use super::*;
 use crate::actions::action_book::internals::TestWeapon;
 use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{ActionSlot, ActionSlots};
-use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
 use crate::actions::channel_call::ChannelCall;
 use crate::actions::in_progress::InProgress;
 use crate::actions::slot_kind::SlotKind;
@@ -21,21 +21,22 @@ use crate::actions::targets::Targets;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_rules::{CombatRules, Leech};
-use crate::combat::combat_world::test_world::{Attack, CombatWorldTest};
 use crate::combat::damage::DamageCause;
 use crate::combat::deaths::Fallen;
 use crate::combat::internals::Armed;
 use crate::combat::pass_queue::PassEntry;
 use crate::combat::recent_attack::RecentAttack;
+use crate::combat::test_world::Attack;
 use crate::geometry::metric::Metric;
-use crate::players::players_world::internals::PlayersWorldInternals;
+use crate::players::Players;
 use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
+use crate::release::Release;
 use crate::release::r#match::Match;
-use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::life_pool::LifePool;
 use crate::stats::lifetime::{Ends, Lifetime};
@@ -49,8 +50,8 @@ use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_rule::StatRule;
-use crate::stats::stats_world::test_world::StatsWorldTest;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -61,7 +62,6 @@ use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::units_world::UnitsWorldCrate;
-use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::units::view::View;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
@@ -103,19 +103,19 @@ fn fight_match() -> Match {
 #[test]
 fn an_attack_winds_up_and_strikes_each_period() {
     let mut game = fight_match();
-    let fighter = game.spawn_armed(Team::new(0), at(4, 0, 0), fighter());
-    let dummy = game.spawn_armed(Team::new(1), at(6, 0, 0), dummy());
-    game.attack(fighter, dummy);
+    let fighter = Combat::spawn_armed(&mut game, at(4, 0, 0), Team::new(0), fighter());
+    let dummy = Combat::spawn_armed(&mut game, at(6, 0, 0), Team::new(1), dummy());
+    Combat::attack(&mut game, fighter, dummy);
 
     // In range from tick 0: attacks start in ticks 0, 5, 10 and 15, and strike 2 ticks later,
     // taking 100 to 70, 40, 10 and 0: the dummy despawns in tick 17.
     game.run_until(2);
-    assert_eq!(game.state(fighter).started(), Some(Tick::new(0)));
-    assert_eq!(game.health(dummy), 100);
+    assert_eq!(Attack::of(&game, fighter).started(), Some(Tick::new(0)));
+    assert_eq!(Stats::health(&game, dummy), 100);
     game.run_until(3);
-    assert_eq!(game.health(dummy), 70);
-    assert_eq!(game.state(fighter).ready_at(), Tick::new(5));
-    assert_eq!(game.state(fighter).started(), None);
+    assert_eq!(Stats::health(&game, dummy), 70);
+    assert_eq!(Attack::of(&game, fighter).ready_at(), Tick::new(5));
+    assert_eq!(Attack::of(&game, fighter).started(), None);
     let attackers = |game: &Match| {
         let attackers = game.try_part::<RecentAttackers>(dummy).unwrap();
         attackers.iter().collect::<Vec<_>>()
@@ -128,13 +128,13 @@ fn an_attack_winds_up_and_strikes_each_period() {
     game.run_until(8);
     assert_eq!(attackers(&game), [attack(fighter, 7)]);
     game.run_until(17);
-    assert_eq!(game.health(dummy), 10);
+    assert_eq!(Stats::health(&game, dummy), 10);
     game.run_until(18);
     assert!(game.try_part::<Life>(dummy).is_none());
-    assert_eq!(game.state(fighter).target(), Some(dummy));
+    assert_eq!(Attack::of(&game, fighter).target(), Some(dummy));
     // The next tick finds the target gone and drops it.
     game.run_until(19);
-    assert_eq!(game.state(fighter).target(), None);
+    assert_eq!(Attack::of(&game, fighter).target(), None);
 
     // A list keeps each attacker once, by stable id, and forgets one that despawned: the dummy.
     let index = game.resource::<EntityIndex>();
@@ -175,18 +175,18 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
     ] {
         let mut game = fight_match();
         game.insert_resource(metric);
-        let fighter = game.spawn_armed(Team::new(0), at(0, 0, 0), fighter());
+        let fighter = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), fighter());
         let dummy_at = Position::new(Vec3::new(dummy_x, Num::int(dummy_y), Num::ZERO)).unwrap();
-        let dummy = game.spawn_armed(Team::new(1), dummy_at, dummy());
+        let dummy = Combat::spawn_armed(&mut game, dummy_at, Team::new(1), dummy());
         if bodies {
             for id in [fighter, dummy] {
                 game.insert_parts(id, Body::new(half).unwrap());
             }
         }
-        game.attack(fighter, dummy);
+        Combat::attack(&mut game, fighter, dummy);
         game.run_until(1);
         // An attack in range starts in tick 0, its first.
-        let started = game.state(fighter).started();
+        let started = Attack::of(&game, fighter).started();
         assert_eq!(
             started,
             starts.then_some(Tick::ZERO),
@@ -203,10 +203,10 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     let mut game = fight_match();
     let types = ["ground", "air", "structure"].map(|tag| {
         let data = UnitTypeData::tagged(&[tag]);
-        game.load_unit_type(TypeScope::Mode, tag, &data)
+        Units::load_type(&mut game, TypeScope::Mode, tag, &data)
     });
     let hover = UnitTypeData::tagged(&["ground", "air"]);
-    let hover = game.load_unit_type(TypeScope::Mode, "hover", &hover);
+    let hover = Units::load_type(&mut game, TypeScope::Mode, "hover", &hover);
     let weapon = |game: &mut Match, aim: &str, range, windup, damage| {
         let view = game.non_send::<View>().clone();
         let aim = view
@@ -220,7 +220,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
                 Ticks::new(windup),
             )
         };
-        game.add_weapon(weapon)
+        Actions::add_weapon(game, weapon)
     };
     let ground = weapon(&mut game, "enemies:ground", 1, 0, StatId::new(1));
     let air = weapon(&mut game, "enemies:air", 5, 1, StatId::new(2));
@@ -231,7 +231,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     let slots =
         ActionSlots::new([ground, air].map(|weapon| (weapon, SlotKind::new(0), Rank::new(1))))
             .timed();
-    let id = game.spawn_armed(Team::new(0), at(0, 0, 0), dummy());
+    let id = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), dummy());
     game.insert_parts(id, (slots, stats));
     let [ground_at, air_at, structure_at, hover_at] = [1, 4, 1, 1];
     let targets = [
@@ -240,9 +240,11 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
         (types[2], structure_at),
         (hover, hover_at),
     ]
-    .map(|(unit_type, x)| game.spawn_armed_of(unit_type, Team::new(1), at(x, 0, 0), dummy()));
+    .map(|(unit_type, x)| {
+        Combat::spawn_armed_of(&mut game, unit_type, at(x, 0, 0), Team::new(1), dummy())
+    });
     let [ground_unit, air_unit, structure, hovering] = targets;
-    let healths = |game: &Match| targets.map(|target| game.health(target));
+    let healths = |game: &Match| targets.map(|target| Stats::health(game, target));
     let underway = |game: &Match| {
         let slots = game.try_part::<ActionSlots>(id).unwrap();
         slots.in_progress().map(InProgress::slot)
@@ -250,7 +252,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
 
     // The air unit, 4 m off, only the air weapon selects: it starts in tick 0 and strikes in
     // tick 1, for 25, and is ready again in tick 0 + 5.
-    game.attack(id, air_unit);
+    Combat::attack(&mut game, id, air_unit);
     game.run_until(1);
     assert_eq!(underway(&game), Some(1));
     game.run_until(2);
@@ -260,14 +262,14 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
 
     // The ground unit, 1 m off: the ground weapon, ready, strikes in tick 2 itself, for 10, while
     // the air weapon cools down.
-    game.attack(id, ground_unit);
+    Combat::attack(&mut game, id, ground_unit);
     game.run_until(3);
     assert_eq!(healths(&game), [90, 75, 100, 100]);
     let times = game.try_part::<SlotTimes>(id).unwrap();
     assert_eq!(times.slot(0).unwrap().ready_at, Tick::new(7));
 
     // No weapon selects the structure: nothing starts while it is the target.
-    game.attack(id, structure);
+    Combat::attack(&mut game, id, structure);
     for tick in 4..=8 {
         game.run_until(tick);
         assert_eq!(underway(&game), None, "tick {tick}");
@@ -276,14 +278,14 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
 
     // Both weapons select a hovering unit, ground and air, 1 m off: the first, the ground one,
     // ready since tick 7, strikes in tick 8 for 10.
-    game.attack(id, hovering);
+    Combat::attack(&mut game, id, hovering);
     game.run_until(9);
     assert_eq!(healths(&game), [90, 75, 100, 90]);
 
     // A weapon not learned is none: a unit √2 m off the hovering one, its ground weapon at rank
     // 0, starts with the air one in tick 9 and strikes in tick 10 for 25, while the first unit's
     // ground weapon waits for tick 13.
-    let second = game.spawn_armed(Team::new(0), at(0, 0, 1), dummy());
+    let second = Combat::spawn_armed(&mut game, at(0, 0, 1), Team::new(0), dummy());
     let mut stats = UnitStats::default();
     stats
         .refill()
@@ -291,7 +293,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     let kind = SlotKind::new(0);
     let slots = ActionSlots::new([(ground, kind, None), (air, kind, Some(Rank::FIRST))]).timed();
     game.insert_parts(second, (slots, stats));
-    game.attack(second, hovering);
+    Combat::attack(&mut game, second, hovering);
     game.run_until(11);
     assert_eq!(healths(&game), [90, 75, 100, 65]);
 }
@@ -299,26 +301,26 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
 #[test]
 fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
     let mut game = fight_match();
-    let early = game.spawn_armed(Team::new(0), at(0, 0, 0), fighter());
-    let late = game.spawn_armed(Team::new(0), at(0, 0, 1), fighter());
-    let dummy = game.spawn_armed(Team::new(1), at(1, 0, 0), dummy());
-    game.attack(early, dummy);
-    game.attack(late, dummy);
+    let early = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), fighter());
+    let late = Combat::spawn_armed(&mut game, at(0, 0, 1), Team::new(0), fighter());
+    let dummy = Combat::spawn_armed(&mut game, at(1, 0, 0), Team::new(1), dummy());
+    Combat::attack(&mut game, early, dummy);
+    Combat::attack(&mut game, late, dummy);
     // Both start in tick 0, to strike in tick 2. The early one is disarmed before tick 1: Act
     // interrupts its windup and keeps its target. The late one is stunned in tick 2's Move
     // stage, after Act, so its strike in Hit is interrupted instead.
     let stunned = &[Block::Move, Block::Attack, Block::Cast, Block::Use];
-    game.block_at(late, 2, SimSet::Move, stunned);
-    game.set_blocks(late, &[]);
+    Units::block_at(&mut game, late, 2, SimSet::Move, stunned);
+    Units::set_blocks(&mut game, late, &[]);
     game.run_until(1);
-    game.set_blocks(early, &[Block::Attack]);
+    Units::set_blocks(&mut game, early, &[Block::Attack]);
     game.run_until(2);
-    assert_eq!(game.state(early).started(), None);
-    assert_eq!(game.state(late).started(), Some(Tick::new(0)));
+    assert_eq!(Attack::of(&game, early).started(), None);
+    assert_eq!(Attack::of(&game, late).started(), Some(Tick::new(0)));
     game.run_until(3);
-    assert_eq!(game.health(dummy), 100);
+    assert_eq!(Stats::health(&game, dummy), 100);
     for unit in [early, late] {
-        let state = game.state(unit);
+        let state = Attack::of(&game, unit);
         assert_eq!(
             (state.target(), state.started(), state.ready_at()),
             (Some(dummy), None, Tick::new(0))
@@ -326,13 +328,13 @@ fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
     }
     // The states end before tick 3: both start again in tick 3, ready at once as no strike spent
     // the period, and strike in tick 5, 100 − 2 × 30 = 40, ready again in tick 3 + 5 = 8.
-    game.set_blocks(early, &[]);
-    game.set_blocks(late, &[]);
+    Units::set_blocks(&mut game, early, &[]);
+    Units::set_blocks(&mut game, late, &[]);
     game.run_until(4);
-    assert_eq!(game.state(early).started(), Some(Tick::new(3)));
+    assert_eq!(Attack::of(&game, early).started(), Some(Tick::new(3)));
     game.run_until(6);
-    assert_eq!(game.health(dummy), 40);
-    assert_eq!(game.state(late).ready_at(), Tick::new(8));
+    assert_eq!(Stats::health(&game, dummy), 40);
+    assert_eq!(Attack::of(&game, late).ready_at(), Tick::new(8));
 }
 
 #[test]
@@ -341,7 +343,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     // damage, that costs 4 mana and 2 gold; its unit has 100 mana, and its player 5 gold.
     let mut game = fight_match();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    game.spawn_players(1, 1);
+    Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(gold, 5)
@@ -359,16 +361,16 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             Ticks::new(2),
         )
     };
-    let weapon = game.add_weapon(weapon);
+    let weapon = Actions::add_weapon(&mut game, weapon);
     let mut stats = UnitStats::default();
     stats.refill().extend([Num::int(6), Num::int(10)]);
-    let id = game.spawn_armed(Team::new(0), at(0, 0, 0), dummy());
-    let dummy = game.spawn_armed(Team::new(1), at(1, 0, 0), dummy());
+    let id = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), dummy());
+    let dummy = Combat::spawn_armed(&mut game, at(1, 0, 0), Team::new(1), dummy());
     let pools = Pools::new([(mana, Num::int(100))]).unwrap();
     let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed();
     let owner = Owner::new(PlayerSlot::new(0));
     game.insert_parts(id, (slots, stats, pools, owner));
-    game.attack(id, dummy);
+    Combat::attack(&mut game, id, dummy);
     let paid = |game: &Match| {
         let pools = game.try_part::<Pools>(id).copied().unwrap();
         let mana = pools
@@ -380,7 +382,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             .player_resources(PlayerSlot::new(0))
             .unwrap()
             .amount(gold);
-        (mana, gold, game.health(dummy))
+        (mana, gold, Stats::health(game, dummy))
     };
     let add_gold = |game: &mut Match, amount| {
         let mut resources = game.player_resources_mut(PlayerSlot::new(0)).unwrap();
@@ -396,55 +398,65 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
 
     // Ready in tick 10, it cannot afford 2 gold of 1, so nothing starts.
     game.run_until(11);
-    assert_eq!(game.state(id).started(), None);
+    assert_eq!(Attack::of(&game, id).started(), None);
 
     // With 2 gold an attack starts in tick 11, to strike in tick 13; the gold goes before it
     // strikes, so the checks fail again at the strike: it stops and spends nothing.
     add_gold(&mut game, 1);
     game.run_until(12);
-    assert_eq!(game.state(id).started(), Some(Tick::new(11)));
+    assert_eq!(Attack::of(&game, id).started(), Some(Tick::new(11)));
     add_gold(&mut game, -2);
     game.run_until(14);
     assert_eq!(paid(&game), (92, 0, 80));
-    assert_eq!(game.state(id).started(), None);
-    assert_eq!(game.state(id).ready_at(), Tick::new(10));
+    assert_eq!(Attack::of(&game, id).started(), None);
+    assert_eq!(Attack::of(&game, id).ready_at(), Tick::new(10));
 }
 
 #[test]
 fn a_windup_on_a_target_that_dies_spends_nothing() {
     let mut game = fight_match();
-    let slow = game.spawn_armed(Team::new(0), at(0, 0, 0), fighter());
-    let quick = game.spawn_armed(Team::new(0), at(0, 0, 1), combatant(100, 2, 1, 5, 30));
-    let prey = game.spawn_armed(Team::new(1), at(1, 0, 0), combatant(30, 0, 0, 1, 0));
-    game.attack(slow, prey);
-    game.attack(quick, prey);
+    let slow = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), fighter());
+    let quick = Combat::spawn_armed(
+        &mut game,
+        at(0, 0, 1),
+        Team::new(0),
+        combatant(100, 2, 1, 5, 30),
+    );
+    let prey = Combat::spawn_armed(
+        &mut game,
+        at(1, 0, 0),
+        Team::new(1),
+        combatant(30, 0, 0, 1, 0),
+    );
+    Combat::attack(&mut game, slow, prey);
+    Combat::attack(&mut game, quick, prey);
 
     // Both start in tick 0; the quick one strikes in tick 1 and kills the prey, before the slow
     // one's strike in tick 2. The slow one drops its target in tick 2 and is ready at once.
     game.run_until(2);
     assert!(game.try_part::<Life>(prey).is_none());
-    assert_eq!(game.state(slow).started(), Some(Tick::new(0)));
+    assert_eq!(Attack::of(&game, slow).started(), Some(Tick::new(0)));
     game.run_until(3);
-    assert_eq!(game.state(slow), Attack::default());
-    assert_eq!(game.state(quick).ready_at(), Tick::new(5));
+    assert_eq!(Attack::of(&game, slow), Attack::default());
+    assert_eq!(Attack::of(&game, quick).ready_at(), Tick::new(5));
 }
 
 #[test]
 fn strikes_in_one_tick_see_the_state_before_any_of_them() {
     let mut game = fight_match();
     let duelist = combatant(30, 2, 1, 5, 30).on_death(OnDeath::Stay);
-    let first = game.spawn_armed(Team::new(0), at(0, 0, 0), duelist);
-    let second = game.spawn_armed(Team::new(1), at(1, 0, 0), duelist);
-    game.attack(first, second);
-    game.attack(second, first);
+    let first = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), duelist);
+    let second = Combat::spawn_armed(&mut game, at(1, 0, 0), Team::new(1), duelist);
+    Combat::attack(&mut game, first, second);
+    Combat::attack(&mut game, second, first);
 
     // Both attacks start in tick 0 and strike in tick 1: each kills the other, and both stay,
     // each with the other as its attacker.
     game.run_until(2);
     for (id, other) in [(first, second), (second, first)] {
-        assert_eq!(game.health(id), 0);
+        assert_eq!(Stats::health(&game, id), 0);
         assert!(game.try_part::<Dead>(id).is_some());
-        assert_eq!(game.state(id).target(), None);
+        assert_eq!(Attack::of(&game, id).target(), None);
         let attackers = game.try_part::<RecentAttackers>(id).unwrap();
         let attack = RecentAttack {
             source: other,
@@ -454,10 +466,10 @@ fn strikes_in_one_tick_see_the_state_before_any_of_them() {
     }
 
     // A dead unit is no target.
-    let third = game.spawn_armed(Team::new(1), at(0, 0, 1), fighter());
-    game.attack(third, first);
+    let third = Combat::spawn_armed(&mut game, at(0, 0, 1), Team::new(1), fighter());
+    Combat::attack(&mut game, third, first);
     game.run_until(3);
-    assert_eq!(game.state(third).target(), None);
+    assert_eq!(Attack::of(&game, third).target(), None);
 }
 
 #[test]
@@ -465,9 +477,14 @@ fn targets_are_living_enemies() {
     let mut game = fight_match();
     let prey = combatant(10, 0, 0, 1, 0);
     // Up at y = 9: a target all the same.
-    let high = game.spawn_armed(Team::new(0), at(0, 9, 3), prey);
-    let far = game.spawn_armed(Team::new(0), at(6, 0, 0), prey);
-    let dead = game.spawn_armed(Team::new(0), at(0, 0, 1), prey.on_death(OnDeath::Stay));
+    let high = Combat::spawn_armed(&mut game, at(0, 9, 3), Team::new(0), prey);
+    let far = Combat::spawn_armed(&mut game, at(6, 0, 0), Team::new(0), prey);
+    let dead = Combat::spawn_armed(
+        &mut game,
+        at(0, 0, 1),
+        Team::new(0),
+        prey.on_death(OnDeath::Stay),
+    );
     game.insert_parts(dead, Dead);
     // Tags that block being a target: no target; tags that block all else: a target all the same.
     let cases = [
@@ -479,8 +496,8 @@ fn targets_are_living_enemies() {
         ),
     ];
     let units = [0, 1, 2].map(|x| {
-        let id = game.spawn_armed(Team::new(0), at(x, 0, 5), prey);
-        game.set_blocks(id, cases[usize::try_from(x).unwrap()].0);
+        let id = Combat::spawn_armed(&mut game, at(x, 0, 5), Team::new(0), prey);
+        Units::set_blocks(&mut game, id, cases[usize::try_from(x).unwrap()].0);
         id
     });
 
@@ -513,13 +530,14 @@ fn targets_are_living_enemies() {
 #[test]
 fn every_combat_type_is_state_and_restores() {
     let mut game = fight_match();
-    let fighter = game.spawn_armed(Team::new(0), at(0, 0, 0), fighter());
-    let doomed = game.spawn_armed(
-        Team::new(1),
+    let fighter = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), fighter());
+    let doomed = Combat::spawn_armed(
+        &mut game,
         at(1, 0, 0),
+        Team::new(1),
         combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay),
     );
-    game.attack(fighter, doomed);
+    Combat::attack(&mut game, fighter, doomed);
     game.run_until(3);
     assert!(game.try_part::<Dead>(doomed).is_some());
 
@@ -529,7 +547,7 @@ fn every_combat_type_is_state_and_restores() {
     let _weapon = self::fighter().bundle(&mut restored);
     let doomed_kind = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
     let _weapon = doomed_kind.bundle(&mut restored);
-    game.restore_into(&mut restored);
+    Release::restore_into(&game, &mut restored);
     assert_eq!(
         restored.try_part::<ActionSlots>(fighter),
         game.try_part::<ActionSlots>(fighter)
@@ -632,7 +650,7 @@ fn stats_out_of_their_limits_are_refused() {
     }
     assert_eq!((carrying(1, 0, 0, 0), living(0, 0, 0)), (None, None));
     let mut game = fight_match();
-    let id = game.spawn_armed(Team::new(0), at(0, 0, 0), fighter());
+    let id = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), fighter());
     let entity = game.unit_entity(id);
     let restores = |current, carry| {
         let pools = carrying(1, current, 2, carry).unwrap();
@@ -668,16 +686,22 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
             game.insert_resource(AssistWindow(Ticks::new(ticks)));
         }
         let team = Team::new(0);
-        let [first, killer] = [4, 6].map(|x| game.spawn_armed(team, at(x, 0, 0), fighter()));
-        let slow_one = game.spawn_armed(team, at(5, 0, 0), slow);
+        let [first, killer] =
+            [4, 6].map(|x| Combat::spawn_armed(&mut game, at(x, 0, 0), team, fighter()));
+        let slow_one = Combat::spawn_armed(&mut game, at(5, 0, 0), team, slow);
         let stays = combatant(130, 0, 0, 1, 0).on_death(OnDeath::Stay);
-        let hero = game.spawn_armed(Team::new(1), at(5, 0, 1), stays);
+        let hero = Combat::spawn_armed(&mut game, at(5, 0, 1), Team::new(1), stays);
         let owner = Owner::new(PlayerSlot::new(3));
         game.insert_parts(hero, owner);
-        let creep = game.spawn_armed(Team::new(1), at(5, 0, -1), combatant(130, 0, 0, 1, 0));
+        let creep = Combat::spawn_armed(
+            &mut game,
+            at(5, 0, -1),
+            Team::new(1),
+            combatant(130, 0, 0, 1, 0),
+        );
         let [creep_first, creep_killer] =
-            [4, 6].map(|x| game.spawn_armed(team, at(x, 0, -1), fighter()));
-        let creep_slow = game.spawn_armed(team, at(5, 0, -1), slow);
+            [4, 6].map(|x| Combat::spawn_armed(&mut game, at(x, 0, -1), team, fighter()));
+        let creep_slow = Combat::spawn_armed(&mut game, at(5, 0, -1), team, slow);
         for (attacker, target) in [
             (first, hero),
             (killer, hero),
@@ -686,10 +710,10 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
             (creep_killer, creep),
             (creep_slow, creep),
         ] {
-            game.attack(attacker, target);
+            Combat::attack(&mut game, attacker, target);
         }
         game.run_until(7);
-        assert_eq!(game.health(hero), 40, "{window:?}");
+        assert_eq!(Stats::health(&game, hero), 40, "{window:?}");
         game.run_until(8);
         // Each death holds its tick, 7, and the unit as it was: its team, and its owner, a
         // record that outlives the creep.
@@ -728,11 +752,11 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     // The hero comes back at the start of its respawn tick, 10, at its spawn point with full
     // health and no attacker on record; the attackers dropped it when it died.
     let mut game = fight_match();
-    let attacker = game.spawn_armed(Team::new(0), at(4, 0, 0), fighter());
+    let attacker = Combat::spawn_armed(&mut game, at(4, 0, 0), Team::new(0), fighter());
     let stays = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
-    let hero = game.spawn_armed(Team::new(1), at(5, 0, 0), stays);
+    let hero = Combat::spawn_armed(&mut game, at(5, 0, 0), Team::new(1), stays);
     game.insert_parts(hero, SpawnPoint::new(at(-3, 0, 2)));
-    game.attack(attacker, hero);
+    Combat::attack(&mut game, attacker, hero);
     game.run_until(3);
     assert!(game.try_part::<Dead>(hero).is_some());
     let at_tick = Tick::new(10);
@@ -742,13 +766,13 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     game.run_until(11);
     assert!(game.try_part::<Dead>(hero).is_none() && game.try_part::<Respawn>(hero).is_none());
     assert_eq!(game.try_part::<Position>(hero).copied(), Some(at(-3, 0, 2)));
-    assert_eq!(game.health(hero), 30);
+    assert_eq!(Stats::health(&game, hero), 30);
     assert_eq!(
         game.try_part::<RecentAttackers>(hero)
             .map(|r| r.iter().count()),
         Some(0)
     );
-    assert_eq!(game.state(attacker).target(), None);
+    assert_eq!(Attack::of(&game, attacker).target(), None);
 }
 
 /// Loads a book of the stats `[combat]` binds, with no limits, and binds them: the heal scale
@@ -775,7 +799,7 @@ fn load_damage_stats(world: &mut World) {
     let pools = BTreeMap::from([(health, PoolData { max, regen: None })]);
     world.insert_resource(LifePool(combat.life_pool(&pools).unwrap()));
     world.insert_resource(CombatBindings::new(&combat, &book));
-    world.load_stat_book(book);
+    Stats::load_book(world, book);
 }
 
 /// A modifier of no stats, tags or script, as each shield the shield test gives is.
@@ -794,18 +818,18 @@ const ATTACK: DamageCause = DamageCause::Attack {
 fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     let mut game = fight_match();
     game.insert_resource(AssistWindow(Ticks::new(10)));
-    let a = game.spawn_armed(Team::new(0), at(0, 0, 0), dummy());
-    let b = game.spawn_armed(Team::new(0), at(1, 0, 0), dummy());
+    let a = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), dummy());
+    let b = Combat::spawn_armed(&mut game, at(1, 0, 0), Team::new(0), dummy());
     let stays = dummy().on_death(OnDeath::Stay);
-    let target = game.spawn_armed(Team::new(1), at(2, 0, 0), stays);
+    let target = Combat::spawn_armed(&mut game, at(2, 0, 0), Team::new(1), stays);
     assert!(a < b);
     // Queued from b, then a, then none: none's 30 goes first, 100 to 70, then a's 60, to 10, then
     // b's 60, to 0. b killed it, and a, which damaged it this tick, assisted.
-    game.damage(Some(b), target, 60, ATTACK);
-    game.damage(Some(a), target, 60, DamageCause::Effect);
-    game.damage(None, target, 30, DamageCause::Effect);
+    Combat::damage(&mut game, Some(b), target, 60, ATTACK);
+    Combat::damage(&mut game, Some(a), target, 60, DamageCause::Effect);
+    Combat::damage(&mut game, None, target, 30, DamageCause::Effect);
     game.run_until(1);
-    assert_eq!(game.health(target), 0);
+    assert_eq!(Stats::health(&game, target), 0);
     let deaths = game.resource::<Deaths>();
     let died: Vec<_> = deaths
         .iter()
@@ -814,24 +838,27 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     assert_eq!(died, [(target, Some(b), vec![a])]);
 
     // At zero health it takes nothing more, records no attacker, and heals nothing.
-    let c = game.spawn_armed(Team::new(0), at(3, 0, 0), dummy());
-    game.damage(Some(c), target, 10, ATTACK);
+    let c = Combat::spawn_armed(&mut game, at(3, 0, 0), Team::new(0), dummy());
+    Combat::damage(&mut game, Some(c), target, 10, ATTACK);
     game.run_until(2);
-    game.heal_unit(target, Num::int(50));
-    assert_eq!(game.health(target), 0);
+    Combat::heal_unit(&mut game, target, Num::int(50));
+    assert_eq!(Stats::health(&game, target), 0);
     let attackers = game.try_part::<RecentAttackers>(target).unwrap();
     assert!(attackers.iter().all(|attack| attack.source != c));
     assert_eq!(game.resource::<Deaths>().iter().count(), 0);
 
     // An invulnerable unit takes nothing and records no attacker; untargetable, it takes all.
-    let guarded = game.spawn_armed(Team::new(1), at(4, 0, 0), dummy());
-    let hidden = game.spawn_armed(Team::new(1), at(5, 0, 0), dummy());
-    game.set_blocks(guarded, &[Block::Target, Block::Damage]);
-    game.set_blocks(hidden, &[Block::Target]);
-    game.damage(Some(c), guarded, 10, DamageCause::Effect);
-    game.damage(Some(c), hidden, 10, DamageCause::Effect);
+    let guarded = Combat::spawn_armed(&mut game, at(4, 0, 0), Team::new(1), dummy());
+    let hidden = Combat::spawn_armed(&mut game, at(5, 0, 0), Team::new(1), dummy());
+    Units::set_blocks(&mut game, guarded, &[Block::Target, Block::Damage]);
+    Units::set_blocks(&mut game, hidden, &[Block::Target]);
+    Combat::damage(&mut game, Some(c), guarded, 10, DamageCause::Effect);
+    Combat::damage(&mut game, Some(c), hidden, 10, DamageCause::Effect);
     game.run_until(3);
-    assert_eq!((game.health(guarded), game.health(hidden)), (100, 90));
+    assert_eq!(
+        (Stats::health(&game, guarded), Stats::health(&game, hidden)),
+        (100, 90)
+    );
     let attackers = game.try_part::<RecentAttackers>(guarded).unwrap();
     assert_eq!(attackers.iter().count(), 0);
 }
@@ -841,10 +868,10 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     let mut game = fight_match();
     load_damage_stats(&mut game);
     let half = Num::HALF;
-    let source = game.spawn_armed(Team::new(0), at(0, 0, 0), dummy());
-    let target = game.spawn_armed(Team::new(1), at(1, 0, 0), dummy());
+    let source = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(0), dummy());
+    let target = Combat::spawn_armed(&mut game, at(1, 0, 0), Team::new(1), dummy());
     // Heals halved, life steal 0.5 and spell vamp 0.25; at 40 of 100.
-    game.stats(source, [-half, half, Num::ONE / 4]);
+    Combat::stats(&mut game, source, [-half, half, Num::ONE / 4]);
     let entity = game.unit_entity(source);
     let mut life = game.get_mut::<Life>(entity).unwrap();
     life.take(Num::int(60));
@@ -857,7 +884,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         ..NewInstance::bare(ModifierId::new(id), None)
     };
     for name in ["first", "second", "third"] {
-        game.load_modifier(0, name, &shield_data(), None);
+        Stats::load_modifier(&mut game, 0, name, &shield_data(), None);
     }
     let shields = [
         shield(0, None, 100),
@@ -884,55 +911,55 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         unit.get_ref::<Life>().unwrap().last_changed()
     };
     let before = life_changed(&game);
-    game.damage(Some(source), target, 35, ATTACK);
+    Combat::damage(&mut game, Some(source), target, 35, ATTACK);
     game.run_until(1);
     assert_eq!(shields(&game), [Num::int(95)]);
-    assert_eq!(game.life(target), Num::int(100));
-    assert_eq!(game.life(source), Num::int(40));
+    assert_eq!(game.part::<Life>(target).current(), Num::int(100));
+    assert_eq!(game.part::<Life>(source).current(), Num::int(40));
     assert_eq!(life_changed(&game), before);
     // An attack of 100: the last shield's 95, then 5 off health, which life steals 5 × 0.5,
     // halved: 1.25. Then a spell of 40, all off health: 40 × 0.25, halved, 5. 40 + 1.25 + 5.
-    game.damage(Some(source), target, 100, ATTACK);
-    game.damage(Some(source), target, 40, DamageCause::Effect);
+    Combat::damage(&mut game, Some(source), target, 100, ATTACK);
+    Combat::damage(&mut game, Some(source), target, 40, DamageCause::Effect);
     game.run_until(2);
     assert_eq!(shields(&game), []);
-    assert_eq!(game.life(target), Num::int(55));
-    assert_eq!(game.life(source), Num::int(185) / 4);
+    assert_eq!(game.part::<Life>(target).current(), Num::int(55));
+    assert_eq!(game.part::<Life>(source).current(), Num::int(185) / 4);
     // A heal of 10 is halved too; one past the maximum stops at it.
-    game.heal_unit(source, Num::int(10));
-    assert_eq!(game.life(source), Num::int(205) / 4);
-    game.heal_unit(source, Num::int(1000));
-    assert_eq!(game.life(source), Num::int(100));
+    Combat::heal_unit(&mut game, source, Num::int(10));
+    assert_eq!(game.part::<Life>(source).current(), Num::int(205) / 4);
+    Combat::heal_unit(&mut game, source, Num::int(1000));
+    assert_eq!(game.part::<Life>(source).current(), Num::int(100));
     // A heal scale at the largest number, one past which no number holds, scales as the largest:
     // a heal of 1 from 40 fills the pool.
-    game.stats(source, [Num::MAX, half, Num::ONE / 4]);
+    Combat::stats(&mut game, source, [Num::MAX, half, Num::ONE / 4]);
     game.part_mut::<Life>(source).take(Num::int(60));
-    game.heal_unit(source, Num::ONE);
-    assert_eq!(game.life(source), Num::int(100));
-    game.stats(source, [-half, half, Num::ONE / 4]);
+    Combat::heal_unit(&mut game, source, Num::ONE);
+    assert_eq!(game.part::<Life>(source).current(), Num::int(100));
+    Combat::stats(&mut game, source, [-half, half, Num::ONE / 4]);
     // Leech is dealt next, before the rest of the queue: at 10, an attack of 20 steals 20 × 0.5,
     // halved, 5, before the 12 of a foe, whose higher id sorts it after: 10 + 5 − 12. Dealt at
     // the end of the queue, it would come after the 12, which kills.
-    let foe = game.spawn_armed(Team::new(1), at(2, 0, 0), dummy());
+    let foe = Combat::spawn_armed(&mut game, at(2, 0, 0), Team::new(1), dummy());
     assert!(source < foe);
     game.part_mut::<Life>(source).take(Num::int(90));
-    game.damage(Some(foe), source, 12, DamageCause::Effect);
-    game.damage(Some(source), target, 20, ATTACK);
+    Combat::damage(&mut game, Some(foe), source, 12, DamageCause::Effect);
+    Combat::damage(&mut game, Some(source), target, 20, ATTACK);
     game.run_until(3);
-    assert_eq!(game.life(source), Num::int(3));
-    assert_eq!(game.life(target), Num::int(35));
+    assert_eq!(game.part::<Life>(source).current(), Num::int(3));
+    assert_eq!(game.part::<Life>(target).current(), Num::int(35));
     // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
     // nothing, and a heal of 10 is whole.
-    game.bind_life(PoolId::FIRST);
+    Combat::bind_life(&mut game, PoolId::FIRST);
     let entity = game.unit_entity(source);
     let mut life = game.get_mut::<Life>(entity).unwrap();
     life.add(Num::int(47));
-    game.damage(Some(source), target, 10, ATTACK);
+    Combat::damage(&mut game, Some(source), target, 10, ATTACK);
     game.run_until(4);
-    assert_eq!(game.life(target), Num::int(25));
-    assert_eq!(game.life(source), Num::int(50));
-    game.heal_unit(source, Num::int(10));
-    assert_eq!(game.life(source), Num::int(60));
+    assert_eq!(game.part::<Life>(target).current(), Num::int(25));
+    assert_eq!(game.part::<Life>(source).current(), Num::int(50));
+    Combat::heal_unit(&mut game, source, Num::int(10));
+    assert_eq!(game.part::<Life>(source).current(), Num::int(60));
     // A restore reaches the pool it names, unscaled: a second pool at 50 of 100 takes 20 more,
     // and the life pool keeps its 60; one of the life pool's id reaches the life, which takes 15
     // more, unscaled, to 75, and the second pool keeps its 70.
@@ -943,7 +970,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     DamagePass::restore(&mut game, source, mana, Num::int(20));
     let held = |game: &Match| {
         let mana = game.try_part::<Pools>(source).unwrap().current(mana);
-        (game.life(source), mana)
+        (game.part::<Life>(source).current(), mana)
     };
     assert_eq!(held(&game), (Num::int(60), Some(Num::int(70))));
     DamagePass::restore(&mut game, source, PoolId::FIRST, Num::int(15));
@@ -953,9 +980,16 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
 #[test]
 fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     let mut game = fight_match();
-    let dummy = game.spawn_armed(Team::new(1), at(0, 0, 0), dummy());
+    let dummy = Combat::spawn_armed(&mut game, at(0, 0, 0), Team::new(1), dummy());
     let attackers: Vec<_> = (0..16)
-        .map(|_| game.spawn_armed(Team::new(0), at(1, 0, 0), combatant(100, 2, 0, 5, 30)))
+        .map(|_| {
+            Combat::spawn_armed(
+                &mut game,
+                at(1, 0, 0),
+                Team::new(0),
+                combatant(100, 2, 0, 5, 30),
+            )
+        })
         .collect();
     // Each attacker's windup ends in tick 0; the roll of each, by the attackers' order.
     let rolls = |game: &mut Match| {

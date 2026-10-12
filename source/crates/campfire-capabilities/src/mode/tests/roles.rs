@@ -1,4 +1,5 @@
 use campfire_script::rhai::{Array, INT};
+use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
 
@@ -14,9 +15,9 @@ fn probe(ctx, unit) {
 }
 "#;
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    game.tick_inputs(&[(0, input("hero", "hero-x"))]);
-    let actor = game.stat_grunt(0, &[]);
-    let target = game.stat_grunt(1, &[]);
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
+    let actor = Mode::stat_grunt(&mut game, Team::new(0), &[]);
+    let target = Mode::stat_grunt(&mut game, Team::new(1), &[]);
     let entity = game.unit_entity(target);
     let mut life = Life::full(Num::int(1000));
     life.take(Num::int(20));
@@ -33,7 +34,7 @@ fn probe(ctx, unit) {
     for (at, role) in ScriptRole::ALL.into_iter().enumerate() {
         let at = i64::try_from(at).unwrap();
         let before = gold(&game);
-        let read = game.probe_as(probe, role, actor, target).unwrap();
+        let read = Mode::probe_as(&mut game, probe, role, actor, target).unwrap();
         assert_eq!(gold(&game), before + 5, "{role:?}");
         let read: Array = read.cast();
         let names = |value: &Dynamic| -> Vec<String> {
@@ -47,9 +48,17 @@ fn probe(ctx, unit) {
             (Ok(1), Ok(1)),
             "{role:?}"
         );
-        assert_eq!(game.life(target), Num::int(980 - 6 * at), "{role:?}");
-        game.tick_inputs(&[]);
-        assert_eq!(game.life(target), Num::int(980 - 6 * (at + 1)), "{role:?}");
+        assert_eq!(
+            game.part::<Life>(target).current(),
+            Num::int(980 - 6 * at),
+            "{role:?}"
+        );
+        Mode::tick_inputs(&mut game, &[]);
+        assert_eq!(
+            game.part::<Life>(target).current(),
+            Num::int(980 - 6 * (at + 1)),
+            "{role:?}"
+        );
         let pool = game.get::<Pools>(entity).unwrap().current(MANA);
         assert_eq!(pool, Some(Num::int(50 + 3 * (at + 1))), "{role:?}");
     }
@@ -70,7 +79,7 @@ fn probe(ctx, unit) {
     ];
     for (call, role) in refused {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
-        let failed = game.probe_as(&source, role, actor, actor).unwrap_err();
+        let failed = Mode::probe_as(&mut game, &source, role, actor, actor).unwrap_err();
         assert_eq!(
             failed.kind(),
             FailureKind::Api(ApiError::NotForRole),
@@ -84,17 +93,16 @@ fn a_script_turns_a_neutral_pair_hostile_and_filters_follow_it() {
     // Team a and the neutral team regard each other neutral, as the mode declares; b is hostile to
     // both. At the origin: a's and b's fighters, and the map's neutral grunt.
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    game.tick_inputs(&[]);
-    let a = game.stat_grunt(0, &[]);
-    game.stat_grunt(1, &[]);
+    Mode::tick_inputs(&mut game, &[]);
+    let a = Mode::stat_grunt(&mut game, Team::new(0), &[]);
+    Mode::stat_grunt(&mut game, Team::new(1), &[]);
     let counts = r#"
 fn probe(ctx, unit) {
     ["hostiles", "neutrals", "enemies"].map(|filter| ctx.find(unit, unit.pos, 1, filter).len())
 }
 "#;
     let count = |game: &mut Match| -> Vec<INT> {
-        let counts: Array = game
-            .probe_as(counts, ScriptRole::Mode, a, a)
+        let counts: Array = Mode::probe_as(game, counts, ScriptRole::Mode, a, a)
             .unwrap()
             .cast();
         counts
@@ -106,7 +114,7 @@ fn probe(ctx, unit) {
     assert_eq!(count(&mut game), [1, 1, 2]);
     // A unit's script, as a modifier's, turns the pair hostile; the grunt is a hostile then.
     let turn = r#"fn probe(ctx, unit) { ctx.set_relation("neutral", "a", Relation::Hostile) }"#;
-    let turned = game.probe_as(turn, ScriptRole::Modifier, a, a).unwrap();
+    let turned = Mode::probe_as(&mut game, turn, ScriptRole::Modifier, a, a).unwrap();
     assert!(turned.is_unit());
     assert_eq!(count(&mut game), [2, 0, 2]);
     // A member is its data name as text, the member `named` reads, and equal only to itself.
@@ -114,8 +122,7 @@ fn probe(ctx, unit) {
         [Relation::Hostile.to_string(), Relation::named("neutral") == Relation::Neutral,
          Relation::Hostile != Relation::Friendly, Relation::Hostile == Relation::Neutral]
     }"#;
-    let members: Array = game
-        .probe_as(members, ScriptRole::Mode, a, a)
+    let members: Array = Mode::probe_as(&mut game, members, ScriptRole::Mode, a, a)
         .unwrap()
         .cast();
     assert_eq!(members[0].clone().into_string().unwrap(), "hostile");
@@ -138,7 +145,7 @@ fn probe(ctx, unit) {
         ),
     ] {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
-        let failed = game.probe_as(&source, ScriptRole::Mode, a, a).unwrap_err();
+        let failed = Mode::probe_as(&mut game, &source, ScriptRole::Mode, a, a).unwrap_err();
         assert_eq!(failed.kind(), FailureKind::Api(refused), "{call}: {failed}");
     }
 }

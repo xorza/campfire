@@ -46,7 +46,6 @@ pub(crate) mod production_api;
 pub(crate) mod production_books;
 pub(crate) mod production_column;
 pub(crate) mod production_data;
-pub(crate) mod production_world;
 pub(crate) mod rally;
 pub(crate) mod rally_target;
 pub(crate) mod requirements;
@@ -137,6 +136,158 @@ impl Production {
                     .before(ProductionSet::Finish),
                 GatherLoop::despawn_empty_nodes.in_set(SimSet::Vision),
             ));
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::world::World;
+    use campfire_common::PlayerSlot;
+    use campfire_math::Num;
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{IdAllocator, Position, StableId};
+
+    use crate::actions::action_book::ActionBook;
+    use crate::actions::action_slots::ActionSlots;
+    use crate::actions::action_target::ActionTarget;
+    use crate::navigation::Navigation;
+    use crate::orders::order::{Action, Order};
+    use crate::production::Production;
+    use crate::production::build_target::BuildTarget;
+    use crate::production::builder::Builder;
+    use crate::production::gatherer::{GatherStep, Gatherer};
+    use crate::production::site::Site;
+    use crate::production::supply_costs::SupplyCosts;
+    use crate::production::supply_data::SupplyData;
+    use crate::production::supply_rules::SupplyRules;
+    use crate::stats::life::Life;
+    use crate::units::Units;
+    use crate::units::body::Body;
+    use crate::units::by_type::ByType;
+    use crate::units::move_step::MoveStep;
+    use crate::units::owner::Owner;
+    use crate::units::team::Team;
+    use crate::units::team_set::TeamSet;
+    use crate::units::unit_type::UnitType;
+    use crate::vision::seen_by::SeenBy;
+
+    impl Production {
+        /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.
+        pub(crate) fn count_supply(
+            world: &mut World,
+            max: u32,
+            supplies: &[(UnitType, SupplyData)],
+        ) {
+            let mut types = ByType::default();
+            for &(unit_type, supply) in supplies {
+                types.set(unit_type, supply);
+            }
+            let costs = SupplyCosts::new(types, world.resource::<ActionBook>());
+            world.insert_resource(costs);
+            world.insert_resource(SupplyRules { max });
+        }
+
+        /// A unit of `unit_type` owned by `owner`, at the origin.
+        pub(crate) fn owned(world: &mut World, unit_type: UnitType, owner: PlayerSlot) -> StableId {
+            Units::spawn_of(
+                world,
+                unit_type,
+                Position::ORIGIN,
+                Team::new(1),
+                Owner::new(owner),
+            )
+        }
+
+        /// The next stable id.
+        pub(crate) fn allocate_id(world: &mut World) -> StableId {
+            world.resource_mut::<IdAllocator>().allocate()
+        }
+
+        /// Orders `producer` to train what its slot 0 holds.
+        pub(crate) fn order_train(world: &mut World, producer: StableId) {
+            let mut slots = world.part_mut::<ActionSlots>(producer);
+            slots.order(0, ActionTarget::None);
+        }
+
+        /// Runs a tick in which player `slot` orders `action` to `id`.
+        pub(crate) fn tick_ordering(world: &mut World, slot: u32, id: StableId, action: Action) {
+            Production::give_orders(world, slot, &[(id, action)]);
+        }
+
+        /// Runs a tick in which player `slot` gives `orders`, each an action to a unit, in order.
+        pub(crate) fn give_orders(world: &mut World, slot: u32, orders: &[(StableId, Action)]) {
+            let orders: Vec<Order> = orders
+                .iter()
+                .map(|&(unit, action)| Order::one(unit, action))
+                .collect();
+            let payload = Order::payload(&orders);
+            world.step_with(&[(PlayerSlot::new(slot), &payload)]);
+        }
+
+        /// A walker of `team` at `pos`, of a half meter, seen by `seen`, by all when `None`.
+        pub(crate) fn yard_walker(
+            world: &mut World,
+            pos: Position,
+            team: Team,
+            seen: Option<TeamSet>,
+        ) -> StableId {
+            let parts = (
+                Body::new(Num::HALF).unwrap(),
+                Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
+            );
+            let id = Units::spawn(world, pos, team, parts);
+            if let Some(teams) = seen {
+                world.insert_parts(id, SeenBy::new(teams));
+            }
+            id
+        }
+
+        /// Runs a tick in which player 0 orders `builder` to build its depot at (`x`, `z`).
+        pub(crate) fn build_at(world: &mut World, builder: StableId, x: i64, z: i64) {
+            let target = BuildTarget::Point {
+                x: Num::int(x),
+                z: Num::int(z),
+                angle: Num::ZERO,
+            };
+            Production::tick_ordering(world, 0, builder, Action::Build { slot: 0, target });
+        }
+
+        /// The depot `id`'s life, and its progress while a site.
+        pub(crate) fn site(world: &World, id: StableId) -> (Num, Option<Num>) {
+            let life = world.part::<Life>(id).current();
+            let progress = world.try_part::<Site>(id).map(Site::progress);
+            (life, progress)
+        }
+
+        /// Where `builder`'s build order builds.
+        pub(crate) fn order_of(world: &World, builder: StableId) -> Option<BuildTarget> {
+            world
+                .part::<Builder>(builder)
+                .order()
+                .map(|order| order.target)
+        }
+
+        /// Runs a tick in which player 0 orders each of `workers` to gather at `node`.
+        pub(crate) fn gather_at(world: &mut World, workers: &[StableId], node: StableId) {
+            let target = ActionTarget::Unit(node);
+            let orders: Vec<(StableId, Action)> = workers
+                .iter()
+                .map(|&unit| (unit, Action::Slot { slot: 0, target }))
+                .collect();
+            Production::give_orders(world, 0, &orders);
+        }
+
+        /// The step of `worker`'s gather loop, none when it gathers nothing.
+        pub(crate) fn gather_step(world: &World, worker: StableId) -> Option<GatherStep> {
+            let gatherer = world.part::<Gatherer>(worker);
+            gatherer.order().map(|order| order.step)
+        }
+
+        /// The node `worker`'s loop is at.
+        pub(crate) fn node_of(world: &World, worker: StableId) -> Option<StableId> {
+            let gatherer = world.part::<Gatherer>(worker);
+            gatherer.order().map(|order| order.node.node)
         }
     }
 }

@@ -1,11 +1,19 @@
+use std::cmp::Ordering;
+
 use bevy_ecs::bundle::Bundle;
+use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::{With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_sim::{Capability, SimEdge, SimSet};
+use bevy_ecs::world::World;
+use campfire_math::Num;
+use campfire_sim::{Capability, Keyed, Position, SimEdge, SimSet, SimTick, StableId};
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::declare::declarations::Declarations;
 use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::geometry::grid::Grid;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
@@ -15,16 +23,23 @@ use crate::navigation::navigation_column::{NavigationColumn, RowParts};
 use crate::navigation::navigation_effect::NavigationEffect;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
+use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
 use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
+use crate::navigation::route_planner::{RoutePlanner, Walkable};
 use crate::navigation::routing::Routing;
 use crate::navigation::static_changes::StaticChanges;
 use crate::navigation::static_tracking::StaticTracking;
 use crate::navigation::statics_dirty::StaticsDirty;
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::walking::Walking;
+use crate::navigation::wall::Wall;
+use crate::navigation::walls::Walls;
+use crate::units::body::Body;
 use crate::units::by_type::ByType;
+use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
 
 #[cfg(feature = "bench")]
@@ -40,7 +55,6 @@ pub(crate) mod navigation_api;
 pub(crate) mod navigation_column;
 pub(crate) mod navigation_effect;
 pub(crate) mod navigation_rules;
-pub(crate) mod navigation_world;
 pub(crate) mod on_path;
 pub(crate) mod party;
 pub(crate) mod path_walker;
@@ -135,6 +149,180 @@ impl Navigation {
                 .in_set(SimSet::Collide),
             Walking::keep_in_bounds.in_set(SimEdge::After(SimSet::Collide)),
         ));
+    }
+
+    /// Sets the destination of the unit of `entity`, which walks, to `target`, leaving one that
+    /// does not change untouched.
+    pub(crate) fn go_to(world: &mut World, entity: Entity, target: Option<Position>) {
+        if let Some(mut destination) = world.get_mut::<Destination>(entity) {
+            destination.set_if_neq(Destination::to(target));
+        }
+    }
+
+    /// Gives the match the map's pathing grid on the cells of `grid`, those `walls` block, for the
+    /// kinds of `walkers`, a static index for the widest of them, a planner of routes on the
+    /// grid, and the walls for placements to test; the static bodies fill the grid and the index
+    /// from the first tick on.
+    pub(crate) fn load_pathing(
+        world: &mut World,
+        grid: Grid,
+        walls: &[Wall],
+        walkers: Vec<Walker>,
+    ) {
+        debug_assert!(
+            world.contains_resource::<StaticChanges>(),
+            "a map's pathing grid is navigation's, which the load checked the mode declares"
+        );
+        let terrain = Terrain::new(&grid, walls);
+        let widest = walkers.iter().map(|walker| walker.radius).max();
+        world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
+        world.insert_resource(RoutePlanner::new(&grid));
+        world.insert_resource(PathingGrid::new(grid, walkers, &terrain));
+        world.insert_resource(Walls::new(walls));
+        world.resource_mut::<StaticsDirty>().set();
+    }
+
+    /// Makes room for the box of `entity`, which just spawned: each walker of its layer whose
+    /// body the box overlaps goes at once to the nearest cell its walker may stand in, by stable
+    /// id, as a teleport places a unit but with no disjoint. The static index and the pathing
+    /// grid take the box first, so the cell is clear of every static body, and no push of
+    /// collision can hold the walker between two. With no pathing grid, the box pushes it out
+    /// as collision would.
+    pub(crate) fn make_room(world: &mut World, entity: Entity) {
+        world
+            .run_system_cached(StaticTracking::track_static_bodies)
+            .expect("the static bodies' tracking runs on any world");
+        let unit = world.entity(entity);
+        let pos = *unit.get::<Position>().expect("a unit has a place");
+        let body = *unit.get::<Body>().expect("a box makes room");
+        let Shape::Box(boxed) = body.shape() else {
+            return;
+        };
+        let now = world.resource::<SimTick>().start();
+        let mut walkers =
+            world.query_filtered::<(Entity, &StableId, &Position, &Body), (With<MoveStep>, Without<Dead>)>();
+        let mut inside: Vec<Keyed> = walkers
+            .iter(world)
+            .filter(|&(_, _, &walker_pos, other)| {
+                let radius = Walker::walking(Some(other)).radius;
+                other.layer() == body.layer()
+                    && boxed.nearest(pos, walker_pos, radius) == Ordering::Less
+            })
+            .map(|(entity, &id, ..)| Keyed { id, entity })
+            .collect();
+        inside.sort_unstable_by_key(|keyed| keyed.id);
+        for Keyed { entity: walker, .. } in inside {
+            let unit = world.entity(walker);
+            let walker_pos = *unit.get::<Position>().expect("a walker has a place");
+            let kind = Walker::walking(unit.get::<Body>());
+            let grid = world.get_resource::<PathingGrid>();
+            let planner = world.get_resource::<RoutePlanner>();
+            let place = if let (Some(grid), Some(planner)) = (grid, planner) {
+                let walkable = Walkable::of(grid.clearance(kind), world.resource::<BodyIndex>());
+                planner.stand_at(walkable, walker_pos).unwrap_or(walker_pos)
+            } else {
+                let out = boxed
+                    .push_out(pos, walker_pos.get(), kind.radius)
+                    .expect("the box overlaps the walker, so it pushes the walker out");
+                Position::new(out).expect("a push stays near the bounds")
+            };
+            NavigationEffect::put(world, walker, place, now);
+        }
+    }
+
+    /// The center of the cell nearest `point` among those `walker` may stand in, at `point`'s
+    /// height, as a teleport finds its cell, with the static bodies as the tick began; `None`
+    /// with no pathing grid, or on a grid with no such cell.
+    pub(crate) fn open_cell(world: &World, walker: Walker, point: Position) -> Option<Position> {
+        let grid = world.get_resource::<PathingGrid>()?;
+        let planner = world.get_resource::<RoutePlanner>()?;
+        let clearance = grid.serving(walker)?;
+        let walkable = Walkable::of(clearance, world.resource::<BodyIndex>());
+        let cell = planner.nearest_open(walkable, point, &mut 0)?;
+        Some(clearance.grid().center(cell, point.get().y))
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{Position, StableId};
+
+    use crate::geometry::bounds::Bounds;
+    use crate::geometry::grid::Grid;
+    use crate::navigation::Navigation;
+    use crate::navigation::destination::Destination;
+    use crate::navigation::walker::Walker;
+    use crate::navigation::wall::Wall;
+    use crate::units::Units;
+    use crate::units::body::Body;
+    use crate::units::move_step::MoveStep;
+    use crate::units::team::Team;
+
+    impl Navigation {
+        /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
+        pub(crate) fn load_open_pathing(
+            world: &mut World,
+            cell: Num,
+            min: [i64; 2],
+            max: [i64; 2],
+            walkers: Vec<Walker>,
+        ) {
+            Navigation::load_walled(world, cell, min, max, walkers, &[]);
+        }
+
+        /// Loads a pathing grid as `load_pathing` does, with `walls`.
+        pub(crate) fn load_walled(
+            world: &mut World,
+            cell: Num,
+            min: [i64; 2],
+            max: [i64; 2],
+            walkers: Vec<Walker>,
+            walls: &[Wall],
+        ) {
+            let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
+            let grid = Grid::new(cell, bounds).unwrap();
+            Navigation::load_pathing(world, grid, walls, walkers);
+        }
+
+        /// A unit at `pos` walking a meter a tick to `to`.
+        pub(crate) fn unit(world: &mut World, pos: Position, to: Option<Position>) -> StableId {
+            let walker = Navigation::walker(MoveStep::new(Num::ONE).unwrap());
+            let id = Units::spawn(world, pos, Team::new(0), walker);
+            *world.part_mut::<Destination>(id) = Destination::to(to);
+            id
+        }
+
+        /// A unit at `pos` with a body of `radius`, walking `step` a tick to `to`, or one that does not
+        /// walk when `step` is `None`.
+        pub(crate) fn body(
+            world: &mut World,
+            pos: Position,
+            to: Option<Position>,
+            step: Option<Num>,
+            radius: Num,
+        ) -> StableId {
+            Navigation::body_on(world, pos, to, step, Body::new(radius).unwrap())
+        }
+
+        /// A unit at `pos` with `body`, walking `step` a tick to `to`, or one that does not walk when
+        /// `step` is `None`.
+        pub(crate) fn body_on(
+            world: &mut World,
+            pos: Position,
+            to: Option<Position>,
+            step: Option<Num>,
+            body: Body,
+        ) -> StableId {
+            let id = Units::spawn(world, pos, Team::new(0), body);
+            if let Some(step) = step {
+                world.insert_parts(id, Navigation::walker(MoveStep::new(step).unwrap()));
+                *world.part_mut::<Destination>(id) = Destination::to(to);
+            }
+            id
+        }
     }
 }
 

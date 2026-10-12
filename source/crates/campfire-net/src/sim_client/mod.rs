@@ -12,18 +12,18 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{
-    Dead, MatchEnd, MatchSpec, Order, PlayerUnits, PlayersWorld, ReleaseWorld, TeamSet,
+    Dead, MatchEnd, MatchSpec, Order, PlayerUnits, PlayersWorld, Release, TeamSet,
 };
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{PlayerInput, SignedReceipt};
+use campfire_quic::LINK_MIN_MTU;
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicPlugin};
 use campfire_runner::SessionRules;
-use campfire_sim::{
-    SimTick, SimUpdate, SimWorld, StableId, TickInput, TickInputs, TickRate, Unpredicted,
-};
+use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
+use lightyear::prelude::client::RawClient;
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RemoteTimeline,
 };
@@ -31,6 +31,7 @@ use lightyear::prelude::{
     Client, Connect, LocalTimeline, MessageReceiver, MessageSender, Predicted, PredictionManager,
     Replicated, SyncConfig, SyncedLocalTimeline, UnlinkReason, Unlinked, is_in_rollback,
 };
+use lightyear::prelude::{Link, LinkMtu, ReplicationReceiver};
 use tracing::{debug, info};
 
 use crate::bot_script::BotScript;
@@ -75,7 +76,6 @@ pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
 pub(crate) mod signer;
-pub(crate) mod sim_client_world;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
@@ -165,6 +165,22 @@ impl PendingOrders {
     }
 }
 
+impl SimClient {
+    /// Spawns the client's entity, which its link and its connect name. Its link takes
+    /// `LINK_MIN_MTU` now, as its transport fixes its fragment size at the spawn, before any IO
+    /// links it (design 15, D5).
+    pub fn spawn(world: &mut World) -> Entity {
+        world
+            .spawn((
+                Client,
+                RawClient,
+                ReplicationReceiver,
+                Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
+            ))
+            .id()
+    }
+}
+
 impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
         let rate = TickRate::new(self.server.tick_hz);
@@ -182,7 +198,10 @@ impl Plugin for SimClient {
         let packages = &self.packages;
         // A client runs no scripts: it predicts only its own player's units.
         let set = packages.manifest().capabilities;
-        world.build_match(MatchSpec::new(PREDICTION_SEED, rate).capabilities(set));
+        Release::build(
+            world,
+            MatchSpec::new(PREDICTION_SEED, rate).capabilities(set),
+        );
         packages.books(rate).install_prediction(world, set);
         mark_unpredicted(world);
         world.insert_resource(Signer::new(self.session_key, self.entropy));
@@ -699,7 +718,7 @@ fn run_predicted_tick(world: &mut World) {
 /// Marks each replicated entity `Unpredicted` while it is not predicted, in whatever order the
 /// two markers arrive, and again as the server stops its prediction here, as its owner changes.
 fn mark_unpredicted(world: &mut World) {
-    world.register_unpredicted();
+    Unpredicted::register(world);
     world.add_observer(
         |added: On<'_, '_, Add, Replicated>,
          predicted: Query<'_, '_, (), With<Predicted>>,

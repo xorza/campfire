@@ -36,7 +36,7 @@ use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
     ClientDir, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
-    SimClientWorld, WatchRequest,
+    WatchRequest,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::RandomKey;
@@ -152,7 +152,7 @@ fn main() -> ExitCode {
         },
         LinkWatch,
     ));
-    let client = app.world_mut().spawn_client();
+    let client = SimClient::spawn(app.world_mut());
     if let Err(code) = connection.link(&mut app, client, &pace, tick) {
         return code;
     }

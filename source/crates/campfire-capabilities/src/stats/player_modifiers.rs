@@ -8,7 +8,7 @@ use crate::players::player::Player;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
-use crate::stats::stats_world::StatsWorldCrate;
+use crate::stats::Stats;
 use crate::units::modifier_id::ModifierId;
 use crate::values::rank::Rank;
 
@@ -49,7 +49,7 @@ impl SimComponent for PlayerModifiers {
             && self
                 .0
                 .iter()
-                .all(|&modifier| world.modifier_has_way(modifier, None, Rank::FIRST))
+                .all(|&modifier| Stats::modifier_has_way(world, modifier, None, Rank::FIRST))
     }
 }
 

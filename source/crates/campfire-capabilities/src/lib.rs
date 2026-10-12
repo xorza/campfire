@@ -178,7 +178,6 @@ pub use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
 pub use crate::release::Release;
 pub use crate::release::r#match::Match;
 pub use crate::release::match_spec::MatchSpec;
-pub use crate::release::release_world::ReleaseWorld;
 pub use crate::scripts::api_version::ApiVersion;
 pub use crate::scripts::applies::Applies;
 pub use crate::scripts::error::{ApiError, CallError, ParamProblem};
@@ -229,7 +228,6 @@ pub use crate::stats::stat_id::StatId;
 pub use crate::stats::stat_op::StatOp;
 pub use crate::stats::stat_rule::StatRule;
 pub use crate::stats::stats_data::{StatValue, StatsData};
-pub use crate::stats::stats_world::StatsWorld;
 pub use crate::stats::unit_pools::PoolMeters;
 pub use crate::units::Units;
 pub use crate::units::action_id::ActionId;
@@ -287,24 +285,16 @@ pub use crate::vision::Vision;
 pub use crate::vision::seen_by::SeenBy;
 pub use crate::vision::sight::Sight;
 pub use crate::vision::vision_data::VisionData;
-pub use crate::vision::vision_world::VisionWorld;
 
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
-    pub use crate::actions::actions_world::internals::ActionsWorldInternals;
-    pub use crate::areas::areas_world::internals::AreasWorldInternals;
-    pub use crate::combat::combat_world::internals::CombatWorldInternals;
     pub use crate::combat::internals::{Arms, ArmsParts};
     pub use crate::geometry::kernel_scene::{Density, KernelScene};
-    pub use crate::mode::mode_world::internals::ModeWorldInternals;
-    pub use crate::orders::orders_world::internals::OrdersWorldInternals;
-    pub use crate::players::players_world::internals::PlayersWorldInternals;
+    pub use crate::players::Players;
     pub use crate::scripts::scripts_world::internals::ScriptsWorldInternals;
     pub use crate::stats::life::internals::spent_life;
     pub use crate::stats::pools::internals::spent;
-    pub use crate::stats::stats_world::internals::StatsWorldInternals;
     pub use crate::units::body::internals::{reaches, reaches_bound, sinks_into};
-    pub use crate::units::units_world::internals::UnitsWorldInternals;
     pub use crate::vision::seen_by::internals::seen_by_all;
 }
 

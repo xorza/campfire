@@ -9,8 +9,8 @@ use crate::scripts::script_role::ScriptRole;
 use crate::stats::Stats;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::param_book::ParamBook;
+use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
-use crate::stats::stats_world::StatsWorldCrate;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::values::scalar::Scalar;
@@ -41,7 +41,7 @@ impl CallPart for StatsCall {
         let source = start
             .acting
             .filter(|_| reads)
-            .and_then(|acting| world.param_source(acting));
+            .and_then(|acting| ParamSource::of(world, acting));
         let rank = start.rank;
         let fill = |values: &mut Vec<Scalar>, table: &ParamTable, run: Option<usize>| {
             values.clear();

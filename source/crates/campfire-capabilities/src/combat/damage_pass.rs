@@ -7,7 +7,6 @@ use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::actions_world::ActionsWorldCrate;
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::lists_of::ListsOf;
 use crate::combat::assist_window::AssistWindow;
@@ -26,17 +25,17 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::scripts::scripts_world::ScriptsWorldCrate;
+use crate::stats::carried_mut::CarriedMut;
 use crate::stats::life::Life;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_id::StatId;
-use crate::stats::stats_world::StatsWorldCrate;
 use crate::stats::unit_pools::UnitPools;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
+use crate::units::tag_effect::TagEffect;
 use crate::units::unit_tags::UnitTags;
-use crate::units::units_world::UnitsWorldCrate;
 
 /// The tick's damage pass: the queue of damage and heals, dealt in order, with the combat events
 /// they cause.
@@ -206,9 +205,7 @@ impl DamagePass {
             let target = ActionTarget::Unit(damage.target);
             let lists = ListsOf::Action(weapon);
             let frame = &mut ctx.frame();
-            batch
-                .world()
-                .queue_effect_list(lists, Hook::OnHit, frame, ctx.view(), target)
+            EffectLists::queue(batch.world(), lists, Hook::OnHit, frame, ctx.view(), target)
         });
     }
 
@@ -266,9 +263,9 @@ impl DamagePass {
         let mut left = amount.max(Num::ZERO);
         let clocks = world.get::<ModifierClocks>(entity);
         if clocks.is_some_and(ModifierClocks::shielded) {
-            let takes_effect = world.tag_effect(entity);
+            let takes_effect = TagEffect::of(world, entity);
             let book = world.resource::<ModifierBook>().clone();
-            if let Some(mut carried) = world.carried_mut(entity) {
+            if let Some(mut carried) = CarriedMut::of(world, entity) {
                 left = carried.absorb(left, |id| takes_effect.takes(book.tags(id)));
             }
         }

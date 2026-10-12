@@ -8,8 +8,8 @@ use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId};
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::kind_spec::KindSpec;
+use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
-use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::route::Route;
 use crate::players::players_world::PlayersWorldCrate;
 use crate::production::gather_loop::checked_gather::CheckedGather;
@@ -220,10 +220,10 @@ impl GatherLoop {
         let with = |step| Some(GatherOrder { step, ..order });
         match step {
             Step::Hold => {}
-            Step::Walk(to) => world.go_to(entity, Some(to)),
-            Step::Stand => world.go_to(entity, None),
+            Step::Walk(to) => Navigation::go_to(world, entity, Some(to)),
+            Step::Stand => Navigation::go_to(world, entity, None),
             Step::Stop => {
-                world.go_to(entity, None);
+                Navigation::go_to(world, entity, None);
                 set(world, None);
             }
             Step::Interrupt(node) => {
@@ -240,11 +240,11 @@ impl GatherLoop {
                 }),
             ),
             Step::Wait => {
-                world.go_to(entity, None);
+                Navigation::go_to(world, entity, None);
                 set(world, with(GatherStep::Waiting { since: now }));
             }
             Step::Take(node) => {
-                world.go_to(entity, None);
+                Navigation::go_to(world, entity, None);
                 let id = *world.get::<StableId>(entity).expect("a worker has an id");
                 world
                     .get_mut::<Node>(node)
@@ -298,7 +298,7 @@ impl GatherLoop {
     /// Joins the load of the worker of `entity`, which its player's resources take, to them, and
     /// sends it `back` to a node, or ends its loop with none.
     fn deliver(world: &mut World, entity: Entity, order: GatherOrder, back: Option<NodeAt>) {
-        world.go_to(entity, None);
+        Navigation::go_to(world, entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
         if let Some(load) = gatherer.load() {
             let owner = *world

@@ -2,16 +2,17 @@ use campfire_codec::Toml;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
+use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
-use crate::actions::actions_world::test_world::ActionsWorldTest;
+use crate::actions::Actions;
 use crate::actions::launch_id::LaunchId;
 use crate::areas::area_data::{AreaData, AreaInside};
-use crate::areas::areas_world::test_world::AreasWorldTest;
+use crate::release::Release;
 use crate::release::r#match::Match;
-use crate::release::release_world::test_world::ReleaseWorldTest;
+use crate::stats::Stats;
 use crate::stats::modifier_data::ModifierData;
-use crate::stats::stats_world::test_world::StatsWorldTest;
+use crate::units::Units;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::tag_set::TagSet;
@@ -19,7 +20,6 @@ use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
-use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::{Number, ParamRef};
 use crate::values::rank::Rank;
@@ -78,7 +78,7 @@ fn an_area_is_state_and_restores() {
     // and a warding area type, which holds Rally on allies, reading its action's `ward`.
     let loads = |game: &mut Match| {
         let data = UnitTypeData::default();
-        let field = game.load_unit_type(TypeScope::Mode, "field", &data);
+        let field = Units::load_type(game, TypeScope::Mode, "field", &data);
         let area = AreaData {
             radius: Num::int(2),
             delay_ms: 0,
@@ -86,27 +86,27 @@ fn an_area_is_state_and_restores() {
             affects: None,
             inside: AreaInside::default(),
         };
-        game.load_area_type(field, 0, &area);
-        let action = game.add_train(field, Ticks::ZERO, None);
+        Areas::load_type(game, field, 0, &area);
+        let action = Actions::add_train(game, field, Ticks::ZERO, None);
         let ward = DeclaredName::new("ward").unwrap();
         let rally = ModifierData {
             shield: Some(Number::Param(ParamRef { param: ward })),
             ..ModifierData::default()
         };
-        game.load_modifier(0, "rally", &rally, None);
-        let warding = game.load_unit_type(TypeScope::Mode, "warding", &data);
+        Stats::load_modifier(game, 0, "rally", &rally, None);
+        let warding = Units::load_type(game, TypeScope::Mode, "warding", &data);
         let inside = AreaInside {
             allies: Some(DeclaredName::new("rally").unwrap()),
             ..AreaInside::default()
         };
         let area = AreaData { inside, ..area };
-        game.load_area_type(warding, 0, &area);
+        Areas::load_type(game, warding, 0, &area);
         (field, action, warding)
     };
     let declared = [Capability::Stats, Capability::Combat, Capability::Areas];
     let mut game = Match::client(&declared);
     let (field, action, warding) = loads(&mut game);
-    let source = game.spawn_unit(Position::ORIGIN, Team::new(0), ());
+    let source = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), ());
     let by = Delivering {
         source,
         action,
@@ -116,17 +116,23 @@ fn an_area_is_state_and_restores() {
     };
     let area = Area::new(by, None, Tick::new(9));
     let trigger = AreaTrigger::at(Tick::new(5));
-    let id = game.spawn_unit_of(field, Position::ORIGIN, Team::new(0), (area, trigger));
+    let id = Units::spawn_of(
+        &mut game,
+        field,
+        Position::ORIGIN,
+        Team::new(0),
+        (area, trigger),
+    );
     let mut restored = Match::client(&declared);
     loads(&mut restored);
-    game.restore_into(&mut restored);
+    Release::restore_into(&game, &mut restored);
     assert_eq!(restored.part::<Area>(id), game.part::<Area>(id));
     assert_eq!(restored.part::<AreaTrigger>(id), &trigger);
     // It triggers by its end, at tick 9 at the latest; a unit that is no area has no trigger.
     let entity = game.unit_entity(id);
     let triggers = |at| AreaTrigger::at(Tick::new(at)).check(&game, entity);
     assert_eq!([5, 9, 10].map(triggers), [true, true, false]);
-    let id = game.spawn_unit(Position::ORIGIN, Team::new(0), ());
+    let id = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), ());
     assert!(!trigger.check(&game, game.unit_entity(id)));
     // Its times are at most the limit: a tick past it fails to decode.
     let past = Tick::new(Tick::LIMIT.get() + 1);
@@ -143,7 +149,7 @@ fn an_area_is_state_and_restores() {
     assert!(!area.check(&game, entity));
     // A warding area: the train, which declares no `ward`, cannot have delivered it, as Rally
     // would fail as an ally takes it.
-    let warded = game.spawn_unit_of(warding, Position::ORIGIN, Team::new(0), ());
+    let warded = Units::spawn_of(&mut game, warding, Position::ORIGIN, Team::new(0), ());
     let area = Area::new(by, None, Tick::LIMIT);
     assert!(area.check(&game, entity));
     assert!(!area.check(&game, game.unit_entity(warded)));

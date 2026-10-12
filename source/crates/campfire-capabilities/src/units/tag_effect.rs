@@ -1,4 +1,9 @@
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
+
+use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
+use crate::units::unit_tags::UnitTags;
 
 /// Which modifiers take effect on one unit, by the tags each grants: one takes effect unless it
 /// grants a tag the unit is immune to, and none of `granting`, the tags that make immune.
@@ -17,5 +22,17 @@ impl TagEffect {
     /// Whether a modifier that grants `tags` takes effect on the unit.
     pub(crate) const fn takes(self, tags: TagSet) -> bool {
         !tags.meets(self.immune) || tags.meets(self.granting)
+    }
+
+    /// Which modifiers take effect on the unit of `entity`: every one in a match with no tag
+    /// book, or on a unit with no tags.
+    pub(crate) fn of(world: &World, entity: Entity) -> TagEffect {
+        let granting = world
+            .get_resource::<TagBook>()
+            .map_or(TagSet::default(), TagBook::granting);
+        let immune = world
+            .get::<UnitTags>(entity)
+            .map_or(TagSet::default(), |tags| tags.immune);
+        TagEffect::new(granting, immune)
     }
 }

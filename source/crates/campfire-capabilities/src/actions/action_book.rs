@@ -38,7 +38,7 @@ pub(crate) struct ActionBook {
 
 impl ActionBook {
     /// Loads `data` as the action `name` of `package`, with `parts` resolved against the match;
-    /// see `ActionsWorldTest::load_action`.
+    /// see `Actions::load`.
     pub(crate) fn load(
         &mut self,
         scripts: &ScriptBook,
