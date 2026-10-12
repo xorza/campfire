@@ -52,6 +52,10 @@ impl<T: StateTypes> StateTypes for StateOnly<'_, T> {
         self.0.derived::<C>();
     }
 
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+        self.0.derived_sent::<C>();
+    }
+
     fn resource<R: SimResource>(&mut self) {
         self.0.resource::<R>();
     }

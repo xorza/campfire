@@ -15,7 +15,7 @@ use tracing::debug;
 
 use crate::close_code::CloseCode;
 use crate::dismissed::Dismissed;
-use crate::join::Join;
+use crate::join::{Join, JoinRole};
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
 use crate::session_times::SessionTimes;
@@ -88,7 +88,8 @@ impl Dismissing {
             | JoinError::Connect(_)
             | JoinError::Full
             | JoinError::NoSlot
-            | JoinError::Refused(_) => Dismissed::JoinRefused,
+            | JoinError::Refused(_)
+            | JoinError::NoSpectatorPlace => Dismissed::JoinRefused,
         };
         if let Ok(mut refused) = commands.get_entity(link) {
             refused.remove::<(Joined, PlayerLink)>().insert((
@@ -184,12 +185,13 @@ impl Offered {
     }
 }
 
-/// The joins of one frame, checked: the links that answered, with their delegations, and the
-/// links refused, with why.
+/// The joins of one frame, checked: the links that answered to play, with their delegations, those
+/// that answered to watch, and the links refused, with why.
 #[derive(Debug, Default)]
 pub(crate) struct CheckedJoins {
     /// In the order of the players' main keys, then their session keys.
     pub(crate) answered: Vec<(Entity, Delegation)>,
+    pub(crate) watching: Vec<Entity>,
     pub(crate) refused: Vec<(Entity, JoinError)>,
 }
 
@@ -274,11 +276,16 @@ impl Offering {
         joins: impl Iterator<Item = (Entity, Offered, Join)>,
         checked: &mut CheckedJoins,
     ) {
-        debug_assert!(checked.answered.is_empty() && checked.refused.is_empty());
+        debug_assert!(
+            checked.answered.is_empty()
+                && checked.watching.is_empty()
+                && checked.refused.is_empty()
+        );
         for (link, offered, join) in joins {
-            match self.check(&offered, &join) {
-                Ok(delegation) => checked.answered.push((link, delegation)),
-                Err(error) => checked.refused.push((link, error)),
+            match (self.check(&offered, &join), join.role) {
+                (Ok(delegation), JoinRole::Play) => checked.answered.push((link, delegation)),
+                (Ok(_), JoinRole::Watch) => checked.watching.push(link),
+                (Err(error), _) => checked.refused.push((link, error)),
             }
         }
         checked.answered.sort_by_key(|(_, delegation)| {

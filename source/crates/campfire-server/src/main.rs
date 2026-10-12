@@ -31,7 +31,7 @@ use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use campfire_capabilities::CapabilitySet;
+use campfire_capabilities::{CapabilitySet, HostVisibility};
 use campfire_common::{ExitStatus, TlsKey};
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
@@ -95,6 +95,7 @@ fn main() -> ExitCode {
         times,
         mode,
         map,
+        host,
         address,
         port_map,
         ..
@@ -150,7 +151,7 @@ fn main() -> ExitCode {
     };
     let capabilities = packages.manifest().capabilities;
     let Started { opening, server } =
-        match Started::open(&data, waiting, packages, key, times, bots) {
+        match Started::open(&data, waiting, packages, key, times, bots, host) {
             Ok(started) => started,
             Err(code) => return code,
         };
@@ -178,8 +179,8 @@ struct Started {
 
 impl Started {
     /// The session `waiting` in the data directory `data` to restore, or a new one of the mode
-    /// `packages` holds, with `bots`; and the server's setup of `key` and `times`. The exit code
-    /// when one fails.
+    /// `packages` holds, with `bots` and the visibility `host` sets; and the server's setup of
+    /// `key` and `times`. The exit code when one fails.
     fn open(
         data: &ServerDir,
         waiting: Option<RestoredSession>,
@@ -187,6 +188,7 @@ impl Started {
         key: Keypair,
         times: SessionTimes,
         bots: ServerBots,
+        host: HostVisibility,
     ) -> Result<Started, ExitCode> {
         let no_session = |error: OpeningError| {
             error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
@@ -212,6 +214,7 @@ impl Started {
             packages,
             server,
             bots,
+            host,
             segments: SEGMENTS,
         };
         let opening = Opening::of(found, setup).map_err(|error| match error {

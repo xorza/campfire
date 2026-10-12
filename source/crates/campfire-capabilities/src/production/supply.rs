@@ -10,13 +10,13 @@ use crate::units::unit_type::UnitType;
 /// Derived, not state: a count reads the match as it stands, so it cannot drift from it.
 #[derive(Debug, Default)]
 pub(crate) struct Supply {
-    players: Vec<PlayerSupply>,
+    players: Vec<SupplySums>,
     max: u64,
 }
 
 /// A player's supply: what it uses, and what its units give, before the mode's `max`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct PlayerSupply {
+pub(crate) struct SupplySums {
     pub(crate) used: u64,
     given: u64,
 }
@@ -71,16 +71,16 @@ impl Supply {
     }
 
     /// `slot`'s supply, to change, the players grown to hold it.
-    fn entry_mut(&mut self, slot: PlayerSlot) -> &mut PlayerSupply {
+    fn entry_mut(&mut self, slot: PlayerSlot) -> &mut SupplySums {
         let at = slot.index();
         if self.players.len() <= at {
-            self.players.resize(at + 1, PlayerSupply::default());
+            self.players.resize(at + 1, SupplySums::default());
         }
         &mut self.players[at]
     }
 }
 
-impl PlayerSupply {
+impl SupplySums {
     /// Counts what a unit uses and gives, `counted`, to it.
     pub(crate) const fn add(&mut self, counted: UnitSupply) {
         self.used += counted.used;
@@ -101,8 +101,8 @@ mod tests {
     fn a_cap_is_what_the_units_give_at_most_the_max_and_a_reserve_adds_to_what_is_used() {
         let mut supply = Supply {
             players: vec![
-                PlayerSupply { used: 7, given: 30 },
-                PlayerSupply { used: 2, given: 8 },
+                SupplySums { used: 7, given: 30 },
+                SupplySums { used: 2, given: 8 },
             ],
             max: 20,
         };

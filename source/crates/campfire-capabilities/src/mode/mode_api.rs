@@ -98,6 +98,7 @@ impl ModeApi {
                     "tags",
                     "players",
                     "saves",
+                    "visibility",
                 ],
                 &["state_version"],
             )

@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
-use campfire_package::{ModePackages, RELEASE};
+use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
 use campfire_runner::{Session, SessionWorld};
@@ -159,7 +159,7 @@ impl SessionDir {
             return Ok(None);
         };
         let private = SessionPrivate::decode(&private).map_err(RestoreError::Private)?;
-        if private.terms.release != RELEASE {
+        if !private.terms.release.is_current() {
             return Err(RestoreError::OtherRelease(private.terms.release));
         }
         let path = self.journal();
@@ -262,9 +262,10 @@ impl RestoredSession {
 mod tests {
     use std::num::NonZeroU32;
 
+    use campfire_capabilities::Visibility;
     use campfire_common::{Fingerprint, MapName, Ticks};
     use campfire_protocol::internals::TestKey;
-    use campfire_protocol::{SeedChain, SessionTerms, SlotPlan};
+    use campfire_protocol::{EngineRelease, SeedChain, SessionTerms, SlotPlan};
     use campfire_store::Scratch;
 
     use super::*;
@@ -286,11 +287,12 @@ mod tests {
                 max_payload_len: 64,
                 max_inputs_per_tick: 4,
                 seed_commitment: seed_chain.commitment(),
-                release: RELEASE.to_owned(),
+                release: EngineRelease::CURRENT,
                 mode: Fingerprint::new([1; 32]),
                 map: MapName::new("lane").unwrap(),
                 dependencies: Vec::new(),
                 slots: vec![SlotPlan::Open],
+                visibility: Visibility::DEFAULT.encode(),
             },
         };
         let session = Path::new("data/sessions").join(private.terms.session_id().to_string());

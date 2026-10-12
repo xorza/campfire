@@ -36,13 +36,15 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
     )
     .unwrap();
     let key = TestKey::of(8);
-    let terms = SessionRules::of(&packages)
+    let rules = SessionRules::of(&packages);
+    let terms = rules
         .terms(
             key.x_only_public_key().0,
             SeedChain::new([9; 32], NonZeroU32::MIN).commitment(),
             packages.manifest().tick_hz.default(),
             InputRules::LAN,
             vec![SlotPlan::Open],
+            rules.visibility().settings(),
         )
         .unwrap();
     let header = SessionHeader {

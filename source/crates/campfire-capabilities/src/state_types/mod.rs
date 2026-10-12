@@ -12,6 +12,7 @@ use crate::state_types::replication::Replication;
 use crate::state_types::sending::Sending;
 
 pub(crate) mod data_kind;
+pub(crate) mod recipients;
 pub(crate) mod replication;
 pub(crate) mod sending;
 
@@ -45,6 +46,11 @@ pub trait StateTypes: Sized {
     /// `C`, a component no state holds, as each match derives it again from its state: its
     /// value is no part of the hash, the snapshot or what a client receives.
     fn derived<C: Component>(&mut self);
+
+    /// `C`, derived as a derived component is, and no part of the hash or the snapshot, but sent
+    /// on each change to its kind's audience, which cannot derive it: a player's supply, from
+    /// units its audience may not hold (design 14, D9).
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self);
 
     /// `R`, a resource, which no client receives (design 14, D6).
     fn resource<R: SimResource>(&mut self);
@@ -83,6 +89,8 @@ impl StateTypes for StateRegistry {
     }
 
     fn derived<C: Component>(&mut self) {}
+
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {}
 
     fn resource<R: SimResource>(&mut self) {
         self.register_resource::<R>();

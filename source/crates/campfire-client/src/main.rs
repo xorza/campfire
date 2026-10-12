@@ -31,10 +31,12 @@ use bevy::log::LogPlugin;
 use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
+use campfire_capabilities::{Team, TeamSet};
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    ClientDir, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
+    ClientDir, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
+    WatchRequest,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::RandomKey;
@@ -114,6 +116,10 @@ fn main() -> ExitCode {
             }
         },
     };
+    let watch = match watched_teams(&args, &packages) {
+        Ok(watch) => watch,
+        Err(code) => return code,
+    };
     let pace = Arc::new(Pace::default());
     let mut connection = match Connection::open(&args, data.as_deref(), &packages, &pace) {
         Ok(connection) => connection,
@@ -123,6 +129,9 @@ fn main() -> ExitCode {
     let tick = TickRate::new(pin.tick_hz).length();
 
     let mut app = App::new();
+    if let Some(teams) = watch {
+        app.insert_resource(WatchRequest(teams));
+    }
     let local = matches!(connection, Connection::Local(_));
     add_ends(&mut app, script, local.then_some(&pace), &packages);
     app.add_plugins((
@@ -130,6 +139,11 @@ fn main() -> ExitCode {
             main_key,
             session_key: RandomKey::generate(Os::fill),
             server: pin,
+            role: if args.spectate {
+                JoinRole::Watch
+            } else {
+                JoinRole::Play
+            },
             local,
             packages,
             clock: Os::unix_now,
@@ -233,4 +247,24 @@ fn main_key(args: &Args) -> Result<Keypair, ExitCode> {
         error!(key = %file, error = %ErrorReport::of(&error), "the key file does not read");
         ExitCode::from(ExitStatus::Failure)
     })
+}
+
+/// The teams a spectator watches, as `--watch` names them in the mode `packages` holds; none to
+/// watch every team's view; the exit code for a name no team of the mode has.
+fn watched_teams(args: &Args, packages: &ModePackages) -> Result<Option<TeamSet>, ExitCode> {
+    if args.watch.is_empty() {
+        return Ok(None);
+    }
+    let teams = &packages.manifest().teams;
+    let mut watched = Vec::with_capacity(args.watch.len());
+    for name in &args.watch {
+        let Some(index) = teams.iter().position(|team| team.name == *name) else {
+            error!(team = %name, "the mode has no such team");
+            return Err(ExitCode::from(ExitStatus::Usage));
+        };
+        watched.push(Team::new(
+            u8::try_from(index).expect("a team's index fits u8"),
+        ));
+    }
+    Ok(Some(watched.into_iter().collect()))
 }

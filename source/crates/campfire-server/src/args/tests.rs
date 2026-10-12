@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::ffi::OsString;
 
+use campfire_capabilities::{DataKind, Recipients, SpectatorFog};
 use campfire_common::PlayerSlot;
 use campfire_net::SlotBotFileError;
 use clap::error::ErrorKind;
@@ -112,4 +113,69 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     let help = refused(&["--help"]);
     assert_eq!(help.kind(), ErrorKind::DisplayHelp);
     assert!(!help.use_stderr() && help.exit_code() == 0);
+}
+
+#[test]
+fn the_command_line_reads_the_hosts_visibility_or_its_flaw() {
+    let args = read(&[
+        "--data",
+        "d",
+        "--visibility",
+        "inventory=allies,spectators",
+        "--spectators",
+        "3",
+        "mode",
+        "0.0.0.0:4433",
+        "--visibility",
+        "spectators=teams",
+    ])
+    .unwrap();
+    assert_eq!(
+        args.host,
+        HostVisibility {
+            settings: vec![
+                SettingValue::Audience(
+                    DataKind::Inventory,
+                    Recipients::ALLIES | Recipients::SPECTATORS
+                ),
+                SettingValue::Spectators(SpectatorFog::Teams),
+            ],
+            max_spectators: 3,
+        }
+    );
+    // None unless the host says, and no spectator.
+    let plain = read(&["--data", "d", "mode", "0.0.0.0:4433"]).unwrap();
+    assert_eq!(plain.host, HostVisibility::default());
+    for args in [
+        &[
+            "--data",
+            "d",
+            "--visibility",
+            "inventory=owner",
+            "mode",
+            "0.0.0.0:4433",
+        ][..],
+        &[
+            "--data",
+            "d",
+            "--visibility",
+            "inventory",
+            "mode",
+            "0.0.0.0:4433",
+        ],
+        &[
+            "--data",
+            "d",
+            "--spectators",
+            "many",
+            "mode",
+            "0.0.0.0:4433",
+        ],
+    ] {
+        assert_eq!(
+            read(args).unwrap_err().kind(),
+            ErrorKind::ValueValidation,
+            "{args:?}"
+        );
+    }
 }

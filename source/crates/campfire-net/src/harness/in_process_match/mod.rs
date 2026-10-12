@@ -13,8 +13,8 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{
-    Action, Body, CapabilitySet, Leaver, MoveStep, Order, Owner, PlayersData, SaveBy, SavesData,
-    Team,
+    Action, Body, CapabilitySet, HostVisibility, Leaver, MoveStep, Order, Owner, PlayersData,
+    SaveBy, SavesData, Team,
 };
 use campfire_common::{ChannelBinding, MapName, PlayerSlot, TlsKey};
 use campfire_log::internals::LogCheck;
@@ -35,6 +35,7 @@ use lightyear::transport::plugin::TransportSystems;
 use crate::bot_script::BotScript;
 use crate::harness::in_process_match::delay_line::DelayLine;
 use crate::harness::in_process_match::link_model::LinkModel;
+use crate::join::JoinRole;
 use crate::local::local_pace::LocalPace;
 use crate::local::local_session::LocalSession;
 use crate::match_clock::MatchClock;
@@ -105,6 +106,10 @@ pub struct MatchSetup {
     pub bots: &'static [&'static str],
     /// The script of the server's bot in a slot its player left, when it plays one.
     pub takeover: Option<&'static str>,
+    /// The host's visibility settings, as `--visibility` gives them.
+    pub visibility: &'static [&'static str],
+    /// The most spectators the session admits.
+    pub max_spectators: u32,
 }
 
 /// How an `InProcessMatch` lays the server's links out in its tables. A query gives entities in
@@ -177,6 +182,8 @@ impl MatchSetup {
             },
             bots: &[],
             takeover: None,
+            visibility: &[],
+            max_spectators: 0,
         }
     }
 
@@ -198,6 +205,8 @@ impl MatchSetup {
             },
             bots: &[],
             takeover: None,
+            visibility: &[],
+            max_spectators: 0,
         }
     }
 }
@@ -218,6 +227,8 @@ pub struct InProcessMatch {
     links: Vec<Entity>,
     /// The links made so far, which numbers each link's address and delay lines.
     links_made: u64,
+    /// How many spectators it added, which takes each one's key.
+    spectators: usize,
     setup: MatchSetup,
     packages: Arc<ModePackages>,
     /// The server's data directory, where it keeps its session, once a test gives it one.
@@ -286,6 +297,7 @@ impl InProcessMatch {
             client_entities: Vec::with_capacity(setup.players),
             links: Vec::with_capacity(setup.players),
             links_made: 0,
+            spectators: 0,
             setup,
             packages,
             data: None,
@@ -350,9 +362,21 @@ impl InProcessMatch {
     /// Adds a client of `player`, whose keys it holds, linked to the server and connecting; the
     /// index of the new client. A client of a player another client plays logs in again.
     pub fn add_client(&mut self, player: usize) -> usize {
+        self.add(Joiner::Player(player))
+    }
+
+    /// Adds a client that joins to watch, with a key of its own, linked to the server and
+    /// connecting; the index of the new client.
+    pub fn add_spectator(&mut self) -> usize {
+        let spectator = self.spectators;
+        self.spectators += 1;
+        self.add(Joiner::Spectator(spectator))
+    }
+
+    fn add(&mut self, joiner: Joiner) -> usize {
         let tick_hz = self.packages.manifest().tick_hz.default();
         let ClientApp { mut app, entity } =
-            ClientApp::new(&self.setup, player, &self.packages, tick_hz, &self.pace);
+            ClientApp::new(&self.setup, joiner, &self.packages, tick_hz, &self.pace);
         app.finish();
         app.cleanup();
         run_in_order(&mut app);
@@ -570,6 +594,15 @@ impl InProcessMatch {
             slots: self.setup.players + self.setup.bots.len(),
             bots: self.server_bots(),
             open: Vec::new(),
+            host: HostVisibility {
+                settings: self
+                    .setup
+                    .visibility
+                    .iter()
+                    .map(|text| text.parse().expect("a host setting"))
+                    .collect(),
+                max_spectators: self.setup.max_spectators,
+            },
             server: self.server_setup(),
         })
         .expect("the lane mode runs at its default rate");
@@ -866,6 +899,14 @@ struct ClientApp {
     entity: Entity,
 }
 
+/// Who a client joins as: a player, whose keys and rollback mode the setup gives, or the
+/// `n`th spectator, with a key of its own.
+#[derive(Debug, Clone, Copy)]
+enum Joiner {
+    Player(usize),
+    Spectator(usize),
+}
+
 impl ClientApp {
     /// The secret of `player`'s main key, which sorts after every lower player's: the session
     /// key's is the next byte, so the odd bytes are the main keys'.
@@ -879,12 +920,24 @@ impl ClientApp {
     /// The app of `player`, following `pace`.
     fn new(
         setup: &MatchSetup,
-        player: usize,
+        joiner: Joiner,
         packages: &Arc<ModePackages>,
         tick_hz: NonZeroU32,
         pace: &Arc<Pace>,
     ) -> ClientApp {
-        let secret = ClientApp::main_secret(player);
+        let (secret, role, rollback) = match joiner {
+            Joiner::Player(player) => (
+                ClientApp::main_secret(player),
+                JoinRole::Play,
+                setup.rollbacks[player],
+            ),
+            // Past every player's key, which take the odd bytes below 2 × `MAX_PLAYERS`.
+            Joiner::Spectator(spectator) => (
+                u8::try_from(100 + 2 * spectator).expect("a few spectators"),
+                JoinRole::Watch,
+                RollbackMode::Check,
+            ),
+        };
         let sim_client = SimClient {
             main_key: TestKey::of(secret),
             session_key: TestKey::of(secret + 1),
@@ -893,6 +946,7 @@ impl ClientApp {
                 tls_key: TLS_KEY,
                 tick_hz,
             },
+            role,
             local: true,
             packages: Arc::clone(packages),
             clock: unix_now,
@@ -912,7 +966,7 @@ impl ClientApp {
             .world_mut()
             .resource_mut::<PredictionManager>()
             .rollback_policy
-            .state = setup.rollbacks[player];
+            .state = rollback;
         pass_through_delay_lines(&mut client);
         let entity = SimClient::spawn(client.world_mut());
         ClientApp {

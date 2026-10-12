@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime};
 use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
+use campfire_capabilities::HostVisibility;
 use campfire_common::MapName;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_net::SimServer;
@@ -47,6 +48,8 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) packages: ModePackages,
     pub(crate) server: ServerSetup,
     pub(crate) bots: ServerBots,
+    /// What the host sets of a new session's visibility; a restored session keeps its own.
+    pub(crate) host: HostVisibility,
     pub(crate) segments: NonZeroU32,
 }
 
@@ -146,6 +149,7 @@ impl Opening {
             slots,
             bots: setup.bots,
             open: Vec::new(),
+            host: setup.host,
             server: setup.server,
         })
         .map_err(OpeningError::Lobby)?;

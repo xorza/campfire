@@ -43,7 +43,7 @@ use crate::units::unit_type::UnitType;
 use crate::values::relation::Relation;
 
 /// The parts of a unit supply counts, dead or not.
-type Counted = (
+pub(super) type Counted = (
     &'static UnitType,
     &'static Owner,
     Has<Dead>,

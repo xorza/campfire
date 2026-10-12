@@ -21,12 +21,14 @@ use crate::match_clock::MatchClock;
 use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::error::JoinError;
+use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{
     CheckedJoins, Dismissing, JoinLink, Joined, OfferLinks, Offered, Offering, ToAnswer,
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
 use crate::sim_server::server_signer::ServerSigner;
+use crate::sim_server::spectators::spectators_world::SpectatorsWorldCrate;
 
 /// The session's door after the start: it offers the terms to every new link, and seats each
 /// player who answers. A main key that controls a slot gets it back, its live link ended if it
@@ -87,6 +89,12 @@ impl Door {
             .check_all(joins.drain(..), &mut checked);
         for (link, error) in checked.refused.drain(..) {
             Door::refuse(world, link, error);
+        }
+        let visibility = world.resource::<MatchVisibility>().0;
+        for link in checked.watching.drain(..) {
+            if let Err(error) = world.admit_spectator(link, &visibility) {
+                Door::refuse(world, link, error);
+            }
         }
         for (link, delegation) in checked.answered.drain(..) {
             match Door::seat_player(world, link, delegation) {

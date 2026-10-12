@@ -1,3 +1,4 @@
+use campfire_capabilities::VisibilityDecodeError;
 use campfire_common::Ticks;
 use campfire_package::PackageDir;
 use campfire_protocol::SeedChain;
@@ -23,7 +24,8 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     let plan = vec![SlotPlan::Player, SlotPlan::Bot, SlotPlan::Open];
     let terms = |hz| {
         let hz = NonZeroU32::new(hz).unwrap();
-        rules.terms(key, commitment, hz, inputs, plan.clone())
+        let visibility = rules.visibility().settings();
+        rules.terms(key, commitment, hz, inputs, plan.clone(), visibility)
     };
     for hz in [19, 61] {
         assert_eq!(
@@ -44,23 +46,25 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             max_payload_len: 7,
             max_inputs_per_tick: 2,
             seed_commitment: commitment,
-            release: RELEASE.to_owned(),
+            release: EngineRelease::CURRENT,
             mode: packages.fingerprint(),
             map: MapName::new("two_lanes").unwrap(),
             dependencies,
             slots: plan.clone(),
+            // The 3v3 sets no visibility: the defaults, which admit no spectator.
+            visibility: Visibility::DEFAULT.encode(),
         }
     );
     assert!(fixed.dependencies.len() > 1, "the swap below reorders them");
 
     // The 3v3's teams have 6 slots: a session plays 1 to 6 of them.
     let slots = |slots: u64| TermsError::Slots { slots, most: 6 };
-    let changes: [(Change, TermsError); 7] = [
+    let changes: [(Change, TermsError); 9] = [
         (|terms| terms.slots.clear(), slots(0)),
         (|terms| terms.slots = vec![SlotPlan::Open; 7], slots(7)),
         (
-            |terms| terms.release = "0.0.9".to_owned(),
-            TermsError::OtherRelease("0.0.9".to_owned()),
+            |terms| terms.release = EngineRelease::new(0, 0, 9),
+            TermsError::OtherRelease(EngineRelease::new(0, 0, 9)),
         ),
         (
             |terms| terms.mode = Fingerprint::new([0; 32]),
@@ -78,10 +82,26 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             |terms| terms.dependencies.truncate(1),
             TermsError::OtherDependencies,
         ),
+        (
+            |terms| terms.visibility.truncate(19),
+            TermsError::Visibility(VisibilityDecodeError::Length(19)),
+        ),
+        // A player's resources to its allies, which the mode keeps to the owner, as it leaves
+        // its host only the spectators' fog and what a player out of play sees: resources'
+        // byte, the eighth.
+        (|terms| terms.visibility[7] = 1, TermsError::OtherVisibility),
     ];
     for (change, error) in changes {
         let mut other = fixed.clone();
         change(&mut other);
         assert_eq!(rules.check(&other), Err(error));
     }
+    // What the mode leaves its host, and the spectators the host admits, any terms may set:
+    // after the 14 kinds' bytes, the fog to `teams`, what a player out of play sees to
+    // `spectators`, and 3 spectators.
+    let mut hosted = fixed.clone();
+    hosted.visibility[14..].copy_from_slice(&[1, 1, 3, 0, 0, 0]);
+    assert_eq!(rules.check(&hosted), Ok(()));
+    let visibility = SessionRules::visibility_of(&hosted).unwrap();
+    assert_eq!(visibility.max_spectators(), 3);
 }

@@ -77,6 +77,8 @@ impl StateTypes for Installer<'_> {
 
     fn derived<C: Component>(&mut self) {}
 
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {}
+
     fn resource<R: SimResource>(&mut self) {
         self.registry.resource::<R>();
     }

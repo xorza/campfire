@@ -1,4 +1,5 @@
 use super::*;
+use crate::production::player_supply::PlayerSupply;
 use crate::production::requirements::Requirements;
 use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::stats_world::StatsWorldCrate;
@@ -27,6 +28,7 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
         ],
     );
     let player = PlayerSlot::new(0);
+    Players::spawn(&mut game, 1, 0);
     let producer = Production::allocate_id(&mut game);
     shop.producer(
         &mut game,
@@ -37,7 +39,9 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
         train,
         TrainQueue::default(),
     );
-    let step = |game: &mut Match, queued: usize, spawned: usize, tick: u64| {
+    // Each tick's end leaves the queue's length, the spawns, and the supply the player's entity
+    // shows: what is used, and the cap.
+    let step = |game: &mut Match, queued: usize, spawned: usize, supply: (u64, u64), tick: u64| {
         Production::order_train(game, producer);
         game.step();
         assert_eq!(
@@ -48,21 +52,24 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
             (queued, spawned),
             "tick {tick}"
         );
+        let entity = game.player_entity(player).unwrap();
+        let shown = game.get::<PlayerSupply>(entity).copied().unwrap();
+        assert_eq!((shown.used(), shown.cap()), supply, "tick {tick}");
     };
     // Tick 0: 0 + 3 of 4 joins. Tick 1: its 3 held in the queue, 6 of 4 does not; the first spawns
     // as the tick ends, and uses its 3 as a unit.
-    step(&mut game, 1, 0, 0);
-    step(&mut game, 0, 1, 1);
+    step(&mut game, 1, 0, (3, 4), 0);
+    step(&mut game, 0, 1, (3, 4), 1);
     // A depot gives 4 more, a cap of 8: tick 2, 3 + 3 joins; tick 3, 9 of 8 does not, and the
     // second spawns.
     let first_depot = Production::owned(&mut game, depot, player);
-    step(&mut game, 1, 1, 2);
-    step(&mut game, 0, 2, 3);
+    step(&mut game, 1, 1, (6, 8), 2);
+    step(&mut game, 0, 2, (6, 8), 3);
     // The depot dies: a cap of 4 below the 6 used kills nothing, and stops trains; a depot no
     // player owns gives nothing.
     game.insert_parts(first_depot, Dead);
     Units::spawn_of(&mut game, depot, at(0), Team::new(1), ());
-    step(&mut game, 0, 2, 4);
+    step(&mut game, 0, 2, (6, 4), 4);
     assert!(
         Shop::spawned(&game)
             .iter()
@@ -74,9 +81,9 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     game.entity_mut(entity).remove::<Dead>();
     Production::owned(&mut game, depot, player);
     Production::owned(&mut game, depot, player);
-    step(&mut game, 1, 2, 5);
-    step(&mut game, 0, 3, 6);
-    step(&mut game, 0, 3, 7);
+    step(&mut game, 1, 2, (9, 10), 5);
+    step(&mut game, 0, 3, (9, 10), 6);
+    step(&mut game, 0, 3, (9, 10), 7);
 }
 
 #[test]

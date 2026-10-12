@@ -15,7 +15,7 @@ use crate::players::resource_amount::ResourceAmount;
 use crate::production::production_data::ProductionData;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
-use crate::state_types::sending::NotSent;
+use crate::state_types::sending::SentOnChange;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::unit_entity::UnitEntity;
@@ -127,8 +127,8 @@ impl SimComponent for TrainQueue {
 }
 
 impl Replication for TrainQueue {
-    const KIND: DataKind = DataKind::Server;
-    type Sending = NotSent;
+    const KIND: DataKind = DataKind::Queues;
+    type Sending = SentOnChange;
 }
 
 /// A snapshot is untrusted, so a head time without a head or without one, or paid amounts that

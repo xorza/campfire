@@ -7,106 +7,74 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Add, Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Has, With};
-use bevy_ecs::system::{Commands, Query};
+use bevy_ecs::system::{Commands, Query, Res};
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
 use campfire_capabilities::{
-    CapabilitySet, DataKind, Declared, Experience, Inventory, ModifierClocks, Owner, Player,
-    PlayerResources, Points, Pools, Progress, Release, Replication, Respawn, Route, SlotTimes,
-    SpawnPoint, StateTypes, SyncOwner, SyncTeam, Team, UnitState,
+    CapabilitySet, DataKind, Declared, Experience, Inventory, Life, ModeState, ModifierClocks,
+    Modifiers, Owner, Player, PlayerModifiers, PlayerResources, PlayerSupply, Points, Pools,
+    Progress, Recipients, Release, Replication, Respawn, Route, SlotTimes, SpawnPoint, StateTypes,
+    SyncAll, SyncOwner, SyncTeam, Team, TrainQueue, UnitState,
 };
 use campfire_common::PlayerSlot;
 use campfire_sim::SimResource;
 
-use crate::sim_server::player_link::PlayerLink;
+use crate::sim_server::match_visibility::MatchVisibility;
+use crate::sim_server::viewer::Viewer;
 
-/// A kind of state that only its owner's client, and with `ALLIES` its team's other clients,
-/// receive, and the types of the kind, which its filter hides from every other client. A test
-/// checks each scope holds exactly the types the capabilities' lists give the kind.
+/// A kind of state whose audience a mode may set, or that the owner alone receives, and the
+/// types of the kind, which its filter hides from every client outside the kind's audience in
+/// the match. A test checks each scope holds exactly the types the capabilities' lists give the
+/// kind.
 pub(crate) trait FilteredKind: Send + Sync + Debug + 'static {
     const KIND: DataKind;
-    /// Whether the clients of the entity's team receive it, beside its owner's.
-    const ALLIES: bool;
     type Scope: FilterScope;
 }
 
-/// What only the owner's prediction reads.
-#[derive(Debug)]
-pub(crate) struct PredictionKind;
+/// Declares a filtered kind of each name, of its `DataKind` and its scope.
+macro_rules! filtered_kinds {
+    ($($(#[$doc:meta])* $name:ident: $kind:ident = $scope:ty;)+) => {$(
+        $(#[$doc])*
+        #[derive(Debug)]
+        pub(crate) struct $name;
 
-impl FilteredKind for PredictionKind {
-    const KIND: DataKind = DataKind::Prediction;
-    const ALLIES: bool = false;
-    type Scope = (SpawnPoint, Route, Progress, ModifierClocks, Respawn);
+        impl FilteredKind for $name {
+            const KIND: DataKind = DataKind::$kind;
+            type Scope = $scope;
+        }
+    )+};
 }
 
-/// A unit's pools other than its life.
-#[derive(Debug)]
-pub(crate) struct PoolsKind;
-
-impl FilteredKind for PoolsKind {
-    const KIND: DataKind = DataKind::Pools;
-    const ALLIES: bool = false;
-    type Scope = SingleComponent<Pools>;
-}
-
-/// A unit's slots' ready ticks, charges and toggles.
-#[derive(Debug)]
-pub(crate) struct CooldownsKind;
-
-impl FilteredKind for CooldownsKind {
-    const KIND: DataKind = DataKind::Cooldowns;
-    const ALLIES: bool = false;
-    type Scope = SingleComponent<SlotTimes>;
-}
-
-/// A unit's inventory.
-#[derive(Debug)]
-pub(crate) struct InventoryKind;
-
-impl FilteredKind for InventoryKind {
-    const KIND: DataKind = DataKind::Inventory;
-    const ALLIES: bool = false;
-    type Scope = SingleComponent<Inventory>;
-}
-
-/// A unit's experience and points.
-#[derive(Debug)]
-pub(crate) struct ProgressionKind;
-
-impl FilteredKind for ProgressionKind {
-    const KIND: DataKind = DataKind::Progression;
-    const ALLIES: bool = false;
-    type Scope = (Experience, Points);
-}
-
-/// A player's resources.
-#[derive(Debug)]
-pub(crate) struct ResourcesKind;
-
-impl FilteredKind for ResourcesKind {
-    const KIND: DataKind = DataKind::Resources;
-    const ALLIES: bool = false;
-    type Scope = SingleComponent<PlayerResources>;
-}
-
-/// A unit's script state fields of `sync = "owner"`.
-#[derive(Debug)]
-pub(crate) struct UnitStateOwnerKind;
-
-impl FilteredKind for UnitStateOwnerKind {
-    const KIND: DataKind = DataKind::UnitStateOwner;
-    const ALLIES: bool = false;
-    type Scope = SingleComponent<UnitState<SyncOwner>>;
-}
-
-/// A unit's script state fields of `sync = "team"`.
-#[derive(Debug)]
-pub(crate) struct UnitStateTeamKind;
-
-impl FilteredKind for UnitStateTeamKind {
-    const KIND: DataKind = DataKind::UnitStateTeam;
-    const ALLIES: bool = true;
-    type Scope = SingleComponent<UnitState<SyncTeam>>;
+filtered_kinds! {
+    /// A unit's life pool.
+    LifeKind: Life = SingleComponent<Life>;
+    /// A unit's pools other than its life.
+    PoolsKind: Pools = SingleComponent<Pools>;
+    /// A unit's modifiers.
+    ModifiersKind: Modifiers = SingleComponent<Modifiers>;
+    /// A unit's slots' ready ticks, charges and toggles.
+    CooldownsKind: Cooldowns = SingleComponent<SlotTimes>;
+    /// A unit's experience and points.
+    ProgressionKind: Progression = (Experience, Points);
+    /// A unit's inventory.
+    InventoryKind: Inventory = SingleComponent<Inventory>;
+    /// The mode's script state fields of `sync = "all"`.
+    ModeStateKind: ModeState = SingleComponent<ModeState<SyncAll>>;
+    /// A player's resources.
+    ResourcesKind: Resources = SingleComponent<PlayerResources>;
+    /// A player's supply.
+    SupplyKind: Supply = SingleComponent<PlayerSupply>;
+    /// A producer's train queue.
+    QueuesKind: Queues = SingleComponent<TrainQueue>;
+    /// The modifiers a player holds for its units.
+    PlayerModifiersKind: PlayerModifiers = SingleComponent<PlayerModifiers>;
+    /// What only the owner's prediction reads.
+    PredictionKind: Prediction = (SpawnPoint, Route, Progress, ModifierClocks, Respawn);
+    /// A unit's script state fields of `sync = "owner"`.
+    UnitStateOwnerKind: UnitStateOwner = SingleComponent<UnitState<SyncOwner>>;
+    /// A unit's script state fields of `sync = "team"`.
+    UnitStateTeamKind: UnitStateTeam = SingleComponent<UnitState<SyncTeam>>;
+    /// A unit's script state fields of `sync = "all"`.
+    UnitStateAllKind: UnitStateAll = SingleComponent<UnitState<SyncAll>>;
 }
 
 /// Each entity's owner, a unit's or a player's entity's slot, its team, and whether it holds the
@@ -123,34 +91,46 @@ type Owners<'w, 's, K> = Query<
 >;
 
 /// On each entity that holds a type of kind `K`: the slot that owns it, if one does, a player's
-/// entity its own slot, and its team, if it has one. Replicon reads it to send the kind's types to the clients `K` names
-/// alone. Immutable, as replicon requires: a change of owner or team inserts a new one.
+/// entity its own slot, its team, if it has one, and the recipients beside the owner that receive
+/// the kind in the match. Replicon reads it to send the kind's types to them alone. Immutable, as
+/// replicon requires: a change of owner or team inserts a new one.
 #[derive(Component, Debug)]
 #[component(immutable)]
 pub(crate) struct KindFilter<K: FilteredKind> {
     owner: Option<PlayerSlot>,
     team: Option<Team>,
+    audience: Recipients,
     kind: PhantomData<K>,
 }
 
 impl<K: FilteredKind> KindFilter<K> {
-    const fn new(owner: Option<&Owner>, team: Option<&Team>) -> KindFilter<K> {
+    const fn new(
+        owner: Option<&Owner>,
+        team: Option<&Team>,
+        visibility: &MatchVisibility,
+    ) -> KindFilter<K> {
         KindFilter {
             owner: match owner {
                 Some(owner) => Some(owner.slot()),
                 None => None,
             },
             team: team.copied(),
+            audience: visibility.0.audience(K::KIND),
             kind: PhantomData,
         }
     }
 
     /// The filter of an entity of `owner` or, a player's entity, of `player`, and of `team`.
-    fn of(owner: Option<&Owner>, player: Option<&Player>, team: Option<&Team>) -> KindFilter<K> {
+    fn of(
+        owner: Option<&Owner>,
+        player: Option<&Player>,
+        team: Option<&Team>,
+        visibility: &MatchVisibility,
+    ) -> KindFilter<K> {
         let owner = owner
             .copied()
             .or(player.map(|player| Owner::new(player.slot())));
-        KindFilter::new(owner.as_ref(), team)
+        KindFilter::new(owner.as_ref(), team, visibility)
     }
 
     /// The filter of `K`, and the observers that follow its entity's owner and team.
@@ -169,22 +149,24 @@ impl<K: FilteredKind> KindFilter<K> {
         app.add_observer(
             |removed: On<'_, '_, Remove, Owner>,
              units: Query<'_, '_, Option<&Team>, With<KindFilter<K>>>,
+             visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok(team) = units.get(removed.entity) {
                     commands
                         .entity(removed.entity)
-                        .try_insert(KindFilter::<K>::new(None, team));
+                        .try_insert(KindFilter::<K>::new(None, team, &visibility));
                 }
             },
         );
         app.add_observer(
             |removed: On<'_, '_, Remove, Team>,
              units: Query<'_, '_, Option<&Owner>, With<KindFilter<K>>>,
+             visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok(owner) = units.get(removed.entity) {
                     commands
                         .entity(removed.entity)
-                        .try_insert(KindFilter::<K>::new(owner, None));
+                        .try_insert(KindFilter::<K>::new(owner, None, &visibility));
                 }
             },
         );
@@ -195,11 +177,12 @@ impl<K: FilteredKind> KindFilter<K> {
         app.add_observer(
             |inserted: On<'_, '_, Insert, C>,
              units: Owners<'_, '_, K>,
+             visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok((owner, player, team, true)) = units.get(inserted.entity) {
                     commands
                         .entity(inserted.entity)
-                        .try_insert(KindFilter::<K>::of(owner, player, team));
+                        .try_insert(KindFilter::<K>::of(owner, player, team, &visibility));
                 }
             },
         );
@@ -212,11 +195,12 @@ impl<K: FilteredKind> KindFilter<K> {
         app.add_observer(
             |added: On<'_, '_, Add, C>,
              units: Owners<'_, '_, K>,
+             visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok((owner, player, team, false)) = units.get(added.entity) {
                     commands
                         .entity(added.entity)
-                        .try_insert(KindFilter::<K>::of(owner, player, team));
+                        .try_insert(KindFilter::<K>::of(owner, player, team, &visibility));
                 }
             },
         );
@@ -224,34 +208,41 @@ impl<K: FilteredKind> KindFilter<K> {
 }
 
 impl<K: FilteredKind> VisibilityFilter for KindFilter<K> {
-    type ClientComponent = PlayerLink;
+    type ClientComponent = Viewer;
     type Scope = K::Scope;
 
-    fn is_visible(&self, _client: Entity, link: Option<&PlayerLink>) -> bool {
-        link.is_some_and(|link| {
-            let owns = Some(link.slot()) == self.owner;
-            owns || (K::ALLIES && Some(link.team()) == self.team)
+    fn is_visible(&self, _client: Entity, viewer: Option<&Viewer>) -> bool {
+        viewer.is_some_and(|viewer| {
+            let recipient = viewer.recipient(self.owner, self.team);
+            self.audience.contains(recipient)
         })
     }
 }
 
-/// The filters of the kinds that not every client that sees an entity receives.
+/// The filters of the kinds whose audience a mode may set, or that only their owner receives.
 #[derive(Debug)]
 pub(crate) struct KindFilters;
 
 impl KindFilters {
-    /// Registers the filter of every kind that not every client that sees an entity receives,
-    /// and, from the lists of `set`, the observers that put a kind's filter on each
+    /// Registers the filter of every kind whose audience a mode may set or that only its owner
+    /// receives, and, from the lists of `set`, the observers that put a kind's filter on each
     /// entity that gains one of its types: no system adds a filter, so none can forget one.
     pub(crate) fn register(app: &mut App, set: CapabilitySet) {
-        KindFilter::<PredictionKind>::register_kind(app);
+        KindFilter::<LifeKind>::register_kind(app);
         KindFilter::<PoolsKind>::register_kind(app);
+        KindFilter::<ModifiersKind>::register_kind(app);
         KindFilter::<CooldownsKind>::register_kind(app);
-        KindFilter::<InventoryKind>::register_kind(app);
         KindFilter::<ProgressionKind>::register_kind(app);
+        KindFilter::<InventoryKind>::register_kind(app);
+        KindFilter::<ModeStateKind>::register_kind(app);
         KindFilter::<ResourcesKind>::register_kind(app);
+        KindFilter::<SupplyKind>::register_kind(app);
+        KindFilter::<QueuesKind>::register_kind(app);
+        KindFilter::<PlayerModifiersKind>::register_kind(app);
+        KindFilter::<PredictionKind>::register_kind(app);
         KindFilter::<UnitStateOwnerKind>::register_kind(app);
         KindFilter::<UnitStateTeamKind>::register_kind(app);
+        KindFilter::<UnitStateAllKind>::register_kind(app);
         Release::state_types(set, &mut FilterObservers(app));
     }
 }
@@ -264,22 +255,26 @@ struct FilterObservers<'a>(&'a mut App);
 impl FilterObservers<'_> {
     fn filter<C: Replication>(&mut self) {
         match C::KIND {
-            DataKind::Prediction => KindFilter::<PredictionKind>::observe::<C>(self.0),
+            DataKind::Life => KindFilter::<LifeKind>::observe::<C>(self.0),
             DataKind::Pools => KindFilter::<PoolsKind>::observe::<C>(self.0),
+            DataKind::Modifiers => KindFilter::<ModifiersKind>::observe::<C>(self.0),
             DataKind::Cooldowns => KindFilter::<CooldownsKind>::observe::<C>(self.0),
-            DataKind::Inventory => KindFilter::<InventoryKind>::observe::<C>(self.0),
             DataKind::Progression => KindFilter::<ProgressionKind>::observe::<C>(self.0),
+            DataKind::Inventory => KindFilter::<InventoryKind>::observe::<C>(self.0),
+            DataKind::ModeState => KindFilter::<ModeStateKind>::observe::<C>(self.0),
             DataKind::Resources => KindFilter::<ResourcesKind>::observe::<C>(self.0),
+            DataKind::Supply => KindFilter::<SupplyKind>::observe::<C>(self.0),
+            DataKind::Queues => KindFilter::<QueuesKind>::observe::<C>(self.0),
+            DataKind::PlayerModifiers => KindFilter::<PlayerModifiersKind>::observe::<C>(self.0),
+            DataKind::Prediction => KindFilter::<PredictionKind>::observe::<C>(self.0),
             DataKind::UnitStateOwner => KindFilter::<UnitStateOwnerKind>::observe::<C>(self.0),
             DataKind::UnitStateTeam => KindFilter::<UnitStateTeamKind>::observe::<C>(self.0),
-            DataKind::Unit
-            | DataKind::Match
-            | DataKind::ModeState
-            | DataKind::PlayerModifiers
-            | DataKind::Life
-            | DataKind::Modifiers
-            | DataKind::UnitStateAll
-            | DataKind::Server => {}
+            DataKind::UnitStateAll => KindFilter::<UnitStateAllKind>::observe::<C>(self.0),
+            // Every client that holds the entity receives these, and vision decides who holds
+            // it; the server's kind is never sent.
+            DataKind::Unit | DataKind::Match | DataKind::Server => {
+                debug_assert_eq!(C::KIND.settable(), Recipients::NONE);
+            }
         }
     }
 }
@@ -308,6 +303,10 @@ impl StateTypes for FilterObservers<'_> {
 
     fn derived<C: Component>(&mut self) {}
 
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+        self.filter::<C>();
+    }
+
     fn resource<R: SimResource>(&mut self) {}
 
     fn sim_component<C: Replication>(&mut self) {
@@ -321,11 +320,13 @@ mod tests {
     use std::collections::BTreeSet;
 
     use bevy_ecs::world::World;
-    use campfire_capabilities::SentOnChange;
+    use campfire_capabilities::{ModeVisibility, SentOnChange, TeamSet, Visibility};
+    use campfire_codec::Toml;
     use campfire_sim::{Capability, OnAny, SimComponent};
     use serde::{Deserialize, Serialize};
 
     use super::*;
+    use crate::sim_server::viewer::Watching;
 
     /// A state type of `progression` that no scope holds.
     #[derive(Component, Debug, Serialize, Deserialize)]
@@ -436,6 +437,10 @@ mod tests {
 
         fn derived<C: Component>(&mut self) {}
 
+        fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+            self.push::<C>();
+        }
+
         fn resource<R: SimResource>(&mut self) {}
 
         fn sim_component<C: Replication>(&mut self) {
@@ -461,14 +466,21 @@ mod tests {
         // holds of another kind would go to the kind's clients alone: each fails here by its
         // name.
         let kinds = Kinds::of_every_capability();
-        assert_eq!(scope_of::<PredictionKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<LifeKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<PoolsKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<ModifiersKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<CooldownsKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<InventoryKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<ProgressionKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<InventoryKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<ResourcesKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<SupplyKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<QueuesKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<PlayerModifiersKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<PredictionKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<UnitStateOwnerKind>(&kinds), (vec![], 0));
         assert_eq!(scope_of::<UnitStateTeamKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<UnitStateAllKind>(&kinds), (vec![], 0));
+        assert_eq!(scope_of::<ModeStateKind>(&kinds), (vec![], 0));
         // The check itself: `Stray`, of the kind, which the scope lacks, fails by its name, and
         // `Points`, of the scope, which this list does not give, counts once.
         let mut stray = Kinds::default();
@@ -483,6 +495,7 @@ mod tests {
         // gains it, each it changes to, and none of one once it loses it; a despawn changes
         // nothing.
         let mut app = App::new();
+        app.insert_resource(MatchVisibility(Visibility::DEFAULT));
         KindFilter::<ProgressionKind>::follow(&mut app);
         KindFilter::<ProgressionKind>::observe::<Stray>(&mut app);
         let world = app.world_mut();
@@ -521,32 +534,80 @@ mod tests {
         assert!(world.get_entity(hero).is_err());
     }
 
+    /// Whether each of `viewers` holds what `filter` filters, as replicon asks it for `client`.
+    fn held<K: FilteredKind>(
+        filter: &KindFilter<K>,
+        viewers: &[Option<Viewer>],
+        client: Entity,
+    ) -> Vec<bool> {
+        viewers
+            .iter()
+            .map(|viewer| filter.is_visible(client, viewer.as_ref()))
+            .collect()
+    }
+
     #[test]
-    fn only_the_owners_seated_link_and_for_a_team_kind_its_teams_hold_a_filtered_kind() {
-        let link = |slot, team| PlayerLink::new(PlayerSlot::new(slot), Team::new(team));
+    fn only_the_kinds_audience_in_the_match_holds_a_filtered_kind() {
+        let player = |slot, team| {
+            Some(Viewer::Player {
+                slot: PlayerSlot::new(slot),
+                team: Team::new(team),
+            })
+        };
+        let spectator = Some(Viewer::Spectator(Watching::Teams(TeamSet::ALL)));
         let client = Entity::PLACEHOLDER;
-        let (player, team) = (Owner::new(PlayerSlot::new(1)), Team::new(0));
-        let prediction = KindFilter::<PredictionKind>::new(Some(&player), Some(&team));
-        let team_state = KindFilter::<UnitStateTeamKind>::new(Some(&player), Some(&team));
-        // The owner holds both; an ally the team's kind alone; an enemy neither.
-        for (link, holds) in [
-            (link(1, 0), (true, true)),
-            (link(0, 0), (false, true)),
-            (link(2, 1), (false, false)),
-        ] {
-            let held = (
-                prediction.is_visible(client, Some(&link)),
-                team_state.is_visible(client, Some(&link)),
-            );
-            assert_eq!(held, holds, "{link:?}");
-        }
-        // A link with no seat, and a unit no player owns, as a creep: no link holds an owned
-        // kind, and the creep's team holds its team's kind.
-        assert!(!prediction.is_visible(client, None) && !team_state.is_visible(client, None));
-        let creep = KindFilter::<PredictionKind>::new(None, Some(&team));
-        assert!(!creep.is_visible(client, Some(&link(1, 0))));
-        let creep = KindFilter::<UnitStateTeamKind>::new(None, Some(&team));
-        assert!(creep.is_visible(client, Some(&link(1, 0))));
-        assert!(!creep.is_visible(client, Some(&link(2, 1))));
+        let (owner, team) = (Owner::new(PlayerSlot::new(1)), Team::new(0));
+        // The owner of team 0's unit, an ally, an enemy, a spectator, and a link with no seat.
+        let viewers = [player(1, 0), player(0, 0), player(2, 1), spectator, None];
+        // The defaults: prediction to the owner alone; a team field to its team; life to all.
+        let defaults = MatchVisibility(Visibility::DEFAULT);
+        let prediction = KindFilter::<PredictionKind>::new(Some(&owner), Some(&team), &defaults);
+        let team_state = KindFilter::<UnitStateTeamKind>::new(Some(&owner), Some(&team), &defaults);
+        let life = KindFilter::<LifeKind>::new(Some(&owner), Some(&team), &defaults);
+        assert_eq!(
+            held(&prediction, &viewers, client),
+            [true, false, false, false, false]
+        );
+        assert_eq!(
+            held(&team_state, &viewers, client),
+            [true, true, false, false, false]
+        );
+        assert_eq!(
+            held(&life, &viewers, client),
+            [true, true, true, true, false]
+        );
+
+        // A mode that keeps life from enemies, and shows the inventory to spectators: the
+        // owner and its allies hold life still.
+        let mode: ModeVisibility = Toml::parse(
+            r#"
+life = ["spectators"]
+inventory = ["spectators"]
+"#,
+        )
+        .unwrap();
+        let set = MatchVisibility(*mode.settings());
+        let life = KindFilter::<LifeKind>::new(Some(&owner), Some(&team), &set);
+        let inventory = KindFilter::<InventoryKind>::new(Some(&owner), Some(&team), &set);
+        assert_eq!(
+            held(&life, &viewers, client),
+            [true, true, false, true, false]
+        );
+        assert_eq!(
+            held(&inventory, &viewers, client),
+            [true, false, false, true, false]
+        );
+        // A unit no player owns, as a creep: its team's kind to its team, and nothing of the
+        // owner's to anyone.
+        let creep = KindFilter::<PredictionKind>::new(None, Some(&team), &defaults);
+        assert_eq!(
+            held(&creep, &viewers, client),
+            [false, false, false, false, false]
+        );
+        let creep = KindFilter::<UnitStateTeamKind>::new(None, Some(&team), &defaults);
+        assert_eq!(
+            held(&creep, &viewers, client),
+            [true, true, false, false, false]
+        );
     }
 }
