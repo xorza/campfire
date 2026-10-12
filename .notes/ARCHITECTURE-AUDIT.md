@@ -86,7 +86,7 @@ let (&pos, &team, body, spawn, unit_type, owner, tags) =
     self.parts.get_manual(world, entity).ok()?;
 ```
 
-`UnitType` stays optional until the issue log's **Runner** item on test units spawned with no unit type is fixed.
+`UnitType` becomes required too once no test spawns a unit of no type into a match: the MOBA arena's units take types of their own.
 
 ## 3. Two rules the declaration audit lacks
 
@@ -381,7 +381,7 @@ world.add_observer(
 
 The items in the order they are done; each line says why it stands where it does.
 
-1. **The issue log's Runner item** on test units with no unit type, **then §2**, **then §3's kinds rule**: §2 leaves out of the script view every entity with no `UnitEntity`, so the test units must spawn as units first; the kinds rule then holds what §2 takes as given.
+1. **§2**, **then §3's kinds rule**: §2 leaves out of the script view every entity with no `UnitEntity`, which no test unit of a match is now; the kinds rule then holds what §2 takes as given.
 2. **§1** and **§6**: small, alone, each in one module or one test.
 3. **§7** before §4: the observer takes `navigation`'s import of `projectiles` away, so §4's table loses a row.
 4. **§3's column rule**: a new method of `RowParts`, which every column's parts implement through the tuples, and the audit's own check.

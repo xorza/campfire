@@ -10,3 +10,48 @@ pub struct ModeUnits {
     pub(crate) avatars: NameList,
     pub(crate) loadout: LoadoutSetup,
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::bundle::Bundle;
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+    use campfire_sim::{IdAllocator, Position, StableId};
+
+    use crate::mode::mode_units::ModeUnits;
+    use crate::units::spawn_at::SpawnAt;
+    use crate::units::team::Team;
+    use crate::units::unit_type::UnitType;
+
+    impl ModeUnits {
+        /// A unit of the mode's type `unit_type` and `team` at `pos`, of the next stable id,
+        /// with `parts`, spawned as the mode spawns one: with its type's kit, stats, slots and
+        /// passive.
+        pub fn spawn(
+            &self,
+            world: &mut World,
+            unit_type: UnitType,
+            pos: Position,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
+            let setup = self
+                .unit_types
+                .iter()
+                .find(|setup| setup.unit_type == unit_type)
+                .expect("a unit type the mode spawns");
+            let id = world.resource_mut::<IdAllocator>().allocate();
+            let at = SpawnAt {
+                id,
+                unit_type,
+                team,
+                pos,
+                angle: Num::ZERO,
+            };
+            setup
+                .kit
+                .spawn(world, at, None, &setup.actions, setup.passive, parts);
+            id
+        }
+    }
+}

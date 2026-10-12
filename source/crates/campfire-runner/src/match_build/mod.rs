@@ -68,6 +68,7 @@ pub(crate) mod internals {
     use campfire_package::ModePackages;
     use campfire_sim::TickRate;
 
+    use crate::harness::arena::ArenaUnits;
     use crate::match_build::MatchBuild;
 
     /// The seed of a match whose randomness no test reads.
@@ -76,14 +77,16 @@ pub(crate) mod internals {
     impl MatchBuild {
         /// The match of `packages` at `rate`, for `players` players, with every book in place,
         /// the mode's own among them, and no mode installed, as an arena holds it; it starts
-        /// with the match's entity alone, and fails its test on any warning it logs.
+        /// with the match's entity alone, holds the mode's unit types for a test to spawn, and
+        /// fails its test on any warning it logs.
         pub(crate) fn arena(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
             let log = LogCheck::start();
             let spec = MatchBuild::spec(packages, ZERO_SEED, rate, players);
             let mut game = Match::new(spec).with_log(log);
-            let ModeInputs { books, .. } = MatchBuild::books(packages, &mut game);
+            let ModeInputs { units, books } = MatchBuild::books(packages, &mut game);
             books.install(&mut game);
             Players::start_without_mode(&mut game, [], 0);
+            game.insert_non_send(ArenaUnits(units));
             game
         }
 

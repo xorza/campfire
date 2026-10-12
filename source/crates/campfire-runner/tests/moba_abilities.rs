@@ -9,19 +9,19 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
-use campfire_capabilities::internals::{self, Arms};
+use campfire_capabilities::internals;
 use campfire_capabilities::{
     Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
-    Life, Match, ModifierClocks, ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath,
-    Order, Owner, PackagePath, Param, Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers,
-    Scalar, Scaling, SeenBy, SlotKind, SlotTimes, Stat, Targeting, Team, UnitEntity,
+    Life, Match, ModifierId, MoveStep, Navigation, Number, Order, Owner, PackagePath, Param, Pools,
+    Projectile, RangeField, Rank, Ranked, Scalar, Scaling, SeenBy, SlotKind, SlotTimes, Stat,
+    Targeting, Team,
 };
 use campfire_capabilities::{Combat, PoolMeters, Stats};
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_package::{AvatarData, PackageDir, PackageFiles};
 use campfire_runner::internals::Arena;
-use campfire_sim::{IdAllocator, Position, SimWorld, StableId, TickRate};
+use campfire_sim::{Position, SimWorld, StableId, TickRate};
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -38,25 +38,136 @@ fn abilities(name: &str) -> AvatarData {
     let path = PackagePath::parse("data/avatar.toml").unwrap();
     hero(name).read_data(&path).unwrap()
 }
-/// The 3v3's books with no mode: no `calc_damage` weighs a
-/// hit, so each one lands as its ability deals it.
-fn arena() -> Arena {
-    Arena::load(&PackageDir::workspace("test/moba/modes/3v3"))
+/// The weapon of the tests' armed units: an attack within 2 m with no windup, at the rate and for
+/// the damage of its unit's stats.
+const ACTIONS: &str = r#"
+[actions.arena_strike]
+kind = "attack"
+targeting = "enemies"
+range = "2.0"
+windup_ms = 0
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+"#;
+
+/// The unit types the tests' units take, one for each kit: 500 health, a pool of mana or energy
+/// of a maximum, and a weapon, each at level 1. Each stays when it dies, and has no tag a filter
+/// reads. 2.5 attacks a second, the mode's most, is one every 30 / 2.5 = 12 ticks.
+const UNITS: &str = r#"
+[units.arena_bare]
+pools = ["health"]
+stats = { health = { base = 500 } }
+combat = { on_death = "stay" }
+
+[units.arena_mana_20]
+pools = ["health", "mana"]
+stats = { health = { base = 500 }, mana = { base = 20 } }
+combat = { on_death = "stay" }
+
+[units.arena_mana_100]
+pools = ["health", "mana"]
+stats = { health = { base = 500 }, mana = { base = 100 } }
+combat = { on_death = "stay" }
+
+[units.arena_mana_200]
+pools = ["health", "mana"]
+stats = { health = { base = 500 }, mana = { base = 200 } }
+combat = { on_death = "stay" }
+
+[units.arena_energy_100]
+pools = ["health", "energy"]
+stats = { health = { base = 500 }, energy = { base = 100 } }
+combat = { on_death = "stay" }
+
+[units.arena_energy_200]
+pools = ["health", "energy"]
+stats = { health = { base = 500 }, energy = { base = 200 } }
+combat = { on_death = "stay" }
+
+[units.arena_blade]
+pools = ["health"]
+stats = { health = { base = 500 }, attack_damage = { base = 20 }, attack_speed = { base = "2.5" } }
+combat = { on_death = "stay" }
+slots = { weapon = ["arena_strike"] }
+
+[units.arena_archer]
+pools = ["health", "mana"]
+stats = { health = { base = 500 }, mana = { base = 20 }, attack_damage = { base = 10 }, attack_speed = { base = "2.5" } }
+combat = { on_death = "stay" }
+slots = { weapon = ["arena_strike"] }
+
+[units.arena_striker]
+pools = ["health"]
+stats = { health = { base = 500 }, attack_damage = { base = 30 }, attack_speed = { base = 1 } }
+combat = { on_death = "stay" }
+slots = { weapon = ["arena_strike"] }
+
+[units.arena_energy_striker]
+pools = ["health", "energy"]
+stats = { health = { base = 500 }, energy = { base = 200 }, attack_damage = { base = 30 }, attack_speed = { base = 1 } }
+combat = { on_death = "stay" }
+slots = { weapon = ["arena_strike"] }
+"#;
+
+/// A test's unit: 500 health, and no other pool or one of mana or energy of a maximum, and a
+/// weapon of damage and attacks a second; each a unit type of `UNITS`.
+#[derive(Debug, Clone, Copy)]
+enum Kit {
+    Bare,
+    Mana20,
+    Mana100,
+    Mana200,
+    Energy100,
+    Energy200,
+    /// 20 an attack, 2.5 a second.
+    Blade,
+    /// 20 mana; 10 an attack, 2.5 a second.
+    Archer,
+    /// 30 an attack, 1 a second.
+    Striker,
+    /// 200 energy; 30 an attack, 1 a second.
+    EnergyStriker,
 }
 
-/// A unit of 500 health on `team` at `x` meters along x that stays when it dies, with `parts`, and
-/// with `mana` and `energy` pools of those maxima, when not 0; with no slots unless `parts` hold
-/// some.
+impl Kit {
+    const fn unit_type(self) -> &'static str {
+        match self {
+            Kit::Bare => "arena_bare",
+            Kit::Mana20 => "arena_mana_20",
+            Kit::Mana100 => "arena_mana_100",
+            Kit::Mana200 => "arena_mana_200",
+            Kit::Energy100 => "arena_energy_100",
+            Kit::Energy200 => "arena_energy_200",
+            Kit::Blade => "arena_blade",
+            Kit::Archer => "arena_archer",
+            Kit::Striker => "arena_striker",
+            Kit::EnergyStriker => "arena_energy_striker",
+        }
+    }
+}
+
+/// The 3v3's books with no mode, and the actions and unit types of `ACTIONS` and `UNITS`: no
+/// `calc_damage` weighs a hit, so each one lands as its ability deals it.
+fn arena() -> Arena {
+    Arena::load(
+        "test/moba",
+        "modes/3v3",
+        &[("data/mode.toml", ACTIONS), ("data/units.toml", UNITS)],
+    )
+}
+
+/// A unit of `kit` on `team` at `x` meters along x, with `parts`.
 fn spawn_with(
     arena: &Arena,
     game: &mut Match,
     x: i64,
     team: Team,
-    pools: (i64, i64),
+    kit: Kit,
     parts: impl Bundle,
 ) -> StableId {
     let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
-    spawn_at(arena, game, pos, team, pools, parts)
+    spawn_at(arena, game, pos, team, kit, parts)
 }
 
 /// A unit as `spawn_with` gives, at `pos`.
@@ -65,32 +176,15 @@ fn spawn_at(
     game: &mut Match,
     pos: impl Into<Position>,
     team: Team,
-    (mana, energy): (i64, i64),
+    kit: Kit,
     parts: impl Bundle,
 ) -> StableId {
-    let pos = pos.into();
-    let pools: Vec<_> = [("mana", mana), ("energy", energy)]
-        .into_iter()
-        .filter(|&(_, max)| max > 0)
-        .map(|(pool, max)| (arena.pool(pool), Num::int(max)))
-        .collect();
-    let id = game.resource_mut::<IdAllocator>().allocate();
-    let combat = (
-        Life::full(Num::int(500)),
-        OnDeath::Stay,
-        RecentAttackers::default(),
-    );
-    let mut unit = game.spawn((id, UnitEntity, pos, team, combat, parts));
-    if !pools.is_empty() {
-        unit.insert(Pools::new(pools).unwrap());
-    }
-    unit.insert_if_new(ActionSlots::new([]).timed());
-    id
+    arena.spawn(game, kit.unit_type(), pos.into(), team, parts)
 }
 
 /// A unit of 500 health and no other pool, as `spawn_with` gives.
 fn spawn(arena: &Arena, game: &mut Match, x: i64, team: Team, parts: impl Bundle) -> StableId {
-    spawn_with(arena, game, x, team, (0, 0), parts)
+    spawn_with(arena, game, x, team, Kit::Bare, parts)
 }
 
 fn health(arena: &Arena, game: &Match, id: StableId) -> i64 {
@@ -103,14 +197,6 @@ fn pool(arena: &Arena, game: &Match, id: StableId, name: &str) -> Num {
     meters.current(arena.pool(name)).unwrap()
 }
 
-/// Gives `id` a weapon of `damage` within 2 m, its windup of no ticks, every `period` ticks.
-fn arm(game: &mut Match, id: StableId, damage: i64, period: u64) {
-    let entity = game.entity_of(id).unwrap();
-    let arms = Arms::melee(Num::int(2), 0, period, Num::int(damage));
-    let parts = arms.parts(game);
-    game.entity_mut(entity).insert(parts);
-}
-
 const fn attack(id: StableId, target: StableId) -> Order {
     Order::one(id, Action::Attack { target })
 }
@@ -120,18 +206,18 @@ const fn cast(id: StableId, target: ActionTarget) -> Order {
     Order::one(id, Action::Slot { slot: 0, target })
 }
 
-/// Player 0's unit with `action` at `rank` in its one slot, and `mana` and `energy`.
+/// Player 0's unit of `kit` with `action` at `rank` in its one slot.
 fn caster(
     arena: &Arena,
     game: &mut Match,
     action: ActionId,
     rank: u8,
-    pools: (i64, i64),
+    kit: Kit,
     parts: impl Bundle,
 ) -> StableId {
     let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed();
     let player = Owner::new(PlayerSlot::new(0));
-    spawn_with(arena, game, 0, Team::new(0), pools, (player, slots, parts))
+    spawn_with(arena, game, 0, Team::new(0), kit, (player, slots, parts))
 }
 
 /// The modifiers `id` carries, each with its source.
@@ -231,7 +317,7 @@ fn lash_out_from_its_package_hits_exactly() {
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     let lash_out = arena.action(&game, "hero-husk", "lash_out");
-    let caster = caster(&arena, &mut game, lash_out, 3, (100, 0), ());
+    let caster = caster(&arena, &mut game, lash_out, 3, Kit::Mana100, ());
     let near = spawn(&arena, &mut game, 3, Team::new(1), ());
     let far = spawn(&arena, &mut game, 4, Team::new(1), ());
     arena.tick(&mut game, 0, &[cast(caster, ActionTarget::None)]);
@@ -245,28 +331,24 @@ fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself()
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     let player = Owner::new(PlayerSlot::new(0));
-    let blade = spawn(
-        &arena,
-        &mut game,
-        0,
-        Team::new(0),
-        (player, (Modifiers::default(), ModifierClocks::default())),
-    );
+    let blade = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Blade, player);
     let dummy = spawn(&arena, &mut game, 1, Team::new(1), ());
     let twin_cut = arena.modifier(&game, "hero-kensho", "twin_cut");
     Stats::give_modifier(&mut game, blade, twin_cut, Some((blade, None, 1)), true);
-    // 20 an attack, every 10 ticks from tick 0, so 7 within 4 s are consecutive: 6 by tick 50,
-    // 500 − 120; the 7th, in tick 60, hits twice, − 40; its extra hit counts for nothing, so
-    // the next 6 take 120 by tick 120, and the 14th, in tick 130, hits twice, − 40.
-    arm(&mut game, blade, 20, 10);
+    // 20 an attack, every 12 ticks from tick 0, so 7 within 4 s, 120 ticks, are consecutive: 6
+    // by tick 60, 500 − 120; the 7th, in tick 72, hits twice, − 40; its extra hit counts for
+    // nothing, so the next 6 take 120 by tick 144, and the 14th, in tick 156, hits twice, − 40.
     arena.tick(&mut game, 0, &[attack(blade, dummy)]);
     let mut healths = vec![health(&arena, &game, dummy)];
-    for _ in 1..=130 {
+    for _ in 1..=156 {
         arena.step(&mut game);
         healths.push(health(&arena, &game, dummy));
     }
     let at = |tick: usize| healths[tick];
-    assert_eq!([at(50), at(60), at(120), at(130)], [380, 340, 220, 180]);
+    assert_eq!(
+        [at(60), at(71), at(72), at(144), at(155), at(156)],
+        [380, 380, 340, 220, 220, 180]
+    );
     assert!(
         arena.failures(&game).is_empty(),
         "{:?}",
@@ -274,9 +356,8 @@ fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself()
     );
 }
 
-/// Arms `id` as `arm` does, with `action` at rank 1 in slot 0, before the weapon.
-fn arm_with(game: &mut Match, id: StableId, action: ActionId, damage: i64, period: u64) {
-    arm(game, id, damage, period);
+/// Puts `action` at rank 1 in slot 0 of `id`, before the weapon its type gives it.
+fn arm_with(game: &mut Match, id: StableId, action: ActionId) {
     let entity = game.entity_of(id).unwrap();
     let weapon = game.get::<ActionSlots>(entity).unwrap().slot(0).unwrap();
     let slots = ActionSlots::new([
@@ -300,23 +381,10 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
     let chill = arena.action(&game, "hero-rime", "chill_arrows");
     let hold = arena.modifier(&game, "hero-rime", "chill_arrows");
     let player = Owner::new(PlayerSlot::new(0));
-    // Rime with 20 mana, a weapon of 10 every 10 ticks; an enemy beside her.
-    let rime = spawn_with(
-        &arena,
-        &mut game,
-        0,
-        Team::new(0),
-        (20, 0),
-        (player, (Modifiers::default(), ModifierClocks::default())),
-    );
-    let enemy = spawn(
-        &arena,
-        &mut game,
-        1,
-        Team::new(1),
-        (Modifiers::default(), ModifierClocks::default()),
-    );
-    arm_with(&mut game, rime, chill, 10, 10);
+    // Rime with 20 mana, a weapon of 10 every 12 ticks; an enemy beside her.
+    let rime = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Archer, player);
+    let enemy = spawn(&arena, &mut game, 1, Team::new(1), ());
+    arm_with(&mut game, rime, chill);
     let mana = |game: &Match| pool(&arena, game, rime, "mana").round();
     let holds = |game: &Match| carried(game, rime).contains(&(hold, Some(rime)));
     // Tick 0: on, at no cost but its toggle's, and its hold from that tick's Resolve.
@@ -325,14 +393,14 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
         (toggled(&game, rime), holds(&game), mana(&game)),
         (true, true, 20)
     );
-    // Each attack pays 8 as it goes off, in ticks 1 and 11: 4 are left. The third, in tick 21,
+    // Each attack pays 8 as it goes off, in ticks 1 and 13: 4 are left. The third, in tick 25,
     // cannot pay: the toggle turns off before it, and its hold with it.
     arena.tick(&mut game, 0, &[attack(rime, enemy)]);
-    for _ in 2..=11 {
+    for _ in 2..=13 {
         arena.step(&mut game);
     }
     assert_eq!((toggled(&game, rime), mana(&game)), (true, 4));
-    for _ in 12..=21 {
+    for _ in 14..=25 {
         arena.step(&mut game);
     }
     assert_eq!(
@@ -358,14 +426,7 @@ fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
     let mut game = arena.start(RATE, 1);
     let dread = arena.action(&game, "hero-husk", "dread");
     // Husk with 20 mana; an enemy of 500 health 2 m away, inside Dread's 3 m.
-    let husk = caster(
-        &arena,
-        &mut game,
-        dread,
-        1,
-        (20, 0),
-        (Modifiers::default(), ModifierClocks::default()),
-    );
+    let husk = caster(&arena, &mut game, dread, 1, Kit::Mana20, ());
     let enemy = spawn(&arena, &mut game, 2, Team::new(1), ());
     let mana = |game: &Match| pool(&arena, game, husk, "mana").round();
     // On in tick 0. It pays 8 at each whole second, in ticks 30 and 60: 4 are left. Its hold's
@@ -417,14 +478,7 @@ fn kenshos_still_mind_heals_each_half_second_of_its_channel_and_guards_him_while
     let still_mind = arena.action(&game, "hero-kensho", "still_mind");
     let guard = arena.modifier(&game, "hero-kensho", "still_mind");
     // Kensho with 100 mana, and 300 of his 500 health lost.
-    let kensho = caster(
-        &arena,
-        &mut game,
-        still_mind,
-        1,
-        (100, 0),
-        (Modifiers::default(), ModifierClocks::default()),
-    );
+    let kensho = caster(&arena, &mut game, still_mind, 1, Kit::Mana100, ());
     let entity = game.entity_of(kensho).unwrap();
     let life = *game.get::<Life>(entity).unwrap();
     game.entity_mut(entity)
@@ -469,25 +523,24 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let action = arena.action(&game, "hero-veil", "dusk_mark");
     let dusk_mark = arena.modifier(&game, "hero-veil", "dusk_mark");
     let player = Owner::new(PlayerSlot::new(0));
-    let veil = spawn_with(&arena, &mut game, 0, Team::new(0), (0, 200), player);
+    let veil = spawn_with(
+        &arena,
+        &mut game,
+        0,
+        Team::new(0),
+        Kit::EnergyStriker,
+        player,
+    );
     let energy = arena.pool("energy");
     let entity = game.entity_of(veil).unwrap();
     let pools = *game.get::<Pools>(entity).unwrap();
     game.entity_mut(entity)
         .insert(internals::spent(pools, energy, Num::int(100)));
-    let other = spawn(&arena, &mut game, 0, Team::new(0), player);
-    let marked = spawn(
-        &arena,
-        &mut game,
-        1,
-        Team::new(1),
-        (Modifiers::default(), ModifierClocks::default()),
-    );
+    let other = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Striker, player);
+    let marked = spawn(&arena, &mut game, 1, Team::new(1), ());
     let marks = |game: &Match| !carried(game, marked).is_empty();
     let from = Some((veil, Some(action), 2));
     Stats::give_modifier(&mut game, marked, dusk_mark, from, false);
-    arm(&mut game, other, 30, 100);
-    arm(&mut game, veil, 30, 100);
     // Another unit's attack of 30 in tick 0 leaves the mark.
     arena.tick(&mut game, 0, &[attack(other, marked)]);
     assert_eq!((health(&arena, &game, marked), marks(&game)), (470, true));
@@ -513,20 +566,11 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
         None
     );
     let fan = arena.action(&game, "hero-rime", "fan_of_frost");
-    let caster = caster(&arena, &mut game, fan, 1, (100, 0), ());
+    let caster = caster(&arena, &mut game, fan, 1, Kit::Mana100, ());
     // Seven arrows from the origin, 57.5° apart from the first to the last, around +x: at 0°,
     // ±9.583°, ±19.167° and ±28.75°, each 0.4 m wide, so a body of no radius within 0.2 m of an
     // arrow's path is in reach, up to the 12 m of the range.
-    let enemy = |game: &mut Match, at| {
-        spawn_at(
-            &arena,
-            game,
-            at,
-            Team::new(1),
-            (0, 0),
-            (Modifiers::default(), ModifierClocks::default()),
-        )
-    };
+    let enemy = |game: &mut Match, at| spawn_at(&arena, game, at, Team::new(1), Kit::Bare, ());
     // 1 m out on +x, 1 · sin 9.583° = 0.166 m from the arrows beside the middle one: three
     // arrows reach it in the same tick, and the cast hits it once.
     let near = enemy(&mut game, milli(1000, 0));
@@ -544,8 +588,8 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
         &mut game,
         milli(5000, 0),
         Team::new(0),
-        (0, 0),
-        (Modifiers::default(), ModifierClocks::default()),
+        Kit::Bare,
+        (),
     );
 
     arena.tick(
@@ -581,7 +625,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
     let mut game = arena.start(RATE, 1);
     arena.load_vision(&mut game, 2);
     let snow_owl = arena.action(&game, "hero-rime", "snow_owl");
-    let caster = caster(&arena, &mut game, snow_owl, 1, (0, 0), ());
+    let caster = caster(&arena, &mut game, snow_owl, 1, Kit::Bare, ());
     // An enemy at (10, 0): its cell's center (10.5, 0.5) is √12.5 ≈ 3.54 m from the point, within
     // the owl's sight of 4 m and its linger's radius of 4 m; the caster has no sight of its own.
     let enemy = spawn(&arena, &mut game, 10, Team::new(1), ());
@@ -634,7 +678,7 @@ fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
     let mut game = arena.start(RATE, 1);
     arena.load_vision(&mut game, 3);
     let farsight = arena.action(&game, "player-spells", "farsight");
-    let caster = caster(&arena, &mut game, farsight, 1, (0, 0), ());
+    let caster = caster(&arena, &mut game, farsight, 1, Kit::Bare, ());
     // Revealed 6 m round (20, 0): the cell of (25, 0), its center (25.5, 0.5) √30.5 ≈ 5.52 m
     // off, and not that of (26, 0), at (26.5, 0.5) √42.5 ≈ 6.52 m off. Team 2 sees neither.
     let near = spawn(&arena, &mut game, 25, Team::new(1), ());
@@ -680,19 +724,10 @@ fn erupt_at(rate: TickRate, erupts: u64) {
     let mut game = arena.start(rate, 1);
     let eruption = arena.action(&game, "hero-cinder", "eruption");
     let kindle = arena.modifier(&game, "hero-cinder", "kindle");
-    let caster = caster(&arena, &mut game, eruption, 1, (100, 0), ());
+    let caster = caster(&arena, &mut game, eruption, 1, Kit::Mana100, ());
     // The area lands on (6, 0, 0), of radius 2.4, and these bodies have no radius: one on the
     // centre and one 2.4 m out are in reach, one 2.401 m out is not, and an ally is never hit.
-    let enemy = |game: &mut Match, at| {
-        spawn_at(
-            &arena,
-            game,
-            at,
-            Team::new(1),
-            (0, 0),
-            (Modifiers::default(), ModifierClocks::default()),
-        )
-    };
+    let enemy = |game: &mut Match, at| spawn_at(&arena, game, at, Team::new(1), Kit::Bare, ());
     let center = enemy(&mut game, milli(6000, 0));
     let edge = enemy(&mut game, milli(8400, 0));
     let beyond = enemy(&mut game, milli(6000, 2401));
@@ -702,8 +737,8 @@ fn erupt_at(rate: TickRate, erupts: u64) {
         &mut game,
         milli(6000, 0),
         Team::new(0),
-        (0, 0),
-        (Modifiers::default(), ModifierClocks::default()),
+        Kit::Bare,
+        (),
     );
     let from = Some((caster, Some(eruption), 1));
     Stats::give_modifier(&mut game, burning, kindle, from, false);
@@ -747,7 +782,7 @@ fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     let chain_fire = arena.action(&game, "hero-cinder", "chain_fire");
-    let caster = caster(&arena, &mut game, chain_fire, 1, (100, 0), ());
+    let caster = caster(&arena, &mut game, chain_fire, 1, Kit::Mana100, ());
     // Two enemies 4 m apart, within the 5 m of a bounce. The arena has no map, so its Vision
     // stage never runs: each is seen by every team, as a bounce picks among what its caster's
     // team sees.
@@ -762,7 +797,9 @@ fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
     // second, a third of a meter a tick rounded down, so 4 m takes 13 steps: it hits `near` in
     // tick 13. Each hit deals 150 at rank 1 and, with its type's 4 bounces left and counting
     // down, picks the one other enemy in reach: 4 bounces after the first hit, each 4 m and 13
-    // ticks, alternating, ids 4 to 7. The last hit, with none left, bounces no more.
+    // ticks, alternating, ids 4 to 7. The last hit, with none left, bounces no more. Each hit
+    // also kindles its target, which burns 2 % of its 500 health, 10, each 30 ticks from the
+    // first: `near`, hit in tick 13, in ticks 43 and 73, and `far`, hit in tick 26, in tick 56.
     arena.tick(&mut game, 0, &[cast(caster, ActionTarget::Unit(near))]);
     let mut flown = Vec::new();
     let mut hits = Vec::new();
@@ -785,8 +822,11 @@ fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
             (13, [350, 500]),
             (26, [350, 350]),
             (39, [200, 350]),
-            (52, [200, 200]),
-            (65, [50, 200]),
+            (43, [190, 350]),
+            (52, [190, 200]),
+            (56, [190, 190]),
+            (65, [40, 190]),
+            (73, [30, 190]),
         ]
     );
     assert!(
@@ -804,24 +844,9 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let ring = arena.action(&game, "hero-veil", "smoke_ring");
     let cover = arena.modifier(&game, "hero-veil", "smoke_ring_cover");
     let slow = arena.modifier(&game, "hero-veil", "smoke_ring_slow");
-    let caster = caster(
-        &arena,
-        &mut game,
-        ring,
-        1,
-        (0, 100),
-        (Modifiers::default(), ModifierClocks::default()),
-    );
-    let unit = |game: &mut Match, team, x| {
-        spawn_with(
-            &arena,
-            game,
-            x,
-            Team::new(team),
-            (0, 0),
-            (Modifiers::default(), ModifierClocks::default()),
-        )
-    };
+    let caster = caster(&arena, &mut game, ring, 1, Kit::Energy100, ());
+    let unit =
+        |game: &mut Match, team, x| spawn_with(&arena, game, x, Team::new(team), Kit::Bare, ());
     // The ring lands where Veil stands, of radius 3: an enemy 2 m and one 3 m away are inside,
     // one 4 m away is not, and an ally inside gets nothing, as the ring names no `allies`.
     let near = unit(&mut game, 1, 2);
@@ -892,7 +917,7 @@ fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it(
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     let night_step = arena.action(&game, "hero-veil", "night_step");
-    let veil = caster(&arena, &mut game, night_step, 1, (0, 200), walker());
+    let veil = caster(&arena, &mut game, night_step, 1, Kit::Energy200, walker());
     let enemy = spawn(&arena, &mut game, 6, Team::new(1), body());
 
     // It resolves at once in tick 0, and its dash of 22 m a second goes 22/30 m a tick, s, from
@@ -932,14 +957,8 @@ fn husks_grasping_wraps_pulls_him_to_the_enemy_hit_and_its_pull_delivers_nothing
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     let wraps = arena.action(&game, "hero-husk", "grasping_wraps");
-    let husk = caster(&arena, &mut game, wraps, 1, (200, 0), walker());
-    let enemy = spawn(
-        &arena,
-        &mut game,
-        5,
-        Team::new(1),
-        (body(), (Modifiers::default(), ModifierClocks::default())),
-    );
+    let husk = caster(&arena, &mut game, wraps, 1, Kit::Mana200, walker());
+    let enemy = spawn(&arena, &mut game, 5, Team::new(1), body());
 
     // The cast resolves after its windup of 250 ms, 8 ticks, and its wraps fly 20/30 m a tick
     // from tick 9, 1.6 m wide: they reach the enemy's body once their front comes within 0.8 +

@@ -1,21 +1,39 @@
 use std::num::{NonZeroU8, NonZeroU32};
 
+use bevy_ecs::bundle::Bundle;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::TickRate;
 
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
 use crate::mode::error::UnitKitError;
+use crate::mode::slot_action::SlotAction;
+use crate::mode::unit_kit::kit_part::{KitPart, KitSpawn};
+use crate::navigation::Navigation;
 use crate::production::production_data::ProductionData;
+use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
+use crate::stats::applier::Applier;
+use crate::stats::level::Level;
 use crate::stats::life::Life;
+use crate::stats::lifetime::Hold;
 use crate::stats::meter::Meter;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stats_effect::StatsEffect;
+use crate::stats::unit_stats::UnitStats;
+use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
+use crate::units::modifier_id::ModifierId;
 use crate::units::move_step::MoveStep;
+use crate::units::owner::Owner;
+use crate::units::spawn_at::SpawnAt;
 use crate::units::unit_type::UnitType;
+use crate::values::rank::Rank;
 use crate::values::stat::{EngineStat, Stat};
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
@@ -143,6 +161,93 @@ impl UnitKit {
             gathers,
             inventory,
         })
+    }
+
+    /// Whether a unit of the kit, of a type of `actions`, spawns with slots: actions, or an
+    /// inventory.
+    pub(crate) const fn has_slots(&self, actions: &[SlotAction]) -> bool {
+        self.inventory.is_some() || !actions.is_empty()
+    }
+
+    /// The slots a unit of the kit, of a type of `actions`, spawns with: its actions, each at the
+    /// first rank of its kind, then an empty slot of its inventory's kind for each inventory slot;
+    /// none for a type with neither.
+    pub(crate) fn slots(&self, actions: &[SlotAction]) -> Option<ActionSlots> {
+        if !self.has_slots(actions) {
+            return None;
+        }
+        let slots = ActionSlots::new(
+            actions
+                .iter()
+                .map(|action| (action.action, action.kind, action.rank)),
+        );
+        Some(match self.inventory {
+            Some(inventory) => slots.with_empty(inventory.kind, inventory.slots.get()),
+            None => slots,
+        })
+    }
+
+    /// Spawns `at` with the kit, owned by `owner`: its stats, its script state at its type's
+    /// defaults, the slots of its type's `actions`, its `passive`, and `parts`.
+    pub(crate) fn spawn(
+        &self,
+        world: &mut World,
+        at: SpawnAt,
+        owner: Option<Owner>,
+        actions: &[SlotAction],
+        passive: Option<ModifierId>,
+        parts: impl Bundle,
+    ) -> Entity {
+        let SpawnAt {
+            id,
+            unit_type,
+            pos,
+            angle,
+            ..
+        } = at;
+        let level_track = world
+            .get_resource::<TrackBook>()
+            .and_then(TrackBook::level_track);
+        // Its stats as its first refresh derives them, of its type at level 1 with no modifiers, so
+        // a reader in the stage it spawns in finds them.
+        let stats = world
+            .get_resource::<StatBook>()
+            .map_or_else(UnitStats::default, |book| {
+                UnitStats::new(book.base_values(unit_type, Level::default().get()))
+            });
+        let mut unit = at.core(owner).spawn(world, (stats, parts));
+        let at = KitSpawn {
+            kit: self,
+            level_track,
+            pos,
+            angle,
+        };
+        KitPart::give_every(&at, &mut unit);
+        if let Some(slots) = self.slots(actions) {
+            unit.insert(slots.timed());
+        }
+        let boxed = unit
+            .get::<Body>()
+            .is_some_and(|body| body.half_edges().is_some());
+        let entity = unit.id();
+        if let Some(passive) = passive {
+            let applier = Applier {
+                source: Some(id),
+                action: None,
+                rank: Rank::FIRST,
+                hold: Some(Hold::Passive),
+            };
+            let add = StatsEffect::Add {
+                target: id,
+                id: passive,
+                duration: None,
+            };
+            add.apply_by(world, applier);
+        }
+        if boxed {
+            Navigation::make_room(world, entity);
+        }
+        entity
     }
 }
 
